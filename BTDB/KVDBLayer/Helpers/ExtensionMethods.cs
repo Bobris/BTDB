@@ -1,69 +1,59 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Threading;
-using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
 {
     public static class ExtensionMethods
     {
-        public static bool CreateKey(this IKeyValueDBTransaction transaction, byte[] keyBuf)
+        public static bool CreateKey(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> keyBuf)
         {
             if (FindExactKey(transaction, keyBuf)) return false;
-            return transaction.CreateOrUpdateKeyValue(ByteBuffer.NewSync(keyBuf), ByteBuffer.NewEmpty());
+            return transaction.CreateOrUpdateKeyValue(keyBuf, new ReadOnlySpan<byte>());
         }
 
-        public static bool FindExactKey(this IKeyValueDBTransaction transaction, byte[] keyBuf)
+        public static bool FindExactKey(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> key)
         {
-            return transaction.Find(ByteBuffer.NewSync(keyBuf)) == FindResult.Exact;
+            return transaction.Find(key, 0) == FindResult.Exact;
         }
 
-        public static bool CreateOrUpdateKeyValueUnsafe(this IKeyValueDBTransaction transaction, byte[] keyBuf, byte[] valueBuf)
+        public static long GetKeyValueCount(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
         {
-            return transaction.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(keyBuf), ByteBuffer.NewAsync(valueBuf));
+            if (!transaction.FindFirstKey(prefix)) return 0;
+            var startIndex = transaction.GetKeyIndex();
+            transaction.FindLastKey(prefix);
+            var endIndex = transaction.GetKeyIndex();
+            return endIndex - startIndex + 1;
         }
 
-        public static bool CreateOrUpdateKeyValue(this IKeyValueDBTransaction transaction, byte[] keyBuf, byte[] valueBuf)
+        public static long GetKeyIndex(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
         {
-            return transaction.CreateOrUpdateKeyValue(ByteBuffer.NewSync(keyBuf), ByteBuffer.NewSync(valueBuf));
+            var currentIndex = transaction.GetKeyIndex();
+            if (!transaction.FindFirstKey(prefix)) throw new InvalidDataException();
+            var relative = currentIndex - transaction.GetKeyIndex();
+            transaction.SetKeyIndex(currentIndex);
+            return relative;
         }
 
-        public static void SetValue(this IKeyValueDBTransaction transaction, byte[] valueBuf)
+        public static long EraseAll(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
         {
-            transaction.SetValue(ByteBuffer.NewSync(valueBuf));
-        }
-
-        public static byte[] GetKeyAsByteArray(this IKeyValueDBTransaction transaction)
-        {
-            return transaction.GetKey().ToByteArray();
-        }
-
-        public static byte[] GetValueAsByteArray(this IKeyValueDBTransaction transaction)
-        {
-            return transaction.GetValue().ToByteArray();
-        }
-
-        public static void SetKeyPrefixUnsafe(this IKeyValueDBTransaction transaction, byte[] prefix)
-        {
-            transaction.SetKeyPrefix(prefix == null ? ByteBuffer.NewEmpty() : ByteBuffer.NewAsync(prefix));
-        }
-
-        public static void SetKeyPrefix(this IKeyValueDBTransaction transaction, byte[] prefix)
-        {
-            transaction.SetKeyPrefix(prefix == null ? ByteBuffer.NewEmpty() : ByteBuffer.NewSync(prefix));
+            if (!transaction.FindFirstKey(prefix)) return 0;
+            var startIndex = transaction.GetKeyIndex();
+            transaction.FindLastKey(prefix);
+            var endIndex = transaction.GetKeyIndex();
+            transaction.EraseRange(startIndex, endIndex);
+            return endIndex - startIndex + 1;
         }
 
         public static bool TryRemove<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dict, TKey key)
         {
-            TValue val;
-            return dict.TryRemove(key, out val);
+            return dict.TryRemove(key, out _);
         }
 
         public static Lazy<T> Force<T>(this Lazy<T> lazy)
         {
-#pragma warning disable 168
-            var ignored = lazy.Value;
-#pragma warning restore 168
+            _ = lazy.Value;
             return lazy;
         }
 
@@ -82,7 +72,7 @@ namespace BTDB.KVDBLayer
             return new WriteLockHelper(readerWriterLock);
         }
 
-        public struct ReadLockHelper : IDisposable
+        public readonly struct ReadLockHelper : IDisposable
         {
             readonly ReaderWriterLockSlim _readerWriterLock;
 
@@ -98,7 +88,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        public struct UpgradeableReadLockHelper : IDisposable
+        public readonly struct UpgradeableReadLockHelper : IDisposable
         {
             readonly ReaderWriterLockSlim _readerWriterLock;
 
@@ -114,7 +104,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        public struct WriteLockHelper : IDisposable
+        public readonly struct WriteLockHelper : IDisposable
         {
             readonly ReaderWriterLockSlim _readerWriterLock;
 
@@ -129,6 +119,5 @@ namespace BTDB.KVDBLayer
                 _readerWriterLock.ExitWriteLock();
             }
         }
-
     }
 }

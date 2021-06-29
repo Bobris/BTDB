@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer.BTreeMem;
@@ -9,7 +10,7 @@ namespace BTDB.KVDBLayer
     public class InMemoryKeyValueDB : IKeyValueDB
     {
         IBTreeRootNode _lastCommited;
-        InMemoryKeyValueDBTransaction _writingTransaction;
+        InMemoryKeyValueDBTransaction? _writingTransaction;
         readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
         readonly object _writeLock = new object();
 
@@ -36,12 +37,16 @@ namespace BTDB.KVDBLayer
 
         public IKeyValueDBTransaction StartTransaction()
         {
-            return new InMemoryKeyValueDBTransaction(this, LastCommited, false, false);
+            var tr = new InMemoryKeyValueDBTransaction(this, LastCommited, false, false);
+            _transactions.Add(tr, null);
+            return tr;
         }
 
         public IKeyValueDBTransaction StartReadOnlyTransaction()
         {
-            return new InMemoryKeyValueDBTransaction(this, LastCommited, false, true);
+            var tr = new InMemoryKeyValueDBTransaction(this, LastCommited, false, true);
+            _transactions.Add(tr, null);
+            return tr;
         }
 
         public ValueTask<IKeyValueDBTransaction> StartWritingTransaction()
@@ -52,6 +57,7 @@ namespace BTDB.KVDBLayer
                 if (_writingTransaction == null)
                 {
                     var tr = NewWritingTransactionUnsafe();
+                    _transactions.Add(tr, null);
                     return new ValueTask<IKeyValueDBTransaction>(tr);
                 }
 
@@ -80,8 +86,19 @@ namespace BTDB.KVDBLayer
 
         public uint CompactorRamLimitInMb { get; set; }
         public long MaxTrLogFileSize { get; set; }
+        public IEnumerable<IKeyValueDBTransaction> Transactions()
+        {
+            foreach (var keyValuePair in _transactions)
+            {
+                yield return keyValuePair.Key;
+            }
+        }
 
-        public ulong? PreserveHistoryUpToCommitUlong {
+        readonly ConditionalWeakTable<IKeyValueDBTransaction, object?> _transactions =
+            new ConditionalWeakTable<IKeyValueDBTransaction, object?>();
+
+        public ulong? PreserveHistoryUpToCommitUlong
+        {
             get { return null; }
             set { /* ignore */ }
         }
@@ -111,7 +128,9 @@ namespace BTDB.KVDBLayer
         {
             if (_writeWaitingQueue.Count == 0) return;
             var tcs = _writeWaitingQueue.Dequeue();
-            tcs.SetResult(NewWritingTransactionUnsafe());
+            var tr = NewWritingTransactionUnsafe();
+            _transactions.Add(tr, null);
+            tcs.SetResult(tr);
         }
 
         InMemoryKeyValueDBTransaction NewWritingTransactionUnsafe()

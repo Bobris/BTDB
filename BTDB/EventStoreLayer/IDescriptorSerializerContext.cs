@@ -10,9 +10,9 @@ namespace BTDB.EventStoreLayer
     public interface IDescriptorSerializerContext
     {
         bool SomeTypeStored { get; }
-        IDescriptorSerializerContext StoreNewDescriptors(AbstractBufferedWriter writer, object obj);
+        IDescriptorSerializerContext StoreNewDescriptors(object obj);
         void CommitNewDescriptors();
-        void StoreObject(AbstractBufferedWriter writer, object obj);
-        void FinishNewDescriptors(AbstractBufferedWriter writer);
+        void StoreObject(ref SpanWriter writer, object obj);
+        void FinishNewDescriptors(ref SpanWriter writer);
     }
 }

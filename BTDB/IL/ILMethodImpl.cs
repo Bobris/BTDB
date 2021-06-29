@@ -8,14 +8,14 @@ namespace BTDB.IL
     class ILMethodImpl : IILMethodPrivate
     {
         int _expectedLength;
-        IILGen _gen;
+        IILGen? _gen;
         readonly MethodBuilder _method;
-        readonly IILGenForbidenInstructions _forbidenInstructions;
+        readonly IILGenForbiddenInstructions _forbiddenInstructions;
 
-        public ILMethodImpl(MethodBuilder method, IILGenForbidenInstructions forbidenInstructions)
+        public ILMethodImpl(MethodBuilder method, IILGenForbiddenInstructions forbiddenInstructions)
         {
             _method = method;
-            _forbidenInstructions = forbidenInstructions;
+            _forbiddenInstructions = forbiddenInstructions;
             _expectedLength = 64;
         }
 
@@ -24,7 +24,13 @@ namespace BTDB.IL
             _expectedLength = length;
         }
 
-        public IILGen Generator => _gen ?? (_gen = new ILGenImpl(_method.GetILGenerator(_expectedLength), _forbidenInstructions));
+        public bool InitLocals
+        {
+            get => _method.InitLocals;
+            set => _method.InitLocals = value;
+        }
+
+        public IILGen Generator => _gen ??= new ILGenImpl(_method.GetILGenerator(_expectedLength), _forbiddenInstructions);
 
         public MethodInfo TrueMethodInfo => _method;
 

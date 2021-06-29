@@ -2,7 +2,7 @@ using System;
 
 namespace BTDB.Encrypted
 {
-    public class InvalidSymmetricCipher: ISymmetricCipher
+    public class InvalidSymmetricCipher : ISymmetricCipher
     {
         public int CalcEncryptedSizeFor(ReadOnlySpan<byte> plainInput)
         {

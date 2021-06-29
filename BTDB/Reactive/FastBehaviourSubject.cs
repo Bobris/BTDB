@@ -194,20 +194,20 @@ namespace BTDB.Reactive
                 }
                 else if (original is FastSubjectHelpers<T>.MultiSubjectWithValue)
                 {
-                    var o = (FastSubjectHelpers<T>.MultiSubjectWithValue) original;
+                    var o = (FastSubjectHelpers<T>.MultiSubjectWithValue)original;
                     var originalArray = o.Array;
                     var indexOf = Array.IndexOf(originalArray, observer);
                     if (indexOf < 0) return;
                     if (originalArray.Length == 2)
                     {
-                        nextState = new FastSubjectHelpers<T>.SingleSubjectWithValue(originalArray[1 - indexOf],o.Value);
+                        nextState = new FastSubjectHelpers<T>.SingleSubjectWithValue(originalArray[1 - indexOf], o.Value);
                     }
                     else
                     {
                         var newArray = new IObserver<T>[originalArray.Length - 1];
                         Array.Copy(originalArray, newArray, indexOf);
                         Array.Copy(originalArray, indexOf + 1, newArray, indexOf, newArray.Length - indexOf);
-                        nextState = new FastSubjectHelpers<T>.MultiSubjectWithValue(newArray,o.Value);
+                        nextState = new FastSubjectHelpers<T>.MultiSubjectWithValue(newArray, o.Value);
                     }
                 }
                 else if (original is FastSubjectHelpers<T>.SingleSubjectWithValue)

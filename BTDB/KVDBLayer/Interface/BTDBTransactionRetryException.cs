@@ -11,7 +11,7 @@ namespace BTDB.KVDBLayer
         {
         }
 
-        BTDBTransactionRetryException(SerializationInfo info, StreamingContext context) 
+        BTDBTransactionRetryException(SerializationInfo info, StreamingContext context)
             : base(info, context)
         {
         }

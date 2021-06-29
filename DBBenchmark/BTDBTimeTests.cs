@@ -10,7 +10,7 @@ namespace DBBenchmark
     {
         readonly bool _inMemory;
         readonly bool _memoryMapped;
-        IFileCollection _fileCollection;
+        IFileCollection? _fileCollection;
         readonly bool _fastInMemory;
 
         public BtdbTimeTests()
@@ -27,7 +27,7 @@ namespace DBBenchmark
 
             _fileCollection = CreateTestFileCollection();
         }
-        
+
         public void Dispose()
         {
             _fileCollection?.Dispose();
@@ -37,14 +37,14 @@ namespace DBBenchmark
         {
             GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
             var memStart = GC.GetTotalMemory(true);
-            
+
             var stopwatch = Stopwatch.StartNew();
 
             using (CreateKeyValueDb(_fileCollection))
             {
                 stopwatch.Stop();
 
-                GC.Collect();GC.WaitForPendingFinalizers();GC.Collect();
+                GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
                 var memFinish = GC.GetTotalMemory(false);
 
                 return (openTime: stopwatch.Elapsed, memorySize: (memFinish - memStart) / 1024);
@@ -57,14 +57,14 @@ namespace DBBenchmark
             using (var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy()))
             {
                 var stopwatch = Stopwatch.StartNew();
-                
+
                 using (var tr = db.StartTransaction())
                 {
                     tr.CreateOrUpdateKeyValue(key, value);
                     tr.Commit();
-        
+
                 }
-                
+
                 stopwatch.Stop();
                 return stopwatch.Elapsed;
             }
@@ -86,7 +86,7 @@ namespace DBBenchmark
                 tr.Commit();
 
             }
-            
+
             stopwatch.Stop();
             return stopwatch.Elapsed;
         }
@@ -104,29 +104,25 @@ namespace DBBenchmark
                         tr.CreateOrUpdateKeyValue(keyValue.Key, keyValue.Value);
                         tr.Commit();
                     }
-                }   
+                }
             }
-            
+
             stopwatch.Stop();
             return stopwatch.Elapsed;
         }
 
         public TimeSpan Read(byte[] key)
         {
-
-            using (var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy()))
+            using var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy());
+            var stopwatch = Stopwatch.StartNew();
+            using (var tr = db.StartTransaction())
             {
-                var stopwatch = Stopwatch.StartNew();
-                using (var tr = db.StartTransaction())
-                {
-                    tr.FindExactKey(key);
-                    tr.GetValueAsByteArray();
-                }
-
-                stopwatch.Stop();
-                return stopwatch.Elapsed;
+                tr.FindExactKey(key);
+                tr.GetValue();
             }
 
+            stopwatch.Stop();
+            return stopwatch.Elapsed;
         }
 
         public TimeSpan ReadValues(IEnumerable<byte[]> keys)
@@ -139,43 +135,39 @@ namespace DBBenchmark
                 foreach (var key in keys)
                 {
                     tr.FindExactKey(key);
-                    tr.GetValueAsByteArray();
+                    tr.GetValue();
                 }
             }
-            
+
             stopwatch.Stop();
             return stopwatch.Elapsed;
         }
 
         public TimeSpan ReadAll(Dictionary<byte[], byte[]> exceptedData)
         {
-
-            using (var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy()))
+            using var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy());
+            var stopwatch = Stopwatch.StartNew();
+            using (var tr = db.StartTransaction())
             {
-                var stopwatch = Stopwatch.StartNew();
-                using (var tr = db.StartTransaction())
+
+                foreach (var data in exceptedData)
                 {
+                    var key = tr.FindExactKey(data.Key);
+                    if (!key) throw new Exception("Key not found");
 
-                    foreach (var data in exceptedData)
+                    var value = tr.GetValue();
+
+                    if (value.Length != data.Value.Length) throw new Exception("value length different");
+
+                    for (var j = 0; j < value.Length; j++)
                     {
-                        var key = tr.FindExactKey(data.Key);
-                        if (!key) throw new Exception("Key not found");
-
-                        var value = tr.GetValueAsByteArray();
-
-                        if (value.Length != data.Value.Length) throw new Exception("value length different");
-
-                        for (var j = 0; j < value.Length; j++)
-                        {
-                            if (value[j] != data.Value[j]) throw new Exception("value different");
-                        }
+                        if (value[j] != data.Value[j]) throw new Exception("value different");
                     }
                 }
-                
-                stopwatch.Stop();
-                return stopwatch.Elapsed;
             }
-            
+
+            stopwatch.Stop();
+            return stopwatch.Elapsed;
         }
 
         public TimeSpan Delete(byte[] key)
@@ -185,8 +177,7 @@ namespace DBBenchmark
             using (var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy()))
             using (var tr = db.StartTransaction())
             {
-                tr.FindExactKey(key);
-                tr.EraseCurrent();
+                tr.EraseCurrent(key);
                 tr.Commit();
             }
 
@@ -208,8 +199,8 @@ namespace DBBenchmark
             stopwatch.Stop();
             return stopwatch.Elapsed;
         }
-        
-        IFileCollection CreateTestFileCollection()
+
+        IFileCollection? CreateTestFileCollection()
         {
             if (_fastInMemory)
                 return null;
@@ -230,29 +221,27 @@ namespace DBBenchmark
         public Dictionary<byte[], byte[]> GetDbData(string dbfilename)
         {
             var fileCollection = OpenTestFileCollection(dbfilename);
-            
-            using (var db = CreateKeyValueDb(fileCollection, new SnappyCompressionStrategy()))
-            using (var tr = db.StartTransaction())
-            {
-                var data = new Dictionary<byte[], byte[]>();
-                
-                if (!tr.FindFirstKey()) 
-                    return data;
-                
-                do
-                {
-                    var key = tr.GetKeyAsByteArray();
-                    var value = tr.GetValueAsByteArray();
-                    
-                    data.Add(key, value);
-                    
-                } while (tr.FindNextKey());
 
+            using var db = CreateKeyValueDb(fileCollection, new SnappyCompressionStrategy());
+            using var tr = db.StartTransaction();
+            var data = new Dictionary<byte[], byte[]>();
+
+            if (!tr.FindFirstKey(ReadOnlySpan<byte>.Empty))
                 return data;
-            }
+
+            do
+            {
+                var key = tr.GetKeyToArray();
+                var value = tr.GetValue().ToArray();
+
+                data.Add(key, value);
+
+            } while (tr.FindNextKey(ReadOnlySpan<byte>.Empty));
+
+            return data;
         }
 
-        IFileCollection OpenTestFileCollection(string dbfilename)
+        IFileCollection? OpenTestFileCollection(string dbfilename)
         {
             if (_fastInMemory)
                 return null;
@@ -263,14 +252,14 @@ namespace DBBenchmark
             return new OnDiskFileCollection(dbfilename);
         }
 
-        static IKeyValueDB CreateKeyValueDb(IFileCollection fileCollection, ICompressionStrategy compressionStrategy = null)
+        static IKeyValueDB CreateKeyValueDb(IFileCollection? fileCollection, ICompressionStrategy? compressionStrategy = null)
         {
-            if (fileCollection == null) 
+            if (fileCollection == null)
                 return new InMemoryKeyValueDB();
-            
+
             if (compressionStrategy == null)
                 return new KeyValueDB(fileCollection);
-            
+
             return new KeyValueDB(fileCollection, compressionStrategy);
         }
     }

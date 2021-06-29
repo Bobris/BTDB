@@ -1,5 +1,6 @@
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
@@ -48,7 +49,7 @@ namespace BTDB.FieldHandler
         [NotStored]
         public object? ValueAsObject => _value;
 
-        public static void SaveImpl(IWriterCtx writerCtx, object obj)
+        public static void SaveImpl(ref SpanWriter writer, IWriterCtx writerCtx, object obj)
         {
             if (obj is DBIndirect<T> ind)
             {
@@ -58,22 +59,22 @@ namespace BTDB.FieldHandler
                     {
                         throw new BTDBException("Transaction does not match when saving nonmaterialized IIndirect");
                     }
-                    writerCtx.Writer().WriteVInt64((long)ind._oid);
+                    writer.WriteVInt64((long)ind._oid);
                     return;
                 }
             }
 
             if (obj is IIndirect<T> ind2)
             {
-                writerCtx.WriteNativeObjectPreventInline(ind2.Value);
+                writerCtx.WriteNativeObjectPreventInline(ref writer, ind2.Value);
                 return;
             }
-            writerCtx.WriteNativeObjectPreventInline(obj);
+            writerCtx.WriteNativeObjectPreventInline(ref writer, obj);
         }
 
-        public static IIndirect<T> LoadImpl(IReaderCtx readerCtx)
+        public static IIndirect<T> LoadImpl(ref SpanReader reader, IReaderCtx readerCtx)
         {
-            var oid = readerCtx.Reader().ReadVInt64();
+            var oid = reader.ReadVInt64();
             return new DBIndirect<T>(((IDBReaderCtx)readerCtx).GetTransaction(), (ulong)oid);
         }
     }

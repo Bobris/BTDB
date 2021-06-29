@@ -77,6 +77,8 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
+        public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+
         public bool AnyOpNeedsCtx()
         {
             return false;

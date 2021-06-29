@@ -20,17 +20,5 @@ namespace ODbDump.Visitor
         {
             Console.WriteLine(new string(' ', _indent * 2) + s);
         }
-
-        void Print(ByteBuffer b)
-        {
-            _builder.Clear();
-            for (int i = 0; i < b.Length; i++)
-            {
-                if (i > 0) _builder.Append(' ');
-                _builder.Append(b[i].ToString("X2"));
-            }
-
-            Print(_builder.ToString());
-        }
     }
 }

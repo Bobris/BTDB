@@ -1,4 +1,3 @@
-#if NETCOREAPP
 using System;
 using System.Runtime.InteropServices;
 using BTDB.KVDBLayer;
@@ -16,13 +15,13 @@ namespace BTDB.StreamLayer
                 long result;
                 do
                 {
-                    result = Mono.Unix.Native.Syscall.pread((int) handle.DangerousGetHandle(), dataptr,
-                        (ulong) data.Length, (long) position);
-                } while (UnixMarshal.ShouldRetrySyscall((int) result));
+                    result = Mono.Unix.Native.Syscall.pread((int)handle.DangerousGetHandle(), dataptr,
+                        (ulong)data.Length, (long)position);
+                } while (UnixMarshal.ShouldRetrySyscall((int)result));
 
                 if (result == -1)
                     UnixMarshal.ThrowExceptionForLastError();
-                return (uint) result;
+                return (uint)result;
             }
         }
 
@@ -33,9 +32,9 @@ namespace BTDB.StreamLayer
                 long result;
                 do
                 {
-                    result = Mono.Unix.Native.Syscall.pwrite((int) handle.DangerousGetHandle(), dataptr,
-                        (ulong) data.Length, (long) position);
-                } while (UnixMarshal.ShouldRetrySyscall((int) result));
+                    result = Mono.Unix.Native.Syscall.pwrite((int)handle.DangerousGetHandle(), dataptr,
+                        (ulong)data.Length, (long)position);
+                } while (UnixMarshal.ShouldRetrySyscall((int)result));
 
                 if (result == -1)
                     UnixMarshal.ThrowExceptionForLastError();
@@ -68,4 +67,3 @@ namespace BTDB.StreamLayer
         }
     }
 }
-#endif

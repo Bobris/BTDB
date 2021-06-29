@@ -10,9 +10,9 @@ namespace SimpleTester.TestModel.Events
         public double Size { get; set; }
 
         [DataMember(Order = 2)]
-        public string Style { get; set; }
-        
+        public string? Style { get; set; }
+
         [DataMember(Order = 3)]
-        public string Color { get; set; }
+        public string? Color { get; set; }
     }
 }

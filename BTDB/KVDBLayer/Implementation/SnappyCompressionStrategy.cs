@@ -6,21 +6,6 @@ namespace BTDB.KVDBLayer
 {
     public class SnappyCompressionStrategy : ICompressionStrategy
     {
-        public bool ShouldTryToCompressKey(int length)
-        {
-            return length > 1024;
-        }
-
-        public bool CompressKey(ref ByteBuffer data)
-        {
-            return SnappyCompress.TryCompress(ref data, 80);
-        }
-
-        public bool CompressKey(ref ReadOnlySpan<byte> data)
-        {
-            return SnappyCompress.TryCompress(ref data, 80);
-        }
-
         public bool CompressValue(ref ByteBuffer data)
         {
             if (data.Length < 32) return false;

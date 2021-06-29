@@ -8,6 +8,6 @@ namespace BTDB.KVDBLayer
         ulong CommitUlong { get; }
         KeyIndexCompression Compression { get; }
         ulong[]? Ulongs { get; }
-        long[] UsedFilesInOlderGenerations { get; set; }
+        long[]? UsedFilesInOlderGenerations { get; set; }
     }
 }

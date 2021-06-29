@@ -36,12 +36,12 @@ namespace BTDB.EventStoreLayer
             return GetPreferredType();
         }
 
-        public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
+        public ITypeNewDescriptorGenerator? BuildNewDescriptorGenerator()
         {
             return null;
         }
 
-        public ITypeDescriptor NestedType(int index)
+        public ITypeDescriptor? NestedType(int index)
         {
             return null;
         }
@@ -65,9 +65,11 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
+        public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+
         public IEnumerable<Type> GetNativeTypes()
         {
-            yield return typeof (ByteBuffer);
+            yield return typeof(ByteBuffer);
         }
 
         public bool AnyOpNeedsCtx()
@@ -75,38 +77,44 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
+        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
+            Action<IILGen> pushDescriptor, Type targetType)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedReader).ReadByteArray());
-            if (targetType == typeof (ByteBuffer))
+            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArray))!);
+            if (targetType == typeof(ByteBuffer))
             {
                 ilGenerator.Call(() => ByteBuffer.NewAsync(null));
                 return;
             }
-            if (targetType != typeof (object))
+
+            if (targetType != typeof(object))
             {
-                if (targetType!=typeof(byte[]))
+                if (targetType != typeof(byte[]))
                     throw new ArgumentOutOfRangeException(nameof(targetType));
                 return;
             }
+
             ilGenerator.Castclass(typeof(object));
         }
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedReader).SkipByteArray());
+            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipByteArray))!);
         }
 
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+            Action<IILGen> pushValue, Type valueType)
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            if (valueType==typeof(byte[]))
-                ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(null));
-            else if (valueType==typeof(ByteBuffer))
-                ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(ByteBuffer.NewEmpty()));
+            if (valueType == typeof(byte[]))
+                ilGenerator.Call(
+                    typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(byte[]) })!);
+            else if (valueType == typeof(ByteBuffer))
+                ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray),
+                    new[] { typeof(ByteBuffer) })!);
             else throw new ArgumentOutOfRangeException(nameof(valueType));
         }
 
@@ -120,7 +128,8 @@ namespace BTDB.EventStoreLayer
             return Name.GetHashCode();
         }
 
-        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers,
+            Func<ITypeDescriptor, ITypeDescriptor> map)
         {
             return this;
         }

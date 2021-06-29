@@ -1,10 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace BTDB.KVDBLayer
 {
-    public interface IKeyValueDB: IDisposable
+    public interface IKeyValueDB : IDisposable
     {
         // Default are durable, not corrupting commits (true). In case of false and crash of OS or computer, transactions could lost, but it should be possible to open DB.
         bool DurableTransactions { get; set; }
@@ -32,5 +33,7 @@ namespace BTDB.KVDBLayer
 
         // Transaction Log files will try to be split at this size, can be modified during running (maximum size is int.MaxValue)
         long MaxTrLogFileSize { get; set; }
+
+        IEnumerable<IKeyValueDBTransaction> Transactions();
     }
 }

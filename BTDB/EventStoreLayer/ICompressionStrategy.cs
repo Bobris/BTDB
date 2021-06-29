@@ -1,4 +1,4 @@
-using BTDB.Buffer;
+using System;
 
 namespace BTDB.EventStoreLayer
 {
@@ -6,7 +6,7 @@ namespace BTDB.EventStoreLayer
     {
         bool ShouldTryToCompress(int length);
         // Return true if it was compressed
-        bool Compress(ref ByteBuffer data);
-        void Decompress(ref ByteBuffer data);
+        bool Compress(ref ReadOnlySpan<byte> data);
+        void Decompress(ref ReadOnlySpan<byte> data);
     }
 }

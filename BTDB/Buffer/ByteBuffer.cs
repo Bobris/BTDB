@@ -48,7 +48,7 @@ namespace BTDB.Buffer
 
         public static ByteBuffer NewAsync(byte[]? buffer, int offset, int length)
         {
-            return new ByteBuffer(buffer, (uint) offset, length);
+            return new ByteBuffer(buffer, (uint)offset, length);
         }
 
         public static ByteBuffer NewAsync(ReadOnlySpan<byte> readOnlySpan)
@@ -65,7 +65,7 @@ namespace BTDB.Buffer
 
         public static ByteBuffer NewSync(byte[]? buffer, int offset, int length)
         {
-            return new ByteBuffer(buffer, (uint) offset | 0x80000000u, length);
+            return new ByteBuffer(buffer, (uint)offset | 0x80000000u, length);
         }
 
         public static ByteBuffer NewEmpty()
@@ -81,7 +81,7 @@ namespace BTDB.Buffer
         }
 
         public readonly byte[]? Buffer => _buffer;
-        public readonly int Offset => (int) (_offset & 0x7fffffffu);
+        public readonly int Offset => (int)(_offset & 0x7fffffffu);
         public readonly int Length => _length;
         public readonly bool AsyncSafe => (_offset & 0x80000000u) == 0u;
 
@@ -191,7 +191,7 @@ namespace BTDB.Buffer
         {
             if (Buffer == null || Buffer.Length < size)
             {
-                this = NewAsync(new byte[Math.Min((long) size * 3 / 2, int.MaxValue)]);
+                this = NewAsync(new byte[Math.Min((long)size * 3 / 2, int.MaxValue)]);
             }
 
             this = NewAsync(Buffer, 0, size);

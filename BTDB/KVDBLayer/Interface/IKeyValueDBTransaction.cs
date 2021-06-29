@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
 {
@@ -8,56 +7,47 @@ namespace BTDB.KVDBLayer
     {
         IKeyValueDB Owner { get; }
 
+        DateTime CreatedTime { get; }
+
         /// <summary>
         /// Set for with some description for this transaction purpose to find reason for Transaction leak
         /// </summary>
-        string DescriptionForLeaks { get; set; }
+        string? DescriptionForLeaks { get; set; }
 
         /// <summary>
-        /// It sets automatic key prefix, all functions then works relatively to this prefix, it also invalidates current key
+        /// Move actual key pointer to first key matching provided prefix.
         /// </summary>
-        void SetKeyPrefix(ByteBuffer prefix);
+        /// <returns>true if there is such key, false if there are no such keys</returns>
+        bool FindFirstKey(in ReadOnlySpan<byte> prefix);
 
         /// <summary>
-        /// Move actual key pointer to first key in current prefix.
+        /// Move actual key pointer to last key matching provided prefix.
         /// </summary>
-        /// <returns>true if there is such key, false if there are no keys in current prefix</returns>
-        bool FindFirstKey();
+        /// <returns>true if there is such key, false if there are no such keys</returns>
+        bool FindLastKey(in ReadOnlySpan<byte> prefix);
 
         /// <summary>
-        /// Move actual key pointer to last key in current prefix.
-        /// </summary>
-        /// <returns>true if there is such key, false if there are no keys in current prefix</returns>
-        bool FindLastKey();
-
-        /// <summary>
-        /// Move actual key pointer to previus key from current Position
-        /// </summary>
-        /// <returns>true if there was such previous key in curent prefix, else Position will not move</returns>
-        bool FindPreviousKey();
-
-        /// <summary>
-        /// Move actual key pointer to next key from current Position
+        /// Move actual key pointer to previous key from current Position only if still matches provided prefix
         /// </summary>
         /// <returns>true if there was such previous key, else Position will not move</returns>
-        bool FindNextKey();
+        bool FindPreviousKey(in ReadOnlySpan<byte> prefix);
 
         /// <summary>
-        /// Try to find key exactly, then try previous, then try next, then return NotFound
+        /// Move actual key pointer to next key from current Position only if still matches provided prefix
         /// </summary>
-        FindResult Find(ByteBuffer key);
+        /// <returns>true if there was such next key, else Position will not move</returns>
+        bool FindNextKey(in ReadOnlySpan<byte> prefix);
 
         /// <summary>
-        /// All in one function for creating and updating key value pair. If Key does not exists it is created and value is always replaced. It automaticaly preppend current prefix to key.
+        /// Try to find key exactly, then try previous, then try next, then return NotFound. It has to match at least prefixLen
+        /// </summary>
+        FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen);
+
+        /// <summary>
+        /// All in one function for creating and updating key value pair. If Key does not exists it is created and value is always replaced.
         /// </summary>
         /// <returns>true for Create, false for Update</returns>
-        bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value);
-
-        /// <summary>
-        /// All in one function for creating and updating key value pair. If Key does not exists it is created and value is always replaced. It automaticaly preppend current prefix to key.
-        /// </summary>
-        /// <returns>true for Create, false for Update</returns>
-        bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
+        bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
 
         /// <summary>
         /// In current prefix will calculate number of key value pairs
@@ -66,13 +56,19 @@ namespace BTDB.KVDBLayer
         long GetKeyValueCount();
 
         /// <summary>
-        /// Gets index of current key in current prefix
+        /// Gets index of current key
         /// </summary>
         /// <returns>-1 if current Key is invalid</returns>
         long GetKeyIndex();
 
         /// <summary>
-        /// Sets index of current key in current prefix
+        /// Sets index of current key relative to prefix
+        /// </summary>
+        /// <returns>true if such index exists</returns>
+        bool SetKeyIndex(in ReadOnlySpan<byte> prefix, long index);
+
+        /// <summary>
+        /// Sets index of current key
         /// </summary>
         /// <returns>true if such index exists</returns>
         bool SetKeyIndex(long index);
@@ -90,27 +86,32 @@ namespace BTDB.KVDBLayer
         /// <summary>
         /// Return current key.
         /// </summary>
-        ByteBuffer GetKey();
+        ReadOnlySpan<byte> GetKey();
 
         /// <summary>
-        /// Return current key and it includes current prefix
+        /// Return current key. It is always new Array.
         /// </summary>
-        ByteBuffer GetKeyIncludingPrefix();
+        byte[] GetKeyToArray();
+
+        /// <summary>
+        /// Return current key. Can use prepared buffer.
+        /// </summary>
+        ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength);
+
+        /// <summary>
+        /// Return current value into fresh memory or provided buffer if it fits.
+        /// </summary>
+        ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength);
 
         /// <summary>
         /// Return current value.
         /// </summary>
-        ByteBuffer GetValue();
-
-        /// <summary>
-        /// Return current value.
-        /// </summary>
-        ReadOnlySpan<byte> GetValueAsReadOnlySpan();
+        ReadOnlySpan<byte> GetValue();
 
         /// <summary>
         /// Overwrite current value with new content.
         /// </summary>
-        void SetValue(ByteBuffer value);
+        void SetValue(in ReadOnlySpan<byte> value);
 
         /// <summary>
         /// Remove current key and value. Current key will be invalidated.
@@ -119,16 +120,30 @@ namespace BTDB.KVDBLayer
         void EraseCurrent();
 
         /// <summary>
-        /// Remove all keys in current prefix.
+        /// Remove key and value by exact key match. Current key will be invalidated.
+        /// </summary>
+        /// <returns>true if found and erased</returns>
+        bool EraseCurrent(in ReadOnlySpan<byte> exactKey);
+
+        /// <summary>
+        /// Remove key and value by exact key match. Current key will be invalidated.
+        /// Before erase read value into prepared buffer, if it is not big enough new memory will be allocated,
+        /// but for sure it is safe to read it even after any DB modification.
+        /// </summary>
+        /// <returns>true if found and erased</returns>
+        bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value);
+
+        /// <summary>
+        /// Remove all keys in DB.
         /// It is same as calling EraseRange(0,long.MaxValue).
         /// </summary>
         void EraseAll();
 
         /// <summary>
-        /// This will remove keys in range of key indexes. It will erase only keys in current prefix, even you specify indexes outside of range. Nothing will be removed if lastKeyIndex is less than firstKeyIndex.
+        /// This will remove keys in range of key indexes. Nothing will be removed if lastKeyIndex is less than firstKeyIndex.
         /// </summary>
-        /// <param name="firstKeyIndex">zero based index relative to current prefix where to Start erase (inclusive)</param>
-        /// <param name="lastKeyIndex">zero based index relative to current prefix where to finish erase (inclusive)</param>
+        /// <param name="firstKeyIndex">absolute zero based index where to Start erase (inclusive)</param>
+        /// <param name="lastKeyIndex">absolute zero based index where to finish erase (inclusive)</param>
         void EraseRange(long firstKeyIndex, long lastKeyIndex);
 
         /// <summary>
@@ -138,6 +153,8 @@ namespace BTDB.KVDBLayer
         bool IsWriting();
 
         bool IsReadOnly();
+
+        bool IsDisposed();
 
         /// <summary>
         /// Each KeyValueDB has special ulong value which could be modified - it is much faster than regular key
@@ -186,16 +203,15 @@ namespace BTDB.KVDBLayer
         long GetTransactionNumber();
 
         /// <summary>
+        /// Returns current value of internal transaction counter which is incremented everytime current key position is moved.
+        /// </summary>
+        long CursorMovedCounter { get; }
+
+        /// <summary>
         /// Useful for finding what takes most storage in your DB
         /// </summary>
         /// <returns>Size of key and value (possibly even compressed size)</returns>
-        KeyValuePair<uint,uint> GetStorageSizeOfCurrentKey();
-
-        /// <summary>
-        /// Gets current prefix. Do not modify resulting bytes!
-        /// </summary>
-        /// <returns>Prefix. DO NOT MODIFY!</returns>
-        byte[] GetKeyPrefix();
+        KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey();
 
         /// <summary>
         /// This is just storage for boolean, add could store here that it does not want to commit transaction, it is up to infrastructure code around if it will listen this advice.

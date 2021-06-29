@@ -18,3 +18,5 @@ Byte[]
 IPAddress
 Version
 EncryptedString
+DateTimeOffset
+StringValues

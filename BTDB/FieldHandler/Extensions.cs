@@ -23,73 +23,46 @@ namespace BTDB.FieldHandler
             }
         }
 
-        public static void WriteFieldHandler(this AbstractBufferedWriter writer, IFieldHandler handler)
+        public static void WriteFieldHandler(this ref SpanWriter writer, IFieldHandler handler)
         {
             writer.WriteString(handler.Name);
             writer.WriteByteArray(handler.Configuration);
         }
 
-        public static IFieldHandler CreateFromReader(this IFieldHandlerFactory factory, AbstractBufferedReader reader,
+        public static IFieldHandler CreateFromReader(this IFieldHandlerFactory factory, ref SpanReader reader,
             FieldHandlerOptions options)
         {
             var handlerName = reader.ReadString();
             var handlerConfiguration = reader.ReadByteArray();
-            return factory.CreateFromName(handlerName, handlerConfiguration, options);
+            return factory.CreateFromName(handlerName!, handlerConfiguration!, options);
         }
 
         public static IILGen GenerateLoad(this IILGen ilGenerator, IFieldHandler fieldHandler, Type typeWanted,
-            Action<IILGen> pushReaderOrCtx, ITypeConvertorGenerator typeConvertorGenerator)
+            Action<IILGen> pushReader, Action<IILGen>? pushCtx, ITypeConvertorGenerator typeConvertorGenerator)
         {
-            fieldHandler.Load(ilGenerator,
-                fieldHandler.NeedsCtx() ? pushReaderOrCtx : PushReaderFromCtx(pushReaderOrCtx));
+            fieldHandler.Load(ilGenerator, pushReader, pushCtx);
             typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType(), typeWanted)!(ilGenerator);
             return ilGenerator;
         }
 
         public static IILGen GenerateSkip(this IILGen ilGenerator, IFieldHandler fieldHandler,
-            Action<IILGen> pushReaderOrCtx)
+            Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
-            fieldHandler.Skip(ilGenerator,
-                fieldHandler.NeedsCtx() ? pushReaderOrCtx : PushReaderFromCtx(pushReaderOrCtx));
+            fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
             return ilGenerator;
         }
 
         public static void UpdateNeedsFreeContent(NeedsFreeContent partial, ref NeedsFreeContent accumulatedValue)
         {
-            if ((int) partial > (int) accumulatedValue)
+            if ((int)partial > (int)accumulatedValue)
                 accumulatedValue = partial;
         }
 
         public static IILGen GenerateFreeContent(this IILGen ilGenerator, IFieldHandler fieldHandler,
-            Action<IILGen> pushReaderOrCtx,
-            ref NeedsFreeContent needsFreeContent)
+            Action<IILGen> pushReader, Action<IILGen>? pushCtx, ref NeedsFreeContent needsFreeContent)
         {
-            UpdateNeedsFreeContent(fieldHandler.FreeContent(ilGenerator,
-                fieldHandler.NeedsCtx() ? pushReaderOrCtx : PushReaderFromCtx(pushReaderOrCtx)), ref needsFreeContent);
+            UpdateNeedsFreeContent(fieldHandler.FreeContent(ilGenerator, pushReader, pushCtx), ref needsFreeContent);
             return ilGenerator;
-        }
-
-        public static Action<IILGen> PushReaderFromCtx(Action<IILGen> pushReaderOrCtx)
-        {
-            return il =>
-            {
-                pushReaderOrCtx(il);
-                il.Callvirt(() => default(IReaderCtx).Reader());
-            };
-        }
-
-        public static Action<IILGen> PushWriterOrCtxAsNeeded(Action<IILGen> pushWriterOrCtx, bool noConversion)
-        {
-            return noConversion ? pushWriterOrCtx : PushWriterFromCtx(pushWriterOrCtx);
-        }
-
-        public static Action<IILGen> PushWriterFromCtx(Action<IILGen> pushWriterOrCtx)
-        {
-            return il =>
-            {
-                pushWriterOrCtx(il);
-                il.Callvirt(() => default(IWriterCtx).Writer());
-            };
         }
 
         public static void RegisterFieldHandlers(IEnumerable<IFieldHandler?> fieldHandlers, object owner)

@@ -9,11 +9,11 @@ namespace BTDB.KVDBLayer
         readonly uint _previousFileId;
         readonly long _generation;
 
-        public FileTransactionLog(AbstractBufferedReader reader, Guid? guid)
+        public FileTransactionLog(ref SpanReader reader, Guid? guid)
         {
             _guid = guid;
             _generation = reader.ReadVInt64();
-            _previousFileId = (uint) reader.ReadVInt32();
+            _previousFileId = (uint)reader.ReadVInt32();
         }
 
         public FileTransactionLog(long generation, Guid? guid, uint fileIdWithPreviousTransactionLog)
@@ -35,20 +35,20 @@ namespace BTDB.KVDBLayer
 
         public uint NextFileId { get; set; }
 
-        internal static void SkipHeader(AbstractBufferedReader reader)
+        internal static void SkipHeader(ref SpanReader reader)
         {
-            FileCollectionWithFileInfos.SkipHeader(reader);
+            FileCollectionWithFileInfos.SkipHeader(ref reader);
             reader.SkipUInt8(); // type of file
             reader.SkipVInt64(); // generation
             reader.SkipVInt32(); // previous file id
         }
 
-        internal void WriteHeader(AbstractBufferedWriter writer)
+        internal void WriteHeader(ref SpanWriter writer)
         {
-            FileCollectionWithFileInfos.WriteHeader(writer, _guid);
+            FileCollectionWithFileInfos.WriteHeader(ref writer, _guid);
             writer.WriteUInt8((byte)KVFileType.TransactionLog);
             writer.WriteVInt64(_generation);
-            writer.WriteVInt32((int) _previousFileId);
+            writer.WriteVInt32((int)_previousFileId);
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using BTDB.FieldHandler;
+using BTDB.IOC;
 
 namespace BTDB.ODBLayer
 {
@@ -10,5 +11,7 @@ namespace BTDB.ODBLayer
         ulong AllocateNewOid();
         IFieldHandlerFactory FieldHandlerFactory { get; }
         ITypeConvertorGenerator TypeConvertorGenerator { get; }
+        IContainer? Container { get; }
+        IFieldHandlerLogger? FieldHandlerLogger { get; }
     }
 }

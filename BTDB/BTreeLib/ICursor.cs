@@ -1,6 +1,7 @@
 ﻿using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using System;
+using BTDB.StreamLayer;
 
 namespace BTDB.BTreeLib
 {
@@ -9,31 +10,35 @@ namespace BTDB.BTreeLib
         void SetNewRoot(IRootNode btreeRoot);
         void Invalidate();
         ICursor Clone();
-        bool FindExact(ReadOnlySpan<byte> key);
-        bool FindFirst(ReadOnlySpan<byte> keyPrefix);
-        long FindLastWithPrefix(ReadOnlySpan<byte> keyPrefix);
-        FindResult Find(ReadOnlySpan<byte> key);
-        FindResult Find(ReadOnlySpan<byte> keyPrefix, ReadOnlySpan<byte> key);
+        bool FindExact(in ReadOnlySpan<byte> key);
+        bool FindFirst(in ReadOnlySpan<byte> keyPrefix);
+        long FindLastWithPrefix(in ReadOnlySpan<byte> keyPrefix);
+        FindResult Find(in ReadOnlySpan<byte> key);
         bool SeekIndex(long index);
         bool MoveNext();
         bool MovePrevious();
         long CalcIndex();
-        long CalcDistance(ICursor to);
         bool IsValid();
         int GetKeyLength();
-        Span<byte> FillByKey(Span<byte> buffer);
-        byte[] GetKeyAsByteArray();
-        bool KeyHasPrefix(ReadOnlySpan<byte> prefix);
+        ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength);
+        bool KeyHasPrefix(in ReadOnlySpan<byte> prefix);
         int GetValueLength();
         ReadOnlySpan<byte> GetValue();
 
-        void WriteValue(ReadOnlySpan<byte> content);
-        bool Upsert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> content);
+        void WriteValue(in ReadOnlySpan<byte> content);
+        bool Upsert(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> content);
         void Erase();
         long EraseTo(ICursor to);
-        void BuildTree(long keyCount, BuildTreeCallback generator);
+        void BuildTree(long keyCount, ref SpanReader reader, BuildTreeCallback generator);
         void ValueReplacer(ref ValueReplacerCtx ctx);
+
+        byte[] GetKeyAsArray()
+        {
+            var res = new byte[GetKeyLength()];
+            if (res.Length != 0) GetKey(ref res[0], res.Length);
+            return res;
+        }
     }
 
-    public delegate void BuildTreeCallback(ref ByteBuffer key, Span<byte> value);
+    public delegate void BuildTreeCallback(ref SpanReader reader, ref ByteBuffer key, in Span<byte> value);
 }

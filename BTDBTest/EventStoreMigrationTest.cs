@@ -25,7 +25,7 @@ namespace BTDBTest
         {
             var obj = PassThroughEventStorage(new EventRoot
             {
-                Items = new List<Item> {new Item {Field = "A"}}
+                Items = new List<Item> { new Item { Field = "A" } }
             }, new FullNameTypeMapper());
             var serializer = new EventSerializer();
             bool hasMetadata;
@@ -85,7 +85,7 @@ namespace BTDBTest
                 ));
             var obj = PassThroughEventStorage(new EventRoot
             {
-                Items = new List<Item> {new Item {Field = "A"}}
+                Items = new List<Item> { new Item { Field = "A" } }
             }, mapper);
             var serializer = new EventSerializer(mapper);
             bool hasMetadata;
@@ -110,7 +110,7 @@ namespace BTDBTest
         {
             var obj = PassThroughEventStorage(new EventDictListRoot
             {
-                Items = new Dictionary<ulong, IList<Item>> {{1, new List<Item> {new Item {Field = "A"}}}}
+                Items = new Dictionary<ulong, IList<Item>> { { 1, new List<Item> { new Item { Field = "A" } } } }
             }, new FullNameTypeMapper());
             var serializer = new EventSerializer();
             var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
@@ -156,7 +156,7 @@ namespace BTDBTest
                 ));
             var obj = PassThroughEventStorage(new EventRootEn
             {
-                Items = new List<ItemEn> {ItemEn.One}
+                Items = new List<ItemEn> { ItemEn.One }
             }, mapper);
             var serializer = new EventSerializer(mapper);
             bool hasMetadata;
@@ -189,12 +189,12 @@ namespace BTDBTest
                 parentMapper.ToName(typeof(EventWithInt)),
                 parentMapper
             );
-            var obj = (EventWithUlong) PassThroughEventStorage(new EventWithInt
+            var obj = (EventWithUlong)PassThroughEventStorage(new EventWithInt
             {
                 A = 42
             }, mapper);
             Assert.Equal(42ul, obj.A);
-            var obj2 = (EventWithUlong) PassThroughEventStorage(new EventWithInt
+            var obj2 = (EventWithUlong)PassThroughEventStorage(new EventWithInt
             {
                 A = -1
             }, mapper);
@@ -219,12 +219,12 @@ namespace BTDBTest
                 parentMapper.ToName(typeof(EventWithString)),
                 parentMapper
             );
-            var obj = (EventWithVersion) PassThroughEventStorage(new EventWithString
+            var obj = (EventWithVersion)PassThroughEventStorage(new EventWithString
             {
                 A = "1.2.3"
             }, mapper);
             Assert.Equal(new Version(1, 2, 3), obj.A);
-            var obj2 = (EventWithVersion) PassThroughEventStorage(new EventWithString
+            var obj2 = (EventWithVersion)PassThroughEventStorage(new EventWithString
             {
                 A = null
             }, mapper);
@@ -244,12 +244,12 @@ namespace BTDBTest
                 parentMapper.ToName(typeof(EventWithString)),
                 parentMapper
             );
-            var obj = (EventWithEncryptedString) PassThroughEventStorage(new EventWithString
+            var obj = (EventWithEncryptedString)PassThroughEventStorage(new EventWithString
             {
                 A = "pass"
             }, mapper);
             Assert.Equal("pass", obj.A);
-            var obj2 = (EventWithEncryptedString) PassThroughEventStorage(new EventWithString
+            var obj2 = (EventWithEncryptedString)PassThroughEventStorage(new EventWithString
             {
                 A = null
             }, mapper);
@@ -291,9 +291,9 @@ namespace BTDBTest
                     {{1, new DBIndirect<ItemBase>(new ItemBase1 {A = 1, B = 2})}}
             }, mapper, false);
             Assert.IsType<EventDictAbstract>(obj);
-            var res = (EventDictAbstract) obj;
+            var res = (EventDictAbstract)obj;
             Assert.Equal(1, res.Items[1].A);
-            Assert.Equal(2, ((ItemBase1) res.Items[1]).B);
+            Assert.Equal(2, ((ItemBase1)res.Items[1]).B);
         }
     }
 }

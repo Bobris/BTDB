@@ -17,12 +17,15 @@ namespace BTDB.IL.Caching
             _name = name;
             _delegate = @delegate;
             _thisType = thisType;
+            InitLocals = true;
         }
 
         public void ExpectedLength(int length)
         {
             _expectedLength = length;
         }
+
+        public bool InitLocals { get; set; }
 
         public IILGen Generator => _ilGen;
 
@@ -34,11 +37,12 @@ namespace BTDB.IL.Caching
         {
             lock (_cachingILBuilder.Lock)
             {
-                var item = new CacheItem(_name, _delegate, _thisType, _ilGen);
+                var item = new CacheItem(_name, _delegate, _thisType, _ilGen, InitLocals);
                 item = (CacheItem)_cachingILBuilder.FindInCache(item);
                 if (item.Object == null)
                 {
                     var method = _cachingILBuilder.Wrapping.NewMethod(_name, _delegate, _thisType);
+                    method.InitLocals = InitLocals;
                     if (_expectedLength != -1) method.ExpectedLength(_expectedLength);
                     _ilGen.ReplayTo(method.Generator);
                     _ilGen.FreeTemps();
@@ -55,14 +59,16 @@ namespace BTDB.IL.Caching
             readonly Type _delegate;
             readonly Type _thisType;
             readonly CachingILGen _ilGen;
-            internal Func<object, object> Object;
+            readonly bool _initLocals;
+            internal Func<object, object>? Object;
 
-            public CacheItem(string name, Type @delegate, Type thisType, CachingILGen ilGen)
+            public CacheItem(string name, Type @delegate, Type thisType, CachingILGen ilGen, bool initLocals)
             {
                 _name = name;
                 _delegate = @delegate;
                 _thisType = thisType;
                 _ilGen = ilGen;
+                _initLocals = initLocals;
             }
 
             public override int GetHashCode()
@@ -74,7 +80,7 @@ namespace BTDB.IL.Caching
             {
                 var v = obj as CacheItem;
                 if (v == null) return false;
-                return _delegate == v._delegate && _thisType == v._thisType && _ilGen.Equals(v._ilGen);
+                return _delegate == v._delegate && _thisType == v._thisType && _ilGen.Equals(v._ilGen) && _initLocals == v._initLocals;
             }
         }
     }

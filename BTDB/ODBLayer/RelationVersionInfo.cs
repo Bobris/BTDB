@@ -218,17 +218,17 @@ namespace BTDB.ODBLayer
             return index;
         }
 
-        internal void Save(AbstractBufferedWriter writer)
+        internal void Save(ref SpanWriter writer)
         {
             writer.WriteVUInt32((uint)PrimaryKeyFields.Length);
             foreach (var field in PrimaryKeyFields.Span)
             {
-                field.Save(writer);
+                field.Save(ref writer);
             }
             writer.WriteVUInt32((uint)_secondaryKeyFields.Length);
             foreach (var field in _secondaryKeyFields.Span)
             {
-                field.Save(writer);
+                field.Save(ref writer);
             }
             writer.WriteVUInt32((uint)_secondaryKeys.Count);
             foreach (var key in _secondaryKeys)
@@ -249,24 +249,24 @@ namespace BTDB.ODBLayer
             writer.WriteVUInt32((uint)fields.Length);
             foreach (var tfi in fields)
             {
-                tfi.Save(writer);
+                tfi.Save(ref writer);
             }
         }
 
-        public static RelationVersionInfo LoadUnresolved(AbstractBufferedReader reader, string relationName)
+        public static RelationVersionInfo LoadUnresolved(ref SpanReader reader, string relationName)
         {
             var pkCount = reader.ReadVUInt32();
             var primaryKeyFields = new StructList<TableFieldInfo>();
             primaryKeyFields.Reserve(pkCount);
             for (var i = 0u; i < pkCount; i++)
             {
-                primaryKeyFields.Add(UnresolvedTableFieldInfo.Load(reader, relationName, FieldHandlerOptions.Orderable));
+                primaryKeyFields.Add(UnresolvedTableFieldInfo.Load(ref reader, relationName, FieldHandlerOptions.Orderable));
             }
             var skFieldCount = reader.ReadVUInt32();
             var secondaryKeyFields = new TableFieldInfo[skFieldCount];
             for (var i = 0; i < skFieldCount; i++)
             {
-                secondaryKeyFields[i] = UnresolvedTableFieldInfo.Load(reader, relationName, FieldHandlerOptions.Orderable);
+                secondaryKeyFields[i] = UnresolvedTableFieldInfo.Load(ref reader, relationName, FieldHandlerOptions.Orderable);
             }
             var skCount = reader.ReadVUInt32();
             var secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>((int)skCount);
@@ -291,7 +291,7 @@ namespace BTDB.ODBLayer
             var fieldInfos = new TableFieldInfo[fieldCount];
             for (var i = 0; i < fieldCount; i++)
             {
-                fieldInfos[i] = UnresolvedTableFieldInfo.Load(reader, relationName, FieldHandlerOptions.None);
+                fieldInfos[i] = UnresolvedTableFieldInfo.Load(ref reader, relationName, FieldHandlerOptions.None);
             }
 
             return new RelationVersionInfo(primaryKeyFields, secondaryKeys, secondaryKeyFields, fieldInfos);

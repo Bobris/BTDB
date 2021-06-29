@@ -8,13 +8,13 @@ namespace SimpleTester.TestModel.Events
     {
         [DataMember(Order = 1)]
         [DisplayName("Page Title")]
-        public string Title { get; set; }
+        public string? Title { get; set; }
 
         [DataMember(Order = 2)]
         [DisplayName("Page Message")]
-        public string Message { get; set; }
+        public string? Message { get; set; }
 
         [DataMember(Order = 3)]
-        public string SendButtonText { get; set; }
+        public string? SendButtonText { get; set; }
     }
 }

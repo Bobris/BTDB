@@ -10,5 +10,6 @@ namespace BTDB.IOC
         bool IsCorruptingILStack(IGenerationContext context);
         IILLocal? GenMain(IGenerationContext context);
         IEnumerable<INeed> GetNeeds(IGenerationContext context);
+        bool IsSingletonSafe();
     }
 }

@@ -3,7 +3,7 @@ using System;
 namespace BTDB.KVDBLayer
 {
     [Flags]
-    enum KVCommandType : byte
+    public enum KVCommandType : byte
     {
         CreateOrUpdateDeprecated,
         EraseOne,

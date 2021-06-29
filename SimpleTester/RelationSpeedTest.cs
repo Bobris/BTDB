@@ -14,7 +14,7 @@ namespace SimpleTester
             [PrimaryKey(1)]
             public ulong Id { get; set; }
             [SecondaryKey("Email")]
-            public string Email { get; set; }
+            public string? Email { get; set; }
         }
 
         static ObjectDB CreateInMemoryDb()
@@ -28,6 +28,14 @@ namespace SimpleTester
         static ObjectDB CreateDb(IFileCollection fc)
         {
             var lowDb = new KeyValueDB(fc);
+            var db = new ObjectDB();
+            db.Open(lowDb, true);
+            return db;
+        }
+
+        static ObjectDB CreateBTreeDb(IFileCollection fc)
+        {
+            var lowDb = new BTreeKeyValueDB(fc);
             var db = new ObjectDB();
             db.Open(lowDb, true);
             return db;
@@ -69,10 +77,9 @@ namespace SimpleTester
             {
                 _count = count;
                 _db = db;
-                using (var tr = _db.StartTransaction())
-                {
-                    _creator = tr.InitRelation<IPersonTable>("Job");
-                }
+                using var tr = _db.StartTransaction();
+                _creator = tr.InitRelation<IPersonTable>("Job");
+                tr.Commit();
             }
 
             public void Insert()
@@ -80,26 +87,22 @@ namespace SimpleTester
                 ulong idx = 0;
                 foreach (var email in GenerateEmails(_count))
                 {
-                    using (var tr = _db.StartTransaction())
-                    {
-                        var personTable = _creator(tr);
-                        personTable.Insert(new Person { Email = email, Id = idx++ });
-                        tr.Commit();
-                    }
+                    using var tr = _db.StartTransaction();
+                    var personTable = _creator(tr);
+                    personTable.Insert(new Person { Email = email, Id = idx++ });
+                    tr.Commit();
                 }
             }
 
             public void List()
             {
                 ulong sum = 0;
-                using (var tr = _db.StartTransaction())
+                using var tr = _db.StartTransaction();
+                var personTable = _creator(tr);
+                var en = personTable.ListByEmail(AdvancedEnumeratorParam<string>.Instance);
+                while (en.MoveNext())
                 {
-                    var personTable = _creator(tr);
-                    var en = personTable.ListByEmail(AdvancedEnumeratorParam<string>.Instance);
-                    while (en.MoveNext())
-                    {
-                        sum += en.Current.Id;
-                    }
+                    sum += en.Current.Id;
                 }
             }
 
@@ -107,14 +110,12 @@ namespace SimpleTester
             {
                 for (var id = 0ul; id < (ulong)_count; id++)
                 {
-                    using (var tr = _db.StartTransaction())
-                    {
-                        var personTable = _creator(tr);
-                        var p = personTable.FindById(id);
-                        p.Email += "a";
-                        personTable.Update(p);
-                        tr.Commit();
-                    }
+                    using var tr = _db.StartTransaction();
+                    var personTable = _creator(tr);
+                    var p = personTable.FindById(id);
+                    p.Email += "a";
+                    personTable.Update(p);
+                    tr.Commit();
                 }
             }
 
@@ -122,26 +123,23 @@ namespace SimpleTester
             {
                 for (var id = 0ul; id < (ulong)_count; id++)
                 {
-                    using (var tr = _db.StartTransaction())
-                    {
-                        var personTable = _creator(tr);
-                        personTable.RemoveById(id);
-                        tr.Commit();
-                    }
+                    using var tr = _db.StartTransaction();
+                    var personTable = _creator(tr);
+                    personTable.RemoveById(id);
+                    tr.Commit();
                 }
             }
         }
 
-
         //definitions for singletons
         public class PersonMap
         {
-            public IDictionary<ulong, Person> Items { get; set; }
+            public IDictionary<ulong, Person>? Items { get; set; }
         }
 
         public class PersonNameIndex
         {
-            public IOrderedDictionary<string, ulong> Items { get; set; }
+            public IOrderedDictionary<string, ulong>? Items { get; set; }
         }
         //
 
@@ -161,31 +159,27 @@ namespace SimpleTester
                 ulong idx = 0;
                 foreach (var email in GenerateEmails(_count))
                 {
-                    using (var tr = _db.StartTransaction())
-                    {
-                        var persons = tr.Singleton<PersonMap>();
-                        var emails = tr.Singleton<PersonNameIndex>();
+                    using var tr = _db.StartTransaction();
+                    var persons = tr.Singleton<PersonMap>();
+                    var emails = tr.Singleton<PersonNameIndex>();
 
-                        persons.Items[idx] = new Person { Email = email, Id = idx };
-                        emails.Items[email] = idx;
-                        idx++;
-                        tr.Commit();
-                    }
+                    persons.Items![idx] = new Person { Email = email, Id = idx };
+                    emails.Items![email] = idx;
+                    idx++;
+                    tr.Commit();
                 }
             }
 
             public void List()
             {
-                using (var tr = _db.StartReadOnlyTransaction())
+                using var tr = _db.StartReadOnlyTransaction();
+                var persons = tr.Singleton<PersonMap>();
+                var emails = tr.Singleton<PersonNameIndex>();
+                ulong sum = 0;
+                foreach (var e in emails.Items!)
                 {
-                    var persons = tr.Singleton<PersonMap>();
-                    var emails = tr.Singleton<PersonNameIndex>();
-                    ulong sum = 0;
-                    foreach (var e in emails.Items)
-                    {
-                        var p = persons.Items[e.Value];
-                        sum += p.Id;
-                    }
+                    var p = persons.Items![e.Value];
+                    sum += p.Id;
                 }
             }
 
@@ -193,17 +187,16 @@ namespace SimpleTester
             {
                 for (var id = 0ul; id < (ulong)_count; id++)
                 {
-                    using (var tr = _db.StartTransaction())
-                    {
-                        var persons = tr.Singleton<PersonMap>();
-                        var emails = tr.Singleton<PersonNameIndex>();
+                    using var tr = _db.StartTransaction();
+                    var persons = tr.Singleton<PersonMap>();
+                    var emails = tr.Singleton<PersonNameIndex>();
 
-                        var p = persons.Items[id];
-                        emails.Items.Remove(p.Email);
-                        p.Email += "a";
-                        emails.Items[p.Email] = id;
-                        tr.Commit();
-                    }
+                    var p = persons.Items![id];
+                    emails.Items!.Remove(p.Email!);
+                    p.Email += "a";
+                    emails.Items[p.Email] = id;
+                    persons.Items[id] = p;
+                    tr.Commit();
                 }
             }
 
@@ -211,16 +204,14 @@ namespace SimpleTester
             {
                 for (var id = 0ul; id < (ulong)_count; id++)
                 {
-                    using (var tr = _db.StartTransaction())
-                    {
-                        var persons = tr.Singleton<PersonMap>();
-                        var emails = tr.Singleton<PersonNameIndex>();
+                    using var tr = _db.StartTransaction();
+                    var persons = tr.Singleton<PersonMap>();
+                    var emails = tr.Singleton<PersonNameIndex>();
 
-                        var p = persons.Items[id];
-                        emails.Items.Remove(p.Email);
-                        persons.Items.Remove(id);
-                        tr.Commit();
-                    }
+                    var p = persons.Items![id];
+                    emails.Items!.Remove(p.Email!);
+                    persons.Items.Remove(id);
+                    tr.Commit();
                 }
             }
 
@@ -249,7 +240,6 @@ namespace SimpleTester
 
             Console.WriteLine($"Total : {TimeSpan.FromMilliseconds(sw.ElapsedMilliseconds)}");
             Console.WriteLine();
-
         }
 
         void Do(string operationName, Action action)
@@ -263,7 +253,7 @@ namespace SimpleTester
 
         public void Run()
         {
-            int cnt = 500000;
+            var cnt = 500000;
             using (var fc = new InMemoryFileCollection())
             using (var db = CreateDb(fc))
             {
@@ -273,6 +263,16 @@ namespace SimpleTester
             using (var db = CreateDb(fc))
             {
                 Measure("2 Maps: ", new SingletonPersonTest(db, cnt));
+            }
+            using (var fc = new InMemoryFileCollection())
+            using (var db = CreateBTreeDb(fc))
+            {
+                Measure("Relation (BTree): ", new RelationPersonTest(db, cnt));
+            }
+            using (var fc = new InMemoryFileCollection())
+            using (var db = CreateBTreeDb(fc))
+            {
+                Measure("2 Maps (BTree): ", new SingletonPersonTest(db, cnt));
             }
             using (var db = CreateInMemoryDb())
             {

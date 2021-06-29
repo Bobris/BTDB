@@ -17,7 +17,7 @@ namespace BTDB.IOC
 
         public void Register(ContainerRegistrationContext context)
         {
-            var reg = new InstanceImpl(_instance, context.AddInstance(_instance));
+            var reg = new InstanceImpl(_instance, _implementationType, context.AddInstance(_instance));
             context.AddCReg(_asTrait.GetAsTypesFor(_implementationType), _asTrait.PreserveExistingDefaults, reg);
         }
 

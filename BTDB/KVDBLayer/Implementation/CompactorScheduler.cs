@@ -109,7 +109,7 @@ namespace BTDB.KVDBLayer
                 _timerStarted = false;
                 if (_running) return;
                 _running = true;
-                
+
             }
             try
             {

@@ -3,6 +3,8 @@ using BTDB.Collections;
 using BTDB.KVDBLayer;
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using BTDB.StreamLayer;
 
 namespace BTDB.BTreeLib
 {
@@ -26,7 +28,7 @@ namespace BTDB.BTreeLib
         public void SetNewRoot(IRootNode artRoot)
         {
             var newRoot = (RootNode12)artRoot;
-            if (newRoot._impl != _rootNode._impl)
+            if (newRoot.Impl != _rootNode.Impl)
                 throw new ArgumentException("SetNewRoot allows only same db instance");
             _rootNode = (RootNode12)artRoot;
         }
@@ -40,7 +42,7 @@ namespace BTDB.BTreeLib
 
         public long CalcIndex()
         {
-            return _rootNode._impl.CalcIndex(_stack.AsSpan());
+            return BTreeImpl12.CalcIndex(_stack.AsSpan());
         }
 
         public ICursor Clone()
@@ -52,13 +54,13 @@ namespace BTDB.BTreeLib
         {
             AssertWritable();
             AssertValid();
-            _rootNode._impl.EraseRange(_rootNode, ref _stack, ref _stack);
+            _rootNode.Impl.EraseRange(_rootNode, ref _stack, ref _stack);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void AssertWritable()
         {
-            if (!_rootNode._writable)
+            if (!_rootNode.Writable)
             {
                 TreeNodeUtils.ThrowCursorNotWritable();
             }
@@ -73,32 +75,29 @@ namespace BTDB.BTreeLib
                 throw new ArgumentException("Cursor must be valid", nameof(to));
             if (!IsValid())
                 throw new ArgumentException("Cursor must be valid", "this");
-            return _rootNode._impl.EraseRange(_rootNode, ref _stack, ref ((Cursor12)to)._stack);
+            return _rootNode.Impl.EraseRange(_rootNode, ref _stack, ref ((Cursor12)to)._stack);
         }
 
-        public bool FindExact(ReadOnlySpan<byte> key)
+        public bool FindExact(in ReadOnlySpan<byte> key)
         {
-            return _rootNode._impl.FindExact(_rootNode, ref _stack, key);
+            return _rootNode.Impl.FindExact(_rootNode, ref _stack, key);
         }
 
-        public FindResult Find(ReadOnlySpan<byte> key)
+        public FindResult Find(in ReadOnlySpan<byte> key)
         {
             return BTreeImpl12.Find(_rootNode, ref _stack, key);
         }
 
-        public FindResult Find(ReadOnlySpan<byte> keyPrefix, ReadOnlySpan<byte> key)
+        public bool FindFirst(in ReadOnlySpan<byte> keyPrefix)
         {
-            return _rootNode._impl.Find(_rootNode, ref _stack, keyPrefix, key);
+            return _rootNode.Impl.FindFirst(_rootNode, ref _stack, keyPrefix);
         }
 
-        public bool FindFirst(ReadOnlySpan<byte> keyPrefix)
+        public long FindLastWithPrefix(in ReadOnlySpan<byte> keyPrefix)
         {
-            return _rootNode._impl.FindFirst(_rootNode, ref _stack, keyPrefix);
-        }
-
-        public long FindLastWithPrefix(ReadOnlySpan<byte> keyPrefix)
-        {
-            return BTreeImpl12.FindLastWithPrefix(_rootNode, keyPrefix);
+            var res = BTreeImpl12.FindLastWithPrefix(_rootNode, keyPrefix);
+            SeekIndex(res);
+            return res;
         }
 
         public int GetKeyLength()
@@ -129,9 +128,9 @@ namespace BTDB.BTreeLib
             }
         }
 
-        public unsafe Span<byte> FillByKey(Span<byte> buffer)
+        public unsafe ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
         {
-            AssertValid();
+            if (_stack.Count == 0) return ReadOnlySpan<byte>.Empty;
             ref var stackItem = ref _stack[_stack.Count - 1];
             ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
             if (header.HasLongKeys)
@@ -140,7 +139,7 @@ namespace BTDB.BTreeLib
                 var keyPtr = keys[stackItem._posInNode];
                 var lenSuffix = TreeNodeUtils.ReadInt32Aligned(keyPtr);
                 var len = header._keyPrefixLength + lenSuffix;
-                var res = buffer.Slice(0, len);
+                var res = len <= bufferLength ? MemoryMarshal.CreateSpan(ref buffer, len) : new byte[len];
                 NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(res);
                 new Span<byte>((keyPtr + 4).ToPointer(), lenSuffix).CopyTo(res.Slice(header._keyPrefixLength));
                 return res;
@@ -151,22 +150,14 @@ namespace BTDB.BTreeLib
                 var ofs = keyOffsets[stackItem._posInNode];
                 var lenSuffix = keyOffsets[stackItem._posInNode + 1] - ofs;
                 var len = header._keyPrefixLength + lenSuffix;
-                var res = buffer.Slice(0, len);
+                var res = len <= bufferLength ? MemoryMarshal.CreateSpan(ref buffer, len) : new byte[len];
                 NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(res);
                 keySuffixes.Slice(ofs, lenSuffix).CopyTo(res.Slice(header._keyPrefixLength));
                 return res;
             }
         }
 
-        public byte[] GetKeyAsByteArray()
-        {
-            AssertValid();
-            var result = new byte[GetKeyLength()];
-            FillByKey(result);
-            return result;
-        }
-
-        public unsafe bool KeyHasPrefix(ReadOnlySpan<byte> prefix)
+        public bool KeyHasPrefix(in ReadOnlySpan<byte> prefix)
         {
             if (_stack.Count == 0)
                 return false;
@@ -195,17 +186,17 @@ namespace BTDB.BTreeLib
                 return FindFirst(new ReadOnlySpan<byte>());
             }
 
-            return _rootNode._impl.MoveNext(ref _stack);
+            return _rootNode.Impl.MoveNext(ref _stack);
         }
 
         public bool MovePrevious()
         {
             if (_stack.Count == 0)
             {
-                return BTreeImpl12.MoveToLast(_rootNode._root, ref _stack);
+                return BTreeImpl12.MoveToLast(_rootNode.Root, ref _stack);
             }
 
-            return _rootNode._impl.MovePrevious(ref _stack);
+            return _rootNode.Impl.MovePrevious(ref _stack);
         }
 
         public bool SeekIndex(long index)
@@ -216,20 +207,20 @@ namespace BTDB.BTreeLib
                 return false;
             }
 
-            return _rootNode._impl.SeekIndex(index, _rootNode._root, ref _stack);
+            return _rootNode.Impl.SeekIndex(index, _rootNode.Root, ref _stack);
         }
 
-        public bool Upsert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> content)
+        public bool Upsert(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> content)
         {
             AssertWritable();
-            return _rootNode._impl.Upsert(_rootNode, ref _stack, key, content);
+            return _rootNode.Impl.Upsert(_rootNode, ref _stack, key, content);
         }
 
-        public void WriteValue(ReadOnlySpan<byte> content)
+        public void WriteValue(in ReadOnlySpan<byte> content)
         {
             AssertWritable();
             AssertValid();
-            _rootNode._impl.WriteValue(_rootNode, ref _stack, content);
+            _rootNode.Impl.WriteValue(_rootNode, ref _stack, content);
         }
 
         public void Invalidate()
@@ -237,24 +228,24 @@ namespace BTDB.BTreeLib
             _stack.Clear();
         }
 
-        public void BuildTree(long keyCount, BuildTreeCallback generator)
+        public void BuildTree(long keyCount, ref SpanReader reader, BuildTreeCallback generator)
         {
             AssertWritable();
             Invalidate();
-            _rootNode._impl.BuildTree(_rootNode, keyCount, generator);
+            _rootNode.Impl.BuildTree(_rootNode, keyCount, ref reader, generator);
         }
 
         public void ValueReplacer(ref ValueReplacerCtx ctx)
         {
             AssertWritable();
-            if (_rootNode._root == IntPtr.Zero)
+            if (_rootNode.Root == IntPtr.Zero)
                 return;
             AssertValid();
-            var newRoot = _rootNode._impl.ValueReplacer(ref ctx, _stack.AsSpan(), 0);
-            if (_rootNode._root != newRoot)
+            var newRoot = _rootNode.Impl.ValueReplacer(ref ctx, _stack.AsSpan(), 0);
+            if (_rootNode.Root != newRoot)
             {
-                _rootNode._impl.Dereference(_rootNode._root);
-                _rootNode._root = newRoot;
+                _rootNode.Impl.Dereference(_rootNode.Root);
+                _rootNode.Root = newRoot;
             }
             _stack.Clear();
         }

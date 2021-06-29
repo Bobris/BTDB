@@ -41,25 +41,25 @@ namespace BTDB.EventStoreLayer
             var underlyingType = type.GetEnumUnderlyingType();
             var enumValues = type.GetEnumValues();
             IEnumerable<ulong> enumValuesUnsignedLongs;
-            if (underlyingType == typeof(int)) enumValuesUnsignedLongs = enumValues.Cast<int>().Select(i => (ulong) i);
+            if (underlyingType == typeof(int)) enumValuesUnsignedLongs = enumValues.Cast<int>().Select(i => (ulong)i);
             else if (underlyingType == typeof(uint))
-                enumValuesUnsignedLongs = enumValues.Cast<uint>().Select(i => (ulong) i);
+                enumValuesUnsignedLongs = enumValues.Cast<uint>().Select(i => (ulong)i);
             else if (underlyingType == typeof(sbyte))
-                enumValuesUnsignedLongs = enumValues.Cast<sbyte>().Select(i => (ulong) i);
+                enumValuesUnsignedLongs = enumValues.Cast<sbyte>().Select(i => (ulong)i);
             else if (underlyingType == typeof(byte))
-                enumValuesUnsignedLongs = enumValues.Cast<byte>().Select(i => (ulong) i);
+                enumValuesUnsignedLongs = enumValues.Cast<byte>().Select(i => (ulong)i);
             else if (underlyingType == typeof(short))
-                enumValuesUnsignedLongs = enumValues.Cast<short>().Select(i => (ulong) i);
+                enumValuesUnsignedLongs = enumValues.Cast<short>().Select(i => (ulong)i);
             else if (underlyingType == typeof(ushort))
-                enumValuesUnsignedLongs = enumValues.Cast<ushort>().Select(i => (ulong) i);
+                enumValuesUnsignedLongs = enumValues.Cast<ushort>().Select(i => (ulong)i);
             else if (underlyingType == typeof(long))
-                enumValuesUnsignedLongs = enumValues.Cast<long>().Select(i => (ulong) i);
+                enumValuesUnsignedLongs = enumValues.Cast<long>().Select(i => (ulong)i);
             else enumValuesUnsignedLongs = enumValues.Cast<ulong>();
             _pairs = type.GetEnumNames()
                 .Zip(enumValuesUnsignedLongs.ToArray(), (s, v) => new KeyValuePair<string, ulong>(s, v)).ToList();
         }
 
-        public EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader)
+        public EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader)
         {
             _typeSerializers = typeSerializers;
             _name = reader.ReadString()!;
@@ -67,11 +67,11 @@ namespace BTDB.EventStoreLayer
             _signed = (header & 1) != 0;
             _flags = (header & 2) != 0;
             var count = header >> 2;
-            _pairs = new List<KeyValuePair<string, ulong>>((int) count);
+            _pairs = new List<KeyValuePair<string, ulong>>((int)count);
             for (var i = 0; i < count; i++)
             {
                 _pairs.Add(_signed
-                    ? new KeyValuePair<string, ulong>(reader.ReadString(), (ulong) reader.ReadVInt64())
+                    ? new KeyValuePair<string, ulong>(reader.ReadString(), (ulong)reader.ReadVInt64())
                     : new KeyValuePair<string, ulong>(reader.ReadString(), reader.ReadVUInt64()));
             }
         }
@@ -117,7 +117,7 @@ namespace BTDB.EventStoreLayer
                 AppendIndent(text, indent + 1);
                 text.Append(pair.Key);
                 text.Append(" = ");
-                if (_signed) text.Append((long) pair.Value);
+                if (_signed) text.Append((long)pair.Value);
                 else text.Append(pair.Value);
                 text.AppendLine();
             }
@@ -128,7 +128,7 @@ namespace BTDB.EventStoreLayer
 
         static void AppendIndent(StringBuilder text, uint indent)
         {
-            text.Append(' ', (int) (indent * 4));
+            text.Append(' ', (int)(indent * 4));
         }
 
         public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
@@ -157,7 +157,7 @@ namespace BTDB.EventStoreLayer
 
             public DynamicEnum(long value, ITypeDescriptor descriptor)
             {
-                _value = (ulong) value;
+                _value = (ulong)value;
                 _descriptor = descriptor;
             }
 
@@ -174,7 +174,7 @@ namespace BTDB.EventStoreLayer
 
             public override string ToString()
             {
-                return ((EnumTypeDescriptor) _descriptor).UlongValueToString(_value);
+                return ((EnumTypeDescriptor)_descriptor).UlongValueToString(_value);
             }
 
             public override int GetHashCode()
@@ -192,12 +192,12 @@ namespace BTDB.EventStoreLayer
                 }
 
                 if (!obj.GetType().IsEnum) return false;
-                var myDescriptor = (EnumTypeDescriptor) _descriptor;
+                var myDescriptor = (EnumTypeDescriptor)_descriptor;
                 var otherDescriptor = myDescriptor._typeSerializers.DescriptorOf(obj.GetType());
                 if (!myDescriptor.Equals(otherDescriptor)) return false;
                 if (myDescriptor._signed)
                 {
-                    return _value == (ulong) Convert.ToInt64(obj, CultureInfo.InvariantCulture);
+                    return _value == (ulong)Convert.ToInt64(obj, CultureInfo.InvariantCulture);
                 }
 
                 return _value == Convert.ToUInt64(obj, CultureInfo.InvariantCulture);
@@ -220,7 +220,7 @@ namespace BTDB.EventStoreLayer
         {
             if (_signed)
             {
-                return ((long) value).ToString(CultureInfo.InvariantCulture);
+                return ((long)value).ToString(CultureInfo.InvariantCulture);
             }
 
             return value.ToString(CultureInfo.InvariantCulture);
@@ -285,12 +285,12 @@ namespace BTDB.EventStoreLayer
             Type typeRead;
             if (_signed)
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).ReadVInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt64))!);
                 typeRead = typeof(long);
             }
             else
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).ReadVUInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!);
                 typeRead = typeof(ulong);
             }
 
@@ -346,16 +346,17 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer,
-            Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
+        public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+
+        public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
         {
             writer.WriteString(_name);
-            writer.WriteVUInt32((_signed ? 1u : 0) + (_flags ? 2u : 0) + 4u * (uint) _pairs.Count);
+            writer.WriteVUInt32((_signed ? 1u : 0) + (_flags ? 2u : 0) + 4u * (uint)_pairs.Count);
             foreach (var pair in _pairs)
             {
                 writer.WriteString(pair.Key);
                 if (_signed)
-                    writer.WriteVInt64((long) pair.Value);
+                    writer.WriteVInt64((long)pair.Value);
                 else
                     writer.WriteVUInt64(pair.Value);
             }
@@ -370,13 +371,13 @@ namespace BTDB.EventStoreLayer
             {
                 ilGenerator
                     .ConvI8()
-                    .Call(() => default(AbstractBufferedWriter).WriteVInt64(0));
+                    .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt64))!);
             }
             else
             {
                 ilGenerator
                     .ConvU8()
-                    .Call(() => default(AbstractBufferedWriter).WriteVUInt64(0));
+                    .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt64))!);
             }
         }
 
@@ -385,11 +386,11 @@ namespace BTDB.EventStoreLayer
             pushReader(ilGenerator);
             if (_signed)
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).SkipVInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt64))!);
             }
             else
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).SkipVUInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
             }
         }
 

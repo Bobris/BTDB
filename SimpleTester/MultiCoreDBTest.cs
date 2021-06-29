@@ -15,8 +15,8 @@ namespace SimpleTester
         public class Person
         {
             [PrimaryKey(1)] public ulong Id { get; set; }
-            [SecondaryKey("Email")] public string Email { get; set; }
-            public string Description { get; set; }
+            [SecondaryKey("Email")] public string? Email { get; set; }
+            public string? Description { get; set; }
         }
 
         public interface IPersonTable : IRelation<Person>
@@ -29,40 +29,43 @@ namespace SimpleTester
             IOrderedDictionaryEnumerator<string, Person> ListByEmail(AdvancedEnumeratorParam<string> param);
         }
 
-        IKeyValueDB _kvdb;
-        IObjectDB _odb;
-        Func<IObjectDBTransaction, IPersonTable> _personRelation;
-        Dictionary<string, IntHistogram> _eventStats = new Dictionary<string, IntHistogram>();
+        IKeyValueDB? _kvdb;
+        IObjectDB? _odb;
+        Func<IObjectDBTransaction, IPersonTable>? _personRelation;
         Stopwatch _eventSw = new Stopwatch();
 
         void DoInEvent(string name, Action<IObjectDBTransaction> consume)
         {
             _eventSw.Restart();
-            var tr = _odb.StartWritingTransaction().GetAwaiter().GetResult();
+            var tr = _odb!.StartWritingTransaction().GetAwaiter().GetResult();
             _eventSw.Stop();
 
             consume(tr);
         }
 
-        long _lastAllocatorId = 0;
+        long _lastAllocatorId;
         readonly Random _randomForEvents = new Random();
-        string _dbdir;
-        OnDiskFileCollection _fc;
+        string? _dbdir;
+        OnDiskFileCollection? _fc;
+
+        public MultiCoreDBTest(Dictionary<string, IntHistogram> eventStats)
+        {
+        }
 
         ulong AllocatedId()
         {
-            return (ulong) Interlocked.Increment(ref _lastAllocatorId);
+            return (ulong)Interlocked.Increment(ref _lastAllocatorId);
         }
 
         void DoEventInsertPerson()
         {
             DoInEvent("InsertPerson", tr =>
             {
-                var rel = _personRelation(tr);
+                var rel = _personRelation!(tr);
                 var item = new Person();
                 item.Id = AllocatedId();
                 item.Email =
-                    $"{(char) _randomForEvents.Next('a', 'z')}{(uint) _randomForEvents.Next()}@{RandomString(_randomForEvents, 5, 10)}";
+                    $"{(char)_randomForEvents.Next('a', 'z')}{(uint)_randomForEvents.Next()}@{RandomString(_randomForEvents, 5, 10)}";
                 item.Description = RandomString(_randomForEvents, 50, 100);
                 rel.Insert(item);
             });
@@ -75,7 +78,7 @@ namespace SimpleTester
             {
                 for (var i = 0; i < span.Length; i++)
                 {
-                    span[i] = (char) random1.Next('a', 'z');
+                    span[i] = (char)random1.Next('a', 'z');
                 }
             }));
         }
@@ -104,9 +107,9 @@ namespace SimpleTester
 
         void Dispose()
         {
-            _odb.Dispose();
-            _kvdb.Dispose();
-            _fc.Dispose();
+            _odb!.Dispose();
+            _kvdb!.Dispose();
+            _fc!.Dispose();
         }
 
         public void ReportTransactionLeak(IKeyValueDBTransaction transaction)
@@ -128,6 +131,19 @@ namespace SimpleTester
         {
             Console.WriteLine(
                 $"KeyValueIndexCreated file id: {fileId} kvcount: {keyValueCount} size: {size} duration: {duration.TotalSeconds:F2}s");
+        }
+
+        public void TransactionLogCreated(uint fileId)
+        {
+        }
+
+        public void FileMarkedForDelete(uint fileId)
+        {
+        }
+
+        public void LogWarning(string message)
+        {
+            Console.WriteLine("Warning: "+message);
         }
 
         public void Run()
@@ -155,7 +171,7 @@ namespace SimpleTester
                             Console.WriteLine($"GC Memory: {GC.GetTotalMemory(false)} Working set: {Process.GetCurrentProcess().WorkingSet64}");
                             break;
                         case "s":
-                            Console.WriteLine(_kvdb.CalcStats());
+                            Console.WriteLine(_kvdb!.CalcStats());
                             break;
                     }
                 }

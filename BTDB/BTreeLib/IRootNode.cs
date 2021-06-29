@@ -3,6 +3,7 @@ using System.Threading;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.KVDBLayer.BTree;
+using BTDB.StreamLayer;
 
 namespace BTDB.BTreeLib
 {
@@ -12,6 +13,8 @@ namespace BTDB.BTreeLib
         bool Reference();
         bool Dereference();
         bool ShouldBeDisposed { get; }
+
+        IRootNode? Next { get; set; }
 
         ulong CommitUlong { get; set; }
         long TransactionId { get; set; }
@@ -42,6 +45,7 @@ namespace BTDB.BTreeLib
         public Span<byte> CurrentPrefix;
         public Span<byte> CurrentSuffix;
         public Span<byte> CurrentValue;
+        public SpanWriter Writer;
         public uint PreviousCurrentCommonLength;
 
         public void CalcCommonLength()
@@ -53,7 +57,7 @@ namespace BTDB.BTreeLib
         public void CalcCommonLengthWithIdenticalPrefixes()
         {
             PreviousCurrentCommonLength =
-                (uint) (CurrentPrefix.Length + TreeNodeUtils.FindFirstDifference(PreviousSuffix, CurrentSuffix));
+                (uint)(CurrentPrefix.Length + TreeNodeUtils.FindFirstDifference(PreviousSuffix, CurrentSuffix));
         }
     }
 

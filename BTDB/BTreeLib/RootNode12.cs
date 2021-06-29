@@ -8,16 +8,18 @@ namespace BTDB.BTreeLib
     {
         internal RootNode12(BTreeImpl12 impl)
         {
-            _impl = impl;
-            _root = IntPtr.Zero;
-            _writable = true;
+            Impl = impl;
+            Root = IntPtr.Zero;
+            Writable = true;
             _referenceCount = 1;
         }
 
         int _referenceCount;
-        internal IntPtr _root;
-        internal BTreeImpl12 _impl;
-        internal bool _writable;
+        internal IntPtr Root;
+        internal readonly BTreeImpl12 Impl;
+        internal bool Writable;
+
+        public IRootNode? Next { get; set; }
 
         public ulong CommitUlong { get; set; }
         public long TransactionId { get; set; }
@@ -27,43 +29,47 @@ namespace BTDB.BTreeLib
 
         public void Dispose()
         {
-            _impl.Dereference(_root);
+            Impl.Dereference(Root);
         }
 
         public IRootNode Snapshot()
         {
-            var snapshot = new RootNode12(_impl);
-            snapshot._writable = false;
-            snapshot._root = _root;
-            snapshot.CommitUlong = CommitUlong;
-            snapshot.TransactionId = TransactionId;
-            snapshot.TrLogFileId = TrLogFileId;
-            snapshot.TrLogOffset = TrLogOffset;
-            snapshot._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
-            if (_writable)
+            var snapshot = new RootNode12(Impl)
+            {
+                Writable = false,
+                Root = Root,
+                CommitUlong = CommitUlong,
+                TransactionId = TransactionId,
+                TrLogFileId = TrLogFileId,
+                TrLogOffset = TrLogOffset,
+                _ulongs = (ulong[])_ulongs?.Clone()
+            };
+            if (Writable)
                 TransactionId++;
-            NodeUtils12.Reference(_root);
+            NodeUtils12.Reference(Root);
             return snapshot;
         }
 
         public IRootNode CreateWritableTransaction()
         {
-            if (_writable) throw new InvalidOperationException("Only readonly root node could be CreateWritableTransaction");
-            var node = new RootNode12(_impl);
-            node._writable = true;
-            node._root = _root;
-            node.CommitUlong = CommitUlong;
-            node.TransactionId = TransactionId + 1;
-            node.TrLogFileId = TrLogFileId;
-            node.TrLogOffset = TrLogOffset;
-            node._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
-            NodeUtils12.Reference(_root);
+            if (Writable) throw new InvalidOperationException("Only readonly root node could be CreateWritableTransaction");
+            var node = new RootNode12(Impl)
+            {
+                Writable = true,
+                Root = Root,
+                CommitUlong = CommitUlong,
+                TransactionId = TransactionId + 1,
+                TrLogFileId = TrLogFileId,
+                TrLogOffset = TrLogOffset,
+                _ulongs = (ulong[])_ulongs?.Clone()
+            };
+            NodeUtils12.Reference(Root);
             return node;
         }
 
         public void Commit()
         {
-            _writable = false;
+            Writable = false;
         }
 
         public ICursor CreateCursor()
@@ -73,26 +79,26 @@ namespace BTDB.BTreeLib
 
         public long GetCount()
         {
-            if (_root == IntPtr.Zero) return 0;
-            ref var header = ref NodeUtils12.Ptr2NodeHeader(_root);
+            if (Root == IntPtr.Zero) return 0;
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(Root);
             return (long)header.RecursiveChildCount;
         }
 
         public void RevertTo(IRootNode snapshot)
         {
-            if (!_writable)
+            if (!Writable)
                 throw new InvalidOperationException("Only writable root node could be reverted");
-            var oldRoot = _root;
-            _root = ((RootNode12)snapshot)._root;
-            _ulongs = ((RootNode12)snapshot)._ulongs == null ? null : (ulong[])((RootNode12)snapshot)._ulongs.Clone();
+            var oldRoot = Root;
+            Root = ((RootNode12)snapshot).Root;
+            _ulongs = (ulong[])((RootNode12)snapshot)._ulongs?.Clone();
             CommitUlong = ((RootNode12)snapshot).CommitUlong;
             TransactionId = ((RootNode12)snapshot).TransactionId;
             TrLogFileId = ((RootNode12)snapshot).TrLogFileId;
             TrLogOffset = ((RootNode12)snapshot).TrLogOffset;
-            if (oldRoot != _root)
+            if (oldRoot != Root)
             {
-                NodeUtils12.Reference(_root);
-                _impl.Dereference(oldRoot);
+                NodeUtils12.Reference(Root);
+                Impl.Dereference(oldRoot);
             }
         }
 
@@ -140,16 +146,16 @@ namespace BTDB.BTreeLib
 
         public void ValuesIterate(ValuesIterateAction visit)
         {
-            if (_root == IntPtr.Zero)
+            if (Root == IntPtr.Zero)
                 return;
-            BTreeImpl12.ValuesIterate(_root, visit);
+            BTreeImpl12.ValuesIterate(Root, visit);
         }
 
         public void KeyValueIterate(ref KeyValueIterateCtx keyValueIterateCtx, KeyValueIterateCallback callback)
         {
-            if (_root == IntPtr.Zero)
+            if (Root == IntPtr.Zero)
                 return;
-            BTreeImpl12.KeyValueIterate(_root, ref keyValueIterateCtx, callback);
+            BTreeImpl12.KeyValueIterate(Root, ref keyValueIterateCtx, callback);
         }
 
         public bool ShouldBeDisposed => _referenceCount == 0;

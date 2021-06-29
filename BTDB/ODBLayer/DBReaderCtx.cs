@@ -9,28 +9,19 @@ namespace BTDB.ODBLayer
     public class DBReaderCtx : IDBReaderCtx
     {
         protected readonly IInternalObjectDBTransaction Transaction;
-        protected readonly AbstractBufferedReader? _reader;
         StructList<object> _objects;
-        StructList<IMemorizedPosition?> _returningStack;
+        StructList<long> _returningStack;
         int _lastIdOfObj;
-
-        public DBReaderCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader)
-        {
-            Transaction = transaction;
-            _reader = reader;
-            _lastIdOfObj = -1;
-        }
 
         public DBReaderCtx(IInternalObjectDBTransaction transaction)
         {
             Transaction = transaction;
-            _reader = null;
             _lastIdOfObj = -1;
         }
 
-        public bool ReadObject(out object? @object)
+        public bool ReadObject(ref SpanReader reader, out object? @object)
         {
-            var id = _reader!.ReadVInt64();
+            var id = reader.ReadVInt64();
             if (id == 0)
             {
                 @object = null;
@@ -39,11 +30,11 @@ namespace BTDB.ODBLayer
 
             if (id <= int.MinValue || id > 0)
             {
-                @object = Transaction.Get((ulong) id);
+                @object = Transaction.Get((ulong)id);
                 return false;
             }
 
-            var ido = (int) (-id) - 1;
+            var ido = (int)(-id) - 1;
             var o = RetrieveObj(ido);
             if (o != null)
             {
@@ -53,12 +44,12 @@ namespace BTDB.ODBLayer
                     return false;
                 }
 
-                PushReturningPosition(((ICanMemorizePosition) _reader).MemorizeCurrentPosition());
-                mp.Restore();
+                PushReturningPosition(reader.GetCurrentPosition());
+                mp.Restore(ref reader);
             }
             else
             {
-                PushReturningPosition(null);
+                PushReturningPosition(-1);
             }
 
             _lastIdOfObj = ido;
@@ -66,9 +57,9 @@ namespace BTDB.ODBLayer
             return true;
         }
 
-        void PushReturningPosition(IMemorizedPosition? memorizedPosition)
+        void PushReturningPosition(long memorizedPosition)
         {
-            if (_returningStack.Count == 0 && memorizedPosition == null) return;
+            if (_returningStack.Count == 0 && memorizedPosition < 0) return;
             _returningStack.Add(memorizedPosition);
         }
 
@@ -78,28 +69,28 @@ namespace BTDB.ODBLayer
             _objects![_lastIdOfObj] = @object;
         }
 
-        public void ReadObjectDone()
+        public void ReadObjectDone(ref SpanReader reader)
         {
             if (_returningStack.Count == 0) return;
             var returnPos = _returningStack[^1];
-            _returningStack.RemoveAt(^1);
-            returnPos?.Restore();
+            _returningStack.Pop();
+            if (returnPos >= 0) reader.SetCurrentPosition(returnPos);
         }
 
-        public object? ReadNativeObject()
+        public object? ReadNativeObject(ref SpanReader reader)
         {
-            var test = ReadObject(out var @object);
+            var test = ReadObject(ref reader, out var @object);
             if (test)
             {
-                @object = Transaction.ReadInlineObject(this);
+                @object = Transaction.ReadInlineObject(ref reader, this);
             }
 
             return @object;
         }
 
-        public bool SkipObject()
+        public bool SkipObject(ref SpanReader reader)
         {
-            var id = _reader!.ReadVInt64();
+            var id = reader.ReadVInt64();
             if (id == 0)
             {
                 return false;
@@ -110,25 +101,25 @@ namespace BTDB.ODBLayer
                 return false;
             }
 
-            var ido = (int) (-id) - 1;
+            var ido = (int)(-id) - 1;
             var o = RetrieveObj(ido);
             if (o != null)
             {
                 return false;
             }
 
-            _objects[ido] = ((ICanMemorizePosition) _reader).MemorizeCurrentPosition();
+            _objects[ido] = new MemorizedPosition(reader.GetCurrentPosition());
             _lastIdOfObj = ido;
             return true;
         }
 
-        public void SkipNativeObject()
+        public void SkipNativeObject(ref SpanReader reader)
         {
-            var test = SkipObject();
+            var test = SkipObject(ref reader);
             if (test)
             {
                 // This should be skip inline object, but it is easier just to throw away result
-                Transaction.ReadInlineObject(this);
+                Transaction.ReadInlineObject(ref reader, this);
             }
         }
 
@@ -138,15 +129,10 @@ namespace BTDB.ODBLayer
             return _objects[ido];
         }
 
-        public AbstractBufferedReader Reader()
-        {
-            return _reader!;
-        }
-
-        public EncryptedString ReadEncryptedString()
+        public EncryptedString ReadEncryptedString(ref SpanReader reader)
         {
             var cipher = Transaction.Owner.GetSymmetricCipher();
-            var enc = Reader().ReadByteArray();
+            var enc = reader.ReadByteArray();
             var size = cipher.CalcPlainSizeFor(enc);
             var dec = new byte[size];
             if (!cipher.Decrypt(enc, dec))
@@ -154,19 +140,19 @@ namespace BTDB.ODBLayer
                 throw new CryptographicException();
             }
 
-            var r = new ByteArrayReader(dec);
+            var r = new SpanReader(dec);
             return r.ReadString();
         }
 
-        public void SkipEncryptedString()
+        public void SkipEncryptedString(ref SpanReader reader)
         {
-            Reader().SkipByteArray();
+            reader.SkipByteArray();
         }
 
-        public EncryptedString ReadOrderedEncryptedString()
+        public EncryptedString ReadOrderedEncryptedString(ref SpanReader reader)
         {
             var cipher = Transaction.Owner.GetSymmetricCipher();
-            var enc = Reader().ReadByteArray();
+            var enc = reader.ReadByteArray();
             var size = cipher.CalcOrderedPlainSizeFor(enc);
             var dec = new byte[size];
             if (!cipher.OrderedDecrypt(enc, dec))
@@ -174,13 +160,13 @@ namespace BTDB.ODBLayer
                 throw new CryptographicException();
             }
 
-            var r = new ByteArrayReader(dec);
+            var r = new SpanReader(dec);
             return r.ReadString();
         }
 
-        public void SkipOrderedEncryptedString()
+        public void SkipOrderedEncryptedString(ref SpanReader reader)
         {
-            Reader().SkipByteArray();
+            reader.SkipByteArray();
         }
 
         public IInternalObjectDBTransaction GetTransaction()
@@ -196,7 +182,7 @@ namespace BTDB.ODBLayer
         {
         }
 
-        public virtual void FreeContentInNativeObject()
+        public virtual void FreeContentInNativeObject(ref SpanReader reader)
         {
         }
     }

@@ -2,7 +2,7 @@
 
 Relations provides easy way how to store "table" like data in object db.
 
-Let's first define data entity we want to store (note that it is not ne defined as [StoredInline] but it is still inlined)
+Let's first define data entity we want to store (note that it is not defined as [StoredInline] but it is still inlined)
 
     public class Person
     {
@@ -13,7 +13,7 @@ Let's first define data entity we want to store (note that it is not ne defined 
         public ulong Age { get; set; }
     }
 
-    public interface IPersonTable
+    public interface IPersonTable : IRelation<Person>
     {
         void Insert(Person person);
         bool RemoveById(ulong id);
@@ -43,6 +43,17 @@ next time we reuse creator:
 
 `InitRelation` can be called only once.
 
+But this was "old school" way easier to just always use `GetRelation<T>`:
+
+    using (var tr = _db.StartTransaction())
+    {
+        var personTable = tr.GetRelation<IPersonTable>();
+        personTable.Insert(new Person { Id = 2, Name = "admin", Age = 100 });
+        tr.Commit();
+    }
+
+It is still good to do first GetRelation for all your relations in first independent transaction. To control name of relation by `PersistedNameAttribute` on your `IRelation` interface.
+
 ## Basic operations
 
 When defined in interface following methods are automatically implemented by BTDB when defined in relation interface
@@ -65,7 +76,9 @@ will throw if does not exist
 
     var inserted = personTable.Upsert(new Person { Id = 2, Name = "superadmin", Age = 100 });
 
-return true if inserted
+returns true if inserted, false if updated
+
+Note: `Upsert` is automatically always available if you inherit from `IRelation<T>`
 
 ### ShallowUpdate
 
@@ -85,8 +98,7 @@ ShallowRemoveById does not free content.
 
     int RemoveById(primaryKey1 [, primaryKey2, ...]);
 
-Returns number of records removed for given primary key prefix (apart fields are automatically used)
-for example `int RemoveById(ulong tenantId)` removes all users for given tenant
+Returns number of records removed for given primary key prefix for example `int RemoveById(ulong tenantId)` removes all users for given tenant
 
     int RemoveByIdPartial(primaryKey1 [, primaryKey2, ...] , maxCount);
 
@@ -116,7 +128,7 @@ Will return null if not exists
 
     IEnumerator<T> FindById(primaryKey1 [, primaryKey2, ...]);
 
-Find all items with given primary key prefix (apart fields are automatically used)
+Find all items with given primary key prefix
 
     Person FindByAgeOrDefault(uint age);
 
@@ -141,7 +153,7 @@ Find support returning also not item type but any subset type, but because you c
     IEnumerator<Person> ListById(AdvancedEnumeratorParam<uint> param);
     IEnumerable<Person> ListById();
 
-List by ascending/descending order and specified range. Apart fields are taken into account for listing by primary key. Parts of primary key may be used for listing. In example below you can list all rooms or just rooms for specified company by two `ListById` method. (`IOrderedDictionaryEnumerator`, `IEnumerator`, `IEnumerable` can be used as return values if used without AdvancedEnumeratorParam only `IEnumerator` or `IEnumerable` could be used and it is ascending order only.)
+List by ascending/descending order and specified range. Parts of primary key may be used for listing. In example below you can list all rooms or just rooms for specified company by two `ListById` method. (`IOrderedDictionaryEnumerator`, `IEnumerator`, `IEnumerable` can be used as return values if used without AdvancedEnumeratorParam only `IEnumerator` or `IEnumerable` could be used and it is ascending order only.)
 
     public class Room
     {
@@ -172,11 +184,11 @@ List also support variants with subset resulting types like `Find`.
 
     IEnumerator<Person> GetEnumerator();
 
-Enumerates all items sorted by primary key. Current value of apart field in table interface is not taken into account and all items are enumerated. Enumerated are always all items, apart fields are not taken into account.
+Enumerates all items sorted by primary key.
 
 ### IReadOnlyCollection
 
-All relations implements `IReadOnlyCollection<T>`. This can be used during debugging immediately, or directly in code - after casting or defining like this: `public interface IRoomTable : IReadOnlyCollection<Room>`. Enumerated are always all items, apart fields are not taken into account.
+All relations implements `IReadOnlyCollection<T>`. This can be used during debugging immediately, or directly in code - after casting or defining like this: `public interface IRoomTable : IReadOnlyCollection<Room>`.
 
 ## Primary Key
 
@@ -195,26 +207,6 @@ will methods look like:
 
     bool RemoveById(ulong tenantId, ulong id);
     Person FindById(ulong tenantId, ulong id);
-
-## Apart Field
-
-From the example above is obvious that tenantId would be present in many places, to avoid that, it is possible to put such field into the interface like this:
-
-    public interface IPersonTable
-    {
-        ulong TenantId { get; set; }
-        Person FindById(ulong id);
-        bool RemoveById(ulong id);
-        ...
-    }
-
-and then use for all operations:
-
-    var personTable = creator(tr);
-    personTable.TenantId = 42;
-    personTable.Insert(new Person{ Id = 100 }); //TenantId 42 will be used also for insert
-    personTable.RemoveById(100);
-    personTable.RemoveById(101);
 
 ## Secondary Key
 

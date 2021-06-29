@@ -1,0 +1,186 @@
+using System;
+using System.Runtime.InteropServices;
+using BTDB.Buffer;
+using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
+
+namespace ODbDump.TrlDump
+{
+    public class TrlFileReader
+    {
+        readonly ISpanReader _readerController;
+        readonly ICompressionStrategy _compression;
+        readonly uint _fileId;
+        const int MaxValueSizeInlineInMemory = 7;
+        static readonly byte[] MagicStartOfTransaction = {(byte) 't', (byte) 'R'};
+
+        public TrlFileReader(IFileCollectionFile file)
+        {
+            _readerController = file.GetExclusiveReader();
+            _compression = new SnappyCompressionStrategy();
+            _fileId = file.Index;
+        }
+
+        public void Iterate(ITrlVisitor visitor)
+        {
+            bool afterTemporaryEnd = false;
+            Span<byte> trueValue = stackalloc byte[12];
+
+            var reader = new SpanReader(_readerController);
+            SkipUntilNextTransaction(ref reader);
+            while (!reader.Eof)
+            {
+                var command = (KVCommandType) reader.ReadUInt8();
+                if (command == 0 && afterTemporaryEnd)
+                {
+                    return;
+                }
+
+                afterTemporaryEnd = false;
+                visitor.StartOperation(command & KVCommandType.CommandMask);
+
+                switch (command & KVCommandType.CommandMask)
+                {
+                    case KVCommandType.CreateOrUpdateDeprecated:
+                    case KVCommandType.CreateOrUpdate:
+                    {
+                        var keyLen = reader.ReadVInt32();
+                        var valueLen = reader.ReadVInt32();
+                        var key = new byte[keyLen];
+                        reader.ReadBlock(key);
+                        var keyBuf = ByteBuffer.NewAsync(key);
+                        if ((command & KVCommandType.FirstParamCompressed) != 0)
+                        {
+                            _compression.DecompressKey(ref keyBuf);
+                        }
+
+                        trueValue.Clear();
+                        if (valueLen <= MaxValueSizeInlineInMemory &&
+                            (command & KVCommandType.SecondParamCompressed) == 0)
+                        {
+                            reader.ReadBlock(ref MemoryMarshal.GetReference(trueValue), (uint) valueLen);
+                        }
+                        else
+                        {
+                            var partLen = Math.Min(12, valueLen);
+                            reader.ReadBlock(ref MemoryMarshal.GetReference(trueValue), (uint) partLen);
+                            reader.SkipBlock(valueLen - partLen);
+                        }
+
+                        ExplainCreateOrUpdate(visitor, keyBuf.AsSyncReadOnlySpan(), valueLen, trueValue);
+                    }
+                        break;
+                    case KVCommandType.EraseOne:
+                    {
+                        var keyLen = reader.ReadVInt32();
+                        reader.SkipBlock(keyLen);
+                    }
+                        break;
+                    case KVCommandType.EraseRange:
+                    {
+                        var keyLen1 = reader.ReadVInt32();
+                        var keyLen2 = reader.ReadVInt32();
+                        reader.SkipBlock(keyLen1);
+                        reader.SkipBlock(keyLen2);
+                    }
+                        break;
+                    case KVCommandType.DeltaUlongs:
+                    {
+                        reader.SkipVUInt32();
+                        reader.SkipVUInt64();
+                    }
+                        break;
+                    case KVCommandType.TransactionStart:
+                        if (!reader.CheckMagic(MagicStartOfTransaction))
+                            throw new Exception("Invalid transaction magic");
+                        visitor.OperationDetail($"file pos: {_readerController.GetCurrentPosition(reader)}");
+                        break;
+                    case KVCommandType.CommitWithDeltaUlong:
+                        var delta = reader.ReadVUInt64();
+                        visitor.OperationDetail($"delta: {delta}");
+                        break;
+                    case KVCommandType.EndOfFile:
+                        visitor.OperationDetail($"position: {reader!.Controller!.GetCurrentPosition(reader)}");
+                        return;
+                    case KVCommandType.TemporaryEndOfFile:
+                        afterTemporaryEnd = true;
+                        break;
+                }
+                visitor.EndOperation();
+            }
+        }
+
+        void SkipUntilNextTransaction(ref SpanReader reader)
+        {
+            int depth = 0;
+            while (!reader.Eof)
+            {
+                var b = reader.ReadUInt8();
+                switch (depth)
+                {
+                    case 0:
+                        if (b == 3)
+                            depth = 1;
+                        break;
+                    case 1:
+                        depth = b == (byte) 't' ? 2 : 0;
+                        break;
+                    case 2:
+                        if (b == (byte) 'R')
+                            return;
+                        else
+                            depth = 0;
+                        break;
+                }
+            }
+        }
+
+        void ExplainCreateOrUpdate(ITrlVisitor visitor, ReadOnlySpan<byte> key, int valueLength,
+            ReadOnlySpan<byte> firstBytes)
+        {
+            switch (key[0])
+            {
+                case 0:
+                    visitor.OperationDetail("metadata");
+                    break;
+                case 1:
+                {
+                    var oid = SkipByteAndReadVUInt64(key);
+                    var valueReader = new SpanReader(firstBytes);
+                    var tableId = valueReader.ReadVUInt32();
+
+                    visitor.UpsertObject(oid, tableId, key.Length, valueLength);
+                }
+                    break;
+                case 2:
+                {
+                    var oid = SkipByteAndReadVUInt64(key);
+                    visitor.UpsertODBDictionary(oid, key.Length, valueLength);
+                }
+                    break;
+                case 3:
+                {
+                    var relationIdx = SkipByteAndReadVUInt64(key);
+                    visitor.UpsertRelationValue(relationIdx, key.Length, valueLength);
+                }
+                    break;
+                case 4:
+                {
+                    var reader = new SpanReader(key);
+                    reader.SkipBlock(1);
+                    var relationIdx = reader.ReadVUInt64();
+                    var skIdx = reader.ReadUInt8();
+                    visitor.UpsertRelationSecondaryKey(relationIdx, skIdx, key.Length, valueLength);
+                }
+                    break;
+            }
+        }
+
+        ulong SkipByteAndReadVUInt64(ReadOnlySpan<byte> key)
+        {
+            var reader = new SpanReader(key);
+            reader.SkipBlock(1);
+            return reader.ReadVUInt64();
+        }
+    }
+}

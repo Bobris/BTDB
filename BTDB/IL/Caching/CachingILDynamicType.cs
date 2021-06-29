@@ -59,11 +59,13 @@ namespace BTDB.IL.Caching
                 _returns = returns;
                 _parameters = parameters;
                 _methodAttributes = methodAttributes;
+                InitLocals = true;
             }
 
             public void ReplayTo(IILDynamicType target)
             {
-                _trueContent = (IILMethodPrivate) target.DefineMethod(_name, _returns, _parameters, _methodAttributes);
+                _trueContent = (IILMethodPrivate)target.DefineMethod(_name, _returns, _parameters, _methodAttributes);
+                _trueContent.InitLocals = InitLocals;
                 if (_expectedLength >= 0) _trueContent.ExpectedLength(_expectedLength);
             }
 
@@ -86,6 +88,7 @@ namespace BTDB.IL.Caching
                     && _returns == v._returns
                     && _methodAttributes == v._methodAttributes
                     && _parameters.SequenceEqual(v._parameters)
+                    && InitLocals == v.InitLocals
                     && _ilGen.Equals(v._ilGen);
             }
 
@@ -114,6 +117,8 @@ namespace BTDB.IL.Caching
             {
                 _expectedLength = length;
             }
+
+            public bool InitLocals { get; set; }
 
             public IILGen Generator => _ilGen;
 
@@ -149,7 +154,7 @@ namespace BTDB.IL.Caching
 
             public void ReplayTo(IILDynamicType target)
             {
-                _trueContent = (IILFieldPrivate) target.DefineField(_name, _type, _fieldAttributes);
+                _trueContent = (IILFieldPrivate)target.DefineField(_name, _type, _fieldAttributes);
             }
 
             public void FreeTemps()
@@ -274,7 +279,12 @@ namespace BTDB.IL.Caching
 
         public IILMethod DefineConstructor(Type[] parameters)
         {
-            var res = new Constructor((int)_instructions.Count, parameters);
+            return DefineConstructor(parameters, Array.Empty<string>());
+        }
+
+        public IILMethod DefineConstructor(Type[] parameters, string[] parametersNames)
+        {
+            var res = new Constructor((int)_instructions.Count, parameters, parametersNames);
             _instructions.Add(res);
             return res;
         }
@@ -283,19 +293,23 @@ namespace BTDB.IL.Caching
         {
             readonly int _id;
             readonly Type[] _parameters;
+            readonly string[] _parametersNames;
             readonly CachingILGen _ilGen = new CachingILGen();
             int _expectedLength = -1;
             IILMethod? _trueContent;
 
-            public Constructor(int id, Type[] parameters)
+            public Constructor(int id, Type[] parameters, string[] parametersNames)
             {
                 _id = id;
                 _parameters = parameters;
+                _parametersNames = parametersNames;
+                InitLocals = true;
             }
 
             public void ReplayTo(IILDynamicType target)
             {
-                _trueContent = target.DefineConstructor(_parameters);
+                _trueContent = target.DefineConstructor(_parameters, _parametersNames);
+                _trueContent.InitLocals = InitLocals;
                 if (_expectedLength >= 0) _trueContent.ExpectedLength(_expectedLength);
             }
 
@@ -313,7 +327,7 @@ namespace BTDB.IL.Caching
             public bool Equals(IReplay? other)
             {
                 if (!(other is Constructor v)) return false;
-                return _id == v._id && _parameters.SequenceEqual(v._parameters) && _ilGen.Equals(v._ilGen);
+                return _id == v._id && _parameters.SequenceEqual(v._parameters) && _ilGen.Equals(v._ilGen) && _parametersNames.SequenceEqual(v._parametersNames) && InitLocals == v.InitLocals;
             }
 
             public override bool Equals(object obj)
@@ -335,6 +349,8 @@ namespace BTDB.IL.Caching
             {
                 _expectedLength = length;
             }
+
+            public bool InitLocals { get; set; }
 
             public IILGen Generator => _ilGen;
         }

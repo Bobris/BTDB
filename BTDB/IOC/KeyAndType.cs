@@ -24,7 +24,7 @@ namespace BTDB.IOC
         public override int GetHashCode()
         {
             if (Key == null) return Type.GetHashCode();
-            return Key.GetHashCode()*33 + Type.GetHashCode();
+            return Key.GetHashCode() * 33 + Type.GetHashCode();
         }
     }
 }

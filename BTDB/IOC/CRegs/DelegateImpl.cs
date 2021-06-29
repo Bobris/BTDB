@@ -16,7 +16,7 @@ namespace BTDB.IOC.CRegs
             _key = key;
             _type = type;
             _nestedRegistration = nestedRegistration;
-            _myNeed = new Need {Kind = NeedKind.Constant, ClrType = _type};
+            _myNeed = new Need { Kind = NeedKind.Constant, ClrType = _type };
         }
 
         public string GenFuncName(IGenerationContext context)
@@ -41,13 +41,22 @@ namespace BTDB.IOC.CRegs
 
         public IEnumerable<INeed> GetNeeds(IGenerationContext context)
         {
-            if (_myNeed.Key==null)
+            if (_myNeed.Key == null)
             {
                 var buildContext = context.BuildContext;
                 var genCtx = new GenerationContext(context.Container, _nestedRegistration, buildContext, _type.GetMethod("Invoke").GetParameters());
                 _myNeed.Key = genCtx.GenerateFunc(_type);
             }
             yield return _myNeed;
+        }
+
+        public bool IsSingletonSafe()
+        {
+            return true;
+        }
+
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
         }
     }
 }

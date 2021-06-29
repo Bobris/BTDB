@@ -1,4 +1,5 @@
 ﻿using BTDB.Encrypted;
+using BTDB.FieldHandler;
 using BTDB.IOC;
 
 namespace BTDB.ODBLayer
@@ -40,10 +41,17 @@ namespace BTDB.ODBLayer
             return this;
         }
 
+        public DBOptions WithFieldHandlerLogger(IFieldHandlerLogger fieldHandlerLogger)
+        {
+            FieldHandlerLogger = fieldHandlerLogger;
+            return this;
+        }
+
         public bool AutoRegisterType { get; private set; }
         public IType2NameRegistry? CustomType2NameRegistry { get; private set; }
         public bool SelfHealing { get; private set; }
         public IContainer? Container { get; private set; }
+        public IFieldHandlerLogger? FieldHandlerLogger { get; private set; }
 
         public ISymmetricCipher? SymmetricCipher { get; private set; }
     }

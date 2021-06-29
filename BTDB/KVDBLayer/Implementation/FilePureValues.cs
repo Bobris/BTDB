@@ -8,7 +8,7 @@ namespace BTDB.KVDBLayer
         readonly long _generation;
         readonly Guid? _guid;
 
-        public FilePureValues(AbstractBufferedReader reader, Guid? guid)
+        public FilePureValues(ref SpanReader reader, Guid? guid)
         {
             _guid = guid;
             _generation = reader.ReadVInt64();
@@ -28,9 +28,9 @@ namespace BTDB.KVDBLayer
 
         public long SubDBId => 0;
 
-        public void WriteHeader(AbstractBufferedWriter writer)
+        public void WriteHeader(ref SpanWriter writer)
         {
-            FileCollectionWithFileInfos.WriteHeader(writer, _guid);
+            FileCollectionWithFileInfos.WriteHeader(ref writer, _guid);
             writer.WriteUInt8((byte)KVFileType.PureValues);
             writer.WriteVInt64(_generation);
         }

@@ -2,9 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using BTDB.IL;
+using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
+    public delegate ITypeDescriptor DescriptorReader(ref SpanReader reader);
+    public delegate void DescriptorWriter(ref SpanWriter writer, ITypeDescriptor descriptor);
+
     public interface ITypeDescriptor : IEquatable<ITypeDescriptor>
     {
         string? Name { get; }
@@ -28,5 +32,6 @@ namespace BTDB.EventStoreLayer
         bool LoadNeedsHelpWithConversion { get; }
         void ClearMappingToType();
         bool ContainsField(string name);
+        IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields { get; }
     }
 }

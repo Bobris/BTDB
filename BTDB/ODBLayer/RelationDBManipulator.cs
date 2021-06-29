@@ -2,7 +2,11 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -11,12 +15,37 @@ namespace BTDB.ODBLayer
     public interface IRelationModificationCounter
     {
         int ModificationCounter { get; }
-        void MarkModification();
         void CheckModifiedDuringEnum(int prevModification);
     }
 
-    public class UnforgivingRelationModificationCounter : IRelationModificationCounter
+    public interface IRelationDbManipulator : IRelation, IRelationModificationCounter
     {
+        public IInternalObjectDBTransaction Transaction { get; }
+        public RelationInfo RelationInfo { get; }
+
+        public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
+            uint fieldInFirstBufferCount, in ReadOnlySpan<byte> firstPart, in ReadOnlySpan<byte> secondPart);
+    }
+
+    public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator where T : class
+    {
+        readonly IInternalObjectDBTransaction _transaction;
+        readonly IKeyValueDBTransaction _kvtr;
+        readonly RelationInfo _relationInfo;
+
+        public IInternalObjectDBTransaction Transaction => _transaction;
+        public RelationInfo RelationInfo => _relationInfo;
+
+        const string AssertNotDerivedTypesMsg = "Derived types are not supported.";
+
+        public RelationDBManipulator(IObjectDBTransaction transaction, RelationInfo relationInfo)
+        {
+            _transaction = (IInternalObjectDBTransaction) transaction;
+            _kvtr = _transaction.KeyValueDBTransaction;
+            _relationInfo = relationInfo;
+            _hasSecondaryIndexes = _relationInfo.ClientRelationVersionInfo.HasSecondaryIndexes;
+        }
+
         int _modificationCounter;
 
         public int ModificationCounter => _modificationCounter;
@@ -31,68 +60,30 @@ namespace BTDB.ODBLayer
         {
             _modificationCounter++;
         }
-    }
 
-    public interface IRelationDbManipulator: IRelation
-    {
-        public IInternalObjectDBTransaction Transaction { get; }
-        public RelationInfo RelationInfo { get; }
-        public IRelationModificationCounter ModificationCounter { get; }
-
-        public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
-            uint fieldInFirstBufferCount, ByteBuffer firstPart, ByteBuffer secondPart);
-    }
-
-    public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator where T : class
-    {
-        readonly IInternalObjectDBTransaction _transaction;
-        readonly IKeyValueDBTransaction _kvtr;
-        readonly RelationInfo _relationInfo;
-
-        public IInternalObjectDBTransaction Transaction => _transaction;
-        public RelationInfo RelationInfo => _relationInfo;
-
-        const string AssertNotDerivedTypesMsg = "Derived types are not supported.";
-
-        readonly IRelationModificationCounter _modificationCounter;
-
-        public RelationDBManipulator(IObjectDBTransaction transaction, RelationInfo relationInfo)
+        ReadOnlySpan<byte> ValueBytes(T obj, ref SpanWriter writer)
         {
-            _transaction = (IInternalObjectDBTransaction) transaction;
-            _kvtr = _transaction.KeyValueDBTransaction;
-            _relationInfo = relationInfo;
-            _modificationCounter = _transaction.GetRelationModificationCounter(relationInfo.Id);
-            _hasSecondaryIndexes = _relationInfo.ClientRelationVersionInfo.HasSecondaryIndexes;
+            writer.WriteVUInt32(_relationInfo.ClientTypeVersion);
+            _relationInfo.ValueSaver(_transaction, ref writer, obj);
+            return writer.GetPersistentSpanAndReset();
         }
 
-        public IRelationModificationCounter ModificationCounter => _modificationCounter;
-
-        ByteBuffer ValueBytes(T obj)
+        ReadOnlySpan<byte> KeyBytes(T obj, ref SpanWriter writer)
         {
-            var valueWriter = new ByteBufferWriter();
-            valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
-            _relationInfo.ValueSaver(_transaction, valueWriter, obj);
-            return valueWriter.Data;
+            WriteRelationPKPrefix(ref writer);
+            _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj);
+            return writer.GetPersistentSpanAndReset();
         }
 
-        ByteBuffer KeyBytes(T obj)
-        {
-            var keyWriter = new ByteBufferWriter();
-            WriteRelationPKPrefix(keyWriter);
-            _relationInfo.PrimaryKeysSaver(_transaction, keyWriter, obj,
-                this); //this for relation interface which is same with manipulator
-            return keyWriter.Data;
-        }
-
-        public void WriteRelationPKPrefix(AbstractBufferedWriter writer)
+        public void WriteRelationPKPrefix(ref SpanWriter writer)
         {
             writer.WriteBlock(_relationInfo.Prefix);
         }
 
-        public void WriteRelationSKPrefix(AbstractBufferedWriter writer, uint secondaryKeyIndex)
+        public void WriteRelationSKPrefix(ref SpanWriter writer, uint secondaryKeyIndex)
         {
             writer.WriteBlock(_relationInfo.PrefixSecondary);
-            writer.WriteUInt8((byte)secondaryKeyIndex);
+            writer.WriteUInt8((byte) secondaryKeyIndex);
         }
 
         public uint RemapPrimeSK(uint primeSecondaryKeyIndex)
@@ -102,43 +93,141 @@ namespace BTDB.ODBLayer
 
         readonly bool _hasSecondaryIndexes;
 
+        class SerializationCallbacks : IInternalSerializationCallbacks
+        {
+            public readonly ContinuousMemoryBlockWriter Metadata = new ContinuousMemoryBlockWriter();
+            public readonly ContinuousMemoryBlockWriter Data = new ContinuousMemoryBlockWriter();
+
+            public void MetadataCreateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+            {
+                var writer = new SpanWriter(Metadata);
+                writer.WriteByteArray(key);
+                writer.WriteByteArray(value);
+                writer.Sync();
+            }
+
+            public void CreateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+            {
+                var writer = new SpanWriter(Data);
+                if (value.IsEmpty)
+                {
+                    writer.WriteUInt8((byte) SerializationCommand.CreateKey);
+                    writer.WriteByteArray(key);
+                }
+                else
+                {
+                    writer.WriteUInt8((byte) SerializationCommand.CreateKeyValue);
+                    writer.WriteByteArray(key);
+                    writer.WriteByteArray(value);
+                }
+
+                writer.Sync();
+            }
+        }
+
+        SerializationCallbacks? _serializationCallbacks;
+
+        public void SerializeInsert(ref SpanWriter writer, T obj)
+        {
+            Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
+
+            _transaction.SetSerializationCallbacks(_serializationCallbacks ??= new SerializationCallbacks());
+            writer.WriteUInt8((byte) SerializationCommand.CreateKeyValue);
+            var start = writer.StartWriteByteArray();
+            WriteRelationPKPrefix(ref writer);
+            _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj);
+            writer.FinishWriteByteArray(start);
+            start = writer.StartWriteByteArray();
+            writer.WriteVUInt32(_relationInfo.ClientTypeVersion);
+            _relationInfo.ValueSaver(_transaction, ref writer, obj);
+            writer.FinishWriteByteArray(start);
+
+            if (_hasSecondaryIndexes)
+            {
+                foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+                {
+                    writer.WriteUInt8((byte) SerializationCommand.CreateKey);
+                    start = writer.StartWriteByteArray();
+                    WriteRelationSKPrefix(ref writer, sk.Key);
+                    var keySaver = _relationInfo.GetSecondaryKeysKeySaver(sk.Key);
+                    keySaver(_transaction, ref writer, obj);
+                    writer.FinishWriteByteArray(start);
+                }
+            }
+
+            _transaction.SetSerializationCallbacks(null);
+            if (_serializationCallbacks!.Metadata.GetCurrentPositionWithoutWriter() > 0 ||
+                _serializationCallbacks.Data.GetCurrentPositionWithoutWriter() > 0)
+            {
+                var toCreate = _serializationCallbacks!.Metadata.GetByteBuffer();
+                _serializationCallbacks!.Metadata.ResetAndFreeMemory();
+                _kvtr.Owner.StartWritingTransaction().AsTask().ContinueWith(task =>
+                {
+                    var tr = task.Result;
+                    var reader = new SpanReader(toCreate);
+                    while (!reader.Eof)
+                    {
+                        var key = reader.ReadByteArrayAsSpan();
+                        var value = reader.ReadByteArrayAsSpan();
+                        tr.CreateOrUpdateKeyValue(key, value);
+                    }
+                    ((ObjectDB) _transaction.Owner).CommitLastObjIdAndDictId(tr);
+                    tr.Commit();
+                }, TaskContinuationOptions.ExecuteSynchronously);
+            }
+
+            writer.WriteBlock(_serializationCallbacks.Data.GetSpan());
+            _serializationCallbacks.Data.Reset();
+        }
+
+        [SkipLocalsInit]
         public bool Insert(T obj)
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            var keyBytes = KeyBytes(obj);
-            var valueBytes = ValueBytes(obj);
+            Span<byte> buf = stackalloc byte[512];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyBytes(obj, ref writer);
 
-            ResetKeyPrefix();
-
-            if (_kvtr.Find(keyBytes) == FindResult.Exact)
+            if (_kvtr.FindExactKey(keyBytes))
                 return false;
+
+            var valueBytes = ValueBytes(obj, ref writer);
 
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
-                AddIntoSecondaryIndexes(obj);
+            {
+                writer = new SpanWriter(buf);
+                AddIntoSecondaryIndexes(obj, ref writer);
+            }
 
-            _modificationCounter.MarkModification();
+            MarkModification();
             return true;
         }
 
+        [SkipLocalsInit]
         public bool Upsert(T obj)
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            var keyBytes = KeyBytes(obj);
-            var valueBytes = ValueBytes(obj);
+            Span<byte> buf = stackalloc byte[512];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyBytes(obj, ref writer);
+            var valueBytes = ValueBytes(obj, ref writer);
 
-            ResetKeyPrefix();
-            if (_kvtr.Find(keyBytes) == FindResult.Exact)
+            if (_kvtr.FindExactKey(keyBytes))
             {
-                var oldValueBytes = _kvtr.GetValue();
+                var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
 
                 _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
                 if (_hasSecondaryIndexes)
-                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
+                {
+                    Span<byte> buf2 = stackalloc byte[512];
+                    var writer2 = new SpanWriter(buf2);
+                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                }
 
                 FreeContentInUpdate(oldValueBytes, valueBytes);
                 return false;
@@ -146,35 +235,44 @@ namespace BTDB.ODBLayer
 
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
             if (_hasSecondaryIndexes)
-                AddIntoSecondaryIndexes(obj);
-            _modificationCounter.MarkModification();
+            {
+                writer = new SpanWriter(buf);
+                AddIntoSecondaryIndexes(obj, ref writer);
+            }
+
+            MarkModification();
             return true;
         }
 
+        [SkipLocalsInit]
         public bool ShallowUpsert(T obj)
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            var keyBytes = KeyBytes(obj);
-            var valueBytes = ValueBytes(obj);
-
-            ResetKeyPrefix();
+            Span<byte> buf = stackalloc byte[512];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyBytes(obj, ref writer);
+            var valueBytes = ValueBytes(obj, ref writer);
 
             if (_hasSecondaryIndexes)
             {
-                if (_kvtr.Find(keyBytes) == FindResult.Exact)
+                if (_kvtr.FindExactKey(keyBytes))
                 {
-                    var oldValueBytes = _kvtr.GetValue();
+                    var oldValueBytes =
+                        _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
 
                     _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
-                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
+                    Span<byte> buf2 = stackalloc byte[512];
+                    var writer2 = new SpanWriter(buf2);
+                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
 
                     return false;
                 }
 
                 _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
-                AddIntoSecondaryIndexes(obj);
+                writer = new SpanWriter(buf);
+                AddIntoSecondaryIndexes(obj, ref writer);
             }
             else
             {
@@ -184,57 +282,71 @@ namespace BTDB.ODBLayer
                 }
             }
 
-            _modificationCounter.MarkModification();
+            MarkModification();
             return true;
         }
 
+        [SkipLocalsInit]
         public void Update(T obj)
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            var keyBytes = KeyBytes(obj);
-            var valueBytes = ValueBytes(obj);
+            Span<byte> buf = stackalloc byte[512];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyBytes(obj, ref writer);
+            var valueBytes = ValueBytes(obj, ref writer);
 
-            ResetKeyPrefix();
-
-            if (_kvtr.Find(keyBytes) != FindResult.Exact)
+            if (!_kvtr.FindExactKey(keyBytes))
                 throw new BTDBException("Not found record to update.");
 
-            var oldValueBytes = _kvtr.GetValue();
+            var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
-                UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
+            {
+                Span<byte> buf2 = stackalloc byte[512];
+                var writer2 = new SpanWriter(buf2);
+                UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+            }
 
             FreeContentInUpdate(oldValueBytes, valueBytes);
         }
 
+        [SkipLocalsInit]
         public void ShallowUpdate(T obj)
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            var keyBytes = KeyBytes(obj);
-            var valueBytes = ValueBytes(obj);
+            Span<byte> buf = stackalloc byte[512];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyBytes(obj, ref writer);
+            var valueBytes = ValueBytes(obj, ref writer);
 
-            ResetKeyPrefix();
-
-            if (_kvtr.Find(keyBytes) != FindResult.Exact)
+            if (!_kvtr.FindExactKey(keyBytes))
                 throw new BTDBException("Not found record to update.");
 
-            var oldValueBytes = _hasSecondaryIndexes
-                ? _kvtr.GetValue()
-                : ByteBuffer.NewEmpty();
-
-            _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
-
             if (_hasSecondaryIndexes)
-                UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
+            {
+                var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
+
+                _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+
+                if (_hasSecondaryIndexes)
+                {
+                    Span<byte> buf2 = stackalloc byte[512];
+                    var writer2 = new SpanWriter(buf2);
+                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                }
+            }
+            else
+            {
+                _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            }
         }
 
-        public bool Contains(ByteBuffer keyBytes)
+        public bool Contains(in ReadOnlySpan<byte> keyBytes)
         {
-            ResetKeyPrefix();
-            return _kvtr.Find(keyBytes) == FindResult.Exact;
+            return _kvtr.FindExactKey(keyBytes);
         }
 
         void CompareAndRelease(List<ulong> oldItems, List<ulong> newItems,
@@ -266,7 +378,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void FreeContentInUpdate(ByteBuffer oldValueBytes, ByteBuffer newValueBytes)
+        void FreeContentInUpdate(in ReadOnlySpan<byte> oldValueBytes, in ReadOnlySpan<byte> newValueBytes)
         {
             var oldDicts = _relationInfo.FreeContentOldDict;
             oldDicts.Clear();
@@ -279,56 +391,66 @@ namespace BTDB.ODBLayer
             CompareAndRelease(oldDicts, newDicts, RelationInfo.FreeIDictionary);
         }
 
-        public bool RemoveById(ByteBuffer keyBytes, bool throwWhenNotFound)
+        [SkipLocalsInit]
+        public bool RemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
         {
-            ResetKeyPrefix();
-            if (_kvtr.Find(keyBytes) != FindResult.Exact)
+            Span<byte> valueBuffer = stackalloc byte[512];
+
+            if (!_kvtr.EraseCurrent(keyBytes, ref MemoryMarshal.GetReference(valueBuffer), valueBuffer.Length,
+                out var value))
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found record to delete.");
                 return false;
             }
 
-            var valueBytes = _kvtr.GetValue();
-            _kvtr.EraseCurrent();
-
             if (_hasSecondaryIndexes)
-                RemoveSecondaryIndexes(keyBytes, valueBytes);
-
-            _relationInfo.FreeContent(_transaction, valueBytes);
-
-            _modificationCounter.MarkModification();
-            return true;
-        }
-
-        public bool ShallowRemoveById(ByteBuffer keyBytes, bool throwWhenNotFound)
-        {
-            ResetKeyPrefix();
-            if (_kvtr.Find(keyBytes) != FindResult.Exact)
             {
-                if (throwWhenNotFound)
-                    throw new BTDBException("Not found record to delete.");
-                return false;
+                RemoveSecondaryIndexes(keyBytes, value);
             }
 
-            var valueBytes = _hasSecondaryIndexes
-                ? _kvtr.GetValue()
-                : ByteBuffer.NewEmpty();
+            _relationInfo.FreeContent(_transaction, value);
 
-            _kvtr.EraseCurrent();
-
-            if (_hasSecondaryIndexes)
-                RemoveSecondaryIndexes(keyBytes, valueBytes);
-
-            _modificationCounter.MarkModification();
+            MarkModification();
             return true;
         }
 
-        public int RemoveByPrimaryKeyPrefix(ByteBuffer keyBytesPrefix)
+        [SkipLocalsInit]
+        public bool ShallowRemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
         {
-            var keysToDelete = new List<ByteBuffer>();
+            if (_hasSecondaryIndexes)
+            {
+                Span<byte> valueBuffer = stackalloc byte[512];
+
+                if (!_kvtr.EraseCurrent(keyBytes, ref valueBuffer.GetPinnableReference(), valueBuffer.Length,
+                    out var value))
+                {
+                    if (throwWhenNotFound)
+                        throw new BTDBException("Not found record to delete.");
+                    return false;
+                }
+
+                RemoveSecondaryIndexes(keyBytes, value);
+            }
+            else
+            {
+                if (!_kvtr.EraseCurrent(keyBytes))
+                {
+                    if (throwWhenNotFound)
+                        throw new BTDBException("Not found record to delete.");
+                    return false;
+                }
+            }
+
+            MarkModification();
+            return true;
+        }
+
+        public int RemoveByPrimaryKeyPrefix(in ReadOnlySpan<byte> keyBytesPrefix)
+        {
+            var keysToDelete = new StructList<byte[]>();
             var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix,
-                _modificationCounter, 0);
+                this, 0);
             while (enumerator.MoveNext())
             {
                 keysToDelete.Add(enumerator.GetKeyBytes());
@@ -336,8 +458,7 @@ namespace BTDB.ODBLayer
 
             foreach (var key in keysToDelete)
             {
-                ResetKeyPrefix();
-                if (_kvtr.Find(key) != FindResult.Exact)
+                if (!_kvtr.FindExactKey(key))
                     throw new BTDBException("Not found record to delete.");
 
                 var valueBytes = _kvtr.GetValue();
@@ -352,11 +473,11 @@ namespace BTDB.ODBLayer
             return RemovePrimaryKeysByPrefix(keyBytesPrefix);
         }
 
-        public int RemoveByPrimaryKeyPrefixPartial(ByteBuffer keyBytesPrefix, int maxCount)
+        public int RemoveByPrimaryKeyPrefixPartial(in ReadOnlySpan<byte> keyBytesPrefix, int maxCount)
         {
             var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix,
-                _modificationCounter, 0);
-            var keysToDelete = new List<ByteBuffer>();
+                this, 0);
+            var keysToDelete = new StructList<byte[]>();
             while (enumerator.MoveNext())
             {
                 keysToDelete.Add(enumerator.GetKeyBytes());
@@ -369,27 +490,27 @@ namespace BTDB.ODBLayer
                 RemoveById(key, true);
             }
 
-            return keysToDelete.Count;
+            return (int) keysToDelete.Count;
         }
 
-        public int RemoveByKeyPrefixWithoutIterate(ByteBuffer keyBytesPrefix)
+        public int RemoveByKeyPrefixWithoutIterate(in ReadOnlySpan<byte> keyBytesPrefix)
         {
             if (_relationInfo.NeedImplementFreeContent())
             {
                 return RemoveByPrimaryKeyPrefix(keyBytesPrefix);
             }
+
             if (_hasSecondaryIndexes)
             {
                 //keyBytePrefix contains [3, Index Relation, Primary key prefix] we need
                 //                       [4, Index Relation, Secondary Key Index, Primary key prefix]
                 var idBytesLength = 1 + PackUnpack.LengthVUInt(_relationInfo.Id);
-                var writer = new ByteBufferWriter();
+                var writer = new SpanWriter();
                 foreach (var secKey in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
                 {
-                    WriteRelationSKPrefix(writer, secKey.Key);
-                    writer.WriteBlock(keyBytesPrefix.Buffer!, idBytesLength, keyBytesPrefix.Length - idBytesLength);
-                    _kvtr.SetKeyPrefix(writer.Data);
-                    _kvtr.EraseAll();
+                    WriteRelationSKPrefix(ref writer, secKey.Key);
+                    writer.WriteBlock(keyBytesPrefix.Slice((int) idBytesLength));
+                    _kvtr.EraseAll(writer.GetSpan());
                     writer.Reset();
                 }
             }
@@ -397,69 +518,58 @@ namespace BTDB.ODBLayer
             return RemovePrimaryKeysByPrefix(keyBytesPrefix);
         }
 
-        int RemovePrimaryKeysByPrefix(ByteBuffer keyBytesPrefix)
+        int RemovePrimaryKeysByPrefix(in ReadOnlySpan<byte> keyBytesPrefix)
         {
-            _transaction.TransactionProtector.Start();
-            _kvtr.SetKeyPrefix(keyBytesPrefix);
-            var removedCount = (int) _kvtr.GetKeyValueCount();
-
-            if (removedCount > 0)
-            {
-                _kvtr.EraseAll();
-                _modificationCounter.MarkModification();
-            }
-
-            return removedCount;
+            MarkModification();
+            return (int) _kvtr.EraseAll(keyBytesPrefix);
         }
 
-        public long CountWithPrefix(ByteBuffer keyBytesPrefix)
+        public long CountWithPrefix(in ReadOnlySpan<byte> keyBytesPrefix)
         {
-            _transaction.TransactionProtector.Start();
-            _kvtr.SetKeyPrefix(keyBytesPrefix);
-            return _kvtr.GetKeyValueCount();
+            return _kvtr.GetKeyValueCount(keyBytesPrefix);
         }
 
-        public bool AnyWithPrefix(ByteBuffer keyBytesPrefix)
+        public bool AnyWithPrefix(in ReadOnlySpan<byte> keyBytesPrefix)
         {
-            _transaction.TransactionProtector.Start();
-            _kvtr.SetKeyPrefix(keyBytesPrefix);
-            return _kvtr.FindFirstKey();
+            return _kvtr.FindFirstKey(keyBytesPrefix);
         }
 
-        public bool AnyWithProposition(ByteBuffer prefixBytes,
-            KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
-            KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
+        public bool AnyWithProposition(KeyProposition startKeyProposition, int prefixLen,
+            in ReadOnlySpan<byte> startKeyBytes,
+            KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
         {
-            return 0 < CountWithProposition(prefixBytes, startKeyProposition, startKeyBytes, endKeyProposition,
+            return 0 < CountWithProposition(startKeyProposition, prefixLen, startKeyBytes, endKeyProposition,
                 endKeyBytes);
         }
 
-        public long CountWithProposition(ByteBuffer prefixBytes,
-            KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
-            KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
+        public long CountWithProposition(KeyProposition startKeyProposition, int prefixLen,
+            in ReadOnlySpan<byte> startKeyBytes,
+            KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
         {
-            var keyValueTrProtector = _transaction.TransactionProtector;
+            if (!_kvtr.FindFirstKey(startKeyBytes.Slice(0, prefixLen)))
+                return 0;
 
+            var prefixIndex = _kvtr.GetKeyIndex();
+
+            var realEndKeyBytes = endKeyBytes;
             if (endKeyProposition == KeyProposition.Included)
-                endKeyBytes =
-                    RelationAdvancedEnumerator<T>.FindLastKeyWithPrefix(prefixBytes, endKeyBytes, _kvtr,
-                        keyValueTrProtector);
-
-            keyValueTrProtector.Start();
-            _kvtr.SetKeyPrefix(prefixBytes);
+                realEndKeyBytes =
+                    RelationAdvancedEnumerator<T>.FindLastKeyWithPrefix(endKeyBytes, _kvtr);
 
             long startIndex;
             long endIndex;
             if (endKeyProposition == KeyProposition.Ignored)
             {
-                endIndex = _kvtr.GetKeyValueCount() - 1;
+                _kvtr.FindLastKey(startKeyBytes.Slice(0, prefixLen));
+
+                endIndex = _kvtr.GetKeyIndex() - prefixIndex;
             }
             else
             {
-                switch (_kvtr.Find(endKeyBytes))
+                switch (_kvtr.Find(realEndKeyBytes, (uint) prefixLen))
                 {
                     case FindResult.Exact:
-                        endIndex = _kvtr.GetKeyIndex();
+                        endIndex = _kvtr.GetKeyIndex() - prefixIndex;
                         if (endKeyProposition == KeyProposition.Excluded)
                         {
                             endIndex--;
@@ -467,10 +577,10 @@ namespace BTDB.ODBLayer
 
                         break;
                     case FindResult.Previous:
-                        endIndex = _kvtr.GetKeyIndex();
+                        endIndex = _kvtr.GetKeyIndex() - prefixIndex;
                         break;
                     case FindResult.Next:
-                        endIndex = _kvtr.GetKeyIndex() - 1;
+                        endIndex = _kvtr.GetKeyIndex() - prefixIndex - 1;
                         break;
                     case FindResult.NotFound:
                         endIndex = -1;
@@ -486,10 +596,10 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                switch (_kvtr.Find(startKeyBytes))
+                switch (_kvtr.Find(startKeyBytes, (uint) prefixLen))
                 {
                     case FindResult.Exact:
-                        startIndex = _kvtr.GetKeyIndex();
+                        startIndex = _kvtr.GetKeyIndex() - prefixIndex;
                         if (startKeyProposition == KeyProposition.Excluded)
                         {
                             startIndex++;
@@ -497,10 +607,10 @@ namespace BTDB.ODBLayer
 
                         break;
                     case FindResult.Previous:
-                        startIndex = _kvtr.GetKeyIndex() + 1;
+                        startIndex = _kvtr.GetKeyIndex() - prefixIndex + 1;
                         break;
                     case FindResult.Next:
-                        startIndex = _kvtr.GetKeyIndex();
+                        startIndex = _kvtr.GetKeyIndex() - prefixIndex;
                         break;
                     case FindResult.NotFound:
                         startIndex = 0;
@@ -513,14 +623,14 @@ namespace BTDB.ODBLayer
             return Math.Max(0, endIndex - startIndex + 1);
         }
 
-        public int RemoveByIdAdvancedParam(ByteBuffer prefixBytes, uint prefixFieldCount,
+        public int RemoveByIdAdvancedParam(uint prefixFieldCount,
             EnumerationOrder order,
-            KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
-            KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
+            KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
+            KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
         {
-            using var enumerator = new RelationAdvancedEnumerator<T>(this, prefixBytes, prefixFieldCount,
-                order, startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes, 0);
-            var keysToDelete = new List<ByteBuffer>();
+            using var enumerator = new RelationAdvancedEnumerator<T>(this, prefixFieldCount,
+                order, startKeyProposition, prefixLen, startKeyBytes, endKeyProposition, endKeyBytes, 0);
+            var keysToDelete = new StructList<byte[]>();
             while (enumerator.MoveNext())
             {
                 keysToDelete.Add(enumerator.GetKeyBytes());
@@ -531,144 +641,132 @@ namespace BTDB.ODBLayer
                 RemoveById(key, true);
             }
 
-            return keysToDelete.Count;
+            return (int) keysToDelete.Count;
         }
 
         public IEnumerator<T> GetEnumerator()
         {
-            return new RelationEnumerator<T>(_transaction, _relationInfo, ByteBuffer.NewSync(_relationInfo.Prefix),
-                _modificationCounter, 0);
+            return new RelationEnumerator<T>(_transaction, _relationInfo, _relationInfo.Prefix, this, 0);
         }
 
-        public TItem FindByIdOrDefault<TItem>(ByteBuffer keyBytes, bool throwWhenNotFound, int loaderIndex)
+        public TItem FindByIdOrDefault<TItem>(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound, int loaderIndex)
         {
             return (TItem) FindByIdOrDefaultInternal(_relationInfo.ItemLoaderInfos[loaderIndex], keyBytes,
                 throwWhenNotFound);
         }
 
-        object? FindByIdOrDefaultInternal(RelationInfo.ItemLoaderInfo itemLoader, ByteBuffer keyBytes,
+        object? FindByIdOrDefaultInternal(RelationInfo.ItemLoaderInfo itemLoader, in ReadOnlySpan<byte> keyBytes,
             bool throwWhenNotFound)
         {
-            ResetKeyPrefix();
-            if (_kvtr.Find(keyBytes) != FindResult.Exact)
+            if (!_kvtr.FindExactKey(keyBytes))
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found.");
                 return default;
             }
 
-            var valueBytes = _kvtr.GetValue();
-            keyBytes = keyBytes.Slice(_relationInfo.Prefix.Length);
-            return itemLoader.CreateInstance(_transaction, keyBytes, valueBytes);
+            return itemLoader.CreateInstance(_transaction, keyBytes, _kvtr);
         }
 
-        public IEnumerator<TItem> FindByPrimaryKeyPrefix<TItem>(ByteBuffer keyBytesPrefix, int loaderIndex)
+        public IEnumerator<TItem> FindByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex)
         {
-            return new RelationPrimaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix,
-                _modificationCounter, loaderIndex);
+            return new RelationPrimaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, this,
+                loaderIndex);
         }
 
         public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
-            uint fieldInFirstBufferCount, ByteBuffer firstPart, ByteBuffer secondPart)
+            uint fieldInFirstBufferCount, in ReadOnlySpan<byte> firstPart, in ReadOnlySpan<byte> secondPart)
         {
-            var pkWriter = new ByteBufferWriter();
-            WriteRelationPKPrefix(pkWriter);
+            var pkWriter = new SpanWriter();
+            WriteRelationPKPrefix(ref pkWriter);
+            var readerFirst = new SpanReader(firstPart);
+            var readerSecond = new SpanReader(secondPart);
             _relationInfo.GetSKKeyValueToPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
-                (new ByteBufferReader(firstPart), new ByteBufferReader(secondPart), pkWriter);
-            return FindByIdOrDefaultInternal(itemLoader, pkWriter.Data, true);
+                (ref readerFirst, ref readerSecond, ref pkWriter);
+            return FindByIdOrDefaultInternal(itemLoader, pkWriter.GetSpan(), true);
         }
 
         public IEnumerator<TItem> FindBySecondaryKey<TItem>(uint secondaryKeyIndex, uint prefixFieldCount,
-            ByteBuffer secKeyBytes, int loaderIndex)
+            in ReadOnlySpan<byte> secKeyBytes, int loaderIndex)
         {
-            return new RelationSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, secKeyBytes.ToAsyncSafe(),
+            return new RelationSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, secKeyBytes,
                 secondaryKeyIndex, prefixFieldCount, this, loaderIndex);
         }
 
         //secKeyBytes contains already AllRelationsSKPrefix
         public TItem FindBySecondaryKeyOrDefault<TItem>(uint secondaryKeyIndex, uint prefixParametersCount,
-            ByteBuffer secKeyBytes,
+            in ReadOnlySpan<byte> secKeyBytes,
             bool throwWhenNotFound, int loaderIndex)
         {
-            _transaction.TransactionProtector.Start();
-            _kvtr.SetKeyPrefix(secKeyBytes);
-            if (!_kvtr.FindFirstKey())
+            _kvtr.InvalidateCurrentKey();
+            if (!_kvtr.FindFirstKey(secKeyBytes))
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found.");
-                return default(TItem);
+                return default;
             }
 
             var keyBytes = _kvtr.GetKey();
 
-            if (_kvtr.FindNextKey())
+            if (_kvtr.FindNextKey(secKeyBytes))
                 throw new BTDBException("Ambiguous result.");
 
             return (TItem) CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], secondaryKeyIndex,
-                prefixParametersCount, secKeyBytes, keyBytes);
+                prefixParametersCount, secKeyBytes, keyBytes.Slice(secKeyBytes.Length));
         }
 
-        void ResetKeyPrefix()
+        ReadOnlySpan<byte> WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj, ref SpanWriter writer)
         {
-            _transaction.TransactionProtector.Start();
-            _kvtr.SetKeyPrefix(ByteBuffer.NewEmpty());
-        }
-
-        ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj)
-        {
-            var keyWriter = new ByteBufferWriter();
             var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex);
-            WriteRelationSKPrefix(keyWriter, secondaryKeyIndex);
-            keySaver(_transaction, keyWriter, obj, this); //secondary key
-            return keyWriter.Data;
+            WriteRelationSKPrefix(ref writer, secondaryKeyIndex);
+            keySaver(_transaction, ref writer, obj); //secondary key
+            return writer.GetSpan();
         }
 
-        ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, ByteBuffer keyBytes, ByteBuffer valueBytes)
+        ReadOnlySpan<byte> WriteSecondaryKeyKey(uint secondaryKeyIndex, in ReadOnlySpan<byte> keyBytes,
+            in ReadOnlySpan<byte> valueBytes)
         {
-            var keyWriter = new ByteBufferWriter();
-            WriteRelationSKPrefix(keyWriter, secondaryKeyIndex);
+            var keyWriter = new SpanWriter();
+            WriteRelationSKPrefix(ref keyWriter, secondaryKeyIndex);
 
-            var o = valueBytes.Offset;
-            var version = (uint)PackUnpack.UnpackVUInt(valueBytes.Buffer!, ref o);
+            var version = (uint) PackUnpack.UnpackVUInt(valueBytes);
 
             var keySaver = _relationInfo.GetPKValToSKMerger(version, secondaryKeyIndex);
-            keySaver(_transaction, keyWriter, new ByteBufferReader(keyBytes), new ByteBufferReader(valueBytes),
-                _relationInfo.DefaultClientObject);
-            return keyWriter.Data;
+            var keyReader = new SpanReader(keyBytes);
+            var valueReader = new SpanReader(valueBytes);
+            keySaver(_transaction, ref keyWriter, ref keyReader, ref valueReader, _relationInfo.DefaultClientObject);
+            return keyWriter.GetSpan();
         }
 
-        void AddIntoSecondaryIndexes(T obj)
+        void AddIntoSecondaryIndexes(T obj, ref SpanWriter writer)
         {
-            ResetKeyPrefix();
-
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var keyBytes = WriteSecondaryKeyKey(sk.Key, obj);
-                _kvtr.CreateOrUpdateKeyValue(keyBytes, ByteBuffer.NewEmpty());
+                var keyBytes = WriteSecondaryKeyKey(sk.Key, obj, ref writer);
+                _kvtr.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>());
+                writer.Reset();
             }
         }
 
-        void UpdateSecondaryIndexes(T newValue, ByteBuffer oldKey, ByteBuffer oldValue)
+        void UpdateSecondaryIndexes(T newValue, in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue,
+            ref SpanWriter writer)
         {
-            ResetKeyPrefix();
-
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var newKeyBytes = WriteSecondaryKeyKey(key, newValue);
+                writer.Reset();
+                var newKeyBytes = WriteSecondaryKeyKey(key, newValue, ref writer);
                 var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
-                if (oldKeyBytes == newKeyBytes)
+                if (oldKeyBytes.SequenceEqual(newKeyBytes))
                     continue;
                 //remove old index
                 EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
                 //insert new value
-                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, ByteBuffer.NewEmpty());
+                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new ReadOnlySpan<byte>());
             }
         }
 
-        void RemoveSecondaryIndexes(ByteBuffer oldKey, ByteBuffer oldValue)
+        void RemoveSecondaryIndexes(in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue)
         {
-            ResetKeyPrefix();
-
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 var keyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
@@ -676,15 +774,14 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void EraseOldSecondaryKey(in ByteBuffer primaryKey, in ByteBuffer keyBytes, uint skKey)
+        void EraseOldSecondaryKey(in ReadOnlySpan<byte> primaryKey, in ReadOnlySpan<byte> keyBytes, uint skKey)
         {
-            if (_kvtr.Find(keyBytes) != FindResult.Exact)
+            if (!_kvtr.EraseCurrent(keyBytes))
             {
                 var sk = _relationInfo.ClientRelationVersionInfo.SecondaryKeys[skKey];
                 throw new BTDBException(
-                    $"Error in removing secondary indexes, previous index entry not found. {_relationInfo.Name}:{sk.Name} PK:{BitConverter.ToString(primaryKey.ToByteArray()).Replace("-", "")}");
+                    $"Error in removing secondary indexes, previous index entry not found. {_relationInfo.Name}:{sk.Name} PK:{BitConverter.ToString(primaryKey.ToArray()).Replace("-", "")}");
             }
-            _kvtr.EraseCurrent();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
@@ -692,15 +789,7 @@ namespace BTDB.ODBLayer
             return GetEnumerator();
         }
 
-        public int Count
-        {
-            get
-            {
-                _transaction.TransactionProtector.Start();
-                _kvtr.SetKeyPrefix(_relationInfo.Prefix);
-                return (int) _kvtr.GetKeyValueCount();
-            }
-        }
+        public int Count => (int) _kvtr.GetKeyValueCount(_relationInfo.Prefix);
 
         public Type BtdbInternalGetRelationInterfaceType()
         {

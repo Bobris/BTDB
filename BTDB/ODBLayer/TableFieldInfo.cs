@@ -10,11 +10,11 @@ namespace BTDB.ODBLayer
     public class UnresolvedTableFieldInfo : TableFieldInfo
     {
         readonly string _handlerName;
-        readonly byte[] _configuration;
+        readonly byte[]? _configuration;
         readonly string _tableName;
         readonly FieldHandlerOptions _handlerOptions;
 
-        UnresolvedTableFieldInfo(string name, string handlerName, byte[] configuration,
+        UnresolvedTableFieldInfo(string name, string handlerName, byte[]? configuration,
                                  string tableName, FieldHandlerOptions handlerOptions)
             : base(name, null)
         {
@@ -24,13 +24,12 @@ namespace BTDB.ODBLayer
             _handlerOptions = handlerOptions;
         }
 
-        internal static UnresolvedTableFieldInfo Load(AbstractBufferedReader reader,
-            string tableName, FieldHandlerOptions handlerOptions)
+        internal static UnresolvedTableFieldInfo Load(ref SpanReader reader, string tableName, FieldHandlerOptions handlerOptions)
         {
             var name = reader.ReadString();
             var handlerName = reader.ReadString();
             var configuration = reader.ReadByteArray();
-            return new UnresolvedTableFieldInfo(name, handlerName, configuration, tableName, handlerOptions);
+            return new UnresolvedTableFieldInfo(name!, handlerName!, configuration, tableName, handlerOptions);
         }
 
         internal TableFieldInfo Resolve(IFieldHandlerFactory fieldHandlerFactory)
@@ -53,7 +52,7 @@ namespace BTDB.ODBLayer
             Handler = handler;
         }
 
-        internal static TableFieldInfo Load(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory,
+        internal static TableFieldInfo Load(ref SpanReader reader, IFieldHandlerFactory fieldHandlerFactory,
             string tableName, FieldHandlerOptions handlerOptions)
         {
             var name = reader.ReadString();
@@ -79,7 +78,7 @@ namespace BTDB.ODBLayer
             return new TableFieldInfo(a != null ? a.Name : pi.Name, fieldHandler);
         }
 
-        internal void Save(AbstractBufferedWriter writer)
+        internal void Save(ref SpanWriter writer)
         {
             writer.WriteString(Name);
             writer.WriteString(Handler!.Name);

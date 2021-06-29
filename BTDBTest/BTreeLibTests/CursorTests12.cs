@@ -1,16 +1,14 @@
 ﻿using System;
 
-namespace BTreeLibTest
+namespace BTDBTest.BTreeLibTests
 {
     public class CursorTests12 : CursorTestsBase
     {
-        public override bool Is12 => true;
+        readonly byte[] _key = new byte[12];
 
-        byte[] _key = new byte[12];
-
-        public override ReadOnlySpan<byte> GetSampleValue(int index = 0)
+        protected override ReadOnlySpan<byte> GetSampleValue(int index = 0)
         {
-            for (int i = 0; i < 12; i++)
+            for (var i = 0; i < 12; i++)
             {
                 _key[i] = (byte)(index + i);
             }

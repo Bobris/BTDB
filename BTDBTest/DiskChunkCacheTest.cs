@@ -159,7 +159,7 @@ namespace BTDBTest
         }
 
         long CalcLength(IFileCollection fileCollection) =>
-            fileCollection.Enumerate().Sum(f => (long) f.GetSize());
+            fileCollection.Enumerate().Sum(f => (long)f.GetSize());
 
         [Fact]
         public void AccessEveryTenthTenTimesMoreMakesItStay()
@@ -174,7 +174,7 @@ namespace BTDBTest
                         Put(cache, i);
                         for (var j = 0; j < (i % 5 == 0 ? 10 + i : 1); j++)
                             Get(cache, i);
-                        if (i==42) Thread.Sleep(500);
+                        if (i == 42) Thread.Sleep(500);
                         Assert.True(fileCollection.Enumerate().Sum(f => (long)f.GetSize()) <= cacheCapacity);
                     }
                     _output.WriteLine(cache.CalcStats());

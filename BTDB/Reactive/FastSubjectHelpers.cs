@@ -14,7 +14,7 @@ namespace BTDB.Reactive
 
         internal interface IHasValue
         {
-            T Value { get; } 
+            T Value { get; }
         }
 
         internal static readonly DisposedSubject DisposedSubjectMarker = new DisposedSubject();

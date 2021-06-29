@@ -31,7 +31,8 @@ namespace SimpleTester
             //new EventStorageSpeedTestAwaitable().Run();
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
-            new RelationSpeedTest().Run();
+            //new RelationSpeedTest().Run();
+            BenchmarkRunner.Run<BenchmarkRelationPartialView>();
             //BenchmarkRunner.Run<EventSerializationBenchmark>();
             //new TestCompactor().Run(new CancellationToken());
             //new CompactorLatencyMeasurement().Run();

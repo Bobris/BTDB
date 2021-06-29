@@ -1,19 +1,15 @@
 # BTDB
 
-[![Build Status](https://dev.azure.com/bletocha/bletocha/_apis/build/status/Bobris.BTDB)](https://dev.azure.com/bletocha/bletocha/_build/latest?definitionId=1)
-
 Currently this project these parts:
 
 - Key Value Database
 - Wrapped Dynamic IL generation with debugging + extensions
 - IOC Container
-- Object Database
-- RPC Library
-- Dto Channel
+- Object Database with Relations
 - Snappy Compression
 - Event Storage
 
-All code written in C# and licensed under very permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting only .NetCore 3.0 or better, main code has just one dependency (Mono.Posix.NETStandard). Code is tested using xUnit Framework. Used in production on Windows and Linux, on OSX works as well.
+All code written in C# and licensed under very permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting .Net 5.0, main code has just 2 dependencies (Mono.Posix.NETStandard, Microsoft.Extensions.Primitives). Code is tested using xUnit Framework. Used in production on Windows and Linux, on OSX works as well.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
 It is available in Nuget <http://www.nuget.org/packages/BTDB>. Source code drops are Github releases.
 
@@ -98,6 +94,7 @@ This help you to write fluent code which generates IL code in runtime. It is use
 - By default objects are stored inline in parent object, use IIndirect for objects with Oid which will load lazily
 
 Documentation: [https://github.com/Bobris/BTDB/blob/master/Doc/ODBDictionary.md]
+
 Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
 
 ### Sample code:
@@ -123,34 +120,7 @@ Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
 ### Roadmap:
 
 - Support more types of properties
-- Performance tests
-- Free text search (far future)
-
----
-
-## RPC Library
-
-Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad performance)
-
-### Features:
-
-- TCP/IP communication, service types negotiation
-- Automatic serialization with dynamically generated optimal IL code.
-- Both Client and Server can register services
-- Async calls, OneWay calls, Exception propagation
-- Services could be interfaces, classes, delegates
-
-### Sample code:
-
-    SimpleDTO received = null;
-    _first.RegisterLocalService((Action<SimpleDTO>)(a => received = a));
-    var d = _second.QueryRemoteService<Action<SimpleDTO>>();
-    d(new SimpleDTO { Name = "Text", Number = 3.14 });
-    Assert.NotNull(received);
-
-### Roadmap:
-
-- Even more speed and event based TCP/IP server channels
+- Free text search (far future if ever)
 
 ---
 
@@ -166,26 +136,6 @@ Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad 
 
 ---
 
-## Dto Channel
-
-### Features:
-
-- Send and receive Dto over Tcp/Ip
-- Identical serialization from Event Storage
-
-### Sample code:
-
-    object u1 = new User { Name = "A", Age = 1 };
-    object u2 = null;
-    _second.OnReceive.Subscribe(o => u2 = o);
-    _first.Send(u1);
-
-### Roadmap:
-
-- Even more speed and event based TCP/IP server channels
-
----
-
 ## Snappy Compression
 
 ### Features:
@@ -197,7 +147,7 @@ Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad 
 
 ### Roadmap:
 
-- Slower but better compressors options
+- Some speed optimizations around Spans would help
 
 [acid]: http://en.wikipedia.org/wiki/ACID
 [mvcc]: http://en.wikipedia.org/wiki/Multiversion_concurrency_control

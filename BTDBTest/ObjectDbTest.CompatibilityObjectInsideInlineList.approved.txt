@@ -1,20 +1,20 @@
-﻿Used key: |00 03 Value len:1
+﻿Used key: 00 03 Value len:1
 Singleton 1-LanguageMap oid:1
-Used key: 00 00|01 Value len:12
-Used key: 00 02|01 Value len:1
-Used key: 01|01 Value len:3
-Used key: 00 01|01 01 Value len:51
+Used key: 00 00 01 Value len:12
+Used key: 00 02 01 Value len:1
+Used key: 01 01 Value len:3
+Used key: 00 01 01 01 Value len:51
 Object oid:1 1-LanguageMap version:1
 StartField Items
 StartDictionary
-Used key: 02 00|64 Value len:14
+Used key: 02 00 64 Value len:14
 StartDictKey
 ScalarObj 100
 ScalarStr 100
 EndDictKey
 StartDictValue
-Used key: 00 00|02 Value len:11
-Used key: 00 01|02 01 Value len:71
+Used key: 00 00 02 Value len:11
+Used key: 00 01 02 01 Value len:71
 StartInlineObject 2-LanguageDb-1
 StartField CompanyId
 ScalarObj 1
@@ -38,21 +38,21 @@ EndDictionary
 EndField
 EndObject
 Singleton 3-SheetMap oid:2
-Used key: 00 00|03 Value len:9
-Used key: 00 02|03 Value len:1
-Used key: 01|02 Value len:3
-Used key: 00 01|03 01 Value len:48
+Used key: 00 00 03 Value len:9
+Used key: 00 02 03 Value len:1
+Used key: 01 02 Value len:3
+Used key: 00 01 03 01 Value len:48
 Object oid:2 3-SheetMap version:1
 StartField Items
 StartDictionary
-Used key: 02 01|65 Value len:40
+Used key: 02 01 65 Value len:40
 StartDictKey
 ScalarObj 101
 ScalarStr 101
 EndDictKey
 StartDictValue
-Used key: 00 00|04 Value len:8
-Used key: 00 01|04 01 Value len:416
+Used key: 00 00 04 Value len:8
+Used key: 00 01 04 01 Value len:416
 StartInlineObject 4-SheetDb-1
 StartField CompanyId
 ScalarObj 1
@@ -112,7 +112,7 @@ ScalarStr 1
 EndField
 EndInlineObject
 EndDictValue
-Used key: 02 01|66 Value len:45
+Used key: 02 01 66 Value len:45
 StartDictKey
 ScalarObj 102
 ScalarStr 102
@@ -181,21 +181,21 @@ EndDictionary
 EndField
 EndObject
 Singleton 5-AttributeMap oid:3
-Used key: 00 00|05 Value len:13
-Used key: 00 02|05 Value len:1
-Used key: 01|03 Value len:3
-Used key: 00 01|05 01 Value len:52
+Used key: 00 00 05 Value len:13
+Used key: 00 02 05 Value len:1
+Used key: 01 03 Value len:3
+Used key: 00 01 05 01 Value len:52
 Object oid:3 5-AttributeMap version:1
 StartField Items
 StartDictionary
-Used key: 02 02|67 Value len:36
+Used key: 02 02 67 Value len:36
 StartDictKey
 ScalarObj 103
 ScalarStr 103
 EndDictKey
 StartDictValue
-Used key: 00 00|06 Value len:12
-Used key: 00 01|06 01 Value len:665
+Used key: 00 00 06 Value len:12
+Used key: 00 01 06 01 Value len:665
 StartInlineObject 6-AttributeDb-1
 StartField CompanyId
 ScalarObj 1
@@ -248,7 +248,7 @@ OidReference 0
 EndField
 EndInlineObject
 EndDictValue
-Used key: 02 02|68 Value len:40
+Used key: 02 02 68 Value len:40
 StartDictKey
 ScalarObj 104
 ScalarStr 104
@@ -306,7 +306,7 @@ OidReference 0
 EndField
 EndInlineObject
 EndDictValue
-Used key: 02 02|69 Value len:39
+Used key: 02 02 69 Value len:39
 StartDictKey
 ScalarObj 105
 ScalarStr 105
@@ -364,7 +364,7 @@ OidReference 0
 EndField
 EndInlineObject
 EndDictValue
-Used key: 02 02|6A Value len:37
+Used key: 02 02 6A Value len:37
 StartDictKey
 ScalarObj 106
 ScalarStr 106
@@ -426,21 +426,21 @@ EndDictionary
 EndField
 EndObject
 Singleton 7-SchemaMap oid:4
-Used key: 00 00|07 Value len:10
-Used key: 00 02|07 Value len:1
-Used key: 01|04 Value len:3
-Used key: 00 01|07 01 Value len:49
+Used key: 00 00 07 Value len:10
+Used key: 00 02 07 Value len:1
+Used key: 01 04 Value len:3
+Used key: 00 01 07 01 Value len:49
 Object oid:4 7-SchemaMap version:1
 StartField Items
 StartDictionary
-Used key: 02 03|6B Value len:1468
+Used key: 02 03 6B Value len:1468
 StartDictKey
 ScalarObj 107
 ScalarStr 107
 EndDictKey
 StartDictValue
-Used key: 00 00|08 Value len:9
-Used key: 00 01|08 01 Value len:505
+Used key: 00 00 08 Value len:9
+Used key: 00 01 08 01 Value len:505
 StartInlineObject 8-SchemaDb-1
 StartField CompanyId
 ScalarObj 1
@@ -472,8 +472,8 @@ ScalarStr Neopost
 EndField
 StartField BarcodeSetting
 Inline ref -1
-Used key: 00 00|09 Value len:15
-Used key: 00 01|09 01 Value len:259
+Used key: 00 00 09 Value len:15
+Used key: 00 01 09 01 Value len:259
 StartInlineObject 9-BarcodeSetting-1
 StartField TopPosition
 ScalarObj 0.015
@@ -485,8 +485,8 @@ ScalarStr 0.007
 EndField
 StartField QuietZone
 Inline ref -1
-Used key: 00 00|0A Value len:10
-Used key: 00 01|0A 01 Value len:51
+Used key: 00 00 0A Value len:10
+Used key: 00 01 0A 01 Value len:51
 StartInlineObject 10-QuietZone-1
 StartField VerticalPadding
 ScalarObj 0.0085
@@ -504,8 +504,8 @@ ScalarStr Vertical
 EndField
 StartField OmrSetting
 Inline ref -2
-Used key: 00 00|0B Value len:11
-Used key: 00 01|0B 01 Value len:65
+Used key: 00 00 0B Value len:11
+Used key: 00 01 0B 01 Value len:65
 StartInlineObject 11-OmrSetting-1
 StartField WidthOfMark
 ScalarObj 0.009
@@ -523,8 +523,8 @@ EndInlineObject
 EndField
 StartField Code39Setting
 Inline ref -3
-Used key: 00 00|0C Value len:14
-Used key: 00 01|0C 01 Value len:59
+Used key: 00 00 0C Value len:14
+Used key: 00 01 0C 01 Value len:59
 StartInlineObject 12-Code39Setting-1
 StartField Height
 ScalarObj 0.009
@@ -542,8 +542,8 @@ EndInlineObject
 EndField
 StartField DataMatrixSetting
 Inline ref -4
-Used key: 00 00|0D Value len:18
-Used key: 00 01|0D 01 Value len:69
+Used key: 00 00 0D Value len:18
+Used key: 00 01 0D 01 Value len:69
 StartInlineObject 13-DataMatrixSetting-1
 StartField CellSize
 ScalarObj 0.000381
@@ -561,8 +561,8 @@ StartField InserterFunctions
 StartList
 StartItem
 Inline ref -3
-Used key: 00 00|0E Value len:17
-Used key: 00 01|0E 01 Value len:2956
+Used key: 00 00 0E Value len:17
+Used key: 00 01 0E 01 Value len:2956
 StartInlineObject 14-InserterFunction-1
 StartField FunctionType
 ScalarObj StartMark
@@ -2508,8 +2508,8 @@ ScalarStr SequenceCheck
 EndField
 StartField Encoding
 Inline ref -1
-Used key: 00 00|0F Value len:9
-Used key: 00 01|0F 01 Value len:479
+Used key: 00 00 0F Value len:9
+Used key: 00 01 0F 01 Value len:479
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Binary
@@ -2871,8 +2871,8 @@ StartField RuntimeGroups
 StartList
 StartItem
 Inline ref -26
-Used key: 00 00|10 Value len:12
-Used key: 00 01|10 01 Value len:87
+Used key: 00 00 10 Value len:12
+Used key: 00 01 10 01 Value len:87
 StartInlineObject 16-RuleSetting-1
 StartField Priority
 ScalarObj 1
@@ -2882,8 +2882,8 @@ StartField PrioritizedFunctionSettings
 StartList
 StartItem
 Inline ref -2
-Used key: 00 00|11 Value len:27
-Used key: 00 01|11 01 Value len:1149
+Used key: 00 00 11 Value len:27
+Used key: 00 01 11 01 Value len:1149
 StartInlineObject 17-PrioritizedFunctionSetting-1
 StartField Priority
 ScalarObj 1
@@ -3739,8 +3739,8 @@ StartField ConfigurationGroups
 StartList
 StartItem
 Inline ref -35
-Used key: 00 00|12 Value len:19
-Used key: 00 01|12 01 Value len:1142
+Used key: 00 00 12 Value len:19
+Used key: 00 01 12 01 Value len:1142
 StartInlineObject 18-LimitedRuleSetting-1
 StartField MinSelected
 ScalarObj 1
@@ -3837,7 +3837,7 @@ EndList
 EndField
 EndInlineObject
 EndDictValue
-Used key: 02 03|6C Value len:1952
+Used key: 02 03 6C Value len:1952
 StartDictKey
 ScalarObj 108
 ScalarStr 108
@@ -8523,7 +8523,7 @@ EndList
 EndField
 EndInlineObject
 EndDictValue
-Used key: 02 03|6D Value len:1730
+Used key: 02 03 6D Value len:1730
 StartDictKey
 ScalarObj 109
 ScalarStr 109
@@ -8713,8 +8713,8 @@ StartField CompositeFunctions
 StartList
 StartItem
 Inline ref -3
-Used key: 00 00|13 Value len:18
-Used key: 00 01|13 01 Value len:1431
+Used key: 00 00 13 Value len:18
+Used key: 00 01 13 01 Value len:1431
 StartInlineObject 19-CompositeFunction-1
 StartField FunctionType
 ScalarObj SheetNumber
@@ -12921,7 +12921,7 @@ EndList
 EndField
 EndInlineObject
 EndDictValue
-Used key: 02 03|6E Value len:3446
+Used key: 02 03 6E Value len:3446
 StartDictKey
 ScalarObj 110
 ScalarStr 110
@@ -20955,7 +20955,7 @@ EndList
 EndField
 EndInlineObject
 EndDictValue
-Used key: 02 03|6F Value len:1733
+Used key: 02 03 6F Value len:1733
 StartDictKey
 ScalarObj 111
 ScalarStr 111
@@ -25351,7 +25351,7 @@ EndList
 EndField
 EndInlineObject
 EndDictValue
-Used key: 02 03|70 Value len:3454
+Used key: 02 03 70 Value len:3454
 StartDictKey
 ScalarObj 112
 ScalarStr 112
@@ -33389,21 +33389,21 @@ EndDictionary
 EndField
 EndObject
 Singleton 20-UpdatePrinterListMap oid:5
-Used key: 00 00|14 Value len:21
-Used key: 00 02|14 Value len:1
-Used key: 01|05 Value len:3
-Used key: 00 01|14 01 Value len:60
+Used key: 00 00 14 Value len:21
+Used key: 00 02 14 Value len:1
+Used key: 01 05 Value len:3
+Used key: 00 01 14 01 Value len:60
 Object oid:5 20-UpdatePrinterListMap version:1
 StartField Items
 StartDictionary
-Used key: 02 04|01 Value len:19
+Used key: 02 04 01 Value len:19
 StartDictKey
 ScalarObj 1
 ScalarStr 1
 EndDictKey
 StartDictValue
-Used key: 00 00|15 Value len:20
-Used key: 00 01|15 01 Value len:259
+Used key: 00 00 15 Value len:20
+Used key: 00 01 15 01 Value len:259
 StartInlineObject 21-UpdatePrinterListDb-1
 StartField CurrentSearchingPrinterName
 ScalarObj 
@@ -33444,23 +33444,23 @@ EndDictionary
 EndField
 EndObject
 Singleton 22-ProcessableItemStateMap oid:6
-Used key: 00 00|16 Value len:24
-Used key: 00 02|16 Value len:1
-Used key: 01|06 Value len:3
-Used key: 00 01|16 01 Value len:5452
+Used key: 00 00 16 Value len:24
+Used key: 00 02 16 Value len:1
+Used key: 01 06 Value len:3
+Used key: 00 01 16 01 Value len:5452
 Object oid:6 22-ProcessableItemStateMap version:1
 StartField States
 StartDictionary
-Used key: 02 05|B5 Value len:1
+Used key: 02 05 B5 Value len:1
 StartDictKey
 ScalarObj PrinterList_Queued
 ScalarStr PrinterList_Queued
 EndDictKey
 StartDictValue
 OidReference 7
-Used key: 01|07 Value len:12
-Used key: 00 00|17 Value len:22
-Used key: 00 01|17 01 Value len:53
+Used key: 01 07 Value len:12
+Used key: 00 00 17 Value len:22
+Used key: 00 01 17 01 Value len:53
 Object oid:7 23-ProcessableItemStates version:1
 StartField Items
 StartDictionary
@@ -33470,8 +33470,8 @@ ScalarStr 1
 EndDictKey
 StartDictValue
 Inline ref -2
-Used key: 00 00|1A Value len:16
-Used key: 00 01|1A 01 Value len:62
+Used key: 00 00 1A Value len:16
+Used key: 00 01 1A 01 Value len:62
 StartInlineObject 26-ProcessableItem-1
 StartField CompanyId
 ScalarObj 1
@@ -33495,21 +33495,21 @@ EndDictionary
 EndField
 EndObject
 Singleton 24-AimsConfigurationMap oid:8
-Used key: 00 00|18 Value len:21
-Used key: 00 02|18 Value len:1
-Used key: 01|08 Value len:3
-Used key: 00 01|18 01 Value len:60
+Used key: 00 00 18 Value len:21
+Used key: 00 02 18 Value len:1
+Used key: 01 08 Value len:3
+Used key: 00 01 18 01 Value len:60
 Object oid:8 24-AimsConfigurationMap version:1
 StartField Items
 StartDictionary
-Used key: 02 06|01 Value len:25
+Used key: 02 06 01 Value len:25
 StartDictKey
 ScalarObj 1
 ScalarStr 1
 EndDictKey
 StartDictValue
-Used key: 00 00|19 Value len:20
-Used key: 00 01|19 01 Value len:174
+Used key: 00 00 19 Value len:20
+Used key: 00 01 19 01 Value len:174
 StartInlineObject 25-AimsConfigurationDb-1
 StartField CompanyId
 ScalarObj 1

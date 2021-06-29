@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -10,6 +11,7 @@ namespace BTDB.ODBLayer
     public interface IRelation<T> : ICovariantRelation<T>
     {
         bool Upsert(T item);
+        void SerializeInsert(ref SpanWriter writer, T item);
     }
 
     public interface IRelation

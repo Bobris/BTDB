@@ -104,6 +104,8 @@ namespace BTDB.EventStore2Layer
             throw new InvalidOperationException();
         }
 
+        public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+
         public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
         {
             throw new InvalidOperationException();

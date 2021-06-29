@@ -6,6 +6,6 @@ namespace BTDB.FieldHandler
     public interface IFieldHandlerWithInit
     {
         bool NeedInit();
-        void Init(IILGen ilGenerator, Action<IILGen> pushReaderCtx);
+        void Init(IILGen ilGenerator, Action<IILGen>? pushReaderCtx);
     }
 }

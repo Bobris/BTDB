@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace BTDB.KVDBLayer
 {
-    class FileKeyIndex : IKeyIndex
+    public class FileKeyIndex : IKeyIndex
     {
         readonly long _generation;
         readonly Guid? _guid;
@@ -37,7 +37,7 @@ namespace BTDB.KVDBLayer
 
         public long[]? UsedFilesInOlderGenerations { get; set; }
 
-        public FileKeyIndex(AbstractBufferedReader reader, Guid? guid, bool withCommitUlong, bool modern, bool withUlongs)
+        public FileKeyIndex(ref SpanReader reader, Guid? guid, bool withCommitUlong, bool modern, bool withUlongs)
         {
             _guid = guid;
             _generation = reader.ReadVInt64();
@@ -69,9 +69,9 @@ namespace BTDB.KVDBLayer
             _ulongs = ulongs?.ToArray();
         }
 
-        internal static void SkipHeader(AbstractBufferedReader reader)
+        public static void SkipHeader(ref SpanReader reader)
         {
-            FileCollectionWithFileInfos.SkipHeader(reader);
+            FileCollectionWithFileInfos.SkipHeader(ref reader);
             var type = (KVFileType)reader.ReadUInt8();
             var withCommitUlong = type == KVFileType.KeyIndexWithCommitUlong || type == KVFileType.ModernKeyIndex || type == KVFileType.ModernKeyIndexWithUlongs;
             reader.SkipVInt64(); // generation
@@ -87,9 +87,9 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        internal void WriteHeader(AbstractBufferedWriter writer)
+        internal void WriteHeader(ref SpanWriter writer)
         {
-            FileCollectionWithFileInfos.WriteHeader(writer, _guid);
+            FileCollectionWithFileInfos.WriteHeader(ref writer, _guid);
             writer.WriteUInt8((byte)KVFileType.ModernKeyIndexWithUlongs);
             writer.WriteVInt64(_generation);
             writer.WriteVUInt32(_trLogFileId);

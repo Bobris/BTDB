@@ -63,12 +63,12 @@ namespace BTDB.Collections
             return ref _a![_count++];
         }
 
-        public ref T Insert(uint index) => ref Insert((int) index);
-        public ref T Insert(Index index) => ref Insert(index.GetOffset((int) _count));
+        public ref T Insert(uint index) => ref Insert((int)index);
+        public ref T Insert(Index index) => ref Insert(index.GetOffset((int)_count));
 
         public ref T Insert(int index)
         {
-            if ((uint) index > _count) ThrowIndexOutOfRange(index);
+            if ((uint)index > _count) ThrowIndexOutOfRange(index);
             if (_a == null || _count == _a.Length)
             {
                 Expand();
@@ -77,8 +77,8 @@ namespace BTDB.Collections
             _count++;
             if (index + 1 < _count)
             {
-                AsSpan(index, (int) _count - index - 1)
-                    .CopyTo(AsSpan(index + 1, (int) (_count - index - 1)));
+                AsSpan(index, (int)_count - index - 1)
+                    .CopyTo(AsSpan(index + 1, (int)(_count - index - 1)));
             }
 
             _a![index] = default!;
@@ -87,8 +87,8 @@ namespace BTDB.Collections
 
         public void RemoveAt(Index index)
         {
-            var idx = index.GetOffset((int) _count);
-            if ((uint) idx >= _count) ThrowIndexOutOfRange(idx);
+            var idx = index.GetOffset((int)_count);
+            if ((uint)idx >= _count) ThrowIndexOutOfRange(idx);
             AsSpan(idx + 1).CopyTo(AsSpan(idx));
             _count--;
             _a![_count] = default!;
@@ -105,7 +105,7 @@ namespace BTDB.Collections
         {
             if (count > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(count));
             if (count <= _count) return;
-            Array.Resize(ref _a, (int) count);
+            Array.Resize(ref _a, (int)count);
         }
 
         public void Truncate()
@@ -116,18 +116,18 @@ namespace BTDB.Collections
             }
             else
             {
-                Array.Resize(ref _a, (int) _count);
+                Array.Resize(ref _a, (int)_count);
             }
         }
 
         void Expand()
         {
-            Array.Resize(ref _a, (int) Math.Min(int.MaxValue, Math.Max(2u, _count * 2)));
+            Array.Resize(ref _a, (int)Math.Min(int.MaxValue, Math.Max(2u, _count * 2)));
         }
 
         void Expand(uint count)
         {
-            Array.Resize(ref _a, (int) Math.Min(int.MaxValue, Math.Max(count, _count * 2)));
+            Array.Resize(ref _a, (int)Math.Min(int.MaxValue, Math.Max(count, _count * 2)));
         }
 
         public ref T this[int index]
@@ -136,7 +136,7 @@ namespace BTDB.Collections
             [DebuggerStepThrough]
             get
             {
-                if ((uint) index >= _count)
+                if ((uint)index >= _count)
                     ThrowIndexOutOfRange(index);
                 return ref _a![index];
             }
@@ -158,7 +158,7 @@ namespace BTDB.Collections
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             [DebuggerStepThrough]
-            get => ref this[index.GetOffset((int) _count)];
+            get => ref this[index.GetOffset((int)_count)];
         }
 
         public Span<T> this[Range range]
@@ -234,7 +234,7 @@ namespace BTDB.Collections
         [DebuggerStepThrough]
         public Span<T> AsSpan()
         {
-            return _a.AsSpan(0, (int) _count);
+            return _a.AsSpan(0, (int)_count);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -245,7 +245,7 @@ namespace BTDB.Collections
         [DebuggerStepThrough]
         public readonly ReadOnlySpan<T> AsReadOnlySpan()
         {
-            return _a.AsSpan(0, (int) _count);
+            return _a.AsSpan(0, (int)_count);
         }
 
 
@@ -257,7 +257,7 @@ namespace BTDB.Collections
         [DebuggerStepThrough]
         public readonly ReadOnlyMemory<T> AsReadOnlyMemory()
         {
-            return _a.AsMemory(0, (int) _count);
+            return _a.AsMemory(0, (int)_count);
         }
 
         [DebuggerStepThrough]
@@ -320,12 +320,12 @@ namespace BTDB.Collections
 
         public Enumerator GetEnumerator()
         {
-            return new Enumerator((int) _count, _a!);
+            return new Enumerator((int)_count, _a!);
         }
 
         IEnumerator<T> IEnumerable<T>.GetEnumerator()
         {
-            return new Enumerator((int) _count, _a!);
+            return new Enumerator((int)_count, _a!);
         }
 
         IEnumerator IEnumerable.GetEnumerator()
@@ -347,7 +347,7 @@ namespace BTDB.Collections
             var totalCount = _count + count;
             if (_a == null || totalCount > _a.Length)
                 Expand(totalCount);
-            _a.AsSpan((int) _count, (int) count).Fill(value);
+            _a.AsSpan((int)_count, (int)count).Fill(value);
             _count = totalCount;
         }
 
@@ -355,10 +355,10 @@ namespace BTDB.Collections
         {
             if (range.IsEmpty)
                 return;
-            var count = _count + (uint) range.Length;
+            var count = _count + (uint)range.Length;
             if (_a == null || count > _a.Length)
                 Expand(count);
-            range.CopyTo(_a.AsSpan((int) _count));
+            range.CopyTo(_a.AsSpan((int)_count));
             _count = count;
         }
 
@@ -379,7 +379,7 @@ namespace BTDB.Collections
             for (uint i = 0; i < _count; i++)
             {
                 if (comparer.Equals(_a![i], value))
-                    return (int) i;
+                    return (int)i;
             }
 
             return -1;
@@ -416,32 +416,32 @@ namespace BTDB.Collections
                 return;
             }
 
-            var totalCount = (uint) (_count + itemsToInsert - 1);
+            var totalCount = (uint)(_count + itemsToInsert - 1);
             if (totalCount > _a!.Length)
                 Expand(totalCount);
 
             _count = totalCount;
 
-            AsSpan(index + 1, (int) _count - (int) itemsToInsert - index).CopyTo(AsSpan((int) (index + itemsToInsert)));
+            AsSpan(index + 1, (int)_count - (int)itemsToInsert - index).CopyTo(AsSpan((int)(index + itemsToInsert)));
             newItems.CopyTo(AsSpan(index));
         }
 
         public void InsertRange(Index index, in ReadOnlySpan<T> values)
         {
-            var idx = index.GetOffset((int) _count);
-            if ((uint) idx > _count) ThrowIndexOutOfRange(idx);
+            var idx = index.GetOffset((int)_count);
+            if ((uint)idx > _count) ThrowIndexOutOfRange(idx);
             if (values.IsEmpty) return;
-            var totalCount = _count + (uint) values.Length;
+            var totalCount = _count + (uint)values.Length;
             Expand(totalCount);
             _count = totalCount;
-            AsSpan(idx, (int) _count - values.Length - idx).CopyTo(AsSpan(idx + values.Length));
+            AsSpan(idx, (int)_count - values.Length - idx).CopyTo(AsSpan(idx + values.Length));
             values.CopyTo(AsSpan(idx));
         }
 
         public void Sort(IComparer<T> comparer)
         {
             if (_count > 1)
-                Array.Sort(_a!, 0, (int) _count, comparer);
+                Array.Sort(_a!, 0, (int)_count, comparer);
         }
     }
 }

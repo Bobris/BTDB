@@ -1,11 +1,11 @@
-﻿using BTDB.Allocators;
+﻿using System;
+using BTDB.Allocators;
 using BTDB.BTreeLib;
-using System;
 using Xunit;
 
-namespace BTreeLibTest
+namespace BTDBTest.BTreeLibTests
 {
-    public class RootNode12Tests: IDisposable
+    public class RootNode12Tests : IDisposable
     {
         LeakDetectorWrapperAllocator _allocator;
         BTreeImpl12 _impl;

@@ -1,5 +1,5 @@
 ﻿Relation DoubleDoubleRefsRelation
-Used key: 03 01|01 Value len:23
+Used key: 03 01 01 Value len:23
 BeginKey
 StartField Id
 ScalarObj 1
@@ -9,13 +9,13 @@ EndKey
 BeginValue
 StartField R1
 Inline ref -1
-Used key: 00 00|01 Value len:9
-Used key: 00 01|01 01 Value len:35
+Used key: 00 00 01 Value len:9
+Used key: 00 01 01 01 Value len:35
 StartInlineObject 1-DuoRule1-1
 StartField R1
 Inline ref -1
-Used key: 00 00|02 Value len:6
-Used key: 00 01|02 01 Value len:14
+Used key: 00 00 02 Value len:6
+Used key: 00 01 02 01 Value len:14
 StartInlineObject 2-Rule1-1
 StartField Name
 ScalarObj 
@@ -58,7 +58,7 @@ EndField
 EndInlineObject
 EndField
 EndValue
-Used key: 03 01|02 Value len:23
+Used key: 03 01 02 Value len:23
 BeginKey
 StartField Id
 ScalarObj 2

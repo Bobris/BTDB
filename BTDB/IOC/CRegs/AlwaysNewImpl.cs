@@ -44,7 +44,7 @@ namespace BTDB.IOC.CRegs
         {
             var il = context.IL;
             var needsForProps = context.NeedsForProperties(_implementationType, _arePropertiesAutowired).ToList();
-            if (needsForProps.Count>0)
+            if (needsForProps.Count > 0)
             {
                 var result = il.DeclareLocal(_implementationType);
                 context.PushToILStack(context.NeedsForConstructor(_constructorInfo));
@@ -75,7 +75,7 @@ namespace BTDB.IOC.CRegs
                         }
                     }
 
-                    il.Call(need.PropertyInfo!.GetSetMethod(true)!);
+                    il.Call(need.PropertyInfo!.GetAnySetMethod()!);
                 }
 
                 return result;
@@ -89,6 +89,15 @@ namespace BTDB.IOC.CRegs
         public IEnumerable<INeed> GetNeeds(IGenerationContext context)
         {
             return context.NeedsForConstructor(_constructorInfo).Concat(context.NeedsForProperties(_implementationType, _arePropertiesAutowired));
+        }
+
+        public bool IsSingletonSafe()
+        {
+            return false;
+        }
+
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
         }
     }
 }

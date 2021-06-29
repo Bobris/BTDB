@@ -6,7 +6,7 @@ namespace BTDB.KVDBLayer
     public interface IFileCollectionFile
     {
         uint Index { get; }
-        AbstractBufferedReader GetExclusiveReader();
+        ISpanReader GetExclusiveReader();
 
         // RandomRead will be used, it is good to have this file in cache
         void AdvisePrefetch();
@@ -14,11 +14,11 @@ namespace BTDB.KVDBLayer
         void RandomRead(Span<byte> data, ulong position, bool doNotCache);
 
         // can use RandomRead and when will stop writing SwitchToReadOnlyMode will be called
-        AbstractBufferedWriter GetAppenderWriter();
+        ISpanWriter GetAppenderWriter();
 
         // will just write and not use RandomRead, after writing will finish SwitchToDisposedMode will be called
         // this should not need to cache written data in memory, saving memory
-        AbstractBufferedWriter GetExclusiveAppenderWriter();
+        ISpanWriter GetExclusiveAppenderWriter();
 
         // called in non-durable transaction commit, kind of asynchronous Writer.FlushBuffers
         void Flush();

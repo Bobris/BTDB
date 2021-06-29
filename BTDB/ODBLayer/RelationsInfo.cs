@@ -14,6 +14,7 @@ namespace BTDB.ODBLayer
             FieldHandlerFactory = objectDB.FieldHandlerFactory;
             TypeConvertorGenerator = objectDB.TypeConvertorGenerator;
             Container = objectDB.ActualOptions.Container;
+            FieldHandlerLogger = objectDB.FieldHandlerLogger;
         }
 
         public IFieldHandlerFactory FieldHandlerFactory { get; }
@@ -21,6 +22,7 @@ namespace BTDB.ODBLayer
         public ITypeConvertorGenerator TypeConvertorGenerator { get; }
 
         public IContainer Container { get; }
+        public IFieldHandlerLogger? FieldHandlerLogger { get; }
     }
 
     class RelationsInfo
@@ -43,12 +45,12 @@ namespace BTDB.ODBLayer
             {
                 id = _freeId++;
                 _name2Id[name] = id;
-                tr.KeyValueDBTransaction.SetKeyPrefixUnsafe(ObjectDB.RelationNamesPrefix);
-                var nameWriter = new ByteBufferWriter();
+                var nameWriter = new SpanWriter();
+                nameWriter.WriteBlock(ObjectDB.RelationNamesPrefix);
                 nameWriter.WriteString(name);
-                var idWriter = new ByteBufferWriter();
+                var idWriter = new SpanWriter();
                 idWriter.WriteVUInt32(id);
-                tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(nameWriter.Data, idWriter.Data);
+                tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(nameWriter.GetSpan(), idWriter.GetSpan());
             }
 
             if (_id2Relation.TryGetValue(id, out var relation))
