@@ -950,12 +950,12 @@ namespace BTDBTest
         public class Room
         {
             [PrimaryKey(1)]
-            [SecondaryKey("CompanyId")]
-            public ulong CompanyId { get; set; }
+            [SecondaryKey("CompanyId")] public ulong CompanyId { get; set; }
 
             [PrimaryKey(2)] public ulong Id { get; set; }
-
             public string Name { get; set; }
+
+            [SecondaryKey("Beds")] public int Beds { get; set; }
         }
 
         public interface IRoomTable : IRelation<Room>
@@ -967,6 +967,7 @@ namespace BTDBTest
             IOrderedDictionaryEnumerator<ulong, Room> ListById(AdvancedEnumeratorParam<ulong> param);
             IEnumerator<Room> ListById2(AdvancedEnumeratorParam<ulong> param);
             IOrderedDictionaryEnumerator<ulong, Room> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
+            IEnumerator<Room> ListByBeds(AdvancedEnumeratorParam<int> param);
         }
 
         [Fact]
@@ -1231,19 +1232,21 @@ namespace BTDBTest
                 tr.Commit();
             }
 
-            ModifyDuringEnumerate(creator, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
-            ModifyDuringEnumerate(creator, table => table.RemoveById(0, 20), true);
-            ModifyDuringEnumerate(creator, table => table.Update(new Room { Id = 10, Name = "First" }), false);
-            ModifyDuringEnumerate(creator, table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), true);
-            ModifyDuringEnumerate(creator, table => table.Upsert(new Room { Id = 10, Name = "update existing" }), false);
+            IEnumerator<Room> Query(IRoomTable table) => table.GetEnumerator();
+            ModifyDuringEnumerate(creator, Query, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
+            ModifyDuringEnumerate(creator, Query,table => table.RemoveById(0, 20), true);
+            ModifyDuringEnumerate(creator, Query,table => table.Update(new Room { Id = 10, Name = "First" }), false);
+            ModifyDuringEnumerate(creator, Query,table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), true);
+            ModifyDuringEnumerate(creator, Query,table => table.Upsert(new Room { Id = 10, Name = "update existing" }), false);
+            ModifyDuringEnumerate(creator, Query,table => table.Upsert(new Room { Id = 10, Name = "update existing, change SK", Beds = 4 }), true);
         }
 
-        void ModifyDuringEnumerate(Func<IObjectDBTransaction, IRoomTable> creator, Action<IRoomTable> modifyAction,
+        void ModifyDuringEnumerate(Func<IObjectDBTransaction, IRoomTable> creator, Func<IRoomTable, IEnumerator<Room>> query, Action<IRoomTable> modifyAction,
             bool shouldThrow)
         {
             using var tr = _db.StartTransaction();
             var rooms = creator(tr);
-            using var en = rooms.GetEnumerator();
+            using var en = query(rooms);
             var oen = rooms.ListById2(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
             Assert.True(oen.MoveNext());
             modifyAction(rooms);
@@ -1259,6 +1262,30 @@ namespace BTDBTest
                 Assert.True(en.MoveNext());
                 Assert.True(oen.MoveNext());
             }
+        }
+
+        [Fact]
+        public void CheckModificationDuringEnumerateBySecondaryKey()
+        {
+            Func<IObjectDBTransaction, IRoomTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IRoomTable>("Room");
+
+                var rooms = creator(tr);
+                rooms.Insert(new Room { Id = 10, Name = "First 1" });
+                rooms.Insert(new Room { Id = 20, Name = "Second 1" });
+
+                tr.Commit();
+            }
+
+            IEnumerator<Room> Query(IRoomTable table) => table.ListByBeds(AdvancedEnumeratorParam<int>.Instance);
+            ModifyDuringEnumerate(creator, Query, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
+            ModifyDuringEnumerate(creator, Query, table => table.RemoveById(0, 20), true);
+            ModifyDuringEnumerate(creator, Query, table => table.Update(new Room { Id = 10, Name = "First" }), false);
+            ModifyDuringEnumerate(creator, Query, table => table.Update(new Room { Id = 10, Name = "First", Beds = 3 }), true);
+            ModifyDuringEnumerate(creator, Query, table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), true);
+            ModifyDuringEnumerate(creator, Query, table => table.Upsert(new Room { Id = 10, Name = "update existing", Beds = 4 }), true);
         }
 
         public class PermutationOfKeys

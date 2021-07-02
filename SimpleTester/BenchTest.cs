@@ -1,14 +1,12 @@
 using System;
 using System.Numerics;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 
 namespace SimpleTester
 {
     [DisassemblyDiagnoser(printSource: true, maxDepth: 2)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp50, warmupCount: 1, targetCount: 1, launchCount: 1)]
+    [SimpleJob(RuntimeMoniker.Net50, warmupCount: 1, targetCount: 1, launchCount: 1)]
     public class BenchTest
     {
         [Params(0x80, 0xf0, 0)] public int N;

@@ -15,9 +15,9 @@ namespace SimpleTester
         public int ParentId { get; set; }
         [PrimaryKey(2)]
         public int PersonId { get; set; }
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
         public ulong Age { get; set; }
-        public IList<Person> Children { get; set; }
+        public IList<Person> Children { get; set; } = null!;
     }
     public class PersonOnlyId
     {
@@ -26,7 +26,7 @@ namespace SimpleTester
     }
     public class PersonOnlyName: PersonOnlyId
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
     }
     public interface IPersonTable : IRelation<Person>
     {

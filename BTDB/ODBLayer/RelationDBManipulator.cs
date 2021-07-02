@@ -226,7 +226,8 @@ namespace BTDB.ODBLayer
                 {
                     Span<byte> buf2 = stackalloc byte[512];
                     var writer2 = new SpanWriter(buf2);
-                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                    if (UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2))
+                        MarkModification();
                 }
 
                 FreeContentInUpdate(oldValueBytes, valueBytes);
@@ -265,7 +266,8 @@ namespace BTDB.ODBLayer
 
                     Span<byte> buf2 = stackalloc byte[512];
                     var writer2 = new SpanWriter(buf2);
-                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                    if (UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2))
+                        MarkModification();
 
                     return false;
                 }
@@ -306,7 +308,8 @@ namespace BTDB.ODBLayer
             {
                 Span<byte> buf2 = stackalloc byte[512];
                 var writer2 = new SpanWriter(buf2);
-                UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                if (UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2))
+                    MarkModification();
             }
 
             FreeContentInUpdate(oldValueBytes, valueBytes);
@@ -335,7 +338,8 @@ namespace BTDB.ODBLayer
                 {
                     Span<byte> buf2 = stackalloc byte[512];
                     var writer2 = new SpanWriter(buf2);
-                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                    if (UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2))
+                        MarkModification();
                 }
             }
             else
@@ -748,9 +752,10 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void UpdateSecondaryIndexes(T newValue, in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue,
+        bool UpdateSecondaryIndexes(T newValue, in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue,
             ref SpanWriter writer)
         {
+            var changed = false;
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 writer.Reset();
@@ -762,7 +767,10 @@ namespace BTDB.ODBLayer
                 EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
                 //insert new value
                 _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new ReadOnlySpan<byte>());
+                changed = true;
             }
+
+            return changed;
         }
 
         void RemoveSecondaryIndexes(in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue)
