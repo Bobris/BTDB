@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.6.0
+
 ### Added
 
 IOC can enforce uniqueness of registrations.
