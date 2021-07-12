@@ -7,5 +7,6 @@ namespace BTDB.IOC
     {
         IEnumerable<KeyAndType> GetAsTypesFor(Type implementationType);
         bool PreserveExistingDefaults { get; }
+        bool UniqueRegistration { get; }
     }
 }

@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Reflection;
 using BTDB.Collections;
+using BTDB.KVDBLayer;
 
 namespace BTDB.IOC
 {
@@ -25,24 +27,28 @@ namespace BTDB.IOC
             return (int)_instances.Count - 1;
         }
 
-        public void AddCReg(IEnumerable<KeyAndType> asTypes, bool preserveExistingDefaults, ICReg registration)
+        public void AddCReg(IEnumerable<KeyAndType> asTypes, bool preserveExistingDefaults, bool uniqueRegistration, ICReg registration)
         {
             foreach (var asType in asTypes)
             {
-                AddCReg(asType, preserveExistingDefaults, registration);
+                AddCReg(asType, preserveExistingDefaults, uniqueRegistration, registration);
             }
         }
 
-        void AddCReg(KeyAndType asType, bool preserveExistingDefaults, ICReg registration)
+        public void AddCReg(KeyAndType asType, bool preserveExistingDefaults, bool uniqueRegistration, ICReg registration)
         {
-            ICReg currentReg;
-            if (!_registrations.TryGetValue(asType, out currentReg))
+            if (!_registrations.TryGetValue(asType, out var currentReg))
             {
                 _registrations.Add(asType, registration);
                 return;
             }
-            var multi = currentReg as ICRegMulti;
-            if (multi != null)
+
+            if (uniqueRegistration)
+            {
+                throw new BTDBException("IOC Registration of " + asType.ToString() + " is not unique");
+            }
+
+            if (currentReg is ICRegMulti multi)
             {
                 multi.Add(registration, preserveExistingDefaults);
                 return;

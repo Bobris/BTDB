@@ -33,6 +33,12 @@ namespace BTDB.IOC
             return registration;
         }
 
+        public static IRegistration<TTraits> UniqueRegistration<TTraits>(this IRegistration<TTraits> registration, bool value) where TTraits : IAsTrait
+        {
+            ((IAsTrait)registration.InternalTraits(typeof(IAsTrait))).UniqueRegistration = value;
+            return registration;
+        }
+
         public static IRegistration<TTraits> Named<TTraits>(this IRegistration<TTraits> registration, string serviceName, Type serviceType) where TTraits : IAsTrait
         {
             ((IAsTrait)registration.InternalTraits(typeof(IAsTrait))).Keyed(serviceName, serviceType);

@@ -1341,5 +1341,33 @@ namespace BTDBTest
             var foo = container.Resolve<Foo>();
             Assert.Equal(TimeSpan.FromHours(1), foo.Bar);
         }
+
+        [Fact]
+        public void UniquenessOfRegistrationsCouldBeEnforced()
+        {
+            var builder = new ContainerBuilder(ContainerBuilderBehaviour.UniqueRegistrations);
+            builder.RegisterType<Logger>().As<ILogger>();
+            builder.RegisterType<Logger>().As<ILogger>();
+            Assert.Throws<BTDBException>(() => builder.Build());
+        }
+
+        [Fact]
+        public void UniquenessOfRegistrationsCouldBeEnforcedConfiguredForEveryRegistration()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger>().As<ILogger>().UniqueRegistration(true);
+            builder.RegisterType<Logger>().As<ILogger>().UniqueRegistration(true);
+            Assert.Throws<BTDBException>(() => builder.Build());
+        }
+
+        [Fact]
+        public void UniquenessOfRegistrationsCouldBeOverriden()
+        {
+            var builder = new ContainerBuilder(ContainerBuilderBehaviour.UniqueRegistrations);
+            builder.RegisterType<Logger>().As<ILogger>().UniqueRegistration(false);
+            builder.RegisterType<Logger>().As<ILogger>().UniqueRegistration(false);
+            builder.Build();
+        }
+
     }
 }

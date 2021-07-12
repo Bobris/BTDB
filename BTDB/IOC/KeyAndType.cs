@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTDB.IL;
 
 namespace BTDB.IOC
 {
@@ -25,6 +26,11 @@ namespace BTDB.IOC
         {
             if (Key == null) return Type.GetHashCode();
             return Key.GetHashCode() * 33 + Type.GetHashCode();
+        }
+
+        public override string ToString()
+        {
+            return Type.ToSimpleName() + ((Key != null) ? " with key " + Key.ToString() : "");
         }
     }
 }

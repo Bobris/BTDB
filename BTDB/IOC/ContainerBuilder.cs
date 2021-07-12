@@ -9,17 +9,33 @@ namespace BTDB.IOC
     {
         SingletonsUsingOnlySingletons = 1,
         None = 0,
-        All = Int32.MaxValue
+        All = int.MaxValue
     }
-    
+
+    [Flags]
+    public enum ContainerBuilderBehaviour
+    {
+        UniqueRegistrations = 1,
+        None = 0
+    }
+
     public class ContainerBuilder
     {
         StructList<IRegistration> _registrations;
+
+        readonly ContainerBuilderBehaviour _builderBehaviour;
+
+        public ContainerBuilder(ContainerBuilderBehaviour builderBehaviour = ContainerBuilderBehaviour.None)
+        {
+            _builderBehaviour = builderBehaviour;
+        }
 
         public IRegistration<IAsLiveScopeConstructorPropertiesTrait> RegisterType(Type type)
         {
             var registration = new SingleRegistration(type);
             _registrations.Add(registration);
+            if (_builderBehaviour.HasFlag(ContainerBuilderBehaviour.UniqueRegistrations))
+                registration.UniqueRegistration(true);
             return registration;
         }
 
@@ -27,6 +43,8 @@ namespace BTDB.IOC
         {
             var instanceType = instance.GetType();
             var registration = new SingleInstanceRegistration(instance, instanceType);
+            if (_builderBehaviour.HasFlag(ContainerBuilderBehaviour.UniqueRegistrations))
+                registration.UniqueRegistration(true);
             _registrations.Add(registration);
             return registration;
         }
@@ -35,6 +53,8 @@ namespace BTDB.IOC
         {
             var instanceType = typeof(T);
             var registration = new SingleInstanceRegistration(instance, instanceType);
+            if (_builderBehaviour.HasFlag(ContainerBuilderBehaviour.UniqueRegistrations))
+                registration.UniqueRegistration(true);
             _registrations.Add(registration);
             return registration;
         }

@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+IOC can enforce uniqueness of registrations.
+
 ## 26.5.0
 
 ### Added

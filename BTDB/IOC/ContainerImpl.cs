@@ -39,7 +39,7 @@ namespace BTDB.IOC
 
             Singletons = new object[context.SingletonCount];
             Instances = context.Instances;
-            context.AddCReg(Enumerable.Repeat(new KeyAndType(null, typeof(IContainer)), 1), true,
+            context.AddCReg(new KeyAndType(null, typeof(IContainer)), true, false,
                 new ContainerInjectImpl());
             if (containerVerification == ContainerVerification.None) return;
             foreach (var (_, reg) in Registrations)

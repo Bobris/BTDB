@@ -24,7 +24,7 @@ namespace BTDB.IOC
                 reg = new SingletonImpl(_implementationType, reg, context.SingletonCount);
                 context.SingletonCount++;
             }
-            context.AddCReg(_asTrait.GetAsTypesFor(_implementationType), _asTrait.PreserveExistingDefaults, (ICReg)reg);
+            context.AddCReg(_asTrait.GetAsTypesFor(_implementationType), _asTrait.PreserveExistingDefaults, _asTrait.UniqueRegistration, (ICReg)reg);
         }
 
         public override object InternalTraits(Type trait)

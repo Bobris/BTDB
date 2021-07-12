@@ -9,5 +9,6 @@ namespace BTDB.IOC
         void AsSelf();
         void AsImplementedInterfaces();
         void SetPreserveExistingDefaults();
+        bool UniqueRegistration { set; }
     }
 }

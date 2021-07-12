@@ -52,7 +52,7 @@ namespace BTDB.IOC
                     throw new ArgumentOutOfRangeException();
             }
 
-            context.AddCReg(_asTrait.GetAsTypesFor(_implementationType), _asTrait.PreserveExistingDefaults, reg);
+            context.AddCReg(_asTrait.GetAsTypesFor(_implementationType), _asTrait.PreserveExistingDefaults, _asTrait.UniqueRegistration, reg);
         }
 
         public override object InternalTraits(Type trait)

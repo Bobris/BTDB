@@ -62,5 +62,6 @@ namespace BTDB.IOC
         }
 
         public bool PreserveExistingDefaults => _preserveExistingDefaults;
+        public bool UniqueRegistration { get; set; }
     }
 }
