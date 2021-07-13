@@ -29,7 +29,7 @@ namespace BTDBTest
             _lowDb.Dispose();
         }
 
-        public void ApproveFieldHandlerLoggerMessages([CallerMemberName] string? testName = null)
+        void ApproveFieldHandlerLoggerMessages([CallerMemberName] string? testName = null)
         {
             Assent.Extensions.Assent(this, string.Join('\n', _fieldHandlerLoggerMessages) + "\n", null, testName);
             _fieldHandlerLoggerMessages.Clear();
