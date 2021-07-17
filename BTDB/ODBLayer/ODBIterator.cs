@@ -581,6 +581,15 @@ namespace BTDB.ODBLayer
                     _visitor?.ScalarAsText(r.ReadString()!);
                 }
             }
+            else if (handler is TupleFieldHandler tupleFieldHandler)
+            {
+                foreach (var fieldHandler in tupleFieldHandler.EnumerateNestedFieldHandlers())
+                {
+                    var skipField = _visitor != null && !_visitor.StartItem();
+                    IterateHandler(ref reader, fieldHandler, skipField, knownInlineRefs);
+                    if (!skipField) _visitor?.EndItem();
+                }
+            }
             else if (handler.NeedsCtx() || handler.HandledType() == null)
             {
                 throw new BTDBException("Don't know how to iterate " + handler.Name);

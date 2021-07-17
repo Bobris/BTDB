@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+ObjectDB+Relations support for Tuple and ValueTuple.
+
 ## 26.6.0
 
 ### Added
