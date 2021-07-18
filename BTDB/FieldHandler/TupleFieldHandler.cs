@@ -35,6 +35,7 @@ namespace BTDB.FieldHandler
                 {
                     opts &= ~FieldHandlerOptions.AtEndOfStream;
                 }
+
                 _fieldHandlers.Add(_fieldHandlerFactory.CreateFromType(t, opts));
             }
 
@@ -64,6 +65,7 @@ namespace BTDB.FieldHandler
                 {
                     opts &= ~FieldHandlerOptions.AtEndOfStream;
                 }
+
                 _fieldHandlers.Add(_fieldHandlerFactory.CreateFromReader(ref reader, opts));
             }
         }
@@ -121,37 +123,43 @@ namespace BTDB.FieldHandler
 
         public bool NeedsCtx()
         {
-            return _fieldHandlers.Any(h=>h.NeedsCtx());
+            return _fieldHandlers.Any(h => h.NeedsCtx());
         }
 
         public void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             var type = HandledType();
             var genericArguments = type.GetGenericArguments();
-            if (type.IsValueType)
+            var valueType = ValueTupleTypes[genericArguments.Length - 1].MakeGenericType(genericArguments);
+            var localResult = ilGenerator.DeclareLocal(valueType);
+            ilGenerator
+                .Ldloca(localResult)
+                .InitObj(valueType);
+            for (var i = 0; i < genericArguments.Length; i++)
             {
-                var localResult = ilGenerator.DeclareLocal(type);
+                if (i >= _fieldHandlers.Count) break;
                 ilGenerator
                     .Ldloca(localResult)
-                    .InitObj(type);
-                for (var i = 0; i < genericArguments.Length; i++)
-                {
-                    ilGenerator
-                        .Ldloca(localResult)
-                        .GenerateLoad(_fieldHandlers[i], genericArguments[i], pushReader, pushCtx,
-                            _typeConvertGenerator)
-                        .Stfld(type.GetField(TupleFieldName[i])!);
-                }
+                    .GenerateLoad(_fieldHandlers[i], genericArguments[i], pushReader, pushCtx,
+                        _typeConvertGenerator)
+                    .Stfld(valueType.GetField(TupleFieldName[i])!);
+            }
 
+            for (var i = genericArguments.Length; i < _fieldHandlers.Count; i++)
+            {
+                ilGenerator
+                    .GenerateSkip(_fieldHandlers[i], pushReader, pushCtx);
+            }
+
+            if (type.IsValueType)
+            {
                 ilGenerator.Ldloc(localResult);
             }
             else
             {
                 for (var i = 0; i < genericArguments.Length; i++)
                 {
-                    ilGenerator
-                        .GenerateLoad(_fieldHandlers[i], genericArguments[i], pushReader, pushCtx,
-                            _typeConvertGenerator);
+                    ilGenerator.Ldloca(localResult).Ldfld(valueType.GetField(TupleFieldName[i])!);
                 }
 
                 ilGenerator.Newobj(type.GetConstructor(genericArguments)!);
@@ -227,7 +235,9 @@ namespace BTDB.FieldHandler
                     wantedHandlers.Add(fieldHandler);
                 }
             }
-            wantedHandlers.RepeatAdd(default, (uint)wantedTypes.Length - wantedHandlers.Count);
+
+            wantedHandlers.RepeatAdd(default,
+                (uint)Math.Max(wantedTypes.Length, _fieldHandlers.Count) - wantedHandlers.Count);
 
             StructList<IFieldHandler> specializedHandlers = new();
             for (var i = 0; i < wantedHandlers.Count; i++)
@@ -235,6 +245,12 @@ namespace BTDB.FieldHandler
                 if (i < _fieldHandlers.Count)
                 {
                     var sourceHandler = _fieldHandlers[i];
+                    if (i >= wantedTypes.Length)
+                    {
+                        specializedHandlers.Add(sourceHandler);
+                        continue;
+                    }
+
                     var specialized = sourceHandler.SpecializeLoadForType(wantedTypes[i], wantedHandlers[i], logger);
                     if (_typeConvertGenerator.GenerateConversion(specialized.HandledType()!, wantedTypes[i]) == null)
                     {
@@ -242,13 +258,17 @@ namespace BTDB.FieldHandler
                             wantedHandlers[i]);
                         return this;
                     }
+
+                    specializedHandlers.Add(specialized);
                 }
                 else
                 {
                     break;
                 }
             }
-            return new TupleFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, specializedHandlers, _options);
+
+            return new TupleFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, specializedHandlers,
+                _options);
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
@@ -270,9 +290,12 @@ namespace BTDB.FieldHandler
                     Debug.Fail("even more strange");
                     return this;
                 }
+
                 specializedHandlers.Add(specialized);
             }
-            return new TupleFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, specializedHandlers, _options);
+
+            return new TupleFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, specializedHandlers,
+                _options);
         }
 
         public IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers()
@@ -288,6 +311,7 @@ namespace BTDB.FieldHandler
                 ilGenerator
                     .GenerateFreeContent(f, pushReader, pushCtx, ref needsFreeContent);
             }
+
             return needsFreeContent;
         }
     }
