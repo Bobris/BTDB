@@ -6,6 +6,10 @@
 
 ObjectDB+Relations support for Tuple and ValueTuple.
 
+### BREAKING CHANGE
+
+During enumeration of relation range is prevented also modification of secondary keys (until now was possible)
+
 ## 26.6.0
 
 ### Added

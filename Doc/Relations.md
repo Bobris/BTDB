@@ -180,6 +180,13 @@ List also support variants with subset resulting types like `Find`.
 
 `Count` is like `List` just returns total count of items and much faster.
 
+### Any
+
+    bool AnyById(AdvancedEnumeratorParam<ulong> param);
+    bool AnyById(ulong id);
+
+`Any` is like `List` just returns true when any item present and is much faster.
+
 ### Enumerate
 
     IEnumerator<Person> GetEnumerator();
@@ -247,6 +254,13 @@ List by secondary key also support variants like `ListByAgeVariantName`.
     uint|int|long|ulong CountByAge(uint age);
 
 Count records by specified range `CountBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
+
+### Any (by secondary index)
+
+    bool AnyByAge(AdvancedEnumeratorParam<uint> param);
+    bool AnyByAge(uint age);
+
+Returns true if there is any item in specified range `AnyBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
 
 ### Upgrade
 
