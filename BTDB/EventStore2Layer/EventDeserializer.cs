@@ -151,6 +151,9 @@ namespace BTDB.EventStore2Layer
                         case TypeCategory.Nullable:
                             descriptor = new NullableTypeDescriptor(this, ref reader, NestedDescriptorReader);
                             break;
+                        case TypeCategory.Tuple:
+                            descriptor = new TupleTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                            break;
                         default:
                             throw new ArgumentOutOfRangeException();
                     }

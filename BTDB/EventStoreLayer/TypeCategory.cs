@@ -7,6 +7,7 @@ namespace BTDB.EventStoreLayer
         List,
         Dictionary,
         Enum,
-        Nullable
+        Nullable,
+        Tuple
     }
 }

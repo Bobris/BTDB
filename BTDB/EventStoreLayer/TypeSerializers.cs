@@ -7,6 +7,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using BTDB.Encrypted;
 
@@ -151,6 +152,12 @@ namespace BTDB.EventStoreLayer
                         if (Nullable.GetUnderlyingType(type) != null)
                         {
                             result = new NullableTypeDescriptor(_typeSerializers, type);
+                            goto haveDescriptor;
+                        }
+
+                        if (type.InheritsOrImplements(typeof(ITuple)))
+                        {
+                            result = new TupleTypeDescriptor(_typeSerializers, type);
                             goto haveDescriptor;
                         }
 
@@ -486,31 +493,30 @@ namespace BTDB.EventStoreLayer
             return new TypeSerializersMapping(this);
         }
 
-        public void StoreDescriptor(ITypeDescriptor descriptor, ref SpanWriter writer, Func<ITypeDescriptor, uint> descriptor2Id)
+        public static void StoreDescriptor(ITypeDescriptor descriptor, ref SpanWriter writer, Func<ITypeDescriptor, uint> descriptor2Id)
         {
-            if (descriptor is ListTypeDescriptor)
+            switch (descriptor)
             {
-                writer.WriteUInt8((byte)TypeCategory.List);
-            }
-            else if (descriptor is DictionaryTypeDescriptor)
-            {
-                writer.WriteUInt8((byte)TypeCategory.Dictionary);
-            }
-            else if (descriptor is ObjectTypeDescriptor)
-            {
-                writer.WriteUInt8((byte)TypeCategory.Class);
-            }
-            else if (descriptor is EnumTypeDescriptor)
-            {
-                writer.WriteUInt8((byte)TypeCategory.Enum);
-            }
-            else if (descriptor is NullableTypeDescriptor)
-            {
-                writer.WriteUInt8((byte)TypeCategory.Nullable);
-            }
-            else
-            {
-                throw new ArgumentOutOfRangeException();
+                case ListTypeDescriptor:
+                    writer.WriteUInt8((byte)TypeCategory.List);
+                    break;
+                case DictionaryTypeDescriptor:
+                    writer.WriteUInt8((byte)TypeCategory.Dictionary);
+                    break;
+                case ObjectTypeDescriptor:
+                    writer.WriteUInt8((byte)TypeCategory.Class);
+                    break;
+                case EnumTypeDescriptor:
+                    writer.WriteUInt8((byte)TypeCategory.Enum);
+                    break;
+                case NullableTypeDescriptor:
+                    writer.WriteUInt8((byte)TypeCategory.Nullable);
+                    break;
+                case TupleTypeDescriptor:
+                    writer.WriteUInt8((byte)TypeCategory.Tuple);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
             }
 
             ((IPersistTypeDescriptor)descriptor).Persist(ref writer, (ref SpanWriter w, ITypeDescriptor d) => w.WriteVUInt32(descriptor2Id(d)));

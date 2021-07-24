@@ -602,6 +602,23 @@ namespace BTDBTest
             Assert.Equal(readUserEvent, userEvent);
         }
 
+        [Fact]
+        public void SupportsTuple()
+        {
+            var manager = new EventStoreManager();
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var userEvent = (1,2u);
+            appender.Store(null, new object[] { userEvent });
+
+            manager = new EventStoreManager();
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver);
+            var readUserEvent = (ValueTuple<int,uint>)eventObserver.Events[0][0];
+            Assert.Equal(readUserEvent, userEvent);
+        }
+
         public class ErrorInfo
         {
             public IDictionary<string, IList<ErrorInfo>> PropertyErrors { get; set; }

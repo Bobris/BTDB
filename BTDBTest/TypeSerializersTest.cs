@@ -249,12 +249,14 @@ namespace BTDBTest
                 new DateTime(),
                 new TimeSpan(),
                 Guid.Empty,
-                new byte[0],
+                Array.Empty<byte>(),
                 ByteBuffer.NewEmpty(),
                 false,
-                new EncryptedString()
+                new EncryptedString(),
+                (1, 2u),
+                new Tuple<int, uint>(1, 2)
             }.Select(o => ts.DescriptorOf(o)!.Describe());
-            this.Assent(string.Join("\n", res));
+            this.Assent(string.Join("\n", res) + "\n");
         }
 
         [Fact]
@@ -315,6 +317,18 @@ namespace BTDBTest
             TestSerialization(TestEnum.Item2);
         }
 
+        [Fact]
+        public void BasicTupleTest1()
+        {
+            TestSerialization((1, 2u));
+        }
+
+        [Fact]
+        public void BasicTupleTest2()
+        {
+            TestSerialization(new Tuple<int, uint>(1, 2u));
+        }
+
         dynamic ConvertToDynamicThroughSerialization(object value)
         {
             var writer = new SpanWriter();
@@ -368,6 +382,20 @@ namespace BTDBTest
                     new KeyValuePair<string, object>("IntField", 42),
                     new KeyValuePair<string, object>("StringField", "Hello")
                 }, ((IEnumerable<KeyValuePair<string, object>>)obj)!.ToArray());
+        }
+
+        [Fact]
+        public void CanDeserializeTupleToDynamic()
+        {
+            var value = (1,2u);
+            var obj = ConvertToDynamicThroughSerialization(value);
+            Assert.Equal(value.Item1, obj.Item1);
+            Assert.Equal(value.Item2, obj.Item2);
+            var descriptor = _ts.DescriptorOf((object)obj);
+            Assert.NotNull(descriptor);
+            Assert.True(descriptor.ContainsField("Item2"));
+            Assert.False(descriptor.ContainsField("Garbage"));
+            Assert.Equal("VInt32", descriptor.Fields.First(a => a.Key == "Item1").Value.Name);
         }
 
         [Fact]

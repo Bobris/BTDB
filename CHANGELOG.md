@@ -4,7 +4,7 @@
 
 ### Added
 
-ObjectDB+Relations support for Tuple and ValueTuple.
+ObjectDB+Relations+EventLayers support for Tuple and ValueTuple.
 
 ### BREAKING CHANGE
 

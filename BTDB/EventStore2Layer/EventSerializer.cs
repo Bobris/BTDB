@@ -8,6 +8,7 @@ using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using BTDB.Collections;
 using BTDB.Encrypted;
 
@@ -73,7 +74,8 @@ namespace BTDB.EventStore2Layer
 
         Layer1ComplexSaver BuildComplexSaver(ITypeDescriptor descriptor, Type type)
         {
-            var method = ILBuilder.Instance.NewMethod<Layer1ComplexSaver>(descriptor.Name + "Saver" + type.ToSimpleName());
+            var method =
+                ILBuilder.Instance.NewMethod<Layer1ComplexSaver>(descriptor.Name + "Saver" + type.ToSimpleName());
             var il = method.Generator;
             descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
             {
@@ -199,6 +201,9 @@ namespace BTDB.EventStore2Layer
                         break;
                     case TypeCategory.Nullable:
                         descriptor = new NullableTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                        break;
+                    case TypeCategory.Tuple:
+                        descriptor = new TupleTypeDescriptor(this, ref reader, NestedDescriptorReader);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -390,6 +395,10 @@ namespace BTDB.EventStore2Layer
                                 }
 
                                 desc = new NullableTypeDescriptor(this, typeAlternative);
+                            }
+                            else if (type.InheritsOrImplements(typeof(ITuple)))
+                            {
+                                desc = new TupleTypeDescriptor(this, type);
                             }
                         }
                         else
@@ -642,18 +651,22 @@ namespace BTDB.EventStore2Layer
             {
                 writer.WriteUInt8((byte)TypeCategory.Nullable);
             }
+            else if (descriptor is TupleTypeDescriptor)
+            {
+                writer.WriteUInt8((byte)TypeCategory.Tuple);
+            }
             else
             {
                 throw new ArgumentOutOfRangeException();
             }
 
             ((IPersistTypeDescriptor)descriptor).Persist(ref writer, (ref SpanWriter w, ITypeDescriptor d) =>
-           {
-               if (!_typeOrDescriptor2Info.TryGetValue(d, out var result))
-                   if (!_typeOrDescriptor2InfoNew.TryGetValue(d, out result))
-                       throw new BTDBException("Invalid state unknown descriptor " + d.Name);
-               w.WriteVInt32(result.Id);
-           });
+            {
+                if (!_typeOrDescriptor2Info.TryGetValue(d, out var result))
+                    if (!_typeOrDescriptor2InfoNew.TryGetValue(d, out result))
+                        throw new BTDBException("Invalid state unknown descriptor " + d.Name);
+                w.WriteVInt32(result.Id);
+            });
         }
 
         public void StoreObject(ref SpanWriter writer, object? obj)

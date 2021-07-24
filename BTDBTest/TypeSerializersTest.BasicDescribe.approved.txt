@@ -16,3 +16,5 @@ Byte[]
 Byte[]
 Bool
 EncryptedString
+Tuple<VInt32,VUInt32>
+Tuple<VInt32,VUInt32>

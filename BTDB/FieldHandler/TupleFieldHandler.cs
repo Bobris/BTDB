@@ -98,7 +98,7 @@ namespace BTDB.FieldHandler
             return IsCompatibleWith(type);
         }
 
-        static readonly Type[] TupleTypes = new[]
+        public static readonly Type[] TupleTypes = new[]
         {
             typeof(Tuple<>), typeof(Tuple<,>), typeof(Tuple<,,>), typeof(Tuple<,,,>), typeof(Tuple<,,,,>),
             typeof(Tuple<,,,,,>), typeof(Tuple<,,,,,,>)
@@ -110,7 +110,7 @@ namespace BTDB.FieldHandler
             typeof(ValueTuple<,,,,>), typeof(ValueTuple<,,,,,>), typeof(ValueTuple<,,,,,,>)
         };
 
-        static readonly string[] TupleFieldName = new[]
+        public static readonly string[] TupleFieldName = new[]
         {
             "Item1", "Item2", "Item3", "Item4", "Item5", "Item6", "Item7"
         };

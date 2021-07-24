@@ -74,6 +74,9 @@ namespace BTDB.EventStoreLayer
                     case TypeCategory.Nullable:
                         descriptor = new NullableTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
                         break;
+                    case TypeCategory.Tuple:
+                        descriptor = new TupleTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
@@ -429,7 +432,7 @@ namespace BTDB.EventStoreLayer
                     for (var i = (int)_id2InfoMap.Count - 1; i >= 0; i--)
                     {
                         writer.WriteVUInt32((uint)(i + _typeSerializersMapping._id2DescriptorMap.Count));
-                        _typeSerializers.StoreDescriptor(_id2InfoMap[i].Descriptor, ref writer, Descriptor2Id);
+                        TypeSerializers.StoreDescriptor(_id2InfoMap[i].Descriptor, ref writer, Descriptor2Id);
                     }
                     writer.WriteUInt8(0);
                 }
