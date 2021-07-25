@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.7.0
+
 ### Added
 
 ObjectDB+Relations+EventLayers support for Tuple and ValueTuple.
