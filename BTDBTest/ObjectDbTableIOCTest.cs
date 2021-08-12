@@ -23,6 +23,7 @@ namespace BTDBTest
             var builder = new ContainerBuilder();
             builder.RegisterInstance<string>("Hello").Named<string>("param");
             builder.RegisterType<Item>().AsSelf();
+            builder.RegisterType<SingletonItem>().AsSelf().SingleInstance();
             _container = builder.Build();
             OpenDb();
         }
@@ -78,6 +79,43 @@ namespace BTDBTest
             _db.RegisterType(typeof(Item));
             var item = tr.New<Item>();
             Assert.Equal("Hello", item.Param);
+        }
+
+        public class SingletonItem
+        {
+            public SingletonItem(string param)
+            {
+                Param = param;
+            }
+
+            [PrimaryKey] public ulong Id { get; set; }
+            [NotStored] public string Param { get; }
+        }
+
+        public interface ISingletonItems : IRelation<SingletonItem>
+        {
+        }
+
+        [Fact]
+        public void SingletonItemCreatedByIocFails()
+        {
+            using var tr = _db.StartTransaction();
+            Assert.Throws<BTDBException>(()=>tr.GetRelation<ISingletonItems>());
+        }
+
+        [Fact]
+        public void SingletonSingletonCreatedByIocFails()
+        {
+            using var tr = _db.StartTransaction();
+            Assert.Throws<BTDBException>(()=>tr.Singleton<SingletonItem>());
+        }
+
+        [Fact]
+        public void SingletonObjectCreatedByIocFails()
+        {
+            using var tr = _db.StartTransaction();
+            _db.RegisterType(typeof(SingletonItem));
+            Assert.Throws<BTDBException>(()=>tr.New<SingletonItem>());
         }
 
         public void Dispose()

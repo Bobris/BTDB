@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Protection against using singletons for database objects or relation items.
+
 ## 26.7.0
 
 ### Added
