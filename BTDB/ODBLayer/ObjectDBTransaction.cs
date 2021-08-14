@@ -65,7 +65,7 @@ namespace BTDB.ODBLayer
             var tableId = reader.ReadVUInt32();
             var tableVersion = reader.ReadVUInt32();
             var tableInfo = _owner.TablesInfo.FindById(tableId);
-            if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
+            if (tableInfo == null) _owner.ActualOptions.ThrowBTDBException($"Unknown TypeId {tableId} of inline object");
             EnsureClientTypeNotNull(tableInfo);
             var obj = tableInfo.Creator(this, null);
             readerCtx.RegisterObject(obj);
@@ -79,7 +79,7 @@ namespace BTDB.ODBLayer
             var tableId = reader.ReadVUInt32();
             var tableVersion = reader.ReadVUInt32();
             var tableInfo = _owner.TablesInfo.FindById(tableId);
-            if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
+            if (tableInfo == null) _owner.ActualOptions.ThrowBTDBException($"Unknown TypeId {tableId} of inline object");
             var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
             var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
             freeContentTuple.Item2(this, null, ref reader, readerWithFree.DictIds);
@@ -119,11 +119,11 @@ namespace BTDB.ODBLayer
             var ti = GetTableInfoFromType(@object.GetType());
             if (ti == null)
             {
-                throw new BTDBException(
+                _owner.ActualOptions.ThrowBTDBException(
                     $"Object of type {@object.GetType().ToSimpleName()} is not known how to store as inline object.");
             }
 
-            EnsureClientTypeNotNull(ti);
+            EnsureClientTypeNotNull(ti!);
             IfNeededPersistTableInfo(ti);
             writer.WriteVUInt32(ti.Id);
             writer.WriteVUInt32(ti.ClientTypeVersion);
@@ -328,11 +328,15 @@ namespace BTDB.ODBLayer
 
         void ReadObjStart(ulong oid, out TableInfo tableInfo, out SpanReader reader)
         {
-            reader = new SpanReader(_keyValueTr!.GetValue());
+            reader = new(_keyValueTr!.GetValue());
             var tableId = reader.ReadVUInt32();
-            tableInfo = _owner.TablesInfo.FindById(tableId) ??
-                        throw new BTDBException($"Unknown TypeId {tableId} of Oid {oid}");
-            EnsureClientTypeNotNull(tableInfo);
+            tableInfo = _owner.TablesInfo.FindById(tableId)!;
+            if (tableInfo == null)
+            {
+                _owner.ActualOptions.ThrowBTDBException($"Unknown TypeId {tableId} of Oid {oid}");
+            }
+
+            EnsureClientTypeNotNull(tableInfo!);
         }
 
         public object? Get(ulong oid)
@@ -469,14 +473,14 @@ namespace BTDB.ODBLayer
         void CreateAndRegisterRelationFactory(Type type)
         {
             if (!_owner.AllowAutoRegistrationOfRelations)
-                throw new BTDBException("AutoRegistration of " + type.ToSimpleName() + " is forbidden");
+                _owner.ActualOptions.ThrowBTDBException("AutoRegistration of " + type.ToSimpleName() + " is forbidden");
 
             var spec = type.SpecializationOf(typeof(ICovariantRelation<>));
             if (spec == null)
-                throw new BTDBException("Relation type " + type.ToSimpleName() +
+                _owner.ActualOptions.ThrowBTDBException("Relation type " + type.ToSimpleName() +
                                         " must implement ICovariantRelation<>");
             if (!spec.GenericTypeArguments[0].IsClass)
-                throw new BTDBException("Relation type " + type.ToSimpleName() + " does not have item as class");
+                _owner.ActualOptions.ThrowBTDBException("Relation type " + type.ToSimpleName() + " does not have item as class");
             var name = type.GetCustomAttribute<PersistedNameAttribute>() is { } persistedNameAttribute
                 ? persistedNameAttribute.Name
                 : type.ToSimpleName();
@@ -522,7 +526,7 @@ namespace BTDB.ODBLayer
             {
                 if (!type.IsInstanceOfType(obj))
                 {
-                    throw new BTDBException($"Internal error oid {oid} does not belong to {tableInfo.Name}");
+                    _owner.ActualOptions.ThrowBTDBException($"Internal error oid {oid} does not belong to {tableInfo.Name}");
                 }
 
                 return obj;
@@ -728,7 +732,7 @@ namespace BTDB.ODBLayer
         {
             if (!TryToEnsureClientTypeNotNull(tableInfo))
             {
-                throw new BTDBException($"Type {tableInfo.Name} is not registered.");
+                _owner.ActualOptions.ThrowBTDBException($"Type {tableInfo.Name} is not registered.");
             }
         }
 
@@ -793,7 +797,7 @@ namespace BTDB.ODBLayer
             {
                 if (!_owner.AutoRegisterTypes && !forceAutoRegistration)
                 {
-                    throw new BTDBException($"Type {type.ToSimpleName()} is not registered.");
+                    _owner.ActualOptions.ThrowBTDBException($"Type {type.ToSimpleName()} is not registered.");
                 }
 
                 name = _owner.RegisterType(type, manualRegistration: false);
@@ -960,7 +964,7 @@ namespace BTDB.ODBLayer
         void StoreObject(object o)
         {
             var type = o.GetType();
-            if (!type.IsClass) throw new BTDBException("You can store only classes, not " + type.ToSimpleName());
+            if (!type.IsClass) _owner.ActualOptions.ThrowBTDBException("You can store only classes, not " + type.ToSimpleName());
             var tableInfo = _owner.TablesInfo.FindByType(type);
             IfNeededPersistTableInfo(tableInfo);
             DBObjectMetadata metadata = null;
@@ -973,7 +977,7 @@ namespace BTDB.ODBLayer
                 _objBigMetadata?.TryGetValue(o, out metadata);
             }
 
-            if (metadata == null) throw new BTDBException("Metadata for object not found");
+            if (metadata == null) _owner.ActualOptions.ThrowBTDBException("Metadata for object not found");
             if (metadata.State == DBObjectState.Deleted) return;
             var writer = new SpanWriter();
             writer.WriteVUInt32(tableInfo.Id);

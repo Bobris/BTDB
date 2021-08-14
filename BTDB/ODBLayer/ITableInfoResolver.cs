@@ -12,6 +12,7 @@ namespace BTDB.ODBLayer
         IFieldHandlerFactory FieldHandlerFactory { get; }
         ITypeConvertorGenerator TypeConvertorGenerator { get; }
         IContainer? Container { get; }
+        DBOptions ActualOptions { get; }
         IFieldHandlerLogger? FieldHandlerLogger { get; }
     }
 }

@@ -13,6 +13,7 @@ namespace BTDB.ODBLayer
         {
             FieldHandlerFactory = objectDB.FieldHandlerFactory;
             TypeConvertorGenerator = objectDB.TypeConvertorGenerator;
+            ActualOptions = objectDB.ActualOptions;
             Container = objectDB.ActualOptions.Container;
             FieldHandlerLogger = objectDB.FieldHandlerLogger;
         }
@@ -21,8 +22,9 @@ namespace BTDB.ODBLayer
 
         public ITypeConvertorGenerator TypeConvertorGenerator { get; }
 
-        public IContainer Container { get; }
+        public IContainer? Container { get; }
         public IFieldHandlerLogger? FieldHandlerLogger { get; }
+        public DBOptions ActualOptions { get; }
     }
 
     class RelationsInfo
@@ -55,9 +57,9 @@ namespace BTDB.ODBLayer
 
             if (_id2Relation.TryGetValue(id, out var relation))
             {
-                throw new BTDBException($"Relation with name '{name}' was already initialized");
+                _relationInfoResolver.ActualOptions.ThrowBTDBException($"Relation with name '{name}' was already initialized");
             }
-            relation = new RelationInfo(id, name, builder, tr);
+            relation = new(id, name, builder, tr);
             _id2Relation[id] = relation;
             return relation;
         }

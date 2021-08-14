@@ -292,7 +292,7 @@ namespace BTDB.ODBLayer
                 using var tr = _keyValueDB.StartReadOnlyTransaction();
                 var key = TableInfo.BuildKeyForTableVersions(id, version);
                 if (!tr.FindExactKey(key))
-                    throw new BTDBException($"Missing TableVersionInfo Id:{id} Version:{version}");
+                    _objectDB.ActualOptions.ThrowBTDBException($"Missing TableVersionInfo Id:{id} Version:{version}");
                 var reader = new SpanReader(tr.GetValue());
                 return TableVersionInfo.Load(ref reader, _objectDB.FieldHandlerFactory, tableName);
             }
@@ -323,6 +323,7 @@ namespace BTDB.ODBLayer
 
             public ITypeConvertorGenerator TypeConvertorGenerator => _objectDB.TypeConvertorGenerator;
             public IContainer? Container => _objectDB.ActualOptions.Container;
+            public DBOptions ActualOptions => _objectDB.ActualOptions;
             public IFieldHandlerLogger? FieldHandlerLogger => _objectDB.FieldHandlerLogger;
         }
 

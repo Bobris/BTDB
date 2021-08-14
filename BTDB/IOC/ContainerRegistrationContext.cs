@@ -45,7 +45,7 @@ namespace BTDB.IOC
 
             if (uniqueRegistration)
             {
-                throw new BTDBException("IOC Registration of " + asType.ToString() + " is not unique");
+                throw new BTDBException($"IOC Registration of {asType} is not unique");
             }
 
             if (currentReg is ICRegMulti multi)

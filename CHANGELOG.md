@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Name in DBOptions and show it in interesting exceptions. Same Name is also used for Key in deduplication of Relations.
+
 ## 26.8.0
 
 ### Added

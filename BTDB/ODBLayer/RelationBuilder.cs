@@ -21,7 +21,7 @@ namespace BTDB.ODBLayer
         public readonly Type ItemType;
         public readonly object PristineItemInstance;
         public readonly RelationVersionInfo ClientRelationVersionInfo;
-        public readonly List<Type> LoadTypes = new List<Type>();
+        public readonly List<Type> LoadTypes = new();
         public readonly IRelationInfoResolver RelationInfoResolver;
         public IILDynamicMethodWithThis DelegateCreator { get; }
 
@@ -31,31 +31,31 @@ namespace BTDB.ODBLayer
         static readonly MethodInfo SpanWriterGetPersistentSpanAndResetMethodInfo =
             typeof(SpanWriter).GetMethod(nameof(SpanWriter.GetPersistentSpanAndReset))!;
 
-        static Dictionary<Type, RelationBuilder> _relationBuilderCache = new Dictionary<Type, RelationBuilder>();
-        static readonly object RelationBuilderCacheLock = new object();
+        static Dictionary<(Type,string?), RelationBuilder> _relationBuilderCache = new();
+        static readonly object RelationBuilderCacheLock = new();
 
         internal static void Reset()
         {
-            _relationBuilderCache = new Dictionary<Type, RelationBuilder>();
+            _relationBuilderCache = new ();
         }
 
         internal static RelationBuilder GetFromCache(Type interfaceType, IRelationInfoResolver relationInfoResolver)
         {
-            if (_relationBuilderCache.TryGetValue(interfaceType, out var res))
+            if (_relationBuilderCache.TryGetValue((interfaceType,relationInfoResolver.ActualOptions.Name), out var res))
             {
                 return res;
             }
 
             lock (RelationBuilderCacheLock)
             {
-                if (_relationBuilderCache.TryGetValue(interfaceType, out res))
+                if (_relationBuilderCache.TryGetValue((interfaceType,relationInfoResolver.ActualOptions.Name), out res))
                 {
                     return res;
                 }
 
-                _relationBuilderCache = new Dictionary<Type, RelationBuilder>(_relationBuilderCache)
+                _relationBuilderCache = new (_relationBuilderCache)
                 {
-                    { interfaceType, res = new RelationBuilder(interfaceType, relationInfoResolver) }
+                    { (interfaceType,relationInfoResolver.ActualOptions.Name), res = new(interfaceType, relationInfoResolver) }
                 };
             }
 
@@ -69,7 +69,7 @@ namespace BTDB.ODBLayer
             ItemType = interfaceType.SpecializationOf(typeof(ICovariantRelation<>))!.GenericTypeArguments[0];
             PristineItemInstance = CreatePristineInstance();
             if (ReferenceEquals(PristineItemInstance, CreatePristineInstance()))
-                throw new BTDBException(
+                relationInfoResolver.ActualOptions.ThrowBTDBException(
                     ItemType.ToSimpleName() + " cannot be registered as singleton");
             _name = InterfaceType.ToSimpleName();
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
@@ -97,7 +97,7 @@ namespace BTDB.ODBLayer
             foreach (var field in publicFields)
             {
                 if (field.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
-                throw new BTDBException(
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
                     $"Public field {_name}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
             }
 
@@ -114,7 +114,7 @@ namespace BTDB.ODBLayer
                     var fieldInfo = TableFieldInfo.Build(_name, pi, RelationInfoResolver.FieldHandlerFactory,
                         FieldHandlerOptions.Orderable);
                     if (fieldInfo.Handler!.NeedsCtx())
-                        throw new BTDBException($"Unsupported key field {fieldInfo.Name} type.");
+                        RelationInfoResolver.ActualOptions.ThrowBTDBException($"Unsupported key field {fieldInfo.Name} type.");
                     primaryKeys.Add(actualPKAttribute.Order, fieldInfo);
                 }
 
@@ -134,7 +134,7 @@ namespace BTDB.ODBLayer
 
                     var key = (SecondaryKeyAttribute)sks[i];
                     if (key.Name == "Id")
-                        throw new BTDBException(
+                        RelationInfoResolver.ActualOptions.ThrowBTDBException(
                             "'Id' is invalid name for secondary key, it is reserved for primary key identification.");
                     currentList!.Add(key);
                 }
@@ -200,7 +200,7 @@ namespace BTDB.ODBLayer
                         }
                         else
                         {
-                            throw new BTDBException(
+                            RelationInfoResolver.ActualOptions.ThrowBTDBException(
                                 $"Remove by secondary key in {_name}.{method.Name} is unsupported. Instead use ListBy and remove enumerated.");
                         }
                     }
@@ -293,7 +293,7 @@ namespace BTDB.ODBLayer
             var count = SaveMethodParameters(reqMethod.Generator, "Contains", method.GetParameters(),
                 primaryKeyFields.Span, pushWriter, ctxLocFactory);
             if (count != primaryKeyFields.Length)
-                throw new BTDBException(
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
                     $"Number of parameters in Contains does not match primary key count {primaryKeyFields.Length}.");
 
             var localSpan = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
@@ -337,7 +337,7 @@ namespace BTDB.ODBLayer
             var count = SaveMethodParameters(reqMethod.Generator, method.Name, methodParameters, primaryKeyFields.Span,
                 pushWriter, ctxLocFactory);
             if (!isPrefixBased && count != primaryKeyFields.Length)
-                throw new BTDBException(
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
                     $"Number of parameters in {method.Name} does not match primary key count {primaryKeyFields.Length}.");
 
             //call manipulator.RemoveBy_
@@ -370,7 +370,7 @@ namespace BTDB.ODBLayer
         void BuildRemoveByIdAdvancedParamMethod(MethodInfo method, ParameterInfo[] parameters, IILMethod reqMethod)
         {
             if (method.ReturnType != typeof(int))
-                throw new BTDBException($"Return value in {method.Name} must be int.");
+                RelationInfoResolver.ActualOptions.ThrowBTDBException($"Return value in {method.Name} must be int.");
 
             var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
 
@@ -439,7 +439,7 @@ namespace BTDB.ODBLayer
                 methodParameters[^1].Name!
                     .IndexOf("max", StringComparison.InvariantCultureIgnoreCase) == -1)
             {
-                throw new BTDBException("Invalid shape of RemoveByIdPartial.");
+                RelationInfoResolver.ActualOptions.ThrowBTDBException("Invalid shape of RemoveByIdPartial.");
             }
 
             var il = reqMethod.Generator;
@@ -543,7 +543,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    throw new BTDBException("Invalid method " + method.Name);
+                    RelationInfoResolver.ActualOptions.ThrowBTDBException("Invalid method " + method.Name);
                 }
             }
             else
@@ -566,7 +566,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    throw new BTDBException("Invalid method " + method.Name);
+                    RelationInfoResolver.ActualOptions.ThrowBTDBException("Invalid method " + method.Name);
                 }
             }
         }
@@ -761,7 +761,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    throw new BTDBException("Invalid method " + method.Name);
+                    RelationInfoResolver.ActualOptions.ThrowBTDBException("Invalid method " + method.Name);
                 }
             }
             else
@@ -793,7 +793,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    throw new BTDBException("Invalid method " + method.Name);
+                    RelationInfoResolver.ActualOptions.ThrowBTDBException("Invalid method " + method.Name);
                 }
             }
         }
@@ -912,23 +912,23 @@ namespace BTDB.ODBLayer
             KeyPropositionEndAfter(advEnumParamOrder, reqMethod.Generator, advEnumParam, field, pushWriter, label);
         }
 
-        static Action<IILGen> CheckLongLikeResult(MethodInfo method)
+        Action<IILGen> CheckLongLikeResult(MethodInfo method)
         {
             var resultConversion =
                 DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(long), method.ReturnType);
             if (resultConversion == null)
             {
-                throw new BTDBException("Invalid return type in method " + method.Name);
+                RelationInfoResolver.ActualOptions.ThrowBTDBException("Invalid return type in method " + method.Name);
             }
 
-            return resultConversion;
+            return resultConversion!;
         }
 
-        static void ValidateAdvancedEnumParameter(TableFieldInfo field, Type advEnumParamType, string methodName)
+        void ValidateAdvancedEnumParameter(TableFieldInfo field, Type advEnumParamType, string methodName)
         {
             if (!field.Handler!.IsCompatibleWith(advEnumParamType, FieldHandlerOptions.Orderable))
             {
-                throw new BTDBException(
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
                     $"Parameter type mismatch in {methodName} (expected '{field.Handler.HandledType().ToSimpleName()}' but '{advEnumParamType.ToSimpleName()}' found).");
             }
         }
@@ -936,14 +936,15 @@ namespace BTDB.ODBLayer
         void BuildInsertMethod(MethodInfo method, IILMethod reqMethod)
         {
             var methodInfo = _relationDbManipulatorType.GetMethod(method.Name);
-            bool returningBoolVariant;
+            var returningBoolVariant = false;
             var returnType = method.ReturnType;
             if (returnType == typeof(void))
-                returningBoolVariant = false;
+            {
+            }
             else if (returnType == typeof(bool))
                 returningBoolVariant = true;
             else
-                throw new BTDBException("Method Insert should be defined with void or bool return type.");
+                RelationInfoResolver.ActualOptions.ThrowBTDBException("Method Insert should be defined with void or bool return type.");
             var methodParams = method.GetParameters();
             CheckParameterCount(method.Name, 1, methodParams.Length);
             CheckParameterType(method.Name, 0, methodInfo!.GetParameters()[0].ParameterType,
@@ -952,16 +953,14 @@ namespace BTDB.ODBLayer
                 .Ldarg(0) //this
                 .Ldarg(1)
                 .Callvirt(methodInfo);
-            if (!returningBoolVariant)
-            {
-                var returnedTrueLabel = reqMethod.Generator.DefineLabel("returnedTrueLabel");
-                reqMethod.Generator
-                    .Brtrue(returnedTrueLabel)
-                    .Ldstr("Trying to insert duplicate key.")
-                    .Newobj(() => new BTDBException(null))
-                    .Throw()
-                    .Mark(returnedTrueLabel);
-            }
+            if (returningBoolVariant) return;
+            var returnedTrueLabel = reqMethod.Generator.DefineLabel("returnedTrueLabel");
+            reqMethod.Generator
+                .Brtrue(returnedTrueLabel)
+                .Ldstr("Trying to insert duplicate key in "+_name)
+                .Newobj(() => new BTDBException(null))
+                .Throw()
+                .Mark(returnedTrueLabel);
         }
 
         void BuildManipulatorCallWithSameParameters(MethodInfo method, IILMethod reqMethod)
@@ -970,8 +969,8 @@ namespace BTDB.ODBLayer
             var paramCount = methodParams.Length;
             var methodInfo = _relationDbManipulatorType.GetMethod(method.Name);
             if (methodInfo == null)
-                throw new BTDBException($"Method {method} is not supported.");
-            CheckReturnType(method.Name, methodInfo.ReturnType, method.ReturnType);
+                RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {method} is not supported.");
+            CheckReturnType(method.Name, methodInfo!.ReturnType, method.ReturnType);
             var calledMethodParams = methodInfo.GetParameters();
             CheckParameterCount(method.Name, calledMethodParams.Length, methodParams.Length);
             for (var i = 0; i < methodParams.Length; i++)
@@ -984,22 +983,22 @@ namespace BTDB.ODBLayer
             reqMethod.Generator.Callvirt(methodInfo);
         }
 
-        static void CheckParameterType(string name, int parIdx, Type expectedType, Type actualType)
+        void CheckParameterType(string name, int parIdx, Type expectedType, Type actualType)
         {
             if (expectedType != actualType)
-                throw new BTDBException($"Method {name} expects {parIdx}th parameter of type {expectedType.Name}.");
+                RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {name} expects {parIdx}th parameter of type {expectedType.Name}.");
         }
 
-        static void CheckParameterCount(string name, int expectedParameterCount, int actualParameterCount)
+        void CheckParameterCount(string name, int expectedParameterCount, int actualParameterCount)
         {
             if (expectedParameterCount != actualParameterCount)
-                throw new BTDBException($"Method {name} expects {expectedParameterCount} parameters count.");
+                RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {name} expects {expectedParameterCount} parameters count.");
         }
 
-        static void CheckReturnType(string name, Type expectedReturnType, Type returnType)
+        void CheckReturnType(string name, Type expectedReturnType, Type returnType)
         {
             if (returnType != expectedReturnType)
-                throw new BTDBException($"Method {name} should be defined with {expectedReturnType.Name} return type.");
+                RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {name} should be defined with {expectedReturnType.Name} return type.");
         }
 
         void CreateMethodFindById(IILGen ilGenerator, string methodName,
@@ -1015,7 +1014,7 @@ namespace BTDB.ODBLayer
             var count = SaveMethodParameters(ilGenerator, methodName, methodParameters, primaryKeyFields.Span,
                 pushWriter, ctxLocFactory);
             if (!isPrefixBased && count != primaryKeyFields.Length)
-                throw new BTDBException(
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
                     $"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Length}.");
 
             //call manipulator.FindBy_
@@ -1132,7 +1131,7 @@ namespace BTDB.ODBLayer
             return result.Length == 0 ? name : result;
         }
 
-        static ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
+        ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
             ReadOnlySpan<ParameterInfo> methodParameters,
             ReadOnlySpan<TableFieldInfo> fields, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
         {
@@ -1147,12 +1146,12 @@ namespace BTDB.ODBLayer
                 var par = methodParameters[idx++];
                 if (string.Compare(field.Name, par.Name!.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
                 {
-                    throw new BTDBException($"Parameter and key mismatch in {methodName}, {field.Name}!={par.Name}.");
+                    RelationInfoResolver.ActualOptions.ThrowBTDBException($"Parameter and key mismatch in {methodName}, {field.Name}!={par.Name}.");
                 }
 
                 if (!field.Handler!.IsCompatibleWith(par.ParameterType, FieldHandlerOptions.Orderable))
                 {
-                    throw new BTDBException(
+                    RelationInfoResolver.ActualOptions.ThrowBTDBException(
                         $"Parameter type mismatch in {methodName} (expected '{field.Handler.HandledType().ToSimpleName()}' but '{par.ParameterType.ToSimpleName()}' found).");
                 }
 
@@ -1325,14 +1324,6 @@ namespace BTDB.ODBLayer
                 .Save(ilGenerator,
                     pushWriter, il => il.Ldloc(ctxLocFactory()),
                     il => il.Ldarg((ushort)parameterId));
-        }
-
-        static void SaveKeyFieldFromApartField(IILGen ilGenerator, TableFieldInfo field, MethodInfo fieldGetter,
-            Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
-        {
-            var specialized = field.Handler!.SpecializeSaveForType(fieldGetter.ReturnType);
-            specialized.Save(ilGenerator, pushWriter, il => il.Ldloc(ctxLocFactory()),
-                il => il.Ldarg(0).Callvirt(fieldGetter));
         }
 
         void WriteRelationPKPrefix(IILGen ilGenerator, Action<IILGen> pushWriter)

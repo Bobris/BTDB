@@ -1,6 +1,7 @@
 ﻿using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IOC;
+using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -41,6 +42,12 @@ namespace BTDB.ODBLayer
             return this;
         }
 
+        public DBOptions WithName(string name)
+        {
+            Name = name;
+            return this;
+        }
+
         public DBOptions WithFieldHandlerLogger(IFieldHandlerLogger fieldHandlerLogger)
         {
             FieldHandlerLogger = fieldHandlerLogger;
@@ -51,8 +58,19 @@ namespace BTDB.ODBLayer
         public IType2NameRegistry? CustomType2NameRegistry { get; private set; }
         public bool SelfHealing { get; private set; }
         public IContainer? Container { get; private set; }
+        public string? Name { get; private set; }
         public IFieldHandlerLogger? FieldHandlerLogger { get; private set; }
 
         public ISymmetricCipher? SymmetricCipher { get; private set; }
+
+        public void ThrowBTDBException(string message)
+        {
+            if (Name != null)
+            {
+                throw new BTDBException(message + " (" + Name + ")");
+            }
+
+            throw new BTDBException(message);
+        }
     }
 }

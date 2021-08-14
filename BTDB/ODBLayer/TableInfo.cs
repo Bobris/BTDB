@@ -114,7 +114,7 @@ namespace BTDB.ODBLayer
                 // ReSharper disable once EqualExpressionComparison intentional
                 if (((Func<object>)factory)() == ((Func<object>)factory)())
                 {
-                    throw new BTDBException(_clientType.ToSimpleName()+ " cannot be registered as singleton");
+                    _tableInfoResolver.ActualOptions.ThrowBTDBException(_clientType.ToSimpleName()+ " cannot be registered as singleton");
                 }
                 var method = ILBuilder.Instance.NewMethod(
                     $"Creator_{Name}", typeof(Func<IInternalObjectDBTransaction, DBObjectMetadata, object>), factoryType);
