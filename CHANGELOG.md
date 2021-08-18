@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.9.1
+
 ### Fixed
 
 Iterate only strictly abstract methods in Relation interfaces.
