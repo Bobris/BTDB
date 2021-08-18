@@ -984,15 +984,16 @@ namespace BTDB.ODBLayer
         public static IEnumerable<MethodInfo> GetMethods(Type interfaceType)
         {
             if (IsIgnoredType(interfaceType)) yield break;
-            var methods = interfaceType.GetMethods().Where(x => x.IsAbstract);
-            foreach (var method in methods)
-                yield return method;
+            foreach (var methodInfo in GetAbstractMethods(interfaceType)) yield return methodInfo;
             foreach (var iface in interfaceType.GetInterfaces())
             {
                 if (IsIgnoredType(iface)) continue;
-                var inheritedMethods = iface.GetMethods();
-                foreach (var method in inheritedMethods)
-                    yield return method;
+                foreach (var methodInfo in GetAbstractMethods(iface)) yield return methodInfo;
+            }
+
+            static IEnumerable<MethodInfo> GetAbstractMethods(Type type)
+            {
+                return type.GetMethods().Where(x => x.IsAbstract);
             }
         }
 
