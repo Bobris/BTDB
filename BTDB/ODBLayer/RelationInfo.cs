@@ -86,7 +86,8 @@ namespace BTDB.ODBLayer
                 return res;
             }
 
-            RelationLoaderFunc CreatePkLoader(Type instanceType, ReadOnlySpan<TableFieldInfo> fields, string loaderName, out bool primaryKeyIsEnough)
+            RelationLoaderFunc CreatePkLoader(Type instanceType, ReadOnlySpan<TableFieldInfo> fields, string loaderName,
+                out bool primaryKeyIsEnough)
             {
                 var thatType = typeof(Func<>).MakeGenericType(instanceType);
                 var method = ILBuilder.Instance.NewMethod(
@@ -98,24 +99,38 @@ namespace BTDB.ODBLayer
                 {
                     that = container.ResolveOptional(thatType);
                 }
+
                 ilGenerator.DeclareLocal(instanceType);
                 if (that == null)
                 {
-                    ilGenerator
-                        .Newobj(instanceType.GetConstructor(Type.EmptyTypes)!)
-                        .Stloc(0);
+                    var defaultConstructor = EmitHelpers.GetDefaultConstructor(instanceType);
+                    if (defaultConstructor == null)
+                    {
+                        ilGenerator
+                            .Ldtoken(instanceType)
+                            .Call(() => Type.GetTypeFromHandle(new()))
+                            .Call(() => RuntimeHelpers.GetUninitializedObject(null));
+                    }
+                    else
+                    {
+                        ilGenerator
+                            .Newobj(defaultConstructor);
+                    }
                 }
                 else
                 {
                     ilGenerator
                         .Ldarg(0)
-                        .Callvirt(thatType.GetMethod(nameof(Func<object>.Invoke))!)
-                        .Stloc(0);
+                        .Callvirt(thatType.GetMethod(nameof(Func<object>.Invoke))!);
                 }
+
+                ilGenerator
+                    .Stloc(0);
 
                 var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?)>();
                 var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
-                                                       BindingFlags.Instance).Where(pi => pi.GetCustomAttribute<NotStoredAttribute>(true) == null &&
+                                                       BindingFlags.Instance).Where(pi =>
+                    pi.GetCustomAttribute<NotStoredAttribute>(true) == null &&
                     pi.GetIndexParameters().Length == 0).ToList();
                 var usedFields = 0;
                 foreach (var srcFieldInfo in fields)
@@ -127,7 +142,8 @@ namespace BTDB.ODBLayer
                         var setterMethod = fieldInfo.GetAnySetMethod();
                         var fieldType = setterMethod!.GetParameters()[0].ParameterType;
                         var specializedSrcHandler =
-                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null, _owner._relationInfoResolver.FieldHandlerLogger);
+                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null,
+                                _owner._relationInfoResolver.FieldHandlerLogger);
                         var willLoad = specializedSrcHandler.HandledType();
                         var converterGenerator =
                             _owner._relationInfoResolver.TypeConvertorGenerator
@@ -229,7 +245,8 @@ namespace BTDB.ODBLayer
                         var setterMethod = fieldInfo.GetAnySetMethod();
                         var fieldType = setterMethod!.GetParameters()[0].ParameterType;
                         var specializedSrcHandler =
-                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null, _owner._relationInfoResolver.FieldHandlerLogger);
+                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null,
+                                _owner._relationInfoResolver.FieldHandlerLogger);
                         var willLoad = specializedSrcHandler.HandledType();
                         var converterGenerator =
                             _owner._relationInfoResolver.TypeConvertorGenerator
@@ -242,6 +259,7 @@ namespace BTDB.ODBLayer
                                 instanceTableFieldInfos.RemoveAt(i);
                                 break;
                             }
+
                             loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod, false));
                             continue;
                         }
@@ -304,6 +322,7 @@ namespace BTDB.ODBLayer
                         {
                             loadInstruction.Item1.Load(ilGenerator, il => il.Ldarg(1), readerOrCtx);
                         }
+
                         loadInstruction.Item2(ilGenerator);
                         ilGenerator.Call(loadInstruction.Item3!);
                         continue;
@@ -383,6 +402,7 @@ namespace BTDB.ODBLayer
             {
                 ItemLoaderInfos.Add(new ItemLoaderInfo(this, loadType));
             }
+
             if (LastPersistedVersion > 0 &&
                 RelationVersionInfo.Equal(_relationVersions[LastPersistedVersion]!, ClientRelationVersionInfo))
             {
@@ -427,9 +447,11 @@ namespace BTDB.ODBLayer
                     ClearRelationData(tr, previousInfo);
                     return;
                 }
+
                 throw new BTDBException(
                     $"Change of primary key in relation '{name}' is not allowed. Field count {pkFields.Length} != {prevPkFields.Length}.");
             }
+
             for (var i = 0; i < pkFields.Length; i++)
             {
                 if (ArePrimaryKeyFieldsCompatible(pkFields.Span[i].Handler!, prevPkFields.Span[i].Handler!)) continue;
@@ -630,6 +652,7 @@ namespace BTDB.ODBLayer
             {
                 _relationVersions[key] = value;
             }
+
             _valueIDictFinders = new FreeContentFun?[_relationVersions.Length];
         }
 
@@ -710,6 +733,7 @@ namespace BTDB.ODBLayer
                     break;
                 }
             }
+
             IILLocal writerCtxLocal = null;
             if (anyNeedsCtx)
             {
@@ -793,6 +817,7 @@ namespace BTDB.ODBLayer
                             break;
                         }
                     }
+
                     if (valueFieldIdx >= 0)
                     {
                         for (var valueIdx = secondBuffer.ActualFieldIdx; valueIdx < valueFieldIdx; valueIdx++)
@@ -807,6 +832,7 @@ namespace BTDB.ODBLayer
                                     break;
                                 }
                             }
+
                             if (storeForSkIndex == -1)
                                 valueField.Handler!.Skip(ilGenerator, secondBuffer.PushReader, secondBuffer.PushCtx);
                             else
@@ -831,7 +857,7 @@ namespace BTDB.ODBLayer
 
                         var loc = defaultObjectLoc;
                         CreateSaverIl(ilGenerator,
-                            new[] {ClientRelationVersionInfo.GetSecondaryKeyField((int)skf.Index)},
+                            new[] { ClientRelationVersionInfo.GetSecondaryKeyField((int)skf.Index) },
                             il => il.Ldloc(loc), PushWriter, il => il.Ldarg(0));
                     }
                 }
@@ -892,6 +918,7 @@ namespace BTDB.ODBLayer
                     break;
                 }
             }
+
             if (anyNeedsCtx)
             {
                 var readerCtxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
@@ -925,6 +952,7 @@ namespace BTDB.ODBLayer
                 if (!TableFieldInfo.Equal(currFields[i], prevFields[i]))
                     return false;
             }
+
             return true;
         }
 
@@ -944,6 +972,7 @@ namespace BTDB.ODBLayer
                         if (SecondaryIndexHasSameDefinition(currFields, prevFields))
                             goto existing;
                     }
+
                     while (prevVersion.SecondaryKeys.ContainsKey(index) || secondaryKeys.ContainsKey(index))
                         index++;
                     existing:
@@ -959,6 +988,7 @@ namespace BTDB.ODBLayer
                     secondaryKeys.Add(primeSecondaryKey.Key, primeSecondaryKey.Value);
                 }
             }
+
             return new RelationVersionInfo(prime.PrimaryKeyFields, secondaryKeys, prime.SecondaryKeyFields,
                 prime.Fields);
         }
@@ -1006,6 +1036,7 @@ namespace BTDB.ODBLayer
                 if (property.Name == nameof(IRelation.BtdbInternalNextInChain)) continue;
                 yield return property;
             }
+
             foreach (var iface in interfaceType.GetInterfaces())
             {
                 if (IsIgnoredType(iface)) continue;
@@ -1085,7 +1116,7 @@ namespace BTDB.ODBLayer
             var memoPositionLoc = ilGenerator.DeclareLocal(typeof(IMemorizedPosition));
 
             var firstBuffer = new BufferInfo();
-            var secondBuffer = new BufferInfo {ActualFieldIdx = paramFieldCountInFirstBuffer};
+            var secondBuffer = new BufferInfo { ActualFieldIdx = paramFieldCountInFirstBuffer };
             var outOfOrderPKParts =
                 new Dictionary<int, MemorizedPositionWithLength>(); //index -> bufferIdx, pos, length
 
@@ -1201,7 +1232,7 @@ namespace BTDB.ODBLayer
             var memoPos = ilGenerator.DeclareLocal(typeof(uint));
             var memoLen = ilGenerator.DeclareLocal(typeof(int));
             var position = new MemorizedPositionWithLength
-                {BufferIndex = activeBuffer, Pos = memoPos, Length = memoLen};
+                { BufferIndex = activeBuffer, Pos = memoPos, Length = memoLen };
             MemorizeCurrentPosition(ilGenerator, pushReader, memoPos);
             StoreCurrentPosition(ilGenerator, pushReader, tempPosition);
             handler.Skip(ilGenerator, pushReader, null);

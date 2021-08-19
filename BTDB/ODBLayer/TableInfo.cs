@@ -131,12 +131,12 @@ namespace BTDB.ODBLayer
                 var method = ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
                     $"Creator_{Name}");
                 var ilGenerator = method.Generator;
-                var defaultConstructor = _clientType.GetConstructor(Type.EmptyTypes);
+                var defaultConstructor = _clientType.GetDefaultConstructor();
                 if (defaultConstructor == null)
                 {
                     ilGenerator
                         .Ldtoken(_clientType)
-                        .Call(() => Type.GetTypeFromHandle(new RuntimeTypeHandle()))
+                        .Call(() => Type.GetTypeFromHandle(new()))
                         .Call(() => RuntimeHelpers.GetUninitializedObject(null));
                 }
                 else

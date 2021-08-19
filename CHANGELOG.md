@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Relations now supports Items without default constructor.
+
 ## 26.9.1
 
 ### Fixed

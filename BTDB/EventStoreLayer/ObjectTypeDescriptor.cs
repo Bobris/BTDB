@@ -239,12 +239,12 @@ namespace BTDB.EventStoreLayer
             {
                 var resultLoc = ilGenerator.DeclareLocal(targetType, "result");
                 var labelNoCtx = ilGenerator.DefineLabel();
-                var defaultConstructor = targetType.GetConstructor(Type.EmptyTypes);
+                var defaultConstructor = targetType.GetDefaultConstructor();
                 if (defaultConstructor == null)
                 {
                     ilGenerator
                         .Ldtoken(targetType)
-                        .Call(() => Type.GetTypeFromHandle(new RuntimeTypeHandle()))
+                        .Call(() => Type.GetTypeFromHandle(new()))
                         .Call(() => RuntimeHelpers.GetUninitializedObject(null))
                         .Castclass(targetType);
                 }

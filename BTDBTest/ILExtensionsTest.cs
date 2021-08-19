@@ -41,7 +41,7 @@ namespace BTDBTest
             var method = new DynamicMethod("SampleCall", typeof(Nested), Type.EmptyTypes);
             var il = method.GetILGenerator();
             il.DeclareLocal(typeof(Nested));
-            il.Emit(OpCodes.Newobj, typeof(Nested).GetConstructor(Type.EmptyTypes)!);
+            il.Emit(OpCodes.Newobj, typeof(Nested).GetDefaultConstructor()!);
             il.Emit(OpCodes.Stloc_0);
             il.Emit(OpCodes.Ldloc_0);
             il.Emit(OpCodes.Ldstr, "Test");

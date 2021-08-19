@@ -191,7 +191,7 @@ namespace BTDB.FieldHandler
 
         public void Init(IILGen ilGenerator, Action<IILGen> pushReaderCtx)
         {
-            ilGenerator.Newobj(typeof(DBIndirect<>).MakeGenericType(_type!).GetConstructor(Type.EmptyTypes)!);
+            ilGenerator.Newobj(typeof(DBIndirect<>).MakeGenericType(_type!).GetDefaultConstructor()!);
         }
 
         public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)

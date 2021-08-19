@@ -296,7 +296,9 @@ namespace BTDB.IL
         public static bool IsNullable(Type enclosingType, PropertyInfo property)
         {
 #if DEBUG
-            if (!enclosingType.GetProperties(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly).Contains(property))
+            if (!enclosingType
+                .GetProperties(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public |
+                               BindingFlags.NonPublic | BindingFlags.DeclaredOnly).Contains(property))
                 throw new ArgumentException("enclosingType must be the type which defines property");
 #endif
             var nullable = property.CustomAttributes
@@ -347,6 +349,13 @@ namespace BTDB.IL
             if (res == null)
                 res = pi.DeclaringType?.GetProperty(pi.Name)?.GetSetMethod(true);
             return res;
+        }
+
+        public static ConstructorInfo? GetDefaultConstructor(this Type instanceType)
+        {
+            return instanceType.GetConstructor(
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null, Type.EmptyTypes, null);
         }
     }
 }

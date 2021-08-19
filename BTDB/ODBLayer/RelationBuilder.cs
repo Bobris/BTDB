@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -31,31 +32,36 @@ namespace BTDB.ODBLayer
         static readonly MethodInfo SpanWriterGetPersistentSpanAndResetMethodInfo =
             typeof(SpanWriter).GetMethod(nameof(SpanWriter.GetPersistentSpanAndReset))!;
 
-        static Dictionary<(Type,string?), RelationBuilder> _relationBuilderCache = new();
+        static Dictionary<(Type, string?), RelationBuilder> _relationBuilderCache = new();
         static readonly object RelationBuilderCacheLock = new();
 
         internal static void Reset()
         {
-            _relationBuilderCache = new ();
+            _relationBuilderCache = new();
         }
 
         internal static RelationBuilder GetFromCache(Type interfaceType, IRelationInfoResolver relationInfoResolver)
         {
-            if (_relationBuilderCache.TryGetValue((interfaceType,relationInfoResolver.ActualOptions.Name), out var res))
+            if (_relationBuilderCache.TryGetValue((interfaceType, relationInfoResolver.ActualOptions.Name),
+                out var res))
             {
                 return res;
             }
 
             lock (RelationBuilderCacheLock)
             {
-                if (_relationBuilderCache.TryGetValue((interfaceType,relationInfoResolver.ActualOptions.Name), out res))
+                if (_relationBuilderCache.TryGetValue((interfaceType, relationInfoResolver.ActualOptions.Name),
+                    out res))
                 {
                     return res;
                 }
 
-                _relationBuilderCache = new (_relationBuilderCache)
+                _relationBuilderCache = new(_relationBuilderCache)
                 {
-                    { (interfaceType,relationInfoResolver.ActualOptions.Name), res = new(interfaceType, relationInfoResolver) }
+                    {
+                        (interfaceType, relationInfoResolver.ActualOptions.Name),
+                        res = new(interfaceType, relationInfoResolver)
+                    }
                 };
             }
 
@@ -82,7 +88,10 @@ namespace BTDB.ODBLayer
         {
             var container = RelationInfoResolver.Container;
             var res = container?.ResolveOptional(ItemType);
-            return (res ?? Activator.CreateInstance(ItemType, nonPublic: true))!;
+            return (res ??
+                    (ItemType.GetDefaultConstructor() != null
+                        ? Activator.CreateInstance(ItemType, nonPublic: true)
+                        : RuntimeHelpers.GetUninitializedObject(ItemType)))!;
         }
 
         RelationVersionInfo CreateVersionInfoByReflection()
@@ -114,7 +123,8 @@ namespace BTDB.ODBLayer
                     var fieldInfo = TableFieldInfo.Build(_name, pi, RelationInfoResolver.FieldHandlerFactory,
                         FieldHandlerOptions.Orderable);
                     if (fieldInfo.Handler!.NeedsCtx())
-                        RelationInfoResolver.ActualOptions.ThrowBTDBException($"Unsupported key field {fieldInfo.Name} type.");
+                        RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                            $"Unsupported key field {fieldInfo.Name} type.");
                     primaryKeys.Add(actualPKAttribute.Order, fieldInfo);
                 }
 
@@ -944,7 +954,9 @@ namespace BTDB.ODBLayer
             else if (returnType == typeof(bool))
                 returningBoolVariant = true;
             else
-                RelationInfoResolver.ActualOptions.ThrowBTDBException("Method Insert should be defined with void or bool return type.");
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    "Method Insert should be defined with void or bool return type.");
+
             var methodParams = method.GetParameters();
             CheckParameterCount(method.Name, 1, methodParams.Length);
             CheckParameterType(method.Name, 0, methodInfo!.GetParameters()[0].ParameterType,
@@ -957,7 +969,7 @@ namespace BTDB.ODBLayer
             var returnedTrueLabel = reqMethod.Generator.DefineLabel("returnedTrueLabel");
             reqMethod.Generator
                 .Brtrue(returnedTrueLabel)
-                .Ldstr("Trying to insert duplicate key in "+_name)
+                .Ldstr("Trying to insert duplicate key in " + _name)
                 .Newobj(() => new BTDBException(null))
                 .Throw()
                 .Mark(returnedTrueLabel);
@@ -986,19 +998,22 @@ namespace BTDB.ODBLayer
         void CheckParameterType(string name, int parIdx, Type expectedType, Type actualType)
         {
             if (expectedType != actualType)
-                RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {name} expects {parIdx}th parameter of type {expectedType.Name}.");
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Method {name} expects {parIdx}th parameter of type {expectedType.Name}.");
         }
 
         void CheckParameterCount(string name, int expectedParameterCount, int actualParameterCount)
         {
             if (expectedParameterCount != actualParameterCount)
-                RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {name} expects {expectedParameterCount} parameters count.");
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Method {name} expects {expectedParameterCount} parameters count.");
         }
 
         void CheckReturnType(string name, Type expectedReturnType, Type returnType)
         {
             if (returnType != expectedReturnType)
-                RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {name} should be defined with {expectedReturnType.Name} return type.");
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Method {name} should be defined with {expectedReturnType.Name} return type.");
         }
 
         void CreateMethodFindById(IILGen ilGenerator, string methodName,
@@ -1146,7 +1161,8 @@ namespace BTDB.ODBLayer
                 var par = methodParameters[idx++];
                 if (string.Compare(field.Name, par.Name!.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
                 {
-                    RelationInfoResolver.ActualOptions.ThrowBTDBException($"Parameter and key mismatch in {methodName}, {field.Name}!={par.Name}.");
+                    RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                        $"Parameter and key mismatch in {methodName}, {field.Name}!={par.Name}.");
                 }
 
                 if (!field.Handler!.IsCompatibleWith(par.ParameterType, FieldHandlerOptions.Orderable))
