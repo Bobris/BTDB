@@ -23,7 +23,7 @@ namespace ODbDump
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 Console.WriteLine(
-                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump");
+                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, statm, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump");
                 return;
             }
 
@@ -222,7 +222,7 @@ namespace ODbDump
                     var sw = new Stopwatch();
                     sw.Start();
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
@@ -533,6 +533,7 @@ namespace ODbDump
                     sb.Append(keyValuePair.Value);
                     sb.Append('\n');
                 }
+
                 return sb.ToString();
             }
             catch
@@ -667,6 +668,19 @@ namespace ODbDump
                         }
 
                         break;
+                    case "ri":
+                    case "relation-info":
+                        if (currentRelationId >= 0)
+                        {
+                            PrintRelationInfo(iterator, iterator.RelationId2Info[(uint)currentRelationId]);
+                        }
+                        else
+                        {
+                            Console.WriteLine("First do: select relation id");
+                        }
+
+                        break;
+
                     case "s":
                     case "select":
                         if (words.Length == 1)
@@ -762,6 +776,38 @@ namespace ODbDump
                     case "e":
                     case "exit":
                         return;
+                }
+            }
+        }
+
+        static void PrintRelationInfo(ODBIterator iterator, ODBIteratorRelationInfo ri)
+        {
+            Console.WriteLine("Relation:" + ri.Id + " " + ri.Name + " " + ri.RowCount);
+            Console.WriteLine("LastPersistedVersion:" + ri.LastPersistedVersion);
+            foreach (var relationVersionInfo in ri.VersionInfos)
+            {
+                Console.WriteLine("Version:" + relationVersionInfo.Key);
+                PrintFields(relationVersionInfo.Value.Fields);
+            }
+
+            foreach (var s in iterator.IterateRelationStats(ri))
+            {
+                Console.WriteLine(s.Item1 + ":" + s.Item2);
+            }
+        }
+
+        static void PrintFields(ReadOnlyMemory<TableFieldInfo> valueFields)
+        {
+            if (valueFields.IsEmpty) return;
+            foreach (var fieldInfo in valueFields.Span)
+            {
+                if (fieldInfo.Handler == null)
+                {
+                    Console.WriteLine(fieldInfo.Name + " : !!null!!");
+                }
+                else
+                {
+                    Console.WriteLine(fieldInfo.Name + " : " + fieldInfo.Handler.Name);
                 }
             }
         }

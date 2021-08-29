@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Added
+
+A lot of important stuff in ObjectDB are public now.
+Expanded interactive mode in ODbDump.
+
 ## 26.10.0
 
 ### Added

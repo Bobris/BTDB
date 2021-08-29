@@ -15,7 +15,7 @@ namespace BTDB.ODBLayer
         readonly FieldHandlerOptions _handlerOptions;
 
         UnresolvedTableFieldInfo(string name, string handlerName, byte[]? configuration,
-                                 string tableName, FieldHandlerOptions handlerOptions)
+            string tableName, FieldHandlerOptions handlerOptions)
             : base(name, null)
         {
             _handlerName = handlerName;
@@ -24,27 +24,29 @@ namespace BTDB.ODBLayer
             _handlerOptions = handlerOptions;
         }
 
-        internal static UnresolvedTableFieldInfo Load(ref SpanReader reader, string tableName, FieldHandlerOptions handlerOptions)
+        internal static UnresolvedTableFieldInfo Load(ref SpanReader reader, string tableName,
+            FieldHandlerOptions handlerOptions)
         {
             var name = reader.ReadString();
             var handlerName = reader.ReadString();
             var configuration = reader.ReadByteArray();
-            return new UnresolvedTableFieldInfo(name!, handlerName!, configuration, tableName, handlerOptions);
+            return new(name!, handlerName!, configuration, tableName, handlerOptions);
         }
 
         internal TableFieldInfo Resolve(IFieldHandlerFactory fieldHandlerFactory)
         {
             var fieldHandler = fieldHandlerFactory.CreateFromName(_handlerName, _configuration, _handlerOptions);
-            if (fieldHandler == null) throw new BTDBException(
-                $"FieldHandlerFactory did not created handler {_handlerName} in {_tableName}.{Name}");
+            if (fieldHandler == null)
+                throw new BTDBException(
+                    $"FieldHandlerFactory did not created handler {_handlerName} in {_tableName}.{Name}");
             return Create(Name, fieldHandler);
         }
     }
 
     public class TableFieldInfo : IEquatable<TableFieldInfo>
     {
-        internal readonly string Name;
-        internal readonly IFieldHandler? Handler;
+        public readonly string Name;
+        public readonly IFieldHandler? Handler;
 
         protected TableFieldInfo(string name, IFieldHandler? handler)
         {
@@ -59,8 +61,9 @@ namespace BTDB.ODBLayer
             var handlerName = reader.ReadString();
             var configuration = reader.ReadByteArray();
             var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName!, configuration, handlerOptions);
-            if (fieldHandler == null) throw new BTDBException(
-                $"FieldHandlerFactory did not created handler {handlerName} in {tableName}.{name}");
+            if (fieldHandler == null)
+                throw new BTDBException(
+                    $"FieldHandlerFactory did not created handler {handlerName} in {tableName}.{name}");
             return new TableFieldInfo(name!, fieldHandler);
         }
 
@@ -70,10 +73,13 @@ namespace BTDB.ODBLayer
         }
 
         public static TableFieldInfo Build(string tableName, PropertyInfo pi, IFieldHandlerFactory fieldHandlerFactory,
-              FieldHandlerOptions handlerOptions)
+            FieldHandlerOptions handlerOptions)
         {
             var fieldHandler = fieldHandlerFactory.CreateFromType(pi.PropertyType, handlerOptions);
-            if (fieldHandler == null) throw new BTDBException(string.Format("FieldHandlerFactory did not build property {0} of type {2} in {1}", pi.Name, tableName, pi.PropertyType.FullName));
+            if (fieldHandler == null)
+                throw new BTDBException(string.Format(
+                    "FieldHandlerFactory did not build property {0} of type {2} in {1}", pi.Name, tableName,
+                    pi.PropertyType.FullName));
             var a = pi.GetCustomAttribute<PersistedNameAttribute>();
             return new TableFieldInfo(a != null ? a.Name : pi.Name, fieldHandler);
         }
@@ -106,6 +112,4 @@ namespace BTDB.ODBLayer
             return Equal(this, other);
         }
     }
-
-
 }

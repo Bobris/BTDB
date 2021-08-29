@@ -3,7 +3,7 @@ using BTDB.IOC;
 
 namespace BTDB.ODBLayer
 {
-    interface ITableInfoResolver
+    public interface ITableInfoResolver
     {
         uint GetLastPersistedVersion(uint id);
         TableVersionInfo LoadTableVersionInfo(uint id, uint version, string tableName);

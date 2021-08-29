@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -14,6 +15,7 @@ using BTDB.StreamLayer;
 namespace BTDB.ODBLayer
 {
     delegate void SkipperFun(ref SpanReader reader);
+
     delegate object? LoaderFun(ref SpanReader reader);
 
     public class ODBIterator
@@ -29,7 +31,9 @@ namespace BTDB.ODBLayer
         readonly HashSet<TableIdVersionId> _usedTableVersions;
         readonly Dictionary<TableIdVersionId, TableVersionInfo> _tableVersionInfos;
         readonly Dictionary<IFieldHandler, SkipperFun> _skippers;
+
         readonly Dictionary<IFieldHandler, LoaderFun> _loaders;
+
         //relations
         Dictionary<uint, ODBIteratorRelationInfo> _relationId2Info;
 
@@ -63,12 +67,15 @@ namespace BTDB.ODBLayer
             _singletons = new Dictionary<uint, ulong>();
             while (_trkv.FindNextKey(ObjectDB.TableSingletonsPrefix))
             {
-                _singletons.Add(new SpanReader(_trkv.GetKey().Slice((int)ObjectDB.TableSingletonsPrefixLen)).ReadVUInt32(), new SpanReader(_trkv.GetValue()).ReadVUInt64());
+                _singletons.Add(
+                    new SpanReader(_trkv.GetKey().Slice((int)ObjectDB.TableSingletonsPrefixLen)).ReadVUInt32(),
+                    new SpanReader(_trkv.GetValue()).ReadVUInt64());
             }
 
             if (sortTableByNameAsc)
             {
-                _singletons = _singletons.OrderBy(item => _tableId2Name.TryGetValue(item.Key, out var name) ? name : "").ToDictionary(item => item.Key, item => item.Value);
+                _singletons = _singletons.OrderBy(item => _tableId2Name.TryGetValue(item.Key, out var name) ? name : "")
+                    .ToDictionary(item => item.Key, item => item.Value);
             }
         }
 
@@ -86,8 +93,10 @@ namespace BTDB.ODBLayer
                 {
                     _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
                 }
+
                 IterateOid(singleton.Value);
             }
+
             foreach (var relation in _relationId2Info)
             {
                 if (_visitor != null && !_visitor.StartRelation(relation.Value))
@@ -126,7 +135,8 @@ namespace BTDB.ODBLayer
             var tableId = reader.ReadVUInt32();
             var version = reader.ReadVUInt32();
             MarkTableIdVersionFieldInfo(tableId, version);
-            if (_visitor != null && !_visitor.StartObject(oid, tableId, _tableId2Name.TryGetValue(tableId, out var tableName) ? tableName : null, version))
+            if (_visitor != null && !_visitor.StartObject(oid, tableId,
+                _tableId2Name.TryGetValue(tableId, out var tableName) ? tableName : null, version))
                 return;
             var tvi = GetTableVersionInfo(tableId, version);
             var knownInlineId = new HashSet<int>();
@@ -143,6 +153,7 @@ namespace BTDB.ODBLayer
                     IterateHandler(ref reader, fi.Handler!, true, knownInlineId);
                 }
             }
+
             _visitor?.EndObject();
         }
 
@@ -158,10 +169,12 @@ namespace BTDB.ODBLayer
                 IterateFields(ref keyReader, relationInfo.PrimaryKeyFields.Span, null);
                 _visitor?.EndRelationKey();
             }
+
             if (_trkv.CursorMovedCounter != prevProtectionCounter)
             {
                 if (!_trkv.SetKeyIndex(prefix, pos)) return;
             }
+
             if (_visitor == null || _visitor.StartRelationValue())
             {
                 var valueReader = new SpanReader(_trkv.GetValue());
@@ -196,6 +209,7 @@ namespace BTDB.ODBLayer
                         if (!_trkv.FindNextKey(prefix)) break;
                     }
                 }
+
                 _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
                 prevProtectionCounter = _trkv.CursorMovedCounter;
                 if (_visitor == null || _visitor.StartRelationKey())
@@ -205,10 +219,12 @@ namespace BTDB.ODBLayer
                     IterateFields(ref keyReader, relationInfo.PrimaryKeyFields.Span, null);
                     _visitor?.EndRelationKey();
                 }
+
                 if (_trkv.CursorMovedCounter != prevProtectionCounter)
                 {
                     if (!_trkv.SetKeyIndex(prefix, pos)) break;
                 }
+
                 if (_visitor == null || _visitor.StartRelationValue())
                 {
                     var valueReader = new SpanReader(_trkv.GetValue());
@@ -217,8 +233,65 @@ namespace BTDB.ODBLayer
                     IterateFields(ref valueReader, relationInfo.Fields.Span, new HashSet<int>());
                     _visitor?.EndRelationValue();
                 }
+
                 pos++;
             }
+        }
+
+        public List<(string, string)> IterateRelationStats(ODBIteratorRelationInfo relation)
+        {
+            var res = new List<(string, string)>();
+            //IterateSecondaryIndexes(relation);
+            var prefix = BuildRelationPrefix(relation.Id);
+
+            var stat1 = new RefDictionary<uint, uint>();
+            var stat2 = new RefDictionary<uint, uint>();
+            var stat3 = new RefDictionary<uint, uint>();
+            long prevProtectionCounter = 0;
+            long pos = 0;
+            while (true)
+            {
+                if (pos == 0)
+                {
+                    if (!_trkv.FindFirstKey(prefix)) break;
+                }
+                else
+                {
+                    if (_trkv.CursorMovedCounter != prevProtectionCounter)
+                    {
+                        if (!_trkv.SetKeyIndex(prefix, pos)) break;
+                    }
+                    else
+                    {
+                        if (!_trkv.FindNextKey(prefix)) break;
+                    }
+                }
+
+                var ss = _trkv.GetStorageSizeOfCurrentKey();
+                stat2.GetOrAddValueRef(ss.Key)++;
+                stat3.GetOrAddValueRef(ss.Value)++;
+                var valueReader = new SpanReader(_trkv.GetValue());
+                var version = valueReader.ReadVUInt32();
+                stat1.GetOrAddValueRef(version)++;
+                pos++;
+            }
+
+            foreach (var p in stat1.OrderBy(p => p.Key))
+            {
+                res.Add(("Version " + p.Key + "used count", p.Value.ToString()));
+            }
+
+            foreach (var p in stat2.OrderBy(p => p.Key))
+            {
+                res.Add(("Key size " + p.Key + " count", p.Value.ToString()));
+            }
+
+            foreach (var p in stat3.OrderBy(p => p.Key))
+            {
+                res.Add(("Value size " + p.Key + " count", p.Value.ToString()));
+            }
+
+            return res;
         }
 
         void IterateSecondaryIndexes(ODBIteratorRelationInfo relation)
@@ -256,9 +329,11 @@ namespace BTDB.ODBLayer
                             if (_visitor == null || !_visitor.StartField(fi.Name)) continue;
                             IterateHandler(ref reader, fi.Handler!, false, null);
                         }
+
                         _visitor?.NextSecondaryKey();
                         pos++;
                     }
+
                     _visitor?.EndSecondaryIndex();
                 }
             }
@@ -266,7 +341,8 @@ namespace BTDB.ODBLayer
 
         static byte[] BuildRelationSecondaryKeyPrefix(uint relationIndex, uint secondaryKeyIndex)
         {
-            var prefix = new byte[1 + PackUnpack.LengthVUInt(relationIndex) + PackUnpack.LengthVUInt(secondaryKeyIndex)];
+            var prefix =
+                new byte[1 + PackUnpack.LengthVUInt(relationIndex) + PackUnpack.LengthVUInt(secondaryKeyIndex)];
             prefix[0] = ObjectDB.AllRelationsSKPrefixByte;
             int pos = 1;
             PackUnpack.PackVUInt(prefix, ref pos, relationIndex);
@@ -299,7 +375,8 @@ namespace BTDB.ODBLayer
             }
         }
 
-        uint ReadRelationVersions(uint relationIndex, string name, Dictionary<uint, RelationVersionInfo> relationVersions)
+        uint ReadRelationVersions(uint relationIndex, string name,
+            Dictionary<uint, RelationVersionInfo> relationVersions)
         {
             uint lastPersistedVersion = 0;
             var relationInfoResolver = new RelationInfoResolver((ObjectDB)_tr.Owner);
@@ -312,6 +389,7 @@ namespace BTDB.ODBLayer
             {
                 return lastPersistedVersion;
             }
+
             do
             {
                 var keyReader = new SpanReader(_trkv.GetKey().Slice(prefix.Length));
@@ -354,26 +432,32 @@ namespace BTDB.ODBLayer
                         if (!_trkv.FindNextKey(prefix)) break;
                     }
                 }
+
                 _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
                 prevProtectionCounter = _trkv.CursorMovedCounter;
                 if (_visitor == null || _visitor.StartDictKey())
                 {
-                    var keyReader = new SpanReader(_trkv.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length).Slice(prefix.Length));
+                    var keyReader = new SpanReader(_trkv
+                        .GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length).Slice(prefix.Length));
                     IterateHandler(ref keyReader, keyHandler, false, null);
                     _visitor?.EndDictKey();
                 }
+
                 if (_trkv.CursorMovedCounter != prevProtectionCounter)
                 {
                     if (!_trkv.SetKeyIndex(prefix, pos)) break;
                 }
+
                 if (_visitor == null || _visitor.StartDictValue())
                 {
                     var valueReader = new SpanReader(_trkv.GetValue());
                     IterateHandler(ref valueReader, valueHandler, false, null);
                     _visitor?.EndDictValue();
                 }
+
                 pos++;
             }
+
             _visitor?.EndDictionary();
         }
 
@@ -404,6 +488,7 @@ namespace BTDB.ODBLayer
                         if (!_trkv.FindNextKey(prefix)) break;
                     }
                 }
+
                 _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
                 prevProtectionCounter = _trkv.CursorMovedCounter;
                 if (_visitor == null || _visitor.StartSetKey())
@@ -412,8 +497,10 @@ namespace BTDB.ODBLayer
                     IterateHandler(ref keyReader, keyHandler, false, null);
                     _visitor?.EndSetKey();
                 }
+
                 pos++;
             }
+
             _visitor?.EndSet();
         }
 
@@ -424,7 +511,8 @@ namespace BTDB.ODBLayer
                 var dictId = reader.ReadVUInt64();
                 if (!skipping)
                 {
-                    var kvHandlers = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().ToArray();
+                    var kvHandlers = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers()
+                        .ToArray();
                     IterateDict(dictId, kvHandlers[0], kvHandlers[1]);
                 }
             }
@@ -433,7 +521,8 @@ namespace BTDB.ODBLayer
                 var dictId = reader.ReadVUInt64();
                 if (!skipping)
                 {
-                    var keyHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().First();
+                    var keyHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers()
+                        .First();
                     IterateSet(dictId, keyHandler);
                 }
             }
@@ -461,9 +550,11 @@ namespace BTDB.ODBLayer
                             if (!skipping) _visitor?.InlineBackRef((int)oid);
                             return;
                         }
+
                         if (!skipping) _visitor?.InlineRef((int)oid);
                         knownInlineRefs.Add((int)oid);
                     }
+
                     var tableId = reader.ReadVUInt32();
                     var version = reader.ReadVUInt32();
                     if (!skipping) MarkTableIdVersionFieldInfo(tableId, version);
@@ -479,6 +570,7 @@ namespace BTDB.ODBLayer
                         IterateHandler(ref reader, fi.Handler!, skipField, knownInlineRefsNested);
                         if (!skipField) _visitor?.EndField();
                     }
+
                     if (!skip) _visitor?.EndInlineObject();
                 }
             }
@@ -499,7 +591,8 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    var itemHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().First();
+                    var itemHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers()
+                        .First();
                     IterateInlineList(ref reader, itemHandler, skipping, knownInlineRefs);
                 }
             }
@@ -520,7 +613,8 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    var kvHandlers = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().ToArray();
+                    var kvHandlers = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers()
+                        .ToArray();
                     IterateInlineDict(ref reader, kvHandlers[0], kvHandlers[1], skipping, knownInlineRefs);
                 }
             }
@@ -529,7 +623,8 @@ namespace BTDB.ODBLayer
                 var hasValue = reader.ReadBool();
                 if (hasValue)
                 {
-                    var itemHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().First();
+                    var itemHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers()
+                        .First();
                     IterateHandler(ref reader, itemHandler, skipping, null);
                 }
             }
@@ -608,6 +703,7 @@ namespace BTDB.ODBLayer
                         skipper = meth.Create();
                         _skippers.Add(handler, skipper);
                     }
+
                     skipper(ref reader);
                 }
                 else
@@ -622,11 +718,13 @@ namespace BTDB.ODBLayer
                         loader = meth.Create();
                         _loaders.Add(handler, loader);
                     }
+
                     var obj = loader(ref reader);
                     if (_visitor.NeedScalarAsObject())
                     {
                         _visitor.ScalarAsObject(obj);
                     }
+
                     if (_visitor.NeedScalarAsText())
                     {
                         _visitor.ScalarAsText(obj == null
@@ -637,7 +735,8 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void IterateInlineDict(ref SpanReader reader, IFieldHandler keyHandler, IFieldHandler valueHandler, bool skipping, HashSet<int>? knownInlineRefs)
+        void IterateInlineDict(ref SpanReader reader, IFieldHandler keyHandler, IFieldHandler valueHandler,
+            bool skipping, HashSet<int>? knownInlineRefs)
         {
             var skip = skipping || _visitor != null && !_visitor.StartDictionary();
             var count = reader.ReadVUInt32();
@@ -650,10 +749,12 @@ namespace BTDB.ODBLayer
                 IterateHandler(ref reader, valueHandler, skipValue, knownInlineRefs);
                 if (!skipValue) _visitor?.EndDictValue();
             }
+
             if (!skip) _visitor?.EndDictionary();
         }
 
-        void IterateInlineList(ref SpanReader reader, IFieldHandler itemHandler, bool skipping, HashSet<int>? knownInlineRefs)
+        void IterateInlineList(ref SpanReader reader, IFieldHandler itemHandler, bool skipping,
+            HashSet<int>? knownInlineRefs)
         {
             var skip = skipping || _visitor != null && !_visitor.StartList();
             var count = reader.ReadVUInt32();
@@ -663,6 +764,7 @@ namespace BTDB.ODBLayer
                 IterateHandler(ref reader, itemHandler, skipItem, knownInlineRefs);
                 if (!skipItem) _visitor?.EndItem();
             }
+
             if (!skip) _visitor?.EndList();
         }
 
@@ -671,7 +773,8 @@ namespace BTDB.ODBLayer
             if (!_usedTableVersions.Add(new TableIdVersionId(tableId, version)))
                 return;
             MarkTableName(tableId);
-            if (_trkv.Find(TwiceVuint2ByteBuffer(ObjectDB.TableVersionsPrefix, tableId, version), 0) == FindResult.Exact)
+            if (_trkv.Find(TwiceVuint2ByteBuffer(ObjectDB.TableVersionsPrefix, tableId, version), 0) ==
+                FindResult.Exact)
             {
                 _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
             }
@@ -723,7 +826,7 @@ namespace BTDB.ODBLayer
         void LoadTableNamesDict()
         {
             _tableId2Name = ObjectDB.LoadTablesEnum(_tr.KeyValueDBTransaction)
-                    .ToDictionary(pair => pair.Key, pair => pair.Value);
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 
         void LoadRelationInfoDict()
@@ -757,6 +860,7 @@ namespace BTDB.ODBLayer
                 _tableVersionInfos.Add(new TableIdVersionId(tableId, version), res);
                 return res;
             }
+
             throw new ArgumentException($"TableVersionInfo not found {tableId}-{version}");
         }
     }

@@ -84,9 +84,9 @@ namespace BTDB.ODBLayer
 
         public DBOptions ActualOptions { get; private set; }
 
-        internal TablesInfo TablesInfo => _tablesInfo;
+        public TablesInfo TablesInfo => _tablesInfo;
 
-        internal RelationsInfo RelationsInfo => _relationsInfo;
+        public RelationsInfo RelationsInfo => _relationsInfo;
         internal IRelationInfoResolver RelationInfoResolver => _relationsInfoResolver;
 
         public void Open(IKeyValueDB keyValueDB, bool dispose)

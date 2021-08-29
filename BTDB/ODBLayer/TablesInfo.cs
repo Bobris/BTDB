@@ -6,18 +6,20 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
-    class TablesInfo
+    public class TablesInfo
     {
-        readonly ConcurrentDictionary<uint, TableInfo> _id2Table = new ConcurrentDictionary<uint, TableInfo>();
-        readonly ConcurrentDictionary<string, TableInfo> _name2Table = new ConcurrentDictionary<string, TableInfo>(ReferenceEqualityComparer<string>.Instance);
-        readonly ConcurrentDictionary<Type, TableInfo> _clientType2Table = new ConcurrentDictionary<Type, TableInfo>(ReferenceEqualityComparer<Type>.Instance);
-        readonly object _lock = new object();
+        readonly ConcurrentDictionary<uint, TableInfo> _id2Table = new();
+        readonly ConcurrentDictionary<string, TableInfo> _name2Table = new(ReferenceEqualityComparer<string>.Instance);
+        readonly ConcurrentDictionary<Type, TableInfo> _clientType2Table = new(ReferenceEqualityComparer<Type>.Instance);
+        readonly object _lock = new();
         readonly ITableInfoResolver _tableInfoResolver;
 
         public TablesInfo(ITableInfoResolver tableInfoResolver)
         {
             _tableInfoResolver = tableInfoResolver;
         }
+
+        public ConcurrentDictionary<string, TableInfo> Name2TableInfo => _name2Table;
 
         internal TableInfo? FindByType(Type type)
         {

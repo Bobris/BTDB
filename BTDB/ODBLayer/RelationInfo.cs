@@ -25,11 +25,11 @@ namespace BTDB.ODBLayer
 
     public class RelationInfo
     {
-        readonly uint _id;
-        readonly string _name;
+        public readonly uint _id;
+        public readonly string _name;
         readonly IRelationInfoResolver _relationInfoResolver;
-        readonly Type _interfaceType;
-        readonly Type _clientType;
+        public readonly Type _interfaceType;
+        public readonly Type _clientType;
         readonly object _defaultClientObject;
 
         RelationVersionInfo?[] _relationVersions = Array.Empty<RelationVersionInfo?>();
@@ -103,7 +103,7 @@ namespace BTDB.ODBLayer
                 ilGenerator.DeclareLocal(instanceType);
                 if (that == null)
                 {
-                    var defaultConstructor = EmitHelpers.GetDefaultConstructor(instanceType);
+                    var defaultConstructor = instanceType.GetDefaultConstructor();
                     if (defaultConstructor == null)
                     {
                         ilGenerator

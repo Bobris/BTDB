@@ -23,29 +23,29 @@ namespace BTDB.ODBLayer
     delegate void ObjectFreeContent(IInternalObjectDBTransaction transaction, DBObjectMetadata? metadata,
         ref SpanReader reader, IList<ulong> dictIds);
 
-    class TableInfo
+    public class TableInfo
     {
         readonly ITableInfoResolver _tableInfoResolver;
-        uint _clientTypeVersion;
+        public uint ClientTypeVersion;
+        public uint LastPersistedVersion;
         Type? _clientType;
 
-        readonly ConcurrentDictionary<uint, TableVersionInfo> _tableVersions =
-            new ConcurrentDictionary<uint, TableVersionInfo>();
+        public readonly ConcurrentDictionary<uint, TableVersionInfo> TableVersions = new();
 
         Func<IInternalObjectDBTransaction, DBObjectMetadata, object>? _creator;
         Action<IInternalObjectDBTransaction, DBObjectMetadata, object>? _initializer;
         ObjectSaver? _saver;
 
-        readonly ConcurrentDictionary<uint, ObjectLoader> _loaders = new ConcurrentDictionary<uint, ObjectLoader>();
+        readonly ConcurrentDictionary<uint, ObjectLoader> _loaders = new();
 
-        readonly ConcurrentDictionary<uint, Tuple<NeedsFreeContent, ObjectFreeContent>> _freeContent =
-            new ConcurrentDictionary<uint, Tuple<NeedsFreeContent, ObjectFreeContent>>();
+        readonly ConcurrentDictionary<uint, Tuple<NeedsFreeContent, ObjectFreeContent>> _freeContent = new();
 
-        readonly ConcurrentDictionary<uint, bool> _freeContentNeedDetectionInProgress = new ConcurrentDictionary<uint, bool>();
+        readonly ConcurrentDictionary<uint, bool> _freeContentNeedDetectionInProgress = new();
+
         long _singletonOid;
         long _cachedSingletonTrNum;
         byte[]? _cachedSingletonContent;
-        readonly object _cachedSingletonLock = new object();
+        readonly object _cachedSingletonLock = new();
 
         internal TableInfo(uint id, string name, ITableInfoResolver tableInfoResolver)
         {
@@ -55,19 +55,20 @@ namespace BTDB.ODBLayer
             NeedStoreSingletonOid = false;
         }
 
-        internal uint Id { get; }
+        public uint Id { get; }
 
-        internal string Name { get; }
+        public string Name { get; }
 
-        internal Type? ClientType
+        public Type? ClientType
         {
             get => _clientType;
             set
             {
                 if (_clientType != null && _clientType != value)
                 {
-                    throw new BTDBException("Name "+Name+" has already assigned type " + _clientType.ToSimpleName() +
-                                            ", but "+value!.ToSimpleName()+" want to be stored under same name");
+                    throw new BTDBException("Name " + Name + " has already assigned type " +
+                                            _clientType.ToSimpleName() +
+                                            ", but " + value!.ToSimpleName() + " want to be stored under same name");
                 }
 
                 _clientType = value;
@@ -78,17 +79,9 @@ namespace BTDB.ODBLayer
         {
             get
             {
-                if (_tableVersions.TryGetValue(_clientTypeVersion, out var tvi)) return tvi;
+                if (TableVersions.TryGetValue(ClientTypeVersion, out var tvi)) return tvi;
                 return null;
             }
-        }
-
-        internal uint LastPersistedVersion { get; set; }
-
-        internal uint ClientTypeVersion
-        {
-            get => _clientTypeVersion;
-            private set => _clientTypeVersion = value;
         }
 
         internal Func<IInternalObjectDBTransaction, DBObjectMetadata, object> Creator
@@ -109,15 +102,19 @@ namespace BTDB.ODBLayer
             {
                 factory = container.ResolveOptional(factoryType);
             }
+
             if (factory != null)
             {
                 // ReSharper disable once EqualExpressionComparison intentional
                 if (((Func<object>)factory)() == ((Func<object>)factory)())
                 {
-                    _tableInfoResolver.ActualOptions.ThrowBTDBException(_clientType.ToSimpleName()+ " cannot be registered as singleton");
+                    _tableInfoResolver.ActualOptions.ThrowBTDBException(_clientType.ToSimpleName() +
+                                                                        " cannot be registered as singleton");
                 }
+
                 var method = ILBuilder.Instance.NewMethod(
-                    $"Creator_{Name}", typeof(Func<IInternalObjectDBTransaction, DBObjectMetadata, object>), factoryType);
+                    $"Creator_{Name}", typeof(Func<IInternalObjectDBTransaction, DBObjectMetadata, object>),
+                    factoryType);
                 var ilGenerator = method.Generator;
                 ilGenerator
                     .Ldarg(0)
@@ -144,6 +141,7 @@ namespace BTDB.ODBLayer
                     ilGenerator
                         .Newobj(defaultConstructor);
                 }
+
                 ilGenerator
                     .Ret();
                 var creator = method.Create();
@@ -332,23 +330,23 @@ namespace BTDB.ODBLayer
             var tvi = new TableVersionInfo(fields.ToArray());
             if (LastPersistedVersion == 0)
             {
-                _tableVersions.TryAdd(1, tvi);
+                TableVersions.TryAdd(1, tvi);
                 ClientTypeVersion = 1;
             }
             else
             {
-                var last = _tableVersions.GetOrAdd(LastPersistedVersion,
+                var last = TableVersions.GetOrAdd(LastPersistedVersion,
                     (ver, tableInfo) =>
                         tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
                 if (TableVersionInfo.Equal(last, tvi))
                 {
-                    _tableVersions[LastPersistedVersion] =
+                    TableVersions[LastPersistedVersion] =
                         tvi; // tvi was build from real types and not loaded so it is more exact
                     ClientTypeVersion = LastPersistedVersion;
                 }
                 else
                 {
-                    _tableVersions.TryAdd(LastPersistedVersion + 1, tvi);
+                    TableVersions.TryAdd(LastPersistedVersion + 1, tvi);
                     ClientTypeVersion = LastPersistedVersion + 1;
                 }
             }
@@ -377,7 +375,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(3)
                 .Castclass(ClientType)
                 .Stloc(0);
-            var tableVersionInfo = _tableVersions.GetOrAdd(version,
+            var tableVersionInfo = TableVersions.GetOrAdd(version,
                 (ver, tableInfo) =>
                     tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
             var clientTableVersionInfo = ClientTableVersionInfo;
@@ -403,7 +401,8 @@ namespace BTDB.ODBLayer
                     var fieldInfo = props.First(p => GetPersistentName(p) == destFieldInfo.Name).GetAnySetMethod();
                     var fieldType = fieldInfo!.GetParameters()[0].ParameterType;
                     var specializedSrcHandler =
-                        srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler, _tableInfoResolver.FieldHandlerLogger);
+                        srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler,
+                            _tableInfoResolver.FieldHandlerLogger);
                     var willLoad = specializedSrcHandler.HandledType();
                     var converterGenerator =
                         _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
@@ -473,7 +472,7 @@ namespace BTDB.ODBLayer
         {
             var method = ILBuilder.Instance.NewMethod<ObjectFreeContent>($"FreeContent_{Name}_{version}");
             var ilGenerator = method.Generator;
-            var tableVersionInfo = _tableVersions.GetOrAdd(version,
+            var tableVersionInfo = TableVersions.GetOrAdd(version,
                 (ver, tableInfo) =>
                     tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
             var needsFreeContent = NeedsFreeContent.No;

@@ -27,10 +27,10 @@ namespace BTDB.ODBLayer
         public DBOptions ActualOptions { get; }
     }
 
-    class RelationsInfo
+    public class RelationsInfo
     {
-        readonly Dictionary<string, uint> _name2Id = new Dictionary<string, uint>(ReferenceEqualityComparer<string>.Instance);
-        readonly Dictionary<uint, RelationInfo> _id2Relation = new Dictionary<uint, RelationInfo>();
+        readonly Dictionary<string, uint> _name2Id = new(ReferenceEqualityComparer<string>.Instance);
+        public readonly Dictionary<uint, RelationInfo> Id2Relation = new();
         uint _freeId = 1;
         readonly IRelationInfoResolver _relationInfoResolver;
 
@@ -55,12 +55,12 @@ namespace BTDB.ODBLayer
                 tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(nameWriter.GetSpan(), idWriter.GetSpan());
             }
 
-            if (_id2Relation.TryGetValue(id, out var relation))
+            if (Id2Relation.TryGetValue(id, out var relation))
             {
                 _relationInfoResolver.ActualOptions.ThrowBTDBException($"Relation with name '{name}' was already initialized");
             }
             relation = new(id, name, builder, tr);
-            _id2Relation[id] = relation;
+            Id2Relation[id] = relation;
             return relation;
         }
 
@@ -75,7 +75,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerable<RelationInfo> EnumerateRelationInfos()
         {
-            return _id2Relation.Values;
+            return Id2Relation.Values;
         }
     }
 }
