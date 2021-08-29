@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.11.0
+
 ### Added
 
 A lot of important stuff in ObjectDB are public now.
