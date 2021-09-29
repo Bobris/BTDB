@@ -508,7 +508,7 @@ namespace BTDB.StreamLayer
             }
             Span<byte> buf = l <= 512 ? stackalloc byte[l] : new byte[l];
             Encoding.UTF8.GetBytes(value.AsSpan(), buf);
-            WriteBlock(buf);
+            WriteBlock(ref MemoryMarshal.GetReference(buf), (uint)buf.Length);
         }
 
         public void WriteBlock(ReadOnlySpan<byte> data)

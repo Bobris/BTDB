@@ -457,7 +457,7 @@ namespace BTDB.ODBLayer
                 this, 0);
             while (enumerator.MoveNext())
             {
-                keysToDelete.Add(enumerator.GetKeyBytes());
+                keysToDelete.Add(_kvtr.GetKeyToArray());
             }
 
             foreach (var key in keysToDelete)
@@ -484,7 +484,7 @@ namespace BTDB.ODBLayer
             var keysToDelete = new StructList<byte[]>();
             while (enumerator.MoveNext())
             {
-                keysToDelete.Add(enumerator.GetKeyBytes());
+                keysToDelete.Add(_kvtr.GetKeyToArray());
                 if (keysToDelete.Count == maxCount)
                     break;
             }

@@ -51,29 +51,35 @@ namespace BTDB.ODBLayer
             _modificationCounter = modificationCounter;
             _pos = 0;
             _seekNeeded = true;
-            _prevModificationCounter = _modificationCounter.ModificationCounter;
+            _prevModificationCounter = modificationCounter.ModificationCounter;
         }
 
         public bool MoveNext()
         {
-            if (!_seekNeeded)
-                _pos++;
-            if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
+            if (_seekNeeded)
             {
                 _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
+                var ret = _keyValueTr.FindFirstKey(KeyBytes);
+                _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
+                _seekNeeded = false;
+                return ret;
             }
+            else
+            {
+                _pos++;
+                if (_keyValueTr.CursorMovedCounter == _prevProtectionCounter)
+                {
+                    var ret = _keyValueTr.FindNextKey(KeyBytes);
+                    _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
+                    return ret;
+                }
 
-            var ret = Seek();
-            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            return ret;
-        }
-
-        bool Seek()
-        {
-            if (!_keyValueTr.SetKeyIndex(KeyBytes, _pos))
-                return false;
-            _seekNeeded = false;
-            return true;
+                _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
+                if (!_keyValueTr.SetKeyIndex(KeyBytes, _pos))
+                    return false;
+                _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
+                return true;
+            }
         }
 
         public T Current
@@ -88,22 +94,15 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public byte[] GetKeyBytes()
-        {
-            SeekCurrent();
-            return _keyValueTr.GetKeyToArray();
-        }
-
         void SeekCurrent()
         {
             if (_seekNeeded) throw new BTDBException("Invalid access to uninitialized Current.");
             if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
             {
                 _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
-                Seek();
+                _keyValueTr.SetKeyIndex(KeyBytes, _pos);
+                _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
             }
-
-            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
         }
 
         protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes, in IKeyValueDBTransaction kvtr)

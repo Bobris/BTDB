@@ -1255,7 +1255,7 @@ namespace BTDBTest
             using var tr = _db.StartTransaction();
             var rooms = creator(tr);
             using var en = query(rooms);
-            var oen = rooms.ListById2(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
+            var oen = rooms.ListById2(new(EnumerationOrder.Ascending));
             Assert.True(oen.MoveNext());
             modifyAction(rooms);
             if (shouldThrow)
