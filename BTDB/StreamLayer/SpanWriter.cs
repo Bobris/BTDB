@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using BTDB.Buffer;
 using Microsoft.Extensions.Primitives;
 
@@ -342,6 +343,25 @@ namespace BTDB.StreamLayer
         }
 
         [SkipLocalsInit]
+        public void WriteInt16(int value)
+        {
+            if ((uint)Buf.Length < 2u)
+            {
+                if (!Resize(2))
+                {
+                    Span<byte> buf = stackalloc byte[2];
+                    ref var bufRef = ref MemoryMarshal.GetReference(buf);
+                    Unsafe.As<byte, ushort>(ref bufRef) = PackUnpack.AsBigEndian((ushort)value);
+                    WriteBlock(ref bufRef, 2);
+                    return;
+                }
+            }
+
+            Unsafe.As<byte, ushort>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 2)) =
+                PackUnpack.AsBigEndian((ushort)value);
+        }
+
+        [SkipLocalsInit]
         public void WriteInt32LE(int value)
         {
             if ((uint)Buf.Length < 4u)
@@ -477,6 +497,20 @@ namespace BTDB.StreamLayer
             WriteByteZero();
         }
 
+        public unsafe void WriteStringInUtf8(string value)
+        {
+            var l = Encoding.UTF8.GetByteCount(value);
+            WriteVUInt32((uint)l);
+            if ((uint)l <= (uint)Buf.Length)
+            {
+                PackUnpack.UnsafeAdvance(ref Buf, Encoding.UTF8.GetBytes(value.AsSpan(), Buf));
+                return;
+            }
+            Span<byte> buf = l <= 512 ? stackalloc byte[l] : new byte[l];
+            Encoding.UTF8.GetBytes(value.AsSpan(), buf);
+            WriteBlock(buf);
+        }
+
         public void WriteBlock(ReadOnlySpan<byte> data)
         {
             WriteBlock(ref MemoryMarshal.GetReference(data), (uint)data.Length);
@@ -548,6 +582,11 @@ namespace BTDB.StreamLayer
         public void WriteDouble(double value)
         {
             WriteInt64(BitConverter.DoubleToInt64Bits(value));
+        }
+
+        public void WriteHalf(Half value)
+        {
+            WriteInt16(Unsafe.As<Half, short>(ref Unsafe.AsRef(value)));
         }
 
         public void WriteDecimal(decimal value)

@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using BTDB.Buffer;
 using Microsoft.Extensions.Primitives;
 
@@ -27,8 +28,8 @@ namespace BTDB.StreamLayer
         public SpanReader(ISpanReader controller)
         {
             Controller = controller;
-            Buf = new ReadOnlySpan<byte>();
-            Original = new ReadOnlySpan<byte>();
+            Buf = new();
+            Original = new();
             controller.Init(ref this);
         }
 
@@ -115,7 +116,7 @@ namespace BTDB.StreamLayer
                     Unsafe.CopyBlockUnaligned(ref cur, ref MemoryMarshal.GetReference(Buf), (uint)Buf.Length);
                     cur = ref Unsafe.AddByteOffset(ref cur, (IntPtr)Buf.Length);
                     len -= (uint)Buf.Length;
-                    Buf = new ReadOnlySpan<byte>();
+                    Buf = new();
                     if (Controller.FillBufAndCheckForEof(ref this))
                         PackUnpack.ThrowEndOfStreamException();
                 } while (len > (uint)Buf.Length);
@@ -344,6 +345,22 @@ namespace BTDB.StreamLayer
         }
 
         [SkipLocalsInit]
+        public short ReadInt16()
+        {
+            if (2 <= (uint)Buf.Length)
+            {
+                return (short)PackUnpack.AsBigEndian(
+                    Unsafe.As<byte, ushort>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 2)));
+            }
+            else
+            {
+                Span<byte> buf = stackalloc byte[2];
+                return (short)PackUnpack.AsBigEndian(
+                    Unsafe.As<byte, ushort>(ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), 2)));
+            }
+        }
+
+        [SkipLocalsInit]
         public int ReadInt32LE()
         {
             if (4 <= (uint)Buf.Length)
@@ -371,6 +388,18 @@ namespace BTDB.StreamLayer
             }
         }
 
+        public void SkipInt16()
+        {
+            if (2 <= (uint)Buf.Length)
+            {
+                PackUnpack.UnsafeAdvance(ref Buf, 2);
+            }
+            else
+            {
+                SkipBlock(2);
+            }
+        }
+
         public DateTime ReadDateTime()
         {
             return DateTime.FromBinary(ReadInt64());
@@ -385,7 +414,7 @@ namespace BTDB.StreamLayer
         {
             var ticks = ReadVInt64();
             var offset = ReadTimeSpan();
-            return new DateTimeOffset(ticks, offset);
+            return new(ticks, offset);
         }
 
         public void SkipDateTimeOffset()
@@ -396,7 +425,7 @@ namespace BTDB.StreamLayer
 
         public TimeSpan ReadTimeSpan()
         {
-            return new TimeSpan(ReadVInt64());
+            return new(ReadVInt64());
         }
 
         public void SkipTimeSpan()
@@ -490,7 +519,23 @@ namespace BTDB.StreamLayer
                 }
             }
 
-            return len == 0 ? "" : new string(charBuf.Slice(0, len));
+            return len == 0 ? "" : new(charBuf.Slice(0, len));
+        }
+
+        [SkipLocalsInit]
+        public unsafe string ReadStringInUtf8()
+        {
+            var len = ReadVUInt64();
+            if (len > int.MaxValue) throw new InvalidDataException($"Reading Utf8 String length overflowed with {len}");
+            var l = (int)len;
+            if (l == 0) return "";
+            if (l <= (uint)Buf.Length)
+            {
+                return Encoding.UTF8.GetString((byte *)Unsafe.AsPointer(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, l)), l);
+            }
+
+            Span<byte> buf = l <= 512 ? stackalloc byte[l] : new byte[l];
+            return Encoding.UTF8.GetString((byte *)Unsafe.AsPointer(ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), (uint)l)), l);
         }
 
         public void SkipString()
@@ -539,6 +584,13 @@ namespace BTDB.StreamLayer
             }
         }
 
+        public void SkipStringInUtf8()
+        {
+            var len = ReadVUInt64();
+            if (len > int.MaxValue) throw new InvalidDataException($"Skipping Utf8 String length overflowed with {len}");
+            SkipBlock((uint)len);
+        }
+
         public void ReadBlock(ref byte buffer, uint length)
         {
             if (length > Buf.Length)
@@ -550,13 +602,13 @@ namespace BTDB.StreamLayer
                         Unsafe.CopyBlockUnaligned(ref buffer, ref MemoryMarshal.GetReference(Buf), (uint)Buf.Length);
                         buffer = ref Unsafe.AddByteOffset(ref buffer, (IntPtr)Buf.Length);
                         length -= (uint)Buf.Length;
-                        Buf = new ReadOnlySpan<byte>();
+                        Buf = new();
                     }
 
                     if (!Controller.ReadBlock(ref this, ref buffer, length)) return;
                 }
 
-                Buf = new ReadOnlySpan<byte>();
+                Buf = new();
                 PackUnpack.ThrowEndOfStreamException();
             }
 
@@ -580,11 +632,11 @@ namespace BTDB.StreamLayer
                 if (Controller != null)
                 {
                     length -= (uint)Buf.Length;
-                    Buf = new ReadOnlySpan<byte>();
+                    Buf = new();
                     if (!Controller.SkipBlock(ref this, length))
                         return;
                 }
-                Buf = new ReadOnlySpan<byte>();
+                Buf = new();
                 PackUnpack.ThrowEndOfStreamException();
             }
 
@@ -606,7 +658,7 @@ namespace BTDB.StreamLayer
         {
             Span<byte> buffer = stackalloc byte[16];
             ReadBlock(ref MemoryMarshal.GetReference(buffer), 16);
-            return new Guid(buffer);
+            return new(buffer);
         }
 
         public void SkipGuid()
@@ -629,9 +681,35 @@ namespace BTDB.StreamLayer
             return BitConverter.Int64BitsToDouble(ReadInt64());
         }
 
+        public float ReadFloat()
+        {
+            return BitConverter.Int32BitsToSingle(ReadInt32());
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe Half Int16BitsToHalf(short value)
+        {
+            return *(Half*)&value;
+        }
+
+        public Half ReadHalf()
+        {
+            return Int16BitsToHalf(ReadInt16());
+        }
+
         public void SkipDouble()
         {
             SkipInt64();
+        }
+
+        public void SkipFloat()
+        {
+            SkipInt32();
+        }
+
+        public void SkipHalf()
+        {
+            SkipInt16();
         }
 
         public decimal ReadDecimal()
@@ -700,7 +778,7 @@ namespace BTDB.StreamLayer
         public ReadOnlySpan<byte> ReadByteArrayAsSpan()
         {
             var length = ReadVUInt32();
-            if (length-- == 0) return new ReadOnlySpan<byte>();
+            if (length-- == 0) return new();
             var res = Buf.Slice(0, (int)length);
             PackUnpack.UnsafeAdvance(ref Buf, (int)length);
             return res;
@@ -748,19 +826,19 @@ namespace BTDB.StreamLayer
             switch (ReadUInt8())
             {
                 case 0:
-                    return new IPAddress((uint)ReadInt32LE());
+                    return new((uint)ReadInt32LE());
                 case 1:
                     {
                         Span<byte> ip6Bytes = stackalloc byte[16];
                         ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
-                        return new IPAddress(ip6Bytes);
+                        return new(ip6Bytes);
                     }
                 case 2:
                     {
                         Span<byte> ip6Bytes = stackalloc byte[16];
                         ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
                         var scopeId = (long)ReadVUInt64();
-                        return new IPAddress(ip6Bytes, scopeId);
+                        return new(ip6Bytes, scopeId);
                     }
                 case 3:
                     return null;
@@ -793,12 +871,12 @@ namespace BTDB.StreamLayer
             var major = ReadVUInt32();
             if (major == 0) return null;
             var minor = ReadVUInt32();
-            if (minor == 0) return new Version((int)major - 1, 0);
+            if (minor == 0) return new((int)major - 1, 0);
             var build = ReadVUInt32();
-            if (build == 0) return new Version((int)major - 1, (int)minor - 1);
+            if (build == 0) return new((int)major - 1, (int)minor - 1);
             var revision = ReadVUInt32();
-            if (revision == 0) return new Version((int)major - 1, (int)minor - 1, (int)build - 1);
-            return new Version((int)major - 1, (int)minor - 1, (int)build - 1, (int)revision - 1);
+            if (revision == 0) return new((int)major - 1, (int)minor - 1, (int)build - 1);
+            return new((int)major - 1, (int)minor - 1, (int)build - 1, (int)revision - 1);
         }
 
         public void SkipVersion()
@@ -820,7 +898,7 @@ namespace BTDB.StreamLayer
             {
                 a[i] = ReadString()!;
             }
-            return new StringValues(a);
+            return new(a);
         }
 
         public void SkipStringValues()
