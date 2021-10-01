@@ -2998,6 +2998,27 @@ namespace BTDBTest
             table.Upsert(new(1) { Name = "Boris" });
             Assert.Equal("Boris", table.First().Name);
         }
+
+        public class RowWithOrderedSet
+        {
+            [PrimaryKey(1)] public ulong TenantId { get; set; }
+            // DON'T DO THIS IN YOUR CODE !!! Either use IList<T>, List<T> for inline storage or IOrderedSet<T> for externaly stored T
+            public OrderedSet<int> Ordered { get; set; }
+        }
+
+        public interface IRowWithOrderedSetTable : IRelation<RowWithOrderedSet>
+        {
+        }
+
+        [Fact]
+        public void RowWithOrderedSetWorksButYouShouldUseIOrderedSetInstead()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IRowWithOrderedSetTable>();
+            table.Upsert(new (){ TenantId = 1, Ordered = new() { 3,5,4 }});
+            Assert.Equal(new[] { 3,5,4}, table.First().Ordered);
+        }
+
     }
 }
 
