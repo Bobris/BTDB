@@ -498,7 +498,7 @@ namespace BTDB.BTreeLib
             {
                 ref var leftItem = ref left[idx];
                 ref var rightItem = ref right[idx];
-                if (rightItem._posInNode < leftItem._posInNode) 
+                if (rightItem._posInNode < leftItem._posInNode)
                     return 0;
                 if (idx + 1 == left.Count)
                 {
@@ -2310,6 +2310,52 @@ namespace BTDB.BTreeLib
                 foreach (var child in children)
                 {
                     KeyValueIterate(child, ref ctx, callback);
+                }
+            }
+        }
+
+        internal static void TestTreeCorrectness(IntPtr top, ref StructList<CursorItem> stack)
+        {
+            if (top == IntPtr.Zero)
+                return;
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+            if (!header.IsNodeLeaf)
+            {
+                var children = NodeUtils12.GetBranchValuePtrs(top);
+                if (header.HasLongKeys)
+                {
+                    var longKeys = NodeUtils12.GetLongKeyPtrs(top);
+                    for (var i = 0; i < longKeys.Length; i++)
+                    {
+                        var keyPrefix = NodeUtils12.GetLeftestKey(children[i + 1], out var keySuffix);
+                        var key = NodeUtils12.LongKeyPtrToSpan(longKeys[i]);
+                        if (TreeNodeUtils.FindFirstDifference(key, keyPrefix, keySuffix) != key.Length)
+                        {
+                            Debugger.Break();
+                        }
+                    }
+                }
+                else
+                {
+                    var keyOffsets = NodeUtils12.GetKeySpans(top, out var keys);
+                    for (var i = 0; i < keyOffsets.Length - 1; i++)
+                    {
+                        var keyPrefix = NodeUtils12.GetLeftestKey(children[i + 1], out var keySuffix);
+                        var ofs = keyOffsets[i];
+                        var key = keys.Slice(ofs, keyOffsets[i + 1] - ofs);
+                        if (TreeNodeUtils.FindFirstDifference(key, keyPrefix, keySuffix) != key.Length)
+                        {
+                            Debugger.Break();
+                        }
+                    }
+                }
+
+                for (var i = 0; i < children.Length; i++)
+                {
+                    var child = children[i];
+                    stack.Add(new(top, (byte)i));
+                    TestTreeCorrectness(child, ref stack);
+                    stack.Pop();
                 }
             }
         }

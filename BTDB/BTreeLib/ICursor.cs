@@ -38,6 +38,8 @@ namespace BTDB.BTreeLib
             if (res.Length != 0) GetKey(ref res[0], res.Length);
             return res;
         }
+
+        void TestTreeCorrectness();
     }
 
     public delegate void BuildTreeCallback(ref SpanReader reader, ref ByteBuffer key, in Span<byte> value);

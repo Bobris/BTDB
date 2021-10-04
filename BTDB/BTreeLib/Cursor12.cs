@@ -249,5 +249,10 @@ namespace BTDB.BTreeLib
             }
             _stack.Clear();
         }
+
+        public void TestTreeCorrectness()
+        {
+            BTreeImpl12.TestTreeCorrectness(_rootNode.Root, ref _stack);
+        }
     }
 }

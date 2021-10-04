@@ -7,10 +7,10 @@ using BTDB.BTreeLib;
 
 namespace BTDB.KVDBLayer
 {
-    class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
+    public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
     {
         readonly BTreeKeyValueDB _keyValueDB;
-        internal IRootNode? BTreeRoot;
+        public IRootNode? BTreeRoot;
         readonly ICursor _cursor;
         ICursor? _cursor2;
         readonly bool _readOnly;

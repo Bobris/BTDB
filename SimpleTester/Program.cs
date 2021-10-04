@@ -21,7 +21,6 @@ namespace SimpleTester
             //b.BtdbSerialization();
             //if (MemoryProfiler.IsActive)
             //    MemoryProfiler.Dump();
-            //new KeyValueDBReplayer("bug.log").Replay();
             //new SpeedTest1().Test();
             //new ChannelSpeedTest().Run(args);
             //new RxSpeedTest().Run();
@@ -32,7 +31,7 @@ namespace SimpleTester
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
             //new RelationSpeedTest().Run();
-            BenchmarkRunner.Run<BenchmarkRelationPartialView>();
+            //BenchmarkRunner.Run<BenchmarkRelationPartialView>();
             //BenchmarkRunner.Run<EventSerializationBenchmark>();
             //new TestCompactor().Run(new CancellationToken());
             //new CompactorLatencyMeasurement().Run();
@@ -45,6 +44,7 @@ namespace SimpleTester
             //var cts = new CancellationTokenSource();
             //Console.CancelKeyPress += delegate { cts.Cancel(); };
             //new CompactionStressTest().Run("e:/testdb", cts.Token);
+            new NativeVsManagedBugFinder().Torture();
         }
     }
 }
