@@ -25,6 +25,7 @@ namespace BTDB.KVDBLayer
 
         volatile Dictionary<uint, File> _files = new Dictionary<uint, File>();
         int _maxFileId;
+        readonly FileAccess _fileAccess;
         IDeleteFileCollectionStrategy? _deleteFileCollectionStrategy;
 
         sealed class File : IFileCollectionFile
@@ -37,12 +38,12 @@ namespace BTDB.KVDBLayer
             readonly Writer _writer;
             readonly ReaderWriterLockSlim _readerWriterLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
 
-            public File(OnDiskFileCollection owner, uint index, string fileName)
+            public File(OnDiskFileCollection owner, uint index, string fileName, FileAccess fileAccess)
             {
                 _owner = owner;
                 _index = index;
                 _fileName = fileName;
-                _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1,
+                _stream = new FileStream(fileName, FileMode.OpenOrCreate, fileAccess, FileShare.Read, 1,
                     FileOptions.None);
                 _handle = _stream.SafeFileHandle!;
                 _writer = new Writer(this);
@@ -339,15 +340,16 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        public OnDiskFileCollection(string directory)
+        public OnDiskFileCollection(string directory, FileAccess fileAccess = FileAccess.ReadWrite)
         {
             _directory = directory;
+            _fileAccess = fileAccess;
             _maxFileId = 0;
             foreach (var filePath in Directory.EnumerateFiles(directory))
             {
                 var id = GetFileId(Path.GetFileNameWithoutExtension(filePath));
                 if (id == 0) continue;
-                var file = new File(this, id, filePath);
+                var file = new File(this, id, filePath, _fileAccess);
                 _files.Add(id, file);
                 if (id > _maxFileId) _maxFileId = (int)id;
             }
@@ -362,7 +364,7 @@ namespace BTDB.KVDBLayer
         {
             var index = (uint)Interlocked.Increment(ref _maxFileId);
             var fileName = index.ToString("D8") + "." + (humanHint ?? "");
-            var file = new File(this, index, Path.Combine(_directory, fileName));
+            var file = new File(this, index, Path.Combine(_directory, fileName), _fileAccess);
             Dictionary<uint, File> newFiles;
             Dictionary<uint, File> oldFiles;
             do
