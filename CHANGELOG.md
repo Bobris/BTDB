@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.12.1
+
 Fixed native heap implementation.
 
 ## 26.12.0
