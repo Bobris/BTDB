@@ -518,24 +518,25 @@ namespace BTDB.BTreeLib
             }
 
             up:
-            var stack = left.AsSpan().Slice(0, (int)idx + 1);
             if (idx == 0)
             {
-                OverwriteNodePtrInStack(rootNode, stack, 0, node);
+                Dereference(rootNode.Root);
+                rootNode.Root = node;
                 goto finish;
             }
 
+            idx--;
+            ref var curItem = ref left[(int)idx];
             if (node == IntPtr.Zero)
             {
-                idx--;
-                node = EraseFromBranch(stack[(int)idx]._node, stack[(int)idx]._posInNode, IntPtr.Zero,
-                    stack[(int)idx]._posInNode, IntPtr.Zero).newNode;
+                node = EraseFromBranch(curItem._node, curItem._posInNode, IntPtr.Zero,
+                    curItem._posInNode, IntPtr.Zero).newNode;
                 goto up;
             }
 
-            MakeUnique(rootNode, stack);
-            AdjustRecursiveChildCount(stack, -count);
-            OverwriteNodePtrInStack(rootNode, stack, (int)idx, node);
+            node = OverwriteInEraseFromBranch(curItem._node, curItem._posInNode, node, -count);
+            goto up;
+
             finish:
             left.Clear();
             right.Clear();
@@ -572,10 +573,80 @@ namespace BTDB.BTreeLib
                 IntPtr.Zero).newNode;
         }
 
+        IntPtr OverwriteInEraseFromBranch(IntPtr node, int leftPos, IntPtr leftChild, long delta)
+        {
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(node);
+            Debug.Assert(!header.IsNodeLeaf);
+
+            var leftChildPrefix = new Span<byte>();
+            var leftChildSuffix = new Span<byte>();
+            if (leftPos > 0)
+            {
+                leftChildPrefix = NodeUtils12.GetLeftestKey(leftChild, out leftChildSuffix);
+            }
+
+            var leftPosKey = leftPos > 0 ? leftPos - 1 : 0;
+            var newSuffixLen =
+                leftPos == 0
+                    ? NodeUtils12.GetTotalSuffixLen(node)
+                    : NodeUtils12.GetTotalSuffixLenExcept(node, leftPosKey, leftPosKey);
+            newSuffixLen += leftChildPrefix.Length + leftChildSuffix.Length;
+
+            var newNode = AllocateBranch(header._childCount, (ulong)newSuffixLen, out var keyPusher);
+            if (header.HasLongKeys)
+            {
+                var longKeys = NodeUtils12.GetLongKeyPtrs(node);
+                for (var i = 0; i < longKeys.Length; i++)
+                {
+                    if (i == leftPosKey)
+                    {
+                        if (leftPos > 0)
+                        {
+                            keyPusher.AddKey(leftChildPrefix, leftChildSuffix);
+                            continue;
+                        }
+                    }
+
+                    keyPusher.AddKey(NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                }
+            }
+            else
+            {
+                var keyOfs = NodeUtils12.GetKeySpans(node, out var keyData);
+                for (var i = 0; i < keyOfs.Length - 1; i++)
+                {
+                    if (i == leftPosKey)
+                    {
+                        if (leftPos > 0)
+                        {
+                            keyPusher.AddKey(leftChildPrefix, leftChildSuffix);
+                            continue;
+                        }
+                    }
+
+                    keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
+                }
+            }
+
+            keyPusher.Finish();
+            var newValues = NodeUtils12.GetBranchValuePtrs(newNode);
+            var oldValues = NodeUtils12.GetBranchValuePtrs(node);
+            NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(0, leftPos), newValues);
+            newValues = newValues.Slice(leftPos);
+            newValues[0] = leftChild;
+            newValues = newValues.Slice(1);
+
+            NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(leftPos + 1), newValues);
+            ref var newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
+            newHeader._recursiveChildCount = (ulong)((long)header._recursiveChildCount + delta);
+
+            return newNode;
+        }
+
         (IntPtr newNode, long count) EraseFromBranch(IntPtr node, int leftPos, IntPtr leftChild, int rightPos,
             IntPtr rightChild)
         {
-            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(node);
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(node);
             Debug.Assert(!header.IsNodeLeaf);
             if (rightPos >= header._childCount)
             {
@@ -705,7 +776,7 @@ namespace BTDB.BTreeLib
 
         (IntPtr newNode, long count) EraseFromLeaf(IntPtr node, int leftPos, int rightPos)
         {
-            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(node);
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(node);
             Debug.Assert(header.IsNodeLeaf);
             if (rightPos >= header._childCount)
             {

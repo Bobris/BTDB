@@ -29,7 +29,6 @@ namespace SimpleTester
             {
                 opindex++;
                 VerifyTree(((BTreeKeyValueDBTransaction)tr2).BTreeRoot);
-                if (opindex == 252) Debugger.Break();
                 if (opindex % 100 == 0)
                 {
                     Console.WriteLine(opindex+" "+tr1.GetKeyValueCount()+" "+tr2.GetKeyValueCount());
