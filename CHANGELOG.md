@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.13.0
+
 DefaultTypeConvertorGenerator now supports `T` to `T?` conversion. Also `U` to `T?` if `U` is convertible to `T`.
 
 ## 26.12.1
