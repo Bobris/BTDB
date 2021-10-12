@@ -65,11 +65,27 @@ namespace BTDB.FieldHandler
                 return i => i.Isinst(to);
             }
             Action<IILGen> generator;
-            if (_conversions.TryGetValue(new Tuple<Type, Type>(from, to), out generator))
+            if (_conversions.TryGetValue(new(from, to), out generator))
             {
                 return generator;
             }
             if (from.IsEnum && to.IsEnum) return GenerateEnum2EnumConversion(from, to);
+            if (Nullable.GetUnderlyingType(to) == from)
+            {
+                var res = GenerateToNullableConversion(from, to);
+                _conversions.Add(new(from, to), res);
+                return res;
+            }
+            if (Nullable.GetUnderlyingType(to) is {} underTo && GenerateConversion(from, underTo) is {} conv)
+            {
+                Action<IILGen> res = il =>
+                {
+                    conv.Invoke(il);
+                    GenerateConversion(underTo, to)(il);
+                };
+                _conversions.Add(new(from, to), res);
+                return res;
+            }
             var toIList = to.SpecializationOf(typeof(IList<>));
             if (toIList is { } && GenerateConversion(from, toIList.GenericTypeArguments[0]) is { } itemConversion)
             {
@@ -123,6 +139,14 @@ namespace BTDB.FieldHandler
                 };
             }
             return null;
+        }
+
+        Action<IILGen> GenerateToNullableConversion(Type from, Type to)
+        {
+            return il =>
+            {
+                il.Newobj(to.GetConstructor(new[] { from })!);
+            };
         }
 
         Action<IILGen> GenerateEnum2EnumConversion(Type from, Type to)

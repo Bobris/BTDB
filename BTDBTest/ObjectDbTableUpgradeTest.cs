@@ -492,5 +492,53 @@ namespace BTDBTest
 
             ApproveFieldHandlerLoggerMessages();
         }
+
+        public class DateTimeV1
+        {
+            [PrimaryKey(1)] public ulong Id { get; set; }
+
+            public DateTime Modified { get; set; }
+        }
+
+        public interface IDateTimeV1Table : IRelation<DateTimeV1>
+        {
+        }
+
+        public class DateTimeV2
+        {
+            [PrimaryKey(1)] public ulong Id { get; set; }
+
+            public DateTime? Modified { get; set; }
+        }
+
+        public interface IDateTimeV2Table : IRelation<DateTimeV2>
+        {
+        }
+
+        [Fact]
+        public void AddingNullabilityPreserveData()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IDateTimeV1Table>("T");
+                var table = creator(tr);
+                table.Upsert(new DateTimeV1 { Id = 1, Modified = new(2000,1,1)});
+
+                tr.Commit();
+            }
+
+            ReopenDb();
+
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IDateTimeV2Table>("T");
+                var table = creator(tr);
+                Assert.Equal(1, table.Count);
+
+                Assert.True(table.First().Modified.HasValue);
+                Assert.Equal(new(2000,1,1), table.First().Modified!.Value);
+            }
+        }
+
     }
 }
