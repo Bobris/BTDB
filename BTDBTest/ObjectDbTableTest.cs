@@ -2655,7 +2655,6 @@ namespace BTDBTest
                 table.FindByIdGlobal(groupId));
         }
 
-        [BinaryCompatibilityOnly]
         [Flags]
         public enum BatchType
         {

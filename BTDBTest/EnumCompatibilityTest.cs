@@ -67,7 +67,6 @@ namespace BTDBTest
             Item FindById(ulong id);
         }
 
-        [BinaryCompatibilityOnly]
         [Flags]
         public enum FlagType
         {

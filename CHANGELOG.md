@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Changed
+
+Enum compatibility is now always like it was with BinaryCompatibilityOnlyAttribute. Please remove all usages of this attribute from client code as it does not have any meaning.
+
 ## 26.13.0
 
 DefaultTypeConvertorGenerator now supports `T` to `T?` conversion. Also `U` to `T?` if `U` is convertible to `T`.

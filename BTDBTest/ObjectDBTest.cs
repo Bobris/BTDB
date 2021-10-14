@@ -2641,7 +2641,6 @@ namespace BTDBTest
             public IDictionary<StateV1, string> S { get; set; }
         }
 
-        [BinaryCompatibilityOnly]
         public enum StateV2
         {
             A2 = 1,

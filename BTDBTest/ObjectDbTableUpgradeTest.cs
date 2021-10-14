@@ -449,7 +449,7 @@ namespace BTDBTest
         {
             [PrimaryKey(1)] public ulong Id { get; set; }
 
-            public Dictionary<SimpleEnumV2, int>? E { get; set; }
+            public Dictionary<SimpleEnumV3, int>? E { get; set; }
         }
 
         public interface IEnumsInKeys2Table : IRelation<EnumsInKeys2>
@@ -476,7 +476,7 @@ namespace BTDBTest
                 var eTable = creator(tr);
                 Assert.Null(eTable.First().E);
                 Assert.Equal(1, eTable.Count);
-                var e = new EnumsInKeys2 { Id = 1, E = new Dictionary<SimpleEnumV2, int> { { SimpleEnumV2.Drei, 1 } } };
+                var e = new EnumsInKeys2 { Id = 1, E = new Dictionary<SimpleEnumV3, int> { { SimpleEnumV3.Four, 1 } } };
                 eTable.Upsert(e);
                 tr.Commit();
             }

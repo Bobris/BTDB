@@ -280,16 +280,8 @@ namespace BTDB.FieldHandler
             }
             if (enumTypeHandler != null && _signed == enumTypeHandler._signed)
             {
-                if (type.GetCustomAttributes(typeof(BinaryCompatibilityOnlyAttribute), false).Length != 0)
-                {
-                    if (new EnumConfiguration(Configuration).IsBinaryRepresentationSubsetOf(new EnumConfiguration(enumTypeHandler.Configuration)))
-                        return typeHandler;
-                }
-                else
-                {
-                    if (new EnumConfiguration(Configuration).IsSubsetOf(new EnumConfiguration(enumTypeHandler.Configuration)))
-                        return typeHandler;
-                }
+                if (new EnumConfiguration(Configuration).IsBinaryRepresentationSubsetOf(new EnumConfiguration(enumTypeHandler.Configuration)))
+                    return typeHandler;
             }
             logger?.ReportTypeIncompatibility(_enumType, this, type, typeHandler);
             return this;
