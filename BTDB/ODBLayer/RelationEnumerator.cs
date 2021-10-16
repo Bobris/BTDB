@@ -5,10 +5,265 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using BTDB.Collections;
+
 // ReSharper disable MemberCanBeProtected.Global
 
 namespace BTDB.ODBLayer
 {
+    class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
+    {
+        readonly IInternalObjectDBTransaction _transaction;
+        protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
+        readonly IRelationModificationCounter _modificationCounter;
+        readonly IConstraint[] _constraints;
+        readonly IKeyValueDBTransaction _keyValueTr;
+        readonly int _prevModificationCounter;
+        long _prevProtectionCounter;
+
+        long _pos;
+        bool _seekNeeded;
+
+        StructList<byte> _buffer;
+        int _keyBytesCount;
+        readonly CursorInfo[] _cursorInfos;
+
+        struct CursorInfo
+        {
+            internal IConstraint.MatchType _matchType;
+            internal int _offset;
+        }
+        public RelationConstraintEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ReadOnlySpan<byte> keyBytes,
+            IRelationModificationCounter modificationCounter, int loaderIndex, IConstraint[] constraints)
+        {
+            _transaction = tr;
+
+            ItemLoader = relationInfo.ItemLoaderInfos[loaderIndex];
+            _keyValueTr = _transaction.KeyValueDBTransaction;
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
+
+            _buffer.AddRange(keyBytes);
+            _keyBytesCount = (int)_buffer.Count;
+
+            _modificationCounter = modificationCounter;
+            _constraints = constraints;
+            _cursorInfos = new CursorInfo[constraints.Length];
+            _pos = 0;
+            _seekNeeded = true;
+            _prevModificationCounter = _modificationCounter.ModificationCounter;
+            for (var i = 0; i < _constraints.Length; i++)
+            {
+                _cursorInfos[i]._matchType = constraints[i].Prepare(ref _buffer);
+            }
+        }
+
+        public bool MoveNext()
+        {
+            bool ret;
+            if (_seekNeeded)
+            {
+                _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
+                ret = FindNextKey(true);
+                _seekNeeded = false;
+            }
+            else
+            {
+                SeekCurrent();
+                ret = FindNextKey();
+            }
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
+            _pos = _keyValueTr.GetKeyIndex(_buffer.AsReadOnlySpan(0, _keyBytesCount));
+            return ret;
+        }
+
+        [SkipLocalsInit]
+        bool FindNextKey(bool first = false)
+        {
+            var writer = new SpanWriter();
+            Span<byte> buf = stackalloc byte[512];
+            var i = 0;
+            if (first)
+            {
+                writer.WriteBlock(_buffer.AsReadOnlySpan(0, _keyBytesCount));
+                while (i < _constraints.Length)
+                {
+                    switch (_cursorInfos[i]._matchType)
+                    {
+                        case IConstraint.MatchType.Exact:
+                            _constraints[i].WritePrefix(ref writer, _buffer);
+                            _cursorInfos[i]._offset = (int)writer.GetCurrentPosition();
+                            i++;
+                            break;
+                        case IConstraint.MatchType.Prefix:
+                            _constraints[i].WritePrefix(ref writer, _buffer);
+                            goto case IConstraint.MatchType.NoPrefix;
+                        case IConstraint.MatchType.NoPrefix:
+                            if (!_keyValueTr.FindFirstKey(writer.GetSpan())) return false;
+                            goto matchPrefix;
+                    }
+                }
+                return _keyValueTr.FindFirstKey(writer.GetSpan());
+                matchPrefix: ;
+            }
+            else
+            {
+                writer.WriteBlock(_buffer.AsReadOnlySpan(0, _keyBytesCount));
+                while (i < _constraints.Length)
+                {
+                    switch (_cursorInfos[i]._matchType)
+                    {
+                        case IConstraint.MatchType.Exact:
+                            _constraints[i].WritePrefix(ref writer, _buffer);
+                            i++;
+                            break;
+                        case IConstraint.MatchType.Prefix:
+                            _constraints[i].WritePrefix(ref writer, _buffer);
+                            goto case IConstraint.MatchType.NoPrefix;
+                        case IConstraint.MatchType.NoPrefix:
+                            if (!_keyValueTr.FindNextKey(writer.GetSpan())) return false;
+                            goto matchPrefix;
+                    }
+                }
+                return _keyValueTr.FindNextKey(writer.GetSpan());
+                matchPrefix: ;
+            }
+            var iAfterPrefix = i;
+            nextKeyTest:
+            i = iAfterPrefix;
+            var key = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(buf), buf.Length);
+            var offsetPrefix = i > 0 ? _cursorInfos[i - 1]._offset : 0;
+            var reader = new SpanReader(key[offsetPrefix..]);
+            if (_constraints[i].Match(ref reader, _buffer))
+            {
+                _cursorInfos[i]._offset = offsetPrefix + (int)reader.GetCurrentPosition();
+                i++;
+                while (i < _constraints.Length)
+                {
+                    if (_constraints[i].Match(ref reader, _buffer))
+                    {
+                        _cursorInfos[i]._offset = offsetPrefix + (int)reader.GetCurrentPosition();
+                        i++;
+                        continue;
+                    }
+
+                    goto findNextKey;
+                }
+
+                return true;
+            }
+
+            findNextKey:
+            if (!_keyValueTr.FindNextKey(writer.GetSpan())) return false;
+            goto nextKeyTest;
+        }
+
+        bool FindFirstKey(bool first = true)
+        {
+            var writer = new SpanWriter();
+            Span<byte> buf = stackalloc byte[512];
+            writer.WriteBlock(_buffer.AsReadOnlySpan(0, _keyBytesCount));
+            var i = 0;
+            while (i < _constraints.Length)
+            {
+                switch (_cursorInfos[i]._matchType)
+                {
+                    case IConstraint.MatchType.Exact:
+                        _constraints[i].WritePrefix(ref writer, _buffer);
+                        _cursorInfos[i]._offset = (int)writer.GetCurrentPosition();
+                        i++;
+                        break;
+                    case IConstraint.MatchType.Prefix:
+                        _constraints[i].WritePrefix(ref writer, _buffer);
+                        goto case IConstraint.MatchType.NoPrefix;
+                    case IConstraint.MatchType.NoPrefix:
+                        if (!_keyValueTr.FindFirstKey(writer.GetSpan())) return false;
+                        goto matchPrefix;
+                }
+            }
+            return _keyValueTr.FindExactKey(writer.GetSpan());
+            matchPrefix:
+            var iAfterPrefix = i;
+            nextKeyTest:
+            i = iAfterPrefix;
+            var key = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(buf), buf.Length);
+            var offsetPrefix = i > 0 ? _cursorInfos[i - 1]._offset : 0;
+            var reader = new SpanReader(key[offsetPrefix..]);
+            if (_constraints[i].Match(ref reader, _buffer))
+            {
+                _cursorInfos[i]._offset = offsetPrefix + (int)reader.GetCurrentPosition();
+                i++;
+                while (i < _constraints.Length)
+                {
+                    if (_constraints[i].Match(ref reader, _buffer))
+                    {
+                        _cursorInfos[i]._offset = offsetPrefix + (int)reader.GetCurrentPosition();
+                        i++;
+                        continue;
+                    }
+
+                    goto findNextKey;
+                }
+
+                return true;
+            }
+
+            findNextKey:
+            if (!_keyValueTr.FindNextKey(writer.GetSpan())) return false;
+            goto nextKeyTest;
+        }
+
+        public T Current
+        {
+            [SkipLocalsInit]
+            get
+            {
+                SeekCurrent();
+                Span<byte> keyBuffer = stackalloc byte[512];
+                var keyBytes = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
+                return CreateInstance(keyBytes, _keyValueTr);
+            }
+        }
+
+        void SeekCurrent()
+        {
+            if (_seekNeeded) throw new BTDBException("Invalid access to uninitialized Current.");
+            if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
+            {
+                _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
+                _keyValueTr.SetKeyIndex(_buffer.AsReadOnlySpan(0, _keyBytesCount), _pos);
+                _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
+            }
+        }
+
+        protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes, in IKeyValueDBTransaction kvtr)
+        {
+            return (T)ItemLoader.CreateInstance(_transaction, keyBytes, kvtr);
+        }
+
+        object IEnumerator.Current => Current!;
+
+        public void Reset()
+        {
+            _pos = 0;
+            _seekNeeded = true;
+        }
+
+        public void Dispose()
+        {
+        }
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            Reset();
+            return this;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+    }
+
     class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     {
         readonly IInternalObjectDBTransaction _transaction;

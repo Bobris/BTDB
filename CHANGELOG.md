@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Constraints and ScanById relation method.
+
 ### Changed
 
 Enum compatibility is now always like it was with BinaryCompatibilityOnlyAttribute. Please remove all usages of this attribute from client code as it does not have any meaning.

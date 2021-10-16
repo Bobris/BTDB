@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.KVDBLayer;
 
 namespace BTDB.StreamLayer
@@ -14,6 +15,17 @@ namespace BTDB.StreamLayer
         {
             _bytes = Array.Empty<byte>();
             _ofs = 0;
+        }
+
+        public ContinuousMemoryBlockWriter(in StructList<byte> buffer)
+        {
+            _bytes = buffer.UnsafeBackingArray;
+            _ofs = (int)buffer.Count;
+        }
+
+        public StructList<byte> GetStructList()
+        {
+            return new(_bytes, (uint)_ofs);
         }
 
         public Span<byte> GetSpan()

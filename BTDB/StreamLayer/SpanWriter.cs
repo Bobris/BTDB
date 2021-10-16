@@ -497,6 +497,29 @@ namespace BTDB.StreamLayer
             WriteByteZero();
         }
 
+        public void WriteStringOrderedPrefix(string value)
+        {
+            var l = value.Length;
+            var i = 0;
+            while (i < l)
+            {
+                var c = value[i];
+                if (char.IsHighSurrogate(c) && i + 1 < l)
+                {
+                    var c2 = value[i + 1];
+                    if (char.IsLowSurrogate(c2))
+                    {
+                        WriteVUInt32((uint)((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000) + 1);
+                        i += 2;
+                        continue;
+                    }
+                }
+
+                WriteVUInt32((uint)c + 1);
+                i++;
+            }
+        }
+
         public unsafe void WriteStringInUtf8(string value)
         {
             var l = Encoding.UTF8.GetByteCount(value);

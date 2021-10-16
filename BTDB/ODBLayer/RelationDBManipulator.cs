@@ -678,6 +678,12 @@ namespace BTDB.ODBLayer
                 loaderIndex);
         }
 
+        public IEnumerable<TItem> ScanByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex, IConstraint[] constraints)
+        {
+            return new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, this,
+                loaderIndex, constraints);
+        }
+
         public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
             uint fieldInFirstBufferCount, in ReadOnlySpan<byte> firstPart, in ReadOnlySpan<byte> secondPart)
         {

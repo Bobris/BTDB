@@ -22,6 +22,13 @@ namespace BTDB.Collections
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public StructList(T[]? backingArray, uint count)
+        {
+            _a = backingArray;
+            _count = count;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         [DebuggerStepThrough]
         public void Add(in T value)
         {

@@ -799,7 +799,7 @@ namespace BTDB.StreamLayer
         }
 
         [SkipLocalsInit]
-        public bool CheckMagic(byte[] magic)
+        public bool CheckMagic(ReadOnlySpan<byte> magic)
         {
             if (Buf.Length >= magic.Length)
             {
@@ -807,6 +807,8 @@ namespace BTDB.StreamLayer
                 PackUnpack.UnsafeAdvance(ref Buf, magic.Length);
                 return true;
             }
+
+            if (Controller == null) return false;
 
             Span<byte> buf = stackalloc byte[magic.Length];
             try
@@ -818,6 +820,11 @@ namespace BTDB.StreamLayer
             {
                 return false;
             }
+        }
+
+        public bool CheckMagic(byte[] magic)
+        {
+            return CheckMagic(magic.AsSpan());
         }
 
         [SkipLocalsInit]
