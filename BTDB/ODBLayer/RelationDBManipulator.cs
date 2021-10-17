@@ -678,7 +678,7 @@ namespace BTDB.ODBLayer
                 loaderIndex);
         }
 
-        public IEnumerable<TItem> ScanByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex, IConstraint[] constraints)
+        public IEnumerable<TItem> ScanByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex, ConstraintInfo[] constraints)
         {
             return new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, this,
                 loaderIndex, constraints);

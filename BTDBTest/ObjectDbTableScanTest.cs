@@ -29,22 +29,38 @@ namespace BTDBTest
         [Fact]
         public void ScanByIdWorks()
         {
-            using (var tr = _db.StartTransaction())
-            {
-                var t = tr.GetRelation<IPersonTable>();
-                t.Upsert(new() { TenantId = 1, Email = "a@b.cd", Name = "a" });
-                t.Upsert(new() { TenantId = 1, Email = "b@b.cd", Name = "b" });
-                t.Upsert(new() { TenantId = 2, Email = "a@c.cd", Name = "a2" });
-                t.Upsert(new() { TenantId = 2, Email = "b@c.cd", Name = "b2" });
-                tr.Commit();
-            }
+            FillPersonData();
 
-            using (var tr = _db.StartTransaction())
-            {
-                var t = tr.GetRelation<IPersonTable>();
-                var p = t.ScanById(Constraint.Unsigned.Exact(1), Constraint.String.StartsWith("a")).Single();
-                Assert.Equal("a", p.Name);
-            }
+            using var tr = _db.StartTransaction();
+            var t = tr.GetRelation<IPersonTable>();
+            var p = t.ScanById(Constraint.Unsigned.Exact(1), Constraint.String.StartsWith("a")).Single();
+            Assert.Equal("A", p.Name);
+        }
+
+        [Theory]
+        [InlineData("a","AC")]
+        [InlineData("b","BD")]
+        [InlineData("","ABCD")]
+        [InlineData("c","")]
+        public void ConstraintUnsignedAnyStringPrefixWorks(string prefix, string expectedNames)
+        {
+            FillPersonData();
+
+            using var tr = _db.StartTransaction();
+            var t = tr.GetRelation<IPersonTable>();
+            var names = string.Concat(t.ScanById(Constraint.Unsigned.Any, Constraint.String.StartsWith(prefix)).Select(p=>p.Name));
+            Assert.Equal(expectedNames, names);
+        }
+
+        void FillPersonData()
+        {
+            using var tr = _db.StartTransaction();
+            var t = tr.GetRelation<IPersonTable>();
+            t.Upsert(new() { TenantId = 1, Email = "a@b.cd", Name = "A" });
+            t.Upsert(new() { TenantId = 1, Email = "b@b.cd", Name = "B" });
+            t.Upsert(new() { TenantId = 2, Email = "a@c.cd", Name = "C" });
+            t.Upsert(new() { TenantId = 2, Email = "b@c.cd", Name = "D" });
+            tr.Commit();
         }
     }
 }

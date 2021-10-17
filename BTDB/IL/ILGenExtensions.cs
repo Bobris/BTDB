@@ -479,6 +479,12 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Ldelema(this IILGen il, Type itemType)
+        {
+            il.Emit(OpCodes.Ldelema, itemType);
+            return il;
+        }
+
         public static IILGen StelemRef(this IILGen il)
         {
             il.Emit(OpCodes.Stelem_Ref);

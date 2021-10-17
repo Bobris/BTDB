@@ -1041,21 +1041,12 @@ namespace BTDB.ODBLayer
             Action<IILGen> pushWriter)
         {
             var spanLocal = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
-            var constraintsLocal = ilGenerator.DeclareLocal(typeof(IConstraint[]));
+            var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
             var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
             if (!isPrefixBased) RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {methodName} must return IEnumerable<T> or IEnumerator<T> type.");
             WriteRelationPKPrefix(ilGenerator, pushWriter);
 
             var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
-
-            if (methodParameters.Length > primaryKeyFields.Length)
-                RelationInfoResolver.ActualOptions.ThrowBTDBException(
-                    $"Number of constraints parameters in {methodName} is bigger than primary key count {primaryKeyFields.Length}.");
-
-            ilGenerator
-                .LdcI4(methodParameters.Length)
-                .Newarr(typeof(IConstraint))
-                .Stloc(constraintsLocal);
 
             SaveMethodConstraintParameters(ilGenerator, methodName, methodParameters, primaryKeyFields.Span, constraintsLocal);
 
@@ -1078,6 +1069,15 @@ namespace BTDB.ODBLayer
             ReadOnlySpan<ParameterInfo> methodParameters,
             ReadOnlySpan<TableFieldInfo> fields, IILLocal constraintsLocal)
         {
+            if (methodParameters.Length > fields.Length)
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Number of constraints parameters in {methodName} is bigger than key count {fields.Length}.");
+
+            ilGenerator
+                .LdcI4(methodParameters.Length)
+                .Newarr(typeof(ConstraintInfo))
+                .Stloc(constraintsLocal);
+
             var idx = 0;
             foreach (var field in fields)
             {
@@ -1112,9 +1112,10 @@ namespace BTDB.ODBLayer
                 ilGenerator
                     .Ldloc(constraintsLocal)
                     .LdcI4(idx - 1)
+                    .Ldelema(typeof(ConstraintInfo))
                     .Ldarg((ushort)idx)
                     .Castclass(typeof(IConstraint))
-                    .Stelem(typeof(IConstraint));
+                    .Stfld(typeof(ConstraintInfo).GetField(nameof(ConstraintInfo.Constraint))!);
             }
         }
 
