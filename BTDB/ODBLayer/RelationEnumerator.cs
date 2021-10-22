@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using BTDB.Buffer;
 using BTDB.Collections;
 
 // ReSharper disable MemberCanBeProtected.Global
@@ -34,7 +35,8 @@ namespace BTDB.ODBLayer
         int _keyBytesCount;
         StructList<byte> _buffer;
 
-        public RelationConstraintEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ReadOnlySpan<byte> keyBytes,
+        public RelationConstraintEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
+            ReadOnlySpan<byte> keyBytes,
             IRelationModificationCounter modificationCounter, int loaderIndex, ConstraintInfo[] constraints)
         {
             _transaction = tr;
@@ -73,6 +75,7 @@ namespace BTDB.ODBLayer
                 SeekCurrent();
                 ret = FindNextKey();
             }
+
             _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
             _pos = _keyValueTr.GetKeyIndex(_buffer.AsReadOnlySpan(0, _keyBytesCount));
             return ret;
@@ -81,7 +84,8 @@ namespace BTDB.ODBLayer
         [SkipLocalsInit]
         bool FindNextKey(bool first = false)
         {
-            var writer = new SpanWriter();
+            Span<byte> writerBuf = stackalloc byte[512];
+            var writer = new SpanWriter(writerBuf);
             Span<byte> buf = stackalloc byte[512];
             var i = 0;
             if (first)
@@ -94,69 +98,117 @@ namespace BTDB.ODBLayer
                         case IConstraint.MatchType.Exact:
                             _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
                             _constraints[i].Offset = (int)writer.GetCurrentPosition();
-                            i++;
                             break;
                         case IConstraint.MatchType.Prefix:
                             _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
                             goto case IConstraint.MatchType.NoPrefix;
                         case IConstraint.MatchType.NoPrefix:
                             if (!_keyValueTr.FindFirstKey(writer.GetSpan())) return false;
-                            goto matchPrefix;
+                            goto nextKeyTest;
+                        default:
+                            throw new InvalidOperationException();
                     }
+
+                    i++;
                 }
+
                 return _keyValueTr.FindFirstKey(writer.GetSpan());
-                matchPrefix: ;
             }
-            else
-            {
-                writer.WriteBlock(_buffer.AsReadOnlySpan(0, _keyBytesCount));
-                while (i < _constraints.Length)
-                {
-                    switch (_constraints[i].MatchType)
-                    {
-                        case IConstraint.MatchType.Exact:
-                            _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
-                            i++;
-                            break;
-                        case IConstraint.MatchType.Prefix:
-                            _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
-                            goto case IConstraint.MatchType.NoPrefix;
-                        case IConstraint.MatchType.NoPrefix:
-                            if (!_keyValueTr.FindNextKey(writer.GetSpan())) return false;
-                            goto matchPrefix;
-                    }
-                }
-                return _keyValueTr.FindNextKey(writer.GetSpan());
-                matchPrefix: ;
-            }
-            var iAfterPrefix = i;
+
+            writer.UpdateBuffer(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(writerBuf), writerBuf.Length));
+            goNextKey:
+            if (!_keyValueTr.FindNextKey(new())) return false;
             nextKeyTest:
-            i = iAfterPrefix;
             var key = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(buf), buf.Length);
-            var offsetPrefix = i > 0 ? _constraints[i - 1].Offset : 0;
+            var commonUpToOffset = PackUnpack.SequenceEqualUpTo(writer.GetSpan(), key);
+            if (commonUpToOffset < _keyBytesCount) return false;
+            i = 0;
+            while (i < _constraints.Length)
+            {
+                if (_constraints[i].Offset < 0) break;
+                if (_constraints[i].Offset > commonUpToOffset) break;
+                i++;
+            }
+
+            if (i == _constraints.Length) return true;
+            for (var j = i; j < _constraints.Length; j++) _constraints[j].Offset = -1;
+            var offsetPrefix = i > 0 ? _constraints[i - 1].Offset : _keyBytesCount;
             var reader = new SpanReader(key[offsetPrefix..]);
+            goDown:
             if (_constraints[i].Constraint.Match(ref reader, _buffer))
             {
                 _constraints[i].Offset = offsetPrefix + (int)reader.GetCurrentPosition();
                 i++;
-                while (i < _constraints.Length)
-                {
-                    if (_constraints[i].Constraint.Match(ref reader, _buffer))
-                    {
-                        _constraints[i].Offset = offsetPrefix + (int)reader.GetCurrentPosition();
-                        i++;
-                        continue;
-                    }
-
-                    goto findNextKey;
-                }
-
-                return true;
+                if (i == _constraints.Length) return true;
+                goto goDown;
             }
 
-            findNextKey:
-            if (!_keyValueTr.FindNextKey(writer.GetSpan())) return false;
-            goto nextKeyTest;
+            _constraints[i].Offset = offsetPrefix + (int)reader.GetCurrentPosition();
+
+            switch (_constraints[i].MatchType)
+            {
+                case IConstraint.MatchType.NoPrefix:
+                {
+                    goto goNextFast;
+                }
+                case IConstraint.MatchType.Prefix:
+                {
+                    goto goNextFast;
+                }
+                case IConstraint.MatchType.Exact:
+                {
+                    writer.Reset();
+                    writer.WriteBlock(key.Slice(0, i > 0 ? _constraints[i - 1].Offset : _keyBytesCount));
+                    do
+                    {
+                        _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
+                        _constraints[i].Offset = (int)writer.GetCurrentPosition();
+                        i++;
+                        if (i != _constraints.Length) continue;
+                        if (writer.GetSpan().SequenceCompareTo(key) < 0) goto goNextFast;
+                        if (_keyValueTr.FindFirstKey(writer.GetSpan())) return true;
+                        goto goNextKey;
+                    } while (_constraints[i].MatchType == IConstraint.MatchType.Exact);
+
+                    if (_constraints[i].MatchType == IConstraint.MatchType.Prefix)
+                    {
+                        _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
+                        if (writer.GetSpan().SequenceCompareTo(key) < 0)
+                        {
+                            i--;
+                            goto goNextFast;
+                        }
+                    }
+                    else
+                    {
+                        if (writer.GetSpan().SequenceCompareTo(key) < 0) goto goNextFast;
+                    }
+                    if (!_keyValueTr.FindFirstKey(writer.GetSpan())) goto goNextFast;
+                    goto nextKeyTest;
+                }
+                default:
+                    throw new InvalidOperationException();
+            }
+
+            goNextFast:
+            while (i > 0)
+            {
+                switch (_constraints[i].MatchType)
+                {
+                    case IConstraint.MatchType.Exact:
+                        i--;
+                        continue;
+                    default:
+                    {
+                        writer.Reset();
+                        writer.WriteBlock(key.Slice(0, _constraints[i].Offset));
+                        if (!_keyValueTr.FindLastKey(writer.GetSpan())) throw new InvalidOperationException();
+                        goto goNextKey;
+                    }
+                }
+            }
+
+            return false;
         }
 
         public T Current
@@ -224,7 +276,9 @@ namespace BTDB.ODBLayer
 
         protected readonly byte[] KeyBytes;
         readonly int _prevModificationCounter;
-        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ReadOnlySpan<byte> keyBytes,
+
+        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
+            ReadOnlySpan<byte> keyBytes,
             IRelationModificationCounter modificationCounter, int loaderIndex)
         {
             _transaction = tr;
@@ -241,7 +295,7 @@ namespace BTDB.ODBLayer
         }
 
         public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, byte[] keyBytes,
-    IRelationModificationCounter modificationCounter, int loaderIndex)
+            IRelationModificationCounter modificationCounter, int loaderIndex)
         {
             _transaction = tr;
 
@@ -352,7 +406,8 @@ namespace BTDB.ODBLayer
         readonly IRelationDbManipulator _manipulator;
 
         public RelationSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
-            in ReadOnlySpan<byte> keyBytes, uint secondaryKeyIndex, uint fieldCountInKey, IRelationDbManipulator manipulator,
+            in ReadOnlySpan<byte> keyBytes, uint secondaryKeyIndex, uint fieldCountInKey,
+            IRelationDbManipulator manipulator,
             int loaderIndex)
             : base(tr, relationInfo, keyBytes, manipulator, loaderIndex)
         {
@@ -490,7 +545,8 @@ namespace BTDB.ODBLayer
         }
 
         public RelationAdvancedEnumerator(
-            IRelationDbManipulator manipulator, in ReadOnlySpan<byte> prefixBytes, uint prefixFieldCount, int loaderIndex)
+            IRelationDbManipulator manipulator, in ReadOnlySpan<byte> prefixBytes, uint prefixFieldCount,
+            int loaderIndex)
         {
             PrefixFieldCount = prefixFieldCount;
             Manipulator = manipulator;
@@ -860,7 +916,8 @@ namespace BTDB.ODBLayer
 
             _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
             Span<byte> keyBuffer = stackalloc byte[512];
-            var reader = new SpanReader(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length).Slice(KeyBytes.Length));
+            var reader = new SpanReader(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length)
+                .Slice(KeyBytes.Length));
             key = KeyReader!(ref reader, null);
             return true;
         }

@@ -20,7 +20,7 @@ namespace BTDB.ODBLayer
         // Will be called only for Prefix and Exact MatchTypes, for Exact it have to write full part of key
         public void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer);
 
-        // return true if match was successful and also skip reader after this field
+        // return true if match was successful and in ALL CASES SKIP reader after this field
         // when MatchType is Exact this method does not need to be called at all if part of key matches written prefix
         public bool Match(ref SpanReader reader, in StructList<byte> buffer);
     }
@@ -94,8 +94,12 @@ namespace BTDB.ODBLayer
 
         public override bool Match(ref SpanReader reader, in StructList<byte> buffer)
         {
-            return reader.CheckMagic(buffer.AsReadOnlySpan(Ofs, Len));
+            if (reader.CheckMagic(buffer.AsReadOnlySpan(Ofs, Len))) return true;
+            Skip(ref reader);
+            return false;
         }
+
+        protected abstract void Skip(ref SpanReader reader);
     }
 
     public class ConstraintStringExact : ConstraintExact<string>
@@ -117,6 +121,11 @@ namespace BTDB.ODBLayer
             buffer = structListWriter.GetStructList();
             Len = (int)buffer.Count - Ofs;
             return IConstraint.MatchType.Exact;
+        }
+
+        protected override void Skip(ref SpanReader reader)
+        {
+            reader.SkipStringOrdered();
         }
     }
 
@@ -224,6 +233,7 @@ namespace BTDB.ODBLayer
                 return true;
             }
 
+            reader.SkipStringOrdered();
             return false;
         }
     }
@@ -247,6 +257,11 @@ namespace BTDB.ODBLayer
             buffer = structListWriter.GetStructList();
             Len = (int)buffer.Count - Ofs;
             return IConstraint.MatchType.Exact;
+        }
+
+        protected override void Skip(ref SpanReader reader)
+        {
+            reader.SkipVUInt64();
         }
     }
 }

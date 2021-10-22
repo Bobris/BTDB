@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.Design;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -799,6 +800,20 @@ namespace BTDB.StreamLayer
             }
 
             return InitialBuffer.Slice((int) start, (int) len);
+        }
+
+        public void UpdateBuffer(ReadOnlySpan<byte> writtenBuffer)
+        {
+            if (Unsafe.AreSame(ref MemoryMarshal.GetReference(InitialBuffer), ref MemoryMarshal.GetReference(writtenBuffer)))
+            {
+                Buf = InitialBuffer.Slice(writtenBuffer.Length);
+                HeapBuffer = null;
+            }
+            else
+            {
+                Reset();
+                WriteBlock(writtenBuffer);
+            }
         }
     }
 }

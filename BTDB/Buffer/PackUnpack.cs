@@ -570,5 +570,38 @@ namespace BTDB.Buffer
             p = MemoryMarshal.CreateSpan(
                 ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), (IntPtr)delta), p.Length - delta);
         }
+
+        public static uint SequenceEqualUpTo(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+        {
+            var len = (uint)Math.Min(left.Length, right.Length);
+            ref var first = ref MemoryMarshal.GetReference(left);
+            ref var second = ref MemoryMarshal.GetReference(right);
+            var offset = 0u;
+            if (Vector.IsHardwareAccelerated && len >= Vector<byte>.Count)
+            {
+                do
+                {
+                    if (LoadVector(ref first, offset) != LoadVector(ref second, offset))
+                    {
+                        break;
+                    }
+                    offset += (uint)Vector<byte>.Count;
+                    len -= (uint)Vector<byte>.Count;
+                } while (len >= Vector<byte>.Count);
+            }
+
+            while (len > 0)
+            {
+                if (Unsafe.AddByteOffset(ref first, (IntPtr)offset) != Unsafe.AddByteOffset(ref second, (IntPtr)offset))
+                    break;
+                offset++;
+                len--;
+            }
+            return offset;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static Vector<byte> LoadVector(ref byte start, nuint offset)
+            => Unsafe.ReadUnaligned<Vector<byte>>(ref Unsafe.AddByteOffset(ref start, (IntPtr)(ulong)offset));
     }
 }
