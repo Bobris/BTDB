@@ -52,6 +52,24 @@ namespace BTDBTest
             Assert.Equal(expectedNames, names);
         }
 
+        [Theory]
+        [InlineData("a","AC")]
+        [InlineData("b","ABD")]
+        [InlineData("","ABCD")]
+        [InlineData(".c","ABCD")]
+        [InlineData("a@b.cd","A")]
+        [InlineData("a@c.cd","C")]
+        [InlineData("a@c.cd2","")]
+        public void ConstraintUnsignedAnyStringContainsWorks(string contain, string expectedNames)
+        {
+            FillPersonData();
+
+            using var tr = _db.StartTransaction();
+            var t = tr.GetRelation<IPersonTable>();
+            var names = string.Concat(t.ScanById(Constraint.Unsigned.Any, Constraint.String.Contains(contain)).Select(p=>p.Name));
+            Assert.Equal(expectedNames, names);
+        }
+
         void FillPersonData()
         {
             using var tr = _db.StartTransaction();

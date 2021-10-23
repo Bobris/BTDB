@@ -475,6 +475,51 @@ namespace BTDB.StreamLayer
             return result;
         }
 
+        public ReadOnlySpan<char> ReadStringOrderedAsSpan(ref char buffer, int bufferLength)
+        {
+            var len = 0;
+            var charBuf = MemoryMarshal.CreateSpan(ref buffer, bufferLength);
+
+            while (true)
+            {
+                var c = ReadVUInt32();
+                if (c == 0) break;
+                c--;
+                if (c > 0xffff)
+                {
+                    if (c > 0x10ffff)
+                    {
+                        if (len == 0 && c == 0x110000) return null;
+                        throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
+                    }
+
+                    c -= 0x10000;
+                    if (charBuf.Length < len + 2)
+                    {
+                        var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
+                        charBuf.CopyTo(newCharBuf);
+                        charBuf = newCharBuf;
+                    }
+
+                    Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c >> 10) + 0xD800);
+                    Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c & 0x3FF) + 0xDC00);
+                }
+                else
+                {
+                    if (charBuf.Length < len + 1)
+                    {
+                        var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
+                        charBuf.CopyTo(newCharBuf);
+                        charBuf = newCharBuf;
+                    }
+
+                    Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)c;
+                }
+            }
+
+            return charBuf[..len];
+        }
+
         [SkipLocalsInit]
         public string? ReadStringOrdered()
         {
@@ -531,11 +576,14 @@ namespace BTDB.StreamLayer
             if (l == 0) return "";
             if (l <= (uint)Buf.Length)
             {
-                return Encoding.UTF8.GetString((byte *)Unsafe.AsPointer(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, l)), l);
+                return Encoding.UTF8.GetString((byte*)Unsafe.AsPointer(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, l)),
+                    l);
             }
 
             Span<byte> buf = l <= 512 ? stackalloc byte[l] : new byte[l];
-            return Encoding.UTF8.GetString((byte *)Unsafe.AsPointer(ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), (uint)l)), l);
+            return Encoding.UTF8.GetString(
+                (byte*)Unsafe.AsPointer(
+                    ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), (uint)l)), l);
         }
 
         public void SkipString()
@@ -587,7 +635,8 @@ namespace BTDB.StreamLayer
         public void SkipStringInUtf8()
         {
             var len = ReadVUInt64();
-            if (len > int.MaxValue) throw new InvalidDataException($"Skipping Utf8 String length overflowed with {len}");
+            if (len > int.MaxValue)
+                throw new InvalidDataException($"Skipping Utf8 String length overflowed with {len}");
             SkipBlock((uint)len);
         }
 
@@ -636,6 +685,7 @@ namespace BTDB.StreamLayer
                     if (!Controller.SkipBlock(ref this, length))
                         return;
                 }
+
                 Buf = new();
                 PackUnpack.ThrowEndOfStreamException();
             }
@@ -835,18 +885,18 @@ namespace BTDB.StreamLayer
                 case 0:
                     return new((uint)ReadInt32LE());
                 case 1:
-                    {
-                        Span<byte> ip6Bytes = stackalloc byte[16];
-                        ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
-                        return new(ip6Bytes);
-                    }
+                {
+                    Span<byte> ip6Bytes = stackalloc byte[16];
+                    ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
+                    return new(ip6Bytes);
+                }
                 case 2:
-                    {
-                        Span<byte> ip6Bytes = stackalloc byte[16];
-                        ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
-                        var scopeId = (long)ReadVUInt64();
-                        return new(ip6Bytes, scopeId);
-                    }
+                {
+                    Span<byte> ip6Bytes = stackalloc byte[16];
+                    ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
+                    var scopeId = (long)ReadVUInt64();
+                    return new(ip6Bytes, scopeId);
+                }
                 case 3:
                     return null;
                 default: throw new InvalidDataException("Unknown type of IPAddress");
@@ -905,6 +955,7 @@ namespace BTDB.StreamLayer
             {
                 a[i] = ReadString()!;
             }
+
             return new(a);
         }
 

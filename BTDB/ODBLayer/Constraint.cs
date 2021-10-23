@@ -1,11 +1,12 @@
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Collections;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
+    public delegate bool PredicateSpanChar(in ReadOnlySpan<char> value);
+
     public interface IConstraint
     {
         public enum MatchType
@@ -39,7 +40,15 @@ namespace BTDB.ODBLayer
             public static Constraint<ulong> Exact(ulong value) => new ConstraintUnsignedExact(value);
             public static Constraint<ulong> Predicate(Predicate<ulong> predicate) =>
                 new ConstraintUnsignedPredicate(predicate);
-            public static Constraint<ulong> Any = new ConstraintUnsignedAny();
+            public static readonly Constraint<ulong> Any = new ConstraintUnsignedAny();
+        }
+
+        public static partial class Signed
+        {
+            public static Constraint<long> Exact(long value) => new ConstraintSignedExact(value);
+            public static Constraint<long> Predicate(Predicate<long> predicate) =>
+                new ConstraintSignedPredicate(predicate);
+            public static readonly Constraint<long> Any = new ConstraintSignedAny();
         }
 
         public static partial class String
@@ -47,20 +56,52 @@ namespace BTDB.ODBLayer
             public static Constraint<string> StartsWith(string value) =>
                 value == "" ? Any : new ConstraintStringStartsWith(value);
 
+            public static Constraint<string> EndsWith(string value) =>
+                value == "" ? Any : Predicate((in ReadOnlySpan<char> v) => v.EndsWith(value));
+
             public static Constraint<string> Contains(string value) =>
-                value == "" ? Any : new ConstraintStringContains(value);
+                value == "" ? Any : Predicate((in ReadOnlySpan<char> v) => v.Contains(value, StringComparison.Ordinal));
+
+            public static Constraint<string> ContainsCaseInsensitive(string value) =>
+                value == "" ? Any : Predicate((in ReadOnlySpan<char> v) => v.Contains(value, StringComparison.OrdinalIgnoreCase));
+
+            public static Constraint<string> Predicate(PredicateSpanChar predicate) =>
+                new ConstraintStringPredicate(predicate);
+
+            public static Constraint<string> PredicateSlow(Predicate<string> predicate) =>
+                new ConstraintStringPredicateSlow(predicate);
 
             public static Constraint<string> Exact(string value) => new ConstraintStringExact(value);
-            public static Constraint<string> Any = new ConstraintStringAny();
+            public static readonly Constraint<string> Any = new ConstraintStringAny();
+        }
+    }
+
+    public class ConstraintStringPredicateSlow : ConstraintNoPrefix<string>
+    {
+        readonly Predicate<string> _predicate;
+
+        public ConstraintStringPredicateSlow(Predicate<string> predicate) => _predicate = predicate;
+
+        public override bool Match(ref SpanReader reader, in StructList<byte> buffer) => _predicate(reader.ReadStringOrdered());
+    }
+
+    public class ConstraintStringPredicate : ConstraintNoPrefix<string>
+    {
+        readonly PredicateSpanChar _predicate;
+
+        public ConstraintStringPredicate(PredicateSpanChar predicate) => _predicate = predicate;
+
+        public override bool Match(ref SpanReader reader, in StructList<byte> buffer)
+        {
+            Span<char> bufStr = stackalloc char[512];
+            var realStr = reader.ReadStringOrderedAsSpan(ref MemoryMarshal.GetReference(bufStr), bufStr.Length);
+            return _predicate(realStr);
         }
     }
 
     public abstract class ConstraintNoPrefix<T> : Constraint<T>
     {
-        public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
-        {
-            return IConstraint.MatchType.NoPrefix;
-        }
+        public override IConstraint.MatchType Prepare(ref StructList<byte> buffer) => IConstraint.MatchType.NoPrefix;
 
         public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
         {
@@ -71,15 +112,18 @@ namespace BTDB.ODBLayer
     {
         readonly Predicate<ulong> _predicate;
 
-        public ConstraintUnsignedPredicate(Predicate<ulong> predicate)
-        {
-            _predicate = predicate;
-        }
+        public ConstraintUnsignedPredicate(Predicate<ulong> predicate) => _predicate = predicate;
 
-        public override bool Match(ref SpanReader reader, in StructList<byte> buffer)
-        {
-            return _predicate(reader.ReadVUInt64());
-        }
+        public override bool Match(ref SpanReader reader, in StructList<byte> buffer) => _predicate(reader.ReadVUInt64());
+    }
+
+    public class ConstraintSignedPredicate : ConstraintNoPrefix<long>
+    {
+        readonly Predicate<long> _predicate;
+
+        public ConstraintSignedPredicate(Predicate<long> predicate) => _predicate = predicate;
+
+        public override bool Match(ref SpanReader reader, in StructList<byte> buffer) => _predicate(reader.ReadVInt64());
     }
 
     public abstract class ConstraintExact<T> : Constraint<T>
@@ -129,44 +173,6 @@ namespace BTDB.ODBLayer
         }
     }
 
-    public class ConstraintStringContains : Constraint<string>
-    {
-        readonly string _value;
-        int _ofs;
-        int _len;
-
-        public ConstraintStringContains(string value)
-        {
-            _value = value;
-        }
-
-        public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
-        {
-            var structListWriter = new ContinuousMemoryBlockWriter(buffer);
-            _ofs = (int)buffer.Count;
-            var writer = new SpanWriter(structListWriter);
-            writer.WriteStringOrderedPrefix(_value);
-            writer.Sync();
-            buffer = structListWriter.GetStructList();
-            _len = (int)buffer.Count - _ofs;
-            return IConstraint.MatchType.NoPrefix;
-        }
-
-        public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
-        {
-        }
-
-        public override bool Match(ref SpanReader reader, in StructList<byte> buffer)
-        {
-            var start = reader.Buf;
-            reader.SkipStringOrdered();
-            start = start.Slice(0,
-                Unsafe.ByteOffset(ref MemoryMarshal.GetReference(start), ref MemoryMarshal.GetReference(reader.Buf))
-                    .ToInt32() - 1);
-            return start.IndexOf(buffer.AsReadOnlySpan(_ofs, _len)) >= 0;
-        }
-    }
-
     public abstract class ConstraintAny<T> : Constraint<T>
     {
         public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
@@ -184,6 +190,15 @@ namespace BTDB.ODBLayer
         public override bool Match(ref SpanReader reader, in StructList<byte> buffer)
         {
             reader.SkipVUInt64();
+            return true;
+        }
+    }
+
+    public class ConstraintSignedAny : ConstraintAny<long>
+    {
+        public override bool Match(ref SpanReader reader, in StructList<byte> buffer)
+        {
+            reader.SkipVInt64();
             return true;
         }
     }
@@ -262,6 +277,33 @@ namespace BTDB.ODBLayer
         protected override void Skip(ref SpanReader reader)
         {
             reader.SkipVUInt64();
+        }
+    }
+
+    public class ConstraintSignedExact : ConstraintExact<long>
+    {
+        readonly long _value;
+
+        public ConstraintSignedExact(long value)
+        {
+            _value = value;
+        }
+
+        public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+        {
+            var structListWriter = new ContinuousMemoryBlockWriter(buffer);
+            Ofs = (int)buffer.Count;
+            var writer = new SpanWriter(structListWriter);
+            writer.WriteVInt64(_value);
+            writer.Sync();
+            buffer = structListWriter.GetStructList();
+            Len = (int)buffer.Count - Ofs;
+            return IConstraint.MatchType.Exact;
+        }
+
+        protected override void Skip(ref SpanReader reader)
+        {
+            reader.SkipVInt64();
         }
     }
 }
