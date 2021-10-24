@@ -35,6 +35,14 @@ namespace BTDB.ODBLayer
 
     public static partial class Constraint
     {
+        public static partial class DateTime
+        {
+            public static Constraint<System.DateTime> Exact(System.DateTime value) => new ConstraintDateTimeExact(value);
+            public static Constraint<System.DateTime> Predicate(Predicate<System.DateTime> predicate) =>
+                new ConstraintDateTimePredicate(predicate);
+            public static readonly Constraint<System.DateTime> Any = new ConstraintDateTimeAny();
+        }
+
         public static partial class Unsigned
         {
             public static Constraint<ulong> Exact(ulong value) => new ConstraintUnsignedExact(value);
@@ -126,6 +134,15 @@ namespace BTDB.ODBLayer
         public override bool Match(ref SpanReader reader, in StructList<byte> buffer) => _predicate(reader.ReadVInt64());
     }
 
+    public class ConstraintDateTimePredicate : ConstraintNoPrefix<DateTime>
+    {
+        readonly Predicate<DateTime> _predicate;
+
+        public ConstraintDateTimePredicate(Predicate<DateTime> predicate) => _predicate = predicate;
+
+        public override bool Match(ref SpanReader reader, in StructList<byte> buffer) => _predicate(reader.ReadDateTime());
+    }
+
     public abstract class ConstraintExact<T> : Constraint<T>
     {
         protected int Ofs;
@@ -199,6 +216,15 @@ namespace BTDB.ODBLayer
         public override bool Match(ref SpanReader reader, in StructList<byte> buffer)
         {
             reader.SkipVInt64();
+            return true;
+        }
+    }
+
+    public class ConstraintDateTimeAny : ConstraintAny<DateTime>
+    {
+        public override bool Match(ref SpanReader reader, in StructList<byte> buffer)
+        {
+            reader.SkipDateTime();
             return true;
         }
     }
@@ -304,6 +330,33 @@ namespace BTDB.ODBLayer
         protected override void Skip(ref SpanReader reader)
         {
             reader.SkipVInt64();
+        }
+    }
+
+    public class ConstraintDateTimeExact : ConstraintExact<DateTime>
+    {
+        readonly DateTime _value;
+
+        public ConstraintDateTimeExact(DateTime value)
+        {
+            _value = value;
+        }
+
+        public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+        {
+            var structListWriter = new ContinuousMemoryBlockWriter(buffer);
+            Ofs = (int)buffer.Count;
+            var writer = new SpanWriter(structListWriter);
+            writer.WriteDateTimeForbidUnspecifiedKind(_value);
+            writer.Sync();
+            buffer = structListWriter.GetStructList();
+            Len = (int)buffer.Count - Ofs;
+            return IConstraint.MatchType.Exact;
+        }
+
+        protected override void Skip(ref SpanReader reader)
+        {
+            reader.SkipDateTime();
         }
     }
 }
