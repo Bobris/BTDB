@@ -35,6 +35,12 @@ namespace BTDB.ODBLayer
 
     public static partial class Constraint
     {
+        public static partial class Bool
+        {
+            public static Constraint<bool> Exact(bool value) => new ConstraintBoolExact(value);
+            public static readonly Constraint<bool> Any = new ConstraintBoolAny();
+        }
+
         public static partial class DateTime
         {
             public static Constraint<System.DateTime> Exact(System.DateTime value) => new ConstraintDateTimeExact(value);
@@ -238,6 +244,15 @@ namespace BTDB.ODBLayer
         }
     }
 
+    public class ConstraintBoolAny : ConstraintAny<bool>
+    {
+        public override bool Match(ref SpanReader reader, in StructList<byte> buffer)
+        {
+            reader.SkipBool();
+            return true;
+        }
+    }
+
     public class ConstraintStringStartsWith : Constraint<string>
     {
         readonly string _value;
@@ -283,10 +298,7 @@ namespace BTDB.ODBLayer
     {
         readonly ulong _value;
 
-        public ConstraintUnsignedExact(ulong value)
-        {
-            _value = value;
-        }
+        public ConstraintUnsignedExact(ulong value) => _value = value;
 
         public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
         {
@@ -310,10 +322,7 @@ namespace BTDB.ODBLayer
     {
         readonly long _value;
 
-        public ConstraintSignedExact(long value)
-        {
-            _value = value;
-        }
+        public ConstraintSignedExact(long value) => _value = value;
 
         public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
         {
@@ -337,10 +346,7 @@ namespace BTDB.ODBLayer
     {
         readonly DateTime _value;
 
-        public ConstraintDateTimeExact(DateTime value)
-        {
-            _value = value;
-        }
+        public ConstraintDateTimeExact(DateTime value) => _value = value;
 
         public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
         {
@@ -357,6 +363,30 @@ namespace BTDB.ODBLayer
         protected override void Skip(ref SpanReader reader)
         {
             reader.SkipDateTime();
+        }
+    }
+
+    public class ConstraintBoolExact : ConstraintExact<bool>
+    {
+        readonly bool _value;
+
+        public ConstraintBoolExact(bool value) => _value = value;
+
+        public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+        {
+            var structListWriter = new ContinuousMemoryBlockWriter(buffer);
+            Ofs = (int)buffer.Count;
+            var writer = new SpanWriter(structListWriter);
+            writer.WriteBool(_value);
+            writer.Sync();
+            buffer = structListWriter.GetStructList();
+            Len = (int)buffer.Count - Ofs;
+            return IConstraint.MatchType.Exact;
+        }
+
+        protected override void Skip(ref SpanReader reader)
+        {
+            reader.SkipBool();
         }
     }
 }
