@@ -288,8 +288,7 @@ namespace BTDB.StreamLayer
         public void SkipVUInt64()
         {
             NeedOneByteInBuffer();
-            ref var byteRef = ref MemoryMarshal.GetReference(Buf);
-            var len = PackUnpack.LengthVUIntByFirstByte(byteRef);
+            var len = PackUnpack.LengthVUIntByFirstByte(MemoryMarshal.GetReference(Buf));
             if (len <= (uint)Buf.Length)
             {
                 PackUnpack.UnsafeAdvance(ref Buf, (int)len);

@@ -418,8 +418,7 @@ namespace BTDB.ODBLayer
 
         protected override T CreateInstance(in ReadOnlySpan<byte> keyBytes, in IKeyValueDBTransaction valueBytes)
         {
-            return (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, _fieldCountInKey,
-                KeyBytes, keyBytes.Slice(KeyBytes.Length));
+            return (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, keyBytes);
         }
     }
 
@@ -701,8 +700,7 @@ namespace BTDB.ODBLayer
 
         protected override T CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (T)Manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, PrefixFieldCount,
-                KeyBytes, keyBytes.Slice(KeyBytes.Length));
+            return (T)Manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, keyBytes);
         }
     }
 
@@ -944,13 +942,12 @@ namespace BTDB.ODBLayer
             if (advancedEnumParamField.Handler!.NeedsCtx())
                 throw new BTDBException("Not supported.");
             KeyReader = (ReaderFun<TKey>)manipulator.RelationInfo
-                .GetSimpleLoader(new RelationInfo.SimpleLoaderType(advancedEnumParamField.Handler, typeof(TKey)));
+                .GetSimpleLoader(new(advancedEnumParamField.Handler, typeof(TKey)));
         }
 
         protected override TValue CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (TValue)Manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex,
-                PrefixFieldCount, KeyBytes, keyBytes.Slice(KeyBytes.Length));
+            return (TValue)Manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, keyBytes);
         }
     }
 }

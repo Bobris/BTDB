@@ -23,8 +23,7 @@ namespace BTDB.ODBLayer
         public IInternalObjectDBTransaction Transaction { get; }
         public RelationInfo RelationInfo { get; }
 
-        public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
-            uint fieldInFirstBufferCount, in ReadOnlySpan<byte> firstPart, in ReadOnlySpan<byte> secondPart);
+        public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex, in ReadOnlySpan<byte> secondaryKey);
     }
 
     public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator where T : class
@@ -685,14 +684,13 @@ namespace BTDB.ODBLayer
         }
 
         public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
-            uint fieldInFirstBufferCount, in ReadOnlySpan<byte> firstPart, in ReadOnlySpan<byte> secondPart)
+            in ReadOnlySpan<byte> secondaryKey)
         {
             var pkWriter = new SpanWriter();
             WriteRelationPKPrefix(ref pkWriter);
-            var readerFirst = new SpanReader(firstPart);
-            var readerSecond = new SpanReader(secondPart);
-            _relationInfo.GetSKKeyValueToPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
-                (ref readerFirst, ref readerSecond, ref pkWriter);
+            var reader = new SpanReader(secondaryKey);
+            _relationInfo.GetSKKeyValueToPKMerger(secondaryKeyIndex)
+                (ref reader, ref pkWriter);
             return FindByIdOrDefaultInternal(itemLoader, pkWriter.GetSpan(), true);
         }
 
@@ -721,8 +719,7 @@ namespace BTDB.ODBLayer
             if (_kvtr.FindNextKey(secKeyBytes))
                 throw new BTDBException("Ambiguous result.");
 
-            return (TItem) CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], secondaryKeyIndex,
-                prefixParametersCount, secKeyBytes, keyBytes.Slice(secKeyBytes.Length));
+            return (TItem) CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], secondaryKeyIndex, keyBytes);
         }
 
         ReadOnlySpan<byte> WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj, ref SpanWriter writer)

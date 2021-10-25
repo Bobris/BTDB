@@ -343,14 +343,11 @@ namespace BTDB.ODBLayer
         internal delegate void SecondaryKeyConvertSaver(IInternalObjectDBTransaction tr, ref SpanWriter writer,
             ref SpanReader keyReader, ref SpanReader valueReader, object emptyValue);
 
-        readonly ConcurrentDictionary<ulong, SecondaryKeyConvertSaver> _secondaryKeysConvertSavers =
-            new ConcurrentDictionary<ulong, SecondaryKeyConvertSaver>();
+        readonly ConcurrentDictionary<ulong, SecondaryKeyConvertSaver> _secondaryKeysConvertSavers = new();
 
-        public delegate void SecondaryKeyValueToPKLoader(ref SpanReader readerKey, ref SpanReader readerValue,
-            ref SpanWriter writer);
+        public delegate void SecondaryKeyValueToPKLoader(ref SpanReader readerKey, ref SpanWriter writer);
 
-        readonly ConcurrentDictionary<ulong, SecondaryKeyValueToPKLoader> _secondaryKeyValueToPKLoader =
-            new ConcurrentDictionary<ulong, SecondaryKeyValueToPKLoader>();
+        readonly ConcurrentDictionary<ulong, SecondaryKeyValueToPKLoader> _secondaryKeyValueToPKLoader = new();
 
         public readonly struct SimpleLoaderType : IEquatable<SimpleLoaderType>
         {
@@ -794,7 +791,7 @@ namespace BTDB.ODBLayer
                     for (var pkIdx = firstBuffer.ActualFieldIdx; pkIdx < skf.Index; pkIdx++)
                     {
                         //all PK parts are contained in SK
-                        FindPosition(pkIdx, skFieldIds, 0, out _, out var skFieldIdxForPk);
+                        FindPosition(pkIdx, skFieldIds, out var skFieldIdxForPk);
                         StoreIntoLocal(ilGenerator, pks[pkIdx].Handler!, firstBuffer, outOfOrderSkParts,
                             skFieldIdxForPk,
                             skFields[skFieldIdxForPk].Handler!);
@@ -907,7 +904,7 @@ namespace BTDB.ODBLayer
                     .Do(bufferInfo.PushReader)
                     .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipInt8))!); //ObjectDB.AllRelationsPKPrefix
             ilGenerator
-                .Do(bufferInfo.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt32))!);
+                .Do(bufferInfo.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
 
             var anyNeedsCtx = false;
             foreach (var fieldInfo in fields)
@@ -1076,21 +1073,18 @@ namespace BTDB.ODBLayer
                 version, secondaryKeyIndex, this);
         }
 
-        //takes secondaryKey key & value bytes and restores primary key bytes
-        public SecondaryKeyValueToPKLoader GetSKKeyValueToPKMerger
-            (uint secondaryKeyIndex, uint paramFieldCountInFirstBuffer)
+        //takes secondaryKey key and restores primary key bytes
+        public SecondaryKeyValueToPKLoader GetSKKeyValueToPKMerger(uint secondaryKeyIndex)
         {
-            var h = 10000ul * secondaryKeyIndex + paramFieldCountInFirstBuffer;
-            return _secondaryKeyValueToPKLoader.GetOrAdd(h,
-                (_, secKeyIndex, relationInfo, paramFieldCount) => relationInfo.CreatePrimaryKeyFromSKDataMerger(
-                    secKeyIndex, paramFieldCount,
-                    $"Relation_SK_to_PK_{relationInfo.ClientRelationVersionInfo.SecondaryKeys[secKeyIndex].Name}_p{paramFieldCount}"),
-                secondaryKeyIndex, this, (int)paramFieldCountInFirstBuffer);
+            return _secondaryKeyValueToPKLoader.GetOrAdd(secondaryKeyIndex,
+                (_, secKeyIndex, relationInfo) => relationInfo.CreatePrimaryKeyFromSKDataMerger(
+                    secKeyIndex,
+                    $"Relation_SK_to_PK_{relationInfo.ClientRelationVersionInfo.SecondaryKeys[secKeyIndex].Name}"),
+                secondaryKeyIndex, this);
         }
 
         struct MemorizedPositionWithLength
         {
-            public int BufferIndex { get; set; } //0 first, 1 second
             public IILLocal Pos { get; set; } // IMemorizedPosition
             public IILLocal Length { get; set; } // int
         }
@@ -1103,20 +1097,17 @@ namespace BTDB.ODBLayer
             public int ActualFieldIdx;
         }
 
-        SecondaryKeyValueToPKLoader CreatePrimaryKeyFromSKDataMerger(uint secondaryKeyIndex,
-            int paramFieldCountInFirstBuffer, string mergerName)
+        SecondaryKeyValueToPKLoader CreatePrimaryKeyFromSKDataMerger(uint secondaryKeyIndex, string mergerName)
         {
             var method = ILBuilder.Instance.NewMethod<SecondaryKeyValueToPKLoader>(mergerName);
             var ilGenerator = method.Generator;
 
-            void PushWriter(IILGen il) => il.Ldarg(2);
+            void PushWriter(IILGen il) => il.Ldarg(1);
             var skFields = ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Fields;
 
-            var positionLoc = ilGenerator.DeclareLocal(typeof(ulong)); //stored position
             var memoPositionLoc = ilGenerator.DeclareLocal(typeof(IMemorizedPosition));
 
-            var firstBuffer = new BufferInfo();
-            var secondBuffer = new BufferInfo { ActualFieldIdx = paramFieldCountInFirstBuffer };
+            var bufferInfo = new BufferInfo();
             var outOfOrderPKParts =
                 new Dictionary<int, MemorizedPositionWithLength>(); //index -> bufferIdx, pos, length
 
@@ -1126,62 +1117,39 @@ namespace BTDB.ODBLayer
                 if (outOfOrderPKParts.ContainsKey(pkIdx))
                 {
                     var memo = outOfOrderPKParts[pkIdx];
-                    var pushReader = GetBufferPushAction(memo.BufferIndex, firstBuffer.PushReader,
-                        secondBuffer.PushReader);
-                    CopyFromMemorizedPosition(ilGenerator, pushReader, PushWriter, memo, memoPositionLoc);
+                    CopyFromMemorizedPosition(ilGenerator, bufferInfo.PushReader, PushWriter, memo, memoPositionLoc);
                     continue;
                 }
 
-                FindPosition(pkIdx, skFields, paramFieldCountInFirstBuffer, out var bufferIdx, out var skFieldIdx);
-                if (bufferIdx == 0)
+                FindPosition(pkIdx, skFields, out var skFieldIdx);
+                MergerInitializeBufferReader(ilGenerator, ref bufferInfo, ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex));
+                for (var idx = bufferInfo.ActualFieldIdx; idx < skFieldIdx; idx++)
                 {
-                    MergerInitializeFirstBufferReader(ilGenerator, ref firstBuffer);
-                    CopyFromBuffer(ilGenerator, bufferIdx, skFieldIdx, ref firstBuffer, outOfOrderPKParts, pks,
-                        skFields, positionLoc,
-                        memoPositionLoc, PushWriter);
+                    var field = skFields[idx];
+                    if (field.IsFromPrimaryKey)
+                    {
+                        outOfOrderPKParts[(int)field.Index] = SkipWithMemorizing(ilGenerator, bufferInfo.PushReader,
+                            pks[(int)field.Index].Handler!);
+                    }
+                    else
+                    {
+                        var f = ClientRelationVersionInfo.GetSecondaryKeyField((int)field.Index);
+                        f.Handler!.Skip(ilGenerator, bufferInfo.PushReader, bufferInfo.PushCtx);
+                    }
                 }
-                else
-                {
-                    MergerInitializeBufferReader(ref secondBuffer, 1);
-                    CopyFromBuffer(ilGenerator, bufferIdx, skFieldIdx, ref secondBuffer, outOfOrderPKParts, pks,
-                        skFields, positionLoc,
-                        memoPositionLoc, PushWriter);
-                }
+
+                var skField = skFields[skFieldIdx];
+                GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int)skField.Index].Handler!, bufferInfo.PushReader,
+                    PushWriter, memoPositionLoc);
+
+                bufferInfo.ActualFieldIdx = skFieldIdx + 1;
             }
 
             ilGenerator.Ret();
             return method.Create();
         }
 
-        void CopyFromBuffer(IILGen ilGenerator, int bufferIdx, int skFieldIdx, ref BufferInfo bi,
-            Dictionary<int, MemorizedPositionWithLength> outOfOrderPKParts,
-            ReadOnlySpan<TableFieldInfo> pks, IList<FieldId> skFields, IILLocal positionLoc, IILLocal memoPositionLoc,
-            Action<IILGen> pushWriter)
-        {
-            for (var idx = bi.ActualFieldIdx; idx < skFieldIdx; idx++)
-            {
-                var field = skFields[idx];
-                if (field.IsFromPrimaryKey)
-                {
-                    outOfOrderPKParts[(int)field.Index] = SkipWithMemorizing(bufferIdx, ilGenerator, bi.PushReader,
-                        pks[(int)field.Index].Handler!, positionLoc);
-                }
-                else
-                {
-                    var f = ClientRelationVersionInfo.GetSecondaryKeyField((int)field.Index);
-                    f.Handler!.Skip(ilGenerator, bi.PushReader, bi.PushCtx);
-                }
-            }
-
-            var skField = skFields[skFieldIdx];
-            GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int)skField.Index].Handler!, bi.PushReader,
-                pushWriter, positionLoc, memoPositionLoc);
-
-            bi.ActualFieldIdx = skFieldIdx + 1;
-        }
-
-        static void FindPosition(int pkIdx, IList<FieldId> skFields, int paramFieldCountInFirstBuffer,
-            out int bufferIdx, out int skFieldIdx)
+        static void FindPosition(int pkIdx, IList<FieldId> skFields, out int skFieldIdx)
         {
             for (var i = 0; i < skFields.Count; i++)
             {
@@ -1189,59 +1157,64 @@ namespace BTDB.ODBLayer
                 if (!field.IsFromPrimaryKey) continue;
                 if (field.Index != pkIdx) continue;
                 skFieldIdx = i;
-                bufferIdx = i < paramFieldCountInFirstBuffer ? 0 : 1;
                 return;
             }
 
             throw new BTDBException("Secondary key relation processing error.");
         }
 
-        static void MergerInitializeBufferReader(ref BufferInfo bi, ushort arg)
+        void MergerInitializeBufferReader(IILGen ilGenerator, ref BufferInfo bi,
+            in ReadOnlySpan<TableFieldInfo> tableSecondaryKeyFields)
         {
             if (bi.ReaderCreated)
                 return;
             bi.ReaderCreated = true;
-            bi.PushReader = il => il.Ldarg(arg);
-        }
+            bi.PushReader = il => il.Ldarg(0);
 
-        static void MergerInitializeFirstBufferReader(IILGen ilGenerator, ref BufferInfo bi)
-        {
-            if (bi.ReaderCreated)
-                return;
-            MergerInitializeBufferReader(ref bi, 0);
             ilGenerator
                 //skip all relations
-                .Do(bi.PushReader)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!) // ObjectDB.AllRelationsSKPrefix
-                //skip relation id
-                .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt32))!)
+                .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!) // ObjectDB.AllRelationsSKPrefix
+                //skip relation id (it is just 32bit, but 64bit skip is faster)
+                .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!)
                 //skip secondary key index
                 .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!);
+
+            var anyNeedsCtx = false;
+            foreach (var fieldInfo in tableSecondaryKeyFields)
+            {
+                if (fieldInfo.Handler!.NeedsCtx())
+                {
+                    anyNeedsCtx = true;
+                    break;
+                }
+            }
+
+            if (anyNeedsCtx)
+            {
+                var readerCtxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                ilGenerator
+                    .Ldarg(0) //tr
+                    .Newobj(() => new DBReaderCtx(null))
+                    .Stloc(readerCtxLocal);
+                bi.PushCtx = il => il.Ldloc(readerCtxLocal);
+            }
         }
 
-
-        Action<IILGen> GetBufferPushAction(int bufferIndex, Action<IILGen> pushReaderFirst,
-            Action<IILGen> pushReaderSecond)
-        {
-            return bufferIndex == 0 ? pushReaderFirst : pushReaderSecond;
-        }
-
-        MemorizedPositionWithLength SkipWithMemorizing(int activeBuffer, IILGen ilGenerator, Action<IILGen> pushReader,
-            IFieldHandler handler, IILLocal tempPosition)
+        static MemorizedPositionWithLength SkipWithMemorizing(IILGen ilGenerator, Action<IILGen> pushReader,
+            IFieldHandler handler)
         {
             var memoPos = ilGenerator.DeclareLocal(typeof(uint));
-            var memoLen = ilGenerator.DeclareLocal(typeof(int));
+            var memoLen = ilGenerator.DeclareLocal(typeof(uint));
             var position = new MemorizedPositionWithLength
-                { BufferIndex = activeBuffer, Pos = memoPos, Length = memoLen };
+                { Pos = memoPos, Length = memoLen };
             MemorizeCurrentPosition(ilGenerator, pushReader, memoPos);
-            StoreCurrentPosition(ilGenerator, pushReader, tempPosition);
             handler.Skip(ilGenerator, pushReader, null);
             ilGenerator
                 .Do(pushReader) //[VR]
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!) //[posNew];
-                .Ldloc(tempPosition) //[posNew, posOld]
-                .Sub() //[readLen]
-                .ConvI4() //[readLen(i)]
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!) //[posNew(long)]
+                .ConvU4() // [posNew(uint)]
+                .Ldloc(memoPos) //[posNew(uint), posOld(uint)]
+                .Sub() //[readLen(uint)]
                 .Stloc(memoLen); //[]
             return position;
         }
@@ -1276,20 +1249,11 @@ namespace BTDB.ODBLayer
                 .Stloc(memoPositionLoc);
         }
 
-        static void StoreCurrentPosition(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal positionLoc)
-        {
-            ilGenerator
-                .Do(pushReader)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!)
-                .Stloc(positionLoc);
-        }
-
         void GenerateCopyFieldFromByteBufferToWriterIl(IILGen ilGenerator, IFieldHandler handler,
             Action<IILGen> pushReader,
-            Action<IILGen> pushWriter, IILLocal positionLoc, IILLocal memoPositionLoc)
+            Action<IILGen> pushWriter, IILLocal memoPositionLoc)
         {
             MemorizeCurrentPosition(ilGenerator, pushReader, memoPositionLoc);
-            StoreCurrentPosition(ilGenerator, pushReader, positionLoc);
 
             handler.Skip(ilGenerator, pushReader, null);
 
@@ -1297,9 +1261,10 @@ namespace BTDB.ODBLayer
                 .Do(pushWriter) //[W]
                 .Do(pushReader) //[W,VR]
                 .Dup() //[W, VR, VR]
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!) //[W, VR, posNew];
-                .Ldloc(positionLoc) //[W, VR, posNew, posOld]
-                .Sub() //[W, VR, readLen]
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!) //[W, VR, posNew]
+                .ConvU4()
+                .Ldloc(memoPositionLoc) //[W, VR, posNew, posOld]
+                .Sub() //[W, VR, readLen(uint)]
                 .ConvI4() //[W, VR, readLen(i)]
                 .Do(pushReader)
                 .Ldloc(memoPositionLoc) //[W, VR, readLen, Memorize]
