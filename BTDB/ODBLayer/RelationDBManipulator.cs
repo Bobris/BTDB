@@ -694,15 +694,15 @@ namespace BTDB.ODBLayer
             return FindByIdOrDefaultInternal(itemLoader, pkWriter.GetSpan(), true);
         }
 
-        public IEnumerator<TItem> FindBySecondaryKey<TItem>(uint secondaryKeyIndex, uint prefixFieldCount,
+        public IEnumerator<TItem> FindBySecondaryKey<TItem>(uint secondaryKeyIndex,
             in ReadOnlySpan<byte> secKeyBytes, int loaderIndex)
         {
             return new RelationSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, secKeyBytes,
-                secondaryKeyIndex, prefixFieldCount, this, loaderIndex);
+                secondaryKeyIndex, this, loaderIndex);
         }
 
         //secKeyBytes contains already AllRelationsSKPrefix
-        public TItem FindBySecondaryKeyOrDefault<TItem>(uint secondaryKeyIndex, uint prefixParametersCount,
+        public TItem FindBySecondaryKeyOrDefault<TItem>(uint secondaryKeyIndex,
             in ReadOnlySpan<byte> secKeyBytes,
             bool throwWhenNotFound, int loaderIndex)
         {

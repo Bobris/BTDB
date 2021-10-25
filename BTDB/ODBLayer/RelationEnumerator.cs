@@ -402,17 +402,15 @@ namespace BTDB.ODBLayer
     class RelationSecondaryKeyEnumerator<T> : RelationEnumerator<T>
     {
         readonly uint _secondaryKeyIndex;
-        readonly uint _fieldCountInKey;
         readonly IRelationDbManipulator _manipulator;
 
         public RelationSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
-            in ReadOnlySpan<byte> keyBytes, uint secondaryKeyIndex, uint fieldCountInKey,
+            in ReadOnlySpan<byte> keyBytes, uint secondaryKeyIndex,
             IRelationDbManipulator manipulator,
             int loaderIndex)
             : base(tr, relationInfo, keyBytes, manipulator, loaderIndex)
         {
             _secondaryKeyIndex = secondaryKeyIndex;
-            _fieldCountInKey = fieldCountInKey;
             _manipulator = manipulator;
         }
 

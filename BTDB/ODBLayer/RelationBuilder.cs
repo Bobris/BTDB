@@ -1186,11 +1186,10 @@ namespace BTDB.ODBLayer
 
             var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
 
-            //call public T FindBySecondaryKeyOrDefault<T>(uint secondaryKeyIndex, uint prefixParametersCount, ByteBuffer secKeyBytes, bool throwWhenNotFound, int loaderIndex)
+            //call public T FindBySecondaryKeyOrDefault<T>(uint secondaryKeyIndex, ByteBuffer secKeyBytes, bool throwWhenNotFound, int loaderIndex)
             ilGenerator
                 .Ldarg(0) //manipulator
                 .Ldloc(localRemapped)
-                .LdcI4(methodParameters.Length)
                 .Do(pushWriter)
                 .Call(SpanWriterGetSpanMethodInfo)
                 .Stloc(localSpan)
