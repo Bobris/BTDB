@@ -7,6 +7,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
@@ -165,6 +166,7 @@ namespace BTDB.Collections
             return false;
         }
 
+        [return: MaybeNull]
         public ref TValue GetOrFakeValueRef(TKey key)
         {
             if (key == null) HashHelpers.ThrowKeyArgumentNullException();
