@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -683,15 +684,18 @@ namespace BTDB.ODBLayer
                 loaderIndex, constraints);
         }
 
-        public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
+
+        [SkipLocalsInit]
+        public unsafe object CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
             in ReadOnlySpan<byte> secondaryKey)
         {
-            var pkWriter = new SpanWriter();
+            Span<byte> pkBuffer = stackalloc byte[512];
+            var pkWriter = new SpanWriter( Unsafe.AsPointer(ref MemoryMarshal.GetReference(pkBuffer)), pkBuffer.Length);
             WriteRelationPKPrefix(ref pkWriter);
             var reader = new SpanReader(secondaryKey);
             _relationInfo.GetSKKeyValueToPKMerger(secondaryKeyIndex)
                 (ref reader, ref pkWriter);
-            return FindByIdOrDefaultInternal(itemLoader, pkWriter.GetSpan(), true);
+            return FindByIdOrDefaultInternal(itemLoader, pkWriter.GetSpan(), true)!;
         }
 
         public IEnumerator<TItem> FindBySecondaryKey<TItem>(uint secondaryKeyIndex,

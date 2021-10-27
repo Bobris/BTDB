@@ -1105,7 +1105,7 @@ namespace BTDB.ODBLayer
             void PushWriter(IILGen il) => il.Ldarg(1);
             var skFields = ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Fields;
 
-            var memoPositionLoc = ilGenerator.DeclareLocal(typeof(IMemorizedPosition));
+            var memoPositionLoc = ilGenerator.DeclareLocal(typeof(uint));
 
             var bufferInfo = new BufferInfo();
             var outOfOrderPKParts =
@@ -1117,7 +1117,7 @@ namespace BTDB.ODBLayer
                 if (outOfOrderPKParts.ContainsKey(pkIdx))
                 {
                     var memo = outOfOrderPKParts[pkIdx];
-                    CopyFromMemorizedPosition(ilGenerator, bufferInfo.PushReader, PushWriter, memo, memoPositionLoc);
+                    CopyFromMemorizedPosition(ilGenerator, bufferInfo.PushReader, PushWriter, memo);
                     continue;
                 }
 
@@ -1219,25 +1219,15 @@ namespace BTDB.ODBLayer
             return position;
         }
 
-        void CopyFromMemorizedPosition(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushWriter,
-            MemorizedPositionWithLength memo,
-            IILLocal memoPositionLoc)
+        static void CopyFromMemorizedPosition(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushWriter,
+            MemorizedPositionWithLength memo)
         {
-            MemorizeCurrentPosition(ilGenerator, pushReader, memoPositionLoc);
             ilGenerator
-                .Do(pushWriter) //[W]
-                .Do(pushReader) //[W,VR]
-                .Ldloc(memo.Length) //[W, VR, readLen]
-                .Do(pushReader)
-                .Ldloc(memo.Pos) //[W, VR, readLen, VR, pos]
-                .ConvI8()
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SetCurrentPosition))!) //[W, VR, readLen]
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayRaw))!) //[W, byte[]]
-                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArrayRaw))!) //[]
-                .Do(pushReader) // [VR]
-                .Ldloc(memoPositionLoc) //[VR, pos]
-                .ConvI8()
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SetCurrentPosition))!); //[]
+                .Do(pushReader) //[reader]
+                .Ldloc(memo.Pos) //[reader, pos]
+                .Ldloc(memo.Length) //[reader, pos, readLen]
+                .Do(pushWriter) //[reader, pos, readLen, writer]
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.CopyAbsoluteToWriter))!); //[]
         }
 
         static void MemorizeCurrentPosition(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal memoPositionLoc)
@@ -1258,20 +1248,15 @@ namespace BTDB.ODBLayer
             handler.Skip(ilGenerator, pushReader, null);
 
             ilGenerator
-                .Do(pushWriter) //[W]
-                .Do(pushReader) //[W,VR]
-                .Dup() //[W, VR, VR]
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!) //[W, VR, posNew]
+                .Do(pushReader) // [reader]
+                .Ldloc(memoPositionLoc) //[reader, posOld]
+                .Do(pushReader) // [reader, posOld, reader]
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!) // [reader, posOld, posNew]
                 .ConvU4()
-                .Ldloc(memoPositionLoc) //[W, VR, posNew, posOld]
-                .Sub() //[W, VR, readLen(uint)]
-                .ConvI4() //[W, VR, readLen(i)]
-                .Do(pushReader)
-                .Ldloc(memoPositionLoc) //[W, VR, readLen, Memorize]
-                .ConvI8()
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SetCurrentPosition))!) //[W, VR, readLen]
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayRaw))!) //[W, byte[]]
-                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArrayRaw))!); //[]
+                .Ldloc(memoPositionLoc) //[reader, posOld, posNew, posOld]
+                .Sub() //[reader, posOld, readLen(uint)]
+                .Do(pushWriter) //[reader, posOld, readLen(uint), writer]
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.CopyAbsoluteToWriter))!); //[]
         }
 
         public object GetSimpleLoader(SimpleLoaderType handler)

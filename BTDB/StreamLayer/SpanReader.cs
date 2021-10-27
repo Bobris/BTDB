@@ -966,5 +966,10 @@ namespace BTDB.StreamLayer
                 SkipString();
             }
         }
+
+        public void CopyAbsoluteToWriter(uint start, uint len, ref SpanWriter writer)
+        {
+            writer.WriteBlock(Original.Slice((int)start, (int)len));
+        }
     }
 }
