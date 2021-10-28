@@ -323,9 +323,9 @@ namespace BTDB.ODBLayer
 
         void BuildScanByMethod(MethodInfo method, IILMethod reqMethod)
         {
-            var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
+            var (pushWriter, _) = WriterPushers(reqMethod.Generator);
 
-            var nameWithoutVariants = StripVariant(method.Name.Substring(6), true);
+            var nameWithoutVariants = StripVariant(method.Name.Substring(6), false);
             if (nameWithoutVariants is "Id")
             {
                 CreateMethodScanById(reqMethod.Generator, method.Name,
@@ -333,7 +333,8 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                throw new NotImplementedException("Scan by secondary key " + method.Name);
+                CreateMethodScanBy(reqMethod.Generator, method.Name,
+                    method.GetParameters(), method.ReturnType, pushWriter);
             }
         }
 
@@ -1062,6 +1063,40 @@ namespace BTDB.ODBLayer
             ilGenerator.Callvirt(
                 _relationDbManipulatorType.GetMethod(
                     nameof(RelationDBManipulator<IRelation>.ScanByPrimaryKeyPrefix))!.MakeGenericMethod(itemType));
+            ilGenerator.Castclass(methodReturnType);
+        }
+
+        void CreateMethodScanBy(IILGen ilGenerator, string methodName,
+            ParameterInfo[] methodParameters, Type methodReturnType,
+            Action<IILGen> pushWriter)
+        {
+            var spanLocal = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
+            var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
+            var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
+            if (!isPrefixBased) RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {methodName} must return IEnumerable<T> or IEnumerator<T> type.");
+
+            var skName = StripVariant(methodName[6..], false);
+            var skIndex = ClientRelationVersionInfo.GetSecondaryKeyIndex(skName);
+            var localRemapped = RemapSecondaryKeyIndex(ilGenerator, skIndex);
+            WriteRelationSKPrefix(ilGenerator, pushWriter, localRemapped);
+
+            var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex);
+
+            SaveMethodConstraintParameters(ilGenerator, methodName, methodParameters, secondaryKeyFields, constraintsLocal);
+
+            //call manipulator.ScanBy_
+            ilGenerator
+                .Ldarg(0) //manipulator
+                .Do(pushWriter)
+                .Call(SpanWriterGetSpanMethodInfo)
+                .Stloc(spanLocal)
+                .Ldloca(spanLocal)
+                .LdcI4(RegisterLoadType(itemType!))
+                .Ldloc(constraintsLocal)
+                .LdcI4((int)skIndex);
+            ilGenerator.Callvirt(
+                _relationDbManipulatorType.GetMethod(
+                    nameof(RelationDBManipulator<IRelation>.ScanBySecondaryKeyPrefix))!.MakeGenericMethod(itemType));
             ilGenerator.Castclass(methodReturnType);
         }
 

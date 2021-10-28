@@ -52,16 +52,15 @@ namespace BTDB.ODBLayer
                     $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough);
             }
 
-            internal object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes,
-                in IKeyValueDBTransaction kvtr)
+            internal object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes)
             {
                 var reader = new SpanReader(keyBytes);
                 reader.SkipInt8(); // 3
                 reader.SkipVUInt64(); // RelationId
                 var obj = _primaryKeysLoader(tr, ref reader);
                 if (_primaryKeyIsEnough) return obj;
-                var valueBytes = kvtr.GetValue();
-                reader = new SpanReader(valueBytes);
+                var valueBytes = tr.KeyValueDBTransaction.GetValue();
+                reader = new(valueBytes);
                 var version = reader.ReadVUInt32();
                 GetValueLoader(version)(tr, ref reader, obj);
                 return obj;

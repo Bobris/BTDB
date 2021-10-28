@@ -18,6 +18,21 @@ namespace BTDB.KVDBLayer
             return transaction.Find(key, 0) == FindResult.Exact;
         }
 
+        public static bool FindExactOrNextKey(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> key)
+        {
+            var r = transaction.Find(key, 0);
+            switch (r)
+            {
+                case FindResult.Exact:
+                    return true;
+                case FindResult.Previous:
+                    transaction.FindNextKey(new());
+                    break;
+            }
+
+            return false;
+        }
+
         public static long GetKeyValueCount(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
         {
             if (!transaction.FindFirstKey(prefix)) return 0;

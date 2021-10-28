@@ -668,7 +668,7 @@ namespace BTDB.ODBLayer
                 return default;
             }
 
-            return itemLoader.CreateInstance(_transaction, keyBytes, _kvtr);
+            return itemLoader.CreateInstance(_transaction, keyBytes);
         }
 
         public IEnumerator<TItem> FindByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex)
@@ -683,6 +683,11 @@ namespace BTDB.ODBLayer
                 loaderIndex, constraints);
         }
 
+        public IEnumerable<TItem> ScanBySecondaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex)
+        {
+            return new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, this,
+                loaderIndex, constraints, secondaryKeyIndex, this);
+        }
 
         [SkipLocalsInit]
         public unsafe object CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,

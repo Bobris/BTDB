@@ -25,7 +25,7 @@ namespace BTDB.ODBLayer
         protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
         readonly IRelationModificationCounter _modificationCounter;
         readonly ConstraintInfo[] _constraints;
-        readonly IKeyValueDBTransaction _keyValueTr;
+        protected readonly IKeyValueDBTransaction KeyValueTr;
         readonly int _prevModificationCounter;
         long _prevProtectionCounter;
 
@@ -42,8 +42,8 @@ namespace BTDB.ODBLayer
             _transaction = tr;
 
             ItemLoader = relationInfo.ItemLoaderInfos[loaderIndex];
-            _keyValueTr = _transaction.KeyValueDBTransaction;
-            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
+            KeyValueTr = _transaction.KeyValueDBTransaction;
+            _prevProtectionCounter = KeyValueTr.CursorMovedCounter;
 
             _buffer.AddRange(keyBytes);
             _keyBytesCount = (int)_buffer.Count;
@@ -76,8 +76,8 @@ namespace BTDB.ODBLayer
                 ret = FindNextKey();
             }
 
-            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            _pos = _keyValueTr.GetKeyIndex(_buffer.AsReadOnlySpan(0, _keyBytesCount));
+            _prevProtectionCounter = KeyValueTr.CursorMovedCounter;
+            _pos = KeyValueTr.GetKeyIndex(_buffer.AsReadOnlySpan(0, _keyBytesCount));
             return ret;
         }
 
@@ -103,7 +103,7 @@ namespace BTDB.ODBLayer
                             _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
                             goto case IConstraint.MatchType.NoPrefix;
                         case IConstraint.MatchType.NoPrefix:
-                            if (!_keyValueTr.FindFirstKey(writer.GetSpan())) return false;
+                            if (!KeyValueTr.FindFirstKey(writer.GetSpan())) return false;
                             goto nextKeyTest;
                         default:
                             throw new InvalidOperationException();
@@ -112,14 +112,14 @@ namespace BTDB.ODBLayer
                     i++;
                 }
 
-                return _keyValueTr.FindFirstKey(writer.GetSpan());
+                return KeyValueTr.FindFirstKey(writer.GetSpan());
             }
 
-            writer.UpdateBuffer(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(writerBuf), writerBuf.Length));
+            writer.UpdateBuffer(KeyValueTr.GetKey(ref MemoryMarshal.GetReference(writerBuf), writerBuf.Length));
             goNextKey:
-            if (!_keyValueTr.FindNextKey(new())) return false;
+            if (!KeyValueTr.FindNextKey(new())) return false;
             nextKeyTest:
-            var key = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(buf), buf.Length);
+            var key = KeyValueTr.GetKey(ref MemoryMarshal.GetReference(buf), buf.Length);
             var commonUpToOffset = PackUnpack.SequenceEqualUpTo(writer.GetSpan(), key);
             if (commonUpToOffset < _keyBytesCount) return false;
             i = 0;
@@ -166,8 +166,8 @@ namespace BTDB.ODBLayer
                         i++;
                         if (i != _constraints.Length) continue;
                         if (writer.GetSpan().SequenceCompareTo(key) < 0) goto goNextFast;
-                        if (_keyValueTr.FindFirstKey(writer.GetSpan())) return true;
-                        goto goNextKey;
+                        if (KeyValueTr.FindExactOrNextKey(writer.GetSpan())) return true;
+                        goto nextKeyTest;
                     } while (_constraints[i].MatchType == IConstraint.MatchType.Exact);
 
                     if (_constraints[i].MatchType == IConstraint.MatchType.Prefix)
@@ -183,7 +183,7 @@ namespace BTDB.ODBLayer
                     {
                         if (writer.GetSpan().SequenceCompareTo(key) < 0) goto goNextFast;
                     }
-                    if (!_keyValueTr.FindFirstKey(writer.GetSpan())) goto goNextFast;
+                    if (!KeyValueTr.FindExactOrNextKey(writer.GetSpan())) goto goNextFast;
                     goto nextKeyTest;
                 }
                 default:
@@ -200,9 +200,15 @@ namespace BTDB.ODBLayer
                         continue;
                     default:
                     {
+                        var len = _constraints[i].Offset;
+                        if (len < 0)
+                        {
+                            i--;
+                            continue;
+                        }
                         writer.Reset();
-                        writer.WriteBlock(key.Slice(0, _constraints[i].Offset));
-                        if (!_keyValueTr.FindLastKey(writer.GetSpan())) throw new InvalidOperationException();
+                        writer.WriteBlock(key.Slice(0, len));
+                        if (!KeyValueTr.FindLastKey(writer.GetSpan())) throw new InvalidOperationException();
                         goto goNextKey;
                     }
                 }
@@ -211,32 +217,27 @@ namespace BTDB.ODBLayer
             return false;
         }
 
-        public T Current
+        public virtual T Current
         {
             [SkipLocalsInit]
             get
             {
                 SeekCurrent();
                 Span<byte> keyBuffer = stackalloc byte[512];
-                var keyBytes = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
-                return CreateInstance(keyBytes, _keyValueTr);
+                var keyBytes = KeyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
+                return (T)ItemLoader.CreateInstance(_transaction, keyBytes);
             }
         }
 
-        void SeekCurrent()
+        protected void SeekCurrent()
         {
             if (_seekNeeded) throw new BTDBException("Invalid access to uninitialized Current.");
-            if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
+            if (KeyValueTr.CursorMovedCounter != _prevProtectionCounter)
             {
                 _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
-                _keyValueTr.SetKeyIndex(_buffer.AsReadOnlySpan(0, _keyBytesCount), _pos);
-                _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
+                KeyValueTr.SetKeyIndex(_buffer.AsReadOnlySpan(0, _keyBytesCount), _pos);
+                _prevProtectionCounter = KeyValueTr.CursorMovedCounter;
             }
-        }
-
-        protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes, in IKeyValueDBTransaction kvtr)
-        {
-            return (T)ItemLoader.CreateInstance(_transaction, keyBytes, kvtr);
         }
 
         object IEnumerator.Current => Current!;
@@ -260,6 +261,30 @@ namespace BTDB.ODBLayer
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
+        }
+    }
+
+    class RelationConstraintSecondaryKeyEnumerator<T> : RelationConstraintEnumerator<T>
+    {
+        readonly uint _secondaryKeyIndex;
+        readonly IRelationDbManipulator _manipulator;
+
+        public RelationConstraintSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ReadOnlySpan<byte> keyBytes, IRelationModificationCounter modificationCounter, int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex, IRelationDbManipulator manipulator) : base(tr, relationInfo, keyBytes, modificationCounter, loaderIndex, constraints)
+        {
+            _secondaryKeyIndex = secondaryKeyIndex;
+            _manipulator = manipulator;
+        }
+
+        public override T Current
+        {
+            [SkipLocalsInit]
+            get
+            {
+                SeekCurrent();
+                Span<byte> keyBuffer = stackalloc byte[512];
+                var keyBytes = KeyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
+                return (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, keyBytes);
+            }
         }
     }
 
@@ -346,7 +371,7 @@ namespace BTDB.ODBLayer
                 SeekCurrent();
                 Span<byte> keyBuffer = stackalloc byte[512];
                 var keyBytes = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
-                return CreateInstance(keyBytes, _keyValueTr);
+                return CreateInstance(keyBytes);
             }
         }
 
@@ -361,9 +386,9 @@ namespace BTDB.ODBLayer
             }
         }
 
-        protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes, in IKeyValueDBTransaction kvtr)
+        protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (T)ItemLoader.CreateInstance(_transaction, keyBytes, kvtr);
+            return (T)ItemLoader.CreateInstance(_transaction, keyBytes);
         }
 
         object IEnumerator.Current => Current!;
@@ -414,7 +439,7 @@ namespace BTDB.ODBLayer
             _manipulator = manipulator;
         }
 
-        protected override T CreateInstance(in ReadOnlySpan<byte> keyBytes, in IKeyValueDBTransaction valueBytes)
+        protected override T CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
             return (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, keyBytes);
         }
@@ -632,7 +657,7 @@ namespace BTDB.ODBLayer
 
         protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (T)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr);
+            return (T)ItemLoader.CreateInstance(_tr, keyBytes);
         }
 
         public byte[] GetKeyBytes()
@@ -833,7 +858,7 @@ namespace BTDB.ODBLayer
 
         protected virtual TValue CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (TValue)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr);
+            return (TValue)ItemLoader.CreateInstance(_tr, keyBytes);
         }
 
         public TValue CurrentValue

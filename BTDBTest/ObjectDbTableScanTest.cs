@@ -135,5 +135,53 @@ namespace BTDBTest
 
             tr.Commit();
         }
+
+        public class ThingWithSK
+        {
+            public ThingWithSK(ulong tenant, string name, uint age)
+            {
+                Tenant = tenant;
+                Name = name;
+                Age = age;
+            }
+
+            [PrimaryKey(1)] public ulong Tenant { get; set; }
+
+            [PrimaryKey(2)]
+            [SecondaryKey("Name", IncludePrimaryKeyOrder = 0, Order = 1)]
+            public string Name { get; set; }
+            [SecondaryKey("Name", IncludePrimaryKeyOrder = 0, Order = 2)]
+            public uint Age { get; set; }
+        }
+
+        public interface IThingWithSKTable : IRelation<ThingWithSK>
+        {
+            IEnumerable<ThingWithSK> ScanByName(Constraint<string> name, Constraint<ulong> age, Constraint<ulong> tenant);
+        }
+
+        [Fact]
+        public void ScanBySecondaryKeyWorks()
+        {
+            FillThingWithSKData();
+
+            using var tr = _db.StartTransaction();
+            var t = tr.GetRelation<IThingWithSKTable>();
+            var p = t.ScanByName(Constraint.String.Exact("C"), Constraint.Unsigned.Any, Constraint.Unsigned.Any).Single();
+            Assert.Equal("C", p.Name);
+            p = t.ScanByName(Constraint.String.Any, Constraint.Unsigned.Any, Constraint.Unsigned.Exact(3)).Single();
+            Assert.Equal("D", p.Name);
+        }
+
+        void FillThingWithSKData()
+        {
+            using var tr = _db.StartTransaction();
+            var t = tr.GetRelation<IThingWithSKTable>();
+            t.Upsert(new(1, "A", 5));
+            t.Upsert(new(1, "B", 6));
+            t.Upsert(new(2, "C", 6));
+            t.Upsert(new(3, "D", 7));
+            tr.Commit();
+        }
+
     }
 }
