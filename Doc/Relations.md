@@ -2,7 +2,7 @@
 
 Relations provides easy way how to store "table" like data in object db.
 
-Let's first define data entity we want to store (note that it is not defined as [StoredInline] but it is still inlined)
+Let's first define data entity we want to store (note that it is not defined as `[StoredInline]`, but it is still stored inline). Such objects also don't have object id, they can be retrieved by primary or secondary indexes.
 
     public class Person
     {
@@ -94,7 +94,7 @@ It is like `Upsert`, but it does not try to compare and free any nested content.
     (void|bool) ShallowRemoveById(primaryKey1, ..., primaryKeyN);
 
 Returns true if removed, void variant throw when does not exists. All primary keys fields are used as parameters, for example `void RemoveById(ulong tenantId, ulong userId);`
-ShallowRemoveById does not free content.
+ShallowRemoveById does not free nested content (like `IDictionary<K,V>`).
 
     int RemoveById(primaryKey1 [, primaryKey2, ...]);
 
@@ -138,7 +138,7 @@ Find by secondary key, it will throw if it find multiple Persons with that age. 
 
 Find all items with given secondary key. **Note**: for advanced range enumerating use ListBy{SecondaryIndexName}, multiple result possibility handles legal case when exists several records for one secondary index key.
 
-Find support returning also not item type but any subset type, but because you cannot have same name of method which differs only by return type you can append any text to make it unique. This is useful for speed up deserialization because only fields with matching names and types will be deserialized.
+Find support returning also not item type but any subset type, but because you cannot have same name of method which differs only by return type you can append any text to make it unique. This is useful for speed up deserialization because only fields with matching names and types will be deserialized. Note: This feature is also called Variants.
 
     public class Age
     {
@@ -172,6 +172,24 @@ List by ascending/descending order and specified range. Parts of primary key may
     }
 
 List also support variants with subset resulting types like `Find`.
+
+### Scan
+
+    IEnumerable<Room> ScanById(Constraint<ulong> companyId, Constraint<ulong> id);
+
+Returns rows in ascending order of primary index matching various constraints which you can define at query time like this:
+
+    var oddRooms = table.ScanById(Constraint.Unsigned.Any, Constraint.Unsigned.Predicate(id => id % 2 == 1));
+
+If you don't always need to constraint all fields it is better to add additional overloads with less constraints (missing constraints are automatically "Any"):
+
+    IEnumerable<Room> ScanById(Constraint<ulong> companyId);
+
+    var roomsOf1 = table.ScanById(Constraint.Unsigned.Exact(1));
+
+Scan by primary key also support variants like `ScanByIdVariantName`.
+
+`Scan` can do most of same stuff like `List`, it is little bit slower though, so prefer `List` if you can. `Scan` needs to iterate all rows in many cases, because BTDB has all indexes in memory it is not slow even for millions of items, still be careful.
 
 ### Count
 
@@ -210,7 +228,7 @@ One or more fields can be selected as primary key. Primary key must be unique in
         ...
     }
 
-will methods look like:
+methods will look like:
 
     bool RemoveById(ulong tenantId, ulong id);
     Person FindById(ulong tenantId, ulong id);
@@ -241,7 +259,7 @@ It is always possible to insert duplicate items for secondary key (it would caus
 
 ### List (by secondary index)
 
-    IEnumerator<Person> ListByAge(AdvancedEnumeratorParam<uint> param);
+    IEnumerable<Person> ListByAge(AdvancedEnumeratorParam<uint> param);
 
 List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs)
 `ListBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)`
@@ -261,6 +279,26 @@ Count records by specified range `CountBy{SecondaryIndexName}([secKeyField(1),..
     bool AnyByAge(uint age);
 
 Returns true if there is any item in specified range `AnyBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
+
+### Scan (by secondary index)
+
+    IEnumerable<Person> ScanByAge(Constraint<ulong> tenantId, Constraint<ulong> age, Constraint<string> name, Constraint<ulong> id);
+    IEnumerable<Person> ScanByName(Constraint<ulong> tenantId, Constraint<string> name);
+
+Returns rows in ascending order of secondary index matching various constraints which you can define at query time like this:
+
+    var ageOver30 = table.ScanByAge(Constraint.Unsigned.Any, Constraint.Unsigned.Predicate(age => age > 30), Constraint.String.Any, Constraint.Unsigned.Any);
+    var namesFromTentant1StartingWithBob = table.ScanByName(Constraint.Unsigned.Exact(1), Constraint.String.StartsWith("Bob"));
+
+ScanByAge example also shows you can add constrains to primary key fields not mentioned in secondary key. Parameter order must match serialization order and parameter names must match field names case insensitively.
+
+If you don't always need to constraint all fields it is better to add additional overloads with less constraints (missing constraints are automatically "Any"):
+
+    IEnumerable<Person> ScanByAge(Constraint<ulong> tenantId, Constraint<ulong> age);
+
+    var age45 = table.ScanByAge(Constraint.Unsigned.Any, Constraint.Unsigned.Exact(45));
+
+Scan by secondary key also support variants like `ScanByAgeVariantName`.
 
 ### Upgrade
 
