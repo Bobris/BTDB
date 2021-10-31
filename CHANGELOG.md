@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.14.0
+
 ### Added
 
 Constraints and ScanById relation method.
