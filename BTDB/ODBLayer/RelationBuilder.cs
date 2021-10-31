@@ -219,6 +219,10 @@ namespace BTDB.ODBLayer
                 {
                     BuildScanByMethod(method, reqMethod);
                 }
+                else if (method.Name.StartsWith("GatherBy"))
+                {
+                    BuildGatherByMethod(method, reqMethod);
+                }
                 else if (method.Name.StartsWith("FindBy"))
                 {
                     BuildFindByMethod(method, reqMethod);
@@ -323,18 +327,33 @@ namespace BTDB.ODBLayer
 
         void BuildScanByMethod(MethodInfo method, IILMethod reqMethod)
         {
-            var (pushWriter, _) = WriterPushers(reqMethod.Generator);
-
             var nameWithoutVariants = StripVariant(method.Name.Substring(6), false);
             if (nameWithoutVariants is "Id")
             {
                 CreateMethodScanById(reqMethod.Generator, method.Name,
-                    method.GetParameters(), method.ReturnType, pushWriter);
+                    method.GetParameters(), method.ReturnType);
             }
             else
             {
                 CreateMethodScanBy(reqMethod.Generator, method.Name,
-                    method.GetParameters(), method.ReturnType, pushWriter);
+                    method.GetParameters(), method.ReturnType);
+            }
+        }
+
+        void BuildGatherByMethod(MethodInfo method, IILMethod reqMethod)
+        {
+            if (method.ReturnType != typeof(ulong))
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Method {method.Name} must return ulong and not {method.ReturnType.ToSimpleName()}");
+
+            var indexName = method.Name[8..];
+            if (indexName == "Id")
+            {
+                CreateMethodGatherById(reqMethod.Generator, method.Name, method.GetParameters());
+            }
+            else
+            {
+                CreateMethodGatherBy(reqMethod.Generator, method.Name, method.GetParameters(), indexName);
             }
         }
 
@@ -1037,15 +1056,94 @@ namespace BTDB.ODBLayer
                     $"Method {name} should be defined with {expectedReturnType.Name} return type.");
         }
 
-        void CreateMethodScanById(IILGen ilGenerator, string methodName,
-            ParameterInfo[] methodParameters, Type methodReturnType,
-            Action<IILGen> pushWriter)
+        void CreateMethodGatherById(IILGen ilGenerator, string methodName,
+            ParameterInfo[] methodParameters)
         {
-            var spanLocal = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
+            var itemType = ParseGatherParams(methodParameters, methodName);
+            var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
+
+            var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+
+            SaveMethodConstraintParameters(ilGenerator, methodName, methodParameters, primaryKeyFields.Span, constraintsLocal, 3);
+
+            //call manipulator.GatherBy_
+            ilGenerator
+                .Ldarg(0) //manipulator
+                .LdcI4(RegisterLoadType(itemType!))
+                .Ldloc(constraintsLocal)
+                .Ldarg(1)
+                .Castclass(typeof(ICollection<>).MakeGenericType(itemType))
+                .Ldarg(2)
+                .Ldarg(3);
+            ilGenerator.Callvirt(
+                _relationDbManipulatorType.GetMethod(
+                    nameof(RelationDBManipulator<IRelation>.GatherByPrimaryKey))!.MakeGenericMethod(itemType));
+        }
+
+        void CreateMethodGatherBy(IILGen ilGenerator, string methodName,
+            ParameterInfo[] methodParameters, string skName)
+        {
+            var itemType = ParseGatherParams(methodParameters, methodName);
+            var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
+
+            var skIndex = ClientRelationVersionInfo.GetSecondaryKeyIndex(skName);
+
+            var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex);
+
+            SaveMethodConstraintParameters(ilGenerator, methodName, methodParameters, secondaryKeyFields, constraintsLocal, 3);
+
+            //call manipulator.GatherBy_
+            ilGenerator
+                .Ldarg(0) //manipulator
+                .LdcI4(RegisterLoadType(itemType!))
+                .Ldloc(constraintsLocal)
+                .Ldarg(1)
+                .Castclass(typeof(ICollection<>).MakeGenericType(itemType))
+                .Ldarg(2)
+                .Ldarg(3)
+                .LdcI4((int)skIndex);
+            ilGenerator.Callvirt(
+                _relationDbManipulatorType.GetMethod(
+                    nameof(RelationDBManipulator<IRelation>.GatherBySecondaryKey))!.MakeGenericMethod(itemType));
+        }
+
+        Type ParseGatherParams(ParameterInfo[] methodParameters, string methodName)
+        {
+            if (methodParameters.Length < 3)
+            {
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Method {methodName} expects at least 3 parameters.");
+            }
+
+            var collection = methodParameters[0].ParameterType.SpecializationOf(typeof(ICollection<>));
+
+            if (collection == null)
+            {
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Method {methodName} first parameter must inherit from ICollection<>.");
+            }
+
+            if (methodParameters[1].Name != "skip" || methodParameters[1].ParameterType != typeof(long))
+            {
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Method {methodName} second parameter must be long type and named skip");
+            }
+
+            if (methodParameters[2].Name != "take" || methodParameters[2].ParameterType != typeof(long))
+            {
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Method {methodName} second parameter must be long type and named take");
+            }
+
+            return collection!.GetGenericArguments()[0];
+        }
+
+        void CreateMethodScanById(IILGen ilGenerator, string methodName,
+            ParameterInfo[] methodParameters, Type methodReturnType)
+        {
             var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
             var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
             if (!isPrefixBased) RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {methodName} must return IEnumerable<T> or IEnumerator<T> type.");
-            WriteRelationPKPrefix(ilGenerator, pushWriter);
 
             var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
 
@@ -1054,10 +1152,6 @@ namespace BTDB.ODBLayer
             //call manipulator.ScanBy_
             ilGenerator
                 .Ldarg(0) //manipulator
-                .Do(pushWriter)
-                .Call(SpanWriterGetSpanMethodInfo)
-                .Stloc(spanLocal)
-                .Ldloca(spanLocal)
                 .LdcI4(RegisterLoadType(itemType!))
                 .Ldloc(constraintsLocal);
             ilGenerator.Callvirt(
@@ -1067,18 +1161,14 @@ namespace BTDB.ODBLayer
         }
 
         void CreateMethodScanBy(IILGen ilGenerator, string methodName,
-            ParameterInfo[] methodParameters, Type methodReturnType,
-            Action<IILGen> pushWriter)
+            ParameterInfo[] methodParameters, Type methodReturnType)
         {
-            var spanLocal = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
             var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
             if (!isPrefixBased) RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {methodName} must return IEnumerable<T> or IEnumerator<T> type.");
 
             var skName = StripVariant(methodName[6..], false);
             var skIndex = ClientRelationVersionInfo.GetSecondaryKeyIndex(skName);
-            var localRemapped = RemapSecondaryKeyIndex(ilGenerator, skIndex);
-            WriteRelationSKPrefix(ilGenerator, pushWriter, localRemapped);
 
             var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex);
 
@@ -1087,10 +1177,6 @@ namespace BTDB.ODBLayer
             //call manipulator.ScanBy_
             ilGenerator
                 .Ldarg(0) //manipulator
-                .Do(pushWriter)
-                .Call(SpanWriterGetSpanMethodInfo)
-                .Stloc(spanLocal)
-                .Ldloca(spanLocal)
                 .LdcI4(RegisterLoadType(itemType!))
                 .Ldloc(constraintsLocal)
                 .LdcI4((int)skIndex);
@@ -1102,18 +1188,18 @@ namespace BTDB.ODBLayer
 
         void SaveMethodConstraintParameters(IILGen ilGenerator, string methodName,
             ReadOnlySpan<ParameterInfo> methodParameters,
-            ReadOnlySpan<TableFieldInfo> fields, IILLocal constraintsLocal)
+            ReadOnlySpan<TableFieldInfo> fields, IILLocal constraintsLocal, int skip = 0)
         {
-            if (methodParameters.Length > fields.Length)
+            if (methodParameters.Length - skip > fields.Length)
                 RelationInfoResolver.ActualOptions.ThrowBTDBException(
                     $"Number of constraints parameters in {methodName} is bigger than key count {fields.Length}.");
 
             ilGenerator
-                .LdcI4(methodParameters.Length)
+                .LdcI4(methodParameters.Length - skip)
                 .Newarr(typeof(ConstraintInfo))
                 .Stloc(constraintsLocal);
 
-            var idx = 0;
+            var idx = skip;
             foreach (var field in fields)
             {
                 if (idx == methodParameters.Length)
@@ -1146,7 +1232,7 @@ namespace BTDB.ODBLayer
 
                 ilGenerator
                     .Ldloc(constraintsLocal)
-                    .LdcI4(idx - 1)
+                    .LdcI4(idx - 1 - skip)
                     .Ldelema(typeof(ConstraintInfo))
                     .Ldarg((ushort)idx)
                     .Castclass(typeof(IConstraint))

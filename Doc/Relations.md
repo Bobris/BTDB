@@ -191,6 +191,12 @@ Scan by primary key also support variants like `ScanByIdVariantName`.
 
 `Scan` can do most of same stuff like `List`, it is little bit slower though, so prefer `List` if you can. `Scan` needs to iterate all rows in many cases, because BTDB has all indexes in memory it is not slow even for millions of items, still be careful.
 
+### Gather
+
+    ulong GatherById(ICollection<Room> target, long skip, long take, Constraint<ulong> companyId, Constraint<ulong> id);
+
+Gather is like Scan with Count and Skip and Take. It is perfect to implement paging, when you need to calculate total number of matching rows, but also return only rows from some position (skip) and at most some count (take). First parameter can be anything inheriting from `ICollection<T>` only method which Gather calls from this interface is `Add`. It means `target` does not need to be empty, it will just add new rows. Variants does not need to append VariantName to method name, because it is defined by first parameter which you can easily overload.
+
 ### Count
 
     uint|int|ulong|long CountById(AdvancedEnumeratorParam<ulong> param);
@@ -299,6 +305,12 @@ If you don't always need to constraint all fields it is better to add additional
     var age45 = table.ScanByAge(Constraint.Unsigned.Any, Constraint.Unsigned.Exact(45));
 
 Scan by secondary key also support variants like `ScanByAgeVariantName`.
+
+### Gather (by secondary index)
+
+    ulong GatherByName(List<Person> toFill, long skip, long take, Constraint<ulong> tenantId, Constraint<string> name);
+
+It is exactly same counterpart for Scan like in primary key case.
 
 ### Upgrade
 

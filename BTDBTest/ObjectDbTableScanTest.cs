@@ -97,6 +97,9 @@ namespace BTDBTest
         {
             IEnumerable<ThreeUlongs> ScanById(Constraint<ulong> n1, Constraint<ulong> n2);
             IEnumerable<ThreeUlongs> ScanById(Constraint<ulong> n1, Constraint<ulong> n2, Constraint<ulong> n3);
+
+            ulong GatherById(List<ThreeUlongs> target, long skip, long take, Constraint<ulong> n1,
+                Constraint<ulong> n2);
         }
 
         [Fact]
@@ -108,6 +111,19 @@ namespace BTDBTest
             var t = tr.GetRelation<IThreeUlongsTable>();
             AssertSameCondition(t.Where(v => v.N2 > 3),
                 t.ScanById(Constraint.Unsigned.Any, Constraint.Unsigned.Predicate(n => n > 3)));
+        }
+
+        [Fact]
+        public void GatherConstraintUnsignedAnyUnsignedPredicateWorks()
+        {
+            FillThreeUlongsData();
+
+            using var tr = _db.StartTransaction();
+            var t = tr.GetRelation<IThreeUlongsTable>();
+            var dst = new List<ThreeUlongs>();
+            Assert.Equal((ulong)t.Where(v => v.N2 > 3).Count(),
+                t.GatherById(dst, 1, 2, Constraint.Unsigned.Any, Constraint.Unsigned.Predicate(n => n > 3)));
+            AssertSameCondition(t.Where(v => v.N2 > 3).Skip(1).Take(2), dst);
         }
 
         static void AssertSameCondition(IEnumerable<ThreeUlongs> expectedResult, IEnumerable<ThreeUlongs> scanResult)

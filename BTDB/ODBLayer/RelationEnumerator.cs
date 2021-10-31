@@ -36,7 +36,7 @@ namespace BTDB.ODBLayer
         StructList<byte> _buffer;
 
         public RelationConstraintEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
-            ReadOnlySpan<byte> keyBytes,
+            StructList<byte> keyBytes,
             IRelationModificationCounter modificationCounter, int loaderIndex, ConstraintInfo[] constraints)
         {
             _transaction = tr;
@@ -45,7 +45,7 @@ namespace BTDB.ODBLayer
             KeyValueTr = _transaction.KeyValueDBTransaction;
             _prevProtectionCounter = KeyValueTr.CursorMovedCounter;
 
-            _buffer.AddRange(keyBytes);
+            _buffer = keyBytes;
             _keyBytesCount = (int)_buffer.Count;
 
             _modificationCounter = modificationCounter;
@@ -59,6 +59,30 @@ namespace BTDB.ODBLayer
                 c.MatchType = c.Constraint.Prepare(ref _buffer);
                 c.Offset = -1;
             }
+        }
+
+        public bool MoveNextInGather()
+        {
+            bool ret;
+            if (_seekNeeded)
+            {
+                _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
+                ret = FindNextKey(true);
+                _seekNeeded = false;
+            }
+            else
+            {
+                if (KeyValueTr.CursorMovedCounter != _prevProtectionCounter)
+                {
+                    KeyValueTr.SetKeyIndex(_pos);
+                    _prevProtectionCounter = KeyValueTr.CursorMovedCounter;
+                }
+                ret = FindNextKey();
+            }
+
+            _prevProtectionCounter = KeyValueTr.CursorMovedCounter;
+            _pos = KeyValueTr.GetKeyIndex();
+            return ret;
         }
 
         public bool MoveNext()
@@ -229,6 +253,17 @@ namespace BTDB.ODBLayer
             }
         }
 
+        public virtual T CurrentInGather
+        {
+            [SkipLocalsInit]
+            get
+            {
+                Span<byte> keyBuffer = stackalloc byte[512];
+                var keyBytes = KeyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
+                return (T)ItemLoader.CreateInstance(_transaction, keyBytes);
+            }
+        }
+
         protected void SeekCurrent()
         {
             if (_seekNeeded) throw new BTDBException("Invalid access to uninitialized Current.");
@@ -269,7 +304,7 @@ namespace BTDB.ODBLayer
         readonly uint _secondaryKeyIndex;
         readonly IRelationDbManipulator _manipulator;
 
-        public RelationConstraintSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ReadOnlySpan<byte> keyBytes, IRelationModificationCounter modificationCounter, int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex, IRelationDbManipulator manipulator) : base(tr, relationInfo, keyBytes, modificationCounter, loaderIndex, constraints)
+        public RelationConstraintSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, StructList<byte> keyBytes, IRelationModificationCounter modificationCounter, int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex, IRelationDbManipulator manipulator) : base(tr, relationInfo, keyBytes, modificationCounter, loaderIndex, constraints)
         {
             _secondaryKeyIndex = secondaryKeyIndex;
             _manipulator = manipulator;
@@ -281,6 +316,17 @@ namespace BTDB.ODBLayer
             get
             {
                 SeekCurrent();
+                Span<byte> keyBuffer = stackalloc byte[512];
+                var keyBytes = KeyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
+                return (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, keyBytes);
+            }
+        }
+
+        public override T CurrentInGather
+        {
+            [SkipLocalsInit]
+            get
+            {
                 Span<byte> keyBuffer = stackalloc byte[512];
                 var keyBytes = KeyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
                 return (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, keyBytes);

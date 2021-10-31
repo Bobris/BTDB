@@ -677,15 +677,85 @@ namespace BTDB.ODBLayer
                 loaderIndex);
         }
 
-        public IEnumerable<TItem> ScanByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex, ConstraintInfo[] constraints)
+        public ulong GatherByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
+            long skip, long take)
         {
-            return new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, this,
+            StructList<byte> keyBytes = new();
+            keyBytes.AddRange(_relationInfo.Prefix);
+            var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
+                loaderIndex, constraints);
+            if (skip < 0)
+            {
+                take += skip;
+                skip = 0;
+            }
+
+            var count = 0ul;
+
+            while (enumerator.MoveNextInGather())
+            {
+                count++;
+                if (skip > 0)
+                {
+                    skip--;
+                    continue;
+                }
+
+                if (take <= 0) continue;
+                take--;
+                target.Add(enumerator.CurrentInGather);
+            }
+
+            return count;
+        }
+
+        public ulong GatherBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
+            long skip, long take, uint secondaryKeyIndex)
+        {
+            StructList<byte> keyBytes = new();
+            keyBytes.AddRange(_relationInfo.PrefixSecondary);
+            keyBytes.Add((byte)RemapPrimeSK(secondaryKeyIndex));
+            var enumerator = new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
+                loaderIndex, constraints, secondaryKeyIndex, this);
+            if (skip < 0)
+            {
+                take += skip;
+                skip = 0;
+            }
+
+            var count = 0ul;
+
+            while (enumerator.MoveNextInGather())
+            {
+                count++;
+                if (skip > 0)
+                {
+                    skip--;
+                    continue;
+                }
+
+                if (take <= 0) continue;
+                take--;
+                target.Add(enumerator.CurrentInGather);
+            }
+
+            return count;
+        }
+
+        public IEnumerable<TItem> ScanByPrimaryKeyPrefix<TItem>(int loaderIndex, ConstraintInfo[] constraints)
+        {
+            StructList<byte> keyBytes = new();
+            keyBytes.AddRange(_relationInfo.Prefix);
+            return new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
                 loaderIndex, constraints);
         }
 
-        public IEnumerable<TItem> ScanBySecondaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex)
+        public IEnumerable<TItem> ScanBySecondaryKeyPrefix<TItem>(int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex)
         {
-            return new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, this,
+            StructList<byte> keyBytes = new();
+            keyBytes.AddRange(_relationInfo.PrefixSecondary);
+            keyBytes.Add((byte)RemapPrimeSK(secondaryKeyIndex));
+            return new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
                 loaderIndex, constraints, secondaryKeyIndex, this);
         }
 
