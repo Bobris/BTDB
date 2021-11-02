@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 27.0.0
+
 ### Breaking Change
 
 Added support for .Net 6.0. Removed support for .Net 5.0.
