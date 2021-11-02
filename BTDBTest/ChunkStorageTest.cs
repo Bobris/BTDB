@@ -9,10 +9,9 @@ namespace BTDBTest
 {
     public class ChunkStorageTest : IDisposable
     {
-        readonly ThreadLocal<HashAlgorithm> _hashAlg =
-            new ThreadLocal<HashAlgorithm>(() => new SHA1CryptoServiceProvider());
+        readonly ThreadLocal<HashAlgorithm> _hashAlg = new(SHA1.Create);
 
-        IFileCollection _fileCollection;
+        readonly IFileCollection _fileCollection;
         KeyValueDB _kvdb;
         IChunkStorage _cs;
 

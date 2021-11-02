@@ -16,7 +16,7 @@ namespace BTDB.Encrypted
         public AesGcmSymmetricCipher(byte[] key)
         {
             _aes = new AesGcm(key);
-            var aes = new AesManaged();
+            var aes = Aes.Create();
             aes.Key = key;
             aes.Mode = CipherMode.CBC;
             aes.Padding = PaddingMode.Zeros;

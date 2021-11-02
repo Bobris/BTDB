@@ -206,14 +206,14 @@ namespace Releaser
 
         static void BuildODbDump(string projDir)
         {
-            var start = new ProcessStartInfo("dotnet", "publish -c Release -f net5.0")
+            var start = new ProcessStartInfo("dotnet", "publish -c Release")
             {
                 UseShellExecute = true,
                 WorkingDirectory = projDir + "/ODbDump"
             };
             var process = Process.Start(start);
             process.WaitForExit();
-            var source = projDir + "/ODbDump/bin/Release/net5.0/publish";
+            var source = projDir + "/ODbDump/bin/Release/net6.0/publish";
             System.IO.Compression.ZipFile.CreateFromDirectory(source, projDir + "/ODbDump/bin/Release/ODbDump.zip", System.IO.Compression.CompressionLevel.Optimal, false);
         }
     }

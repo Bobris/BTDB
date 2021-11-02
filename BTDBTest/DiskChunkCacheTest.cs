@@ -13,7 +13,7 @@ namespace BTDBTest
     public class DiskChunkCacheTest
     {
         readonly ITestOutputHelper _output;
-        readonly ThreadLocal<HashAlgorithm> _hashAlg = new ThreadLocal<HashAlgorithm>(() => new SHA1CryptoServiceProvider());
+        readonly ThreadLocal<HashAlgorithm> _hashAlg = new(SHA1.Create);
 
         public DiskChunkCacheTest(ITestOutputHelper output)
         {

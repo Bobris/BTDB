@@ -12,29 +12,27 @@ namespace BTDB.StreamLayer
 
         public PositionLessFileStreamProxy(string fileName)
         {
-            if (string.IsNullOrEmpty(fileName)) throw new ArgumentOutOfRangeException(nameof(fileName));
-            _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1,
+            _stream = new(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1,
                 FileOptions.None);
-            _handle = _stream.SafeFileHandle;
+            _handle = _stream.SafeFileHandle!;
             _dispose = true;
         }
 
         public PositionLessFileStreamProxy(FileStream stream, bool dispose)
         {
-            if (stream == null) throw new ArgumentNullException(nameof(stream));
             _stream = stream;
-            _handle = _stream.SafeFileHandle;
+            _handle = _stream.SafeFileHandle!;
             _dispose = dispose;
         }
 
         public int Read(Span<byte> data, ulong pos)
         {
-            return (int)PlatformMethods.Instance.PRead(_handle, data, pos);
+            return RandomAccess.Read(_handle, data, (long)pos);
         }
 
         public void Write(ReadOnlySpan<byte> data, ulong pos)
         {
-            PlatformMethods.Instance.PWrite(_handle, data, pos);
+            RandomAccess.Write(_handle, data, (long)pos);
         }
 
         public void Flush()

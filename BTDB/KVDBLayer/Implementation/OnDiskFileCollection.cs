@@ -82,11 +82,11 @@ namespace BTDB.KVDBLayer
                 {
                     if (_usedLen == 0)
                     {
-                        var read = PlatformMethods.Instance.PRead(_owner._handle, _buf, _ofs);
-                        spanReader.Buf = _buf.AsSpan(0, (int)read);
+                        var read = RandomAccess.Read(_owner._handle, _buf.AsSpan(), (long)_ofs);
+                        spanReader.Buf = _buf.AsSpan(0, read);
                         _usedOfs = 0;
-                        _usedLen = read;
-                        _ofs += read;
+                        _usedLen = (uint)read;
+                        _ofs += (uint)read;
                         return;
                     }
                     spanReader.Buf = _buf.AsSpan((int)_usedOfs, (int)_usedLen);
@@ -96,11 +96,11 @@ namespace BTDB.KVDBLayer
                 {
                     if (0 != spanReader.Buf.Length)
                         return false;
-                    var read = PlatformMethods.Instance.PRead(_owner._handle, _buf, _ofs);
-                    spanReader.Buf = _buf.AsSpan(0, (int)read);
+                    var read = RandomAccess.Read(_owner._handle, _buf.AsSpan(), (long)_ofs);
+                    spanReader.Buf = _buf.AsSpan(0, read);
                     _usedOfs = 0;
-                    _usedLen = read;
-                    _ofs += read;
+                    _usedLen = (uint)read;
+                    _ofs += (uint)read;
                     return read == 0;
                 }
 
@@ -119,9 +119,9 @@ namespace BTDB.KVDBLayer
                         return false;
                     }
 
-                    var read = PlatformMethods.Instance.PRead(_owner._handle,
-                        MemoryMarshal.CreateSpan(ref buffer, (int)length), _ofs);
-                    _ofs += read;
+                    var read = RandomAccess.Read(_owner._handle,
+                        MemoryMarshal.CreateSpan(ref buffer, (int)length), (long)_ofs);
+                    _ofs += (uint)read;
                     return read < length;
                 }
 
@@ -172,7 +172,7 @@ namespace BTDB.KVDBLayer
                 public void FlushBuffer()
                 {
                     if (_pos == 0) return;
-                    PlatformMethods.Instance.PWrite(_file._handle, _buf.AsSpan(0, _pos), Ofs);
+                    RandomAccess.Write(_file._handle, _buf.AsSpan(0, _pos), (long)Ofs);
                     using (_file._readerWriterLock.WriteLock())
                     {
                         Ofs += (ulong)_pos;
@@ -216,8 +216,8 @@ namespace BTDB.KVDBLayer
 
                 public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
                 {
-                    PlatformMethods.Instance.PWrite(_file._handle, MemoryMarshal.CreateReadOnlySpan(ref buffer, (int)length),
-                        Ofs);
+                    RandomAccess.Write(_file._handle, MemoryMarshal.CreateReadOnlySpan(ref buffer, (int)length),
+                        (long)Ofs);
                     using (_file._readerWriterLock.WriteLock())
                     {
                         Ofs += length;
@@ -263,9 +263,9 @@ namespace BTDB.KVDBLayer
                     {
                         var read = data.Length;
                         if (_writer.Ofs - position < (ulong)read) read = (int)(_writer.Ofs - position);
-                        if (PlatformMethods.Instance.PRead(_handle, data.Slice(0, read), position) != read)
+                        if (RandomAccess.Read(_handle, data[..read], (long)position) != read)
                             throw new EndOfStreamException();
-                        data = data.Slice(read);
+                        data = data[read..];
                         position += (ulong)read;
                     }
 

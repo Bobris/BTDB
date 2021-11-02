@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Security.Cryptography;
 using BTDB.Collections;
 using BTDB.Encrypted;
@@ -8,12 +7,12 @@ namespace BTDB.ODBLayer
 {
     public class DBReaderCtx : IDBReaderCtx
     {
-        protected readonly IInternalObjectDBTransaction Transaction;
+        protected readonly IInternalObjectDBTransaction? Transaction;
         StructList<object> _objects;
         StructList<long> _returningStack;
         int _lastIdOfObj;
 
-        public DBReaderCtx(IInternalObjectDBTransaction transaction)
+        public DBReaderCtx(IInternalObjectDBTransaction? transaction)
         {
             Transaction = transaction;
             _lastIdOfObj = -1;
@@ -30,7 +29,7 @@ namespace BTDB.ODBLayer
 
             if (id <= int.MinValue || id > 0)
             {
-                @object = Transaction.Get((ulong)id);
+                @object = Transaction!.Get((ulong)id);
                 return false;
             }
 
@@ -65,7 +64,6 @@ namespace BTDB.ODBLayer
 
         public void RegisterObject(object @object)
         {
-            Debug.Assert(@object != null);
             _objects![_lastIdOfObj] = @object;
         }
 
@@ -82,7 +80,7 @@ namespace BTDB.ODBLayer
             var test = ReadObject(ref reader, out var @object);
             if (test)
             {
-                @object = Transaction.ReadInlineObject(ref reader, this);
+                @object = Transaction!.ReadInlineObject(ref reader, this);
             }
 
             return @object;
@@ -119,7 +117,7 @@ namespace BTDB.ODBLayer
             if (test)
             {
                 // This should be skip inline object, but it is easier just to throw away result
-                Transaction.ReadInlineObject(ref reader, this);
+                Transaction!.ReadInlineObject(ref reader, this);
             }
         }
 
@@ -131,7 +129,7 @@ namespace BTDB.ODBLayer
 
         public EncryptedString ReadEncryptedString(ref SpanReader reader)
         {
-            var cipher = Transaction.Owner.GetSymmetricCipher();
+            var cipher = Transaction!.Owner.GetSymmetricCipher();
             var enc = reader.ReadByteArray();
             var size = cipher.CalcPlainSizeFor(enc);
             var dec = new byte[size];
@@ -151,7 +149,7 @@ namespace BTDB.ODBLayer
 
         public EncryptedString ReadOrderedEncryptedString(ref SpanReader reader)
         {
-            var cipher = Transaction.Owner.GetSymmetricCipher();
+            var cipher = Transaction!.Owner.GetSymmetricCipher();
             var enc = reader.ReadByteArray();
             var size = cipher.CalcOrderedPlainSizeFor(enc);
             var dec = new byte[size];
@@ -169,7 +167,7 @@ namespace BTDB.ODBLayer
             reader.SkipByteArray();
         }
 
-        public IInternalObjectDBTransaction GetTransaction()
+        public IInternalObjectDBTransaction? GetTransaction()
         {
             return Transaction;
         }

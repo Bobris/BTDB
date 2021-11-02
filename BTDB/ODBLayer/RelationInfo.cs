@@ -919,7 +919,7 @@ namespace BTDB.ODBLayer
             {
                 var readerCtxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
                 ilGenerator
-                    .Ldarg(0) //tr
+                    .Ldarg(0) // tr
                     .Newobj(() => new DBReaderCtx(null))
                     .Stloc(readerCtxLocal);
                 bufferInfo.PushCtx = il => il.Ldloc(readerCtxLocal);
@@ -1192,7 +1192,7 @@ namespace BTDB.ODBLayer
             {
                 var readerCtxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
                 ilGenerator
-                    .Ldarg(0) //tr
+                    .Ldnull() // ctx is needed only for skipping encrypted strings, so it does not need valid transaction
                     .Newobj(() => new DBReaderCtx(null))
                     .Stloc(readerCtxLocal);
                 bi.PushCtx = il => il.Ldloc(readerCtxLocal);

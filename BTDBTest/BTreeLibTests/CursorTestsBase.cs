@@ -16,7 +16,7 @@ namespace BTDBTest.BTreeLibTests
 
         protected CursorTestsBase()
         {
-            _allocator = new LeakDetectorWrapperAllocator(new HGlobalAllocator());
+            _allocator = new LeakDetectorWrapperAllocator(new MallocAllocator());
             _root = BTreeImpl12.CreateEmptyRoot(_allocator);
             _cursor = _root!.CreateCursor();
         }

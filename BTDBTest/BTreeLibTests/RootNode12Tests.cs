@@ -12,8 +12,8 @@ namespace BTDBTest.BTreeLibTests
 
         public RootNode12Tests()
         {
-            _allocator = new LeakDetectorWrapperAllocator(new HGlobalAllocator());
-            _impl = new BTreeImpl12(_allocator);
+            _allocator = new(new MallocAllocator());
+            _impl = new(_allocator);
         }
 
         public void Dispose()
