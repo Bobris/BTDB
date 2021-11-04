@@ -114,6 +114,17 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void ConstraintTripleUnsignedExactWorks()
+        {
+            FillThreeUlongsData();
+
+            using var tr = _db.StartTransaction();
+            var t = tr.GetRelation<IThreeUlongsTable>();
+            AssertSameCondition(t.Where(v => v.N1 == 1 && v.N2 == 2 && v.N3 == 3),
+                t.ScanById(Constraint.Unsigned.Exact(1), Constraint.Unsigned.Exact(2), Constraint.Unsigned.Exact(3)));
+        }
+
+        [Fact]
         public void GatherConstraintUnsignedAnyUnsignedPredicateWorks()
         {
             FillThreeUlongsData();
@@ -121,7 +132,7 @@ namespace BTDBTest
             using var tr = _db.StartTransaction();
             var t = tr.GetRelation<IThreeUlongsTable>();
             var dst = new List<ThreeUlongs>();
-            Assert.Equal((ulong)t.Where(v => v.N2 > 3).Count(),
+            Assert.Equal((ulong)t.Count(v => v.N2 > 3),
                 t.GatherById(dst, 1, 2, Constraint.Unsigned.Any, Constraint.Unsigned.Predicate(n => n > 3)));
             AssertSameCondition(t.Where(v => v.N2 > 3).Skip(1).Take(2), dst);
         }

@@ -189,7 +189,11 @@ namespace BTDB.ODBLayer
                         _constraints[i].Offset = (int)writer.GetCurrentPosition();
                         i++;
                         if (i != _constraints.Length) continue;
-                        if (writer.GetSpan().SequenceCompareTo(key) < 0) goto goNextFast;
+                        if (writer.GetSpan().SequenceCompareTo(key) < 0)
+                        {
+                            i--;
+                            goto goNextFast;
+                        }
                         if (KeyValueTr.FindExactOrNextKey(writer.GetSpan())) return true;
                         goto nextKeyTest;
                     } while (_constraints[i].MatchType == IConstraint.MatchType.Exact);
