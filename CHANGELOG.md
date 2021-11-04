@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 27.0.1
+
 ## 27.0.0
 
 ### Breaking Change
