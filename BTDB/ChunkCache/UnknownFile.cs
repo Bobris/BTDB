@@ -1,13 +1,12 @@
-namespace BTDB.ChunkCache
+namespace BTDB.ChunkCache;
+
+class UnknownFile : IFileInfo
 {
-    class UnknownFile : IFileInfo
-    {
-        internal static IFileInfo Instance = new UnknownFile();
+    internal static IFileInfo Instance = new UnknownFile();
 
-        UnknownFile() { }
+    UnknownFile() { }
 
-        public DiskChunkFileType FileType => DiskChunkFileType.Unknown;
+    public DiskChunkFileType FileType => DiskChunkFileType.Unknown;
 
-        public long Generation => -1;
-    }
+    public long Generation => -1;
 }

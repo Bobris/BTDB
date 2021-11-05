@@ -1,10 +1,9 @@
 ﻿using System;
 using BTDB.IL;
 
-namespace BTDB.FieldHandler
+namespace BTDB.FieldHandler;
+
+public interface ITypeConvertorGenerator
 {
-    public interface ITypeConvertorGenerator
-    {
-        Action<IILGen>? GenerateConversion(Type from, Type to);
-    }
+    Action<IILGen>? GenerateConversion(Type from, Type to);
 }

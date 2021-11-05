@@ -6,42 +6,41 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace BTDB.Collections
+namespace BTDB.Collections;
+
+static class HashHelpers
 {
-    static class HashHelpers
+    internal static readonly int[] RefDictionarySizeOneIntArray = new int[1];
+
+    internal static int PowerOf2(int v)
     {
-        internal static readonly int[] RefDictionarySizeOneIntArray = new int[1];
+        if ((v & (v - 1)) == 0) return v;
+        int i = 2;
+        while (i < v) i <<= 1;
+        return i;
+    }
 
-        internal static int PowerOf2(int v)
-        {
-            if ((v & (v - 1)) == 0) return v;
-            int i = 2;
-            while (i < v) i <<= 1;
-            return i;
-        }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void ThrowInvalidOperationException_ConcurrentOperationsNotSupported()
+    {
+        throw new InvalidOperationException("Concurrent Operations Not Supported");
+    }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void ThrowInvalidOperationException_ConcurrentOperationsNotSupported()
-        {
-            throw new InvalidOperationException("Concurrent Operations Not Supported");
-        }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void ThrowKeyArgumentNullException()
+    {
+        throw new ArgumentNullException("key");
+    }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void ThrowKeyArgumentNullException()
-        {
-            throw new ArgumentNullException("key");
-        }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void ThrowCapacityArgumentOutOfRangeException()
+    {
+        throw new ArgumentOutOfRangeException("capacity");
+    }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void ThrowCapacityArgumentOutOfRangeException()
-        {
-            throw new ArgumentOutOfRangeException("capacity");
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static bool ThrowNotSupportedException()
-        {
-            throw new NotSupportedException();
-        }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static bool ThrowNotSupportedException()
+    {
+        throw new NotSupportedException();
     }
 }

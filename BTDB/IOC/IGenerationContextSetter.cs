@@ -1,7 +1,6 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+interface IGenerationContextSetter
 {
-    interface IGenerationContextSetter
-    {
-        void Set(IGenerationContext context);
-    }
+    void Set(IGenerationContext context);
 }

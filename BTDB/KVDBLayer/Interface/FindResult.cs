@@ -1,10 +1,9 @@
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+public enum FindResult
 {
-    public enum FindResult
-    {
-        Exact,
-        Previous,
-        Next,
-        NotFound
-    }
+    Exact,
+    Previous,
+    Next,
+    NotFound
 }

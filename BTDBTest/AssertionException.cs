@@ -1,25 +1,24 @@
 ﻿using System;
 using System.Runtime.Serialization;
 
-namespace BTDBTest
+namespace BTDBTest;
+
+[Serializable]
+internal class AssertionException : Exception
 {
-    [Serializable]
-    internal class AssertionException : Exception
+    public AssertionException()
     {
-        public AssertionException()
-        {
-        }
+    }
 
-        public AssertionException(string message) : base(message)
-        {
-        }
+    public AssertionException(string message) : base(message)
+    {
+    }
 
-        public AssertionException(string message, Exception innerException) : base(message, innerException)
-        {
-        }
+    public AssertionException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
 
-        protected AssertionException(SerializationInfo info, StreamingContext context) : base(info, context)
-        {
-        }
+    protected AssertionException(SerializationInfo info, StreamingContext context) : base(info, context)
+    {
     }
 }

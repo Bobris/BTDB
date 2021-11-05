@@ -1,9 +1,8 @@
-namespace BTDB.IL
+namespace BTDB.IL;
+
+public interface IILMethod
 {
-    public interface IILMethod
-    {
-        void ExpectedLength(int length);
-        bool InitLocals { get; set; }
-        IILGen Generator { get; }
-    }
+    void ExpectedLength(int length);
+    bool InitLocals { get; set; }
+    IILGen Generator { get; }
 }

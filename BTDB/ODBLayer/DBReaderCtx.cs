@@ -3,185 +3,184 @@ using BTDB.Collections;
 using BTDB.Encrypted;
 using BTDB.StreamLayer;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public class DBReaderCtx : IDBReaderCtx
 {
-    public class DBReaderCtx : IDBReaderCtx
+    protected readonly IInternalObjectDBTransaction? Transaction;
+    StructList<object> _objects;
+    StructList<long> _returningStack;
+    int _lastIdOfObj;
+
+    public DBReaderCtx(IInternalObjectDBTransaction? transaction)
     {
-        protected readonly IInternalObjectDBTransaction? Transaction;
-        StructList<object> _objects;
-        StructList<long> _returningStack;
-        int _lastIdOfObj;
+        Transaction = transaction;
+        _lastIdOfObj = -1;
+    }
 
-        public DBReaderCtx(IInternalObjectDBTransaction? transaction)
+    public bool ReadObject(ref SpanReader reader, out object? @object)
+    {
+        var id = reader.ReadVInt64();
+        if (id == 0)
         {
-            Transaction = transaction;
-            _lastIdOfObj = -1;
-        }
-
-        public bool ReadObject(ref SpanReader reader, out object? @object)
-        {
-            var id = reader.ReadVInt64();
-            if (id == 0)
-            {
-                @object = null;
-                return false;
-            }
-
-            if (id <= int.MinValue || id > 0)
-            {
-                @object = Transaction!.Get((ulong)id);
-                return false;
-            }
-
-            var ido = (int)(-id) - 1;
-            var o = RetrieveObj(ido);
-            if (o != null)
-            {
-                if (!(o is IMemorizedPosition mp))
-                {
-                    @object = o;
-                    return false;
-                }
-
-                PushReturningPosition(reader.GetCurrentPosition());
-                mp.Restore(ref reader);
-            }
-            else
-            {
-                PushReturningPosition(-1);
-            }
-
-            _lastIdOfObj = ido;
             @object = null;
-            return true;
+            return false;
         }
 
-        void PushReturningPosition(long memorizedPosition)
+        if (id <= int.MinValue || id > 0)
         {
-            if (_returningStack.Count == 0 && memorizedPosition < 0) return;
-            _returningStack.Add(memorizedPosition);
+            @object = Transaction!.Get((ulong)id);
+            return false;
         }
 
-        public void RegisterObject(object @object)
+        var ido = (int)(-id) - 1;
+        var o = RetrieveObj(ido);
+        if (o != null)
         {
-            _objects![_lastIdOfObj] = @object;
-        }
-
-        public void ReadObjectDone(ref SpanReader reader)
-        {
-            if (_returningStack.Count == 0) return;
-            var returnPos = _returningStack[^1];
-            _returningStack.Pop();
-            if (returnPos >= 0) reader.SetCurrentPosition(returnPos);
-        }
-
-        public object? ReadNativeObject(ref SpanReader reader)
-        {
-            var test = ReadObject(ref reader, out var @object);
-            if (test)
+            if (!(o is IMemorizedPosition mp))
             {
-                @object = Transaction!.ReadInlineObject(ref reader, this);
-            }
-
-            return @object;
-        }
-
-        public bool SkipObject(ref SpanReader reader)
-        {
-            var id = reader.ReadVInt64();
-            if (id == 0)
-            {
+                @object = o;
                 return false;
             }
 
-            if (id <= int.MinValue || id > 0)
-            {
-                return false;
-            }
-
-            var ido = (int)(-id) - 1;
-            var o = RetrieveObj(ido);
-            if (o != null)
-            {
-                return false;
-            }
-
-            _objects[ido] = new MemorizedPosition(reader.GetCurrentPosition());
-            _lastIdOfObj = ido;
-            return true;
+            PushReturningPosition(reader.GetCurrentPosition());
+            mp.Restore(ref reader);
         }
-
-        public void SkipNativeObject(ref SpanReader reader)
+        else
         {
-            var test = SkipObject(ref reader);
-            if (test)
-            {
-                // This should be skip inline object, but it is easier just to throw away result
-                Transaction!.ReadInlineObject(ref reader, this);
-            }
+            PushReturningPosition(-1);
         }
 
-        object? RetrieveObj(int ido)
+        _lastIdOfObj = ido;
+        @object = null;
+        return true;
+    }
+
+    void PushReturningPosition(long memorizedPosition)
+    {
+        if (_returningStack.Count == 0 && memorizedPosition < 0) return;
+        _returningStack.Add(memorizedPosition);
+    }
+
+    public void RegisterObject(object @object)
+    {
+        _objects![_lastIdOfObj] = @object;
+    }
+
+    public void ReadObjectDone(ref SpanReader reader)
+    {
+        if (_returningStack.Count == 0) return;
+        var returnPos = _returningStack[^1];
+        _returningStack.Pop();
+        if (returnPos >= 0) reader.SetCurrentPosition(returnPos);
+    }
+
+    public object? ReadNativeObject(ref SpanReader reader)
+    {
+        var test = ReadObject(ref reader, out var @object);
+        if (test)
         {
-            while (_objects.Count <= ido) _objects.Add(null);
-            return _objects[ido];
+            @object = Transaction!.ReadInlineObject(ref reader, this);
         }
 
-        public EncryptedString ReadEncryptedString(ref SpanReader reader)
+        return @object;
+    }
+
+    public bool SkipObject(ref SpanReader reader)
+    {
+        var id = reader.ReadVInt64();
+        if (id == 0)
         {
-            var cipher = Transaction!.Owner.GetSymmetricCipher();
-            var enc = reader.ReadByteArray();
-            var size = cipher.CalcPlainSizeFor(enc);
-            var dec = new byte[size];
-            if (!cipher.Decrypt(enc, dec))
-            {
-                throw new CryptographicException();
-            }
-
-            var r = new SpanReader(dec);
-            return r.ReadString();
+            return false;
         }
 
-        public void SkipEncryptedString(ref SpanReader reader)
+        if (id <= int.MinValue || id > 0)
         {
-            reader.SkipByteArray();
+            return false;
         }
 
-        public EncryptedString ReadOrderedEncryptedString(ref SpanReader reader)
+        var ido = (int)(-id) - 1;
+        var o = RetrieveObj(ido);
+        if (o != null)
         {
-            var cipher = Transaction!.Owner.GetSymmetricCipher();
-            var enc = reader.ReadByteArray();
-            var size = cipher.CalcOrderedPlainSizeFor(enc);
-            var dec = new byte[size];
-            if (!cipher.OrderedDecrypt(enc, dec))
-            {
-                throw new CryptographicException();
-            }
-
-            var r = new SpanReader(dec);
-            return r.ReadString();
+            return false;
         }
 
-        public void SkipOrderedEncryptedString(ref SpanReader reader)
+        _objects[ido] = new MemorizedPosition(reader.GetCurrentPosition());
+        _lastIdOfObj = ido;
+        return true;
+    }
+
+    public void SkipNativeObject(ref SpanReader reader)
+    {
+        var test = SkipObject(ref reader);
+        if (test)
         {
-            reader.SkipByteArray();
+            // This should be skip inline object, but it is easier just to throw away result
+            Transaction!.ReadInlineObject(ref reader, this);
+        }
+    }
+
+    object? RetrieveObj(int ido)
+    {
+        while (_objects.Count <= ido) _objects.Add(null);
+        return _objects[ido];
+    }
+
+    public EncryptedString ReadEncryptedString(ref SpanReader reader)
+    {
+        var cipher = Transaction!.Owner.GetSymmetricCipher();
+        var enc = reader.ReadByteArray();
+        var size = cipher.CalcPlainSizeFor(enc);
+        var dec = new byte[size];
+        if (!cipher.Decrypt(enc, dec))
+        {
+            throw new CryptographicException();
         }
 
-        public IInternalObjectDBTransaction? GetTransaction()
+        var r = new SpanReader(dec);
+        return r.ReadString();
+    }
+
+    public void SkipEncryptedString(ref SpanReader reader)
+    {
+        reader.SkipByteArray();
+    }
+
+    public EncryptedString ReadOrderedEncryptedString(ref SpanReader reader)
+    {
+        var cipher = Transaction!.Owner.GetSymmetricCipher();
+        var enc = reader.ReadByteArray();
+        var size = cipher.CalcOrderedPlainSizeFor(enc);
+        var dec = new byte[size];
+        if (!cipher.OrderedDecrypt(enc, dec))
         {
-            return Transaction;
+            throw new CryptographicException();
         }
 
-        public virtual void RegisterDict(ulong dictId)
-        {
-        }
+        var r = new SpanReader(dec);
+        return r.ReadString();
+    }
 
-        public virtual void RegisterOid(ulong oid)
-        {
-        }
+    public void SkipOrderedEncryptedString(ref SpanReader reader)
+    {
+        reader.SkipByteArray();
+    }
 
-        public virtual void FreeContentInNativeObject(ref SpanReader reader)
-        {
-        }
+    public IInternalObjectDBTransaction? GetTransaction()
+    {
+        return Transaction;
+    }
+
+    public virtual void RegisterDict(ulong dictId)
+    {
+    }
+
+    public virtual void RegisterOid(ulong oid)
+    {
+    }
+
+    public virtual void FreeContentInNativeObject(ref SpanReader reader)
+    {
     }
 }

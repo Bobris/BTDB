@@ -1,15 +1,14 @@
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+public enum KVFileType : byte
 {
-    public enum KVFileType : byte
-    {
-        TransactionLog,
-        KeyIndex,
-        PureValues,
-        PureValuesWithId,
-        HashKeyIndex,
-        KeyIndexWithCommitUlong,
-        ModernKeyIndex,
-        ModernKeyIndexWithUlongs,
-        Unknown,
-    }
+    TransactionLog,
+    KeyIndex,
+    PureValues,
+    PureValuesWithId,
+    HashKeyIndex,
+    KeyIndexWithCommitUlong,
+    ModernKeyIndex,
+    ModernKeyIndexWithUlongs,
+    Unknown,
 }

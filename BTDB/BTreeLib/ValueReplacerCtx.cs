@@ -2,15 +2,14 @@
 using System.Collections.Generic;
 using System.Threading;
 
-namespace BTDB.BTreeLib
+namespace BTDB.BTreeLib;
+
+public struct ValueReplacerCtx
 {
-    public struct ValueReplacerCtx
-    {
-        internal DateTime _operationTimeout;
-        internal bool _interrupted;
-        internal Dictionary<ulong, ulong> _positionMap;
-        internal CancellationToken _cancellation;
-        internal byte[] _interruptedKey;
-        internal bool _afterFirst;
-    }
+    internal DateTime _operationTimeout;
+    internal bool _interrupted;
+    internal Dictionary<ulong, ulong> _positionMap;
+    internal CancellationToken _cancellation;
+    internal byte[] _interruptedKey;
+    internal bool _afterFirst;
 }

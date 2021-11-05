@@ -1,7 +1,6 @@
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public interface IKnowDescriptor
 {
-    public interface IKnowDescriptor
-    {
-        ITypeDescriptor GetDescriptor();
-    }
+    ITypeDescriptor GetDescriptor();
 }

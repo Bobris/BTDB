@@ -1,9 +1,8 @@
 using System;
 
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+interface IScanTraitImpl
 {
-    interface IScanTraitImpl
-    {
-        bool MatchFilter(Type type);
-    }
+    bool MatchFilter(Type type);
 }

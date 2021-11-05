@@ -1,11 +1,10 @@
 using System;
 
-namespace BTDB.IL
+namespace BTDB.IL;
+
+public interface IILLocal
 {
-    public interface IILLocal
-    {
-        int Index { get; }
-        bool Pinned { get; }
-        Type LocalType { get; }
-    }
+    int Index { get; }
+    bool Pinned { get; }
+    Type LocalType { get; }
 }

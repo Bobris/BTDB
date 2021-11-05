@@ -1,9 +1,8 @@
 using BTDB.StreamLayer;
 
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public interface IPersistTypeDescriptor
 {
-    public interface IPersistTypeDescriptor
-    {
-        void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter);
-    }
+    void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter);
 }

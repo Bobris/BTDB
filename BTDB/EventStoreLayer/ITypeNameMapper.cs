@@ -1,10 +1,9 @@
 using System;
 
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public interface ITypeNameMapper
 {
-    public interface ITypeNameMapper
-    {
-        string ToName(Type type);
-        Type? ToType(string name);
-    }
+    string ToName(Type type);
+    Type? ToType(string name);
 }

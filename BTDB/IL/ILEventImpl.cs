@@ -1,24 +1,23 @@
 using System.Reflection.Emit;
 
-namespace BTDB.IL
+namespace BTDB.IL;
+
+class ILEventImpl : IILEvent
 {
-    class ILEventImpl : IILEvent
+    readonly EventBuilder _eventBuilder;
+
+    public ILEventImpl(EventBuilder eventBuilder)
     {
-        readonly EventBuilder _eventBuilder;
+        _eventBuilder = eventBuilder;
+    }
 
-        public ILEventImpl(EventBuilder eventBuilder)
-        {
-            _eventBuilder = eventBuilder;
-        }
+    public void SetAddOnMethod(IILMethod method)
+    {
+        _eventBuilder.SetAddOnMethod(((ILMethodImpl)method).MethodBuilder);
+    }
 
-        public void SetAddOnMethod(IILMethod method)
-        {
-            _eventBuilder.SetAddOnMethod(((ILMethodImpl)method).MethodBuilder);
-        }
-
-        public void SetRemoveOnMethod(IILMethod method)
-        {
-            _eventBuilder.SetRemoveOnMethod(((ILMethodImpl)method).MethodBuilder);
-        }
+    public void SetRemoveOnMethod(IILMethod method)
+    {
+        _eventBuilder.SetRemoveOnMethod(((ILMethodImpl)method).MethodBuilder);
     }
 }

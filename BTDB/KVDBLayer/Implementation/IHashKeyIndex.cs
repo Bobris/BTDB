@@ -1,7 +1,6 @@
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+interface IHashKeyIndex : IFileInfo
 {
-    interface IHashKeyIndex : IFileInfo
-    {
-        uint KeyLen { get; }
-    }
+    uint KeyLen { get; }
 }

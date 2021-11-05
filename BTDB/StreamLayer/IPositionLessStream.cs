@@ -1,19 +1,18 @@
 ﻿using System;
 
-namespace BTDB.StreamLayer
+namespace BTDB.StreamLayer;
+
+public interface IPositionLessStream : IDisposable
 {
-    public interface IPositionLessStream : IDisposable
-    {
-        int Read(Span<byte> data, ulong position);
+    int Read(Span<byte> data, ulong position);
 
-        void Write(ReadOnlySpan<byte> data, ulong position);
+    void Write(ReadOnlySpan<byte> data, ulong position);
 
-        void Flush();
+    void Flush();
 
-        void HardFlush();
+    void HardFlush();
 
-        ulong GetSize();
+    ulong GetSize();
 
-        void SetSize(ulong newSize);
-    }
+    void SetSize(ulong newSize);
 }

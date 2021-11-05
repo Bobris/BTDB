@@ -1,6 +1,5 @@
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+public interface IRootNodeInternal
 {
-    public interface IRootNodeInternal
-    {
-    }
 }

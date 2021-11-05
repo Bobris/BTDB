@@ -1,11 +1,10 @@
 using System;
 
-namespace BTDB.KVDBLayer.BTreeMem
+namespace BTDB.KVDBLayer.BTreeMem;
+
+interface IBTreeLeafNode
 {
-    interface IBTreeLeafNode
-    {
-        ReadOnlySpan<byte> GetKey(int idx);
-        ReadOnlySpan<byte> GetMemberValue(int idx);
-        void SetMemberValue(int idx, in ReadOnlySpan<byte> value);
-    }
+    ReadOnlySpan<byte> GetKey(int idx);
+    ReadOnlySpan<byte> GetMemberValue(int idx);
+    void SetMemberValue(int idx, in ReadOnlySpan<byte> value);
 }

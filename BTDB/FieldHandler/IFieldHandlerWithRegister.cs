@@ -1,7 +1,6 @@
-namespace BTDB.FieldHandler
+namespace BTDB.FieldHandler;
+
+public interface IFieldHandlerWithRegister
 {
-    public interface IFieldHandlerWithRegister
-    {
-        void Register(object owner);
-    }
+    void Register(object owner);
 }

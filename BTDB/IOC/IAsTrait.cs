@@ -1,14 +1,13 @@
 using System;
 
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+public interface IAsTrait
 {
-    public interface IAsTrait
-    {
-        void As(Type type);
-        void Keyed(object serviceKey, Type type);
-        void AsSelf();
-        void AsImplementedInterfaces();
-        void SetPreserveExistingDefaults();
-        bool UniqueRegistration { set; }
-    }
+    void As(Type type);
+    void Keyed(object serviceKey, Type type);
+    void AsSelf();
+    void AsImplementedInterfaces();
+    void SetPreserveExistingDefaults();
+    bool UniqueRegistration { set; }
 }

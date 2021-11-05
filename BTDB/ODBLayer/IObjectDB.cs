@@ -5,40 +5,39 @@ using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
 {
-    public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
-    {
-        void Open(IKeyValueDB keyValueDB, bool dispose);
+    void Open(IKeyValueDB keyValueDB, bool dispose);
 
-        void Open(IKeyValueDB keyValueDB, bool dispose, DBOptions options);
+    void Open(IKeyValueDB keyValueDB, bool dispose, DBOptions options);
 
-        IObjectDBTransaction StartTransaction();
+    IObjectDBTransaction StartTransaction();
 
-        IObjectDBTransaction StartReadOnlyTransaction();
+    IObjectDBTransaction StartReadOnlyTransaction();
 
-        ValueTask<IObjectDBTransaction> StartWritingTransaction();
+    ValueTask<IObjectDBTransaction> StartWritingTransaction();
 
-        string RegisterType(Type type);
+    string RegisterType(Type type);
 
-        string RegisterType(Type type, string withName);
+    string RegisterType(Type type, string withName);
 
-        IEnumerable<Type> GetPolymorphicTypes(Type baseType);
+    IEnumerable<Type> GetPolymorphicTypes(Type baseType);
 
-        Type TypeByName(string name);
+    Type TypeByName(string name);
 
-        new ITypeConvertorGenerator TypeConvertorGenerator { get; set; }
+    new ITypeConvertorGenerator TypeConvertorGenerator { get; set; }
 
-        new IFieldHandlerFactory FieldHandlerFactory { get; set; }
+    new IFieldHandlerFactory FieldHandlerFactory { get; set; }
 
-        DBOptions ActualOptions { get; }
+    DBOptions ActualOptions { get; }
 
-        IObjectDBLogger? Logger { get; set; }
+    IObjectDBLogger? Logger { get; set; }
 
-        ISymmetricCipher GetSymmetricCipher();
+    ISymmetricCipher GetSymmetricCipher();
 
-        void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, IRelation> factory);
+    void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, IRelation> factory);
 
-        bool AllowAutoRegistrationOfRelations { get; set; }
-    }
+    bool AllowAutoRegistrationOfRelations { get; set; }
 }

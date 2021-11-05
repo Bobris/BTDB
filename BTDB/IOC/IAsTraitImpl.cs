@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
 
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+interface IAsTraitImpl
 {
-    interface IAsTraitImpl
-    {
-        IEnumerable<KeyAndType> GetAsTypesFor(Type implementationType);
-        bool PreserveExistingDefaults { get; }
-        bool UniqueRegistration { get; }
-    }
+    IEnumerable<KeyAndType> GetAsTypesFor(Type implementationType);
+    bool PreserveExistingDefaults { get; }
+    bool UniqueRegistration { get; }
 }

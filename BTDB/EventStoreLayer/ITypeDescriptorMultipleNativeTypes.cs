@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
 
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public interface ITypeDescriptorMultipleNativeTypes : ITypeDescriptor
 {
-    public interface ITypeDescriptorMultipleNativeTypes : ITypeDescriptor
-    {
-        IEnumerable<Type> GetNativeTypes();
-    }
+    IEnumerable<Type> GetNativeTypes();
 }

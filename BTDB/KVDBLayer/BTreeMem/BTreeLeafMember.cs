@@ -1,8 +1,7 @@
-namespace BTDB.KVDBLayer.BTreeMem
+namespace BTDB.KVDBLayer.BTreeMem;
+
+struct BTreeLeafMember
 {
-    struct BTreeLeafMember
-    {
-        internal byte[] Key;
-        internal byte[] Value;
-    }
+    internal byte[] Key;
+    internal byte[] Value;
 }

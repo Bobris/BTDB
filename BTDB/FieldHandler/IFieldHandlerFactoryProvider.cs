@@ -1,8 +1,7 @@
-namespace BTDB.FieldHandler
+namespace BTDB.FieldHandler;
+
+public interface IFieldHandlerFactoryProvider
 {
-    public interface IFieldHandlerFactoryProvider
-    {
-        ITypeConvertorGenerator TypeConvertorGenerator { get; }
-        IFieldHandlerFactory FieldHandlerFactory { get; }
-    }
+    ITypeConvertorGenerator TypeConvertorGenerator { get; }
+    IFieldHandlerFactory FieldHandlerFactory { get; }
 }

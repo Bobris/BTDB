@@ -1,9 +1,8 @@
-namespace BTDB.KVDBLayer.BTree
+namespace BTDB.KVDBLayer.BTree;
+
+struct BTreeValue
 {
-    struct BTreeValue
-    {
-        internal uint ValueFileId;
-        internal uint ValueOfs;
-        internal int ValueSize; // Negative length means compressed
-    }
+    internal uint ValueFileId;
+    internal uint ValueOfs;
+    internal int ValueSize; // Negative length means compressed
 }

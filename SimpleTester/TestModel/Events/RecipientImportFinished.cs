@@ -1,6 +1,5 @@
-﻿namespace SimpleTester.TestModel.Events
+﻿namespace SimpleTester.TestModel.Events;
+
+public class RecipientImportFinished : ActionFinishedBase<Invitation>
 {
-    public class RecipientImportFinished : ActionFinishedBase<Invitation>
-    {
-    }
 }

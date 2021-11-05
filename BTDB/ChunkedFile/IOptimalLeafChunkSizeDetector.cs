@@ -1,10 +1,9 @@
 using BTDB.Buffer;
 
-namespace BTDB.ChunkedFile
+namespace BTDB.ChunkedFile;
+
+public interface IOptimalLeafChunkSizeDetector
 {
-    public interface IOptimalLeafChunkSizeDetector
-    {
-        int StartingBytesNeeded { get; }
-        int Detect(ByteBuffer startingBytes);
-    }
+    int StartingBytesNeeded { get; }
+    int Detect(ByteBuffer startingBytes);
 }

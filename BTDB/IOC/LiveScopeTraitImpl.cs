@@ -1,14 +1,13 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+class LiveScopeTraitImpl : ILiveScopeTrait, ILiveScopeTraitImpl
 {
-    class LiveScopeTraitImpl : ILiveScopeTrait, ILiveScopeTraitImpl
+    Lifetime _lifetime = Lifetime.AlwaysNew;
+
+    public void SingleInstance()
     {
-        Lifetime _lifetime = Lifetime.AlwaysNew;
-
-        public void SingleInstance()
-        {
-            _lifetime = Lifetime.Singleton;
-        }
-
-        public Lifetime Lifetime => _lifetime;
+        _lifetime = Lifetime.Singleton;
     }
+
+    public Lifetime Lifetime => _lifetime;
 }

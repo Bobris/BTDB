@@ -1,10 +1,9 @@
 using System.Collections.Generic;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public interface IQuerySizeDictionary<in TKey>
 {
-    public interface IQuerySizeDictionary<in TKey>
-    {
-        IEnumerable<KeyValuePair<uint, uint>> QuerySizeEnumerator();
-        KeyValuePair<uint, uint> QuerySizeByKey(TKey key);
-    }
+    IEnumerable<KeyValuePair<uint, uint>> QuerySizeEnumerator();
+    KeyValuePair<uint, uint> QuerySizeByKey(TKey key);
 }

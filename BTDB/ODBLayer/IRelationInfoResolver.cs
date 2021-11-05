@@ -1,14 +1,13 @@
 using BTDB.FieldHandler;
 using BTDB.IOC;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public interface IRelationInfoResolver
 {
-    public interface IRelationInfoResolver
-    {
-        IFieldHandlerFactory FieldHandlerFactory { get; }
-        ITypeConvertorGenerator TypeConvertorGenerator { get; }
-        IContainer? Container { get; }
-        IFieldHandlerLogger? FieldHandlerLogger { get; }
-        DBOptions ActualOptions { get; }
-    }
+    IFieldHandlerFactory FieldHandlerFactory { get; }
+    ITypeConvertorGenerator TypeConvertorGenerator { get; }
+    IContainer? Container { get; }
+    IFieldHandlerLogger? FieldHandlerLogger { get; }
+    DBOptions ActualOptions { get; }
 }

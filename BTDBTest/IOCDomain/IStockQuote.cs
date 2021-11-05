@@ -1,9 +1,8 @@
-﻿namespace BTDBTest.IOCDomain
+﻿namespace BTDBTest.IOCDomain;
+
+public interface IStockQuote
 {
-    public interface IStockQuote
-    {
-        ILogger Logger { get; }
-        IErrorHandler ErrorHandler { get; }
-        IDatabase Database { get; }
-    }
+    ILogger Logger { get; }
+    IErrorHandler ErrorHandler { get; }
+    IDatabase Database { get; }
 }

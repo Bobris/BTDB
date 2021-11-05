@@ -1,22 +1,21 @@
-namespace BTDB.StreamLayer
+namespace BTDB.StreamLayer;
+
+public interface IMemorizedPosition
 {
-    public interface IMemorizedPosition
+    void Restore(ref SpanReader reader);
+}
+
+public class MemorizedPosition : IMemorizedPosition
+{
+    readonly long _pos;
+
+    public MemorizedPosition(long pos)
     {
-        void Restore(ref SpanReader reader);
+        _pos = pos;
     }
 
-    public class MemorizedPosition : IMemorizedPosition
+    public void Restore(ref SpanReader reader)
     {
-        readonly long _pos;
-
-        public MemorizedPosition(long pos)
-        {
-            _pos = pos;
-        }
-
-        public void Restore(ref SpanReader reader)
-        {
-            reader.SetCurrentPosition(_pos);
-        }
+        reader.SetCurrentPosition(_pos);
     }
 }

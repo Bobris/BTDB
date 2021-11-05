@@ -1,10 +1,9 @@
 using System;
 using BTDB.Buffer;
 
-namespace BTDB.ChunkedFile
+namespace BTDB.ChunkedFile;
+
+public interface IChunkedFileFactory
 {
-    public interface IChunkedFileFactory
-    {
-        IChunkedFile Create(IObservable<ByteBuffer> source);
-    }
+    IChunkedFile Create(IObservable<ByteBuffer> source);
 }

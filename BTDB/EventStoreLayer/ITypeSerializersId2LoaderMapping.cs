@@ -1,11 +1,10 @@
 using BTDB.Encrypted;
 using BTDB.StreamLayer;
 
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public interface ITypeSerializersId2LoaderMapping
 {
-    public interface ITypeSerializersId2LoaderMapping
-    {
-        object Load(uint typeId, ref SpanReader reader, ITypeBinaryDeserializerContext context);
-        ISymmetricCipher GetSymmetricCipher();
-    }
+    object Load(uint typeId, ref SpanReader reader, ITypeBinaryDeserializerContext context);
+    ISymmetricCipher GetSymmetricCipher();
 }

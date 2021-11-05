@@ -1,10 +1,9 @@
 using System.Reflection.Emit;
 
-namespace BTDB.IL
+namespace BTDB.IL;
+
+internal interface IILFieldPrivate : IILField
 {
-    internal interface IILFieldPrivate : IILField
-    {
-        FieldBuilder TrueField { get; }
-        void FreeTemps();
-    }
+    FieldBuilder TrueField { get; }
+    void FreeTemps();
 }

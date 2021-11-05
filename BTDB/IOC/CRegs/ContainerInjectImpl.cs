@@ -1,42 +1,41 @@
 using System.Collections.Generic;
 using BTDB.IL;
 
-namespace BTDB.IOC.CRegs
+namespace BTDB.IOC.CRegs;
+
+class ContainerInjectImpl : ICReg, ICRegILGen
 {
-    class ContainerInjectImpl : ICReg, ICRegILGen
+    public string GenFuncName(IGenerationContext context)
     {
-        public string GenFuncName(IGenerationContext context)
-        {
-            return "IContainer";
-        }
+        return "IContainer";
+    }
 
-        public void GenInitialization(IGenerationContext context)
-        {
-        }
+    public void GenInitialization(IGenerationContext context)
+    {
+    }
 
-        public bool IsCorruptingILStack(IGenerationContext context)
-        {
-            return false;
-        }
+    public bool IsCorruptingILStack(IGenerationContext context)
+    {
+        return false;
+    }
 
-        public IILLocal GenMain(IGenerationContext context)
-        {
-            context.PushToILStack(Need.ContainerNeed);
-            return null;
-        }
+    public IILLocal GenMain(IGenerationContext context)
+    {
+        context.PushToILStack(Need.ContainerNeed);
+        return null;
+    }
 
-        public IEnumerable<INeed> GetNeeds(IGenerationContext context)
-        {
-            yield return Need.ContainerNeed;
-        }
+    public IEnumerable<INeed> GetNeeds(IGenerationContext context)
+    {
+        yield return Need.ContainerNeed;
+    }
 
-        public bool IsSingletonSafe()
-        {
-            return true;
-        }
+    public bool IsSingletonSafe()
+    {
+        return true;
+    }
 
-        public void Verify(ContainerVerification options, ContainerImpl container)
-        {
-        }
+    public void Verify(ContainerVerification options, ContainerImpl container)
+    {
     }
 }

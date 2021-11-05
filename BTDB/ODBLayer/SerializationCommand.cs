@@ -1,8 +1,7 @@
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public enum SerializationCommand : byte
 {
-    public enum SerializationCommand : byte
-    {
-        CreateKeyValue = 101,
-        CreateKey = 102
-    }
+    CreateKeyValue = 101,
+    CreateKey = 102
 }

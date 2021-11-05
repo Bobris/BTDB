@@ -4,100 +4,99 @@ using System.Linq;
 using System.Reflection;
 using BTDB.IL;
 
-namespace BTDB.IOC.CRegs
+namespace BTDB.IOC.CRegs;
+
+class AlwaysNewImpl : ICReg, ICRegILGen
 {
-    class AlwaysNewImpl : ICReg, ICRegILGen
+    readonly Type _implementationType;
+    readonly ConstructorInfo _constructorInfo;
+    readonly bool _arePropertiesAutowired;
+
+    internal AlwaysNewImpl(Type implementationType, ConstructorInfo constructorInfo, bool arePropertiesAutowired)
     {
-        readonly Type _implementationType;
-        readonly ConstructorInfo _constructorInfo;
-        readonly bool _arePropertiesAutowired;
+        _implementationType = implementationType;
+        _constructorInfo = constructorInfo;
+        _arePropertiesAutowired = arePropertiesAutowired;
+    }
 
-        internal AlwaysNewImpl(Type implementationType, ConstructorInfo constructorInfo, bool arePropertiesAutowired)
+    string ICRegILGen.GenFuncName(IGenerationContext context)
+    {
+        return "AlwaysNew_" + _implementationType.ToSimpleName();
+    }
+
+    public void GenInitialization(IGenerationContext context)
+    {
+        context.PushToCycleDetector(this, _implementationType.ToSimpleName());
+        foreach (var regIlGen in GetNeeds(context).Where(context.IsResolvableNeed).Select(context.ResolveNeed))
         {
-            _implementationType = implementationType;
-            _constructorInfo = constructorInfo;
-            _arePropertiesAutowired = arePropertiesAutowired;
+            regIlGen.GenInitialization(context);
         }
 
-        string ICRegILGen.GenFuncName(IGenerationContext context)
-        {
-            return "AlwaysNew_" + _implementationType.ToSimpleName();
-        }
+        context.PopFromCycleDetector();
+    }
 
-        public void GenInitialization(IGenerationContext context)
+    public bool IsCorruptingILStack(IGenerationContext context)
+    {
+        return context.AnyCorruptingStack(GetNeeds(context));
+    }
+
+    public IILLocal? GenMain(IGenerationContext context)
+    {
+        var il = context.IL;
+        var needsForProps = context.NeedsForProperties(_implementationType, _arePropertiesAutowired).ToList();
+        if (needsForProps.Count > 0)
         {
-            context.PushToCycleDetector(this, _implementationType.ToSimpleName());
-            foreach (var regIlGen in GetNeeds(context).Where(context.IsResolvableNeed).Select(context.ResolveNeed))
+            var result = il.DeclareLocal(_implementationType);
+            context.PushToILStack(context.NeedsForConstructor(_constructorInfo));
+            il.Newobj(_constructorInfo).Stloc(result);
+            foreach (var need in needsForProps)
             {
-                regIlGen.GenInitialization(context);
-            }
-
-            context.PopFromCycleDetector();
-        }
-
-        public bool IsCorruptingILStack(IGenerationContext context)
-        {
-            return context.AnyCorruptingStack(GetNeeds(context));
-        }
-
-        public IILLocal? GenMain(IGenerationContext context)
-        {
-            var il = context.IL;
-            var needsForProps = context.NeedsForProperties(_implementationType, _arePropertiesAutowired).ToList();
-            if (needsForProps.Count > 0)
-            {
-                var result = il.DeclareLocal(_implementationType);
-                context.PushToILStack(context.NeedsForConstructor(_constructorInfo));
-                il.Newobj(_constructorInfo).Stloc(result);
-                foreach (var need in needsForProps)
+                if (!context.IsResolvableNeed(need)) continue;
+                var resolvedNeed = context.ResolveNeed(need);
+                if (resolvedNeed.IsCorruptingILStack(context))
                 {
-                    if (!context.IsResolvableNeed(need)) continue;
-                    var resolvedNeed = context.ResolveNeed(need);
-                    if (resolvedNeed.IsCorruptingILStack(context))
+                    var local = resolvedNeed.GenMain(context);
+                    if (local == null)
                     {
-                        var local = resolvedNeed.GenMain(context);
-                        if (local == null)
-                        {
-                            local = il.DeclareLocal(need.ClrType);
-                            il.Stloc(local);
-                        }
+                        local = il.DeclareLocal(need.ClrType);
+                        il.Stloc(local);
+                    }
 
-                        il.Ldloc(result);
+                    il.Ldloc(result);
+                    il.Ldloc(local);
+                }
+                else
+                {
+                    il.Ldloc(result);
+                    var local = resolvedNeed.GenMain(context);
+                    if (local != null)
+                    {
                         il.Ldloc(local);
                     }
-                    else
-                    {
-                        il.Ldloc(result);
-                        var local = resolvedNeed.GenMain(context);
-                        if (local != null)
-                        {
-                            il.Ldloc(local);
-                        }
-                    }
-
-                    il.Call(need.PropertyInfo!.GetAnySetMethod()!);
                 }
 
-                return result;
+                il.Call(need.PropertyInfo!.GetAnySetMethod()!);
             }
 
-            context.PushToILStack(context.NeedsForConstructor(_constructorInfo));
-            context.IL.Newobj(_constructorInfo);
-            return null;
+            return result;
         }
 
-        public IEnumerable<INeed> GetNeeds(IGenerationContext context)
-        {
-            return context.NeedsForConstructor(_constructorInfo).Concat(context.NeedsForProperties(_implementationType, _arePropertiesAutowired));
-        }
+        context.PushToILStack(context.NeedsForConstructor(_constructorInfo));
+        context.IL.Newobj(_constructorInfo);
+        return null;
+    }
 
-        public bool IsSingletonSafe()
-        {
-            return false;
-        }
+    public IEnumerable<INeed> GetNeeds(IGenerationContext context)
+    {
+        return context.NeedsForConstructor(_constructorInfo).Concat(context.NeedsForProperties(_implementationType, _arePropertiesAutowired));
+    }
 
-        public void Verify(ContainerVerification options, ContainerImpl container)
-        {
-        }
+    public bool IsSingletonSafe()
+    {
+        return false;
+    }
+
+    public void Verify(ContainerVerification options, ContainerImpl container)
+    {
     }
 }

@@ -1,7 +1,6 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+public interface IPropertiesTrait
 {
-    public interface IPropertiesTrait
-    {
-        void PropertiesAutowired();
-    }
+    void PropertiesAutowired();
 }

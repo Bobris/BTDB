@@ -1,14 +1,13 @@
 ﻿using System;
 
-namespace BTDB.FieldHandler
+namespace BTDB.FieldHandler;
+
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Enum | AttributeTargets.Field | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
+public class PersistedNameAttribute : Attribute
 {
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Enum | AttributeTargets.Field | AttributeTargets.Interface, AllowMultiple = false, Inherited = false)]
-    public class PersistedNameAttribute : Attribute
+    public PersistedNameAttribute(string name)
     {
-        public PersistedNameAttribute(string name)
-        {
-            Name = name;
-        }
-        public string Name { get; private set; }
+        Name = name;
     }
+    public string Name { get; private set; }
 }

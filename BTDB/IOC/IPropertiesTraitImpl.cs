@@ -1,7 +1,6 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+interface IPropertiesTraitImpl
 {
-    interface IPropertiesTraitImpl
-    {
-        bool ArePropertiesAutowired { get; }
-    }
+    bool ArePropertiesAutowired { get; }
 }

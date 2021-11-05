@@ -1,9 +1,8 @@
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+struct KeyIndexInfo
 {
-    struct KeyIndexInfo
-    {
-        public uint Key;
-        public long Generation;
-        public ulong CommitUlong;
-    }
+    public uint Key;
+    public long Generation;
+    public ulong CommitUlong;
 }

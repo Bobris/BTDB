@@ -5,133 +5,132 @@ using BTDB.Buffer;
 using BTDB.IL;
 using BTDB.StreamLayer;
 
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
 {
-    public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
+    public string Name => "Byte[]";
+
+    public bool FinishBuildFromType(ITypeDescriptorFactory factory)
     {
-        public string Name => "Byte[]";
+        return true;
+    }
 
-        public bool FinishBuildFromType(ITypeDescriptorFactory factory)
+    public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
+    {
+        text.Append(Name);
+    }
+
+    public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    {
+        return ReferenceEquals(this, other);
+    }
+
+    public Type GetPreferredType()
+    {
+        return typeof(byte[]);
+    }
+
+    public Type GetPreferredType(Type targetType)
+    {
+        return GetPreferredType();
+    }
+
+    public ITypeNewDescriptorGenerator? BuildNewDescriptorGenerator()
+    {
+        return null;
+    }
+
+    public ITypeDescriptor? NestedType(int index)
+    {
+        return null;
+    }
+
+    public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
+    {
+    }
+
+    public bool Sealed => true;
+
+    public bool StoredInline => true;
+
+    public bool LoadNeedsHelpWithConversion => false;
+
+    public void ClearMappingToType()
+    {
+    }
+
+    public bool ContainsField(string name)
+    {
+        return false;
+    }
+
+    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+
+    public IEnumerable<Type> GetNativeTypes()
+    {
+        yield return typeof(ByteBuffer);
+    }
+
+    public bool AnyOpNeedsCtx()
+    {
+        return false;
+    }
+
+    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
+        Action<IILGen> pushDescriptor, Type targetType)
+    {
+        pushReader(ilGenerator);
+        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArray))!);
+        if (targetType == typeof(ByteBuffer))
         {
-            return true;
+            ilGenerator.Call(() => ByteBuffer.NewAsync(null));
+            return;
         }
 
-        public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
+        if (targetType != typeof(object))
         {
-            text.Append(Name);
+            if (targetType != typeof(byte[]))
+                throw new ArgumentOutOfRangeException(nameof(targetType));
+            return;
         }
 
-        public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
-        {
-            return ReferenceEquals(this, other);
-        }
+        ilGenerator.Castclass(typeof(object));
+    }
 
-        public Type GetPreferredType()
-        {
-            return typeof(byte[]);
-        }
+    public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    {
+        pushReader(ilGenerator);
+        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipByteArray))!);
+    }
 
-        public Type GetPreferredType(Type targetType)
-        {
-            return GetPreferredType();
-        }
+    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+        Action<IILGen> pushValue, Type valueType)
+    {
+        pushWriter(ilGenerator);
+        pushValue(ilGenerator);
+        if (valueType == typeof(byte[]))
+            ilGenerator.Call(
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(byte[]) })!);
+        else if (valueType == typeof(ByteBuffer))
+            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray),
+                new[] { typeof(ByteBuffer) })!);
+        else throw new ArgumentOutOfRangeException(nameof(valueType));
+    }
 
-        public ITypeNewDescriptorGenerator? BuildNewDescriptorGenerator()
-        {
-            return null;
-        }
+    public bool Equals(ITypeDescriptor other)
+    {
+        return ReferenceEquals(this, other);
+    }
 
-        public ITypeDescriptor? NestedType(int index)
-        {
-            return null;
-        }
+    public override int GetHashCode()
+    {
+        return Name.GetHashCode();
+    }
 
-        public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
-        {
-        }
-
-        public bool Sealed => true;
-
-        public bool StoredInline => true;
-
-        public bool LoadNeedsHelpWithConversion => false;
-
-        public void ClearMappingToType()
-        {
-        }
-
-        public bool ContainsField(string name)
-        {
-            return false;
-        }
-
-        public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
-
-        public IEnumerable<Type> GetNativeTypes()
-        {
-            yield return typeof(ByteBuffer);
-        }
-
-        public bool AnyOpNeedsCtx()
-        {
-            return false;
-        }
-
-        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
-            Action<IILGen> pushDescriptor, Type targetType)
-        {
-            pushReader(ilGenerator);
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArray))!);
-            if (targetType == typeof(ByteBuffer))
-            {
-                ilGenerator.Call(() => ByteBuffer.NewAsync(null));
-                return;
-            }
-
-            if (targetType != typeof(object))
-            {
-                if (targetType != typeof(byte[]))
-                    throw new ArgumentOutOfRangeException(nameof(targetType));
-                return;
-            }
-
-            ilGenerator.Castclass(typeof(object));
-        }
-
-        public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
-        {
-            pushReader(ilGenerator);
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipByteArray))!);
-        }
-
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
-            Action<IILGen> pushValue, Type valueType)
-        {
-            pushWriter(ilGenerator);
-            pushValue(ilGenerator);
-            if (valueType == typeof(byte[]))
-                ilGenerator.Call(
-                    typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(byte[]) })!);
-            else if (valueType == typeof(ByteBuffer))
-                ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray),
-                    new[] { typeof(ByteBuffer) })!);
-            else throw new ArgumentOutOfRangeException(nameof(valueType));
-        }
-
-        public bool Equals(ITypeDescriptor other)
-        {
-            return ReferenceEquals(this, other);
-        }
-
-        public override int GetHashCode()
-        {
-            return Name.GetHashCode();
-        }
-
-        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers,
-            Func<ITypeDescriptor, ITypeDescriptor> map)
-        {
-            return this;
-        }
+    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers,
+        Func<ITypeDescriptor, ITypeDescriptor> map)
+    {
+        return this;
     }
 }

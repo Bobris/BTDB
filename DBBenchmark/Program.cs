@@ -1,10 +1,9 @@
-﻿namespace DBBenchmark
+﻿namespace DBBenchmark;
+
+class Program
 {
-    class Program
+    static void Main()
     {
-        static void Main()
-        {
-            new KeyValueSpeedTest().Run();
-        }
+        new KeyValueSpeedTest().Run();
     }
 }

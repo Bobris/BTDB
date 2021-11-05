@@ -1,11 +1,10 @@
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public interface IReadEventStore
 {
-    public interface IReadEventStore
-    {
-        void ReadFromStartToEnd(IEventStoreObserver observer);
-        void ReadToEnd(IEventStoreObserver observer);
-        bool IsKnownAsCorrupted();
-        bool IsKnownAsFinished();
-        bool IsKnownAsAppendable();
-    }
+    void ReadFromStartToEnd(IEventStoreObserver observer);
+    void ReadToEnd(IEventStoreObserver observer);
+    bool IsKnownAsCorrupted();
+    bool IsKnownAsFinished();
+    bool IsKnownAsAppendable();
 }

@@ -1,7 +1,6 @@
-namespace BTDBTest.IOCDomain
+namespace BTDBTest.IOCDomain;
+
+public class Logger : ILogger
 {
-    public class Logger : ILogger
-    {
-        public bool Verbose { get; set; }
-    }
+    public bool Verbose { get; set; }
 }

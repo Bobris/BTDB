@@ -1,15 +1,14 @@
 ﻿using System.Threading.Tasks;
 using BTDB.Buffer;
 
-namespace BTDB.ChunkedFile
+namespace BTDB.ChunkedFile;
+
+public interface IChunkedFile
 {
-    public interface IChunkedFile
-    {
-        ByteBuffer RootChunk { get; }
-        int HashSize { get; }
-        int LeafChunkSize { get; }
-        int HashChunkSize { get; }
-        ulong FileSize { get; }
-        Task<ByteBuffer> ReadChunk(ByteBuffer hash);
-    }
+    ByteBuffer RootChunk { get; }
+    int HashSize { get; }
+    int LeafChunkSize { get; }
+    int HashChunkSize { get; }
+    ulong FileSize { get; }
+    Task<ByteBuffer> ReadChunk(ByteBuffer hash);
 }

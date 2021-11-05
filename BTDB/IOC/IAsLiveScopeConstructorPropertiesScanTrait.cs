@@ -1,6 +1,5 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+public interface IAsLiveScopeConstructorPropertiesScanTrait : IAsLiveScopeConstructorPropertiesTrait, IScanTrait
 {
-    public interface IAsLiveScopeConstructorPropertiesScanTrait : IAsLiveScopeConstructorPropertiesTrait, IScanTrait
-    {
-    }
 }

@@ -1,11 +1,10 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+enum NeedKind
 {
-    enum NeedKind
-    {
-        Internal,
-        Constant,
-        CReg,
-        ConstructorParameter,
-        Property
-    }
+    Internal,
+    Constant,
+    CReg,
+    ConstructorParameter,
+    Property
 }

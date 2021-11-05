@@ -1,10 +1,9 @@
 using System;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public interface IInternalSerializationCallbacks
 {
-    public interface IInternalSerializationCallbacks
-    {
-        void MetadataCreateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
-        void CreateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
-    }
+    void MetadataCreateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
+    void CreateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
 }
