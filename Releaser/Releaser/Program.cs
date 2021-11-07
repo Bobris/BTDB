@@ -85,8 +85,8 @@ namespace Releaser
                 Console.WriteLine("Building version " + newVersion);
                 UpdateCSProj(projDir, newVersion);
                 var outputLogLines = logLines.ToList();
-                var releaseLogLines = logLines.Skip(topVersionLine + 1).SkipWhile(s => string.IsNullOrWhiteSpace(s)).TakeWhile(s => !s.StartsWith("## ")).ToList();
-                while (releaseLogLines.Count > 0 && string.IsNullOrWhiteSpace(releaseLogLines[releaseLogLines.Count - 1]))
+                var releaseLogLines = logLines.Skip(topVersionLine + 1).SkipWhile(string.IsNullOrWhiteSpace).TakeWhile(s => !s.StartsWith("## ")).ToList();
+                while (releaseLogLines.Count > 0 && string.IsNullOrWhiteSpace(releaseLogLines[^1]))
                     releaseLogLines.RemoveAt(releaseLogLines.Count - 1);
                 outputLogLines.Insert(topVersionLine + 1, "## " + newVersion);
                 outputLogLines.Insert(topVersionLine + 1, "");
@@ -94,22 +94,33 @@ namespace Releaser
                     Directory.Delete(projDir + "/BTDB/bin/Release", true);
                 if (Directory.Exists(projDir + "/ODbDump/bin/Release"))
                     Directory.Delete(projDir + "/ODbDump/bin/Release", true);
-                Build(projDir, newVersion);
-                BuildODbDump(projDir);
-                var client = new GitHubClient(new ProductHeaderValue("BTDB-releaser"));
-                client.SetRequestTimeout(TimeSpan.FromMinutes(15));
-                var fileNameOfToken = Environment.GetEnvironmentVariable("USERPROFILE") + "/.github/token.txt";
-                string token;
+                var fileNameOfNugetToken = Environment.GetEnvironmentVariable("USERPROFILE") + "/.nuget/token.txt";
+                string nugetToken;
                 try
                 {
-                    token = File.ReadAllLines(fileNameOfToken).First();
+                    nugetToken = File.ReadAllLines(fileNameOfNugetToken).First();
                 }
                 catch
                 {
-                    Console.WriteLine("Cannot read github token from " + fileNameOfToken);
+                    Console.WriteLine("Cannot read nuget token from " + fileNameOfNugetToken);
                     return 1;
                 }
-                client.Credentials = new Octokit.Credentials(token);
+                Build(projDir, newVersion, nugetToken);
+                BuildODbDump(projDir);
+                var client = new GitHubClient(new ProductHeaderValue("BTDB-releaser"));
+                client.SetRequestTimeout(TimeSpan.FromMinutes(15));
+                var fileNameOfGithubToken = Environment.GetEnvironmentVariable("USERPROFILE") + "/.github/token.txt";
+                string githubToken;
+                try
+                {
+                    githubToken = File.ReadAllLines(fileNameOfGithubToken).First();
+                }
+                catch
+                {
+                    Console.WriteLine("Cannot read github token from " + fileNameOfGithubToken);
+                    return 1;
+                }
+                client.Credentials = new(githubToken);
                 var BTDBRepo = (await client.Repository.GetAllForUser("bobris")).First(r => r.Name == "BTDB");
                 Console.WriteLine("BTDB repo id: " + BTDBRepo.Id);
                 File.WriteAllText(projDir + "/CHANGELOG.md", string.Join("", outputLogLines.Select(s => s + '\n')));
@@ -121,13 +132,12 @@ namespace Releaser
                 var commit = gitrepo.Commit("Released " + newVersion, author, committer);
                 gitrepo.ApplyTag(newVersion);
                 var options = new PushOptions();
-                options.CredentialsProvider = new CredentialsHandler(
-                    (url, usernameFromUrl, types) =>
-                        new UsernamePasswordCredentials()
-                        {
-                            Username = token,
-                            Password = ""
-                        });
+                options.CredentialsProvider = (_, _, _) =>
+                    new UsernamePasswordCredentials
+                    {
+                        Username = githubToken,
+                        Password = ""
+                    };
                 gitrepo.Network.Push(gitrepo.Head, options);
                 var release = new NewRelease(newVersion);
                 release.Name = newVersion;
@@ -175,7 +185,7 @@ namespace Releaser
             throw new OperationCanceledException("Upload Asset " + fileName + " failed");
         }
 
-        static void Build(string projDir, string newVersion)
+        static void Build(string projDir, string newVersion, string nugetToken)
         {
             var start = new ProcessStartInfo("dotnet", "pack -c Release")
             {
@@ -195,7 +205,7 @@ namespace Releaser
                 File.Copy(fn, releaseSources + "/" + relfn);
             }
             System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources, projDir + "/BTDB/bin/Release/BTDB.zip", System.IO.Compression.CompressionLevel.Optimal, false);
-            start = new ProcessStartInfo("dotnet", "nuget push BTDB." + newVersion + ".nupkg -s https://nuget.org")
+            start = new("dotnet", "nuget push BTDB." + newVersion + ".nupkg -s https://nuget.org -k "+nugetToken)
             {
                 UseShellExecute = true,
                 WorkingDirectory = projDir + "/BTDB/bin/Release"
