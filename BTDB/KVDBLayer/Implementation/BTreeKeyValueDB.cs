@@ -31,16 +31,16 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     IRootNode? _nextRoot;
     BTreeKeyValueDBTransaction? _writingTransaction;
 
-    readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue =
-        new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
+    readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new();
 
-    readonly object _writeLock = new object();
+    readonly object _writeLock = new();
     uint _fileIdWithTransactionLog;
     uint _fileIdWithPreviousTransactionLog;
     IFileCollectionFile? _fileWithTransactionLog;
     ISpanWriter? _writerWithTransactionLog;
     static readonly byte[] MagicStartOfTransaction = { (byte)'t', (byte)'R' };
     public long MaxTrLogFileSize { get; set; }
+
     public IEnumerable<IKeyValueDBTransaction> Transactions()
     {
         foreach (var keyValuePair in _transactions)
@@ -149,7 +149,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             var keyIndex = fileInfo.Value as IKeyIndex;
             if (keyIndex == null) continue;
             keyIndexes.Add(new KeyIndexInfo
-            { Key = fileInfo.Key, Generation = keyIndex.Generation, CommitUlong = keyIndex.CommitUlong });
+                { Key = fileInfo.Key, Generation = keyIndex.Generation, CommitUlong = keyIndex.CommitUlong });
         }
 
         if (keyIndexes.Count > 1)
@@ -263,6 +263,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             if (trLog == null) continue;
                             MarkFileForRemoval(fileInfo.Key);
                         }
+
                         _fileCollection.DeleteAllUnknownFiles();
                         _fileIdWithTransactionLog = 0;
                         firstTrLogId = 0;
@@ -707,110 +708,110 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 {
                     case KVCommandType.CreateOrUpdateDeprecated:
                     case KVCommandType.CreateOrUpdate:
+                    {
+                        if (_nextRoot == null) return false;
+                        var keyLen = reader.ReadVInt32();
+                        var valueLen = reader.ReadVInt32();
+                        var key = new byte[keyLen];
+                        reader.ReadBlock(key);
+                        var keyBuf = ByteBuffer.NewAsync(key);
+                        if ((command & KVCommandType.FirstParamCompressed) != 0)
                         {
-                            if (_nextRoot == null) return false;
-                            var keyLen = reader.ReadVInt32();
-                            var valueLen = reader.ReadVInt32();
-                            var key = new byte[keyLen];
-                            reader.ReadBlock(key);
-                            var keyBuf = ByteBuffer.NewAsync(key);
-                            if ((command & KVCommandType.FirstParamCompressed) != 0)
-                            {
-                                _compression.DecompressKey(ref keyBuf);
-                            }
-
-                            trueValue.Clear();
-                            var valueOfs = (uint)reader.GetCurrentPosition();
-                            var valueSize = (command & KVCommandType.SecondParamCompressed) != 0 ? -valueLen : valueLen;
-                            if (valueLen <= MaxValueSizeInlineInMemory &&
-                                (command & KVCommandType.SecondParamCompressed) == 0)
-                            {
-                                trueValue[4] = (byte)valueLen;
-                                reader.ReadBlock(ref MemoryMarshal.GetReference(trueValue.Slice(5, valueLen)),
-                                    (uint)valueLen);
-                            }
-                            else
-                            {
-                                MemoryMarshal.Write(trueValue, ref fileId);
-                                MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
-                                MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
-                                reader.SkipBlock(valueLen);
-                            }
-
-                            cursor.Upsert(keyBuf.AsSyncReadOnlySpan(), trueValue);
+                            _compression.DecompressKey(ref keyBuf);
                         }
+
+                        trueValue.Clear();
+                        var valueOfs = (uint)reader.GetCurrentPosition();
+                        var valueSize = (command & KVCommandType.SecondParamCompressed) != 0 ? -valueLen : valueLen;
+                        if (valueLen <= MaxValueSizeInlineInMemory &&
+                            (command & KVCommandType.SecondParamCompressed) == 0)
+                        {
+                            trueValue[4] = (byte)valueLen;
+                            reader.ReadBlock(ref MemoryMarshal.GetReference(trueValue.Slice(5, valueLen)),
+                                (uint)valueLen);
+                        }
+                        else
+                        {
+                            MemoryMarshal.Write(trueValue, ref fileId);
+                            MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
+                            MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
+                            reader.SkipBlock(valueLen);
+                        }
+
+                        cursor.Upsert(keyBuf.AsSyncReadOnlySpan(), trueValue);
+                    }
                         break;
                     case KVCommandType.EraseOne:
+                    {
+                        if (_nextRoot == null) return false;
+                        var keyLen = reader.ReadVInt32();
+                        var key = new byte[keyLen];
+                        reader.ReadBlock(key);
+                        var keyBuf = ByteBuffer.NewAsync(key);
+                        if ((command & KVCommandType.FirstParamCompressed) != 0)
                         {
-                            if (_nextRoot == null) return false;
-                            var keyLen = reader.ReadVInt32();
-                            var key = new byte[keyLen];
-                            reader.ReadBlock(key);
-                            var keyBuf = ByteBuffer.NewAsync(key);
-                            if ((command & KVCommandType.FirstParamCompressed) != 0)
-                            {
-                                _compression.DecompressKey(ref keyBuf);
-                            }
-
-                            if (cursor.FindExact(keyBuf.AsSyncReadOnlySpan()))
-                            {
-                                cursor.Erase();
-                            }
-                            else if (!_lenientOpen)
-                            {
-                                _nextRoot = null;
-                                return false;
-                            }
+                            _compression.DecompressKey(ref keyBuf);
                         }
+
+                        if (cursor.FindExact(keyBuf.AsSyncReadOnlySpan()))
+                        {
+                            cursor.Erase();
+                        }
+                        else if (!_lenientOpen)
+                        {
+                            _nextRoot = null;
+                            return false;
+                        }
+                    }
                         break;
                     case KVCommandType.EraseRange:
+                    {
+                        if (_nextRoot == null) return false;
+                        var keyLen1 = reader.ReadVInt32();
+                        var keyLen2 = reader.ReadVInt32();
+                        var key = new byte[keyLen1];
+                        reader.ReadBlock(key);
+                        var keyBuf = ByteBuffer.NewAsync(key);
+                        if ((command & KVCommandType.FirstParamCompressed) != 0)
                         {
-                            if (_nextRoot == null) return false;
-                            var keyLen1 = reader.ReadVInt32();
-                            var keyLen2 = reader.ReadVInt32();
-                            var key = new byte[keyLen1];
-                            reader.ReadBlock(key);
-                            var keyBuf = ByteBuffer.NewAsync(key);
-                            if ((command & KVCommandType.FirstParamCompressed) != 0)
-                            {
-                                _compression.DecompressKey(ref keyBuf);
-                            }
-
-                            var findResult = cursor.Find(keyBuf.AsSyncReadOnlySpan());
-                            if (findResult != FindResult.Exact && !_lenientOpen)
-                            {
-                                _nextRoot = null;
-                                return false;
-                            }
-
-                            if (findResult == FindResult.Previous) cursor.MoveNext();
-                            key = new byte[keyLen2];
-                            reader.ReadBlock(key);
-                            keyBuf = ByteBuffer.NewAsync(key);
-                            if ((command & KVCommandType.SecondParamCompressed) != 0)
-                            {
-                                _compression.DecompressKey(ref keyBuf);
-                            }
-
-                            findResult = cursor2.Find(keyBuf.AsSyncReadOnlySpan());
-                            if (findResult != FindResult.Exact && !_lenientOpen)
-                            {
-                                _nextRoot = null;
-                                return false;
-                            }
-
-                            if (findResult == FindResult.Next) cursor2.MovePrevious();
-                            cursor.EraseTo(cursor2);
+                            _compression.DecompressKey(ref keyBuf);
                         }
+
+                        var findResult = cursor.Find(keyBuf.AsSyncReadOnlySpan());
+                        if (findResult != FindResult.Exact && !_lenientOpen)
+                        {
+                            _nextRoot = null;
+                            return false;
+                        }
+
+                        if (findResult == FindResult.Previous) cursor.MoveNext();
+                        key = new byte[keyLen2];
+                        reader.ReadBlock(key);
+                        keyBuf = ByteBuffer.NewAsync(key);
+                        if ((command & KVCommandType.SecondParamCompressed) != 0)
+                        {
+                            _compression.DecompressKey(ref keyBuf);
+                        }
+
+                        findResult = cursor2.Find(keyBuf.AsSyncReadOnlySpan());
+                        if (findResult != FindResult.Exact && !_lenientOpen)
+                        {
+                            _nextRoot = null;
+                            return false;
+                        }
+
+                        if (findResult == FindResult.Next) cursor2.MovePrevious();
+                        cursor.EraseTo(cursor2);
+                    }
                         break;
                     case KVCommandType.DeltaUlongs:
-                        {
-                            if (_nextRoot == null) return false;
-                            var idx = reader.ReadVUInt32();
-                            var delta = reader.ReadVUInt64();
-                            // overflow is expected in case Ulong is decreasing but that should be rare
-                            _nextRoot.SetUlong(idx, unchecked(_nextRoot.GetUlong(idx) + delta));
-                        }
+                    {
+                        if (_nextRoot == null) return false;
+                        var idx = reader.ReadVUInt32();
+                        var delta = reader.ReadVUInt64();
+                        // overflow is expected in case Ulong is decreasing but that should be rare
+                        _nextRoot.SetUlong(idx, unchecked(_nextRoot.GetUlong(idx) + delta));
+                    }
                         break;
                     case KVCommandType.TransactionStart:
                         if (!reader.CheckMagic(MagicStartOfTransaction))
@@ -1009,8 +1010,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    readonly ConditionalWeakTable<IKeyValueDBTransaction, object?> _transactions =
-        new ConditionalWeakTable<IKeyValueDBTransaction, object?>();
+    readonly ConditionalWeakTable<IKeyValueDBTransaction, object?> _transactions = new();
 
     public IKeyValueDBTransaction StartReadOnlyTransaction()
     {
@@ -1035,12 +1035,12 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             {
                 var tr = NewWritingTransactionUnsafe();
                 _transactions.Add(tr, null);
-                return new ValueTask<IKeyValueDBTransaction>(tr);
+                return new(tr);
             }
 
             var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
             _writeWaitingQueue.Enqueue(tcs);
-            return new ValueTask<IKeyValueDBTransaction>(tcs.Task);
+            return new(tcs.Task);
         }
     }
 
@@ -1260,7 +1260,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         try
         {
             Monitor.TryEnter(_writeLock, ref taken);
-            if (taken)
+            if (taken && _writingTransaction == null)
             {
                 FreeWaitingToDisposeUnsafe();
             }
@@ -1567,7 +1567,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 var memberValue = ctx.CurrentValue;
                 writerReference.WriteVUInt32(ctx.PreviousCurrentCommonLength);
                 writerReference.WriteVUInt32((uint)(ctx.CurrentPrefix.Length + ctx.CurrentSuffix.Length -
-                                                     ctx.PreviousCurrentCommonLength));
+                                                    ctx.PreviousCurrentCommonLength));
                 if (ctx.CurrentPrefix.Length <= ctx.PreviousCurrentCommonLength)
                 {
                     writerReference.WriteBlock(

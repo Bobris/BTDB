@@ -16,13 +16,13 @@ class Cursor12 : ICursor
     public Cursor12(RootNode12 rootNode)
     {
         _rootNode = rootNode;
-        _stack = new StructList<CursorItem>();
+        _stack = new();
     }
 
     Cursor12(Cursor12 from)
     {
         _rootNode = from._rootNode;
-        _stack = new StructList<CursorItem>(from._stack);
+        _stack = new(from._stack);
     }
 
     public void SetNewRoot(IRootNode artRoot)

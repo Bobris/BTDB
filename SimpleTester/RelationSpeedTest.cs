@@ -253,7 +253,7 @@ public class RelationSpeedTest
 
     public void Run()
     {
-        var cnt = 500000;
+        var cnt = 5000000;
         using (var fc = new InMemoryFileCollection())
         using (var db = CreateDb(fc))
         {
