@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 27.0.2
+
 ### Fixed
 
 Hopefully last bug in native heap fixed.
