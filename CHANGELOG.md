@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 28.0.0
+
 ### Added
 
 UpTo Constraints, which quickly skip rest of values.
