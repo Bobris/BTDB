@@ -45,7 +45,7 @@ public static class ExtensionMethods
     public static long GetKeyIndex(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
     {
         var currentIndex = transaction.GetKeyIndex();
-        if (!transaction.FindFirstKey(prefix)) throw new InvalidDataException();
+        if (!transaction.FindFirstKey(prefix)) return -1;
         var relative = currentIndex - transaction.GetKeyIndex();
         transaction.SetKeyIndex(currentIndex);
         return relative;

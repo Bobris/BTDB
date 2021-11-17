@@ -101,7 +101,10 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         }
 
         _prevProtectionCounter = KeyValueTr.CursorMovedCounter;
-        _pos = KeyValueTr.GetKeyIndex(_buffer.AsReadOnlySpan(0, _keyBytesCount));
+        if (ret)
+        {
+            _pos = KeyValueTr.GetKeyIndex(_buffer.AsReadOnlySpan(0, _keyBytesCount));
+        }
         return ret;
     }
 

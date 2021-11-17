@@ -73,6 +73,17 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal(expectedNames, names);
     }
 
+    [Theory]
+    [InlineData("a", "")]
+    public void ConstraintUnsignedAnyStringContainsWorksOnEmptyTable(string contain, string expectedNames)
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        var names = string.Concat(t.ScanById(Constraint.Unsigned.Any, Constraint.String.Contains(contain))
+            .Select(p => p.Name));
+        Assert.Equal(expectedNames, names);
+    }
+
     void FillPersonData()
     {
         using var tr = _db.StartTransaction();

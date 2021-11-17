@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+ScanBy of empty relation does not throw Exception anymore.
+
 ## 27.0.2
 
 ### Fixed
