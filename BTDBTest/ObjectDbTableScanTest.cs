@@ -125,6 +125,28 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
     }
 
     [Fact]
+    public void ConstraintUnsignedAnyUnsignedUpToWorks()
+    {
+        FillThreeUlongsData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        AssertSameCondition(t.Where(v => v.N2 <= 3),
+            t.ScanById(Constraint.Unsigned.Any, Constraint.Unsigned.UpTo(3)));
+    }
+
+    [Fact]
+    public void ConstraintUnsignedAnyUnsignedUpToExcludeWorks()
+    {
+        FillThreeUlongsData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        AssertSameCondition(t.Where(v => v.N2 < 3),
+            t.ScanById(Constraint.Unsigned.Any, Constraint.Unsigned.UpTo(3, false)));
+    }
+
+    [Fact]
     public void ConstraintTripleUnsignedExactWorks()
     {
         FillThreeUlongsData();

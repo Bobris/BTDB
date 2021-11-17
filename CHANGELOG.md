@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+UpTo Constraints, which quickly skip rest of values.
+
 ## 27.0.3
 
 ### Fixed

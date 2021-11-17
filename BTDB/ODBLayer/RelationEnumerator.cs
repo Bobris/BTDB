@@ -162,15 +162,20 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         var offsetPrefix = i > 0 ? _constraints[i - 1].Offset : _keyBytesCount;
         var reader = new SpanReader(key[offsetPrefix..]);
     goDown:
-        if (_constraints[i].Constraint.Match(ref reader, _buffer))
+        var matchResult = _constraints[i].Constraint.Match(ref reader, _buffer);
+        _constraints[i].Offset = offsetPrefix + (int)reader.GetCurrentPosition();
+
+        if (matchResult == IConstraint.MatchResult.Yes)
         {
-            _constraints[i].Offset = offsetPrefix + (int)reader.GetCurrentPosition();
             i++;
             if (i == _constraints.Length) return true;
             goto goDown;
         }
 
-        _constraints[i].Offset = offsetPrefix + (int)reader.GetCurrentPosition();
+        if (matchResult == IConstraint.MatchResult.NoAfterLast)
+        {
+            goto goNextFast;
+        }
 
         switch (_constraints[i].MatchType)
         {
