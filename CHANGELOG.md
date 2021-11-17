@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 27.0.3
+
 ### Fixed
 
 ScanBy of empty relation does not throw Exception anymore.
