@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Relations `UpdateById` method for faster updates.
+
 ## 28.0.0
 
 ### Added

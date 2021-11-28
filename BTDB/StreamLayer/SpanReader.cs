@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -55,6 +56,14 @@ public ref struct SpanReader
     public long GetCurrentPosition()
     {
         return Controller?.GetCurrentPosition(this) ?? (long)Unsafe.ByteOffset(
+            ref MemoryMarshal.GetReference(Original),
+            ref MemoryMarshal.GetReference(Buf));
+    }
+
+    public uint GetCurrentPositionWithoutController()
+    {
+        Debug.Assert(Controller == null);
+        return (uint)Unsafe.ByteOffset(
             ref MemoryMarshal.GetReference(Original),
             ref MemoryMarshal.GetReference(Buf));
     }
@@ -884,18 +893,18 @@ public ref struct SpanReader
             case 0:
                 return new((uint)ReadInt32LE());
             case 1:
-                {
-                    Span<byte> ip6Bytes = stackalloc byte[16];
-                    ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
-                    return new(ip6Bytes);
-                }
+            {
+                Span<byte> ip6Bytes = stackalloc byte[16];
+                ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
+                return new(ip6Bytes);
+            }
             case 2:
-                {
-                    Span<byte> ip6Bytes = stackalloc byte[16];
-                    ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
-                    var scopeId = (long)ReadVUInt64();
-                    return new(ip6Bytes, scopeId);
-                }
+            {
+                Span<byte> ip6Bytes = stackalloc byte[16];
+                ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
+                var scopeId = (long)ReadVUInt64();
+                return new(ip6Bytes, scopeId);
+            }
             case 3:
                 return null;
             default: throw new InvalidDataException("Unknown type of IPAddress");
@@ -969,6 +978,13 @@ public ref struct SpanReader
 
     public void CopyAbsoluteToWriter(uint start, uint len, ref SpanWriter writer)
     {
+        Debug.Assert(Controller == null);
         writer.WriteBlock(Original.Slice((int)start, (int)len));
+    }
+
+    public void CopyFromPosToWriter(uint start, ref SpanWriter writer)
+    {
+        Debug.Assert(Controller == null);
+        writer.WriteBlock(Original.Slice((int)start, (int)GetCurrentPositionWithoutController() - (int)start));
     }
 }

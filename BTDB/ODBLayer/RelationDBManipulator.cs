@@ -347,6 +347,53 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
     }
 
+    [SkipLocalsInit]
+    public bool UpdateByIdStart(ReadOnlySpan<byte> keyBytes, ref SpanWriter writer, ref ReadOnlySpan<byte> valueBytes,
+        bool throwIfNotFound)
+    {
+        if (!_kvtr.FindExactKey(keyBytes))
+        {
+            if (throwIfNotFound)
+                throw new BTDBException("Not found record to update.");
+            return false;
+        }
+
+        valueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(valueBytes), valueBytes.Length);
+
+        var version = (uint)PackUnpack.UnpackVUInt(valueBytes);
+
+        var currentVersion = _relationInfo.ClientTypeVersion;
+        if (version != currentVersion)
+        {
+            var itemLoader = _relationInfo.ItemLoaderInfos[0];
+
+            var reader = new SpanReader(keyBytes);
+            reader.SkipInt8(); // 3
+            reader.SkipVUInt64(); // RelationId
+            var obj = (T)itemLoader._primaryKeysLoader(_transaction, ref reader);
+            reader = new(valueBytes);
+            reader.SkipVUInt32();
+            itemLoader.GetValueLoader(version)(_transaction, ref reader, obj);
+            valueBytes = ValueBytes(obj, ref writer);
+        }
+
+        writer.WriteVUInt32(currentVersion);
+        return true;
+    }
+
+    [SkipLocalsInit]
+    public void UpdateByIdFinish(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> oldValueBytes,
+        ReadOnlySpan<byte> newValueBytes)
+    {
+        _kvtr.CreateOrUpdateKeyValue(keyBytes, newValueBytes);
+
+        if (_hasSecondaryIndexes)
+        {
+            if (UpdateSecondaryIndexes(keyBytes, oldValueBytes, newValueBytes))
+                MarkModification();
+        }
+    }
+
     public bool Contains(in ReadOnlySpan<byte> keyBytes)
     {
         return _kvtr.FindExactKey(keyBytes);
@@ -833,6 +880,25 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
     }
 
+    bool UpdateSecondaryIndexes(in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue, in ReadOnlySpan<byte> newValue)
+    {
+        var changed = false;
+        foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+        {
+            var newKeyBytes = WriteSecondaryKeyKey(key, oldKey, newValue);
+            var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
+            if (oldKeyBytes.SequenceEqual(newKeyBytes))
+                continue;
+            //remove old index
+            EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
+            //insert new value
+            _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
+            changed = true;
+        }
+
+        return changed;
+    }
+
     bool UpdateSecondaryIndexes(T newValue, in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue,
         ref SpanWriter writer)
     {
@@ -847,7 +913,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             //remove old index
             EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
             //insert new value
-            _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new ReadOnlySpan<byte>());
+            _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
             changed = true;
         }
 

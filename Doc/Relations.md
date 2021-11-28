@@ -18,6 +18,7 @@ Let's first define data entity we want to store (note that it is not defined as 
         void Insert(Person person);
         bool RemoveById(ulong id);
         Person FindById(ulong id);
+        bool UpdateById(ulong id, string name);
     }
 
 How do we get `IPersonTable` interface to actually insert persons? First we need [obtain transaction](ODBDictionary.md)
@@ -71,6 +72,12 @@ When defined in interface following methods are automatically implemented by BTD
     personTable.Update(new Person { Id = 2, Name = "superadmin", Age = 100 });
 
 will throw if does not exist
+
+### UpdateById
+
+    (void|bool) UpdateById(primaryKey1, ..., primaryKeyN, valueField1, ..., valueFieldN)
+
+Faster update but can change only nonprimary fields and must be simple types (no classes, IIndirect<T>, IDictionary<K,V>, IOrderedSet<T>). Value properties could be any number and in any order by they must match parameter name case insensitively. Returns true if found and updated, void variant throw when does not exists. Any suffix could be appended to function name `UpdateById`, use to disambiguate when multiple overrides would have same types of value sets.
 
 ### Upsert (Insert or Update)
 

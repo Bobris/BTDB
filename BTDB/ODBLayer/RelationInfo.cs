@@ -66,11 +66,11 @@ public class RelationInfo
             return obj;
         }
 
-        readonly RelationLoaderFunc _primaryKeysLoader;
-        readonly bool _primaryKeyIsEnough;
+        internal readonly RelationLoaderFunc _primaryKeysLoader;
+        internal readonly bool _primaryKeyIsEnough;
         readonly RelationLoader?[] _valueLoaders;
 
-        RelationLoader GetValueLoader(uint version)
+        internal RelationLoader GetValueLoader(uint version)
         {
             RelationLoader? res;
             do
@@ -1210,8 +1210,7 @@ public class RelationInfo
         handler.Skip(ilGenerator, pushReader, null);
         ilGenerator
             .Do(pushReader) //[VR]
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!) //[posNew(long)]
-            .ConvU4() // [posNew(uint)]
+            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPositionWithoutController))!) //[posNew(uint)]
             .Ldloc(memoPos) //[posNew(uint), posOld(uint)]
             .Sub() //[readLen(uint)]
             .Stloc(memoLen); //[]
@@ -1229,12 +1228,20 @@ public class RelationInfo
             .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.CopyAbsoluteToWriter))!); //[]
     }
 
-    static void MemorizeCurrentPosition(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal memoPositionLoc)
+    public static void CopyFromPos(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal posLocal, Action<IILGen> pushWriter)
+    {
+        ilGenerator
+            .Do(pushReader) //[reader]
+            .Ldloc(posLocal) //[reader, pos]
+            .Do(pushWriter) //[reader, pos, writer]
+            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.CopyFromPosToWriter))!); //[]
+    }
+
+    public static void MemorizeCurrentPosition(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal memoPositionLoc)
     {
         ilGenerator
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!)
-            .ConvU4()
+            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPositionWithoutController))!)
             .Stloc(memoPositionLoc);
     }
 
@@ -1246,16 +1253,7 @@ public class RelationInfo
 
         handler.Skip(ilGenerator, pushReader, null);
 
-        ilGenerator
-            .Do(pushReader) // [reader]
-            .Ldloc(memoPositionLoc) //[reader, posOld]
-            .Do(pushReader) // [reader, posOld, reader]
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!) // [reader, posOld, posNew]
-            .ConvU4()
-            .Ldloc(memoPositionLoc) //[reader, posOld, posNew, posOld]
-            .Sub() //[reader, posOld, readLen(uint)]
-            .Do(pushWriter) //[reader, posOld, readLen(uint), writer]
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.CopyAbsoluteToWriter))!); //[]
+        CopyFromPos(ilGenerator, pushReader, memoPositionLoc, pushWriter);
     }
 
     public object GetSimpleLoader(SimpleLoaderType handler)
