@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using BTDB.ODBLayer;
 using Xunit;
@@ -17,7 +16,9 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
     {
         [PrimaryKey(1)] public ulong TenantId { get; set; }
 
+        [SecondaryKey("Email")]
         [PrimaryKey(2)] public string? Email { get; set; }
+
 
         public string? Name { get; set; }
     }
@@ -25,6 +26,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
     public interface IPersonTable : IRelation<Person>
     {
         IEnumerable<Person> ScanById(Constraint<ulong> tenantId, Constraint<string> email);
+        IEnumerable<Person> ScanByEmail(Constraint<string> email);
     }
 
     [Fact]
@@ -69,6 +71,25 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         using var tr = _db.StartTransaction();
         var t = tr.GetRelation<IPersonTable>();
         var names = string.Concat(t.ScanById(Constraint.Unsigned.Any, Constraint.String.Contains(contain))
+            .Select(p => p.Name));
+        Assert.Equal(expectedNames, names);
+    }
+
+    [Theory]
+    [InlineData("a", "AC")]
+    [InlineData("b", "ABD")]
+    [InlineData("", "ACBD")]
+    [InlineData(".c", "ACBD")]
+    [InlineData("a@b.cd", "A")]
+    [InlineData("a@c.cd", "C")]
+    [InlineData("a@c.cd2", "")]
+    public void ConstraintStringContainsWorks(string contain, string expectedNames)
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        var names = string.Concat(t.ScanByEmail(Constraint.String.Contains(contain))
             .Select(p => p.Name));
         Assert.Equal(expectedNames, names);
     }

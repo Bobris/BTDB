@@ -227,7 +227,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         }
 
     goNextFast:
-        while (i > 0)
+        while (i >= 0)
         {
             switch (_constraints[i].MatchType)
             {

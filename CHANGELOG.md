@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Loose Constraint on first position didn't found all matched records.
+
 ### Added
 
 Relations `UpdateById` method for faster updates.
