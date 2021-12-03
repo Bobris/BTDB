@@ -167,8 +167,8 @@ public class EnumFieldHandler : IFieldHandler
 
         public bool IsBinaryRepresentationSubsetOf(EnumConfiguration targetCfg)
         {
-            var targetDict = targetCfg.Values.ToDictionary(v => v, _ => false);
-            return _values.All(v => targetDict.ContainsKey(v));
+            var targetSet = targetCfg.Values.ToHashSet();
+            return _values.All(v => targetSet.Contains(v));
         }
     }
 
