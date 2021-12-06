@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 28.1.1
+
 ### Fixed
 Enums with multiple synonym labels for the same value (for example HttpStatusCode 300) can be stored
 
