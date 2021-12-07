@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 28.1.2
+
 ### Fixed
 
 ScanBy and GatherBy secondary index when DB is upgraded with secondary index removed.
