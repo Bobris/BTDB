@@ -761,9 +761,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         StructList<byte> keyBytes = new();
         keyBytes.AddRange(_relationInfo.PrefixSecondary);
-        keyBytes.Add((byte)RemapPrimeSK(secondaryKeyIndex));
+        var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
+        keyBytes.Add((byte)remappedSecondaryKeyIndex);
         var enumerator = new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
-            loaderIndex, constraints, secondaryKeyIndex, this);
+            loaderIndex, constraints, remappedSecondaryKeyIndex, this);
         if (skip < 0)
         {
             take += skip;
@@ -801,9 +802,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         StructList<byte> keyBytes = new();
         keyBytes.AddRange(_relationInfo.PrefixSecondary);
-        keyBytes.Add((byte)RemapPrimeSK(secondaryKeyIndex));
+        var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
+        keyBytes.Add((byte)remappedSecondaryKeyIndex);
         return new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
-            loaderIndex, constraints, secondaryKeyIndex, this);
+            loaderIndex, constraints, remappedSecondaryKeyIndex, this);
     }
 
     [SkipLocalsInit]
