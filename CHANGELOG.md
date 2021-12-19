@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 28.2.0
+
 ### Added
 
 Enum Constraints.
