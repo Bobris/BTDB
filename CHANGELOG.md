@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Added
+
+Enum Constraints.
+
+Generic `Constraint<T>.Any` (not really generic just supporting all currently available constraints (bool, string, DateTime, (un)signed, Enum))
+
 ## 28.1.2
 
 ### Fixed

@@ -12,13 +12,29 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
     {
     }
 
+    public enum SignedEnum
+    {
+        Opt1,
+        Opt2 = -1
+    }
+
+    public enum UnsignedEnum : byte
+    {
+        Opt1,
+        Opt2
+    }
+
     public class Person
     {
-        [PrimaryKey(1)] public ulong TenantId { get; set; }
+        [PrimaryKey(1)] public uint TenantId { get; set; }
 
         [SecondaryKey("Email")]
-        [PrimaryKey(2)] public string? Email { get; set; }
+        [PrimaryKey(2)]
+        public string? Email { get; set; }
 
+        [SecondaryKey("SignedEnum")] public SignedEnum Enum1 { get; set; }
+
+        [SecondaryKey("UnsignedEnum")] public UnsignedEnum Enum2 { get; set; }
 
         public string? Name { get; set; }
     }
@@ -27,6 +43,8 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
     {
         IEnumerable<Person> ScanById(Constraint<ulong> tenantId, Constraint<string> email);
         IEnumerable<Person> ScanByEmail(Constraint<string> email);
+        IEnumerable<Person> ScanBySignedEnum(Constraint<SignedEnum> enum1);
+        IEnumerable<Person> ScanByUnsignedEnum(Constraint<UnsignedEnum> enum2);
     }
 
     [Fact]
@@ -105,14 +123,104 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal(expectedNames, names);
     }
 
+    [Theory]
+    [InlineData(SignedEnum.Opt1, "AC")]
+    [InlineData(SignedEnum.Opt2, "BD")]
+    public void ConstraintSignedEnumExactWorks(SignedEnum enum1, string expectedNames)
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        var names = string.Concat(t.ScanBySignedEnum(Constraint.Enum<SignedEnum>.Exact(enum1))
+            .Select(p => p.Name));
+        Assert.Equal(expectedNames, names);
+    }
+
+    [Theory]
+    [InlineData(SignedEnum.Opt1, "AC")]
+    [InlineData(SignedEnum.Opt2, "BD")]
+    public void ConstraintSignedEnumPredicateWorks(SignedEnum enum1, string expectedNames)
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        var names = string.Concat(t.ScanBySignedEnum(Constraint.Enum<SignedEnum>.Predicate(v=>v==enum1))
+            .Select(p => p.Name));
+        Assert.Equal(expectedNames, names);
+    }
+
+    [Fact]
+    public void ConstraintSignedEnumAnyWorks()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        var names = string.Concat(t.ScanBySignedEnum(Constraint.Enum<SignedEnum>.Any)
+            .Select(p => p.Name));
+        Assert.Equal("BDAC", names);
+        names = string.Concat(t.ScanBySignedEnum(Constraint<SignedEnum>.Any)
+            .Select(p => p.Name));
+        Assert.Equal("BDAC", names);
+    }
+
+    [Theory]
+    [InlineData(UnsignedEnum.Opt1, "AB")]
+    [InlineData(UnsignedEnum.Opt2, "CD")]
+    public void ConstraintUnsignedEnumExactWorks(UnsignedEnum enum2, string expectedNames)
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        var names = string.Concat(t.ScanByUnsignedEnum(Constraint.Enum<UnsignedEnum>.Exact(enum2))
+            .Select(p => p.Name));
+        Assert.Equal(expectedNames, names);
+    }
+
+    [Theory]
+    [InlineData(UnsignedEnum.Opt1, "AB")]
+    [InlineData(UnsignedEnum.Opt2, "CD")]
+    public void ConstraintUnsignedEnumPredicateWorks(UnsignedEnum enum2, string expectedNames)
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        var names = string.Concat(t.ScanByUnsignedEnum(Constraint.Enum<UnsignedEnum>.Predicate(v=>v==enum2))
+            .Select(p => p.Name));
+        Assert.Equal(expectedNames, names);
+    }
+
+    [Fact]
+    public void ConstraintUnsignedEnumAnyWorks()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        var names = string.Concat(t.ScanByUnsignedEnum(Constraint.Enum<UnsignedEnum>.Any)
+            .Select(p => p.Name));
+        Assert.Equal("ABCD", names);
+        names = string.Concat(t.ScanByUnsignedEnum(Constraint<UnsignedEnum>.Any)
+            .Select(p => p.Name));
+        Assert.Equal("ABCD", names);
+    }
+
     void FillPersonData()
     {
         using var tr = _db.StartTransaction();
         var t = tr.GetRelation<IPersonTable>();
-        t.Upsert(new() { TenantId = 1, Email = "a@b.cd", Name = "A" });
-        t.Upsert(new() { TenantId = 1, Email = "b@b.cd", Name = "B" });
-        t.Upsert(new() { TenantId = 2, Email = "a@c.cd", Name = "C" });
-        t.Upsert(new() { TenantId = 2, Email = "b@c.cd", Name = "D" });
+        t.Upsert(new()
+            { TenantId = 1, Email = "a@b.cd", Name = "A", Enum1 = SignedEnum.Opt1, Enum2 = UnsignedEnum.Opt1 });
+        t.Upsert(new()
+            { TenantId = 1, Email = "b@b.cd", Name = "B", Enum1 = SignedEnum.Opt2, Enum2 = UnsignedEnum.Opt1 });
+        t.Upsert(new()
+            { TenantId = 2, Email = "a@c.cd", Name = "C", Enum1 = SignedEnum.Opt1, Enum2 = UnsignedEnum.Opt2 });
+        t.Upsert(new()
+            { TenantId = 2, Email = "b@c.cd", Name = "D", Enum1 = SignedEnum.Opt2, Enum2 = UnsignedEnum.Opt2 });
         tr.Commit();
     }
 
@@ -209,7 +317,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
                 for (var k = 1; k <= 5; k++)
                 {
                     t.Upsert(new()
-                    { N1 = (ulong)i, N2 = (ulong)j, N3 = (ulong)k, Id = (ulong)(i * 100 + j * 10 + k) });
+                        { N1 = (ulong)i, N2 = (ulong)j, N3 = (ulong)k, Id = (ulong)(i * 100 + j * 10 + k) });
                 }
             }
         }
@@ -231,6 +339,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         [PrimaryKey(2)]
         [SecondaryKey("Name", IncludePrimaryKeyOrder = 0, Order = 1)]
         public string Name { get; set; }
+
         [SecondaryKey("Name", IncludePrimaryKeyOrder = 0, Order = 2)]
         public uint Age { get; set; }
     }
@@ -263,5 +372,4 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         t.Upsert(new(3, "D", 7));
         tr.Commit();
     }
-
 }

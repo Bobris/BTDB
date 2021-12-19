@@ -1,6 +1,9 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Collections;
+using BTDB.FieldHandler;
+using BTDB.IL;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
@@ -43,6 +46,63 @@ public abstract class Constraint<T> : IConstraint
     {
         return value ? IConstraint.MatchResult.Yes : IConstraint.MatchResult.No;
     }
+
+    public static readonly Constraint<T> Any;
+
+    static Constraint()
+    {
+        if (typeof(T) == typeof(bool))
+        {
+            Any = Unsafe.As<Constraint<T>>(new ConstraintBoolAny());
+        } else if (typeof(T).IsEnum)
+        {
+            if (SignedFieldHandler.IsCompatibleWith(typeof(T).GetEnumUnderlyingType()))
+            {
+                Any = new ConstraintSignedAny<T>();
+            }
+            else
+            {
+                Any = new ConstraintUnsignedAny<T>();
+            }
+        } else if (typeof(T) == typeof(string))
+        {
+            Any = Unsafe.As<Constraint<T>>(new ConstraintStringAny());
+        }
+        else if (typeof(T) == typeof(DateTime))
+        {
+            Any = Unsafe.As<Constraint<T>>(new ConstraintDateTimeAny());
+        }
+        else if (SignedFieldHandler.IsCompatibleWith(typeof(T)))
+        {
+            Any = new ConstraintSignedAny<T>();
+        }
+        else if (UnsignedFieldHandler.IsCompatibleWith(typeof(T)))
+        {
+            Any = new ConstraintUnsignedAny<T>();
+        }
+        else
+        {
+            Any = new ConstraintNotImplemented<T>();
+        }
+    }
+}
+
+public class ConstraintNotImplemented<T> : Constraint<T>
+{
+    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    {
+        throw new NotImplementedException();
+    }
 }
 
 public static partial class Constraint
@@ -50,7 +110,7 @@ public static partial class Constraint
     public static partial class Bool
     {
         public static Constraint<bool> Exact(bool value) => new ConstraintBoolExact(value);
-        public static readonly Constraint<bool> Any = new ConstraintBoolAny();
+        public static readonly Constraint<bool> Any = Constraint<bool>.Any;
     }
 
     public static partial class DateTime
@@ -60,7 +120,7 @@ public static partial class Constraint
             new ConstraintDateTimePredicate(predicate);
         public static Constraint<System.DateTime> UpTo(System.DateTime value, bool including = true) =>
             new ConstraintDateTimeUpTo(value, including);
-        public static readonly Constraint<System.DateTime> Any = new ConstraintDateTimeAny();
+        public static readonly Constraint<System.DateTime> Any = Constraint<System.DateTime>.Any;
     }
 
     public static partial class Unsigned
@@ -70,7 +130,7 @@ public static partial class Constraint
             new ConstraintUnsignedPredicate(predicate);
         public static Constraint<ulong> UpTo(ulong value, bool including = true) =>
             new ConstraintUnsignedUpTo(value, including);
-        public static readonly Constraint<ulong> Any = new ConstraintUnsignedAny();
+        public static readonly Constraint<ulong> Any = Constraint<ulong>.Any;
     }
 
     public static partial class Signed
@@ -80,7 +140,53 @@ public static partial class Constraint
             new ConstraintSignedPredicate(predicate);
         public static Constraint<long> UpTo(long value, bool including = true) =>
             new ConstraintSignedUpTo(value, including);
-        public static readonly Constraint<long> Any = new ConstraintSignedAny();
+        public static readonly Constraint<long> Any = Constraint<long>.Any;
+    }
+
+    public static partial class Enum<T> where T: Enum
+    {
+        public static readonly bool IsSigned = SignedFieldHandler.IsCompatibleWith(typeof(T).GetEnumUnderlyingType());
+        public static readonly Func<T, long>? ToLong;
+        public static readonly Func<long, T>? FromLong;
+        public static readonly Func<T, ulong>? ToUlong;
+        public static readonly Func<ulong, T>? FromUlong;
+
+        static Enum()
+        {
+            if (IsSigned)
+            {
+                var b = ILBuilder.Instance.NewMethod<Func<T, long>>("ToLong" + typeof(T).FullName);
+                b.Generator
+                    .Ldarg(0)
+                    .ConvI8()
+                    .Ret();
+                ToLong = b.Create();
+                var b2 = ILBuilder.Instance.NewMethod<Func<long, T>>("FromLong" + typeof(T).FullName);
+                b2.Generator.Ldarg(0);
+                DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(long), typeof(T).GetEnumUnderlyingType())!(b2.Generator);
+                b2.Generator.Ret();
+                FromLong = b2.Create();
+            }
+            else
+            {
+                var b = ILBuilder.Instance.NewMethod<Func<T, ulong>>("ToUlong" + typeof(T).FullName);
+                b.Generator
+                    .Ldarg(0)
+                    .ConvU8()
+                    .Ret();
+                ToUlong = b.Create();
+                var b2 = ILBuilder.Instance.NewMethod<Func<ulong, T>>("FromUlong" + typeof(T).FullName);
+                b2.Generator.Ldarg(0);
+                DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(ulong), typeof(T).GetEnumUnderlyingType())!(b2.Generator);
+                b2.Generator.Ret();
+                FromUlong = b2.Create();
+            }
+        }
+        public static Constraint<T> Exact(T value) =>
+            IsSigned ? new ConstraintSignedEnumExact<T>(value) : new ConstraintUnsignedEnumExact<T>(value);
+        public static Constraint<T> Predicate(Predicate<T> predicate) =>
+            IsSigned ? new ConstraintSignedEnumPredicate<T>(predicate) : new ConstraintUnsignedEnumPredicate<T>(predicate);
+        public static readonly Constraint<T> Any = Constraint<T>.Any;
     }
 
     public static partial class String
@@ -106,7 +212,7 @@ public static partial class Constraint
         public static Constraint<string> Exact(string value) => new ConstraintStringExact(value);
         public static Constraint<string> UpTo(string value, bool including = true) =>
             new ConstraintStringUpTo(value, including);
-        public static readonly Constraint<string> Any = new ConstraintStringAny();
+        public static readonly Constraint<string> Any = Constraint<string>.Any;
     }
 }
 
@@ -291,24 +397,6 @@ public abstract class ConstraintAny<T> : Constraint<T>
 
     public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
     {
-    }
-}
-
-public class ConstraintUnsignedAny : ConstraintAny<ulong>
-{
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
-    {
-        reader.SkipVUInt64();
-        return IConstraint.MatchResult.Yes;
-    }
-}
-
-public class ConstraintSignedAny : ConstraintAny<long>
-{
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
-    {
-        reader.SkipVInt64();
-        return IConstraint.MatchResult.Yes;
     }
 }
 
@@ -497,4 +585,74 @@ public class ConstraintBoolExact : ConstraintExact<bool>
     {
         reader.SkipBool();
     }
+}
+
+public class ConstraintSignedEnumExact<T> : ConstraintExact<T> where T: Enum
+{
+    readonly long _value;
+
+    public ConstraintSignedEnumExact(T value) => _value = Constraint.Enum<T>.ToLong!(value);
+
+    protected override void WriteExactValue(ref SpanWriter writer)
+    {
+        writer.WriteVInt64(_value);
+    }
+
+    protected override void Skip(ref SpanReader reader)
+    {
+        reader.SkipVInt64();
+    }
+}
+
+public class ConstraintUnsignedEnumExact<T> : ConstraintExact<T> where T: Enum
+{
+    readonly ulong _value;
+
+    public ConstraintUnsignedEnumExact(T value) => _value = Constraint.Enum<T>.ToUlong!(value);
+
+    protected override void WriteExactValue(ref SpanWriter writer)
+    {
+        writer.WriteVUInt64(_value);
+    }
+
+    protected override void Skip(ref SpanReader reader)
+    {
+        reader.SkipVUInt64();
+    }
+}
+
+public class ConstraintSignedAny<T> : ConstraintAny<T>
+{
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    {
+        reader.SkipVInt64();
+        return IConstraint.MatchResult.Yes;
+    }
+}
+
+public class ConstraintUnsignedAny<T> : ConstraintAny<T>
+{
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    {
+        reader.SkipVUInt64();
+        return IConstraint.MatchResult.Yes;
+    }
+}
+
+public class ConstraintSignedEnumPredicate<T> : ConstraintNoPrefix<T> where T: Enum
+{
+    readonly Predicate<T> _predicate;
+
+    public ConstraintSignedEnumPredicate(Predicate<T> predicate) => _predicate = predicate;
+
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) => AsMatchResult(_predicate(Constraint.Enum<T>.FromLong!(reader.ReadVInt64())));
+}
+
+public class ConstraintUnsignedEnumPredicate<T> : ConstraintNoPrefix<T> where T: Enum
+{
+    readonly Predicate<T> _predicate;
+
+    public ConstraintUnsignedEnumPredicate(Predicate<T> predicate) => _predicate = predicate;
+
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) => AsMatchResult(_predicate(Constraint.Enum<T>.FromUlong!(reader.ReadVUInt64())));
 }
