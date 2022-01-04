@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 28.3.0
+
 ### Added
 
 Upgrade from IDictionary<K1,T1> to Dictionary<K2,T2> is possible and tested in Relations.
