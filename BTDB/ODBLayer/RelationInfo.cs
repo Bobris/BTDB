@@ -213,7 +213,7 @@ public class RelationInfo
                 .Stloc(0);
 
             var instanceTableFieldInfos = new StructList<TableFieldInfo>();
-            var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?, bool Init)>();
+            var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?, bool Init, Type ToType)>();
             var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
                                                    BindingFlags.Instance);
             var persistentNameToPropertyInfo = new RefDictionary<string, PropertyInfo>();
@@ -259,12 +259,12 @@ public class RelationInfo
                             break;
                         }
 
-                        loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod, false));
+                        loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod, false, fieldType));
                         continue;
                     }
                 }
 
-                loadInstructions.Add((srcFieldInfo.Handler!, null, null, false));
+                loadInstructions.Add((srcFieldInfo.Handler!, null, null, false, null));
             }
 
             // Remove useless skips from end
@@ -281,12 +281,13 @@ public class RelationInfo
                 var willLoad = specializedSrcHandler.HandledType();
                 var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
                 var setterMethod = fieldInfo.GetAnySetMethod();
+                var toType = setterMethod!.GetParameters()[0].ParameterType;
                 var converterGenerator =
                     _owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad!,
-                        setterMethod!.GetParameters()[0].ParameterType);
+                        toType);
                 if (converterGenerator == null) continue;
                 if (!iFieldHandlerWithInit.NeedInit()) continue;
-                loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod, true));
+                loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod, true, toType));
             }
 
             var anyNeedsCtx = false;
@@ -312,7 +313,7 @@ public class RelationInfo
                 var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
                 if (loadInstruction.Item2 != null)
                 {
-                    ilGenerator.Ldloc(0);
+                    var loc = ilGenerator.DeclareLocal(loadInstruction.ToType);
                     if (loadInstruction.Init)
                     {
                         ((IFieldHandlerWithInit)loadInstruction.Item1).Init(ilGenerator, readerOrCtx);
@@ -323,7 +324,11 @@ public class RelationInfo
                     }
 
                     loadInstruction.Item2(ilGenerator);
-                    ilGenerator.Call(loadInstruction.Item3!);
+                    ilGenerator
+                        .Stloc(loc)
+                        .Ldloc(0)
+                        .Ldloc(loc)
+                        .Call(loadInstruction.Item3!);
                     continue;
                 }
 

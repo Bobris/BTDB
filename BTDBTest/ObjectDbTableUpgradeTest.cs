@@ -540,4 +540,64 @@ public class ObjectDbTableUpgradeTest : IDisposable
         }
     }
 
+    public class Obj
+    {
+        public int Num { get; set; }
+    }
+
+    public class DictV1
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public IDictionary<Guid, Obj> D { get; set; }
+    }
+
+    public interface IDictV1Table : IRelation<DictV1>
+    {
+    }
+
+    public class DictV2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public Dictionary<Guid, Obj> D { get; set; }
+    }
+
+    public interface IDictV2Table : IRelation<DictV2>
+    {
+    }
+
+    [Fact]
+    public void MakingDictionaryEagerPreserveData()
+    {
+        var g1 = Guid.NewGuid();
+        var g2 = Guid.NewGuid();
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IDictV1Table>("T");
+            var table = creator(tr);
+            table.Upsert(new()
+            {
+                Id = 1, D = new Dictionary<Guid, Obj> { { g1, new Obj { Num = 1 } }, { g2, new Obj { Num = 2 } } }
+            });
+
+            tr.Commit();
+        }
+
+        ReopenDb();
+
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IDictV2Table>("T");
+            var table = creator(tr);
+            Assert.Equal(1, table.Count);
+
+            Assert.Equal(2, table.First().D.Count);
+            Assert.Equal(1, table.First().D[g1].Num);
+            Assert.Equal(2, table.First().D[g2].Num);
+            table.Upsert(table.First());
+            // Assert no leaks in IDictionaries
+            Assert.Equal(0, tr.KeyValueDBTransaction.GetKeyValueCount(new[] { ObjectDB.AllDictionariesPrefixByte }));
+        }
+    }
 }

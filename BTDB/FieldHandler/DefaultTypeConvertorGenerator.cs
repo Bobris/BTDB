@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.IL;
@@ -53,7 +55,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
         }
     }
 
-    public virtual Action<IILGen> GenerateConversion(Type from, Type to)
+    public virtual Action<IILGen>? GenerateConversion(Type from, Type to)
     {
         if (from == to) return ilg => { };
         if (!from.IsValueType && to == typeof(object))
@@ -138,6 +140,70 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
                 }
             };
         }
+        var toDict = to.IsGenericType && to.GetGenericTypeDefinition() == typeof(Dictionary<,>);
+        var fromIDict = from.IsGenericType && from.GetGenericTypeDefinition() == typeof(IDictionary<,>);
+        if (fromIDict && toDict)
+        {
+            var fromKV = from.GetGenericArguments();
+            var toKV = to.GetGenericArguments();
+            if (GenerateConversion(fromKV[0], toKV[0]) is { } keyConversion && GenerateConversion(fromKV[1], toKV[1]) is
+                    { } valueConversion)
+            {
+                return ilGenerator =>
+                {
+                    var realFinish = ilGenerator.DefineLabel();
+                    var finish = ilGenerator.DefineLabel();
+                    var next = ilGenerator.DefineLabel();
+                    var localValue = ilGenerator.DeclareLocal(from);
+                    var localTo = ilGenerator.DeclareLocal(to);
+                    var localToKey = ilGenerator.DeclareLocal(toKV[0]);
+                    var localToValue = ilGenerator.DeclareLocal(toKV[1]);
+                    var typeAsICollection = from.GetInterface("ICollection`1");
+                    var typeAsIEnumerable = from.GetInterface("IEnumerable`1");
+                    var getEnumeratorMethod = typeAsIEnumerable!.GetMethod("GetEnumerator");
+                    var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
+                    var typeKeyValuePair = typeAsICollection!.GetGenericArguments()[0];
+                    var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
+                    var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
+                    ilGenerator
+                        .Stloc(localValue)
+                        .Newobj(to.GetConstructor(Array.Empty<Type>())!)
+                        .Stloc(localTo)
+                        .Ldloc(localValue)
+                        .Callvirt(getEnumeratorMethod)
+                        .Stloc(localEnumerator)
+                        .Try()
+                        .Mark(next)
+                        .Ldloc(localEnumerator)
+                        .Callvirt(() => default(IEnumerator).MoveNext())
+                        .Brfalse(finish)
+                        .Ldloc(localEnumerator)
+                        .Callvirt(typeAsIEnumerator.GetProperty("Current")!.GetGetMethod()!)
+                        .Stloc(localPair)
+                        .Ldloca(localPair)
+                        .Call(typeKeyValuePair.GetProperty("Key")!.GetGetMethod()!)
+                        .Do(keyConversion)
+                        .Stloc(localToKey)
+                        .Ldloca(localPair)
+                        .Call(typeKeyValuePair.GetProperty("Value")!.GetGetMethod()!)
+                        .Do(valueConversion)
+                        .Stloc(localToValue)
+                        .Ldloc(localTo)
+                        .Ldloc(localToKey)
+                        .Ldloc(localToValue)
+                        .Callvirt(to.GetMethod("Add", BindingFlags.Public | BindingFlags.Instance, toKV)!)
+                        .Br(next)
+                        .Mark(finish)
+                        .Finally()
+                        .Ldloc(localEnumerator)
+                        .Callvirt(() => default(IDisposable).Dispose())
+                        .EndTry()
+                        .Mark(realFinish)
+                        .Ldloc(localTo);
+                };
+            }
+        }
+
         return null;
     }
 
