@@ -1654,8 +1654,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         writer = new SpanWriter(writerController);
         writer.WriteInt32(EndOfIndexFileMarker);
         writer.Sync();
-        file.HardFlush();
-        file.Truncate();
+        file.HardFlushTruncateSwitchToDisposedMode();
         var trlGeneration = GetGeneration(keyIndex.TrLogFileId);
         keyIndex.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
             .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();

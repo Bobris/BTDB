@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Previous fix was incomplete.
+
 ## 28.3.1
 
 ### Fixed
