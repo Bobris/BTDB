@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 28.3.2
+
 ### Fixed
 
 Previous fix was incomplete.
