@@ -1549,7 +1549,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         var bytesPerSecondLimiter = new BytesPerSecondLimiter(fullSpeed ? 0 : CompactorWriteBytesPerSecondLimit);
         var file = FileCollection.AddFile("kvi");
-        var writerController = file.GetAppenderWriter();
+        var writerController = file.GetExclusiveAppenderWriter();
         var writer = new SpanWriter(writerController);
         var keyCount = root.GetCount();
         if (root.TrLogFileId != 0)

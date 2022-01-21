@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Kvi in Native Heap KVDB must be created in Exclusive mode.
+
 ## 28.3.0
 
 ### Added
