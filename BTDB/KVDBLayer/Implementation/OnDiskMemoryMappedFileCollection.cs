@@ -190,7 +190,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
 
             public void Init(ref SpanWriter spanWriter)
             {
-                spanWriter.Buf = new Span<byte>(_file._pointer + Ofs,
+                spanWriter.Buf = new(_file._pointer + Ofs,
                     (int)Math.Min((ulong)_file._trueLength - Ofs, int.MaxValue));
                 spanWriter.InitialBuffer = spanWriter.Buf;
             }
@@ -221,13 +221,13 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
             public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
             {
                 Sync(ref spanWriter);
-                ExpandIfNeeded((long)Ofs + length);
                 WriteBlockWithoutWriter(ref buffer, length);
                 Init(ref spanWriter);
             }
 
             public void WriteBlockWithoutWriter(ref byte buffer, uint length)
             {
+                ExpandIfNeeded((long)Ofs + length);
                 Unsafe.CopyBlockUnaligned(ref buffer, ref Unsafe.AsRef<byte>(_file._pointer + Ofs),
                     length);
                 Ofs += length;
@@ -258,7 +258,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
                     var read = data.Length;
                     if (_writer.Ofs - position < (ulong)read) read = (int)(_writer.Ofs - position);
                     new Span<byte>(_pointer + position, read).CopyTo(data);
-                    data = data.Slice(read);
+                    data = data[read..];
                 }
 
                 if (data.Length == 0) return;
@@ -370,7 +370,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
         do
         {
             oldFiles = _files;
-            newFiles = new Dictionary<uint, File>(oldFiles!) { { index, file } };
+            newFiles = new(oldFiles!) { { index, file } };
         } while (Interlocked.CompareExchange(ref _files, newFiles, oldFiles) != oldFiles);
 
         return file;

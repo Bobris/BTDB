@@ -54,10 +54,11 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     readonly IOffHeapAllocator _allocator;
     readonly ICompressionStrategy _compression;
+    readonly IKviCompressionStrategy _kviCompressionStrategy;
     readonly ICompactorScheduler? _compactorScheduler;
 
     readonly IFileCollectionWithFileInfos _fileCollection;
-    readonly Dictionary<long, object> _subDBs = new Dictionary<long, object>();
+    readonly Dictionary<long, object> _subDBs = new();
     readonly Func<CancellationToken, bool>? _compactFunc;
     readonly bool _readOnly;
     readonly bool _lenientOpen;
@@ -95,6 +96,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             throw new ArgumentOutOfRangeException(nameof(options.FileSplitSize), "Allowed range 1024 - 2G");
         Logger = options.Logger;
         _compactorScheduler = options.CompactorScheduler;
+        _kviCompressionStrategy = options.KviCompressionStrategy;
         MaxTrLogFileSize = options.FileSplitSize;
         _readOnly = options.ReadOnly;
         _lenientOpen = options.LenientOpen;
@@ -419,7 +421,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         try
         {
             var file = FileCollection.GetFile(fileId);
-            var reader = new SpanReader(file!.GetExclusiveReader());
+            var readerController = file!.GetExclusiveReader();
+            var reader = new SpanReader(readerController);
             FileKeyIndex.SkipHeader(ref reader);
             var keyCount = info.KeyValueCount;
             var usedFileIds = new HashSet<uint>();
@@ -434,22 +437,33 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     reader.SkipVUInt32();
                     reader.SkipVInt32();
                 }
+                reader.Sync();
             }
             else
             {
-                if (info.Compression != KeyIndexCompression.None)
-                    return false;
-                for (var i = 0; i < keyCount; i++)
+                reader.Sync();
+                var decompressionController = _kviCompressionStrategy.StartDecompression(info.Compression, readerController);
+                try
                 {
-                    reader.SkipVUInt32();
-                    var keyLengthWithoutPrefix = (int)reader.ReadVUInt32();
-                    reader.SkipBlock(keyLengthWithoutPrefix);
-                    var vFileId = reader.ReadVUInt32();
-                    if (vFileId > 0) usedFileIds.Add(vFileId);
-                    reader.SkipVUInt32();
-                    reader.SkipVInt32();
+                    reader = new(decompressionController);
+                    for (var i = 0; i < keyCount; i++)
+                    {
+                        reader.SkipVUInt32();
+                        var keyLengthWithoutPrefix = (int)reader.ReadVUInt32();
+                        reader.SkipBlock(keyLengthWithoutPrefix);
+                        var vFileId = reader.ReadVUInt32();
+                        if (vFileId > 0) usedFileIds.Add(vFileId);
+                        reader.SkipVUInt32();
+                        reader.SkipVInt32();
+                    }
+                    reader.Sync();
+                }
+                finally
+                {
+                    _kviCompressionStrategy.FinishDecompression(info.Compression, decompressionController, null);
                 }
             }
+            reader = new(readerController);
 
             var trlGeneration = GetGeneration(info.TrLogFileId);
             info.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
@@ -468,7 +482,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         try
         {
             var file = FileCollection.GetFile(fileId);
-            var reader = new SpanReader(file!.GetExclusiveReader());
+            var readerController = file!.GetExclusiveReader();
+            var reader = new SpanReader(readerController);
             FileKeyIndex.SkipHeader(ref reader);
             var keyCount = info.KeyValueCount;
             _nextRoot!.TrLogFileId = info.TrLogFileId;
@@ -540,68 +555,80 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
                         }
                     });
+                reader.Sync();
             }
             else
             {
-                if (info.Compression != KeyIndexCompression.None)
-                    return false;
-                var prevKey = ByteBuffer.NewEmpty();
-                cursor.BuildTree(keyCount, ref reader,
-                    (ref SpanReader reader2, ref ByteBuffer key, in Span<byte> trueValue) =>
-                    {
-                        var prefixLen = (int)reader2.ReadVUInt32();
-                        var keyLengthWithoutPrefix = (int)reader2.ReadVUInt32();
-                        var keyLen = prefixLen + keyLengthWithoutPrefix;
-                        key.Expand(keyLen);
-                        Array.Copy(prevKey.Buffer!, prevKey.Offset, key.Buffer!, key.Offset, prefixLen);
-                        reader2.ReadBlock(key.Slice(prefixLen));
-                        prevKey = key;
-                        var vFileId = reader2.ReadVUInt32();
-                        if (vFileId > 0) usedFileIds.Add(vFileId);
-                        trueValue.Clear();
-                        MemoryMarshal.Write(trueValue, ref vFileId);
-                        var valueOfs = reader2.ReadVUInt32();
-                        var valueSize = reader2.ReadVInt32();
-                        if (vFileId == 0)
+                reader.Sync();
+                var decompressionController =
+                    _kviCompressionStrategy.StartDecompression(info.Compression, readerController);
+                try
+                {
+                    reader = new(decompressionController);
+                    var prevKey = ByteBuffer.NewEmpty();
+                    cursor.BuildTree(keyCount, ref reader,
+                        (ref SpanReader reader2, ref ByteBuffer key, in Span<byte> trueValue) =>
                         {
-                            var len = valueSize >> 24;
-                            trueValue[4] = (byte)len;
-                            switch (len)
+                            var prefixLen = (int)reader2.ReadVUInt32();
+                            var keyLengthWithoutPrefix = (int)reader2.ReadVUInt32();
+                            var keyLen = prefixLen + keyLengthWithoutPrefix;
+                            key.Expand(keyLen);
+                            Array.Copy(prevKey.Buffer!, prevKey.Offset, key.Buffer!, key.Offset, prefixLen);
+                            reader2.ReadBlock(key.Slice(prefixLen));
+                            prevKey = key;
+                            var vFileId = reader2.ReadVUInt32();
+                            if (vFileId > 0) usedFileIds.Add(vFileId);
+                            trueValue.Clear();
+                            MemoryMarshal.Write(trueValue, ref vFileId);
+                            var valueOfs = reader2.ReadVUInt32();
+                            var valueSize = reader2.ReadVInt32();
+                            if (vFileId == 0)
                             {
-                                case 7:
-                                    trueValue[11] = (byte)(valueOfs >> 24);
-                                    goto case 6;
-                                case 6:
-                                    trueValue[10] = (byte)(valueOfs >> 16);
-                                    goto case 5;
-                                case 5:
-                                    trueValue[9] = (byte)(valueOfs >> 8);
-                                    goto case 4;
-                                case 4:
-                                    trueValue[8] = (byte)valueOfs;
-                                    goto case 3;
-                                case 3:
-                                    trueValue[7] = (byte)valueSize;
-                                    goto case 2;
-                                case 2:
-                                    trueValue[6] = (byte)(valueSize >> 8);
-                                    goto case 1;
-                                case 1:
-                                    trueValue[5] = (byte)(valueSize >> 16);
-                                    break;
-                                case 0:
-                                    break;
-                                default:
-                                    throw new BTDBException("Corrupted DB");
+                                var len = valueSize >> 24;
+                                trueValue[4] = (byte)len;
+                                switch (len)
+                                {
+                                    case 7:
+                                        trueValue[11] = (byte)(valueOfs >> 24);
+                                        goto case 6;
+                                    case 6:
+                                        trueValue[10] = (byte)(valueOfs >> 16);
+                                        goto case 5;
+                                    case 5:
+                                        trueValue[9] = (byte)(valueOfs >> 8);
+                                        goto case 4;
+                                    case 4:
+                                        trueValue[8] = (byte)valueOfs;
+                                        goto case 3;
+                                    case 3:
+                                        trueValue[7] = (byte)valueSize;
+                                        goto case 2;
+                                    case 2:
+                                        trueValue[6] = (byte)(valueSize >> 8);
+                                        goto case 1;
+                                    case 1:
+                                        trueValue[5] = (byte)(valueSize >> 16);
+                                        break;
+                                    case 0:
+                                        break;
+                                    default:
+                                        throw new BTDBException("Corrupted DB");
+                                }
                             }
-                        }
-                        else
-                        {
-                            MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
-                            MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
-                        }
-                    });
+                            else
+                            {
+                                MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
+                                MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
+                            }
+                        });
+                    reader.Sync();
+                }
+                finally
+                {
+                    _kviCompressionStrategy.FinishDecompression(info.Compression, decompressionController, Logger);
+                }
             }
+            reader = new(readerController);
 
             var trlGeneration = GetGeneration(info.TrLogFileId);
             info.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
@@ -1554,104 +1581,114 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         var keyCount = root.GetCount();
         if (root.TrLogFileId != 0)
             FileCollection.ConcurentTemporaryTruncate(root.TrLogFileId, root.TrLogOffset);
+        var (compressionType, compressionController) =
+            _kviCompressionStrategy.StartCompression((ulong)keyCount, writerController);
         var keyIndex = new FileKeyIndex(FileCollection.NextGeneration(), FileCollection.Guid, root.TrLogFileId,
-            root.TrLogOffset, keyCount, root.CommitUlong, KeyIndexCompression.None, root.UlongsArray);
+            root.TrLogOffset, keyCount, root.CommitUlong, compressionType, root.UlongsArray);
         keyIndex.WriteHeader(ref writer);
+        writer.Sync();
         var usedFileIds = new HashSet<uint>();
-        if (keyCount > 0)
+        try
         {
-            var keyValueIterateCtx = new KeyValueIterateCtx { CancellationToken = cancellation, Writer = writer };
-            root.KeyValueIterate(ref keyValueIterateCtx, (ref KeyValueIterateCtx ctx) =>
+            writer = new(compressionController);
+            if (keyCount > 0)
             {
-                ref var writerReference = ref ctx.Writer;
-                var memberValue = ctx.CurrentValue;
-                writerReference.WriteVUInt32(ctx.PreviousCurrentCommonLength);
-                writerReference.WriteVUInt32((uint)(ctx.CurrentPrefix.Length + ctx.CurrentSuffix.Length -
-                                                    ctx.PreviousCurrentCommonLength));
-                if (ctx.CurrentPrefix.Length <= ctx.PreviousCurrentCommonLength)
+                var keyValueIterateCtx = new KeyValueIterateCtx { CancellationToken = cancellation, Writer = writer };
+                root.KeyValueIterate(ref keyValueIterateCtx, (ref KeyValueIterateCtx ctx) =>
                 {
-                    writerReference.WriteBlock(
-                        ctx.CurrentSuffix.Slice((int)ctx.PreviousCurrentCommonLength - ctx.CurrentPrefix.Length));
-                }
-                else
-                {
-                    writerReference.WriteBlock(ctx.CurrentPrefix.Slice((int)ctx.PreviousCurrentCommonLength));
-                    writerReference.WriteBlock(ctx.CurrentSuffix);
-                }
-
-                var vFileId = MemoryMarshal.Read<uint>(memberValue);
-                if (vFileId > 0) usedFileIds.Add(vFileId);
-                writerReference.WriteVUInt32(vFileId);
-                if (vFileId == 0)
-                {
-                    uint valueOfs;
-                    int valueSize;
-                    var inlineValueBuf = memberValue[5..];
-                    var valueLen = memberValue[4];
-                    switch (valueLen)
+                    ref var writerReference = ref ctx.Writer;
+                    var memberValue = ctx.CurrentValue;
+                    writerReference.WriteVUInt32(ctx.PreviousCurrentCommonLength);
+                    writerReference.WriteVUInt32((uint)(ctx.CurrentPrefix.Length + ctx.CurrentSuffix.Length -
+                                                        ctx.PreviousCurrentCommonLength));
+                    if (ctx.CurrentPrefix.Length <= ctx.PreviousCurrentCommonLength)
                     {
-                        case 0:
-                            valueOfs = 0;
-                            valueSize = 0;
-                            break;
-                        case 1:
-                            valueOfs = 0;
-                            valueSize = 0x1000000 | (inlineValueBuf[0] << 16);
-                            break;
-                        case 2:
-                            valueOfs = 0;
-                            valueSize = 0x2000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8);
-                            break;
-                        case 3:
-                            valueOfs = 0;
-                            valueSize = 0x3000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8) |
-                                        inlineValueBuf[2];
-                            break;
-                        case 4:
-                            valueOfs = inlineValueBuf[3];
-                            valueSize = 0x4000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8) |
-                                        inlineValueBuf[2];
-                            break;
-                        case 5:
-                            valueOfs = inlineValueBuf[3] | ((uint)inlineValueBuf[4] << 8);
-                            valueSize = 0x5000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8) |
-                                        inlineValueBuf[2];
-                            break;
-                        case 6:
-                            valueOfs = inlineValueBuf[3] | ((uint)inlineValueBuf[4] << 8) |
-                                       ((uint)inlineValueBuf[5] << 16);
-                            valueSize = 0x6000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8) |
-                                        inlineValueBuf[2];
-                            break;
-                        case 7:
-                            valueOfs = inlineValueBuf[3] | ((uint)inlineValueBuf[4] << 8) |
-                                       ((uint)inlineValueBuf[5] << 16) | ((uint)inlineValueBuf[6] << 24);
-                            valueSize = 0x7000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8) |
-                                        inlineValueBuf[2];
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
+                        writerReference.WriteBlock(
+                            ctx.CurrentSuffix.Slice((int)ctx.PreviousCurrentCommonLength - ctx.CurrentPrefix.Length));
+                    }
+                    else
+                    {
+                        writerReference.WriteBlock(ctx.CurrentPrefix.Slice((int)ctx.PreviousCurrentCommonLength));
+                        writerReference.WriteBlock(ctx.CurrentSuffix);
                     }
 
-                    writerReference.WriteVUInt32(valueOfs);
-                    writerReference.WriteVInt32(valueSize);
-                }
-                else
-                {
-                    var valueOfs = MemoryMarshal.Read<uint>(memberValue.Slice(4));
-                    var valueSize = MemoryMarshal.Read<int>(memberValue.Slice(8));
-                    writerReference.WriteVUInt32(valueOfs);
-                    writerReference.WriteVInt32(valueSize);
-                }
+                    var vFileId = MemoryMarshal.Read<uint>(memberValue);
+                    if (vFileId > 0) usedFileIds.Add(vFileId);
+                    writerReference.WriteVUInt32(vFileId);
+                    if (vFileId == 0)
+                    {
+                        uint valueOfs;
+                        int valueSize;
+                        var inlineValueBuf = memberValue[5..];
+                        var valueLen = memberValue[4];
+                        switch (valueLen)
+                        {
+                            case 0:
+                                valueOfs = 0;
+                                valueSize = 0;
+                                break;
+                            case 1:
+                                valueOfs = 0;
+                                valueSize = 0x1000000 | (inlineValueBuf[0] << 16);
+                                break;
+                            case 2:
+                                valueOfs = 0;
+                                valueSize = 0x2000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8);
+                                break;
+                            case 3:
+                                valueOfs = 0;
+                                valueSize = 0x3000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8) |
+                                            inlineValueBuf[2];
+                                break;
+                            case 4:
+                                valueOfs = inlineValueBuf[3];
+                                valueSize = 0x4000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8) |
+                                            inlineValueBuf[2];
+                                break;
+                            case 5:
+                                valueOfs = inlineValueBuf[3] | ((uint)inlineValueBuf[4] << 8);
+                                valueSize = 0x5000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8) |
+                                            inlineValueBuf[2];
+                                break;
+                            case 6:
+                                valueOfs = inlineValueBuf[3] | ((uint)inlineValueBuf[4] << 8) |
+                                           ((uint)inlineValueBuf[5] << 16);
+                                valueSize = 0x6000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8) |
+                                            inlineValueBuf[2];
+                                break;
+                            case 7:
+                                valueOfs = inlineValueBuf[3] | ((uint)inlineValueBuf[4] << 8) |
+                                           ((uint)inlineValueBuf[5] << 16) | ((uint)inlineValueBuf[6] << 24);
+                                valueSize = 0x7000000 | (inlineValueBuf[0] << 16) | (inlineValueBuf[1] << 8) |
+                                            inlineValueBuf[2];
+                                break;
+                            default:
+                                throw new ArgumentOutOfRangeException();
+                        }
 
-                bytesPerSecondLimiter.Limit((ulong)writerReference.GetCurrentPosition());
-            });
-            writer = keyValueIterateCtx.Writer;
+                        writerReference.WriteVUInt32(valueOfs);
+                        writerReference.WriteVInt32(valueSize);
+                    }
+                    else
+                    {
+                        var valueOfs = MemoryMarshal.Read<uint>(memberValue[4..]);
+                        var valueSize = MemoryMarshal.Read<int>(memberValue[8..]);
+                        writerReference.WriteVUInt32(valueOfs);
+                        writerReference.WriteVInt32(valueSize);
+                    }
+
+                    bytesPerSecondLimiter.Limit((ulong)writerReference.GetCurrentPosition());
+                });
+                writer = keyValueIterateCtx.Writer;
+            }
+            writer.Sync();
         }
-
-        writer.Sync();
+        finally
+        {
+            _kviCompressionStrategy.FinishCompression(compressionType, compressionController, Logger);
+        }
         file.HardFlush();
-        writer = new SpanWriter(writerController);
+        writer = new(writerController);
         writer.WriteInt32(EndOfIndexFileMarker);
         writer.Sync();
         file.HardFlushTruncateSwitchToDisposedMode();

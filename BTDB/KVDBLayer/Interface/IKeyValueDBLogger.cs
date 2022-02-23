@@ -14,4 +14,8 @@ public interface IKeyValueDBLogger
     void LogWarning(string message)
     {
     }
+
+    void LogInfo(string message)
+    {
+    }
 }
