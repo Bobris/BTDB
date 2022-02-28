@@ -460,7 +460,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
                 finally
                 {
-                    _kviCompressionStrategy.FinishDecompression(info.Compression, decompressionController, null);
+                    _kviCompressionStrategy.FinishDecompression(info.Compression, decompressionController);
                 }
             }
             reader = new(readerController);
@@ -625,7 +625,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
                 finally
                 {
-                    _kviCompressionStrategy.FinishDecompression(info.Compression, decompressionController, Logger);
+                    _kviCompressionStrategy.FinishDecompression(info.Compression, decompressionController);
                 }
             }
             reader = new(readerController);
@@ -1587,6 +1587,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             root.TrLogOffset, keyCount, root.CommitUlong, compressionType, root.UlongsArray);
         keyIndex.WriteHeader(ref writer);
         writer.Sync();
+        ulong originalSize;
         var usedFileIds = new HashSet<uint>();
         try
         {
@@ -1685,7 +1686,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
         finally
         {
-            _kviCompressionStrategy.FinishCompression(compressionType, compressionController, Logger);
+            originalSize = (ulong)compressionController.GetCurrentPositionWithoutWriter();
+            _kviCompressionStrategy.FinishCompression(compressionType, compressionController);
         }
         file.HardFlush();
         writer = new(writerController);
@@ -1697,7 +1699,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
         FileCollection.SetInfo(file.Index, keyIndex);
         Logger?.KeyValueIndexCreated(file.Index, keyIndex.KeyValueCount, file.GetSize(),
-            TimeSpan.FromMilliseconds(bytesPerSecondLimiter.TotalTimeInMs));
+            TimeSpan.FromMilliseconds(bytesPerSecondLimiter.TotalTimeInMs), originalSize);
         return file.Index;
     }
 

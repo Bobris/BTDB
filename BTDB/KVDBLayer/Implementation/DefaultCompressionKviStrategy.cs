@@ -6,6 +6,17 @@ namespace BTDB.KVDBLayer;
 
 public class DefaultCompressionKviStrategy : IKviCompressionStrategy
 {
+    readonly int _compression;
+    readonly int _windowBits;
+    readonly ulong _thresholdKeysToEnableCompression;
+
+    public DefaultCompressionKviStrategy(int compressionStrength = -1, int windowBits = 22, ulong thresholdKeysToEnableCompression = 10000)
+    {
+        _compression = compressionStrength;
+        _windowBits = windowBits;
+        _thresholdKeysToEnableCompression = thresholdKeysToEnableCompression;
+    }
+
     public ISpanReader StartDecompression(KeyIndexCompression compression, ISpanReader stream)
     {
         return compression switch
@@ -17,31 +28,23 @@ public class DefaultCompressionKviStrategy : IKviCompressionStrategy
         };
     }
 
-    public void FinishDecompression(KeyIndexCompression compression, ISpanReader decompressor,
-        IKeyValueDBLogger? logger)
+    public void FinishDecompression(KeyIndexCompression compression, ISpanReader decompressor)
     {
         if (compression == KeyIndexCompression.None) return;
-        SpanReader reader = new(decompressor);
-        logger?.LogInfo("Kvi " + compression + " decompressed to " + decompressor.GetCurrentPosition(reader) +
-                        " bytes");
-        reader.Sync();
         (decompressor as IDisposable)?.Dispose();
     }
 
     public (KeyIndexCompression, ISpanWriter) StartCompression(ulong keyCount, ISpanWriter stream)
     {
         // For small DB skip compression completely
-        return keyCount < 10000
+        return keyCount < _thresholdKeysToEnableCompression || _compression < 0
             ? (KeyIndexCompression.None, stream)
-            : (KeyIndexCompression.Brotli, new BrotliCompressSpanWriter(stream));
+            : (KeyIndexCompression.Brotli, new BrotliCompressSpanWriter(stream, _compression, _windowBits));
     }
 
-    public void FinishCompression(KeyIndexCompression compression, ISpanWriter compressor, IKeyValueDBLogger? logger)
+    public void FinishCompression(KeyIndexCompression compression, ISpanWriter compressor)
     {
         if (compression == KeyIndexCompression.None) return;
-        logger?.LogInfo("Kvi " + compression + " compressed " + compressor.GetCurrentPositionWithoutWriter() +
-                        " bytes to " +
-                        ((compressor as ICompressedSize)?.GetCompressedSize().ToString() ?? "unknown"));
         (compressor as IDisposable)?.Dispose();
     }
 }

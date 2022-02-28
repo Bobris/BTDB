@@ -1234,7 +1234,7 @@ public abstract class KeyValueDBTestBase
         {
         }
 
-        public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
+        public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration, ulong beforeCompressionSize)
         {
             KviTime = duration;
         }

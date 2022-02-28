@@ -127,10 +127,10 @@ public class MultiCoreDBTest : IKeyValueDBLogger
         Console.WriteLine($"Pvl file {fileId} with size {size} created. Items in map {itemsInMap} roughly {roughMemory} bytes.");
     }
 
-    public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
+    public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration, ulong beforeCompressionSize)
     {
         Console.WriteLine(
-            $"KeyValueIndexCreated file id: {fileId} kvcount: {keyValueCount} size: {size} duration: {duration.TotalSeconds:F2}s");
+            $"KeyValueIndexCreated file id: {fileId} kvcount: {keyValueCount} size: {size}({beforeCompressionSize}) duration: {duration.TotalSeconds:F2}s");
     }
 
     public void TransactionLogCreated(uint fileId)

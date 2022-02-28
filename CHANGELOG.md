@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Allow to use Brotli compression for Kvi. For now disabled by default.
+
 ## 28.3.2
 
 ### Fixed

@@ -259,7 +259,15 @@ namespace ODbDump
                 {
                     var sw = Stopwatch.StartNew();
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new BTreeKeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null);
+                    var options = new KeyValueDBOptions
+                    {
+                        FileCollection = dfc,
+                        Compression = new SnappyCompressionStrategy(),
+                        FileSplitSize = 100 * 1024 * 1024,
+                        CompactorScheduler = null,
+                        Logger = new ConsoleKvdbLogger(),
+                    };
+                    using var kdb = new BTreeKeyValueDB(options);
                     Console.WriteLine(
                         $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
                     sw.Restart();
@@ -829,9 +837,9 @@ namespace ODbDump
                     $"Pvl file {fileId} with size {size} created. Items in map {itemsInMap} roughly {roughMemory} bytes.");
             }
 
-            public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
+            public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration, ulong beforeCompressionSize)
             {
-                Console.WriteLine($"Kvi created {keyValueCount} keys with size {size} in {duration.TotalSeconds:F1}");
+                Console.WriteLine($"Kvi created {keyValueCount} keys with size {size} in {duration.TotalSeconds:F1} before compression size {beforeCompressionSize}");
             }
 
             public void TransactionLogCreated(uint fileId)
