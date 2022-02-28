@@ -4,7 +4,9 @@
 
 ### Added
 
-Allow to use Brotli compression for Kvi. For now disabled by default.
+New RequireContentFree attribute to mark class to always use detection of IDictionaries on it to prevent Data Leaks.
+
+Allow to use Brotli compression for Kvi. For now disabled by default. Added new parameter to logger so it is breaking change, but easily fixable.
 
 ## 28.3.2
 

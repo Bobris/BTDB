@@ -600,4 +600,73 @@ public class ObjectDbTableUpgradeTest : IDisposable
             Assert.Equal(0, tr.KeyValueDBTransaction.GetKeyValueCount(new[] { ObjectDB.AllDictionariesPrefixByte }));
         }
     }
+
+    public class ObjWithDictV1
+    {
+        public IDictionary<Guid, Obj> D { get; set; }
+    }
+
+    public class RowObjWithDictV1
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public ObjWithDictV1 Obj { get; set; }
+    }
+
+    public interface IRowObjWithDictV1Table : IRelation<RowObjWithDictV1>
+    {
+    }
+
+    [RequireContentFree]
+    public class ObjWithDictV2
+    {
+        public Dictionary<Guid, Obj> D { get; set; }
+    }
+
+    public class RowObjWithDictV2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public ObjWithDictV2 Obj { get; set; }
+    }
+
+    public interface IRowObjWithDictV2Table : IRelation<RowObjWithDictV2>
+    {
+    }
+
+    [Fact]
+    public void MakingDictionaryEagerPreserveData2()
+    {
+        var g1 = Guid.NewGuid();
+        var g2 = Guid.NewGuid();
+        _db.RegisterType(typeof(ObjWithDictV1), "ObjWithDict");
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IRowObjWithDictV1Table>("T");
+            var table = creator(tr);
+            table.Upsert(new()
+            {
+                Id = 1, Obj = new() { D = new Dictionary<Guid, Obj> { { g1, new Obj { Num = 1 } }, { g2, new Obj { Num = 2 } } } }
+            });
+
+            tr.Commit();
+        }
+
+        ReopenDb();
+        _db.RegisterType(typeof(ObjWithDictV2), "ObjWithDict");
+
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IRowObjWithDictV2Table>("T");
+            var table = creator(tr);
+            Assert.Equal(1, table.Count);
+
+            Assert.Equal(2, table.First().Obj.D.Count);
+            Assert.Equal(1, table.First().Obj.D[g1].Num);
+            Assert.Equal(2, table.First().Obj.D[g2].Num);
+            table.Upsert(table.First());
+            // Assert no leaks in IDictionaries
+            Assert.Equal(0, tr.KeyValueDBTransaction.GetKeyValueCount(new[] { ObjectDB.AllDictionariesPrefixByte }));
+        }
+    }
 }

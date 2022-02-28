@@ -72,9 +72,11 @@ public class TableInfo
             }
 
             _clientType = value;
+            if (value?.GetCustomAttribute(typeof(RequireContentFreeAttribute)) != null) _freeContentRequired = true;
         }
     }
 
+    bool _freeContentRequired = false;
     internal TableVersionInfo? ClientTableVersionInfo
     {
         get
@@ -408,9 +410,18 @@ public class TableInfo
                     _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
                 if (converterGenerator != null)
                 {
-                    ilGenerator.Ldloc(0);
-                    specializedSrcHandler.Load(ilGenerator, il => il.Ldarg(2), readerOrCtx);
-                    converterGenerator(ilGenerator);
+                    if (willLoad != fieldType)
+                    {
+                        specializedSrcHandler.Load(ilGenerator, il => il.Ldarg(2), readerOrCtx);
+                        converterGenerator(ilGenerator);
+                        var local = ilGenerator.DeclareLocal(fieldType);
+                        ilGenerator.Stloc(local).Ldloc(0).Ldloc(local);
+                    }
+                    else
+                    {
+                        ilGenerator.Ldloc(0);
+                        specializedSrcHandler.Load(ilGenerator, il => il.Ldarg(2), readerOrCtx);
+                    }
                     ilGenerator.Call(fieldInfo);
                     continue;
                 }
@@ -453,6 +464,7 @@ public class TableInfo
 
     internal NeedsFreeContent IsFreeContentNeeded(uint version)
     {
+        if (_freeContentRequired) return NeedsFreeContent.Yes;
         if (_freeContent.TryGetValue(version, out var freeContent))
             return freeContent.Item1;
         if (_freeContentNeedDetectionInProgress.ContainsKey(version))
