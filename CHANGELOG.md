@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.0.0
+
 ### Added
 
 New RequireContentFree attribute to mark class to always use detection of IDictionaries on it to prevent Data Leaks.
