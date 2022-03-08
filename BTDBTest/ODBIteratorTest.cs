@@ -169,7 +169,7 @@ public class ODBIteratorTest : IDisposable
 
         public bool StartDictionary(ulong? dicid = null)
         {
-            Builder.AppendLine("StartDictionary "+(dicid.HasValue?dicid.Value.ToString():""));
+            Builder.AppendLine("StartDictionary"+(dicid.HasValue?" "+dicid.Value:""));
             return true;
         }
 

@@ -93,7 +93,7 @@ namespace ODbDump.Visitor
 
         public bool StartDictionary(ulong? dicid = null)
         {
-            Print($"{CurrentFieldName}: Dictionary "+(dicid.HasValue?dicid.Value.ToString():""));
+            Print($"{CurrentFieldName}: Dictionary" + (dicid.HasValue ? " " + dicid.Value : ""));
             _listItemIndexStack.Push(_itemIndex);
             _itemIndex = 0;
             _indent++;

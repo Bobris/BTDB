@@ -6,7 +6,7 @@ Used key: 01 01 Value len:3
 Used key: 00 01 01 01 Value len:51
 Object oid:1 1-LanguageMap version:1
 StartField Items
-StartDictionary
+StartDictionary 0
 Used key: 02 00 64 Value len:14
 StartDictKey
 ScalarObj 100
@@ -44,7 +44,7 @@ Used key: 01 02 Value len:3
 Used key: 00 01 03 01 Value len:48
 Object oid:2 3-SheetMap version:1
 StartField Items
-StartDictionary
+StartDictionary 1
 Used key: 02 01 65 Value len:40
 StartDictKey
 ScalarObj 101
@@ -187,7 +187,7 @@ Used key: 01 03 Value len:3
 Used key: 00 01 05 01 Value len:52
 Object oid:3 5-AttributeMap version:1
 StartField Items
-StartDictionary
+StartDictionary 2
 Used key: 02 02 67 Value len:36
 StartDictKey
 ScalarObj 103
@@ -432,7 +432,7 @@ Used key: 01 04 Value len:3
 Used key: 00 01 07 01 Value len:49
 Object oid:4 7-SchemaMap version:1
 StartField Items
-StartDictionary
+StartDictionary 3
 Used key: 02 03 6B Value len:1468
 StartDictKey
 ScalarObj 107
@@ -33395,7 +33395,7 @@ Used key: 01 05 Value len:3
 Used key: 00 01 14 01 Value len:60
 Object oid:5 20-UpdatePrinterListMap version:1
 StartField Items
-StartDictionary
+StartDictionary 4
 Used key: 02 04 01 Value len:19
 StartDictKey
 ScalarObj 1
@@ -33450,7 +33450,7 @@ Used key: 01 06 Value len:3
 Used key: 00 01 16 01 Value len:5452
 Object oid:6 22-ProcessableItemStateMap version:1
 StartField States
-StartDictionary
+StartDictionary 5
 Used key: 02 05 B5 Value len:1
 StartDictKey
 ScalarObj PrinterList_Queued
@@ -33501,7 +33501,7 @@ Used key: 01 08 Value len:3
 Used key: 00 01 18 01 Value len:60
 Object oid:8 24-AimsConfigurationMap version:1
 StartField Items
-StartDictionary
+StartDictionary 6
 Used key: 02 06 01 Value len:25
 StartDictKey
 ScalarObj 1

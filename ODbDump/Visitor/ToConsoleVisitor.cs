@@ -87,12 +87,13 @@ namespace ODbDump.Visitor
         {
             if (dicid.HasValue)
             {
-                Console.WriteLine("StartDictionary "+dicid.Value);
+                Console.WriteLine("StartDictionary " + dicid.Value);
             }
             else
             {
                 Console.WriteLine("StartDictionary");
             }
+
             return true;
         }
 
