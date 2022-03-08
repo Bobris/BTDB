@@ -23,7 +23,7 @@ public interface IODBVisitor : IODBFastVisitor
     bool StartItem();
     void EndItem();
     void EndList();
-    bool StartDictionary(); // false to skip iteration of this Dict
+    bool StartDictionary(ulong? dicid = null); // false to skip iteration of this Dict
     bool StartDictKey(); // false to skip iteration of key
     void EndDictKey();
     bool StartDictValue(); // false to skip iteration of value

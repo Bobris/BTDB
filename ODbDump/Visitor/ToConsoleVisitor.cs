@@ -83,9 +83,16 @@ namespace ODbDump.Visitor
             Console.WriteLine("EndList");
         }
 
-        public bool StartDictionary()
+        public bool StartDictionary(ulong? dicid = null)
         {
-            Console.WriteLine("StartDictionary");
+            if (dicid.HasValue)
+            {
+                Console.WriteLine("StartDictionary "+dicid.Value);
+            }
+            else
+            {
+                Console.WriteLine("StartDictionary");
+            }
             return true;
         }
 

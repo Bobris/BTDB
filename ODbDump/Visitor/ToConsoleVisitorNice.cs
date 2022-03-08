@@ -91,9 +91,9 @@ namespace ODbDump.Visitor
             _indent--;
         }
 
-        public bool StartDictionary()
+        public bool StartDictionary(ulong? dicid = null)
         {
-            Print($"{CurrentFieldName}: Dictionary");
+            Print($"{CurrentFieldName}: Dictionary "+(dicid.HasValue?dicid.Value.ToString():""));
             _listItemIndexStack.Push(_itemIndex);
             _itemIndex = 0;
             _indent++;
@@ -164,7 +164,7 @@ namespace ODbDump.Visitor
 
         public virtual bool StartRelation(ODBIteratorRelationInfo relationInfo)
         {
-            Print($"Relation {relationInfo.Name}");
+            Print($"Relation {relationInfo.Name} {relationInfo.Id}");
             _listItemIndexStack.Push(_itemIndex);
             _itemIndex = 0;
             _indent++;

@@ -167,9 +167,9 @@ public class ODBIteratorTest : IDisposable
             Builder.AppendLine("EndList");
         }
 
-        public bool StartDictionary()
+        public bool StartDictionary(ulong? dicid = null)
         {
-            Builder.AppendLine("StartDictionary");
+            Builder.AppendLine("StartDictionary "+(dicid.HasValue?dicid.Value.ToString():""));
             return true;
         }
 

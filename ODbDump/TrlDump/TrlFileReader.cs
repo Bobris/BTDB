@@ -14,6 +14,8 @@ namespace ODbDump.TrlDump
         const int MaxValueSizeInlineInMemory = 7;
         static readonly byte[] MagicStartOfTransaction = {(byte) 't', (byte) 'R'};
 
+        ulong commitUlong;
+
         public TrlFileReader(IFileCollectionFile file)
         {
             _readerController = file.GetExclusiveReader();
@@ -73,7 +75,14 @@ namespace ODbDump.TrlDump
                     case KVCommandType.EraseOne:
                     {
                         var keyLen = reader.ReadVInt32();
-                        reader.SkipBlock(keyLen);
+                        var key = new byte[keyLen];
+                        reader.ReadBlock(key);
+                        var keyBuf = ByteBuffer.NewAsync(key);
+                        if ((command & KVCommandType.FirstParamCompressed) != 0)
+                        {
+                            _compression.DecompressKey(ref keyBuf);
+                        }
+                        ExplainEraseOne(visitor, keyBuf.AsSyncReadOnlySpan());
                     }
                         break;
                     case KVCommandType.EraseRange:
@@ -97,7 +106,8 @@ namespace ODbDump.TrlDump
                         break;
                     case KVCommandType.CommitWithDeltaUlong:
                         var delta = reader.ReadVUInt64();
-                        visitor.OperationDetail($"delta: {delta}");
+                        commitUlong+=delta;
+                        visitor.OperationDetail($"delta: {delta} {commitUlong}");
                         break;
                     case KVCommandType.EndOfFile:
                         visitor.OperationDetail($"position: {reader!.Controller!.GetCurrentPosition(reader)}");
@@ -171,6 +181,43 @@ namespace ODbDump.TrlDump
                     var relationIdx = reader.ReadVUInt64();
                     var skIdx = reader.ReadUInt8();
                     visitor.UpsertRelationSecondaryKey(relationIdx, skIdx, key.Length, valueLength);
+                }
+                    break;
+            }
+        }
+
+        void ExplainEraseOne(ITrlVisitor visitor, ReadOnlySpan<byte> key)
+        {
+            switch (key[0])
+            {
+                case 0:
+                    visitor.OperationDetail("metadata");
+                    break;
+                case 1:
+                {
+                    var oid = SkipByteAndReadVUInt64(key);
+                    visitor.EraseObject(oid);
+                }
+                    break;
+                case 2:
+                {
+                    var oid = SkipByteAndReadVUInt64(key);
+                    visitor.EraseODBDictionary(oid, key.Length);
+                }
+                    break;
+                case 3:
+                {
+                    var relationIdx = SkipByteAndReadVUInt64(key);
+                    visitor.EraseRelationValue(relationIdx, key.Length);
+                }
+                    break;
+                case 4:
+                {
+                    var reader = new SpanReader(key);
+                    reader.SkipBlock(1);
+                    var relationIdx = reader.ReadVUInt64();
+                    var skIdx = reader.ReadUInt8();
+                    //visitor.EraseRelationSecondaryKey(relationIdx, skIdx, key.Length);
                 }
                     break;
             }

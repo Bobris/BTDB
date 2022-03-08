@@ -68,7 +68,7 @@ namespace ODbDump.Visitor
         {
         }
 
-        public bool StartDictionary()
+        public bool StartDictionary(ulong? dicid = null)
         {
             return true;
         }

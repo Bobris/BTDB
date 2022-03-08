@@ -406,7 +406,7 @@ public class ODBIterator
     [SkipLocalsInit]
     void IterateDict(ulong dictId, IFieldHandler keyHandler, IFieldHandler valueHandler)
     {
-        if (_visitor != null && !_visitor.StartDictionary())
+        if (_visitor != null && !_visitor.StartDictionary(dictId))
             return;
         var o = ObjectDB.AllDictionariesPrefix.Length;
         var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];

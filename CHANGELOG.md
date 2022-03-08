@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Improved ODbDump diskdump and trldump commands.
+
 ## 29.0.0
 
 ### Added

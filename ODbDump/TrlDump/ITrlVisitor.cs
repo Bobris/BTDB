@@ -15,6 +15,10 @@ namespace ODbDump.TrlDump
         void UpsertRelationValue(ulong relationIdx, int keyLength, int valueLength);
         void UpsertRelationSecondaryKey(ulong relationIdx, int skIndex, int keyLength, int valueLength);
 
+        void EraseObject(ulong oid);
+        void EraseODBDictionary(ulong oid, int keyLength);
+        void EraseRelationValue(ulong relationIdx, int keyLength);
+
         void EndOperation();
     }
 }

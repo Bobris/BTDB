@@ -150,8 +150,7 @@ namespace ODbDump
                 {
                     var dbDir = args[0];
                     var openUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null;
-                    var fileName = Path.Combine(dbDir, "dump.txt");
-
+                    var fileName = Path.Combine(dbDir, "dump"+(openUpToCommitUlong.HasValue?openUpToCommitUlong.ToString():"")+".txt");
                     DiskDump(dbDir, fileName, openUpToCommitUlong);
                     break;
                 }
@@ -467,7 +466,8 @@ namespace ODbDump
                     break;
                 case "trldump":
                 {
-                    ITrlVisitor visitor = new ConsoleTrlVisitor();
+                    using var outFile = File.CreateText("tlrdump.txt");
+                    var visitor = new TrlVisitor(outFile);
                     using var dfc = new OnDiskFileCollection(args[0]);
                     foreach (var file in dfc.Enumerate())
                     {
