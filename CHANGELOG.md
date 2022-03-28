@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.1.0
+
 ### Changed
 
 Unregistered object inside another object is skipped without throwing exception.
