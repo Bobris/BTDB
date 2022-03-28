@@ -617,6 +617,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
     {
     }
 
+
     [RequireContentFree]
     public class ObjWithDictV2
     {
@@ -667,6 +668,66 @@ public class ObjectDbTableUpgradeTest : IDisposable
             table.Upsert(table.First());
             // Assert no leaks in IDictionaries
             Assert.Equal(0, tr.KeyValueDBTransaction.GetKeyValueCount(new[] { ObjectDB.AllDictionariesPrefixByte }));
+        }
+    }
+
+    public class ObjInObj
+    {
+        public Obj O { get; set; }
+    }
+
+    public class RowObjInObjV1
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public ObjInObj OO { get; set; }
+    }
+
+    public interface IRowObjInObjV1Table : IRelation<RowObjInObjV1>
+    {
+    }
+
+    public class ObjInObjV2
+    {
+    }
+
+    public class RowObjInObjV2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public ObjInObjV2 OO { get; set; }
+    }
+
+    public interface IRowObjInObjV2Table : IRelation<RowObjInObjV2>
+    {
+    }
+
+    [Fact]
+    public void SupportSkippingOfNotRegisteredObjects()
+    {
+        var g1 = Guid.NewGuid();
+        var g2 = Guid.NewGuid();
+        _db.RegisterType(typeof(Obj), "ObjVoldemort");
+        _db.RegisterType(typeof(ObjInObj), "ObjInObj");
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IRowObjInObjV1Table>("T");
+            var table = creator(tr);
+            table.Upsert(new()
+            {
+                Id = 1, OO = new() { O = new Obj { Num = 1 } }
+            });
+
+            tr.Commit();
+        }
+
+        ReopenDb();
+        _db.RegisterType(typeof(ObjInObjV2), "ObjInObj");
+
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IRowObjInObjV2Table>("T");
+            var table = creator(tr);
+            Assert.Equal(1, table.Count);
+            Assert.NotNull(table.First());
         }
     }
 }

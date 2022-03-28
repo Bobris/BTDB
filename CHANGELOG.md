@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Changed
+
+Unregistered object inside another object is skipped without throwing exception.
+
 ### Added
 
 Improved ODbDump diskdump and trldump commands.

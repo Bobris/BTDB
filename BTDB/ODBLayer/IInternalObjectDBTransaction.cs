@@ -7,7 +7,7 @@ namespace BTDB.ODBLayer;
 public interface IInternalObjectDBTransaction : IObjectDBTransaction
 {
     ulong AllocateDictionaryId();
-    object ReadInlineObject(ref SpanReader reader, IReaderCtx readerCtx);
+    object ReadInlineObject(ref SpanReader reader, IReaderCtx readerCtx, bool skipping);
     void WriteInlineObject(ref SpanWriter writer, object @object, IWriterCtx writerCtx);
     ulong StoreIfNotInlined(object @object, bool autoRegister, bool forceInline);
     void FreeContentInNativeObject(ref SpanReader reader, IReaderCtx readerCtx);

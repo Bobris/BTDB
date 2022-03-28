@@ -4,7 +4,6 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.FieldHandler;
@@ -60,18 +59,29 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         return _owner.AllocateNewDictId();
     }
 
-    public object ReadInlineObject(ref SpanReader reader, IReaderCtx readerCtx)
+    public object ReadInlineObject(ref SpanReader reader, IReaderCtx readerCtx, bool skipping)
     {
         var tableId = reader.ReadVUInt32();
         var tableVersion = reader.ReadVUInt32();
         var tableInfo = _owner.TablesInfo.FindById(tableId);
         if (tableInfo == null) _owner.ActualOptions.ThrowBTDBException($"Unknown TypeId {tableId} of inline object");
-        EnsureClientTypeNotNull(tableInfo);
-        var obj = tableInfo.Creator(this, null);
-        readerCtx.RegisterObject(obj);
-        tableInfo.GetLoader(tableVersion)(this, null, ref reader, obj);
-        readerCtx.ReadObjectDone(ref reader);
-        return obj;
+        if (skipping && !TryToEnsureClientTypeNotNull(tableInfo))
+        {
+            var obj = new BTDBException("Skipped InlineObject "+tableInfo.Name);
+            readerCtx.RegisterObject(obj);
+            tableInfo.GetSkipper(tableVersion)(this, null, ref reader, obj);
+            readerCtx.ReadObjectDone(ref reader);
+            return obj;
+        }
+        else
+        {
+            EnsureClientTypeNotNull(tableInfo);
+            var obj = tableInfo.Creator(this, null);
+            readerCtx.RegisterObject(obj);
+            tableInfo.GetLoader(tableVersion)(this, null, ref reader, obj);
+            readerCtx.ReadObjectDone(ref reader);
+            return obj;
+        }
     }
 
     public void FreeContentInNativeObject(ref SpanReader reader, IReaderCtx readerCtx)

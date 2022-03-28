@@ -37,6 +37,7 @@ public class TableInfo
     ObjectSaver? _saver;
 
     readonly ConcurrentDictionary<uint, ObjectLoader> _loaders = new();
+    readonly ConcurrentDictionary<uint, ObjectLoader> _skippers = new();
 
     readonly ConcurrentDictionary<uint, Tuple<NeedsFreeContent, ObjectFreeContent>> _freeContent = new();
 
@@ -456,6 +457,41 @@ public class TableInfo
                 converterGenerator(ilGenerator);
                 ilGenerator.Call(setterMethod);
             }
+        }
+
+        ilGenerator.Ret();
+        return method.Create();
+    }
+
+    internal ObjectLoader GetSkipper(uint version)
+    {
+        return _skippers.GetOrAdd(version, CreateSkipper);
+    }
+
+    ObjectLoader CreateSkipper(uint version)
+    {
+        var method = ILBuilder.Instance
+            .NewMethod<ObjectLoader>(
+                $"Skipper_{Name}_{version}");
+        var ilGenerator = method.Generator;
+        var tableVersionInfo = TableVersions.GetOrAdd(version,
+            (ver, tableInfo) =>
+                tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
+        var anyNeedsCtx = tableVersionInfo.NeedsCtx();
+        if (anyNeedsCtx)
+        {
+            ilGenerator.DeclareLocal(typeof(IReaderCtx));
+            ilGenerator
+                .Ldarg(0)
+                .Newobj(() => new DBReaderCtx(null))
+                .Stloc(1);
+        }
+
+        for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
+        {
+            var srcFieldInfo = tableVersionInfo[fi];
+            var readerOrCtx = srcFieldInfo.Handler!.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
+            srcFieldInfo.Handler.Skip(ilGenerator, il => il.Ldarg(2), readerOrCtx);
         }
 
         ilGenerator.Ret();

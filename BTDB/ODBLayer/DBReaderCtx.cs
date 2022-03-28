@@ -80,7 +80,7 @@ public class DBReaderCtx : IDBReaderCtx
         var test = ReadObject(ref reader, out var @object);
         if (test)
         {
-            @object = Transaction!.ReadInlineObject(ref reader, this);
+            @object = Transaction!.ReadInlineObject(ref reader, this, false);
         }
 
         return @object;
@@ -116,8 +116,7 @@ public class DBReaderCtx : IDBReaderCtx
         var test = SkipObject(ref reader);
         if (test)
         {
-            // This should be skip inline object, but it is easier just to throw away result
-            Transaction!.ReadInlineObject(ref reader, this);
+            Transaction!.ReadInlineObject(ref reader, this, true);
         }
     }
 
