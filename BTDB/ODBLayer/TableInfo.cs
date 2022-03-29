@@ -474,23 +474,23 @@ public class TableInfo
             .NewMethod<ObjectLoader>(
                 $"Skipper_{Name}_{version}");
         var ilGenerator = method.Generator;
-        var tableVersionInfo = TableVersions.GetOrAdd(version,
-            (ver, tableInfo) =>
+        var tableVersionInfo = TableVersions.GetOrAdd(version, static (ver, tableInfo) =>
                 tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
         var anyNeedsCtx = tableVersionInfo.NeedsCtx();
+        IILLocal? ctxLocal = null;
         if (anyNeedsCtx)
         {
-            ilGenerator.DeclareLocal(typeof(IReaderCtx));
+            ctxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
             ilGenerator
                 .Ldarg(0)
                 .Newobj(() => new DBReaderCtx(null))
-                .Stloc(1);
+                .Stloc(ctxLocal);
         }
 
         for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
         {
             var srcFieldInfo = tableVersionInfo[fi];
-            var readerOrCtx = srcFieldInfo.Handler!.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
+            var readerOrCtx = srcFieldInfo.Handler!.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(ctxLocal!)) : null;
             srcFieldInfo.Handler.Skip(ilGenerator, il => il.Ldarg(2), readerOrCtx);
         }
 

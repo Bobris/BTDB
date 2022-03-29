@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Skipper from previous version generated invalid IL code which make violent crash, not in tests though :-(
+
 ## 29.1.0
 
 ### Changed
