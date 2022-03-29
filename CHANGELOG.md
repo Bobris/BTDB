@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.1.1
+
 ### Fixed
 
 Skipper from previous version generated invalid IL code which make violent crash, not in tests though :-(
