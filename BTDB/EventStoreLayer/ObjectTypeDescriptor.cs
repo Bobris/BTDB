@@ -113,7 +113,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         return true;
     }
 
-    static string GetPersistentName(PropertyInfo propertyInfo)
+    public static string GetPersistentName(PropertyInfo propertyInfo)
     {
         var a = propertyInfo.GetCustomAttribute<PersistedNameAttribute>();
         return a != null ? a.Name : propertyInfo.Name;

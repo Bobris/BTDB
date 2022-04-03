@@ -17,6 +17,16 @@ public static class EmitHelpers
         return ((MethodCallExpression)expression.Body).Method;
     }
 
+    public static PropertyInfo GetPropertyInfo<TType, TReturn>(this Expression<Func<TType, TReturn>> property)
+    {
+        LambdaExpression lambda = property;
+        var memberExpression = lambda.Body is UnaryExpression expression
+            ? (MemberExpression) expression.Operand
+            : (MemberExpression) lambda.Body;
+
+        return (PropertyInfo) memberExpression.Member;
+    }
+
     public static T CreateDelegate<T>(this MethodInfo mi) where T : class
     {
         return (T)(object)Delegate.CreateDelegate(typeof(T), mi);

@@ -1231,10 +1231,11 @@ public class RelationBuilder
     {
         var itemType = ParseGatherParams(methodParameters, methodName);
         var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
-
         var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var constraintsParameters = methodParameters.AsSpan(3..);
+        var orderersLocal = DetectOrderersInGather(ilGenerator, ref constraintsParameters);
 
-        SaveMethodConstraintParameters(ilGenerator, methodName, methodParameters, primaryKeyFields.Span, constraintsLocal, 3);
+        SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, primaryKeyFields.Span, constraintsLocal, 3);
 
         //call manipulator.GatherBy_
         ilGenerator
@@ -1244,10 +1245,31 @@ public class RelationBuilder
             .Ldarg(1)
             .Castclass(typeof(ICollection<>).MakeGenericType(itemType))
             .Ldarg(2)
-            .Ldarg(3);
+            .Ldarg(3)
+            .Ldloc(orderersLocal);
         ilGenerator.Callvirt(
             _relationDbManipulatorType.GetMethod(
                 nameof(RelationDBManipulator<IRelation>.GatherByPrimaryKey))!.MakeGenericMethod(itemType));
+    }
+
+    static IILLocal DetectOrderersInGather(IILGen ilGenerator, ref Span<ParameterInfo> constraintsParameters)
+    {
+        var orderersLocal = ilGenerator.DeclareLocal(typeof(IOrderer[]));
+        if (constraintsParameters.Length > 0 && constraintsParameters[^1].ParameterType == typeof(IOrderer[]))
+        {
+            ilGenerator
+                .Ldarg((ushort)(constraintsParameters.Length + 3))
+                .Stloc(orderersLocal);
+            constraintsParameters = constraintsParameters[..^1];
+        }
+        else
+        {
+            ilGenerator
+                .Ldnull()
+                .Stloc(orderersLocal);
+        }
+
+        return orderersLocal;
     }
 
     void CreateMethodGatherBy(IILGen ilGenerator, string methodName,
@@ -1260,7 +1282,9 @@ public class RelationBuilder
 
         var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex);
 
-        SaveMethodConstraintParameters(ilGenerator, methodName, methodParameters, secondaryKeyFields, constraintsLocal, 3);
+        var constraintsParameters = methodParameters.AsSpan(3..);
+        var orderersLocal = DetectOrderersInGather(ilGenerator, ref constraintsParameters);
+        SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, secondaryKeyFields, constraintsLocal, 3);
 
         //call manipulator.GatherBy_
         ilGenerator
@@ -1271,7 +1295,8 @@ public class RelationBuilder
             .Castclass(typeof(ICollection<>).MakeGenericType(itemType))
             .Ldarg(2)
             .Ldarg(3)
-            .LdcI4((int)skIndex);
+            .LdcI4((int)skIndex)
+            .Ldloc(orderersLocal);
         ilGenerator.Callvirt(
             _relationDbManipulatorType.GetMethod(
                 nameof(RelationDBManipulator<IRelation>.GatherBySecondaryKey))!.MakeGenericMethod(itemType));
@@ -1358,18 +1383,18 @@ public class RelationBuilder
 
     void SaveMethodConstraintParameters(IILGen ilGenerator, string methodName,
         ReadOnlySpan<ParameterInfo> methodParameters,
-        ReadOnlySpan<TableFieldInfo> fields, IILLocal constraintsLocal, int skip = 0)
+        ReadOnlySpan<TableFieldInfo> fields, IILLocal constraintsLocal, int addArg = 0)
     {
-        if (methodParameters.Length - skip > fields.Length)
+        if (methodParameters.Length > fields.Length)
             RelationInfoResolver.ActualOptions.ThrowBTDBException(
                 $"Number of constraints parameters in {methodName} is bigger than key count {fields.Length}.");
 
         ilGenerator
-            .LdcI4(methodParameters.Length - skip)
+            .LdcI4(methodParameters.Length)
             .Newarr(typeof(ConstraintInfo))
             .Stloc(constraintsLocal);
 
-        var idx = skip;
+        var idx = 0;
         foreach (var field in fields)
         {
             if (idx == methodParameters.Length)
@@ -1402,9 +1427,9 @@ public class RelationBuilder
 
             ilGenerator
                 .Ldloc(constraintsLocal)
-                .LdcI4(idx - 1 - skip)
+                .LdcI4(idx - 1)
                 .Ldelema(typeof(ConstraintInfo))
-                .Ldarg((ushort)idx)
+                .Ldarg((ushort)(idx + addArg))
                 .Castclass(typeof(IConstraint))
                 .Stfld(typeof(ConstraintInfo).GetField(nameof(ConstraintInfo.Constraint))!);
         }

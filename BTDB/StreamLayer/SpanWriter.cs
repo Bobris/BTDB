@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel.Design;
 using System.Net;
 using System.Net.Sockets;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -800,6 +801,33 @@ public ref struct SpanWriter
         }
 
         return InitialBuffer.Slice((int)start, (int)len);
+    }
+
+    public uint StartXor()
+    {
+        if (Controller != null) ThrowCannotBeUsedWithController();
+        return NoControllerGetCurrentPosition();
+    }
+
+    public void FinishXor(uint start, byte value = 0xFF)
+    {
+        var data = InternalGetSpan(start, NoControllerGetCurrentPosition() - start);
+        if (Vector.IsHardwareAccelerated && data.Length >= Vector<byte>.Count)
+        {
+            var dataVector = MemoryMarshal.Cast<byte, Vector<byte>>(data);
+            var vectorFFs = new Vector<byte>(value);
+            for (var i = 0; i < dataVector.Length; i++)
+            {
+                dataVector[i] ^= vectorFFs;
+            }
+
+            data = data[(Vector<byte>.Count * dataVector.Length)..];
+        }
+
+        for (var i = 0; i < data.Length; i++)
+        {
+            data[i] ^= value;
+        }
     }
 
     public void UpdateBuffer(ReadOnlySpan<byte> writtenBuffer)

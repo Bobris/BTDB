@@ -725,7 +725,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     public ulong GatherByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
-        long skip, long take)
+        long skip, long take, IOrderer[]? orderers)
     {
         StructList<byte> keyBytes = new();
         keyBytes.AddRange(_relationInfo.Prefix);
@@ -757,7 +757,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     public ulong GatherBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
-        long skip, long take, uint secondaryKeyIndex)
+        long skip, long take, uint secondaryKeyIndex, IOrderer[]? orderers)
     {
         StructList<byte> keyBytes = new();
         keyBytes.AddRange(_relationInfo.PrefixSecondary);
