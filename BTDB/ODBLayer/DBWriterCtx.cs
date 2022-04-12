@@ -33,7 +33,7 @@ public class DBWriterCtx : IDBWriterCtx
             writer.WriteVInt64((long)oid);
             return false;
         }
-        if (_objectIdMap == null) _objectIdMap = new Dictionary<object, int>();
+        _objectIdMap ??= new(ReferenceEqualityComparer<object>.Instance);
         if (_objectIdMap.TryGetValue(@object, out var cid))
         {
             writer.WriteVInt64(-cid);

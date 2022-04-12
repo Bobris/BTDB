@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Force ReferenceEquality when comparing objects serialized in DB.
+
 ## 29.1.1
 
 ### Fixed
