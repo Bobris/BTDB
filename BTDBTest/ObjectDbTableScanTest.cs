@@ -146,7 +146,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
 
         using var tr = _db.StartTransaction();
         var t = tr.GetRelation<IPersonTable>();
-        var names = string.Concat(t.ScanBySignedEnum(Constraint.Enum<SignedEnum>.Predicate(v=>v==enum1))
+        var names = string.Concat(t.ScanBySignedEnum(Constraint.Enum<SignedEnum>.Predicate(v => v == enum1))
             .Select(p => p.Name));
         Assert.Equal(expectedNames, names);
     }
@@ -189,7 +189,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
 
         using var tr = _db.StartTransaction();
         var t = tr.GetRelation<IPersonTable>();
-        var names = string.Concat(t.ScanByUnsignedEnum(Constraint.Enum<UnsignedEnum>.Predicate(v=>v==enum2))
+        var names = string.Concat(t.ScanByUnsignedEnum(Constraint.Enum<UnsignedEnum>.Predicate(v => v == enum2))
             .Select(p => p.Name));
         Assert.Equal(expectedNames, names);
     }
@@ -240,6 +240,9 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
 
         ulong GatherById(List<ThreeUlongs> target, long skip, long take, Constraint<ulong> n1,
             Constraint<ulong> n2);
+
+        ulong GatherById(List<ThreeUlongs> target, long skip, long take, Constraint<ulong> n1,
+            Constraint<ulong> n2, IOrderer[] orderers);
     }
 
     [Fact]
@@ -297,6 +300,76 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal((ulong)t.Count(v => v.N2 > 3),
             t.GatherById(dst, 1, 2, Constraint.Unsigned.Any, Constraint.Unsigned.Predicate(n => n > 3)));
         AssertSameCondition(t.Where(v => v.N2 > 3).Skip(1).Take(2), dst);
+    }
+
+    [Fact]
+    public void GatherOrderingBySecondColumnWorks()
+    {
+        FillThreeUlongsData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        var dst = new List<ThreeUlongs>();
+        Assert.Equal((ulong)t.Count,
+            t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.Unsigned.Any,
+                new[] { Orderer.Ascending((ThreeUlongs v) => v.N2) }));
+        AssertSameCondition(t.OrderBy(v => v.N2).ThenBy(v => v.N1).ThenBy(v => v.N3), dst);
+    }
+
+    [Fact]
+    public void GatherDescendingOrderingBySecondColumnWorks()
+    {
+        FillThreeUlongsData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        var dst = new List<ThreeUlongs>();
+        Assert.Equal((ulong)t.Count,
+            t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.Unsigned.Any,
+                new[] { Orderer.Descending((ThreeUlongs v) => v.N2) }));
+        AssertSameCondition(t.OrderByDescending(v => v.N2).ThenBy(v => v.N1).ThenBy(v => v.N3), dst);
+    }
+
+    [Fact]
+    public void GatherOrderingByThirdColumnWorks()
+    {
+        FillThreeUlongsData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        var dst = new List<ThreeUlongs>();
+        Assert.Equal((ulong)t.Count,
+            t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.Unsigned.Any,
+                new[] { Orderer.Ascending((ThreeUlongs v) => v.N3) }));
+        AssertSameCondition(t.OrderBy(v => v.N3).ThenBy(v => v.N1).ThenBy(v => v.N2), dst);
+    }
+
+    [Fact]
+    public void GatherOrderingByThirdAndSecondColumnWorks()
+    {
+        FillThreeUlongsData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        var dst = new List<ThreeUlongs>();
+        Assert.Equal((ulong)t.Count,
+            t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.Unsigned.Any,
+                new[] { Orderer.Ascending((ThreeUlongs v) => v.N3), Orderer.Ascending((ThreeUlongs v) => v.N2) }));
+        AssertSameCondition(t.OrderBy(v => v.N3).ThenBy(v => v.N2).ThenBy(v => v.N1), dst);
+    }
+
+    [Fact]
+    public void GatherConstraintAndOrderingByThirdAndSecondColumnWorks()
+    {
+        FillThreeUlongsData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        var dst = new List<ThreeUlongs>();
+        Assert.Equal((ulong)t.Count(v => v.N1 > 2),
+            t.GatherById(dst, 0, 1000, Constraint.Unsigned.Predicate(v => v > 2), Constraint.Unsigned.Any,
+                new[] { Orderer.Ascending((ThreeUlongs v) => v.N3), Orderer.Descending((ThreeUlongs v) => v.N2) }));
+        AssertSameCondition(t.Where(v => v.N1 > 2).OrderBy(v => v.N3).ThenByDescending(v => v.N2).ThenBy(v => v.N1), dst);
     }
 
     static void AssertSameCondition(IEnumerable<ThreeUlongs> expectedResult, IEnumerable<ThreeUlongs> scanResult)

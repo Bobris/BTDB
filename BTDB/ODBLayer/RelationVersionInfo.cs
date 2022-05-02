@@ -211,6 +211,11 @@ public class RelationVersionInfo
         return fields;
     }
 
+    internal TableFieldInfo GetFieldInfo(FieldId fi)
+    {
+        return fi.IsFromPrimaryKey ? PrimaryKeyFields.Span[(int)fi.Index] : _secondaryKeyFields.Span[(int)fi.Index];
+    }
+
     internal uint GetSecondaryKeyIndex(string name)
     {
         if (!_secondaryKeysNames.TryGetValue(name, out var index))

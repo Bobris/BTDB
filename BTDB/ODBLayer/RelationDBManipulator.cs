@@ -2,11 +2,14 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Collections;
+using BTDB.FieldHandler;
+using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -23,7 +26,8 @@ public interface IRelationDbManipulator : IRelation, IRelationModificationCounte
     public IInternalObjectDBTransaction Transaction { get; }
     public RelationInfo RelationInfo { get; }
 
-    public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex, in ReadOnlySpan<byte> secondaryKey);
+    public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
+        in ReadOnlySpan<byte> secondaryKey);
 }
 
 public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator where T : class
@@ -170,6 +174,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                     var value = reader.ReadByteArrayAsSpan();
                     tr.CreateOrUpdateKeyValue(key, value);
                 }
+
                 ((ObjectDB)_transaction.Owner).CommitLastObjIdAndDictId(tr);
                 tr.Commit();
             }, TaskContinuationOptions.ExecuteSynchronously);
@@ -447,7 +452,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         Span<byte> valueBuffer = stackalloc byte[512];
 
         if (!_kvtr.EraseCurrent(keyBytes, ref MemoryMarshal.GetReference(valueBuffer), valueBuffer.Length,
-            out var value))
+                out var value))
         {
             if (throwWhenNotFound)
                 throw new BTDBException("Not found record to delete.");
@@ -473,7 +478,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             Span<byte> valueBuffer = stackalloc byte[512];
 
             if (!_kvtr.EraseCurrent(keyBytes, ref valueBuffer.GetPinnableReference(), valueBuffer.Length,
-                out var value))
+                    out var value))
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found record to delete.");
@@ -729,31 +734,99 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         StructList<byte> keyBytes = new();
         keyBytes.AddRange(_relationInfo.Prefix);
-        var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
-            loaderIndex, constraints);
         if (skip < 0)
         {
             take += skip;
             skip = 0;
         }
 
-        var count = 0ul;
-
-        while (enumerator.MoveNextInGather())
+        if (orderers == null || orderers.Length == 0)
         {
-            count++;
-            if (skip > 0)
+            var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
+                loaderIndex, constraints);
+
+            var count = 0ul;
+
+            while (enumerator.MoveNextInGather())
             {
-                skip--;
-                continue;
+                count++;
+                if (skip > 0)
+                {
+                    skip--;
+                    continue;
+                }
+
+                if (take <= 0) continue;
+                take--;
+                target.Add(enumerator.CurrentInGather);
             }
 
-            if (take <= 0) continue;
-            take--;
-            target.Add(enumerator.CurrentInGather);
+            return count;
         }
+        else
+        {
+            var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
+            var primaryKeyFields = relationVersionInfo.PrimaryKeyFields.Span;
+            var ordererIdxs = new int[orderers.Length];
+            Array.Fill(ordererIdxs, -2);
+            for (var i = 0; i < primaryKeyFields.Length; i++)
+            {
+                var fi = primaryKeyFields[i];
+                for (var j = 0; j < orderers.Length; j++)
+                {
+                    if (orderers[j].ColumnName == fi.Name)
+                    {
+                        ordererIdxs[j] = i;
+                        var type = orderers[j].ExpectedInput;
+                        if (type != null && type != typeof(T))
+                        {
+                            throw new BTDBException("Orderer[" + j + "] " + orderers[j].ColumnName + " of type " +
+                                                    type.ToSimpleName() + " is not equal to " + typeof(T));
+                        }
 
-        return count;
+                        while (i >= constraints.Length)
+                        {
+                            var fi2 = primaryKeyFields[constraints.Length];
+                            var constraintType = typeof(Constraint<>).MakeGenericType(fi2.Handler!.HandledType()!);
+                            var constraintAny = (IConstraint)constraintType.GetField("Any")!.GetValue(null);
+                            constraints = constraints.Append(new() { Constraint = constraintAny! }).ToArray();
+                        }
+                    }
+                }
+            }
+
+            for (var i = 0; i < orderers.Length; i++)
+            {
+                if (ordererIdxs[i] == -2)
+                {
+                    throw new BTDBException("Unmatched orderer[" + i + "] " + orderers[i].ColumnName + " of " +
+                                            orderers[i].ExpectedInput?.ToSimpleName() + " in relation " +
+                                            _relationInfo.Name);
+                }
+            }
+
+            var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
+                loaderIndex, constraints);
+
+            var sns = new SortNativeStorage();
+            try
+            {
+                enumerator.GatherForSorting(ref sns, ordererIdxs, orderers);
+                sns.Sort();
+                var count = sns.Items.Count;
+                for (var i = 0; i < take; i++)
+                {
+                    if (skip + i >= count) break;
+                    target.Add(enumerator.CurrentByKeyIndex(sns.GetKeyIndex((int)skip + i)));
+                }
+
+                return count;
+            }
+            finally
+            {
+                sns.Dispose();
+            }
+        }
     }
 
     public ulong GatherBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
@@ -763,31 +836,102 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         keyBytes.AddRange(_relationInfo.PrefixSecondary);
         var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
         keyBytes.Add((byte)remappedSecondaryKeyIndex);
-        var enumerator = new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
-            loaderIndex, constraints, remappedSecondaryKeyIndex, this);
         if (skip < 0)
         {
             take += skip;
             skip = 0;
         }
 
-        var count = 0ul;
-
-        while (enumerator.MoveNextInGather())
+        if (orderers == null || orderers.Length == 0)
         {
-            count++;
-            if (skip > 0)
+            var enumerator = new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
+                this,
+                loaderIndex, constraints, remappedSecondaryKeyIndex, this);
+
+            var count = 0ul;
+
+            while (enumerator.MoveNextInGather())
             {
-                skip--;
-                continue;
+                count++;
+                if (skip > 0)
+                {
+                    skip--;
+                    continue;
+                }
+
+                if (take <= 0) continue;
+                take--;
+                target.Add(enumerator.CurrentInGather);
             }
 
-            if (take <= 0) continue;
-            take--;
-            target.Add(enumerator.CurrentInGather);
+            return count;
         }
+        else
+        {
+            var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
+            var secondaryKeyInfo = relationVersionInfo.SecondaryKeys[secondaryKeyIndex];
+            var fields = secondaryKeyInfo.Fields;
+            var ordererIdxs = new int[orderers.Length];
+            Array.Fill(ordererIdxs, -2);
+            for (var i = 0; i < fields.Count; i++)
+            {
+                var fi = relationVersionInfo.GetFieldInfo(fields[i]);
+                for (var j = 0; j < orderers.Length; j++)
+                {
+                    if (orderers[j].ColumnName == fi.Name)
+                    {
+                        ordererIdxs[j] = i;
+                        var type = orderers[j].ExpectedInput;
+                        if (type != null && type != typeof(T))
+                        {
+                            throw new BTDBException("Orderer[" + j + "] " + orderers[j].ColumnName + " of type " +
+                                                    type.ToSimpleName() + " is not equal to " + typeof(T));
+                        }
 
-        return count;
+                        while (i >= constraints.Length)
+                        {
+                            var fi2 = relationVersionInfo.GetFieldInfo(fields[constraints.Length]);
+                            var constraintType = typeof(Constraint<>).MakeGenericType(fi2.Handler!.HandledType()!);
+                            var constraintAny = (IConstraint)constraintType.GetField("Any")!.GetValue(null);
+                            constraints = constraints.Append(new() { Constraint = constraintAny! }).ToArray();
+                        }
+                    }
+                }
+            }
+
+            for (var i = 0; i < orderers.Length; i++)
+            {
+                if (ordererIdxs[i] == -2)
+                {
+                    throw new BTDBException("Unmatched orderer[" + i + "] " + orderers[i].ColumnName + " of " +
+                                            orderers[i].ExpectedInput?.ToSimpleName() + " in relation " +
+                                            _relationInfo.Name);
+                }
+            }
+
+            var enumerator = new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
+                this,
+                loaderIndex, constraints, remappedSecondaryKeyIndex, this);
+
+            var sns = new SortNativeStorage();
+            try
+            {
+                enumerator.GatherForSorting(ref sns, ordererIdxs, orderers);
+                sns.Sort();
+                var count = sns.Items.Count;
+                for (var i = 0; i < take; i++)
+                {
+                    if (skip + i >= count) break;
+                    target.Add(enumerator.CurrentByKeyIndex(sns.GetKeyIndex((int)skip + i)));
+                }
+
+                return count;
+            }
+            finally
+            {
+                sns.Dispose();
+            }
+        }
     }
 
     public IEnumerable<TItem> ScanByPrimaryKeyPrefix<TItem>(int loaderIndex, ConstraintInfo[] constraints)
@@ -798,7 +942,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             loaderIndex, constraints);
     }
 
-    public IEnumerable<TItem> ScanBySecondaryKeyPrefix<TItem>(int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex)
+    public IEnumerable<TItem> ScanBySecondaryKeyPrefix<TItem>(int loaderIndex, ConstraintInfo[] constraints,
+        uint secondaryKeyIndex)
     {
         StructList<byte> keyBytes = new();
         keyBytes.AddRange(_relationInfo.PrefixSecondary);
@@ -846,7 +991,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         if (_kvtr.FindNextKey(secKeyBytes))
             throw new BTDBException("Ambiguous result.");
 
-        return (TItem)CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], secondaryKeyIndex, keyBytes);
+        return (TItem)CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], secondaryKeyIndex,
+            keyBytes);
     }
 
     ReadOnlySpan<byte> WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj, ref SpanWriter writer)
@@ -882,7 +1028,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
     }
 
-    bool UpdateSecondaryIndexes(in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue, in ReadOnlySpan<byte> newValue)
+    bool UpdateSecondaryIndexes(in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue,
+        in ReadOnlySpan<byte> newValue)
     {
         var changed = false;
         foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
@@ -954,4 +1101,93 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     public IRelation? BtdbInternalNextInChain { get; set; }
+}
+
+ref struct SortNativeStorage
+{
+    internal ulong StartKeyIndex = 0;
+    internal SpanWriter Writer;
+    internal StructList<IntPtr> Storage;
+    internal StructList<IntPtr> Items;
+    internal Span<byte> FreeSpace;
+    internal uint AllocSize;
+
+    public SortNativeStorage()
+    {
+        AllocSize = 256 * 1024;
+        Storage = new();
+        Items = new();
+        FreeSpace = new();
+        Writer = new();
+    }
+
+    internal unsafe void AllocChunk()
+    {
+        Storage.Add(IntPtr.Zero);
+        var newChunk = (IntPtr)NativeMemory.Alloc(AllocSize);
+        Storage.Last = newChunk;
+        FreeSpace = new((void*)newChunk, (int)AllocSize);
+    }
+
+    internal void StartNewItem()
+    {
+        if (FreeSpace.Length < 128) AllocChunk();
+        Writer = new(FreeSpace);
+        Writer.WriteInt32(0); // Space for length
+    }
+
+    internal unsafe void FinishNewItem(ulong keyIndex)
+    {
+        var endOfData = Writer.GetCurrentPosition();
+        Writer.WriteVUInt64(keyIndex - StartKeyIndex);
+        var lenOfKeyIndex = Writer.GetCurrentPosition() - endOfData;
+        Writer.WriteUInt8((byte)lenOfKeyIndex);
+        var span = Writer.GetSpan();
+        if (Writer.HeapBuffer != null) // If it didn't fit free space in last chunk
+        {
+            while (span.Length >= AllocSize) AllocSize *= 2;
+            if (AllocSize > int.MaxValue) AllocSize = int.MaxValue;
+            AllocChunk();
+            span.CopyTo(FreeSpace);
+        }
+
+        var startPtr = Unsafe.AsPointer(ref MemoryMarshal.GetReference(FreeSpace));
+        Unsafe.Write(startPtr, span.Length);
+        Items.Add((IntPtr)startPtr);
+        FreeSpace = FreeSpace[(int)((span.Length + 3u) & ~3u)..];
+    }
+
+    internal void Sort()
+    {
+        Items.AsSpan().Sort(SortNativeStorageComparator.Comparator);
+    }
+
+    internal unsafe ulong GetKeyIndex(int idx)
+    {
+        var ptr = Items[idx].ToPointer();
+        var len = Unsafe.Read<int>(ptr);
+        var lenDelta = Unsafe.Read<byte>((byte*)ptr + len - 1);
+        var delta = PackUnpack.UnsafeUnpackVUInt(ref Unsafe.AsRef<byte>((byte*)ptr + len - 1 - lenDelta), lenDelta);
+        return StartKeyIndex + delta;
+    }
+
+    public unsafe void Dispose()
+    {
+        foreach (var ptr in Storage)
+        {
+            NativeMemory.Free(ptr.ToPointer());
+        }
+    }
+}
+
+static class SortNativeStorageComparator
+{
+    internal static unsafe int Comparator(IntPtr a, IntPtr b)
+    {
+        var alen = Unsafe.Read<int>(a.ToPointer()) - 4;
+        var blen = Unsafe.Read<int>(b.ToPointer()) - 4;
+        var aspan = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref Unsafe.AsRef<byte>(a.ToPointer()), 4), alen);
+        var bspan = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref Unsafe.AsRef<byte>(b.ToPointer()), 4), blen);
+        return aspan.SequenceCompareTo(bspan);
+    }
 }

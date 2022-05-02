@@ -47,7 +47,9 @@ public ref struct SpanWriter
 
     public ReadOnlySpan<byte> GetSpan()
     {
+#if DEBUG
         if (Controller != null) ThrowCannotBeUsedWithController();
+#endif
         if (HeapBuffer != null)
         {
             return HeapBuffer.AsSpan(0, HeapBuffer.Length - Buf.Length);

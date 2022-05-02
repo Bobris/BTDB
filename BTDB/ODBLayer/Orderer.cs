@@ -15,7 +15,7 @@ public interface IOrderer
 
 public class Orderer
 {
-    static IOrderer Ascending<TInput, TBy>(Expression<Func<TInput, TBy>> byGetter)
+    public static IOrderer Ascending<TInput, TBy>(Expression<Func<TInput, TBy>> byGetter)
     {
         var propInfo = byGetter.GetPropertyInfo();
         if (propInfo.PropertyType != typeof(TBy)) throw new ArgumentException("Property getter is not returned as is");
@@ -23,7 +23,7 @@ public class Orderer
         return new AscendingPropertyOrderer(typeof(TInput), ObjectTypeDescriptor.GetPersistentName(propInfo));
     }
 
-    static IOrderer Descending<TInput, TBy>(Expression<Func<TInput, TBy>> byGetter)
+    public static IOrderer Descending<TInput, TBy>(Expression<Func<TInput, TBy>> byGetter)
     {
         return new FlipOrder(Ascending(byGetter));
     }
