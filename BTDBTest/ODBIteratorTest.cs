@@ -666,18 +666,19 @@ public class ODBIteratorTest : IDisposable
         {
             var creator = tr.InitRelation<IRelationWithReusedObjects>("IRelationWithReusedObjects");
             var table = creator(tr);
-            table.Insert(new WithReusedObjects { Id = 1, Blobs = new List<Blob> { new Blob(), new Blob() } });
+            var blob = new Blob();
+            table.Insert(new WithReusedObjects { Id = 1, Blobs = new List<Blob> { blob, blob } });
             table.Insert(new WithReusedObjects
             {
                 Id = 2,
                 BlobsIDict = new Dictionary<Blob, Blob>
-                { [new Blob()] = new Blob(), [new Blob { Name = "A" }] = new Blob() }
+                { [blob] = blob, [new Blob { Name = "A" }] = blob }
             });
             table.Insert(new WithReusedObjects
             {
                 Id = 3,
                 BlobsDict = new Dictionary<Blob, Blob>
-                { [new Blob()] = new Blob(), [new Blob { Name = "A" }] = new Blob() }
+                { [blob] = blob, [new Blob { Name = "A" }] = blob }
             });
             tr.Commit();
         }
