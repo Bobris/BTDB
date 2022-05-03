@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
 using Xunit.Abstractions;
@@ -369,7 +370,25 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal((ulong)t.Count(v => v.N1 > 2),
             t.GatherById(dst, 0, 1000, Constraint.Unsigned.Predicate(v => v > 2), Constraint.Unsigned.Any,
                 new[] { Orderer.Ascending((ThreeUlongs v) => v.N3), Orderer.Descending((ThreeUlongs v) => v.N2) }));
-        AssertSameCondition(t.Where(v => v.N1 > 2).OrderBy(v => v.N3).ThenByDescending(v => v.N2).ThenBy(v => v.N1), dst);
+        AssertSameCondition(t.Where(v => v.N1 > 2).OrderBy(v => v.N3).ThenByDescending(v => v.N2).ThenBy(v => v.N1),
+            dst);
+    }
+
+    [Fact]
+    public void GatherOrderedByNonIndexedColumnThrows()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        var dst = new List<ThreeUlongs>();
+        Assert.Contains("Unmatched orderer[2] Id", Assert.Throws<BTDBException>(() =>
+        {
+            t.GatherById(dst, 0, 1, Constraint.Unsigned.Any, Constraint.Unsigned.Any,
+                new[]
+                {
+                    Orderer.Ascending((ThreeUlongs v) => v.N3), Orderer.Descending((ThreeUlongs v) => v.N2),
+                    Orderer.Ascending((ThreeUlongs v) => v.Id)
+                });
+        }).Message);
     }
 
     static void AssertSameCondition(IEnumerable<ThreeUlongs> expectedResult, IEnumerable<ThreeUlongs> scanResult)
@@ -420,6 +439,9 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
     public interface IThingWithSKTable : IRelation<ThingWithSK>
     {
         IEnumerable<ThingWithSK> ScanByName(Constraint<string> name, Constraint<ulong> age, Constraint<ulong> tenant);
+
+        ulong GatherByName(List<ThingWithSK> target, long skip, long take, Constraint<string> name,
+            Constraint<ulong> age, IOrderer[] orderers);
     }
 
     [Fact]
@@ -433,6 +455,21 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal("C", p.Name);
         p = t.ScanByName(Constraint.String.Any, Constraint.Unsigned.Any, Constraint.Unsigned.Exact(3)).Single();
         Assert.Equal("D", p.Name);
+    }
+
+    [Fact]
+    public void GatherBySecondaryKeyWithOrderersWorks()
+    {
+        FillThingWithSKData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+        var target = new List<ThingWithSK>();
+        Assert.Equal((ulong)t.Count, t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any, new [] { Orderer.Descending((ThingWithSK v)=>v.Tenant) }));
+        Assert.Equal("DCAB", string.Concat(target.Select(v => v.Name)));
+        target.Clear();
+        Assert.Equal((ulong)t.Count, t.GatherByName(target, 1, 2, Constraint.String.Any, Constraint.Unsigned.Any, new [] { Orderer.Descending((ThingWithSK v)=>v.Tenant) }));
+        Assert.Equal("CA", string.Concat(target.Select(v => v.Name)));
     }
 
     void FillThingWithSKData()

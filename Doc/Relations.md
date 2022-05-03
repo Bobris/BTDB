@@ -4,6 +4,7 @@ Relations provides easy way how to store "table" like data in object db.
 
 Let's first define data entity we want to store (note that it is not defined as `[StoredInline]`, but it is still stored inline). Such objects also don't have object id, they can be retrieved by primary or secondary indexes.
 
+```C#
     public class Person
     {
         [PrimaryKey(1)]
@@ -20,11 +21,13 @@ Let's first define data entity we want to store (note that it is not defined as 
         Person FindById(ulong id);
         bool UpdateById(ulong id, string name);
     }
+```
 
 How do we get `IPersonTable` interface to actually insert persons? First we need [obtain transaction](ODBDictionary.md)
 
 From transaction we get creator of relation which we should keep and use for creating relation interface for transaction every time we need it.
 
+```C#
     Func<IObjectDBTransaction, IPersonTable> creator;
     using (var tr = _db.StartTransaction())
     {
@@ -33,25 +36,30 @@ From transaction we get creator of relation which we should keep and use for cre
         personTable.Insert(new Person { Id = 2, Name = "admin", Age = 100 });
         tr.Commit();
     }
+```
 
 next time we reuse creator:
 
+```C#
     using (var tr = _db.StartTransaction())
     {
         var personTable = creator(tr);
         return personTable.FindById(100);
     }
+```
 
 `InitRelation` can be called only once.
 
 But this was "old school" way easier to just always use `GetRelation<T>`:
 
+```C#
     using (var tr = _db.StartTransaction())
     {
         var personTable = tr.GetRelation<IPersonTable>();
         personTable.Insert(new Person { Id = 2, Name = "admin", Age = 100 });
         tr.Commit();
     }
+```
 
 It is still good to do first GetRelation for all your relations in first independent transaction. To control name of relation by `PersistedNameAttribute` on your `IRelation` interface.
 
@@ -111,11 +119,15 @@ Returns number of records removed for given primary key prefix for example `int 
 
 additionally can be limited number of deleted items at once
 
-    `int RemoveByIdPartial(ulong tenantId, int maxCount)`
+```C#
+    int RemoveByIdPartial(ulong tenantId, int maxCount)
+```
 
 advanced enumeration param can be used same way as in ListById
 
-    `int RemoveById(primaryKey1 , primaryKey2, ..., primaryKey_N-1, AdvancedEnumeratorParam<typeof(primaryKeyField(N))>);`
+```C#
+    int RemoveById(primaryKey1, primaryKey2, ..., primaryKey_N-1, AdvancedEnumeratorParam<typeof(primaryKeyField(N))>);
+```
 
 ### Contains
 
@@ -162,6 +174,7 @@ Find support returning also not item type but any subset type, but because you c
 
 List by ascending/descending order and specified range. Parts of primary key may be used for listing. In example below you can list all rooms or just rooms for specified company by two `ListById` method. (`IOrderedDictionaryEnumerator`, `IEnumerator`, `IEnumerable` can be used as return values if used without AdvancedEnumeratorParam only `IEnumerator` or `IEnumerable` could be used and it is ascending order only.)
 
+```C#
     public class Room
     {
         [PrimaryKey(1)]
@@ -177,16 +190,21 @@ List by ascending/descending order and specified range. Parts of primary key may
         IOrderedDictionaryEnumerator<ulong, Room> ListById(AdvancedEnumeratorParam<ulong> param);
         IOrderedDictionaryEnumerator<ulong, Room> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
     }
+```
 
 List also support variants with subset resulting types like `Find`.
 
 ### Scan
 
+```C#
     IEnumerable<Room> ScanById(Constraint<ulong> companyId, Constraint<ulong> id);
+```
 
 Returns rows in ascending order of primary index matching various constraints which you can define at query time like this:
 
+```C#
     var oddRooms = table.ScanById(Constraint.Unsigned.Any, Constraint.Unsigned.Predicate(id => id % 2 == 1));
+```
 
 If you don't always need to constraint all fields it is better to add additional overloads with less constraints (missing constraints are automatically "Any"):
 
@@ -203,6 +221,20 @@ Scan by primary key also support variants like `ScanByIdVariantName`.
     ulong GatherById(ICollection<Room> target, long skip, long take, Constraint<ulong> companyId, Constraint<ulong> id);
 
 Gather is like Scan with Count and Skip and Take. It is perfect to implement paging, when you need to calculate total number of matching rows, but also return only rows from some position (skip) and at most some count (take). First parameter can be anything inheriting from `ICollection<T>` only method which Gather calls from this interface is `Add`. It means `target` does not need to be empty, it will just add new rows. Variants does not need to append VariantName to method name, because it is defined by first parameter which you can easily overload.
+
+### Garter with sorting/ordering
+
+    ulong GatherById(ICollection<Room> target, long skip, long take, Constraint<ulong> companyId, Constraint<ulong> id, IOrderers[]? orderers);
+
+All same like simple `Gather` but additionally as last parameter you can pass array of "orderers". You can order by property included in used index. Sort is also stable, that means empty or null orderers will just do simple Gather without sorting. Logical order of operations is where constraints, sort, skip, take.
+
+```C#
+    var target = new List<Room>();
+    var count = table.GatherById(target, 0, 100, Constraint.Unsigned.Any, Constraint.Unsigned.Any, new [] {
+        Orderer.Descending((Room v)=>v.Id),
+        Orderer.Ascending((Room v)=>v.CompanyId) // This orderer is superfluous and it is better to not have it there because sorting will use less memory
+        });
+```
 
 ### Count
 
@@ -232,6 +264,7 @@ All relations implements `IReadOnlyCollection<T>`. This can be used during debug
 
 One or more fields can be selected as primary key. Primary key must be unique in the relation. Order of fields in primary key is marked as parameter of `PrimaryKey(i)` attribute. Methods expecting primary key as an argument are supposed to contain all fields in the same order as defined, for example in this case:
 
+```C#
     public class Person
     {
         [PrimaryKey(1)]
@@ -240,16 +273,20 @@ One or more fields can be selected as primary key. Primary key must be unique in
         public ulong Id { get; set; }
         ...
     }
+```
 
 methods will look like:
 
+```C#
     bool RemoveById(ulong tenantId, ulong id);
     Person FindById(ulong tenantId, ulong id);
+```
 
 ## Secondary Key
 
 Secondary keys are useful for fast access by other fields then primary key. Declared are as attribute `SecondaryKey`. Each secondary index has it's name (may be different then existing fields names). Secondary index may be compound from several fields. Each field can be part of more than one secondary key. for example:
 
+```C#
     public class Person
     {
         [PrimaryKey(1)]
@@ -262,13 +299,14 @@ Secondary keys are useful for fast access by other fields then primary key. Decl
         [SecondaryKey("Age", IncludePrimaryKeyOrder = 1)]
         public uint Age { get; set; }
     }
+```
 
 we have two indexes Age and Name. They are serialized in form:
 
     "Age": TenantId, Age, Name, Id => void
     "Name": TenantId, Name, Id => void
 
-It is always possible to insert duplicate items for secondary key (it would cause problems when adding new indexes during upgrade). That's why secondary field contains in key also all primary key fields which ensures they are unique. From this key is always possible to construct primary key. `IncludePrimaryKeyOrder` can propagate up the primary keys - typically useful for keeping together data for one tenant.
+It is always possible to insert duplicate items for secondary key (it would cause problems when adding new indexes during upgrade). That's why secondary field contains in key also all primary key fields which ensures they are unique. From this key is always possible to construct primary key. `IncludePrimaryKeyOrder` can propagate up the primary keys - typically useful for keeping together data for one tenant (kind of partitioning).
 
 ### List (by secondary index)
 
@@ -317,7 +355,7 @@ Scan by secondary key also support variants like `ScanByAgeVariantName`.
 
     ulong GatherByName(List<Person> toFill, long skip, long take, Constraint<ulong> tenantId, Constraint<string> name);
 
-It is exactly same counterpart for Scan like in primary key case.
+It is exactly same counterpart for Scan like in primary key case. Also could be used with orderers.
 
 ### Upgrade
 
