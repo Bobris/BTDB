@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.2.0
+
 ### Fixed
 
 Force ReferenceEquality when comparing objects serialized in DB.
