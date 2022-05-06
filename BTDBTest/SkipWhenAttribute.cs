@@ -1,62 +1,61 @@
 ﻿using System.ComponentModel;
 using Xunit;
 
-namespace BTDBTest
+namespace BTDBTest;
+
+public class SkipWhenAttribute : FactAttribute
 {
-    public class SkipWhenAttribute : FactAttribute
+    internal const string DefaultSkipReason = "Not runnable in this configuration.";
+
+    public enum Is
     {
-        internal const string DefaultSkipReason = "Not runnable in this configuration.";
+        Debug,
+        Release,
+    }
 
-        public enum Is
-        {
-            Debug,
-            Release,
-        }
+    public SkipWhenAttribute(Is cond, string skip = DefaultSkipReason)
+    {
+        if (IsValid(cond))
+            Skip = skip;
+    }
 
-        public SkipWhenAttribute(Is cond, string skip = DefaultSkipReason)
-        {
-            if (IsValid(cond))
-                Skip = skip;
-        }
-
-        static bool IsDebug()
-        {
+    static bool IsDebug()
+    {
 #if DEBUG
-            return true;
+        return true;
 #else
             return false;
 #endif
-        }
-
-        internal static bool IsValid(Is cond)
-        {
-            switch (cond)
-            {
-                case Is.Debug:
-                    return IsDebug();
-                case Is.Release:
-                    return !IsDebug();
-                default:
-                    throw new InvalidEnumArgumentException();
-            }
-        }
     }
 
-    public class SkipWhenAllAttribute : FactAttribute
+    internal static bool IsValid(Is cond)
     {
-        public SkipWhenAllAttribute(SkipWhenAttribute.Is cond1, SkipWhenAttribute.Is cond2, string skip = SkipWhenAttribute.DefaultSkipReason)
+        switch (cond)
         {
-            if (SkipWhenAttribute.IsValid(cond1) && SkipWhenAttribute.IsValid(cond2))
-                Skip = skip;
+            case Is.Debug:
+                return IsDebug();
+            case Is.Release:
+                return !IsDebug();
+            default:
+                throw new InvalidEnumArgumentException();
         }
     }
+}
 
-    public class SkipWhenAnyAttribute : FactAttribute
+public class SkipWhenAllAttribute : FactAttribute
+{
+    public SkipWhenAllAttribute(SkipWhenAttribute.Is cond1, SkipWhenAttribute.Is cond2, string skip = SkipWhenAttribute.DefaultSkipReason)
     {
-        public SkipWhenAnyAttribute(SkipWhenAttribute.Is cond1, SkipWhenAttribute.Is cond2, string skip = SkipWhenAttribute.DefaultSkipReason)
-        {
-            if (SkipWhenAttribute.IsValid(cond1) || SkipWhenAttribute.IsValid(cond2))
-                Skip = skip;
-        }
+        if (SkipWhenAttribute.IsValid(cond1) && SkipWhenAttribute.IsValid(cond2))
+            Skip = skip;
+    }
+}
+
+public class SkipWhenAnyAttribute : FactAttribute
+{
+    public SkipWhenAnyAttribute(SkipWhenAttribute.Is cond1, SkipWhenAttribute.Is cond2, string skip = SkipWhenAttribute.DefaultSkipReason)
+    {
+        if (SkipWhenAttribute.IsValid(cond1) || SkipWhenAttribute.IsValid(cond2))
+            Skip = skip;
     }
 }

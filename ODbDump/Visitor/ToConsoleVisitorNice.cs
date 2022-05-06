@@ -16,7 +16,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
-        public virtual bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+        public virtual bool StartObject(ulong oid, uint tableId, string? tableName, uint version)
         {
             _indent++;
             Print($"Object oid:{oid} {tableId}-{tableName ?? "?Unknown?"} version:{version}");
@@ -34,7 +34,7 @@ namespace ODbDump.Visitor
             return false;
         }
 
-        public virtual void ScalarAsObject(object content)
+        public virtual void ScalarAsObject(object? content)
         {
         }
 
@@ -53,7 +53,7 @@ namespace ODbDump.Visitor
             Print($"{CurrentFieldName}: Oid#{oid}");
         }
 
-        public virtual bool StartInlineObject(uint tableId, string tableName, uint version)
+        public virtual bool StartInlineObject(uint tableId, string? tableName, uint version)
         {
             Print($"{CurrentFieldName}: InlineObject {tableId}-{tableName}-{version} ref#{_iid}");
             _indent++;
@@ -91,9 +91,9 @@ namespace ODbDump.Visitor
             _indent--;
         }
 
-        public bool StartDictionary()
+        public bool StartDictionary(ulong? dicid = null)
         {
-            Print($"{CurrentFieldName}: Dictionary");
+            Print($"{CurrentFieldName}: Dictionary" + (dicid.HasValue ? " " + dicid.Value : ""));
             _listItemIndexStack.Push(_itemIndex);
             _itemIndex = 0;
             _indent++;
@@ -164,7 +164,7 @@ namespace ODbDump.Visitor
 
         public virtual bool StartRelation(ODBIteratorRelationInfo relationInfo)
         {
-            Print($"Relation {relationInfo.Name}");
+            Print($"Relation {relationInfo.Name} {relationInfo.Id}");
             _listItemIndexStack.Push(_itemIndex);
             _itemIndex = 0;
             _indent++;
@@ -210,6 +210,19 @@ namespace ODbDump.Visitor
         public void InlineRef(int iid)
         {
             _iid = iid;
+        }
+
+        public virtual bool StartSecondaryIndex(string name)
+        {
+            return false;
+        }
+
+        public virtual void NextSecondaryKey()
+        {
+        }
+
+        public virtual void EndSecondaryIndex()
+        {
         }
     }
 }

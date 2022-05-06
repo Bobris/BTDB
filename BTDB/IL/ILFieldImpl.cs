@@ -1,22 +1,21 @@
 using System;
 using System.Reflection.Emit;
 
-namespace BTDB.IL
+namespace BTDB.IL;
+
+internal class ILFieldImpl : IILFieldPrivate
 {
-    internal class ILFieldImpl : IILFieldPrivate
+    public ILFieldImpl(FieldBuilder fieldBuilder)
     {
-        public ILFieldImpl(FieldBuilder fieldBuilder)
-        {
-            TrueField = fieldBuilder;
-        }
-
-        public FieldBuilder TrueField { get; }
-
-        public void FreeTemps()
-        {
-        }
-
-        public Type FieldType => TrueField.FieldType;
-        public string Name => TrueField.Name;
+        TrueField = fieldBuilder;
     }
+
+    public FieldBuilder TrueField { get; }
+
+    public void FreeTemps()
+    {
+    }
+
+    public Type FieldType => TrueField.FieldType;
+    public string Name => TrueField.Name;
 }

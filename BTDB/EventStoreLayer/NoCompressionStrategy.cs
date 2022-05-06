@@ -1,23 +1,22 @@
 using System;
 using BTDB.SnappyCompression;
 
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public class NoCompressionStrategy : ICompressionStrategy
 {
-    public class NoCompressionStrategy : ICompressionStrategy
+    public bool ShouldTryToCompress(int length)
     {
-        public bool ShouldTryToCompress(int length)
-        {
-            return false;
-        }
+        return false;
+    }
 
-        public bool Compress(ref ReadOnlySpan<byte> data)
-        {
-            return false;
-        }
+    public bool Compress(ref ReadOnlySpan<byte> data)
+    {
+        return false;
+    }
 
-        public void Decompress(ref ReadOnlySpan<byte> data)
-        {
-            data = SnappyDecompress.Decompress(data);
-        }
+    public void Decompress(ref ReadOnlySpan<byte> data)
+    {
+        data = SnappyDecompress.Decompress(data);
     }
 }

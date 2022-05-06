@@ -1,9 +1,8 @@
 using System;
 
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+interface ICRegFuncOptimized
 {
-    interface ICRegFuncOptimized
-    {
-        object? BuildFuncOfT(ContainerImpl container, Type funcType);
-    }
+    object? BuildFuncOfT(ContainerImpl container, Type funcType);
 }

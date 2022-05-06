@@ -1,10 +1,9 @@
 using BTDB.Encrypted;
 
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+interface ITypeSerializersLightMapping
 {
-    interface ITypeSerializersLightMapping
-    {
-        InfoForType GetInfoFromObject(object obj, out TypeSerializers typeSerializers);
-        ISymmetricCipher GetSymmetricCipher();
-    }
+    InfoForType GetInfoFromObject(object obj, out TypeSerializers typeSerializers);
+    ISymmetricCipher GetSymmetricCipher();
 }

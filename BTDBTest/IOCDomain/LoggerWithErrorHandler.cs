@@ -1,7 +1,6 @@
-namespace BTDBTest.IOCDomain
+namespace BTDBTest.IOCDomain;
+
+public class LoggerWithErrorHandler : ILogger, IErrorHandler
 {
-    public class LoggerWithErrorHandler : ILogger, IErrorHandler
-    {
-        public ILogger Logger => this;
-    }
+    public ILogger Logger => this;
 }

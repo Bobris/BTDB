@@ -2,6 +2,263 @@
 
 ## [unreleased]
 
+## 29.2.0
+
+### Fixed
+
+Force ReferenceEquality when comparing objects serialized in DB.
+
+## 29.1.1
+
+### Fixed
+
+Skipper from previous version generated invalid IL code which make violent crash, not in tests though :-(
+
+## 29.1.0
+
+### Changed
+
+Unregistered object inside another object is skipped without throwing exception.
+
+### Added
+
+Improved ODbDump diskdump and trldump commands.
+
+## 29.0.0
+
+### Added
+
+New RequireContentFree attribute to mark class to always use detection of IDictionaries on it to prevent Data Leaks.
+
+Allow to use Brotli compression for Kvi. For now disabled by default. Added new parameter to logger so it is breaking change, but easily fixable.
+
+## 28.3.2
+
+### Fixed
+
+Previous fix was incomplete.
+
+## 28.3.1
+
+### Fixed
+
+Kvi in Native Heap KVDB must be created in Exclusive mode.
+
+## 28.3.0
+
+### Added
+
+Upgrade from IDictionary<K1,T1> to Dictionary<K2,T2> is possible and tested in Relations.
+
+## 28.2.0
+
+### Added
+
+Enum Constraints.
+
+Generic `Constraint<T>.Any` (not really generic just supporting all currently available constraints (bool, string, DateTime, (un)signed, Enum))
+
+## 28.1.2
+
+### Fixed
+
+ScanBy and GatherBy secondary index when DB is upgraded with secondary index removed.
+
+## 28.1.1
+
+### Fixed
+
+Enums with multiple synonym labels for the same value (for example HttpStatusCode 300) can be stored
+
+## 28.1.0
+
+### Fixed
+
+Loose Constraint on first position didn't found all matched records.
+
+### Added
+
+Relations `UpdateById` method for faster updates.
+
+## 28.0.0
+
+### Added
+
+UpTo Constraints, which quickly skip rest of values.
+
+## 27.0.3
+
+### Fixed
+
+ScanBy of empty relation does not throw Exception anymore.
+
+## 27.0.2
+
+### Fixed
+
+Hopefully last bug in native heap fixed.
+
+## 27.0.1
+
+## 27.0.0
+
+### Breaking Change
+
+Added support for .Net 6.0. Removed support for .Net 5.0.
+
+## 26.14.0
+
+### Added
+
+Constraints and ScanById relation method.
+
+### Changed
+
+Enum compatibility is now always like it was with BinaryCompatibilityOnlyAttribute. Please remove all usages of this attribute from client code as it does not have any meaning.
+
+## 26.13.0
+
+DefaultTypeConvertorGenerator now supports `T` to `T?` conversion. Also `U` to `T?` if `U` is convertible to `T`.
+
+## 26.12.1
+
+Fixed native heap implementation.
+
+## 26.12.0
+
+## 26.11.0
+
+### Added
+
+A lot of important stuff in ObjectDB are public now.
+Expanded interactive mode in ODbDump.
+
+## 26.10.0
+
+### Added
+
+Relations now supports Items without default constructor.
+
+## 26.9.1
+
+### Fixed
+
+Iterate only strictly abstract methods in Relation interfaces.
+
+## 26.9.0
+
+### Added
+
+Name in DBOptions and show it in interesting exceptions. Same Name is also used for Key in deduplication of Relations.
+
+## 26.8.0
+
+### Added
+
+Protection against using singletons for database objects or relation items.
+
+## 26.7.0
+
+### Added
+
+ObjectDB+Relations+EventLayers support for Tuple and ValueTuple.
+
+### BREAKING CHANGE
+
+During enumeration of relation range is prevented also modification of secondary keys (until now was possible)
+
+## 26.6.0
+
+### Added
+
+IOC can enforce uniqueness of registrations.
+
+## 26.5.0
+
+### Added
+
+EventStore2Layer now correctly serializes generic classes.
+
+`dynamic` deserialization of object now implements `IEnumerable<KeyValuePair<string, object>>` for easy iteration of over all values and fields. `ITypeDescriptor` has new property `IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields { get; }` which returns list of all fields on Object descriptor, for all other descriptors it returns empty list.
+
+## 26.4.0
+
+### Added
+
+Optimization to skip reading value in relations when partial view is subset of primary key.
+
+## 26.3.1
+
+### Fixed
+
+Tried to workaround rare problem with compactor corrupting DB.
+
+## 26.3.0
+
+### Removed
+
+Support for .NetCore 3.1. Only .Net 5.0 is supported now.
+
+### Added
+
+ODbDump has new command `fulldiskdump` containing also content of secondary keys
+
+ODbDump has new command `trldump` listing operations in .trl files
+
+New interface `IFieldHandlerLogger` for logging type incompatibilities. Sample usage `new DBOptions().WithFieldHandlerLogger(new DefaultFieldHandlerLogger(s => Console.WriteLine(s)))`.
+
+Possibility to iterate all transactions. Each transaction also has new getter `CreatedTime` and `IsDisposed()`.
+
+## 26.2.2
+
+### Fixed
+
+Relations GetEnumerator didn't reset enumerator correctly in all cases.
+
+## 26.2.1
+
+### Fixed
+
+Random crash in IsFreeContentNeeded due to multiple threads could run this in parallel.
+
+## 26.2.0
+
+### Added
+
+In debug mode throws when using in listing by partial key excluded start proposition. In release mode kept current behavior.
+
+### Fixed
+
+IOC Nullable values as instance dependencies.
+
+## 26.1.1
+
+### Fixed
+
+Deleting indirect will not throw when value is null.
+
+## 26.1.0
+
+### Added
+
+ODbDump has new command `findsplitbrain` which can find first commit when content of relation in two instances of DB diverted - DBs needs to contain enough preserved history
+
+`IRelation` has new `SerializeInsert` method which allows speed up DB insert by preparing simple CreateKeyValue commands ahead of writing transaction.
+
+## 26.0.0
+
+### Fixed
+
+Compactor sometimes removed unused files too late.
+
+### Removed
+
+`ReadOnlyListArrayWrapper` not used internally anymore and it is too confusing.
+
+### Added
+
+New methods`TransactionLogCreated` and `FileMarkedForDelete` in `IKeyValueDBLogger` for logging file collection operations
+
 ## 25.5.0
 
 ### Fixed
@@ -155,21 +412,21 @@ Failure to cast in FreeContent in ODBDictionary.
 
 ### Breaking changes
 
-- Visitor StartRelation gets whole info instead of just name of relation.
-- Public fields on Relation Rows and Database objects are forbidden unless they have `[NotStored]`. In next version they could became supported.
+-   Visitor StartRelation gets whole info instead of just name of relation.
+-   Public fields on Relation Rows and Database objects are forbidden unless they have `[NotStored]`. In next version they could became supported.
 
 ## 22.2.2
 
 ### Fixed
 
-- Final fix for IDictionaries
+-   Final fix for IDictionaries
 
 ## 22.2.1
 
 ### Fixed
 
-- IDictionaries has uniqueness fix also for keys.
-- RelationInfo.GetProperties skips "NextInChain" IRelation property.
+-   IDictionaries has uniqueness fix also for keys.
+-   RelationInfo.GetProperties skips "NextInChain" IRelation property.
 
 ## 22.2.0
 
@@ -177,40 +434,40 @@ Important note: Don't forget to commit Transactions which calls GetRelation firs
 
 ### Added
 
-- `ICovariantRelation<out T>` cannot have upsert, but it will implement `IRelation<T>` anyway.
-- removed class constraint because it created strange problems. It is now enforced in runtime.
+-   `ICovariantRelation<out T>` cannot have upsert, but it will implement `IRelation<T>` anyway.
+-   removed class constraint because it created strange problems. It is now enforced in runtime.
 
 ### Fixed
 
-- IDictionaries now supports types with same name but different namespaces again.
+-   IDictionaries now supports types with same name but different namespaces again.
 
 ## 22.1.0
 
 ### Added
 
-- `IsReadOnly()` on `IKeyValueDBTransaction` and used internally in auto registering Relations directly not just in writing transactions, but also in all non read only.
+-   `IsReadOnly()` on `IKeyValueDBTransaction` and used internally in auto registering Relations directly not just in writing transactions, but also in all non read only.
 
 ## 22.0.0
 
 ### BREAKING CHANGE
 
-- GetRelation(Type type) now returns IRelation type
-- RelationInfo public getters changed many types to ReadOnlyMemory.
-- Removed useless UniqueIndexAttribute
+-   GetRelation(Type type) now returns IRelation type
+-   RelationInfo public getters changed many types to ReadOnlyMemory.
+-   Removed useless UniqueIndexAttribute
 
 ### Added
 
-- big chunk of IL generated code for Relations and ODBDictionary/Set is now cached forever, making it faster to instantiate Relations repeatedly. It adds new limitation that instances of `ITypeConvertorGenerator` and `IFieldHandlerFactory` needs to be same over process runtime.
+-   big chunk of IL generated code for Relations and ODBDictionary/Set is now cached forever, making it faster to instantiate Relations repeatedly. It adds new limitation that instances of `ITypeConvertorGenerator` and `IFieldHandlerFactory` needs to be same over process runtime.
 
 ## 21.0.0
 
 ### BREAKING CHANGE
 
-- Relations interfaces needs to be inherited from `IRelation<T>`
+-   Relations interfaces needs to be inherited from `IRelation<T>`
 
 ### Added
 
-- `IRelation<T>` and `IRelation` interfaces. You will get `Upsert` method for free.
+-   `IRelation<T>` and `IRelation` interfaces. You will get `Upsert` method for free.
 
 ```C#
     public interface IRelation<T> : IReadOnlyCollection<T>, IRelation where T : class
@@ -225,7 +482,7 @@ Important note: Don't forget to commit Transactions which calls GetRelation firs
     }
 ```
 
-- `IObjectDbTransaction` has new methods
+-   `IObjectDbTransaction` has new methods
 
 ```C#
     object GetRelation(Type type);
@@ -244,45 +501,45 @@ You can forbid automatic registration of relations by `IObjectDB.AllowAutoRegist
 
 ### Fixed
 
-- regression in 20.x in compatibility of Enums in relations with `BinaryCompatibilityOnly` attribute.
+-   regression in 20.x in compatibility of Enums in relations with `BinaryCompatibilityOnly` attribute.
 
 ## 20.3.0
 
 ### Added
 
-- ReadOnly option to opening DB. ODbDump using it and allows to pass ulongcommit as third parameter to open DB in historical moment.
+-   ReadOnly option to opening DB. ODbDump using it and allows to pass ulongcommit as third parameter to open DB in historical moment.
 
 ### Fixed
 
-- Mixing Lists, Sets and Arrays in EventLayers
+-   Mixing Lists, Sets and Arrays in EventLayers
 
 ## 20.2.0
 
 ### Added
 
-- IOC now support `Dependency` attribute for properties injection. Also it could be used for renaming dependency resolved name. Nullable reference types are optional dependencies.
+-   IOC now support `Dependency` attribute for properties injection. Also it could be used for renaming dependency resolved name. Nullable reference types are optional dependencies.
 
 ## 20.1.0
 
 ### Added
 
-- IOC now supports public properties injection. Registration needs to be done with `PropertiesAutowired()`. Setters does not need to be public. Nullable reference types are optional dependencies, all other properties are required.
+-   IOC now supports public properties injection. Registration needs to be done with `PropertiesAutowired()`. Setters does not need to be public. Nullable reference types are optional dependencies, all other properties are required.
 
 ## 20.0.0
 
 ### Added
 
-- Added support for `IOrderedSet<T>` lazily stored set.
-- EventLayers deserialization can now unwrap `IIndirect<T>`, making it compatible change (`IIndirect<T>` => `T`, or `IDictionary<TKey, IIndirect<T>>` => `IDictionary<TKey, T>`).
-- New documentation for [supported types](Doc/SupportedTypes.md)
-- Added support for `ISet<T>`, `HashSet<T>` with identical serialization as `IList<T>`.
-- Removed some allocations from `IOrderedDictionary`
+-   Added support for `IOrderedSet<T>` lazily stored set.
+-   EventLayers deserialization can now unwrap `IIndirect<T>`, making it compatible change (`IIndirect<T>` => `T`, or `IDictionary<TKey, IIndirect<T>>` => `IDictionary<TKey, T>`).
+-   New documentation for [supported types](Doc/SupportedTypes.md)
+-   Added support for `ISet<T>`, `HashSet<T>` with identical serialization as `IList<T>`.
+-   Removed some allocations from `IOrderedDictionary`
 
 ## 19.9.3
 
 ### Fixed
 
-- Regression with DB loading `IDictionary<Key,IIndirect<SomeAbstractClass>>`
+-   Regression with DB loading `IDictionary<Key,IIndirect<SomeAbstractClass>>`
 
 ## 19.9.2
 
@@ -290,47 +547,47 @@ You can forbid automatic registration of relations by `IObjectDB.AllowAutoRegist
 
 ### Fixed
 
-- Regression from 19.8.0 with NullReferenceException in some special cases.
+-   Regression from 19.8.0 with NullReferenceException in some special cases.
 
 ## 19.9.0
 
 ### Added
 
-- Suffixes for partial deserializations in methods (FindBy,ListBy) does not need to be separated by underscore anymore.
+-   Suffixes for partial deserializations in methods (FindBy,ListBy) does not need to be separated by underscore anymore.
 
 ## 19.8.0
 
 ### Added
 
-- Relations now support returning only partial classes. For example it allows to speed up table scanning because you can deserialize only fields you need when enumerating relation.
+-   Relations now support returning only partial classes. For example it allows to speed up table scanning because you can deserialize only fields you need when enumerating relation.
 
 ## 19.7.1
 
 ### Fixed
 
-- Made AesGcmSymmetricCipher thread safe.
+-   Made AesGcmSymmetricCipher thread safe.
 
 ## 19.7.0
 
 ### Added
 
-- Support `EncryptedString` in DB indexes (orderable).
+-   Support `EncryptedString` in DB indexes (orderable).
 
 ## 19.6.0
 
 ### Added
 
-- New `EncryptedString` type to be able to store string in its encrypted form. You need to pass `ISymmetricCipher` implementation to `DBOptions`, `TypeSerializersOptions`, `EventSerializer` and `EventDeserializer`. There is class `AesGcmSymmetricCipher` implementing `ISymmetricCipher`, which provides perfect security by just passing 32 bytes key to its constructor.
+-   New `EncryptedString` type to be able to store string in its encrypted form. You need to pass `ISymmetricCipher` implementation to `DBOptions`, `TypeSerializersOptions`, `EventSerializer` and `EventDeserializer`. There is class `AesGcmSymmetricCipher` implementing `ISymmetricCipher`, which provides perfect security by just passing 32 bytes key to its constructor.
 
 ## 19.5.0
 
-- Added possibility to deserialize event with Nullable to dynamic (usable for dumping EventStore)
+-   Added possibility to deserialize event with Nullable to dynamic (usable for dumping EventStore)
 
 ## 19.4.0
 
 ### Added
 
-- All serializations DB, Event now supports `System.Version` type. Default conversion allows to upgrade from `string` to `Version`. When `Version` is used in ordering, keys it behaves as expected.
+-   All serializations DB, Event now supports `System.Version` type. Default conversion allows to upgrade from `string` to `Version`. When `Version` is used in ordering, keys it behaves as expected.
 
 ### Fixed
 
@@ -348,9 +605,9 @@ Relations new methods `AnyById` and `AnyBy{SecKeyName}` supported.
 
 #### Relations
 
-- New methods `CountById` and `CountBy{SecKeyName}` supported.
-- `IEnumerator` and `IEnumerable` could be freely exchanged as result types.
-- `ListById` and `ListBy{SecKeyName}` does not require `AdvancedEnumeratorParam`.
+-   New methods `CountById` and `CountBy{SecKeyName}` supported.
+-   `IEnumerator` and `IEnumerable` could be freely exchanged as result types.
+-   `ListById` and `ListBy{SecKeyName}` does not require `AdvancedEnumeratorParam`.
 
 ## 19.1.0
 
@@ -447,11 +704,11 @@ Supports only .Net Core 2.2 or better.
 
 ### Fixed
 
-- When preserving history KVDB did not advising compaction without restarting application.
+-   When preserving history KVDB did not advising compaction without restarting application.
 
 ### Changed
 
-- Default CompactorScheduler wait time to 30-45 minutes.
+-   Default CompactorScheduler wait time to 30-45 minutes.
 
 ## 17.5.2
 
@@ -459,7 +716,7 @@ Supports only .Net Core 2.2 or better.
 
 ### Fixed
 
-- Compactor does not ends in endless cycle when DB is opened with more than 4 times smaller split size than it was created.
+-   Compactor does not ends in endless cycle when DB is opened with more than 4 times smaller split size than it was created.
 
 ## 17.5.0
 
@@ -467,8 +724,8 @@ Supports only .Net Core 2.2 or better.
 
 ODbDump has new commands
 
-- `leaks` which prints out unreachable objects in DB.
-- `frequency` which prints number of items in relations and top level dictionaries in singletons
+-   `leaks` which prints out unreachable objects in DB.
+-   `frequency` which prints number of items in relations and top level dictionaries in singletons
 
 ### Fixed
 
@@ -747,40 +1004,40 @@ IPAddress can now serialize and deserialize null value.
 
 ### Added
 
-- Synchronization lock in EventLayer2 Deserialization to be on safe side.
+-   Synchronization lock in EventLayer2 Deserialization to be on safe side.
 
 ## 12.4.0.0
 
 ### Added
 
-- PersistedNameAttribute is supported on Apart Fields in relation interfaces
+-   PersistedNameAttribute is supported on Apart Fields in relation interfaces
 
 ## 12.3.0.0
 
 ### Added
 
-- IOC now resolves optional parameters that are not registered with its provided value
+-   IOC now resolves optional parameters that are not registered with its provided value
 
 ### Fixed
 
-- Fixed problem with calculating index from older version value in specific case
+-   Fixed problem with calculating index from older version value in specific case
 
 ## 12.2.0.0
 
 ### Added
 
-- new method DeleteAllData() on ObjectDBTransaction
-- PersistedNameAttribute is additionally allowed on interfaces - useful for Relations
+-   new method DeleteAllData() on ObjectDBTransaction
+-   PersistedNameAttribute is additionally allowed on interfaces - useful for Relations
 
 ## 12.1.0.0
 
 ### Added
 
-- Event deserialization now automatically converts Enums to integer types.
+-   Event deserialization now automatically converts Enums to integer types.
 
 ## 12.0.0.0
 
 ### Added
 
-- Changelog
-- Nullable support in both ODb and EventStore
+-   Changelog
+-   Nullable support in both ODb and EventStore

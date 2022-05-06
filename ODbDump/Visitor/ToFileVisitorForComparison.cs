@@ -15,11 +15,11 @@ namespace ODbDump.Visitor
         Crc32
     }
 
-    class ToFilesVisitorForComparison : ToConsoleVisitorForComparison
+    class ToFilesVisitorForComparison : ToConsoleVisitorForComparison, IDisposable
     {
         readonly bool _hashStrings;
         readonly HashAlgorithm? _hashAlgorithm;
-        StreamWriter? _output;
+        protected StreamWriter? Output;
         readonly string _fileSuffix;
 
         public ToFilesVisitorForComparison(HashType hashType)
@@ -49,7 +49,7 @@ namespace ODbDump.Visitor
 
         public override void Print(string s)
         {
-            _output!.WriteLine(new string(' ', _indent * 2) + s);
+            Output!.WriteLine(new string(' ', _indent * 2) + s);
         }
 
         public override bool NeedScalarAsText()
@@ -62,7 +62,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
-        public override void ScalarAsObject(object content)
+        public override void ScalarAsObject(object? content)
         {
             if (_hashStrings && content is string str)
             {
@@ -81,23 +81,23 @@ namespace ODbDump.Visitor
 
         public override bool VisitSingleton(uint tableId, string? tableName, ulong oid)
         {
-            _output?.Dispose();
-            _output = OpenOutputStream($"{ToValidFilename(tableName ?? $"Unknown_{tableId}_{oid}")}.txt");
+            Output?.Dispose();
+            Output = OpenOutputStream($"{ToValidFilename(tableName ?? $"Unknown_{tableId}_{oid}")}.txt");
 
             return base.VisitSingleton(tableId, tableName, oid);
         }
 
         public override bool StartRelation(ODBIteratorRelationInfo relationInfo)
         {
-            _output?.Dispose();
-            _output = OpenOutputStream($"{ToValidFilename(relationInfo.Name)}.txt");
+            Output?.Dispose();
+            Output = OpenOutputStream($"{ToValidFilename(relationInfo.Name)}.txt");
 
             return base.StartRelation(relationInfo);
         }
 
         public override void EndRelation()
         {
-            _output?.Dispose();
+            Output?.Dispose();
 
             base.EndRelation();
         }
@@ -105,7 +105,7 @@ namespace ODbDump.Visitor
         public void Dispose()
         {
             _hashAlgorithm?.Dispose();
-            _output?.Dispose();
+            Output?.Dispose();
         }
     }
 }

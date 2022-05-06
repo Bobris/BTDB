@@ -1,9 +1,8 @@
-﻿namespace BTDBTest.IOCDomain
+﻿namespace BTDBTest.IOCDomain;
+
+public interface IWebService
 {
-    public interface IWebService
-    {
-        IAuthenticator Authenticator { get; }
-        IStockQuote StockQuote { get; }
-        void Execute();
-    }
+    IAuthenticator Authenticator { get; }
+    IStockQuote StockQuote { get; }
+    void Execute();
 }

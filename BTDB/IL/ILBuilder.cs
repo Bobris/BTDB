@@ -1,21 +1,20 @@
 using BTDB.IL.Caching;
 
-namespace BTDB.IL
+namespace BTDB.IL;
+
+public static class ILBuilderConfig
 {
-    public static class ILBuilderConfig
+    public static bool PreventDebugOutput { get; set; }
+}
+
+public static class ILBuilder
+{
+    static ILBuilder()
     {
-        public static bool PreventDebugOutput { get; set; }
+        NoCachingInstance = new ILBuilderRelease();
+        Instance = new CachingILBuilder(NoCachingInstance);
     }
 
-    public static class ILBuilder
-    {
-        static ILBuilder()
-        {
-            NoCachingInstance = new ILBuilderRelease();
-            Instance = new CachingILBuilder(NoCachingInstance);
-        }
-
-        public static IILBuilder Instance { get; private set; }
-        public static IILBuilder NoCachingInstance { get; private set; }
-    }
+    public static IILBuilder Instance { get; private set; }
+    public static IILBuilder NoCachingInstance { get; private set; }
 }

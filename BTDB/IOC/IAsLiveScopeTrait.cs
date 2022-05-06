@@ -1,6 +1,5 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+public interface IAsLiveScopeTrait : IAsTrait, ILiveScopeTrait
 {
-    public interface IAsLiveScopeTrait : IAsTrait, ILiveScopeTrait
-    {
-    }
 }

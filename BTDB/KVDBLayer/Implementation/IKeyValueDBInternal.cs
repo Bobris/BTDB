@@ -4,31 +4,30 @@ using System.Threading;
 using BTDB.KVDBLayer.BTree;
 using BTDB.StreamLayer;
 
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+interface IKeyValueDBInternal : IKeyValueDB
 {
-    interface IKeyValueDBInternal : IKeyValueDB
-    {
-        long GetGeneration(uint fileId);
-        void MarkAsUnknown(IEnumerable<uint> fileIds);
-        IFileCollectionWithFileInfos FileCollection { get; }
-        bool ContainsValuesAndDoesNotTouchGeneration(uint fileKey, long dontTouchGeneration);
-        bool AreAllTransactionsBeforeFinished(long transactionId);
-        // This will reference that root, after use you need to call DereferenceRootNodeInternal
-        IRootNodeInternal ReferenceAndGetOldestRoot();
-        // This will reference that root, after use you need to call DereferenceRootNodeInternal
-        IRootNodeInternal ReferenceAndGetLastCommitted();
-        void DereferenceRootNodeInternal(IRootNodeInternal root);
-        ulong CompactorWriteBytesPerSecondLimit { get; }
-        ulong CompactorReadBytesPerSecondLimit { get; }
-        long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap);
-        void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);
-        ISpanWriter StartPureValuesFile(out uint fileId);
-        bool LoadUsedFilesFromKeyIndex(uint fileId, IKeyIndex info);
-        long CalculatePreserveKeyIndexGeneration(uint preserveKeyIndexKey);
-        ulong DistanceFromLastKeyIndex(IRootNodeInternal root);
-        Span<KeyIndexInfo> BuildKeyIndexInfos();
-        uint CalculatePreserveKeyIndexKeyFromKeyIndexInfos(ReadOnlySpan<KeyIndexInfo> keyIndexes);
-        uint GetTrLogFileId(IRootNodeInternal root);
-        void IterateRoot(IRootNodeInternal root, ValuesIterateAction visit);
-    }
+    long GetGeneration(uint fileId);
+    void MarkAsUnknown(IEnumerable<uint> fileIds);
+    IFileCollectionWithFileInfos FileCollection { get; }
+    bool ContainsValuesAndDoesNotTouchGeneration(uint fileKey, long dontTouchGeneration);
+    bool AreAllTransactionsBeforeFinished(long transactionId);
+    // This will reference that root, after use you need to call DereferenceRootNodeInternal
+    IRootNodeInternal ReferenceAndGetOldestRoot();
+    // This will reference that root, after use you need to call DereferenceRootNodeInternal
+    IRootNodeInternal ReferenceAndGetLastCommitted();
+    void DereferenceRootNodeInternal(IRootNodeInternal root);
+    ulong CompactorWriteBytesPerSecondLimit { get; }
+    ulong CompactorReadBytesPerSecondLimit { get; }
+    long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap);
+    long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);
+    ISpanWriter StartPureValuesFile(out uint fileId);
+    bool LoadUsedFilesFromKeyIndex(uint fileId, IKeyIndex info);
+    long CalculatePreserveKeyIndexGeneration(uint preserveKeyIndexKey);
+    ulong DistanceFromLastKeyIndex(IRootNodeInternal root);
+    Span<KeyIndexInfo> BuildKeyIndexInfos();
+    uint CalculatePreserveKeyIndexKeyFromKeyIndexInfos(ReadOnlySpan<KeyIndexInfo> keyIndexes);
+    uint GetTrLogFileId(IRootNodeInternal root);
+    void IterateRoot(IRootNodeInternal root, ValuesIterateAction visit);
 }

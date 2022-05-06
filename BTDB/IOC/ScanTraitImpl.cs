@@ -1,24 +1,23 @@
 using System;
 using BTDB.Collections;
 
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+class ScanTraitImpl : IScanTrait, IScanTraitImpl
 {
-    class ScanTraitImpl : IScanTrait, IScanTraitImpl
+    StructList<Predicate<Type>> _filters;
+
+    public void Where(Predicate<Type> filter)
     {
-        StructList<Predicate<Type>> _filters;
+        _filters.Add(filter);
+    }
 
-        public void Where(Predicate<Type> filter)
+    public bool MatchFilter(Type type)
+    {
+        foreach (var predicate in _filters)
         {
-            _filters.Add(filter);
+            if (!predicate(type)) return false;
         }
-
-        public bool MatchFilter(Type type)
-        {
-            foreach (var predicate in _filters)
-            {
-                if (!predicate(type)) return false;
-            }
-            return true;
-        }
+        return true;
     }
 }

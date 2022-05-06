@@ -1,12 +1,12 @@
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public enum TypeCategory : byte
 {
-    public enum TypeCategory : byte
-    {
-        BuildIn,
-        Class,
-        List,
-        Dictionary,
-        Enum,
-        Nullable
-    }
+    BuildIn,
+    Class,
+    List,
+    Dictionary,
+    Enum,
+    Nullable,
+    Tuple
 }

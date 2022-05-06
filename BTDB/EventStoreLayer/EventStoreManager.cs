@@ -1,40 +1,39 @@
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public class EventStoreManager : IEventStoreManager
 {
-    public class EventStoreManager : IEventStoreManager
+    readonly TypeSerializers _typeSerializers;
+
+    public ICompressionStrategy CompressionStrategy { get; set; }
+
+    public EventStoreManager(TypeSerializersOptions? options = null)
     {
-        readonly TypeSerializers _typeSerializers;
+        _typeSerializers = new TypeSerializers(null, options);
+        CompressionStrategy = new SnappyCompressionStrategy();
+    }
 
-        public ICompressionStrategy CompressionStrategy { get; set; }
+    public void SetNewTypeNameMapper(ITypeNameMapper mapper)
+    {
+        _typeSerializers.SetTypeNameMapper(mapper);
+    }
 
-        public EventStoreManager(TypeSerializersOptions? options = null)
-        {
-            _typeSerializers = new TypeSerializers(null, options);
-            CompressionStrategy = new SnappyCompressionStrategy();
-        }
+    public void ForgotAllTypesAndSerializers()
+    {
+        _typeSerializers.ForgotAllTypesAndSerializers();
+    }
 
-        public void SetNewTypeNameMapper(ITypeNameMapper mapper)
-        {
-            _typeSerializers.SetTypeNameMapper(mapper);
-        }
+    public IReadEventStore OpenReadOnlyStore(IEventFileStorage file)
+    {
+        return new ReadOnlyEventStore(file, _typeSerializers.CreateMapping(), CompressionStrategy);
+    }
 
-        public void ForgotAllTypesAndSerializers()
-        {
-            _typeSerializers.ForgotAllTypesAndSerializers();
-        }
+    public IWriteEventStore AppendToStore(IEventFileStorage file)
+    {
+        return new AppendingEventStore(file, _typeSerializers.CreateMapping(), CompressionStrategy);
+    }
 
-        public IReadEventStore OpenReadOnlyStore(IEventFileStorage file)
-        {
-            return new ReadOnlyEventStore(file, _typeSerializers.CreateMapping(), CompressionStrategy);
-        }
-
-        public IWriteEventStore AppendToStore(IEventFileStorage file)
-        {
-            return new AppendingEventStore(file, _typeSerializers.CreateMapping(), CompressionStrategy);
-        }
-
-        public ITypeDescriptor DescriptorOf(object obj)
-        {
-            return _typeSerializers.DescriptorOf(obj);
-        }
+    public ITypeDescriptor DescriptorOf(object obj)
+    {
+        return _typeSerializers.DescriptorOf(obj);
     }
 }

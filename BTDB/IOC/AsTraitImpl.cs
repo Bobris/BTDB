@@ -2,65 +2,65 @@ using System;
 using System.Collections.Generic;
 using BTDB.Collections;
 
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+class AsTraitImpl : IAsTrait, IAsTraitImpl
 {
-    class AsTraitImpl : IAsTrait, IAsTraitImpl
+    StructList<KeyAndType> _asTypes;
+    bool _asSelf;
+    bool _asImplementedInterfaces;
+    bool _preserveExistingDefaults;
+
+    public void As(Type type)
     {
-        StructList<KeyAndType> _asTypes;
-        bool _asSelf;
-        bool _asImplementedInterfaces;
-        bool _preserveExistingDefaults;
+        _asTypes.Add(new KeyAndType(null, type));
+    }
 
-        public void As(Type type)
+    public void Keyed(object serviceKey, Type type)
+    {
+        _asTypes.Add(new KeyAndType(serviceKey, type));
+    }
+
+    public void AsSelf()
+    {
+        _asSelf = true;
+    }
+
+    public void AsImplementedInterfaces()
+    {
+        _asImplementedInterfaces = true;
+    }
+
+    public void SetPreserveExistingDefaults()
+    {
+        _preserveExistingDefaults = true;
+    }
+
+    public IEnumerable<KeyAndType> GetAsTypesFor(Type implementationType)
+    {
+        var defaultNeeded = true;
+        foreach (var asType in _asTypes)
         {
-            _asTypes.Add(new KeyAndType(null, type));
+            if (!asType.Type.IsAssignableFrom(implementationType)) continue;
+            yield return asType;
+            defaultNeeded = false;
         }
-
-        public void Keyed(object serviceKey, Type type)
+        if (_asImplementedInterfaces)
         {
-            _asTypes.Add(new KeyAndType(serviceKey, type));
-        }
-
-        public void AsSelf()
-        {
-            _asSelf = true;
-        }
-
-        public void AsImplementedInterfaces()
-        {
-            _asImplementedInterfaces = true;
-        }
-
-        public void SetPreserveExistingDefaults()
-        {
-            _preserveExistingDefaults = true;
-        }
-
-        public IEnumerable<KeyAndType> GetAsTypesFor(Type implementationType)
-        {
-            var defaultNeeded = true;
-            foreach (var asType in _asTypes)
+            foreach (var type in implementationType.GetInterfaces())
             {
-                if (!asType.Type.IsAssignableFrom(implementationType)) continue;
-                yield return asType;
+                if (type == typeof(IDisposable)) continue;
+                if (type == typeof(IAsyncDisposable)) continue;
+                yield return new KeyAndType(null, type);
                 defaultNeeded = false;
             }
-            if (_asImplementedInterfaces)
-            {
-                foreach (var type in implementationType.GetInterfaces())
-                {
-                    if (type == typeof(IDisposable)) continue;
-                    if (type == typeof(IAsyncDisposable)) continue;
-                    yield return new KeyAndType(null, type);
-                    defaultNeeded = false;
-                }
-            }
-            if (_asSelf || defaultNeeded)
-            {
-                yield return new KeyAndType(null, implementationType);
-            }
         }
-
-        public bool PreserveExistingDefaults => _preserveExistingDefaults;
+        if (_asSelf || defaultNeeded)
+        {
+            yield return new KeyAndType(null, implementationType);
+        }
     }
+
+    public bool PreserveExistingDefaults => _preserveExistingDefaults;
+    public bool UniqueRegistration { get; set; }
 }

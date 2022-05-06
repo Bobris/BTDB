@@ -2,67 +2,67 @@
 using System.Collections.Generic;
 using SimpleTester.TestModel.Events;
 
-namespace SimpleTester.TestModel
-{
-    public static class TestData
-    {
-        public static NewUserEvent SimpleEventInstance() => new NewUserEvent
-        {
-            Id = 123456,
-            ParentEventId = 0,
-            Time = new DateTime(2016, 4, 22, 14, 55, 25, DateTimeKind.Utc),
-            UniqueGuid = new Guid("FD76C45F-3991-4D48-9BEB-B2DB25B6EB11"),
-            Name = "Boris Letocha",
-            Password = new byte[20]
-        };
+namespace SimpleTester.TestModel;
 
-        public static TemplateSavedV1 ComplexEventInstance() => new TemplateSavedV1
+public static class TestData
+{
+    public static NewUserEvent SimpleEventInstance() => new NewUserEvent
+    {
+        Id = 123456,
+        ParentEventId = 0,
+        Time = new DateTime(2016, 4, 22, 14, 55, 25, DateTimeKind.Utc),
+        UniqueGuid = new Guid("FD76C45F-3991-4D48-9BEB-B2DB25B6EB11"),
+        Name = "Boris Letocha",
+        Password = new byte[20]
+    };
+
+    public static TemplateSavedV1 ComplexEventInstance() => new TemplateSavedV1
+    {
+        ActionId = 666,
+        Result = "Lorem ipsum",
+        Results = new[] { "L1", "L2" },
+        SessionId = "E95BA224-FAF8-4056-ADEC-1E6E0FBAED1B",
+        Name = "Foobar",
+        CompanyId = 5555,
+        ForceSave = true,
+        Id = 98765432123456789,
+        IsCreating = true,
+        LogoId = 6666,
+        OldTemplateId = 7777,
+        SavedFromJobId = 88888,
+        TemplateId = 9999,
+        Time = new DateTime(2016, 4, 22, 14, 55, 25, DateTimeKind.Utc),
+        UniqueGuid = new Guid("FD76C45F-3991-4D48-9BEB-B2DB25B6EB11"),
+        UserId = 1000,
+        WindowId = "abeceda",
+        Configuration = new TemplateConfiguration
         {
-            ActionId = 666,
-            Result = "Lorem ipsum",
-            Results = new[] { "L1", "L2" },
-            SessionId = "E95BA224-FAF8-4056-ADEC-1E6E0FBAED1B",
-            Name = "Foobar",
-            CompanyId = 5555,
-            ForceSave = true,
-            Id = 98765432123456789,
-            IsCreating = true,
-            LogoId = 6666,
-            OldTemplateId = 7777,
-            SavedFromJobId = 88888,
-            TemplateId = 9999,
-            Time = new DateTime(2016, 4, 22, 14, 55, 25, DateTimeKind.Utc),
-            UniqueGuid = new Guid("FD76C45F-3991-4D48-9BEB-B2DB25B6EB11"),
-            UserId = 1000,
-            WindowId = "abeceda",
-            Configuration = new TemplateConfiguration
+            ExtraData = "EXTRA",
+            CompanyBrand = new CompanyBrand
             {
-                ExtraData = "EXTRA",
-                CompanyBrand = new CompanyBrand
+                ContentBackgroundColor = "FF00FF",
+                ContentButtonColor = "00FF00",
+                ContentButtonTextColor = "0F0",
+                FontFamily = "Tahoma",
+                HeaderBackgroundColor = "FFAAFF",
+                HeaderFont = new FontSettings { Color = "red", Size = 5.6, Style = "italic" },
+                TextFont = new FontSettings { Color = "blue", Size = 6.6, Style = "italic" },
+                TitleFont = new FontSettings { Color = "gree", Size = 7.6, Style = "italic" }
+            },
+            DifferentCompanyBrands = new Dictionary<string, CompanyBrand>
+            {
+                ["cz"] = new CompanyBrand
                 {
-                    ContentBackgroundColor = "FF00FF",
-                    ContentButtonColor = "00FF00",
-                    ContentButtonTextColor = "0F0",
-                    FontFamily = "Tahoma",
-                    HeaderBackgroundColor = "FFAAFF",
-                    HeaderFont = new FontSettings { Color = "red", Size = 5.6, Style = "italic" },
-                    TextFont = new FontSettings { Color = "blue", Size = 6.6, Style = "italic" },
-                    TitleFont = new FontSettings { Color = "gree", Size = 7.6, Style = "italic" }
+                    FontFamily = "CZ-Tahoma"
                 },
-                DifferentCompanyBrands = new Dictionary<string, CompanyBrand>
+                ["en"] = new CompanyBrand
                 {
-                    ["cz"] = new CompanyBrand
-                    {
-                        FontFamily = "CZ-Tahoma"
-                    },
-                    ["en"] = new CompanyBrand
-                    {
-                        FontFamily = "EN-Tahoma"
-                    }
-                },
-                Invitation = new Invitation
-                {
-                    Content = @"Lorem ipsum dolor sit amet,
+                    FontFamily = "EN-Tahoma"
+                }
+            },
+            Invitation = new Invitation
+            {
+                Content = @"Lorem ipsum dolor sit amet,
                         consectetur adipiscing elit.Pellentesque nec ipsum sapien.Etiam molestie dui vitae augue maximus,
                         malesuada maximus ante interdum.Fusce non diam rutrum,
                         dictum magna in,
@@ -116,42 +116,41 @@ Morbi non turpis a ante placerat dapibus.Vestibulum purus tortor,
                         vel dictum odio lobortis vitae.Class aptent taciti sociosqu ad litora torquent per conubia nostra,
                         per inceptos himenaeos.Vestibulum eget porttitor elit.Vivamus non nulla sed ante efficitur condimentum.In maximus euismod neque,
                         et tristique augue egestas sit amet. ",
-                    SenderEmail = "foo@example.org",
-                    SenderName = "Foo",
-                    Subject = "Bar",
-                    Attachment = new byte[] { 0xc0, 0xff, 0xee }
-                },
-                Variables = new[] { new Variable("Name", "John Doe"), new Variable("Email", "foo@example.org") },
-                Language = Language.EnUk,
-                Languages = Languages.De | Languages.EnUk,
-                Preference = new Preference
+                SenderEmail = "foo@example.org",
+                SenderName = "Foo",
+                Subject = "Bar",
+                Attachment = new byte[] { 0xc0, 0xff, 0xee }
+            },
+            Variables = new[] { new Variable("Name", "John Doe"), new Variable("Email", "foo@example.org") },
+            Language = Language.EnUk,
+            Languages = Languages.De | Languages.EnUk,
+            Preference = new Preference
+            {
+                Content = new PageContentWithButton
                 {
-                    Content = new PageContentWithButton
+                    Message = "Bububu",
+                    SendButtonText = "Send",
+                    Title = "FooBar?"
+                },
+                Confirmation = new PageContent
+                {
+                    Message = "OK",
+                    Title = "OK?"
+                },
+                Heading = "Lorem ipsum",
+                Options = new List<Option> { new Option { Value = "Opt1" }, new Option { Value = "Opt2" } },
+                OptionsLookup = new Dictionary<string, Option>
+                {
+                    ["1"] = new Option { Value = "1" },
+                    ["2"] = new Option { Value = "2" }
+                },
+                TermsAndConditions =
+                    new TermsAndConditions
                     {
-                        Message = "Bububu",
-                        SendButtonText = "Send",
-                        Title = "FooBar?"
-                    },
-                    Confirmation = new PageContent
-                    {
-                        Message = "OK",
-                        Title = "OK?"
-                    },
-                    Heading = "Lorem ipsum",
-                    Options = new List<Option> { new Option { Value = "Opt1" }, new Option { Value = "Opt2" } },
-                    OptionsLookup = new Dictionary<string, Option>
-                    {
-                        ["1"] = new Option { Value = "1" },
-                        ["2"] = new Option { Value = "2" }
-                    },
-                    TermsAndConditions =
-                        new TermsAndConditions
-                        {
-                            Message = "OK?",
-                            Use = true
-                        }
-                }
+                        Message = "OK?",
+                        Use = true
+                    }
             }
-        };
-    }
+        }
+    };
 }

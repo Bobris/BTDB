@@ -1,10 +1,9 @@
 ﻿using System;
 
-namespace BTDB.Allocators
+namespace BTDB.Allocators;
+
+public interface IOffHeapAllocator
 {
-    public interface IOffHeapAllocator
-    {
-        IntPtr Allocate(IntPtr size);
-        void Deallocate(IntPtr ptr);
-    }
+    IntPtr Allocate(IntPtr size);
+    void Deallocate(IntPtr ptr);
 }

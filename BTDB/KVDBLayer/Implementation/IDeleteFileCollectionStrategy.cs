@@ -1,7 +1,6 @@
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+public interface IDeleteFileCollectionStrategy
 {
-    public interface IDeleteFileCollectionStrategy
-    {
-        void DeleteFile(string fileName);
-    }
+    void DeleteFile(string fileName);
 }

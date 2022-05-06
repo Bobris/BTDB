@@ -1,6 +1,5 @@
-﻿namespace SimpleTester.TestModel.Events
+﻿namespace SimpleTester.TestModel.Events;
+
+public class RecipientValidationFinished : ActionFinishedBase<string>
 {
-    public class RecipientValidationFinished : ActionFinishedBase<string>
-    {
-    }
 }

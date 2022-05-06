@@ -1,8 +1,7 @@
-namespace BTDB.IL
+namespace BTDB.IL;
+
+public interface IILDynamicMethodWithThis : IILMethod
 {
-    public interface IILDynamicMethodWithThis : IILMethod
-    {
-        void FinalizeCreation();
-        object Create(object? @this);
-    }
+    void FinalizeCreation();
+    object Create(object? @this);
 }

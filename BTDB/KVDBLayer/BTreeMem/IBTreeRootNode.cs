@@ -1,21 +1,20 @@
 using System;
 using System.Collections.Generic;
 
-namespace BTDB.KVDBLayer.BTreeMem
+namespace BTDB.KVDBLayer.BTreeMem;
+
+interface IBTreeRootNode : IBTreeNode
 {
-    interface IBTreeRootNode : IBTreeNode
-    {
-        long TransactionId { get; }
-        string? DescriptionForLeaks { get; set; }
-        ulong CommitUlong { get; set; }
-        uint GetUlongCount();
-        ulong GetUlong(uint idx);
-        void SetUlong(uint idx, ulong value);
-        IBTreeRootNode NewTransactionRoot();
-        void EraseRange(long firstKeyIndex, long lastKeyIndex);
-        FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key, uint prefixLen);
-        bool FindNextKey(List<NodeIdxPair> stack);
-        bool FindPreviousKey(List<NodeIdxPair> stack);
-        void BuildTree(long keyCount, Func<BTreeLeafMember> memberGenerator);
-    }
+    long TransactionId { get; }
+    string? DescriptionForLeaks { get; set; }
+    ulong CommitUlong { get; set; }
+    uint GetUlongCount();
+    ulong GetUlong(uint idx);
+    void SetUlong(uint idx, ulong value);
+    IBTreeRootNode NewTransactionRoot();
+    void EraseRange(long firstKeyIndex, long lastKeyIndex);
+    FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key, uint prefixLen);
+    bool FindNextKey(List<NodeIdxPair> stack);
+    bool FindPreviousKey(List<NodeIdxPair> stack);
+    void BuildTree(long keyCount, Func<BTreeLeafMember> memberGenerator);
 }

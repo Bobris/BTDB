@@ -1,9 +1,8 @@
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public enum DBObjectState
 {
-    public enum DBObjectState
-    {
-        Read,
-        Dirty,
-        Deleted,
-    }
+    Read,
+    Dirty,
+    Deleted,
 }

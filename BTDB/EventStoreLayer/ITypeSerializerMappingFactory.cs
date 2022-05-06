@@ -1,7 +1,6 @@
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public interface ITypeSerializerMappingFactory
 {
-    public interface ITypeSerializerMappingFactory
-    {
-        ITypeSerializersMapping CreateMapping();
-    }
+    ITypeSerializersMapping CreateMapping();
 }

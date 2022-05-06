@@ -1,10 +1,9 @@
 using System;
 
-namespace BTDB.IL
+namespace BTDB.IL;
+
+public interface IILField
 {
-    public interface IILField
-    {
-        Type FieldType { get; }
-        string Name { get; }
-    }
+    Type FieldType { get; }
+    string Name { get; }
 }

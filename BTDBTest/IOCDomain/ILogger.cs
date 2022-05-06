@@ -1,6 +1,5 @@
-﻿namespace BTDBTest.IOCDomain
+﻿namespace BTDBTest.IOCDomain;
+
+public interface ILogger
 {
-    public interface ILogger
-    {
-    }
 }

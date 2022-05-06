@@ -1,7 +1,6 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+interface ICReg
 {
-    interface ICReg
-    {
-        void Verify(ContainerVerification options, ContainerImpl container);
-    }
+    void Verify(ContainerVerification options, ContainerImpl container);
 }

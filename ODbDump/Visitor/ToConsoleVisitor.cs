@@ -12,7 +12,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
-        public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+        public bool StartObject(ulong oid, uint tableId, string? tableName, uint version)
         {
             Console.WriteLine("Object oid:{0} {1}-{2} version:{3}", oid, tableId, tableName ?? "?Unknown?",
                 version);
@@ -30,7 +30,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
-        public void ScalarAsObject(object content)
+        public void ScalarAsObject(object? content)
         {
             Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "ScalarObj {0}", content));
         }
@@ -50,7 +50,7 @@ namespace ODbDump.Visitor
             Console.WriteLine($"OidReference {oid}");
         }
 
-        public bool StartInlineObject(uint tableId, string tableName, uint version)
+        public bool StartInlineObject(uint tableId, string? tableName, uint version)
         {
             Console.WriteLine($"StartInlineObject {tableId}-{tableName}-{version}");
             return true;
@@ -83,9 +83,17 @@ namespace ODbDump.Visitor
             Console.WriteLine("EndList");
         }
 
-        public bool StartDictionary()
+        public bool StartDictionary(ulong? dicid = null)
         {
-            Console.WriteLine("StartDictionary");
+            if (dicid.HasValue)
+            {
+                Console.WriteLine("StartDictionary " + dicid.Value);
+            }
+            else
+            {
+                Console.WriteLine("StartDictionary");
+            }
+
             return true;
         }
 

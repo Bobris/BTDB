@@ -1,7 +1,6 @@
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+public interface IHaveSubDB
 {
-    public interface IHaveSubDB
-    {
-        T GetSubDB<T>(long id) where T : class;
-    }
+    T GetSubDB<T>(long id) where T : class;
 }

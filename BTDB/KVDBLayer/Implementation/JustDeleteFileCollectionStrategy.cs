@@ -1,12 +1,11 @@
 using System.IO;
 
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+public class JustDeleteFileCollectionStrategy : IDeleteFileCollectionStrategy
 {
-    public class JustDeleteFileCollectionStrategy : IDeleteFileCollectionStrategy
+    public void DeleteFile(string fileName)
     {
-        public void DeleteFile(string fileName)
-        {
-            File.Delete(fileName);
-        }
+        File.Delete(fileName);
     }
 }

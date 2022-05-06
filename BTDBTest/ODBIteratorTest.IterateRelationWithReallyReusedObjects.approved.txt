@@ -26,7 +26,7 @@ EndItem
 EndList
 EndField
 StartField BlobsIDict
-StartDictionary
+StartDictionary 0
 Used key: 02 00 7F 01 01 00 Value len:4
 StartDictKey
 StartInlineObject 1-Blob-1

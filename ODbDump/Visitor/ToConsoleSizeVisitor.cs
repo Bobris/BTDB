@@ -61,7 +61,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
-        public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+        public bool StartObject(ulong oid, uint tableId, string? tableName, uint version)
         {
             return true;
         }
@@ -76,7 +76,7 @@ namespace ODbDump.Visitor
             return false;
         }
 
-        public void ScalarAsObject(object content)
+        public void ScalarAsObject(object? content)
         {
         }
 
@@ -93,7 +93,7 @@ namespace ODbDump.Visitor
         {
         }
 
-        public bool StartInlineObject(uint tableId, string tableName, uint version)
+        public bool StartInlineObject(uint tableId, string? tableName, uint version)
         {
             return true;
         }
@@ -120,7 +120,7 @@ namespace ODbDump.Visitor
         {
         }
 
-        public bool StartDictionary()
+        public bool StartDictionary(ulong? dicid = null)
         {
             return true;
         }

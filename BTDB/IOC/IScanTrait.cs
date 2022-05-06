@@ -1,9 +1,8 @@
 using System;
 
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+public interface IScanTrait
 {
-    public interface IScanTrait
-    {
-        void Where(Predicate<Type> filter);
-    }
+    void Where(Predicate<Type> filter);
 }

@@ -1,19 +1,18 @@
 using System;
 
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+class UnknownFile : IFileInfo
 {
-    class UnknownFile : IFileInfo
-    {
-        internal static readonly IFileInfo Instance = new UnknownFile();
+    internal static readonly IFileInfo Instance = new UnknownFile();
 
-        UnknownFile() { }
+    UnknownFile() { }
 
-        public KVFileType FileType => KVFileType.Unknown;
+    public KVFileType FileType => KVFileType.Unknown;
 
-        public Guid? Guid => null;
+    public Guid? Guid => null;
 
-        public long Generation => -1;
+    public long Generation => -1;
 
-        public long SubDBId => -1;
-    }
+    public long SubDBId => -1;
 }

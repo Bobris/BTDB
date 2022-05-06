@@ -2,68 +2,31 @@ using System;
 using System.Runtime.InteropServices;
 using BTDB.KVDBLayer;
 using Microsoft.Win32.SafeHandles;
-using Mono.Unix;
 
-namespace BTDB.StreamLayer
+namespace BTDB.StreamLayer;
+
+public class PosixPlatformMethods : IPlatformMethods
 {
-    public class PosixPlatformMethods : IPlatformMethods
+    [DllImport("libc", EntryPoint = "realpath", CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
+    static extern IntPtr UnixRealPath(string path, IntPtr buffer);
+
+    [DllImport("libc", EntryPoint = "free", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
+    static extern void UnixFree(IntPtr ptr);
+
+    public string? RealPath(string path)
     {
-        public unsafe uint PRead(SafeFileHandle handle, Span<byte> data, ulong position)
+        var ptr = UnixRealPath(path, IntPtr.Zero);
+        if (ptr == IntPtr.Zero)
+            return null;
+        string result;
+        try
         {
-            fixed (void* dataptr = data)
-            {
-                long result;
-                do
-                {
-                    result = Mono.Unix.Native.Syscall.pread((int)handle.DangerousGetHandle(), dataptr,
-                        (ulong)data.Length, (long)position);
-                } while (UnixMarshal.ShouldRetrySyscall((int)result));
-
-                if (result == -1)
-                    UnixMarshal.ThrowExceptionForLastError();
-                return (uint)result;
-            }
+            result = Marshal.PtrToStringAnsi(ptr); // uses UTF8 on Unix
         }
-
-        public unsafe void PWrite(SafeFileHandle handle, ReadOnlySpan<byte> data, ulong position)
+        finally
         {
-            fixed (void* dataptr = data)
-            {
-                long result;
-                do
-                {
-                    result = Mono.Unix.Native.Syscall.pwrite((int)handle.DangerousGetHandle(), dataptr,
-                        (ulong)data.Length, (long)position);
-                } while (UnixMarshal.ShouldRetrySyscall((int)result));
-
-                if (result == -1)
-                    UnixMarshal.ThrowExceptionForLastError();
-                if (result != data.Length)
-                    throw new BTDBException($"Out of disk space written {result} out of {data.Length} at {position}");
-            }
+            UnixFree(ptr);
         }
-
-        [DllImport("libc", EntryPoint = "realpath", CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
-        static extern IntPtr UnixRealPath(string path, IntPtr buffer);
-
-        [DllImport("libc", EntryPoint = "free", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
-        static extern void UnixFree(IntPtr ptr);
-
-        public string? RealPath(string path)
-        {
-            var ptr = UnixRealPath(path, IntPtr.Zero);
-            if (ptr == IntPtr.Zero)
-                return null;
-            string result;
-            try
-            {
-                result = Marshal.PtrToStringAnsi(ptr); // uses UTF8 on Unix
-            }
-            finally
-            {
-                UnixFree(ptr);
-            }
-            return result;
-        }
+        return result;
     }
 }

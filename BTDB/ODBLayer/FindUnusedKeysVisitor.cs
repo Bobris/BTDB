@@ -4,129 +4,128 @@ using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public class FindUnusedKeysVisitor : IDisposable
 {
-    public class FindUnusedKeysVisitor : IDisposable
+    IFileCollection _memoryFileCollection;
+    IKeyValueDB _keyValueDb;
+    IKeyValueDBTransaction _kvtr;
+    readonly byte[] _tempBytes = new byte[32];
+
+    public struct UnseenKey
     {
-        IFileCollection _memoryFileCollection;
-        IKeyValueDB _keyValueDb;
-        IKeyValueDBTransaction _kvtr;
-        readonly byte[] _tempBytes = new byte[32];
+        public byte[] Key { get; set; }
+        public uint ValueSize { get; set; }
+    }
 
-        public struct UnseenKey
-        {
-            public byte[] Key { get; set; }
-            public uint ValueSize { get; set; }
-        }
+    public FindUnusedKeysVisitor()
+    {
+        _memoryFileCollection = new InMemoryFileCollection();
+        _keyValueDb = new KeyValueDB(_memoryFileCollection);
+    }
 
-        public FindUnusedKeysVisitor()
-        {
-            _memoryFileCollection = new InMemoryFileCollection();
-            _keyValueDb = new KeyValueDB(_memoryFileCollection);
-        }
+    IEnumerable<byte[]> SupportedKeySpaces()
+    {
+        yield return ObjectDB.AllObjectsPrefix;
+        yield return ObjectDB.AllDictionariesPrefix;
+    }
 
-        IEnumerable<byte[]> SupportedKeySpaces()
-        {
-            yield return ObjectDB.AllObjectsPrefix;
-            yield return ObjectDB.AllDictionariesPrefix;
-        }
+    public void ImportAllKeys(IObjectDBTransaction sourceDbTr)
+    {
+        var itr = (IInternalObjectDBTransaction)sourceDbTr;
+        var sourceKvTr = itr.KeyValueDBTransaction;
+        foreach (var prefix in SupportedKeySpaces())
+            ImportKeysWithPrefix(prefix, sourceKvTr);
+    }
 
-        public void ImportAllKeys(IObjectDBTransaction sourceDbTr)
+    void ImportKeysWithPrefix(byte[] prefix, IKeyValueDBTransaction sourceKvTr)
+    {
+        if (!sourceKvTr.FindFirstKey(prefix))
+            return;
+        using (var kvtr = _keyValueDb.StartWritingTransaction().Result)
         {
-            var itr = (IInternalObjectDBTransaction)sourceDbTr;
-            var sourceKvTr = itr.KeyValueDBTransaction;
-            foreach (var prefix in SupportedKeySpaces())
-                ImportKeysWithPrefix(prefix, sourceKvTr);
-        }
-
-        void ImportKeysWithPrefix(byte[] prefix, IKeyValueDBTransaction sourceKvTr)
-        {
-            if (!sourceKvTr.FindFirstKey(prefix))
-                return;
-            using (var kvtr = _keyValueDb.StartWritingTransaction().Result)
+            do
             {
-                do
+                //create all keys, instead of value store only byte length of value
+                kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(), Vuint2ByteBuffer(sourceKvTr.GetStorageSizeOfCurrentKey().Value));
+            } while (sourceKvTr.FindNextKey(prefix));
+            kvtr.Commit();
+        }
+    }
+
+    public ODBIterator Iterate(IObjectDBTransaction tr)
+    {
+        var iterator = new ODBIterator(tr, new VisitorForFindUnused(this));
+        using (_kvtr = _keyValueDb.StartWritingTransaction().Result)
+        {
+            iterator.Iterate();
+            _kvtr.Commit();
+        }
+        _kvtr = null;
+        return iterator;
+    }
+
+    public IEnumerable<UnseenKey> UnseenKeys()
+    {
+        using var trkv = _keyValueDb.StartReadOnlyTransaction();
+        foreach (var prefix in SupportedKeySpaces())
+        {
+            if (!trkv.FindFirstKey(prefix))
+                continue;
+            do
+            {
+                yield return new UnseenKey
                 {
-                    //create all keys, instead of value store only byte length of value
-                    kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(), Vuint2ByteBuffer(sourceKvTr.GetStorageSizeOfCurrentKey().Value));
-                } while (sourceKvTr.FindNextKey(prefix));
-                kvtr.Commit();
-            }
+                    Key = trkv.GetKeyToArray(),
+                    ValueSize = (uint)PackUnpack.UnpackVUInt(trkv.GetValue())
+                };
+            } while (trkv.FindNextKey(prefix));
+        }
+    }
+
+    public void DeleteUnused(IObjectDBTransaction tr)
+    {
+        var itr = (IInternalObjectDBTransaction)tr;
+        var kvtr = itr.KeyValueDBTransaction;
+        foreach (var unseen in UnseenKeys())
+        {
+            kvtr.EraseAll(unseen.Key);
+        }
+    }
+
+    public void Dispose()
+    {
+        _keyValueDb?.Dispose();
+        _keyValueDb = null;
+        _memoryFileCollection?.Dispose();
+        _memoryFileCollection = null;
+    }
+
+    ReadOnlySpan<byte> Vuint2ByteBuffer(uint v)
+    {
+        var ofs = 0;
+        PackUnpack.PackVUInt(_tempBytes, ref ofs, v);
+        return _tempBytes.AsSpan(0, ofs);
+    }
+
+    void MarkKeyAsUsed(IKeyValueDBTransaction tr)
+    {
+        _kvtr.EraseCurrent(tr.GetKey());
+    }
+
+    class VisitorForFindUnused : IODBFastVisitor
+    {
+        readonly FindUnusedKeysVisitor _finder;
+
+        public VisitorForFindUnused(FindUnusedKeysVisitor finder)
+        {
+            _finder = finder;
         }
 
-        public ODBIterator Iterate(IObjectDBTransaction tr)
+        public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
         {
-            var iterator = new ODBIterator(tr, new VisitorForFindUnused(this));
-            using (_kvtr = _keyValueDb.StartWritingTransaction().Result)
-            {
-                iterator.Iterate();
-                _kvtr.Commit();
-            }
-            _kvtr = null;
-            return iterator;
-        }
-
-        public IEnumerable<UnseenKey> UnseenKeys()
-        {
-            using var trkv = _keyValueDb.StartReadOnlyTransaction();
-            foreach (var prefix in SupportedKeySpaces())
-            {
-                if (!trkv.FindFirstKey(prefix))
-                    continue;
-                do
-                {
-                    yield return new UnseenKey
-                    {
-                        Key = trkv.GetKeyToArray(),
-                        ValueSize = (uint)PackUnpack.UnpackVUInt(trkv.GetValue())
-                    };
-                } while (trkv.FindNextKey(prefix));
-            }
-        }
-
-        public void DeleteUnused(IObjectDBTransaction tr)
-        {
-            var itr = (IInternalObjectDBTransaction)tr;
-            var kvtr = itr.KeyValueDBTransaction;
-            foreach (var unseen in UnseenKeys())
-            {
-                kvtr.EraseAll(unseen.Key);
-            }
-        }
-
-        public void Dispose()
-        {
-            _keyValueDb?.Dispose();
-            _keyValueDb = null;
-            _memoryFileCollection?.Dispose();
-            _memoryFileCollection = null;
-        }
-
-        ReadOnlySpan<byte> Vuint2ByteBuffer(uint v)
-        {
-            var ofs = 0;
-            PackUnpack.PackVUInt(_tempBytes, ref ofs, v);
-            return _tempBytes.AsSpan(0, ofs);
-        }
-
-        void MarkKeyAsUsed(IKeyValueDBTransaction tr)
-        {
-            _kvtr.EraseCurrent(tr.GetKey());
-        }
-
-        class VisitorForFindUnused : IODBFastVisitor
-        {
-            readonly FindUnusedKeysVisitor _finder;
-
-            public VisitorForFindUnused(FindUnusedKeysVisitor finder)
-            {
-                _finder = finder;
-            }
-
-            public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
-            {
-                _finder.MarkKeyAsUsed(tr);
-            }
+            _finder.MarkKeyAsUsed(tr);
         }
     }
 }

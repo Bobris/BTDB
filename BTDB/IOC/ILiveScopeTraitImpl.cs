@@ -1,7 +1,6 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+interface ILiveScopeTraitImpl
 {
-    interface ILiveScopeTraitImpl
-    {
-        Lifetime Lifetime { get; }
-    }
+    Lifetime Lifetime { get; }
 }

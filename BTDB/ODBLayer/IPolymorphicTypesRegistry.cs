@@ -1,11 +1,10 @@
 using System;
 using System.Collections.Generic;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public interface IPolymorphicTypesRegistry
 {
-    public interface IPolymorphicTypesRegistry
-    {
-        void RegisterPolymorphicType(Type type);
-        IEnumerable<Type> GetPolymorphicTypes(Type baseType);
-    }
+    void RegisterPolymorphicType(Type type);
+    IEnumerable<Type> GetPolymorphicTypes(Type baseType);
 }

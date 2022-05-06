@@ -1,9 +1,8 @@
 using System;
 
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public interface ITypeDescriptorFactory
 {
-    public interface ITypeDescriptorFactory
-    {
-        ITypeDescriptor? Create(Type type);
-    }
+    ITypeDescriptor? Create(Type type);
 }

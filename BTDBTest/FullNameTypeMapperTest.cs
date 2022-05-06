@@ -3,34 +3,34 @@ using System;
 using System.Collections.Generic;
 using Xunit;
 
-namespace BTDBTest
+namespace BTDBTest;
+
+public class FullNameTypeMapperTest
 {
-    public class FullNameTypeMapperTest
+    readonly FullNameTypeMapper _fullNameTypeMapper;
+
+    public FullNameTypeMapperTest()
     {
-        readonly FullNameTypeMapper _fullNameTypeMapper;
+        _fullNameTypeMapper = new FullNameTypeMapper();
+    }
 
-        public FullNameTypeMapperTest()
-        {
-            _fullNameTypeMapper = new FullNameTypeMapper();
-        }
+    [Theory]
+    [MemberData(nameof(Mappings))]
+    public void ToNameTest(Type type, string name)
+    {
+        var actualName = _fullNameTypeMapper.ToName(type);
+        Assert.Equal(name, actualName);
+    }
 
-        [Theory]
-        [MemberData(nameof(Mappings))]
-        public void ToNameTest(Type type, string name)
-        {
-            var actualName = _fullNameTypeMapper.ToName(type);
-            Assert.Equal(name, actualName);
-        }
+    [Theory]
+    [MemberData(nameof(Mappings))]
+    public void ToTypeTest(Type type, string name)
+    {
+        var actualType = _fullNameTypeMapper.ToType(name);
+        Assert.Equal(type, actualType);
+    }
 
-        [Theory]
-        [MemberData(nameof(Mappings))]
-        public void ToTypeTest(Type type, string name)
-        {
-            var actualType = _fullNameTypeMapper.ToType(name);
-            Assert.Equal(type, actualType);
-        }
-
-        public static List<object[]> Mappings => new List<object[]>
+    public static List<object[]> Mappings => new List<object[]>
         {
             new object[] { typeof(int), "System.Int32" },
             new object[] { typeof(IEnumerable<int>), "System.Collections.Generic.IEnumerable<System.Int32>" },
@@ -43,15 +43,14 @@ namespace BTDBTest
             new object[] { typeof(NestedGenericClass<NestedClass>), "BTDBTest.FullNameTypeMapperTest+NestedGenericClass<BTDBTest.FullNameTypeMapperTest+NestedClass>" },
         };
 
-        class NestedClass
+    class NestedClass
+    {
+        internal class NestedClass2
         {
-            internal class NestedClass2
-            {
-            }
         }
+    }
 
-        class NestedGenericClass<T>
-        {
-        }
+    class NestedGenericClass<T>
+    {
     }
 }

@@ -1,250 +1,249 @@
 using System;
 using System.Threading;
 
-namespace BTDB.Reactive
+namespace BTDB.Reactive;
+
+interface IStoppedSubjectMarker { }
+
+static class FastSubjectHelpers<T>
 {
-    interface IStoppedSubjectMarker { }
-
-    static class FastSubjectHelpers<T>
+    internal interface IUnsubscribableSubject
     {
-        internal interface IUnsubscribableSubject
+        void Unsubscribe(IObserver<T> observer);
+    }
+
+    internal interface IHasValue
+    {
+        T Value { get; }
+    }
+
+    internal static readonly DisposedSubject DisposedSubjectMarker = new DisposedSubject();
+
+    internal sealed class DisposedSubject : IObserver<T>, IStoppedSubjectMarker
+    {
+        public void OnNext(T value)
         {
-            void Unsubscribe(IObserver<T> observer);
+            throw new ObjectDisposedException("");
         }
 
-        internal interface IHasValue
+        public void OnError(Exception error)
         {
-            T Value { get; }
+            throw new ObjectDisposedException("");
         }
 
-        internal static readonly DisposedSubject DisposedSubjectMarker = new DisposedSubject();
-
-        internal sealed class DisposedSubject : IObserver<T>, IStoppedSubjectMarker
+        public void OnCompleted()
         {
-            public void OnNext(T value)
-            {
-                throw new ObjectDisposedException("");
-            }
+            throw new ObjectDisposedException("");
+        }
+    }
 
-            public void OnError(Exception error)
-            {
-                throw new ObjectDisposedException("");
-            }
+    internal sealed class ExceptionedSubject : IObserver<T>, IStoppedSubjectMarker
+    {
+        readonly Exception _error;
 
-            public void OnCompleted()
-            {
-                throw new ObjectDisposedException("");
-            }
+        public ExceptionedSubject(Exception error)
+        {
+            _error = error;
         }
 
-        internal sealed class ExceptionedSubject : IObserver<T>, IStoppedSubjectMarker
+        internal Exception Error => _error;
+
+        public void OnNext(T value)
         {
-            readonly Exception _error;
-
-            public ExceptionedSubject(Exception error)
-            {
-                _error = error;
-            }
-
-            internal Exception Error => _error;
-
-            public void OnNext(T value)
-            {
-            }
-
-            public void OnError(Exception error)
-            {
-            }
-
-            public void OnCompleted()
-            {
-            }
         }
 
-        internal static readonly CompletedSubject CompletedSubjectMarker = new CompletedSubject();
-
-        internal sealed class CompletedSubject : IObserver<T>, IStoppedSubjectMarker
+        public void OnError(Exception error)
         {
-            public void OnNext(T value)
-            {
-            }
-
-            public void OnError(Exception error)
-            {
-            }
-
-            public void OnCompleted()
-            {
-            }
         }
 
-        internal static readonly EmptySubject EmptySubjectMarker = new EmptySubject();
-
-        internal sealed class EmptySubject : IObserver<T>
+        public void OnCompleted()
         {
-            public void OnNext(T value)
-            {
-            }
+        }
+    }
 
-            public void OnError(Exception error)
-            {
-            }
+    internal static readonly CompletedSubject CompletedSubjectMarker = new CompletedSubject();
 
-            public void OnCompleted()
-            {
-            }
+    internal sealed class CompletedSubject : IObserver<T>, IStoppedSubjectMarker
+    {
+        public void OnNext(T value)
+        {
         }
 
-        internal sealed class MultiSubject : IObserver<T>
+        public void OnError(Exception error)
         {
-            readonly IObserver<T>[] _array;
+        }
 
-            public MultiSubject(IObserver<T>[] array)
+        public void OnCompleted()
+        {
+        }
+    }
+
+    internal static readonly EmptySubject EmptySubjectMarker = new EmptySubject();
+
+    internal sealed class EmptySubject : IObserver<T>
+    {
+        public void OnNext(T value)
+        {
+        }
+
+        public void OnError(Exception error)
+        {
+        }
+
+        public void OnCompleted()
+        {
+        }
+    }
+
+    internal sealed class MultiSubject : IObserver<T>
+    {
+        readonly IObserver<T>[] _array;
+
+        public MultiSubject(IObserver<T>[] array)
+        {
+            _array = array;
+        }
+
+        public IObserver<T>[] Array => _array;
+
+        public void OnNext(T value)
+        {
+            foreach (var observer in _array)
             {
-                _array = array;
-            }
-
-            public IObserver<T>[] Array => _array;
-
-            public void OnNext(T value)
-            {
-                foreach (var observer in _array)
-                {
-                    observer.OnNext(value);
-                }
-            }
-
-            public void OnError(Exception error)
-            {
-                foreach (var observer in _array)
-                {
-                    observer.OnError(error);
-                }
-            }
-
-            public void OnCompleted()
-            {
-                foreach (var observer in _array)
-                {
-                    observer.OnCompleted();
-                }
+                observer.OnNext(value);
             }
         }
 
-        internal sealed class EmptySubjectWithValue : IObserver<T>, IHasValue
+        public void OnError(Exception error)
         {
-            readonly T _value;
-
-            internal EmptySubjectWithValue(T value)
+            foreach (var observer in _array)
             {
-                _value = value;
+                observer.OnError(error);
             }
-
-            public void OnNext(T value)
-            {
-            }
-
-            public void OnError(Exception error)
-            {
-            }
-
-            public void OnCompleted()
-            {
-            }
-
-            public T Value => _value;
         }
 
-        internal sealed class MultiSubjectWithValue : IObserver<T>, IHasValue
+        public void OnCompleted()
         {
-            readonly IObserver<T>[] _array;
-            readonly T _value;
-
-            public MultiSubjectWithValue(IObserver<T>[] array, T value)
+            foreach (var observer in _array)
             {
-                _array = array;
-                _value = value;
+                observer.OnCompleted();
             }
+        }
+    }
 
-            public IObserver<T>[] Array => _array;
+    internal sealed class EmptySubjectWithValue : IObserver<T>, IHasValue
+    {
+        readonly T _value;
 
-            public void OnNext(T value)
-            {
-                foreach (var observer in _array)
-                {
-                    observer.OnNext(value);
-                }
-            }
-
-            public void OnError(Exception error)
-            {
-                foreach (var observer in _array)
-                {
-                    observer.OnError(error);
-                }
-            }
-
-            public void OnCompleted()
-            {
-                foreach (var observer in _array)
-                {
-                    observer.OnCompleted();
-                }
-            }
-
-            public T Value => _value;
+        internal EmptySubjectWithValue(T value)
+        {
+            _value = value;
         }
 
-        internal sealed class SingleSubjectWithValue : IObserver<T>, IHasValue
+        public void OnNext(T value)
         {
-            readonly IObserver<T> _observer;
-            readonly T _value;
-
-            public SingleSubjectWithValue(IObserver<T> observer, T value)
-            {
-                _observer = observer;
-                _value = value;
-            }
-
-            public void OnNext(T value)
-            {
-                Observer.OnNext(value);
-            }
-
-            public void OnError(Exception error)
-            {
-                Observer.OnError(error);
-            }
-
-            public void OnCompleted()
-            {
-                Observer.OnCompleted();
-            }
-
-            public T Value => _value;
-
-            internal IObserver<T> Observer => _observer;
         }
 
-
-        internal sealed class Subscription : IDisposable
+        public void OnError(Exception error)
         {
-            IObserver<T> _observer;
-            IUnsubscribableSubject _subject;
+        }
 
-            public Subscription(IUnsubscribableSubject subject, IObserver<T> observer)
-            {
-                _subject = subject;
-                _observer = observer;
-            }
+        public void OnCompleted()
+        {
+        }
 
-            public void Dispose()
+        public T Value => _value;
+    }
+
+    internal sealed class MultiSubjectWithValue : IObserver<T>, IHasValue
+    {
+        readonly IObserver<T>[] _array;
+        readonly T _value;
+
+        public MultiSubjectWithValue(IObserver<T>[] array, T value)
+        {
+            _array = array;
+            _value = value;
+        }
+
+        public IObserver<T>[] Array => _array;
+
+        public void OnNext(T value)
+        {
+            foreach (var observer in _array)
             {
-                var observer = Interlocked.Exchange(ref _observer, null);
-                if (observer == null) return;
-                _subject.Unsubscribe(observer);
-                _subject = null;
+                observer.OnNext(value);
             }
+        }
+
+        public void OnError(Exception error)
+        {
+            foreach (var observer in _array)
+            {
+                observer.OnError(error);
+            }
+        }
+
+        public void OnCompleted()
+        {
+            foreach (var observer in _array)
+            {
+                observer.OnCompleted();
+            }
+        }
+
+        public T Value => _value;
+    }
+
+    internal sealed class SingleSubjectWithValue : IObserver<T>, IHasValue
+    {
+        readonly IObserver<T> _observer;
+        readonly T _value;
+
+        public SingleSubjectWithValue(IObserver<T> observer, T value)
+        {
+            _observer = observer;
+            _value = value;
+        }
+
+        public void OnNext(T value)
+        {
+            Observer.OnNext(value);
+        }
+
+        public void OnError(Exception error)
+        {
+            Observer.OnError(error);
+        }
+
+        public void OnCompleted()
+        {
+            Observer.OnCompleted();
+        }
+
+        public T Value => _value;
+
+        internal IObserver<T> Observer => _observer;
+    }
+
+
+    internal sealed class Subscription : IDisposable
+    {
+        IObserver<T> _observer;
+        IUnsubscribableSubject _subject;
+
+        public Subscription(IUnsubscribableSubject subject, IObserver<T> observer)
+        {
+            _subject = subject;
+            _observer = observer;
+        }
+
+        public void Dispose()
+        {
+            var observer = Interlocked.Exchange(ref _observer, null);
+            if (observer == null) return;
+            _subject.Unsubscribe(observer);
+            _subject = null;
         }
     }
 }

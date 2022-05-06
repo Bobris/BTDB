@@ -1,9 +1,8 @@
 using System.Collections.Generic;
 
-namespace BTDB.FieldHandler
+namespace BTDB.FieldHandler;
+
+public interface IFieldHandlerWithNestedFieldHandlers
 {
-    public interface IFieldHandlerWithNestedFieldHandlers
-    {
-        IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers();
-    }
+    IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers();
 }

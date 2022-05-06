@@ -1,9 +1,8 @@
 using System;
 
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+public interface IConstructorTrait
 {
-    public interface IConstructorTrait
-    {
-        void UsingConstructor(params Type[] parameterTypes);
-    }
+    void UsingConstructor(params Type[] parameterTypes);
 }

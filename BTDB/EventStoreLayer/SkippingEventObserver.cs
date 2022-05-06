@@ -1,19 +1,18 @@
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public class SkippingEventObserver : IEventStoreObserver
 {
-    public class SkippingEventObserver : IEventStoreObserver
+    public bool ObservedMetadata(object metadata, uint eventCount)
     {
-        public bool ObservedMetadata(object metadata, uint eventCount)
-        {
-            return false;
-        }
+        return false;
+    }
 
-        public bool ShouldStopReadingNextEvents()
-        {
-            return false;
-        }
+    public bool ShouldStopReadingNextEvents()
+    {
+        return false;
+    }
 
-        public void ObservedEvents(object[] events)
-        {
-        }
+    public void ObservedEvents(object[] events)
+    {
     }
 }

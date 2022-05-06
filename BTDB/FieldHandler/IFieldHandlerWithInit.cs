@@ -1,11 +1,10 @@
 using System;
 using BTDB.IL;
 
-namespace BTDB.FieldHandler
+namespace BTDB.FieldHandler;
+
+public interface IFieldHandlerWithInit
 {
-    public interface IFieldHandlerWithInit
-    {
-        bool NeedInit();
-        void Init(IILGen ilGenerator, Action<IILGen>? pushReaderCtx);
-    }
+    bool NeedInit();
+    void Init(IILGen ilGenerator, Action<IILGen>? pushReaderCtx);
 }

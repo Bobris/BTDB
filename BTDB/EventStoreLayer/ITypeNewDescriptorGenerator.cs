@@ -1,11 +1,10 @@
 using System;
 using BTDB.IL;
 
-namespace BTDB.EventStoreLayer
+namespace BTDB.EventStoreLayer;
+
+public interface ITypeNewDescriptorGenerator
 {
-    public interface ITypeNewDescriptorGenerator
-    {
-        // ctx is IDescriptorSerializerLiteContext type
-        void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx, Type type);
-    }
+    // ctx is IDescriptorSerializerLiteContext type
+    void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx, Type type);
 }

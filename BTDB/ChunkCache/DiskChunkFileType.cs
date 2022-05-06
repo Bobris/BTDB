@@ -1,9 +1,8 @@
-namespace BTDB.ChunkCache
+namespace BTDB.ChunkCache;
+
+enum DiskChunkFileType : byte
 {
-    enum DiskChunkFileType : byte
-    {
-        HashIndex,
-        PureValues,
-        Unknown
-    }
+    HashIndex,
+    PureValues,
+    Unknown
 }

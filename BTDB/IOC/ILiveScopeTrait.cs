@@ -1,7 +1,6 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+public interface ILiveScopeTrait
 {
-    public interface ILiveScopeTrait
-    {
-        void SingleInstance();
-    }
+    void SingleInstance();
 }

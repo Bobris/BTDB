@@ -1,8 +1,7 @@
-﻿namespace BTDBTest.IOCDomain
+﻿namespace BTDBTest.IOCDomain;
+
+public interface IDatabase
 {
-    public interface IDatabase
-    {
-        ILogger Logger { get; }
-        IErrorHandler ErrorHandler { get; }
-    }
+    ILogger Logger { get; }
+    IErrorHandler ErrorHandler { get; }
 }

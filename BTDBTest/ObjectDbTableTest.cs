@@ -2,11 +2,14 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net;
+using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 using BTDBTest;
 using Xunit;
 using Xunit.Abstractions;
@@ -120,9 +123,9 @@ namespace BTDBTest
             var creator = tr.InitRelation<IPersonSimpleTableWithInsert>("TryInsertWorks");
             var personSimpleTable = creator(tr);
             Assert.True(personSimpleTable.Insert(new PersonSimple
-            { TenantId = 1, Email = "nospam@nospam.cz", Name = "A" }));
+                { TenantId = 1, Email = "nospam@nospam.cz", Name = "A" }));
             Assert.False(personSimpleTable.Insert(new PersonSimple
-            { TenantId = 1, Email = "nospam@nospam.cz", Name = "B" }));
+                { TenantId = 1, Email = "nospam@nospam.cz", Name = "B" }));
             Assert.Equal("A", personSimpleTable.FindById(1, "nospam@nospam.cz").Name);
             tr.Commit();
         }
@@ -256,7 +259,7 @@ namespace BTDBTest
                 TenantId = 1,
                 Email = "nospam@nospam.cz",
                 Name = "Boris",
-                Ratings = new Dictionary<string, IList<byte>> { { "Czech", new List<byte> { 1, 2, 1 } } },
+                Ratings = new() { { "Czech", new List<byte> { 1, 2, 1 } } },
             };
             Func<IObjectDBTransaction, ISimplePersonTable> creator;
             using (var tr = _db.StartTransaction())
@@ -296,7 +299,7 @@ namespace BTDBTest
                 TenantId = 1,
                 Email = "nospam@nospam.cz",
                 Name = "Boris",
-                Ratings = new Dictionary<string, IList<byte>> { { "Czech", new List<byte> { 1, 2, 1 } } },
+                Ratings = new() { { "Czech", new List<byte> { 1, 2, 1 } } },
             };
             Func<IObjectDBTransaction, ISimplePersonTable> creator;
             using (var tr = _db.StartTransaction())
@@ -487,7 +490,9 @@ namespace BTDBTest
             IOrderedDictionaryEnumerator<uint, Person> ListByAge(ulong tenantId, AdvancedEnumeratorParam<uint> param);
             IEnumerable<Person> ListByAge(ulong tenantId, uint age);
 
-            IOrderedDictionaryEnumerator<uint, PersonWithOnlyAge> ListByAgePartial(ulong tenantId, AdvancedEnumeratorParam<uint> param);
+            IOrderedDictionaryEnumerator<uint, PersonWithOnlyAge> ListByAgePartial(ulong tenantId,
+                AdvancedEnumeratorParam<uint> param);
+
             IEnumerable<PersonWithOnlyAge> ListByAgePartial(ulong tenantId, uint age);
 
             // You can replace List by Count and it will return count of list faster if all you need is count
@@ -509,8 +514,7 @@ namespace BTDBTest
 
         public class NestedEventMetaData
         {
-            [PrimaryKey(1)]
-            public ulong SequenceNumber { get; set; }
+            [PrimaryKey(1)] public ulong SequenceNumber { get; set; }
             public ByteBuffer MetaData { get; set; }
         }
 
@@ -518,7 +522,8 @@ namespace BTDBTest
         public void ListByIdOnEmptyDbWorks()
         {
             using var tr = _db.StartTransaction();
-            var table = tr.GetRelation<INestedEventMetaDataTable>();;
+            var table = tr.GetRelation<INestedEventMetaDataTable>();
+            ;
             var enumerable = table.ListById(new AdvancedEnumeratorParam<ulong>(
                 EnumerationOrder.Ascending,
                 0,
@@ -790,6 +795,102 @@ namespace BTDBTest
             Assert.False(en.MoveNext());
         }
 
+        [SkipWhen(SkipWhenAttribute.Is.Release, "Preventing exclude in secondary key is checked only in debug")]
+        public void NotifyForPossiblyWrongUsageOfExcludedListing()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IJobTable>("Job");
+            var jobTable = creator(tr);
+            jobTable.Insert(new Job { Id = 11, Name = "Code" });
+            Assert.Throws<InvalidOperationException>(() => jobTable.ListByName(new AdvancedEnumeratorParam<string>(
+                EnumerationOrder.Descending, "Code",
+                KeyProposition.Excluded, "Z", KeyProposition.Included)));
+            var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending, "Code",
+                KeyProposition.Included, "Z", KeyProposition.Included));
+            Assert.True(en.MoveNext());
+        }
+
+        [SkipWhen(SkipWhenAttribute.Is.Debug, "Preventing exclude in secondary key is checked only in debug")]
+        public void InReleaseIsPossibleUseExcludedListing()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IJobTable>("Job");
+            var jobTable = creator(tr);
+            jobTable.Insert(new Job { Id = 11, Name = "Code" });
+            var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending, "Code",
+                KeyProposition.Excluded, "Z", KeyProposition.Included));
+            Assert.True(en.MoveNext());
+        }
+
+        public class User
+        {
+            [PrimaryKey(1)]
+            [SecondaryKey("Email", Order = 1)]
+            public ulong CompanyId { get; set; }
+
+            [PrimaryKey(2)]
+            [SecondaryKey("Email", Order = 2)]
+            public string Email { get; set; }
+        }
+
+        public interface IUserTable : IRelation<User>
+        {
+            IEnumerable<User> ListByEmail(ulong companyId, AdvancedEnumeratorParam<string> email);
+            IEnumerable<User> ListById(ulong companyId, AdvancedEnumeratorParam<string> email);
+            IEnumerable<User> ListById(AdvancedEnumeratorParam<ulong> companyId);
+        }
+
+        [Fact]
+        public void WhenCompleteKeyNoExcludeListingWarning()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IUserTable>("User");
+            var userTable = creator(tr);
+            userTable.Upsert(new User { CompanyId = 1, Email = "a@c.cz" });
+            userTable.Upsert(new User { CompanyId = 1, Email = "b@c.cz" });
+            //secondary key
+            var users = userTable.ListByEmail(1, new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
+                "a@c.cz",
+                KeyProposition.Included, "", KeyProposition.Ignored));
+            Assert.Equal(2, users.Count());
+            users = userTable.ListByEmail(1, new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "a@c.cz",
+                KeyProposition.Excluded, "", KeyProposition.Ignored));
+            Assert.Single(users);
+            //primary key
+            users = userTable.ListById(1, new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "a@c.cz",
+                KeyProposition.Included, "", KeyProposition.Ignored));
+            Assert.Equal(2, users.Count());
+            users = userTable.ListById(1, new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "a@c.cz",
+                KeyProposition.Excluded, "", KeyProposition.Ignored));
+            Assert.Single(users);
+        }
+
+        [SkipWhen(SkipWhenAttribute.Is.Release, "Preventing exclude in secondary key is checked only in debug")]
+        public void NotifyForPossiblyWrongUsageOfExcludedListingById()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IUserTable>("User");
+            var usersTable = creator(tr);
+            usersTable.Upsert(new User { CompanyId = 1, Email = "a@c.cz" });
+            Assert.Throws<InvalidOperationException>(() => usersTable.ListById(new AdvancedEnumeratorParam<ulong>(
+                EnumerationOrder.Ascending, 1, KeyProposition.Excluded, 0, KeyProposition.Ignored)));
+            var users = usersTable.ListById(new AdvancedEnumeratorParam<ulong>(
+                EnumerationOrder.Ascending, 1, KeyProposition.Included, 0, KeyProposition.Ignored));
+            Assert.Single(users);
+        }
+
+        [SkipWhen(SkipWhenAttribute.Is.Debug, "Preventing exclude in secondary key is checked only in debug")]
+        public void InReleaseIsPossibleUseExcludedListingById()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IJobTable>("Job");
+            var jobTable = creator(tr);
+            jobTable.Insert(new Job { Id = 11, Name = "Code" });
+            var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending, "Code",
+                KeyProposition.Excluded, "Z", KeyProposition.Included));
+            Assert.True(en.MoveNext());
+        }
+
         public class Lic
         {
             [PrimaryKey(1)]
@@ -856,8 +957,9 @@ namespace BTDBTest
             public ulong CompanyId { get; set; }
 
             [PrimaryKey(2)] public ulong Id { get; set; }
-
             public string Name { get; set; }
+
+            [SecondaryKey("Beds")] public int Beds { get; set; }
         }
 
         public interface IRoomTable : IRelation<Room>
@@ -869,6 +971,7 @@ namespace BTDBTest
             IOrderedDictionaryEnumerator<ulong, Room> ListById(AdvancedEnumeratorParam<ulong> param);
             IEnumerator<Room> ListById2(AdvancedEnumeratorParam<ulong> param);
             IOrderedDictionaryEnumerator<ulong, Room> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
+            IEnumerator<Room> ListByBeds(AdvancedEnumeratorParam<int> param);
         }
 
         [Fact]
@@ -947,7 +1050,8 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IDocumentTable>("Doc");
                 var docTable = creator(tr);
-                docTable.Insert(new Document { CompanyId = 1, Id = 2, DocumentType = 3, CreatedDate = DateTime.UtcNow });
+                docTable.Insert(new Document
+                    { CompanyId = 1, Id = 2, DocumentType = 3, CreatedDate = DateTime.UtcNow });
                 var en = docTable.ListByDocumentType(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
                 Assert.True(en.MoveNext());
                 Assert.Equal(2u, en.Current.Id);
@@ -1021,7 +1125,7 @@ namespace BTDBTest
                 var table = tr.GetRelation<IUserNoticeTable>();
                 table.Insert(new UserNotice { UserId = 1, NoticeId = 2 });
                 var en = table.ListByNoticeId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
-                    1, KeyProposition.Excluded, 3, KeyProposition.Excluded));
+                    1, KeyProposition.Included, 3, KeyProposition.Included));
                 Assert.True(en.MoveNext());
                 Assert.Equal(2u, en.Current!.NoticeId);
                 foreach (var row in table)
@@ -1133,20 +1237,26 @@ namespace BTDBTest
                 tr.Commit();
             }
 
-            ModifyDuringEnumerate(creator, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
-            ModifyDuringEnumerate(creator, table => table.RemoveById(0, 20), true);
-            ModifyDuringEnumerate(creator, table => table.Update(new Room { Id = 10, Name = "First" }), false);
-            ModifyDuringEnumerate(creator, table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), true);
-            ModifyDuringEnumerate(creator, table => table.Upsert(new Room { Id = 10, Name = "update existing" }), false);
+            IEnumerator<Room> Query(IRoomTable table) => table.GetEnumerator();
+            ModifyDuringEnumerate(creator, Query, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
+            ModifyDuringEnumerate(creator, Query, table => table.RemoveById(0, 20), true);
+            ModifyDuringEnumerate(creator, Query, table => table.Update(new Room { Id = 10, Name = "First" }), false);
+            ModifyDuringEnumerate(creator, Query,
+                table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), true);
+            ModifyDuringEnumerate(creator, Query, table => table.Upsert(new Room { Id = 10, Name = "update existing" }),
+                false);
+            ModifyDuringEnumerate(creator, Query,
+                table => table.Upsert(new Room { Id = 10, Name = "update existing, change SK", Beds = 4 }), true);
         }
 
-        void ModifyDuringEnumerate(Func<IObjectDBTransaction, IRoomTable> creator, Action<IRoomTable> modifyAction,
+        void ModifyDuringEnumerate(Func<IObjectDBTransaction, IRoomTable> creator,
+            Func<IRoomTable, IEnumerator<Room>> query, Action<IRoomTable> modifyAction,
             bool shouldThrow)
         {
             using var tr = _db.StartTransaction();
             var rooms = creator(tr);
-            using var en = rooms.GetEnumerator();
-            var oen = rooms.ListById2(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
+            using var en = query(rooms);
+            var oen = rooms.ListById2(new(EnumerationOrder.Ascending));
             Assert.True(oen.MoveNext());
             modifyAction(rooms);
             if (shouldThrow)
@@ -1161,6 +1271,33 @@ namespace BTDBTest
                 Assert.True(en.MoveNext());
                 Assert.True(oen.MoveNext());
             }
+        }
+
+        [Fact]
+        public void CheckModificationDuringEnumerateBySecondaryKey()
+        {
+            Func<IObjectDBTransaction, IRoomTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IRoomTable>("Room");
+
+                var rooms = creator(tr);
+                rooms.Insert(new Room { Id = 10, Name = "First 1" });
+                rooms.Insert(new Room { Id = 20, Name = "Second 1" });
+
+                tr.Commit();
+            }
+
+            IEnumerator<Room> Query(IRoomTable table) => table.ListByBeds(AdvancedEnumeratorParam<int>.Instance);
+            ModifyDuringEnumerate(creator, Query, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
+            ModifyDuringEnumerate(creator, Query, table => table.RemoveById(0, 20), true);
+            ModifyDuringEnumerate(creator, Query, table => table.Update(new Room { Id = 10, Name = "First" }), false);
+            ModifyDuringEnumerate(creator, Query, table => table.Update(new Room { Id = 10, Name = "First", Beds = 3 }),
+                true);
+            ModifyDuringEnumerate(creator, Query,
+                table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), true);
+            ModifyDuringEnumerate(creator, Query,
+                table => table.Upsert(new Room { Id = 10, Name = "update existing", Beds = 4 }), true);
         }
 
         public class PermutationOfKeys
@@ -1235,16 +1372,16 @@ namespace BTDBTest
                     E1 = "eee"
                 });
                 var en = table.ListBySec(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
-                    "a", KeyProposition.Excluded, "b", KeyProposition.Excluded));
+                    "a", KeyProposition.Included, "b", KeyProposition.Excluded));
                 Assert.True(en.MoveNext());
                 Assert.Equal("aa", en.Current.A);
                 en = table.ListBySec("a", new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
-                    "a", KeyProposition.Excluded, "b", KeyProposition.Excluded));
+                    "a", KeyProposition.Included, "b", KeyProposition.Excluded));
                 Assert.True(en.MoveNext());
                 Assert.Equal("bb", en.Current.B);
                 en = table.ListBySec("a", "aa", "aaa", "dd", "ddd", new AdvancedEnumeratorParam<string>(
                     EnumerationOrder.Ascending,
-                    "c", KeyProposition.Excluded, "d", KeyProposition.Included));
+                    "c", KeyProposition.Included, "d", KeyProposition.Included));
                 Assert.True(en.MoveNext());
                 Assert.Equal("eee", en.Current.E1);
                 tr.Commit();
@@ -1287,8 +1424,8 @@ namespace BTDBTest
                 tr.Commit();
             }
 
-            roTable.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 0, KeyProposition.Excluded,
-                100, KeyProposition.Excluded));
+            roTable.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 0, KeyProposition.Included,
+                100, KeyProposition.Included));
             Assert.True(en.MoveNext());
             Assert.Equal(20ul, en.Current.Id);
             roTr.Dispose();
@@ -1299,7 +1436,8 @@ namespace BTDBTest
             void Insert(Person person);
 
             //ListBy secondary key (only for active tenant)
-            IOrderedDictionaryEnumerator<string, Person> ListByName(ulong tenantId, AdvancedEnumeratorParam<string> param);
+            IOrderedDictionaryEnumerator<string, Person> ListByName(ulong tenantId,
+                AdvancedEnumeratorParam<string> param);
         }
 
         [Fact]
@@ -1384,6 +1522,8 @@ namespace BTDBTest
 
             IEnumerator<ProductionTrackingDaily> ListByProductionDateWithCompanyId(ulong companyId,
                 AdvancedEnumeratorParam<DateTime> productionDate);
+
+            IEnumerator<ProductionTrackingDaily> ListByProductionDate(AdvancedEnumeratorParam<DateTime> productionDate);
         }
 
         [Fact]
@@ -1396,7 +1536,7 @@ namespace BTDBTest
             var currentDay = new DateTime(2017, 2, 9, 1, 1, 1, DateTimeKind.Utc);
 
             table.Insert(new ProductionTrackingDaily
-            { CompanyId = 5, ProductionDate = currentDay, ProductionsCount = 1 });
+                { CompanyId = 5, ProductionDate = currentDay, ProductionsCount = 1 });
 
             var companyProduction = table.FindByProductionDate(currentDay);
             Assert.True(companyProduction.MoveNext());
@@ -1418,6 +1558,37 @@ namespace BTDBTest
 
             tr.Commit();
         }
+
+        [SkipWhen(SkipWhenAttribute.Is.Release, "Preventing exclude in secondary key is checked only in debug")]
+        public void ListBySecondaryKey_ForDateTimeKey_StartKeyPropositionExcluded_ShouldNotContainThatItem()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IProductionTrackingDailyTable>(
+                "ListBySecondaryKey_ForDateTimeKey_StartKeyPropositionExcluded_ShouldNotContainThatItem");
+            var table = creator(tr);
+
+            var dateTimeValue = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
+            // var dateTimeValue = default(DateTime);
+
+            table.Insert(new ProductionTrackingDaily
+                { CompanyId = 123, ProductionDate = dateTimeValue, ProductionsCount = 12 });
+
+            var companyProduction = table.FindByProductionDate(dateTimeValue);
+            Assert.True(companyProduction.MoveNext());
+            Assert.Equal(12u, companyProduction.Current.ProductionsCount);
+
+            var dateParam = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending,
+                dateTimeValue, KeyProposition.Excluded,
+                DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc), KeyProposition.Excluded);
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                var en = table.ListByProductionDate(dateParam);
+                Assert.False(en.MoveNext());
+            });
+
+            tr.Commit();
+        }
+
 
         public interface IProductionInvalidTable : IRelation<ProductionTrackingDaily>
         {
@@ -1452,7 +1623,7 @@ namespace BTDBTest
             var currentDay = new DateTime(2017, 2, 9, 1, 1, 1, DateTimeKind.Utc);
             Assert.False(table.Contains(5, currentDay));
             table.Insert(new ProductionTrackingDaily
-            { CompanyId = 5, ProductionDate = currentDay, ProductionsCount = 1 });
+                { CompanyId = 5, ProductionDate = currentDay, ProductionsCount = 1 });
             Assert.True(table.Contains(5, currentDay));
         }
 
@@ -2003,7 +2174,7 @@ namespace BTDBTest
             var creator = tr.InitRelation<IApplicationV3Table>("Company");
             var table = creator(tr);
             var app = new ApplicationV3
-            { CompanyId = 1, ApplicationId = 100, CreatedUserId = 100, Description = "info" };
+                { CompanyId = 1, ApplicationId = 100, CreatedUserId = 100, Description = "info" };
             table.Upsert(app);
 
             var en = table.ListById(1, new AdvancedEnumeratorParam<ulong>());
@@ -2110,7 +2281,7 @@ namespace BTDBTest
                 var todo = creatorToProcess(tr);
 
                 todo.Insert(new SimpleJob
-                { Id = 1, Properties = new Dictionary<int, string> { [1] = "one", [2] = "two" } });
+                    { Id = 1, Properties = new Dictionary<int, string> { [1] = "one", [2] = "two" } });
                 tr.Commit();
             }
 
@@ -2432,13 +2603,10 @@ namespace BTDBTest
 
         public class MyContactGroupRelationDb : IEquatable<MyContactGroupRelationDb>
         {
-            [PrimaryKey(1)]
-            public ulong CompanyId { get; set; }
-            [PrimaryKey(2)]
-            public ulong GroupId { get; set; }
+            [PrimaryKey(1)] public ulong CompanyId { get; set; }
+            [PrimaryKey(2)] public ulong GroupId { get; set; }
 
-            [PrimaryKey(3)]
-            public ulong ContactId { get; set; }
+            [PrimaryKey(3)] public ulong ContactId { get; set; }
 
             public bool Equals(MyContactGroupRelationDb? other)
             {
@@ -2452,7 +2620,7 @@ namespace BTDBTest
                 if (ReferenceEquals(null, obj)) return false;
                 if (ReferenceEquals(this, obj)) return true;
                 if (obj.GetType() != this.GetType()) return false;
-                return Equals((MyContactGroupRelationDb) obj);
+                return Equals((MyContactGroupRelationDb)obj);
             }
 
             public override int GetHashCode()
@@ -2483,11 +2651,11 @@ namespace BTDBTest
             const ulong groupId = 2UL;
             const ulong contactId = 3UL;
 
-            table.Upsert(new MyContactGroupRelationDb {CompanyId = 1UL, GroupId = groupId, ContactId = contactId});
-            Assert.Equal(new MyContactGroupRelationDb {CompanyId = 1UL, ContactId = contactId, GroupId = groupId}, table.FindByIdGlobal(groupId));
+            table.Upsert(new MyContactGroupRelationDb { CompanyId = 1UL, GroupId = groupId, ContactId = contactId });
+            Assert.Equal(new MyContactGroupRelationDb { CompanyId = 1UL, ContactId = contactId, GroupId = groupId },
+                table.FindByIdGlobal(groupId));
         }
 
-        [BinaryCompatibilityOnly]
         [Flags]
         public enum BatchType
         {
@@ -2500,6 +2668,12 @@ namespace BTDBTest
             WhatsApp = 1 << 5
         }
 
+        public class BatchOnlyPk
+        {
+            public ulong CompanyId { get; set; }
+            public ulong BatchId { get; set; }
+        }
+
         public class Batch
         {
             [PrimaryKey(1)] public ulong CompanyId { get; set; }
@@ -2510,12 +2684,14 @@ namespace BTDBTest
 
             [SecondaryKey("UploadTime", IncludePrimaryKeyOrder = 1)]
             public BatchType Type { get; set; }
+
             [SecondaryKey("UploadTime", Order = 2)]
             public DateTime LastSplitUploadTime { get; set; }
         }
 
         public interface IBatchTable : IRelation<Batch>
         {
+            IEnumerable<BatchOnlyPk> FindByIdOnlyPk(ulong companyId);
             uint CountByUploadTime(ulong companyId, BatchType type, AdvancedEnumeratorParam<DateTime> param);
         }
 
@@ -2532,7 +2708,7 @@ namespace BTDBTest
                 Type = BatchType.Email,
                 LastSplitUploadTime = DateTime.SpecifyKind(new DateTime(2018, 12, 15), DateTimeKind.Utc)
             });
-            
+
             table.Upsert(new Batch()
             {
                 CompanyId = 1,
@@ -2540,7 +2716,7 @@ namespace BTDBTest
                 Type = BatchType.Email,
                 LastSplitUploadTime = DateTime.SpecifyKind(new DateTime(2019, 1, 15), DateTimeKind.Utc)
             });
-            
+
             table.Upsert(new Batch()
             {
                 CompanyId = 1,
@@ -2551,9 +2727,11 @@ namespace BTDBTest
 
             var from = DateTime.SpecifyKind(new DateTime(2019, 1, 1), DateTimeKind.Utc);
             var to = DateTime.SpecifyKind(new DateTime(2019, 2, 1), DateTimeKind.Utc);
-            var param = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Descending, from, KeyProposition.Included, to, KeyProposition.Included);
-            
+            var param = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Descending, from,
+                KeyProposition.Included, to, KeyProposition.Included);
+
             Assert.Equal((uint)0, table.CountByUploadTime(1, BatchType.Notification, param));
+            Assert.Equal(new[] { 1ul, 2ul, 3ul }, table.FindByIdOnlyPk(1).Select(v => v.BatchId).ToList());
         }
 
         [Fact]
@@ -2565,10 +2743,10 @@ namespace BTDBTest
             using var tr = _db.StartTransaction();
             var creator = tr.InitRelation<IInnerInterfaceTable>("InnerInterface");
             var innerInterfaceTable = creator(tr);
-            innerInterfaceTable.Insert(new BaseClass {Id = 1, Inner = new Imp1.InnerImplementation()});
+            innerInterfaceTable.Insert(new BaseClass { Id = 1, Inner = new Imp1.InnerImplementation() });
             Assert.Throws<BTDBException>(() =>
             {
-                innerInterfaceTable.Insert(new BaseClass {Id = 2, Inner = new Imp2.InnerImplementation()});
+                innerInterfaceTable.Insert(new BaseClass { Id = 2, Inner = new Imp2.InnerImplementation() });
             });
             tr.Commit();
         }
@@ -2587,6 +2765,279 @@ namespace BTDBTest
 
         public interface IInnerInterface
         {
+        }
+
+        [Fact]
+        public async Task SerializeInsertWorksWithNestedClasses()
+        {
+            _db.RegisterType(typeof(Imp1.InnerImplementation));
+
+            Func<IObjectDBTransaction, IInnerInterfaceTable> creator;
+            using (var tr = await _db.StartWritingTransaction())
+            {
+                creator = tr.InitRelation<IInnerInterfaceTable>("InnerInterface");
+                tr.Commit();
+            }
+
+            ByteBuffer serialized;
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var table = creator(tr);
+
+                ByteBuffer SerializeSample()
+                {
+                    var writer = new SpanWriter();
+                    table.SerializeInsert(ref writer, new BaseClass { Id = 1, Inner = new Imp1.InnerImplementation() });
+                    serialized = writer.GetByteBufferAndReset();
+                    return serialized;
+                }
+
+                serialized = SerializeSample();
+            }
+
+            using (var tr = await _db.StartWritingTransaction())
+            {
+                void ConsumeEvent()
+                {
+                    var reader = new SpanReader(serialized);
+                    while (!reader.Eof)
+                    {
+                        switch ((SerializationCommand)reader.ReadUInt8())
+                        {
+                            case SerializationCommand.CreateKeyValue:
+                            {
+                                var key = reader.ReadByteArrayAsSpan();
+                                var value = reader.ReadByteArrayAsSpan();
+                                Assert.True(tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(key, value));
+                                break;
+                            }
+                            case SerializationCommand.CreateKey:
+                            {
+                                var key = reader.ReadByteArrayAsSpan();
+                                Assert.True(
+                                    tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(key, new ReadOnlySpan<byte>()));
+                                break;
+                            }
+                            default:
+                                throw new ArgumentOutOfRangeException();
+                        }
+                    }
+
+                    tr.Commit();
+                }
+
+                ConsumeEvent();
+            }
+
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var table = creator(tr);
+                Assert.Equal(1ul, table.First().Id);
+                Assert.NotNull(table.First().Inner);
+            }
+
+            ReopenDb();
+
+            _db.RegisterType(typeof(Imp1.InnerImplementation));
+
+            using (var tr = await _db.StartWritingTransaction())
+            {
+                creator = tr.InitRelation<IInnerInterfaceTable>("InnerInterface");
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var table = creator(tr);
+                Assert.Equal(1ul, table.First().Id);
+                Assert.NotNull(table.First().Inner);
+            }
+        }
+
+        [Fact]
+        public async Task SerializeInsertWorksWithIDictionary()
+        {
+            using (var tr = await _db.StartWritingTransaction())
+            {
+                tr.GetRelation<IJobTable>();
+                tr.Commit();
+            }
+
+            ByteBuffer serialized;
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var table = tr.GetRelation<IJobTable>();
+
+                ByteBuffer SerializeSample()
+                {
+                    var writer = new SpanWriter();
+                    table.SerializeInsert(ref writer, new Job
+                    {
+                        Id = 11,
+                        Name = "Code",
+                        Priority = 1,
+                        Lookup = new Dictionary<int, int> { { 1, 2 } },
+                        UnusedDictionary = new Dictionary<int, int> { { 3, 4 }, { 5, 6 } }
+                    });
+                    serialized = writer.GetByteBufferAndReset();
+                    return serialized;
+                }
+
+                serialized = SerializeSample();
+            }
+
+            using (var tr = await _db.StartWritingTransaction())
+            {
+                void ConsumeEvent()
+                {
+                    var reader = new SpanReader(serialized);
+                    while (!reader.Eof)
+                    {
+                        switch ((SerializationCommand)reader.ReadUInt8())
+                        {
+                            case SerializationCommand.CreateKeyValue:
+                            {
+                                var key = reader.ReadByteArrayAsSpan();
+                                var value = reader.ReadByteArrayAsSpan();
+                                Assert.True(tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(key, value));
+                                break;
+                            }
+                            case SerializationCommand.CreateKey:
+                            {
+                                var key = reader.ReadByteArrayAsSpan();
+                                Assert.True(
+                                    tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(key, new ReadOnlySpan<byte>()));
+                                break;
+                            }
+                            default:
+                                throw new ArgumentOutOfRangeException();
+                        }
+                    }
+
+                    tr.Commit();
+                }
+
+                ConsumeEvent();
+            }
+
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var table = tr.GetRelation<IJobTable>();
+                Assert.Equal(11ul, table.First().Id);
+                Assert.Equal(new Dictionary<int, int> { { 3, 4 }, { 5, 6 } }, table.First().UnusedDictionary);
+            }
+
+            ReopenDb();
+
+            using (var tr = await _db.StartWritingTransaction())
+            {
+                tr.GetRelation<IJobTable>();
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var table = tr.GetRelation<IJobTable>();
+                Assert.Equal(11ul, table.First().Id);
+                Assert.Equal(new Dictionary<int, int> { { 3, 4 }, { 5, 6 } }, table.First().UnusedDictionary);
+            }
+        }
+
+        public class PersonPrivateConstructor
+        {
+            private PersonPrivateConstructor()
+            {
+            }
+
+            public PersonPrivateConstructor(ulong tenantId)
+            {
+                TenantId = tenantId;
+                Name = "Test";
+            }
+
+            [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        public interface IPersonPrivateConstructorTable : IRelation<PersonPrivateConstructor>
+        {
+        }
+
+        [Fact]
+        public void ItemsWithPrivateConstructorWorks()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IPersonPrivateConstructorTable>();
+            table.Upsert(new(1) { Name = "Boris" });
+            Assert.Equal("Boris", table.First().Name);
+        }
+
+        public class PersonWoConstructor
+        {
+            public PersonWoConstructor(ulong tenantId)
+            {
+                TenantId = tenantId;
+                Name = "Test";
+            }
+
+            [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        public interface IPersonWoConstructorTable : IRelation<PersonWoConstructor>
+        {
+        }
+
+        [Fact]
+        public void ItemsWithoutDefaultConstructorWorks()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IPersonWoConstructorTable>();
+            table.Upsert(new(1) { Name = "Boris" });
+            Assert.Equal("Boris", table.First().Name);
+        }
+
+        public class RowWithOrderedSet
+        {
+            [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+            // DON'T DO THIS IN YOUR CODE !!! Either use IList<T>, List<T> for inline storage or IOrderedSet<T> for externaly stored T
+            public OrderedSet<int> Ordered { get; set; }
+        }
+
+        public interface IRowWithOrderedSetTable : IRelation<RowWithOrderedSet>
+        {
+        }
+
+        [Fact]
+        public void RowWithOrderedSetWorksButYouShouldUseIOrderedSetInstead()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IRowWithOrderedSetTable>();
+            table.Upsert(new() { TenantId = 1, Ordered = new() { 3, 5, 4 } });
+            Assert.Equal(new[] { 3, 5, 4 }, table.First().Ordered);
+        }
+
+        public class UrlWithStatus
+        {
+            [PrimaryKey(1)] public string Url { get; set; }
+            public HttpStatusCode StatusCode { get; set; }
+        }
+
+        public interface IUrlWithStatusTable : IRelation<UrlWithStatus>
+        {
+        }
+
+        [Fact]
+        public void StatusCodeAmbiguousEnumCanBeStored()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IUrlWithStatusTable>();
+            table.Upsert(new() { Url = "home.com", StatusCode = HttpStatusCode.MultipleChoices });
+            Assert.Equal(HttpStatusCode.MultipleChoices, table.First().StatusCode);
+            Assert.Equal(HttpStatusCode.Ambiguous, table.First().StatusCode); //also 300
         }
     }
 }

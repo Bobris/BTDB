@@ -1,8 +1,7 @@
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+enum Lifetime
 {
-    enum Lifetime
-    {
-        AlwaysNew,
-        Singleton,
-    }
+    AlwaysNew,
+    Singleton,
 }

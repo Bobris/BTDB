@@ -1,0 +1,2 @@
+Cannot load Enum{One=1,Two=2} into Enum BTDBTest.SimpleEnumV3{Two=2,Three=3,Four=4}
+Cannot load EnumByFieldHandler into BTDBTest.SimpleEnumV3

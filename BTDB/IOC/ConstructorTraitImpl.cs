@@ -3,31 +3,30 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+class ConstructorTraitImpl : IConstructorTrait, IConstructorTraitImpl
 {
-    class ConstructorTraitImpl : IConstructorTrait, IConstructorTraitImpl
+    Type[]? _parameterTypes;
+
+    public IEnumerable<ConstructorInfo> ReturnPossibleConstructors(Type forType)
     {
-        Type[]? _parameterTypes;
+        return forType.GetConstructors();
+    }
 
-        public IEnumerable<ConstructorInfo> ReturnPossibleConstructors(Type forType)
+    public ConstructorInfo? ChooseConstructor(Type forType, IEnumerable<ConstructorInfo> candidates)
+    {
+        var parameterTypes = _parameterTypes;
+        if (parameterTypes != null)
         {
-            return forType.GetConstructors();
+            return candidates.FirstOrDefault(ci => ci.GetParameters().Select(pi => pi.ParameterType).SequenceEqual(parameterTypes));
         }
+        return candidates.OrderByDescending(ci => ci.GetParameters().Length).FirstOrDefault();
+    }
 
-        public ConstructorInfo? ChooseConstructor(Type forType, IEnumerable<ConstructorInfo> candidates)
-        {
-            var parameterTypes = _parameterTypes;
-            if (parameterTypes != null)
-            {
-                return candidates.FirstOrDefault(ci => ci.GetParameters().Select(pi => pi.ParameterType).SequenceEqual(parameterTypes));
-            }
-            return candidates.OrderByDescending(ci => ci.GetParameters().Length).FirstOrDefault();
-        }
-
-        public void UsingConstructor(params Type[] parameterTypes)
-        {
-            if (_parameterTypes != null) throw new InvalidOperationException("UsingConstructor specification could be used only once");
-            _parameterTypes = parameterTypes;
-        }
+    public void UsingConstructor(params Type[] parameterTypes)
+    {
+        if (_parameterTypes != null) throw new InvalidOperationException("UsingConstructor specification could be used only once");
+        _parameterTypes = parameterTypes;
     }
 }

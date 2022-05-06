@@ -1,7 +1,6 @@
-namespace BTDB.KVDBLayer
+namespace BTDB.KVDBLayer;
+
+interface IChunkStorage
 {
-    interface IChunkStorage
-    {
-        IChunkStorageTransaction StartTransaction();
-    }
+    IChunkStorageTransaction StartTransaction();
 }

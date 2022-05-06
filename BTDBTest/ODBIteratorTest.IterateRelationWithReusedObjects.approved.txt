@@ -26,7 +26,7 @@ EndItem
 EndList
 EndField
 StartField BlobsIDict
-StartDictionary
+StartDictionary 0
 EndDictionary
 EndField
 StartField BlobsDict
@@ -45,7 +45,7 @@ StartField Blobs
 OidReference 0
 EndField
 StartField BlobsIDict
-StartDictionary
+StartDictionary 1
 Used key: 02 01 7F 01 01 00 Value len:4
 StartDictKey
 StartInlineObject 1-Blob-1
@@ -98,7 +98,7 @@ StartField Blobs
 OidReference 0
 EndField
 StartField BlobsIDict
-StartDictionary
+StartDictionary 2
 EndDictionary
 EndField
 StartField BlobsDict

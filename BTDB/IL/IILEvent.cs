@@ -1,8 +1,7 @@
-namespace BTDB.IL
+namespace BTDB.IL;
+
+public interface IILEvent
 {
-    public interface IILEvent
-    {
-        void SetAddOnMethod(IILMethod method);
-        void SetRemoveOnMethod(IILMethod method);
-    }
+    void SetAddOnMethod(IILMethod method);
+    void SetRemoveOnMethod(IILMethod method);
 }

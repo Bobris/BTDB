@@ -1,11 +1,10 @@
 using System;
 
-namespace BTDB.IOC
+namespace BTDB.IOC;
+
+interface IBuildContext
 {
-    interface IBuildContext
-    {
-        ICRegILGen? ResolveNeedBy(Type type, object? key);
-        IBuildContext? IncrementEnumerable();
-        IBuildContext FreezeMulti();
-    }
+    ICRegILGen? ResolveNeedBy(Type type, object? key);
+    IBuildContext? IncrementEnumerable();
+    IBuildContext FreezeMulti();
 }

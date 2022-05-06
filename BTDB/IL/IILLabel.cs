@@ -1,6 +1,5 @@
-namespace BTDB.IL
+namespace BTDB.IL;
+
+public interface IILLabel
 {
-    public interface IILLabel
-    {
-    }
 }

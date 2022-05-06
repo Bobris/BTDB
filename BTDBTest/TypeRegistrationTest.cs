@@ -3,109 +3,108 @@ using BTDB.ODBLayer;
 using System;
 using Xunit;
 
-namespace BTDBTest
+namespace BTDBTest;
+
+public class TypeRegistrationTest : IDisposable
 {
-    public class TypeRegistrationTest : IDisposable
+    IKeyValueDB _lowDb;
+    IObjectDB _db;
+
+    public class Parent
     {
-        IKeyValueDB _lowDb;
-        IObjectDB _db;
+        public IChild Child { get; set; }
+    }
 
-        public class Parent
+    public class ParentOldVersion
+    {
+        public Child Child { get; set; }
+    }
+
+    public class ParentNewVersion
+    {
+        public IChild Child { get; set; }
+        public ulong Something { get; set; }
+    }
+
+    public interface IChild
+    {
+        ulong Id { get; set; }
+    }
+
+    public class Child : IChild
+    {
+        public ulong Id { get; set; }
+    }
+
+    public class DerivedChild : Child
+    {
+    }
+
+
+    public TypeRegistrationTest()
+    {
+        _lowDb = new InMemoryKeyValueDB();
+        OpenDb();
+    }
+
+    void OpenDb()
+    {
+        _db = new ObjectDB();
+        _db.Open(_lowDb, false);
+    }
+
+    void ReopenDb()
+    {
+        _db.Dispose();
+        OpenDb();
+    }
+
+    public void Dispose()
+    {
+        _db.Dispose();
+        _lowDb.Dispose();
+    }
+
+    [Fact]
+    public void MaterializesInlineObjectProperty()
+    {
+        ulong oid;
+        using (var tr = _db.StartTransaction())
         {
-            public IChild Child { get; set; }
+            oid = tr.Store(new Parent { Child = new DerivedChild { Id = 1 } });
+            tr.Commit();
         }
-
-        public class ParentOldVersion
+        ReopenDb();
+        _db.RegisterType(typeof(ParentNewVersion), "Parent");
+        _db.RegisterType(typeof(DerivedChild));
+        _db.RegisterType(typeof(Child));
+        using (var tr = _db.StartReadOnlyTransaction())
         {
-            public Child Child { get; set; }
+            var parent = (ParentNewVersion)tr.Get(oid);
+            Assert.NotNull(parent.Child);
+            Assert.Equal(1ul, parent.Child.Id);
         }
+    }
 
-        public class ParentNewVersion
+    [Fact]
+    public void UpgradesFromClassToInterface()
+    {
+        ulong oid;
+        _db.RegisterType(typeof(ParentOldVersion), "Parent");
+        using (var tr = _db.StartTransaction())
         {
-            public IChild Child { get; set; }
-            public ulong Something { get; set; }
+            oid = tr.Store(new ParentOldVersion { Child = new DerivedChild { Id = 1 } });
+            tr.Commit();
         }
-
-        public interface IChild
+        ReopenDb();
+        _db.RegisterType(typeof(ParentNewVersion), "Parent");
+        _db.RegisterType(typeof(DerivedChild));
+        _db.RegisterType(typeof(Child));
+        using (var tr = _db.StartReadOnlyTransaction())
         {
-            ulong Id { get; set; }
-        }
-
-        public class Child : IChild
-        {
-            public ulong Id { get; set; }
-        }
-
-        public class DerivedChild : Child
-        {
-        }
-
-
-        public TypeRegistrationTest()
-        {
-            _lowDb = new InMemoryKeyValueDB();
-            OpenDb();
-        }
-
-        void OpenDb()
-        {
-            _db = new ObjectDB();
-            _db.Open(_lowDb, false);
-        }
-
-        void ReopenDb()
-        {
-            _db.Dispose();
-            OpenDb();
-        }
-
-        public void Dispose()
-        {
-            _db.Dispose();
-            _lowDb.Dispose();
-        }
-
-        [Fact]
-        public void MaterializesInlineObjectProperty()
-        {
-            ulong oid;
-            using (var tr = _db.StartTransaction())
-            {
-                oid = tr.Store(new Parent { Child = new DerivedChild { Id = 1 } });
-                tr.Commit();
-            }
-            ReopenDb();
-            _db.RegisterType(typeof(ParentNewVersion), "Parent");
-            _db.RegisterType(typeof(DerivedChild));
-            _db.RegisterType(typeof(Child));
-            using (var tr = _db.StartReadOnlyTransaction())
-            {
-                var parent = (ParentNewVersion)tr.Get(oid);
-                Assert.NotNull(parent.Child);
-                Assert.Equal(1ul, parent.Child.Id);
-            }
-        }
-
-        [Fact]
-        public void UpgradesFromClassToInterface()
-        {
-            ulong oid;
-            _db.RegisterType(typeof(ParentOldVersion), "Parent");
-            using (var tr = _db.StartTransaction())
-            {
-                oid = tr.Store(new ParentOldVersion { Child = new DerivedChild { Id = 1 } });
-                tr.Commit();
-            }
-            ReopenDb();
-            _db.RegisterType(typeof(ParentNewVersion), "Parent");
-            _db.RegisterType(typeof(DerivedChild));
-            _db.RegisterType(typeof(Child));
-            using (var tr = _db.StartReadOnlyTransaction())
-            {
-                var parent = (ParentNewVersion)tr.Get(oid);
-                Assert.NotNull(parent.Child);
-                Assert.Equal(1ul, parent.Child.Id);
-            }
+            var parent = (ParentNewVersion)tr.Get(oid);
+            Assert.NotNull(parent.Child);
+            Assert.Equal(1ul, parent.Child.Id);
         }
     }
 }

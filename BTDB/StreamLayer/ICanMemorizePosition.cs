@@ -1,7 +1,6 @@
-namespace BTDB.StreamLayer
+namespace BTDB.StreamLayer;
+
+public interface ICanMemorizePosition
 {
-    public interface ICanMemorizePosition
-    {
-        IMemorizedPosition MemorizeCurrentPosition();
-    }
+    IMemorizedPosition MemorizeCurrentPosition();
 }

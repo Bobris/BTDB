@@ -1,26 +1,25 @@
 ﻿using System;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public readonly struct TableIdVersionId : IEquatable<TableIdVersionId>
 {
-    public readonly struct TableIdVersionId : IEquatable<TableIdVersionId>
+    public readonly uint TableId;
+    public readonly uint VersionId;
+
+    public TableIdVersionId(uint tableid, uint version)
     {
-        public readonly uint TableId;
-        public readonly uint VersionId;
+        TableId = tableid;
+        VersionId = version;
+    }
 
-        public TableIdVersionId(uint tableid, uint version)
-        {
-            TableId = tableid;
-            VersionId = version;
-        }
+    public bool Equals(TableIdVersionId other)
+    {
+        return TableId == other.TableId && VersionId == other.VersionId;
+    }
 
-        public bool Equals(TableIdVersionId other)
-        {
-            return TableId == other.TableId && VersionId == other.VersionId;
-        }
-
-        public override int GetHashCode()
-        {
-            return (int)(TableId * 33 + VersionId);
-        }
+    public override int GetHashCode()
+    {
+        return (int)(TableId * 33 + VersionId);
     }
 }

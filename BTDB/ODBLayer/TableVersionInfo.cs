@@ -2,73 +2,72 @@
 using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer;
+
+public class TableVersionInfo
 {
-    public class TableVersionInfo
+    readonly TableFieldInfo[] _tableFields;
+
+    internal TableVersionInfo(TableFieldInfo[] tableFields)
     {
-        readonly TableFieldInfo[] _tableFields;
+        _tableFields = tableFields;
+    }
 
-        internal TableVersionInfo(TableFieldInfo[] tableFields)
+    public int FieldCount => _tableFields.Length;
+
+    public TableFieldInfo this[int idx] => _tableFields[idx];
+
+    public TableFieldInfo? this[string name]
+    {
+        get
         {
-            _tableFields = tableFields;
-        }
-
-        public int FieldCount => _tableFields.Length;
-
-        public TableFieldInfo this[int idx] => _tableFields[idx];
-
-        public TableFieldInfo? this[string name]
-        {
-            get
+            foreach (var t in _tableFields)
             {
-                foreach (var t in _tableFields)
-                {
-                    if (t.Name == name) return t;
-                }
-
-                return null;
+                if (t.Name == name) return t;
             }
-        }
 
-        internal void Save(ref SpanWriter writer)
-        {
-            var f = _tableFields;
-            writer.WriteVUInt32((uint)f.Length);
-            foreach (var t in f)
-            {
-                t.Save(ref writer);
-            }
+            return null;
         }
+    }
 
-        internal static TableVersionInfo Load(ref SpanReader reader, IFieldHandlerFactory fieldHandlerFactory, string tableName)
+    internal void Save(ref SpanWriter writer)
+    {
+        var f = _tableFields;
+        writer.WriteVUInt32((uint)f.Length);
+        foreach (var t in f)
         {
-            var fieldCount = reader.ReadVUInt32();
-            var fieldInfos = new TableFieldInfo[fieldCount];
-            for (var i = 0; i < fieldCount; i++)
-            {
-                fieldInfos[i] = TableFieldInfo.Load(ref reader, fieldHandlerFactory, tableName, FieldHandlerOptions.None);
-            }
-            return new TableVersionInfo(fieldInfos);
+            t.Save(ref writer);
         }
+    }
 
-        internal static bool Equal(TableVersionInfo a, TableVersionInfo b)
+    internal static TableVersionInfo Load(ref SpanReader reader, IFieldHandlerFactory fieldHandlerFactory, string tableName)
+    {
+        var fieldCount = reader.ReadVUInt32();
+        var fieldInfos = new TableFieldInfo[fieldCount];
+        for (var i = 0; i < fieldCount; i++)
         {
-            if (a.FieldCount != b.FieldCount) return false;
-            for (int i = 0; i < a.FieldCount; i++)
-            {
-                if (!TableFieldInfo.Equal(a[i], b[i])) return false;
-            }
-            return true;
+            fieldInfos[i] = TableFieldInfo.Load(ref reader, fieldHandlerFactory, tableName, FieldHandlerOptions.None);
         }
+        return new TableVersionInfo(fieldInfos);
+    }
 
-        internal bool NeedsCtx()
+    internal static bool Equal(TableVersionInfo a, TableVersionInfo b)
+    {
+        if (a.FieldCount != b.FieldCount) return false;
+        for (int i = 0; i < a.FieldCount; i++)
         {
-            return _tableFields.Any(tfi => tfi.Handler.NeedsCtx());
+            if (!TableFieldInfo.Equal(a[i], b[i])) return false;
         }
+        return true;
+    }
 
-        internal bool NeedsInit()
-        {
-            return _tableFields.Any(tfi => tfi.Handler is IFieldHandlerWithInit);
-        }
+    internal bool NeedsCtx()
+    {
+        return _tableFields.Any(tfi => tfi.Handler.NeedsCtx());
+    }
+
+    internal bool NeedsInit()
+    {
+        return _tableFields.Any(tfi => tfi.Handler is IFieldHandlerWithInit);
     }
 }
