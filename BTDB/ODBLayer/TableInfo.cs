@@ -402,7 +402,12 @@ public class TableInfo
             if (destFieldInfo != null)
             {
                 var fieldInfo = props.First(p => GetPersistentName(p) == destFieldInfo.Name).GetAnySetMethod();
-                var fieldType = fieldInfo!.GetParameters()[0].ParameterType;
+                if (fieldInfo == null)
+                {
+                    throw new InvalidOperationException($"Cannot find setter for {destFieldInfo.Name}");
+                }
+
+                var fieldType = fieldInfo.GetParameters()[0].ParameterType;
                 var specializedSrcHandler =
                     srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler,
                         _tableInfoResolver.FieldHandlerLogger);
