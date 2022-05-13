@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.3.0
+
 ### Added
 
 Locale/Culture based orderer (`Orderer.AscendingStringByLocale`).
