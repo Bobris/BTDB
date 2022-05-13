@@ -231,6 +231,7 @@ public class ConstraintStringPredicate : ConstraintNoPrefix<string>
 
     public ConstraintStringPredicate(PredicateSpanChar predicate) => _predicate = predicate;
 
+    [SkipLocalsInit]
     public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
     {
         Span<char> bufStr = stackalloc char[512];

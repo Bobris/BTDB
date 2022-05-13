@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Added
+
+Locale/Culture based orderer (`Orderer.AscendingStringByLocale`).
+Also added `Orderer.Backwards(orderer)` order modifier.
+
 ## 29.2.0
 
 ### Fixed

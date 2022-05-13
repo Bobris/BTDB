@@ -845,4 +845,14 @@ public ref struct SpanWriter
             WriteBlock(writtenBuffer);
         }
     }
+
+    public Span<byte> BlockWriteToSpan(int length)
+    {
+        if (Buf.Length < length)
+        {
+            Resize((uint)length);
+        }
+
+        return MemoryMarshal.CreateSpan(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, length), length);
+    }
 }

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -482,4 +483,35 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         t.Upsert(new(3, "D", 7));
         tr.Commit();
     }
+
+    [Fact]
+    public void GatherBySecondaryKeyWithLocaleOrderersWorks()
+    {
+        FillThingWithSKData2();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+        var target = new List<ThingWithSK>();
+        Assert.Equal((ulong)t.Count, t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any, new [] { Orderer.AscendingStringByLocale((ThingWithSK v)=>v.Name, new CultureInfo("cs").CompareInfo) }));
+        Assert.Equal("3124", string.Concat(target.Select(v => v.Age.ToString())));
+        target.Clear();
+        Assert.Equal((ulong)t.Count, t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any, new [] { Orderer.Backwards(Orderer.AscendingStringByLocale((ThingWithSK v)=>v.Name, new CultureInfo("cs").CompareInfo)) }));
+        Assert.Equal("4213", string.Concat(target.Select(v => v.Age.ToString())));
+        target.Clear();
+        Assert.Equal((ulong)t.Count, t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any, new [] { Orderer.AscendingStringByLocale((ThingWithSK v)=>v.Name, new CultureInfo("cs").CompareInfo, CompareOptions.IgnoreSymbols) }));
+        Assert.Equal("1324", string.Concat(target.Select(v => v.Age.ToString())));
+        target.Clear();
+    }
+
+    void FillThingWithSKData2()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+        t.Upsert(new(1, "Ada", 1));
+        t.Upsert(new(1, "Ách", 2));
+        t.Upsert(new(2, "!Áďo", 3));
+        t.Upsert(new(3, "Bob", 4));
+        tr.Commit();
+    }
+
 }
