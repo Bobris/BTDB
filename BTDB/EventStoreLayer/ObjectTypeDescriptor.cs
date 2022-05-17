@@ -22,20 +22,21 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     StructList<KeyValuePair<string, ITypeDescriptor>> _fields;
 
     readonly ITypeDescriptorCallbacks _typeSerializers;
+    readonly TypeDescriptorOptions? _typeDescriptorOptions;
+    readonly BindingFlags _propertyBindingFlags;
 
-    public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
+    public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type, TypeDescriptorOptions? typeDescriptorOptions) :
+        this(typeSerializers, typeSerializers.TypeNameMapper.ToName(type), type.IsSealed, typeDescriptorOptions)
     {
-        _typeSerializers = typeSerializers;
         _type = type;
-        Sealed = _type.IsSealed;
-        Name = typeSerializers.TypeNameMapper.ToName(type);
     }
 
-    public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader, DescriptorReader nestedDescriptorReader)
+    public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers,
+        ref SpanReader reader,
+        DescriptorReader nestedDescriptorReader,
+        TypeDescriptorOptions? typeDescriptorOptions) :
+        this(typeSerializers, reader.ReadString()!, false, typeDescriptorOptions)
     {
-        _typeSerializers = typeSerializers;
-        Sealed = false;
-        Name = reader.ReadString()!;
         var fieldCount = reader.ReadVUInt32();
         while (fieldCount-- > 0)
         {
@@ -44,11 +45,16 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         }
     }
 
-    ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, string name, bool @sealed)
+    ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, string name, bool @sealed, TypeDescriptorOptions? typeDescriptorOptions)
     {
         _typeSerializers = typeSerializers;
+        _typeDescriptorOptions = typeDescriptorOptions;
         Sealed = @sealed;
         Name = name;
+
+        _propertyBindingFlags = typeDescriptorOptions?.SerializeNonPublicProperties == true
+            ? BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+            : BindingFlags.Instance | BindingFlags.Public;
     }
 
     public bool Equals(ITypeDescriptor other)
@@ -58,10 +64,10 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public string Name { get; }
 
-    public static void CheckObjectTypeIsGoodDto(Type type)
+    public static void CheckObjectTypeIsGoodDto(Type type, BindingFlags propertyBindingFlags = BindingFlags.Instance | BindingFlags.Public)
     {
         var isInterface = type.IsInterface;
-        foreach (var propertyInfo in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+        foreach (var propertyInfo in type.GetProperties(propertyBindingFlags))
         {
             if (propertyInfo.GetIndexParameters().Length != 0) continue;
             if (ShouldNotBeStored(propertyInfo)) continue;
@@ -94,9 +100,9 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public bool FinishBuildFromType(ITypeDescriptorFactory factory)
     {
-        var props = _type!.GetProperties(BindingFlags.Instance | BindingFlags.Public);
+        var props = _type!.GetProperties(_propertyBindingFlags);
 #if DEBUG
-        CheckObjectTypeIsGoodDto(_type);
+        CheckObjectTypeIsGoodDto(_type, _propertyBindingFlags);
 #endif
         foreach (var propertyInfo in props)
         {
@@ -262,7 +268,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Ldloc(resultLoc)
                 .Callvirt(() => default(ITypeBinaryDeserializerContext).AddBackRef(null))
                 .Mark(labelNoCtx);
-            var props = targetType.GetProperties(BindingFlags.Instance | BindingFlags.Public);
+            var props = targetType.GetProperties(_propertyBindingFlags);
             for (var idx = 0; idx < _fields.Count; idx++)
             {
                 var idxForCapture = idx;
@@ -445,22 +451,24 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public ITypeNewDescriptorGenerator? BuildNewDescriptorGenerator()
     {
         if (_fields.Select(p => p.Value).All(d => d.Sealed)) return null;
-        return new TypeNewDescriptorGenerator(this);
+        return new TypeNewDescriptorGenerator(this, _propertyBindingFlags);
     }
 
     class TypeNewDescriptorGenerator : ITypeNewDescriptorGenerator
     {
         readonly ObjectTypeDescriptor _objectTypeDescriptor;
+        readonly BindingFlags _propertyBindingFlags;
 
-        public TypeNewDescriptorGenerator(ObjectTypeDescriptor objectTypeDescriptor)
+        public TypeNewDescriptorGenerator(ObjectTypeDescriptor objectTypeDescriptor, BindingFlags propertyBindingFlags)
         {
             _objectTypeDescriptor = objectTypeDescriptor;
+            _propertyBindingFlags = propertyBindingFlags;
         }
 
         public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx,
             Type type)
         {
-            var allProps = _objectTypeDescriptor.GetPreferredType()!.GetProperties(BindingFlags.Instance | BindingFlags.Public);
+            var allProps = _objectTypeDescriptor.GetPreferredType()!.GetProperties(_propertyBindingFlags);
             foreach (var pair in _objectTypeDescriptor._fields)
             {
                 if (pair.Value.Sealed) continue;
@@ -536,7 +544,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Stloc(locValue);
         foreach (var (name, typeDescriptor) in _fields)
         {
-            var methodInfo = _type.GetProperties(BindingFlags.Instance | BindingFlags.Public).First(p => GetPersistentName(p) == name).GetAnyGetMethod();
+            var methodInfo = _type.GetProperties(_propertyBindingFlags).First(p => GetPersistentName(p) == name).GetAnyGetMethod();
             typeDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
                 il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo!.ReturnType);
         }
@@ -553,7 +561,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
         if (typeSerializers == _typeSerializers && tds.SequenceEqual(_fields.Select(i => i.Value)))
             return this;
-        var res = new ObjectTypeDescriptor(typeSerializers, Name, Sealed);
+        var res = new ObjectTypeDescriptor(typeSerializers, Name, Sealed, _typeDescriptorOptions);
         for (var i = 0; i < _fields.Count; i++)
         {
             res._fields.Add(new KeyValuePair<string, ITypeDescriptor>(_fields[i].Key, tds[i]));

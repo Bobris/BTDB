@@ -188,7 +188,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                 case TypeCategory.BuildIn:
                     throw new ArgumentOutOfRangeException();
                 case TypeCategory.Class:
-                    descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                    descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader, null);
                     break;
                 case TypeCategory.List:
                     descriptor = new ListTypeDescriptor(this, ref reader, NestedDescriptorReader);
@@ -403,7 +403,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                     }
                     else
                     {
-                        desc = new ObjectTypeDescriptor(this, type);
+                        desc = new ObjectTypeDescriptor(this, type, null);
                     }
                 }
             }
@@ -435,7 +435,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
             }
             else
             {
-                desc = new ObjectTypeDescriptor(this, type);
+                desc = new ObjectTypeDescriptor(this, type, null);
             }
         }
 

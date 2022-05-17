@@ -137,7 +137,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
                     case TypeCategory.BuildIn:
                         throw new ArgumentOutOfRangeException();
                     case TypeCategory.Class:
-                        descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                        descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader, null);
                         break;
                     case TypeCategory.List:
                         descriptor = new ListTypeDescriptor(this, ref reader, NestedDescriptorReader);
