@@ -22,7 +22,6 @@ public delegate void Layer1ComplexSaver(ref SpanWriter writer, ITypeBinarySerial
 public class TypeSerializers : ITypeSerializers
 {
     ITypeNameMapper _typeNameMapper;
-    readonly TypeSerializersOptions _options;
 
     readonly
         ConcurrentDictionary<ITypeDescriptor, Layer1Loader> _loaders =
@@ -58,9 +57,11 @@ public class TypeSerializers : ITypeSerializers
         ForgotAllTypesAndSerializers();
         _loaderFactoryAction = LoaderFactory;
         _buildFromTypeAction = BuildFromType;
-        _options = options ?? TypeSerializersOptions.Default;
-        _symmetricCipher = _options.SymmetricCipher ?? new InvalidSymmetricCipher();
+        Options = options ?? TypeSerializersOptions.Default;
+        _symmetricCipher = Options.SymmetricCipher ?? new InvalidSymmetricCipher();
     }
+
+    public TypeSerializersOptions Options { get; }
 
     public void SetTypeNameMapper(ITypeNameMapper? typeNameMapper)
     {
@@ -95,7 +96,7 @@ public class TypeSerializers : ITypeSerializers
         ITypeDescriptor result;
         lock (_buildTypeLock)
         {
-            var buildFromTypeCtx = new BuildFromTypeCtx(this, _type2DescriptorMap);
+            var buildFromTypeCtx = new BuildFromTypeCtx(this, _type2DescriptorMap, Options);
             buildFromTypeCtx.Create(type);
             buildFromTypeCtx.MergeTypesByShape();
             buildFromTypeCtx.SetNewDescriptors();
@@ -109,16 +110,18 @@ public class TypeSerializers : ITypeSerializers
     {
         readonly TypeSerializers _typeSerializers;
         readonly ConcurrentDictionary<Type, ITypeDescriptor> _type2DescriptorMap;
+        readonly TypeSerializersOptions _typeSerializersOptions;
         readonly Dictionary<Type, ITypeDescriptor> _temporaryMap = new Dictionary<Type, ITypeDescriptor>();
 
         readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remap =
             new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
         public BuildFromTypeCtx(TypeSerializers typeSerializers,
-            ConcurrentDictionary<Type, ITypeDescriptor> type2DescriptorMap)
+            ConcurrentDictionary<Type, ITypeDescriptor> type2DescriptorMap, TypeSerializersOptions typeSerializersOptions)
         {
             _typeSerializers = typeSerializers;
             _type2DescriptorMap = type2DescriptorMap;
+            _typeSerializersOptions = typeSerializersOptions;
         }
 
         public ITypeDescriptor? Create(Type type)
@@ -143,7 +146,7 @@ public class TypeSerializers : ITypeSerializers
                         goto haveDescriptor;
                     }
 
-                    if (_typeSerializers._options.IgnoreIIndirect &&
+                    if (_typeSerializers.Options.IgnoreIIndirect &&
                         type.InheritsOrImplements(typeof(IIndirect<>)))
                     {
                         return null;
@@ -161,7 +164,7 @@ public class TypeSerializers : ITypeSerializers
                         goto haveDescriptor;
                     }
 
-                    result = new ObjectTypeDescriptor(_typeSerializers, type);
+                    result = new ObjectTypeDescriptor(_typeSerializers, type, _typeSerializersOptions.TypeDescriptorOptions);
                 }
                 else if (type.IsArray)
                 {
@@ -178,7 +181,7 @@ public class TypeSerializers : ITypeSerializers
                 }
                 else
                 {
-                    result = new ObjectTypeDescriptor(_typeSerializers, type);
+                    result = new ObjectTypeDescriptor(_typeSerializers, type, _typeSerializersOptions.TypeDescriptorOptions);
                 }
             }
 

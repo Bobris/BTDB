@@ -60,7 +60,8 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                 case TypeCategory.BuildIn:
                     throw new ArgumentOutOfRangeException();
                 case TypeCategory.Class:
-                    descriptor = new ObjectTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
+                    descriptor = new ObjectTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader,
+                        _typeSerializers.Options.TypeDescriptorOptions);
                     break;
                 case TypeCategory.List:
                     descriptor = new ListTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);

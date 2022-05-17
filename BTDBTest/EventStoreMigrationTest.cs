@@ -40,7 +40,10 @@ public class EventStoreMigrationTest
         Assert.True(deserializer.Deserialize(out obj2, data));
     }
 
-    static object PassThroughEventStorage(object @event, ITypeNameMapper mapper, bool ignoreIndirect = true)
+    static object PassThroughEventStorage(object @event,
+        ITypeNameMapper mapper,
+        bool ignoreIndirect = true,
+        bool serializeNonPublicProperties = false)
     {
         var options = TypeSerializersOptions.Default;
         options.IgnoreIIndirect = ignoreIndirect;
@@ -49,6 +52,15 @@ public class EventStoreMigrationTest
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
                 28, 29, 30, 31
         });
+
+        if (serializeNonPublicProperties)
+        {
+            options.TypeDescriptorOptions = new()
+            {
+                SerializeNonPublicProperties = true
+            };
+        }
+
         var manager = new EventStoreManager(options);
         var storage = new MemoryEventFileStorage();
         var appender = manager.AppendToStore(storage);
@@ -294,5 +306,26 @@ public class EventStoreMigrationTest
         var res = (EventDictAbstract)obj;
         Assert.Equal(1, res.Items[1].A);
         Assert.Equal(2, ((ItemBase1)res.Items[1]).B);
+    }
+
+    public class ItemWithProtectedProperty
+    {
+        int Value { get; set; }
+
+        public int GetValue() => Value;
+
+        public void SetValue(int value) => Value = value;
+    }
+
+    [Fact]
+    public void CanMigrateValueOfProtectedProperty()
+    {
+        const int expectedValue = 42;
+        var item = new ItemWithProtectedProperty();
+        item.SetValue(expectedValue);
+        var obj = PassThroughEventStorage(item, new FullNameTypeMapper(), serializeNonPublicProperties: true);
+
+        Assert.IsType<ItemWithProtectedProperty>(obj);
+        Assert.Equal(expectedValue, ((ItemWithProtectedProperty)obj).GetValue());
     }
 }

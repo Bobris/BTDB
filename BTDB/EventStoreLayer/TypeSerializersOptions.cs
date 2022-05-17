@@ -6,7 +6,7 @@ public class TypeSerializersOptions
 {
     public static TypeSerializersOptions Default { get; } = new TypeSerializersOptions
     {
-        IgnoreIIndirect = true,
+        IgnoreIIndirect = true
     };
 
     /// <summary>
@@ -15,4 +15,6 @@ public class TypeSerializersOptions
     public bool IgnoreIIndirect { get; set; }
 
     public ISymmetricCipher? SymmetricCipher { get; set; }
+
+    public TypeDescriptorOptions? TypeDescriptorOptions { get; set; }
 }
