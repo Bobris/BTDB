@@ -14,4 +14,11 @@ public interface IKeyValueDBLogger
     void LogWarning(string message)
     {
     }
+
+    /// <returns>true when exception should be rethrown</returns>
+    bool ReportCompactorException(Exception exception)
+    {
+        LogWarning("Compactor failed with "+exception);
+        return true;
+    }
 }

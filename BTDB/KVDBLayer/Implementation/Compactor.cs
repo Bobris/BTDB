@@ -99,6 +99,20 @@ class Compactor
 
     internal bool Run()
     {
+        try
+        {
+            return RunCore();
+        }
+        catch (Exception e)
+        {
+            if (_keyValueDB.Logger?.ReportCompactorException(e) ?? true) throw;
+        }
+
+        return false;
+    }
+
+    bool RunCore()
+    {
         if (_keyValueDB.FileCollection.GetCount() == 0) return false;
         _root = _keyValueDB.ReferenceAndGetOldestRoot();
         try
@@ -197,7 +211,7 @@ class Compactor
     void CompactOnePureValueFileIteration(ref StructList<uint> toRemoveFileIds)
     {
         _cancellation.ThrowIfCancellationRequested();
-        _writerBytesPerSecondLimiter = new BytesPerSecondLimiter(_keyValueDB.CompactorWriteBytesPerSecondLimit);
+        _writerBytesPerSecondLimiter = new(_keyValueDB.CompactorWriteBytesPerSecondLimit);
         var writer = _keyValueDB.StartPureValuesFile(out var valueFileId);
         var firstIteration = true;
         while (true)
