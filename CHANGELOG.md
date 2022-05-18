@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.5.0
+
 ### Added
 
 New `IKeyValueDBLogger` callback `ReportCompactorException`. Needs override with better logging of exception in production applications.
