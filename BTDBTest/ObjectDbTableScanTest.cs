@@ -305,6 +305,37 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
     }
 
     [Fact]
+    public void GatherConstraintFirst1Works()
+    {
+        FillThreeUlongsData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        var dst = new List<ThreeUlongs>();
+        Assert.Equal((ulong)t.Count(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1),
+            t.GatherById(dst, 0, 1000, Constraint.First(Constraint.Unsigned.Any), Constraint.Unsigned.Any));
+        AssertSameCondition(t.Where(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1), dst);
+    }
+
+    [Fact]
+    public void GatherConstraintFirst2Works()
+    {
+        FillThreeUlongsData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        var dst = new List<ThreeUlongs>();
+        Assert.Equal((ulong)t.Count(v => v.N2 == 1 && v.N3 == 1),
+            t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any)));
+        AssertSameCondition(t.Where(v => v.N2 == 1 && v.N3 == 1), dst);
+        dst.Clear();
+        Assert.Equal((ulong)t.Count(v => v.N1 <= 3 && v.N2 == 3 && v.N3 == 1),
+            t.GatherById(dst, 0, 1000, Constraint.Unsigned.UpTo(3),
+                Constraint.First(Constraint.Unsigned.Predicate(v => v > 2))));
+        AssertSameCondition(t.Where(v => v.N1 <= 3 && v.N2 == 3 && v.N3 == 1), dst);
+    }
+
+    [Fact]
     public void GatherOrderingBySecondColumnWorks()
     {
         FillThreeUlongsData();
@@ -466,10 +497,14 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         using var tr = _db.StartTransaction();
         var t = tr.GetRelation<IThingWithSKTable>();
         var target = new List<ThingWithSK>();
-        Assert.Equal((ulong)t.Count, t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any, new [] { Orderer.Descending((ThingWithSK v)=>v.Tenant) }));
+        Assert.Equal((ulong)t.Count,
+            t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any,
+                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
         Assert.Equal("DCAB", string.Concat(target.Select(v => v.Name)));
         target.Clear();
-        Assert.Equal((ulong)t.Count, t.GatherByName(target, 1, 2, Constraint.String.Any, Constraint.Unsigned.Any, new [] { Orderer.Descending((ThingWithSK v)=>v.Tenant) }));
+        Assert.Equal((ulong)t.Count,
+            t.GatherByName(target, 1, 2, Constraint.String.Any, Constraint.Unsigned.Any,
+                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
         Assert.Equal("CA", string.Concat(target.Select(v => v.Name)));
     }
 
@@ -492,13 +527,30 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         using var tr = _db.StartTransaction();
         var t = tr.GetRelation<IThingWithSKTable>();
         var target = new List<ThingWithSK>();
-        Assert.Equal((ulong)t.Count, t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any, new [] { Orderer.AscendingStringByLocale((ThingWithSK v)=>v.Name, new CultureInfo("cs").CompareInfo) }));
+        Assert.Equal((ulong)t.Count,
+            t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any,
+                new[]
+                {
+                    Orderer.AscendingStringByLocale((ThingWithSK v) => v.Name, new CultureInfo("cs").CompareInfo)
+                }));
         Assert.Equal("3124", string.Concat(target.Select(v => v.Age.ToString())));
         target.Clear();
-        Assert.Equal((ulong)t.Count, t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any, new [] { Orderer.Backwards(Orderer.AscendingStringByLocale((ThingWithSK v)=>v.Name, new CultureInfo("cs").CompareInfo)) }));
+        Assert.Equal((ulong)t.Count,
+            t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any,
+                new[]
+                {
+                    Orderer.Backwards(Orderer.AscendingStringByLocale((ThingWithSK v) => v.Name,
+                        new CultureInfo("cs").CompareInfo))
+                }));
         Assert.Equal("4213", string.Concat(target.Select(v => v.Age.ToString())));
         target.Clear();
-        Assert.Equal((ulong)t.Count, t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any, new [] { Orderer.AscendingStringByLocale((ThingWithSK v)=>v.Name, new CultureInfo("cs").CompareInfo, CompareOptions.IgnoreSymbols) }));
+        Assert.Equal((ulong)t.Count,
+            t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any,
+                new[]
+                {
+                    Orderer.AscendingStringByLocale((ThingWithSK v) => v.Name, new CultureInfo("cs").CompareInfo,
+                        CompareOptions.IgnoreSymbols)
+                }));
         Assert.Equal("1324", string.Concat(target.Select(v => v.Age.ToString())));
         target.Clear();
     }
@@ -513,5 +565,4 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         t.Upsert(new(3, "Bob", 4));
         tr.Commit();
     }
-
 }

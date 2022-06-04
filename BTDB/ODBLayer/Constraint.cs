@@ -23,7 +23,8 @@ public interface IConstraint
     {
         No = 0,
         Yes = 1,
-        NoAfterLast = 2
+        NoAfterLast = 2,
+        YesSkipNext = 3 // This cannot be returned from MatchType.Exact
     }
 
     public MatchType Prepare(ref StructList<byte> buffer);
@@ -107,6 +108,11 @@ public class ConstraintNotImplemented<T> : Constraint<T>
 
 public static partial class Constraint
 {
+    public static Constraint<T> First<T>(Constraint<T> of)
+    {
+        return new FirstConstraint<T>(of);
+    }
+
     public static partial class Bool
     {
         public static Constraint<bool> Exact(bool value) => new ConstraintBoolExact(value);
@@ -213,6 +219,35 @@ public static partial class Constraint
         public static Constraint<string> UpTo(string value, bool including = true) =>
             new ConstraintStringUpTo(value, including);
         public static readonly Constraint<string> Any = Constraint<string>.Any;
+    }
+}
+
+public class FirstConstraint<T>: Constraint<T>
+{
+    readonly Constraint<T> _of;
+
+    public FirstConstraint(Constraint<T> of)
+    {
+        _of = of;
+    }
+
+    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    {
+        var res = _of.Prepare(ref buffer);
+        if (res == IConstraint.MatchType.Exact) return IConstraint.MatchType.Prefix;
+        return res;
+    }
+
+    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    {
+        _of.WritePrefix(ref writer, buffer);
+    }
+
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    {
+        var res = _of.Match(ref reader, buffer);
+        if (res == IConstraint.MatchResult.Yes) return IConstraint.MatchResult.YesSkipNext;
+        return res;
     }
 }
 

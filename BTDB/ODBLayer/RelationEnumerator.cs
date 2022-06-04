@@ -32,6 +32,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     long _pos;
     bool _seekNeeded;
 
+    int _skipNextOn = -1;
     int _keyBytesCount;
     StructList<byte> _buffer;
 
@@ -65,6 +66,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     public void GatherForSorting(ref SortNativeStorage sortNativeStorage, int[] ordererIdx, IOrderer[] orderers)
     {
         if (!KeyValueTr.FindFirstKey(_buffer.AsSpan(0, _keyBytesCount))) return;
+        var skipNextOn = -1;
         sortNativeStorage.StartKeyIndex = (ulong)KeyValueTr.GetKeyIndex();
         Span<byte> writerBuf = stackalloc byte[512];
         var writer = new SpanWriter(writerBuf);
@@ -108,6 +110,11 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
             i++;
         }
 
+        if (skipNextOn != -1 && i >= skipNextOn)
+        {
+            goto goNextFast;
+        }
+
         if (i != _constraints.Length)
         {
             goto prepareGoDown;
@@ -130,9 +137,18 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         for (var j = i; j < _constraints.Length; j++) _constraints[j].Offset = -1;
         var offsetPrefix = i > 0 ? _constraints[i - 1].Offset : _keyBytesCount;
         var reader = new SpanReader(key[offsetPrefix..]);
+        if (i < skipNextOn) skipNextOn = -1;
         goDown:
         var matchResult = _constraints[i].Constraint.Match(ref reader, _buffer);
         _constraints[i].Offset = offsetPrefix + (int)reader.GetCurrentPositionWithoutController();
+
+        if (matchResult == IConstraint.MatchResult.YesSkipNext)
+        {
+            i++;
+            if (skipNextOn == -1) skipNextOn = i;
+            if (i == _constraints.Length) goto recordMatch;
+            goto goDown;
+        }
 
         if (matchResult == IConstraint.MatchResult.Yes)
         {
@@ -198,6 +214,12 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         }
 
         goNextFast:
+        if (skipNextOn != -1)
+        {
+            i = skipNextOn - 2;
+            skipNextOn = -1;
+        }
+
         while (i >= 0)
         {
             switch (_constraints[i].MatchType)
@@ -321,13 +343,27 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
             i++;
         }
 
+        if (_skipNextOn != -1 && i >= _skipNextOn)
+        {
+            goto goNextFast;
+        }
+
         if (i == _constraints.Length) return true;
         for (var j = i; j < _constraints.Length; j++) _constraints[j].Offset = -1;
         var offsetPrefix = i > 0 ? _constraints[i - 1].Offset : _keyBytesCount;
         var reader = new SpanReader(key[offsetPrefix..]);
+        if (i < _skipNextOn) _skipNextOn = -1;
         goDown:
         var matchResult = _constraints[i].Constraint.Match(ref reader, _buffer);
         _constraints[i].Offset = offsetPrefix + (int)reader.GetCurrentPositionWithoutController();
+
+        if (matchResult == IConstraint.MatchResult.YesSkipNext)
+        {
+            i++;
+            if (_skipNextOn == -1) _skipNextOn = i;
+            if (i == _constraints.Length) return true;
+            goto goDown;
+        }
 
         if (matchResult == IConstraint.MatchResult.Yes)
         {
@@ -393,6 +429,12 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         }
 
         goNextFast:
+        if (_skipNextOn != -1)
+        {
+            i = _skipNextOn - 2;
+            _skipNextOn = -1;
+        }
+
         while (i >= 0)
         {
             switch (_constraints[i].MatchType)
