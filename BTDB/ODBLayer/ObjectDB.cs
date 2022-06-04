@@ -292,7 +292,7 @@ public class ObjectDB : IObjectDB
             using var tr = _keyValueDB.StartReadOnlyTransaction();
             var key = TableInfo.BuildKeyForTableVersions(id, version);
             if (!tr.FindExactKey(key))
-                _objectDB.ActualOptions.ThrowBTDBException($"Missing TableVersionInfo Id:{id} Version:{version}");
+                _objectDB.ActualOptions.ThrowBTDBException($"Missing TableVersionInfo Id: {id} Version: {version} TableName: {tableName}");
             var reader = new SpanReader(tr.GetValue());
             return TableVersionInfo.Load(ref reader, _objectDB.FieldHandlerFactory, tableName);
         }
