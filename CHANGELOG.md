@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.6.0
+
 ### Added
 
 Generic `Constraint.First(ofConstraint)` - takes only first row from every group.
