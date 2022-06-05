@@ -132,6 +132,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         }
 
         sortNativeStorage.FinishNewItem((ulong)KeyValueTr.GetKeyIndex());
+        writer.UpdateBuffer(key);
         goto goNextKey;
         prepareGoDown:
         for (var j = i; j < _constraints.Length; j++) _constraints[j].Offset = -1;

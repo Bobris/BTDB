@@ -315,6 +315,10 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal((ulong)t.Count(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1),
             t.GatherById(dst, 0, 1000, Constraint.First(Constraint.Unsigned.Any), Constraint.Unsigned.Any));
         AssertSameCondition(t.Where(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1), dst);
+        dst.Clear();
+        Assert.Equal((ulong)t.Count(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1),
+            t.GatherById(dst, 0, 1000, Constraint.First(Constraint.Unsigned.Any), Constraint.Unsigned.Any, new [] { Orderer.Ascending((ThreeUlongs v)=>v.N1) }));
+        AssertSameCondition(t.Where(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1), dst);
     }
 
     [Fact]
@@ -333,6 +337,16 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
             t.GatherById(dst, 0, 1000, Constraint.Unsigned.UpTo(3),
                 Constraint.First(Constraint.Unsigned.Predicate(v => v > 2))));
         AssertSameCondition(t.Where(v => v.N1 <= 3 && v.N2 == 3 && v.N3 == 1), dst);
+        dst.Clear();
+        Assert.Equal((ulong)t.Count(v => v.N2 == 1 && v.N3 == 1),
+            t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any), new [] { Orderer.Ascending((ThreeUlongs v)=>v.N1) }));
+        AssertSameCondition(t.Where(v => v.N2 == 1 && v.N3 == 1), dst);
+        dst.Clear();
+        Assert.Equal((ulong)t.Count(v => v.N1 <= 3 && v.N2 == 3 && v.N3 == 1),
+            t.GatherById(dst, 0, 1000, Constraint.Unsigned.UpTo(3),
+                Constraint.First(Constraint.Unsigned.Predicate(v => v > 2)), new [] { Orderer.Ascending((ThreeUlongs v)=>v.N1) }));
+        AssertSameCondition(t.Where(v => v.N1 <= 3 && v.N2 == 3 && v.N3 == 1), dst);
+
     }
 
     [Fact]
