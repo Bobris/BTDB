@@ -40,13 +40,15 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
 
     readonly ISymmetricCipher _symmetricCipher;
 
+    readonly bool _useInputDescriptors;
     bool _newTypeFound;
 
     public EventSerializer(ITypeNameMapper? typeNameMapper = null,
-        ITypeConvertorGenerator? typeConvertorGenerator = null, ISymmetricCipher? symmetricCipher = null)
+        ITypeConvertorGenerator? typeConvertorGenerator = null, ISymmetricCipher? symmetricCipher = null, bool useInputDescriptors = true)
     {
         TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
         ConvertorGenerator = typeConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
+        _useInputDescriptors = useInputDescriptors;
         _symmetricCipher = symmetricCipher ?? new InvalidSymmetricCipher();
         _id2Info.Reserve(ReservedBuildinTypes + 10);
         _id2Info.Add(null); // 0 = null
@@ -121,7 +123,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
     public ITypeDescriptor? DescriptorOf(object? obj)
     {
         if (obj == null) return null;
-        if (obj is IKnowDescriptor knowDescriptor) return knowDescriptor.GetDescriptor();
+        if (_useInputDescriptors && obj is IKnowDescriptor knowDescriptor) return knowDescriptor.GetDescriptor();
         if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out var info))
             return null;
         return info.Descriptor;
@@ -465,7 +467,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         if (_visited.ContainsKey(obj)) return;
         _visited.Add(obj, _visited.Count);
         SerializerTypeInfo info;
-        var knowDescriptor = obj as IKnowDescriptor;
+        var knowDescriptor = _useInputDescriptors ? obj as IKnowDescriptor : null;
         var type = obj.GetType();
         if (knowDescriptor != null)
         {
@@ -497,7 +499,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                     {
                         // If it is not in old nor new, than fail with clearer description
                         throw new BTDBException("EventSerializer.StoreNewDescriptors bug " +
-                                                obj.GetType().ToSimpleName());
+                                                type.ToSimpleName());
                     }
                 }
             }
@@ -690,7 +692,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         var objType = obj.GetType();
         if (!_typeOrDescriptor2Info.TryGetValue(objType, out var info))
         {
-            if (obj is IKnowDescriptor knowDescriptor)
+            if (_useInputDescriptors && obj is IKnowDescriptor knowDescriptor)
             {
                 if (!_typeOrDescriptor2Info.TryGetValue(knowDescriptor.GetDescriptor(), out info))
                 {

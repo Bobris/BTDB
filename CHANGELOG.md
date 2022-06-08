@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+EventSerializer layer2 has new option to ignore known descriptors on input instances.
+
 ## 29.6.0
 
 ### Added

@@ -16,17 +16,18 @@ public class EventLayerAndMappingIntegrationTest
     public void EventLayerCanSerializeDataThatWasDeserializedByMapping()
     {
         var writer = new SpanWriter();
-        SerializeWithMapping(ref writer, new Event(){Items = new List<EventItem> {new EventItem()}});
+        SerializeWithMapping(ref writer, new Event() { Items = new List<EventItem> { new EventItem() } });
         var reader = new SpanReader(writer.GetSpanAndReset());
         var deserialized = DeserializeWithMapping(ref reader);
 
-        var els = new BTDB.EventStore2Layer.EventSerializer();
+        var els = new BTDB.EventStore2Layer.EventSerializer(null, null, null, false);
         els.Serialize(out bool metadata, deserialized);
     }
 
     void SerializeWithMapping(ref SpanWriter writer, object @object)
     {
-        var typeSerializer = new TypeSerializers(new SillyTypeNameMapper(), new TypeSerializersOptions { IgnoreIIndirect = false, SymmetricCipher = null });
+        var typeSerializer = new TypeSerializers(new SillyTypeNameMapper(),
+            new TypeSerializersOptions { IgnoreIIndirect = false, SymmetricCipher = null });
         var mapping = typeSerializer.CreateMapping();
         var start = writer.GetCurrentPosition();
 
@@ -47,7 +48,8 @@ public class EventLayerAndMappingIntegrationTest
 
     object DeserializeWithMapping(ref SpanReader reader)
     {
-        var typeSerializer = new TypeSerializers(new SillyTypeNameMapper(), new TypeSerializersOptions { IgnoreIIndirect = false, SymmetricCipher = null });
+        var typeSerializer = new TypeSerializers(new SillyTypeNameMapper(),
+            new TypeSerializersOptions { IgnoreIIndirect = false, SymmetricCipher = null });
         var mapping = typeSerializer.CreateMapping();
         byte c0 = reader.ReadUInt8();
         if (c0 == TypeDescriptor)
@@ -66,6 +68,7 @@ public class EventLayerAndMappingIntegrationTest
     class SillyTypeNameMapper : ITypeNameMapper
     {
         FullNameTypeMapper _fullNameTypeMapper = new();
+
         public string ToName(Type type)
         {
             if (type == typeof(Event))
