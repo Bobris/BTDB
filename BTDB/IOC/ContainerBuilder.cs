@@ -66,6 +66,13 @@ public class ContainerBuilder
         return registration;
     }
 
+    public IRegistration<IAsLiveScopeTrait> RegisterFactory(Func<IContainer, object> factory, Type instanceType)
+    {
+        var registration = new SingleFactoryRegistration(factory, instanceType);
+        _registrations.Add(registration);
+        return registration;
+    }
+
     public IRegistration<IAsLiveScopeConstructorPropertiesScanTrait> RegisterAssemblyTypes(Assembly from)
     {
         return RegisterAssemblyTypes(new[] { from });

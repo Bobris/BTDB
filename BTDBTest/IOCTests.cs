@@ -284,6 +284,28 @@ public class IocTests
     }
 
     [Fact]
+    public void RegisterFactorySpecificInstanceType()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterFactory(c => new InjectingContainer(c), typeof(InjectingContainer));
+        var container = builder.Build();
+        var obj = container.Resolve<InjectingContainer>();
+        Assert.Same(container, obj.Container);
+        Assert.NotSame(obj, container.Resolve<InjectingContainer>());
+    }
+
+    [Fact]
+    public void RegisterFactorySpecificInstanceTypeAsSingleton()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterFactory(c => new InjectingContainer(c), typeof(InjectingContainer)).SingleInstance();
+        var container = builder.Build();
+        var obj = container.Resolve<InjectingContainer>();
+        Assert.Same(container, obj.Container);
+        Assert.Same(obj, container.Resolve<InjectingContainer>());
+    }
+
+    [Fact]
     public void RegisterAsImplementedInterfaces()
     {
         var builder = new ContainerBuilder();
