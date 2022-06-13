@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.8.0
+
 ### Added
 
 Non-generic `RegisterFactory` for your low level needs.
