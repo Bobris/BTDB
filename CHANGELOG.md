@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Non-generic `RegisterFactory` for your low level needs.
+
 ## 29.7.0
 
 ### Added
