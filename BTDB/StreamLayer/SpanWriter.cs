@@ -55,7 +55,7 @@ public ref struct SpanWriter
             return HeapBuffer.AsSpan(0, HeapBuffer.Length - Buf.Length);
         }
 
-        return InitialBuffer.Slice(0, InitialBuffer.Length - Buf.Length);
+        return InitialBuffer[..^Buf.Length];
     }
 
     public ReadOnlySpan<byte> GetPersistentSpanAndReset()
@@ -70,7 +70,7 @@ public ref struct SpanWriter
         }
         else
         {
-            var res = InitialBuffer.Slice(0, InitialBuffer.Length - Buf.Length);
+            var res = InitialBuffer[..^Buf.Length];
             InitialBuffer = Buf;
             return res;
         }
@@ -104,7 +104,7 @@ public ref struct SpanWriter
         }
         else
         {
-            var res = InitialBuffer.Slice(0, InitialBuffer.Length - Buf.Length);
+            var res = InitialBuffer[..^Buf.Length];
             Buf = InitialBuffer;
             return res;
         }
@@ -123,7 +123,7 @@ public ref struct SpanWriter
         }
         else
         {
-            var res = ByteBuffer.NewAsync(InitialBuffer.Slice(0, InitialBuffer.Length - Buf.Length));
+            var res = ByteBuffer.NewAsync(InitialBuffer[..^Buf.Length]);
             Buf = InitialBuffer;
             return res;
         }
@@ -155,7 +155,7 @@ public ref struct SpanWriter
             return;
         }
 
-        Buf = InitialBuffer.Slice((int)pos);
+        Buf = InitialBuffer[(int)pos..];
     }
 
     /// <summary>
@@ -186,7 +186,7 @@ public ref struct SpanWriter
             newSize = Math.Max(newSize, pos + spaceNeeded);
             newSize = Math.Min(newSize, int.MaxValue);
             HeapBuffer = new byte[newSize];
-            InitialBuffer.Slice(0, (int)pos).CopyTo(HeapBuffer);
+            InitialBuffer[..(int)pos].CopyTo(HeapBuffer);
             Buf = HeapBuffer.AsSpan((int)pos, (int)(newSize - pos));
         }
         else
@@ -752,7 +752,7 @@ public ref struct SpanWriter
         }
     }
 
-    uint NoControllerGetCurrentPosition()
+    public uint NoControllerGetCurrentPosition()
     {
         if (HeapBuffer != null)
         {
@@ -760,6 +760,17 @@ public ref struct SpanWriter
         }
 
         return (uint)(InitialBuffer.Length - Buf.Length);
+    }
+
+    public void NoControllerSetCurrentPosition(uint pos)
+    {
+        if (HeapBuffer != null)
+        {
+            Buf = HeapBuffer.AsSpan((int)pos);
+            return;
+        }
+
+        Buf = InitialBuffer[(int)pos..];
     }
 
     public uint StartWriteByteArray()
@@ -836,7 +847,7 @@ public ref struct SpanWriter
     {
         if (Unsafe.AreSame(ref MemoryMarshal.GetReference(InitialBuffer), ref MemoryMarshal.GetReference(writtenBuffer)))
         {
-            Buf = InitialBuffer.Slice(writtenBuffer.Length);
+            Buf = InitialBuffer[writtenBuffer.Length..];
             HeapBuffer = null;
         }
         else
