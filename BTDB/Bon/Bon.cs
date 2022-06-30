@@ -970,4 +970,127 @@ public ref struct Bon
                 return false;
         }
     }
+
+    public bool TryGetObject(out KeyedBon bon)
+    {
+        var b = _buf[(int)_ofs];
+        switch (b)
+        {
+            case Helpers.CodeObjectEmpty:
+                _ofs++;
+                _items--;
+                bon = new(new(), 0, 0, 0);
+                return true;
+            case Helpers.CodeObjectPtr:
+            {
+                _ofs++;
+                _items--;
+                var ofs = Helpers.ReadVUInt(_buf, ref _ofs);
+                var ofsKeys = Helpers.ReadVUInt(_buf, ref ofs);
+                var items = Helpers.ReadVUInt(_buf, ref ofsKeys);
+
+                bon = new(_buf, ofs, ofsKeys, items);
+                return true;
+            }
+            default:
+                bon = new(new(), 0, 0, 0);
+                return false;
+        }
+    }
+
+    public bool TryGetClass(out KeyedBon bon, out string name)
+    {
+        var b = _buf[(int)_ofs];
+        switch (b)
+        {
+            case Helpers.CodeClassPtr:
+            {
+                _ofs++;
+                _items--;
+                var ofs = Helpers.ReadVUInt(_buf, ref _ofs);
+                var ofsKeys = Helpers.ReadVUInt(_buf, ref ofs);
+                var items = Helpers.ReadVUInt(_buf, ref ofsKeys);
+                var nameOfs = Helpers.ReadVUInt(_buf, ref ofsKeys);
+                name = Helpers.ReadUtf8WithVUintLen(_buf, nameOfs);
+                bon = new(_buf, ofs, ofsKeys, items);
+                return true;
+            }
+            default:
+                bon = new(new(), 0, 0, 0);
+                name = "";
+                return false;
+        }
+    }
+}
+
+public ref struct KeyedBon
+{
+    readonly ReadOnlySpan<byte> _buf;
+    readonly uint _ofs;
+    readonly uint _ofsKeys;
+    readonly uint _items;
+    uint _keysOfsIter;
+    uint _keysItemsIter;
+
+    public KeyedBon(ReadOnlySpan<byte> buf, uint ofs, uint ofsKeys, uint items)
+    {
+        _buf = buf;
+        _ofs = ofs;
+        _ofsKeys = ofsKeys;
+        _items = items;
+        _keysOfsIter = ofsKeys;
+        _keysItemsIter = items;
+    }
+
+    public uint Items => _items;
+
+    public Bon Values()
+    {
+        return new(_buf, _ofs, _items);
+    }
+
+    public void Reset()
+    {
+        _keysOfsIter = _ofsKeys;
+        _keysItemsIter = _items;
+    }
+
+    public string? NextKey()
+    {
+        if (_keysItemsIter == 0) return null;
+        var ofs = Helpers.ReadVUInt(_buf, ref _keysOfsIter);
+        _keysItemsIter--;
+        return Helpers.ReadUtf8WithVUintLen(_buf, ofs);
+    }
+
+    public bool TryGet(string key, out Bon bon)
+    {
+        var l = Encoding.UTF8.GetByteCount(key);
+        var ofs = _ofsKeys;
+        var keyBuf = l > 256 ? new byte[l] : stackalloc byte[l];
+        var first = true;
+        for (var i = 0; i < _items; i++)
+        {
+            var kOfs = Helpers.ReadVUInt(_buf, ref ofs);
+            var kLen = Helpers.ReadVUInt(_buf, ref kOfs);
+            if (kLen != l) continue;
+            if (first)
+            {
+                Encoding.UTF8.GetBytes(key, keyBuf);
+                first = false;
+            }
+
+            if (!_buf[(int)kOfs..(int)(kOfs + l)].SequenceEqual(keyBuf)) continue;
+            bon = new(_buf, _ofs, (uint)i + 1);
+            while (i-- > 0)
+            {
+                bon.Skip();
+            }
+
+            return true;
+        }
+
+        bon = new(new(), 0, 0);
+        return false;
+    }
 }
