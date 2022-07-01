@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using BTDB.Buffer;
 using BTDB.Collections;
 
@@ -24,6 +26,7 @@ public enum BonType
     Object, // 28 - empty, 132 - VUint offset to VUint offset to VUint len + VUint offsets to strings, Bons*len
     Class, // 133 - VUint offset to VUint offset to VUint len + VUint offset to type name string + VUint offsets to strings, Bons*len
     Dictionary, // 29 - empty, 134 - VUint offset to VUint len + (Key Bon + Value Bon)*len
+    ByteArray, // 30 - empty, 135 - VUint offset to VUint len + bytes
 }
 
 public static class Helpers
@@ -52,6 +55,8 @@ public static class Helpers
     public const byte CodeClassPtr = 133;
     public const byte CodeDictionaryEmpty = 29;
     public const byte CodeDictionaryPtr = 134;
+    public const byte CodeByteArrayEmpty = 30;
+    public const byte CodeByteArrayPtr = 135;
 
     public static BonType BonTypeFromByte(byte b)
     {
@@ -69,6 +74,7 @@ public static class Helpers
             28 or 132 => BonType.Object,
             133 => BonType.Class,
             29 or 134 => BonType.Dictionary,
+            30 or 135 => BonType.ByteArray,
             _ => BonType.Error
         };
     }
@@ -554,6 +560,31 @@ public struct BonBuilder
         AfterBon();
     }
 
+    public void Write(ReadOnlySpan<byte> value)
+    {
+        BeforeBon();
+
+        if (value.IsEmpty)
+        {
+            _lastBonPos = _topPos;
+            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeByteArrayEmpty);
+        }
+        else
+        {
+            _rootPos = _stack.Count == 0 ? _topPos : _stack[0].Item3;
+            var pos = _rootPos;
+            Helpers.WriteVUInt32(ref _rootData, ref _rootPos, (uint)value.Length);
+            value.CopyTo(Helpers.WriteBlock(ref _rootData, ref _rootPos, (uint)value.Length));
+            if (_stack.Count == 0) _topPos = _rootPos;
+            else _stack[0].Item3 = _rootPos;
+            _lastBonPos = _topPos;
+            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeByteArrayPtr);
+            Helpers.WriteVUInt32(ref _topData, ref _topPos, pos);
+        }
+
+        AfterBon();
+    }
+
     public void StartArray()
     {
         BeforeBon();
@@ -841,6 +872,8 @@ public ref struct Bon
         _items = 1;
     }
 
+    public uint Items => _items;
+
     public Bon(ReadOnlySpan<byte> buf, uint ofs, uint items)
     {
         _buf = buf;
@@ -946,6 +979,31 @@ public ref struct Bon
         return false;
     }
 
+    public bool TryGetByteArray(out ReadOnlySpan<byte> value)
+    {
+        var b = _buf[(int)_ofs];
+        switch (b)
+        {
+            case Helpers.CodeByteArrayEmpty:
+                _ofs++;
+                _items--;
+                value = new();
+                return true;
+            case Helpers.CodeByteArrayPtr:
+            {
+                _ofs++;
+                _items--;
+                var ofs = Helpers.ReadVUInt(_buf, ref _ofs);
+                var len = Helpers.ReadVUInt(_buf, ref ofs);
+                value = _buf.Slice((int)ofs, (int)len);
+                return true;
+            }
+            default:
+                value = new();
+                return false;
+        }
+    }
+
     public bool TryGetArray(out Bon bon)
     {
         var b = _buf[(int)_ofs];
@@ -1020,6 +1078,152 @@ public ref struct Bon
                 name = "";
                 return false;
         }
+    }
+
+    public bool TryGetDictionary(out Bon bon)
+    {
+        var b = _buf[(int)_ofs];
+        switch (b)
+        {
+            case Helpers.CodeDictionaryEmpty:
+                _ofs++;
+                _items--;
+                bon = new(new(), 0, 0);
+                return true;
+            case Helpers.CodeDictionaryPtr:
+            {
+                _ofs++;
+                _items--;
+                var ofs = Helpers.ReadVUInt(_buf, ref _ofs);
+                var items = Helpers.ReadVUInt(_buf, ref ofs);
+                bon = new(_buf, ofs, items * 2);
+                return true;
+            }
+            default:
+                bon = new(new(), 0, 0);
+                return false;
+        }
+    }
+
+    public void DumpToJson(Utf8JsonWriter writer)
+    {
+        switch (BonType)
+        {
+            case BonType.Error:
+                writer.WriteCommentValue("Error");
+                Skip();
+                break;
+            case BonType.Null:
+                writer.WriteNullValue();
+                Skip();
+                break;
+            case BonType.Undefined:
+                writer.WriteNullValue(); writer.WriteCommentValue("undefined");
+                Skip();
+                break;
+            case BonType.Bool:
+                TryGetBool(out var b);
+                writer.WriteBooleanValue(b);
+                break;
+            case BonType.Integer:
+                if (TryGetLong(out var l))
+                {
+                    writer.WriteNumberValue(l);
+                } else if (TryGetULong(out var ul))
+                {
+                    writer.WriteNumberValue(ul);
+                }
+                else
+                {
+                    writer.WriteCommentValue("Not integer");
+                    Skip();
+                }
+                break;
+            case BonType.Float:
+                TryGetDouble(out var d);
+                writer.WriteNumberValue(d);
+                break;
+            case BonType.String:
+                TryGetString(out var s);
+                writer.WriteStringValue(s);
+                break;
+            case BonType.DateTime:
+                TryGetDateTime(out var dt);
+                writer.WriteStringValue(dt.ToString("O"));
+                break;
+            case BonType.Guid:
+                TryGetGuid(out var g);
+                writer.WriteStringValue(g.ToString("D"));
+                break;
+            case BonType.Array:
+                writer.WriteStartArray();
+                TryGetArray(out var ab);
+                while (!ab.Eof)
+                {
+                    ab.DumpToJson(writer);
+                }
+                writer.WriteEndArray();
+                break;
+            case BonType.Object:
+                writer.WriteStartObject();
+                TryGetObject(out var o);
+                var ov = o.Values();
+                while (true)
+                {
+                    var k = o.NextKey();
+                    if (k == null) break;
+                    writer.WritePropertyName(k);
+                    ov.DumpToJson(writer);
+                }
+                writer.WriteEndObject();
+                break;
+            case BonType.Class:
+                writer.WriteStartObject();
+                TryGetClass(out var c, out var cn);
+                writer.WritePropertyName("__type__"); writer.WriteStringValue(cn);
+                var cv = c.Values();
+                while (true)
+                {
+                    var k = c.NextKey();
+                    if (k == null) break;
+                    writer.WritePropertyName(k);
+                    cv.DumpToJson(writer);
+                }
+                writer.WriteEndObject();
+                break;
+            case BonType.Dictionary:
+                writer.WriteStartArray();
+                TryGetArray(out var db);
+                while (!db.Eof)
+                {
+                    writer.WriteStartArray();
+                    db.DumpToJson(writer);
+                    db.DumpToJson(writer);
+                    writer.WriteEndArray();
+                }
+                writer.WriteEndArray();
+                break;
+            case BonType.ByteArray:
+                TryGetByteArray(out var ba);
+                writer.WriteBase64StringValue(ba);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+    }
+
+    public string DumpToJson()
+    {
+        var options = new JsonWriterOptions
+        {
+            Indented = true
+        };
+
+        using var stream = new MemoryStream();
+        using var writer = new Utf8JsonWriter(stream, options);
+        DumpToJson(writer);
+        writer.Flush();
+        return Encoding.UTF8.GetString(stream.ToArray());
     }
 }
 
