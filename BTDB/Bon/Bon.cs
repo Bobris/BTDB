@@ -5,6 +5,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using BTDB.Buffer;
 using BTDB.Collections;
@@ -575,6 +576,7 @@ public struct BonBuilder
                 rootPos = ref _stack[0].Item3;
                 rootData = ref _stack[0].Item2;
             }
+
             var pos = rootPos;
             Helpers.WriteVUInt32(ref rootData, ref rootPos, (uint)value.Length);
             value.CopyTo(Helpers.WriteBlock(ref rootData, ref rootPos, (uint)value.Length));
@@ -614,6 +616,7 @@ public struct BonBuilder
                 rootPos = ref _stack[0].Item3;
                 rootData = ref _stack[0].Item2;
             }
+
             var pos = rootPos;
             Helpers.WriteVUInt32(ref rootData, ref rootPos, items);
             bytes.CopyTo(Helpers.WriteBlock(ref rootData, ref rootPos, (uint)bytes.Length));
@@ -661,6 +664,7 @@ public struct BonBuilder
                 rootPos = ref _stack[0].Item3;
                 rootData = ref _stack[0].Item2;
             }
+
             var posKeys = rootPos;
             Helpers.WriteVUInt32(ref rootData, ref rootPos, items);
             foreach (var keyOfs in objKeys)
@@ -710,6 +714,7 @@ public struct BonBuilder
             rootPos = ref _stack[0].Item3;
             rootData = ref _stack[0].Item2;
         }
+
         var posKeys = rootPos;
         Helpers.WriteVUInt32(ref rootData, ref rootPos, items);
         foreach (var keyOfs in objKeys)
@@ -764,6 +769,7 @@ public struct BonBuilder
                 rootPos = ref _stack[0].Item3;
                 rootData = ref _stack[0].Item2;
             }
+
             var pos = rootPos;
             Helpers.WriteVUInt32(ref rootData, ref rootPos, items / 2);
             bytes.CopyTo(Helpers.WriteBlock(ref rootData, ref rootPos, (uint)bytes.Length));
@@ -853,6 +859,7 @@ public struct BonBuilder
             rootPos = ref _stack[0].Item3;
             rootData = ref _stack[0].Item2;
         }
+
         pos = rootPos;
         Helpers.WriteUtf8String(ref rootData, ref rootPos, value);
         _strCache[value] = pos;
@@ -1138,7 +1145,8 @@ public ref struct Bon
                 Skip();
                 break;
             case BonType.Undefined:
-                writer.WriteNullValue(); writer.WriteCommentValue("undefined");
+                writer.WriteNullValue();
+                writer.WriteCommentValue("undefined");
                 Skip();
                 break;
             case BonType.Bool:
@@ -1149,7 +1157,8 @@ public ref struct Bon
                 if (TryGetLong(out var l))
                 {
                     writer.WriteNumberValue(l);
-                } else if (TryGetULong(out var ul))
+                }
+                else if (TryGetULong(out var ul))
                 {
                     writer.WriteNumberValue(ul);
                 }
@@ -1158,10 +1167,23 @@ public ref struct Bon
                     writer.WriteCommentValue("Not integer");
                     Skip();
                 }
+
                 break;
             case BonType.Float:
                 TryGetDouble(out var d);
-                writer.WriteNumberValue(d);
+                if (d == Double.PositiveInfinity)
+                {
+                    writer.WriteStringValue("+∞");
+                }
+                else if (d == Double.NegativeInfinity)
+                {
+                    writer.WriteStringValue("-∞");
+                }
+                else
+                {
+                    writer.WriteNumberValue(d);
+                }
+
                 break;
             case BonType.String:
                 TryGetString(out var s);
@@ -1182,6 +1204,7 @@ public ref struct Bon
                 {
                     ab.DumpToJson(writer);
                 }
+
                 writer.WriteEndArray();
                 break;
             case BonType.Object:
@@ -1195,12 +1218,14 @@ public ref struct Bon
                     writer.WritePropertyName(k);
                     ov.DumpToJson(writer);
                 }
+
                 writer.WriteEndObject();
                 break;
             case BonType.Class:
                 writer.WriteStartObject();
                 TryGetClass(out var c, out var cn);
-                writer.WritePropertyName("__type__"); writer.WriteStringValue(cn);
+                writer.WritePropertyName("__type__");
+                writer.WriteStringValue(cn);
                 var cv = c.Values();
                 while (true)
                 {
@@ -1209,6 +1234,7 @@ public ref struct Bon
                     writer.WritePropertyName(k);
                     cv.DumpToJson(writer);
                 }
+
                 writer.WriteEndObject();
                 break;
             case BonType.Dictionary:
@@ -1221,6 +1247,7 @@ public ref struct Bon
                     db.DumpToJson(writer);
                     writer.WriteEndArray();
                 }
+
                 writer.WriteEndArray();
                 break;
             case BonType.ByteArray:
@@ -1236,7 +1263,9 @@ public ref struct Bon
     {
         var options = new JsonWriterOptions
         {
-            Indented = true
+            Indented = true,
+            SkipValidation = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
 
         using var stream = new MemoryStream();

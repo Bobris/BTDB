@@ -1,4 +1,7 @@
-﻿using BTDB.Bon;
+﻿using System;
+using System.Globalization;
+using BTDB.Bon;
+using BTDB.Buffer;
 using Xunit;
 
 namespace BTDBTest;
@@ -11,7 +14,7 @@ public class BonTests
         var builder = new BonBuilder();
         builder.WriteNull();
         var buffer = builder.Finish();
-        Assert.Equal(2,buffer.Length);
+        Assert.Equal(2, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
         Assert.Equal(1u, bon.Items);
@@ -28,7 +31,7 @@ public class BonTests
         var builder = new BonBuilder();
         builder.WriteUndefined();
         var buffer = builder.Finish();
-        Assert.Equal(2,buffer.Length);
+        Assert.Equal(2, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
         Assert.Equal(1u, bon.Items);
@@ -45,7 +48,7 @@ public class BonTests
         var builder = new BonBuilder();
         builder.Write("");
         var buffer = builder.Finish();
-        Assert.Equal(2,buffer.Length);
+        Assert.Equal(2, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
         Assert.Equal(1u, bon.Items);
@@ -63,7 +66,8 @@ public class BonTests
         var builder = new BonBuilder();
         builder.Write("Hello");
         var buffer = builder.Finish();
-        Assert.Equal(1+5+1+1+1,buffer.Length);
+        // Len(5) Hello CodeStringPtr(130) Ofs(0) LastBonLen(2)
+        Assert.Equal(1 + 5 + 1 + 1 + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
         Assert.Equal(1u, bon.Items);
@@ -73,5 +77,189 @@ public class BonTests
         Assert.True(bon.Eof);
         Assert.Equal(0u, bon.Items);
         Assert.Equal("\"Hello\"", new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanStoreSmallNumbers()
+    {
+        for (var i = -10; i <= 10; i++)
+        {
+            var builder = new BonBuilder();
+            builder.Write(i);
+            var buffer = builder.Finish();
+            Assert.Equal(1 + 1, buffer.Length);
+            var bon = new Bon(buffer);
+            Assert.False(bon.Eof);
+            Assert.Equal(1u, bon.Items);
+            Assert.Equal(BonType.Integer, bon.BonType);
+            Assert.True(bon.TryGetLong(out var result));
+            Assert.Equal(i, result);
+            Assert.True(bon.Eof);
+            Assert.Equal(0u, bon.Items);
+            Assert.Equal(i.ToString(), new Bon(buffer).DumpToJson());
+        }
+    }
+
+    [Theory]
+    [InlineData(-11)]
+    [InlineData(11)]
+    [InlineData(-123456)]
+    [InlineData(123456)]
+    [InlineData(long.MinValue)]
+    [InlineData(long.MaxValue)]
+    public void CanStoreBiggerNumbers(long i)
+    {
+        var builder = new BonBuilder();
+        builder.Write(i);
+        var buffer = builder.Finish();
+        Assert.Equal(1 + (int)PackUnpack.LengthVInt(i) + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.Integer, bon.BonType);
+        Assert.True(bon.TryGetLong(out var result));
+        Assert.Equal(i, result);
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal(i.ToString(), new Bon(buffer).DumpToJson());
+    }
+
+    [Theory]
+    [InlineData(11)]
+    [InlineData(123456)]
+    [InlineData(ulong.MaxValue)]
+    public void CanStoreBiggerPositiveNumbers(ulong i)
+    {
+        var builder = new BonBuilder();
+        builder.Write(i);
+        var buffer = builder.Finish();
+        Assert.Equal(1 + (int)PackUnpack.LengthVUInt(i) + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.Integer, bon.BonType);
+        Assert.True(bon.TryGetULong(out var result));
+        Assert.Equal(i, result);
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal(i.ToString(), new Bon(buffer).DumpToJson());
+    }
+
+    [Theory]
+    [InlineData(0, 2)]
+    [InlineData(0.5, 2)]
+    [InlineData(0.25, 2)]
+    [InlineData(-0.125, 2)]
+    [InlineData(float.PositiveInfinity, 2)]
+    [InlineData(float.NegativeInfinity, 2)]
+    [InlineData(float.Epsilon, 4)]
+    [InlineData(float.MinValue, 4)]
+    [InlineData(float.MaxValue, 4)]
+    [InlineData(1.5e20, 8)]
+    [InlineData(double.Epsilon, 8)]
+    [InlineData(double.MinValue, 8)]
+    [InlineData(double.MaxValue, 8)]
+    public void CanStoreDouble(double i, int byteLen)
+    {
+        var builder = new BonBuilder();
+        builder.Write(i);
+        var buffer = builder.Finish();
+        Assert.Equal(1 + byteLen + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.Float, bon.BonType);
+        Assert.True(bon.TryGetDouble(out var result));
+        Assert.Equal(i, result);
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        if (i == double.PositiveInfinity)
+        {
+            Assert.Equal("\"+\u221E\"", new Bon(buffer).DumpToJson());
+        }
+        else if (i == double.NegativeInfinity)
+        {
+            Assert.Equal("\"-\u221E\"", new Bon(buffer).DumpToJson());
+        }
+        else
+        {
+            Assert.Equal(i.ToString(CultureInfo.InvariantCulture), new Bon(buffer).DumpToJson());
+        }
+    }
+
+    [Fact]
+    public void CanStoreDateTime()
+    {
+        var dt = new DateTime(2022, 7, 5, 21, 15, 42, 123);
+        var builder = new BonBuilder();
+        builder.Write(dt);
+        var buffer = builder.Finish();
+        Assert.Equal(1 + 8 + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.DateTime, bon.BonType);
+        Assert.True(bon.TryGetDateTime(out var result));
+        Assert.Equal(dt, result);
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal("\"2022-07-05T21:15:42.1230000\"", new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanStoreGuid()
+    {
+        var g = Guid.NewGuid();
+        var builder = new BonBuilder();
+        builder.Write(g);
+        var buffer = builder.Finish();
+        Assert.Equal(1 + 16 + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.Guid, bon.BonType);
+        Assert.True(bon.TryGetGuid(out var result));
+        Assert.Equal(g, result);
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal("\""+g.ToString("D")+"\"", new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanStoreEmptyByteArray()
+    {
+        var g = Array.Empty<byte>();
+        var builder = new BonBuilder();
+        builder.Write(g);
+        var buffer = builder.Finish();
+        Assert.Equal(1 + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.ByteArray, bon.BonType);
+        Assert.True(bon.TryGetByteArray(out var result));
+        Assert.True(g.AsSpan().SequenceEqual(result));
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal("\"\"", new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanStoreSomeByteArray()
+    {
+        var g = new byte[] { 1, 0, 42, 255};
+        var builder = new BonBuilder();
+        builder.Write(g);
+        var buffer = builder.Finish();
+        Assert.Equal(1 + 4 + 1 + 1 + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.ByteArray, bon.BonType);
+        Assert.True(bon.TryGetByteArray(out var result));
+        Assert.True(g.AsSpan().SequenceEqual(result));
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal("\"AQAq/w==\"", new Bon(buffer).DumpToJson());
     }
 }
