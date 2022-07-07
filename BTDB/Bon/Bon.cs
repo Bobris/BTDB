@@ -52,7 +52,7 @@ public static class Helpers
     public const byte CodeArrayEmpty = 27;
     public const byte CodeArrayPtr = 131;
     public const byte CodeObjectEmpty = 28;
-    public const byte CodeObjectPtr = 29;
+    public const byte CodeObjectPtr = 132;
     public const byte CodeClassPtr = 133;
     public const byte CodeDictionaryEmpty = 29;
     public const byte CodeDictionaryPtr = 134;
@@ -591,14 +591,13 @@ public struct BonBuilder
     public void StartArray()
     {
         BeforeBon();
-        _state = State.Array;
         StackPush();
+        _state = State.Array;
     }
 
     public void FinishArray()
     {
         if (_state != State.Array) ThrowWrongState();
-
         var items = _items;
         var bytes = _topData[..(int)_topPos];
         StackPop();
@@ -631,8 +630,8 @@ public struct BonBuilder
     public void StartObject()
     {
         BeforeBon();
-        _state = State.ObjectKey;
         StackPush();
+        _state = State.ObjectKey;
     }
 
     public void WriteKey(string name)
@@ -694,9 +693,9 @@ public struct BonBuilder
     public void StartClass(string name)
     {
         BeforeBon();
+        StackPush();
         _state = State.ObjectKey;
         _objKeys.Add(WriteDedupString(name));
-        StackPush();
     }
 
     public void FinishClass()
@@ -744,8 +743,8 @@ public struct BonBuilder
     public void StartDictionary()
     {
         BeforeBon();
-        _state = State.DictionaryKey;
         StackPush();
+        _state = State.DictionaryKey;
     }
 
     public void FinishDictionary()

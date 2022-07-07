@@ -262,4 +262,116 @@ public class BonTests
         Assert.Equal(0u, bon.Items);
         Assert.Equal("\"AQAq/w==\"", new Bon(buffer).DumpToJson());
     }
+
+    [Fact]
+    public void CanStoreEmptyArray()
+    {
+        var builder = new BonBuilder();
+        builder.StartArray();
+        builder.FinishArray();
+        var buffer = builder.Finish();
+        Assert.Equal(1 + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.Array, bon.BonType);
+        Assert.True(bon.TryGetArray(out var bonArrayItems));
+        Assert.Equal(0u, bonArrayItems.Items);
+        Assert.True(bonArrayItems.Eof);
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal("[]", new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanStoreSomeArray()
+    {
+        var builder = new BonBuilder();
+        builder.StartArray();
+        builder.Write(42);
+        builder.FinishArray();
+        var buffer = builder.Finish();
+        Assert.Equal(1 + 2 + 1 + 1 + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.Array, bon.BonType);
+        Assert.True(bon.TryGetArray(out var bonArrayItems));
+        Assert.Equal(1u, bonArrayItems.Items);
+        Assert.True(bonArrayItems.TryGetLong(out var result));
+        Assert.Equal(42, result);
+        Assert.True(bonArrayItems.Eof);
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal("[\r\n  42\r\n]", new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanStoreEmptyArrayInArray()
+    {
+        var builder = new BonBuilder();
+        builder.StartArray();
+        builder.StartArray();
+        builder.FinishArray();
+        builder.FinishArray();
+        var buffer = builder.Finish();
+        Assert.Equal(1 + 1 + 1 + 1 + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.Array, bon.BonType);
+        Assert.True(bon.TryGetArray(out var bonArrayItems));
+        Assert.Equal(1u, bonArrayItems.Items);
+        Assert.True(bonArrayItems.TryGetArray(out var result));
+        Assert.Equal(0u, result.Items);
+        Assert.True(bonArrayItems.Eof);
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal("[\r\n  []\r\n]", new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanStoreEmptyObject()
+    {
+        var builder = new BonBuilder();
+        builder.StartObject();
+        builder.FinishObject();
+        var buffer = builder.Finish();
+        Assert.Equal(1 + 1, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.Object, bon.BonType);
+        Assert.True(bon.TryGetObject(out var keyedBon));
+        Assert.Equal(0u, keyedBon.Items);
+        Assert.True(keyedBon.Values().Eof);
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal("{}", new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanStoreSomeObject()
+    {
+        var builder = new BonBuilder();
+        builder.StartObject();
+        builder.WriteKey("a");
+        builder.Write(1);
+        builder.FinishObject();
+        var buffer = builder.Finish();
+        Assert.Equal(9, buffer.Length);
+        var bon = new Bon(buffer);
+        Assert.False(bon.Eof);
+        Assert.Equal(1u, bon.Items);
+        Assert.Equal(BonType.Object, bon.BonType);
+        Assert.True(bon.TryGetObject(out var keyedBon));
+        Assert.Equal(1u, keyedBon.Items);
+        Assert.Equal("a", keyedBon.NextKey());
+        Assert.Null(keyedBon.NextKey());
+        Assert.True(keyedBon.Values().TryGetLong(out var value));
+        Assert.Equal(1, value);
+        Assert.True(bon.Eof);
+        Assert.Equal(0u, bon.Items);
+        Assert.Equal("{\r\n  \"a\": 1\r\n}", new Bon(buffer).DumpToJson());
+    }
 }
