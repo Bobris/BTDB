@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Globalization;
+using Assent;
 using BTDB.Bon;
 using BTDB.Buffer;
 using Xunit;
@@ -373,5 +374,25 @@ public class BonTests
         Assert.True(bon.Eof);
         Assert.Equal(0u, bon.Items);
         Assert.Equal("{\r\n  \"a\": 1\r\n}", new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanStoreComplexArrayObjectCombination()
+    {
+        var builder = new BonBuilder();
+        builder.StartObject();
+        builder.WriteKey("a");
+        builder.StartArray();
+        builder.WriteNull();
+        builder.StartObject();
+        builder.WriteKey("b");
+        builder.Write(12.34);
+        builder.FinishObject();
+        builder.FinishArray();
+        builder.WriteKey("b");
+        builder.Write("last");
+        builder.FinishObject();
+        var buffer = builder.Finish();
+        this.Assent(new Bon(buffer).DumpToJson());
     }
 }
