@@ -694,13 +694,13 @@ public struct BonBuilder
     {
         BeforeBon();
         StackPush();
-        _state = State.ObjectKey;
+        _state = State.ClassKey;
         _objKeys.Add(WriteDedupString(name));
     }
 
     public void FinishClass()
     {
-        if (_state != State.Array) ThrowWrongState();
+        if (_state != State.ClassKey) ThrowWrongState();
 
         var items = _items;
         var objKeys = _objKeys;

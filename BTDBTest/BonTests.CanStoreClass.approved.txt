@@ -1,0 +1,5 @@
+{
+  "__type__": "MyKlass",
+  "a": null,
+  "b": "last"
+}

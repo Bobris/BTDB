@@ -395,4 +395,19 @@ public class BonTests
         var buffer = builder.Finish();
         this.Assent(new Bon(buffer).DumpToJson());
     }
+
+    [Fact]
+    public void CanStoreClass()
+    {
+        var builder = new BonBuilder();
+        builder.StartClass("MyKlass");
+        builder.WriteKey("a");
+        builder.WriteNull();
+        builder.WriteKey("b");
+        builder.Write("last");
+        builder.FinishClass();
+        var buffer = builder.Finish();
+        this.Assent(new Bon(buffer).DumpToJson());
+    }
+
 }
