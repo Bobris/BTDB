@@ -1238,7 +1238,7 @@ public ref struct Bon
                 break;
             case BonType.Dictionary:
                 writer.WriteStartArray();
-                TryGetArray(out var db);
+                TryGetDictionary(out var db);
                 while (!db.Eof)
                 {
                     writer.WriteStartArray();

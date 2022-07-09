@@ -223,7 +223,7 @@ public class BonTests
         Assert.Equal(g, result);
         Assert.True(bon.Eof);
         Assert.Equal(0u, bon.Items);
-        Assert.Equal("\""+g.ToString("D")+"\"", new Bon(buffer).DumpToJson());
+        Assert.Equal("\"" + g.ToString("D") + "\"", new Bon(buffer).DumpToJson());
     }
 
     [Fact]
@@ -248,7 +248,7 @@ public class BonTests
     [Fact]
     public void CanStoreSomeByteArray()
     {
-        var g = new byte[] { 1, 0, 42, 255};
+        var g = new byte[] { 1, 0, 42, 255 };
         var builder = new BonBuilder();
         builder.Write(g);
         var buffer = builder.Finish();
@@ -410,4 +410,28 @@ public class BonTests
         this.Assent(new Bon(buffer).DumpToJson());
     }
 
+    [Fact]
+    public void CanStoreEmptyDictionary()
+    {
+        var builder = new BonBuilder();
+        builder.StartDictionary();
+        builder.FinishDictionary();
+        var buffer = builder.Finish();
+        Assert.Equal(2, buffer.Length);
+        Assert.Equal("[]",new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanStoreSomeDictionary()
+    {
+        var builder = new BonBuilder();
+        builder.StartDictionary();
+        builder.Write("a");
+        builder.Write("A");
+        builder.Write(2);
+        builder.Write(4);
+        builder.FinishDictionary();
+        var buffer = builder.Finish();
+        this.Assent(new Bon(buffer).DumpToJson());
+    }
 }
