@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+`Bon` Binary object notation is allows creating and reading JavaScript/C# values with extensions like Dictionary/Map into binary notation. It is much faster to parse, write, skip, search by keys than JSON, size will be also smaller in most cases, in some cases much more smaller.
+
 ## 29.8.0
 
 ### Added

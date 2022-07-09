@@ -8,6 +8,7 @@ Currently this project these parts:
 -   Object Database with Relations
 -   Snappy Compression
 -   Event Storage
+-   Bon (Binary object notation)
 
 All code written in C# and licensed under very permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting .Net 6.0, main code has just 1 dependency (Microsoft.Extensions.Primitives). Code is tested using xUnit Framework. Used in production on Windows and Linux, on OSX works as well.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
@@ -133,6 +134,12 @@ Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
 -   Storage is transactional
 -   As storage could be used Azure Page Blobs
 -   EventStorage2 is specialized to be used with Kafka, metadata are stored in separate topic
+
+---
+
+## Bon
+
+`Bon` Binary object notation is allows creating and reading JavaScript/C# values with extensions like Dictionary/Map into binary notation. It is much faster to parse, write, skip, search by keys than JSON, size will be also smaller in most cases, in some cases much more smaller.
 
 ---
 
