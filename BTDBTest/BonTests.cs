@@ -418,7 +418,7 @@ public class BonTests
         builder.FinishDictionary();
         var buffer = builder.Finish();
         Assert.Equal(2, buffer.Length);
-        Assert.Equal("[]",new Bon(buffer).DumpToJson());
+        Assert.Equal("[]", new Bon(buffer).DumpToJson());
     }
 
     [Fact]
@@ -433,5 +433,37 @@ public class BonTests
         builder.FinishDictionary();
         var buffer = builder.Finish();
         this.Assent(new Bon(buffer).DumpToJson());
+    }
+
+    [Fact]
+    public void CanQuicklyDrillDownIntoBon()
+    {
+        var builder = new BonBuilder();
+        builder.StartObject();
+        builder.WriteKey("first");
+        builder.StartArray();
+        for (var i = 0; i < 10; i++)
+        {
+            builder.Write(i);
+        }
+
+        builder.FinishArray();
+        builder.WriteKey("last");
+        builder.StartArray();
+        for (var i = 0; i < 10; i++)
+        {
+            builder.Write(i + 10);
+        }
+
+        builder.FinishArray();
+        builder.FinishObject();
+        var buffer = builder.Finish();
+        var bon = new Bon(buffer);
+        Assert.True(bon.TryGetObject(out var keyedBon));
+        Assert.True(keyedBon.TryGet("last", out var array));
+        Assert.True(array.TryGetArray(out var items));
+        items.Skip();
+        Assert.True(items.TryGetLong(out var result));
+        Assert.Equal(11, result);
     }
 }
