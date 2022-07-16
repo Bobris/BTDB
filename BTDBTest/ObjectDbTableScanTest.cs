@@ -579,4 +579,28 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         t.Upsert(new(3, "Bob", 4));
         tr.Commit();
     }
+
+    public class TenantProp
+    {
+        public ulong Tenant { get; set; }
+    }
+
+    [Fact]
+    public void GenericAscendingDescendingWorks()
+    {
+        FillThingWithSKData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+        var target = new List<ThingWithSK>();
+        Assert.Equal((ulong)t.Count,
+            t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any,
+                new[] { Orderer.GenericDescending((TenantProp v) => v.Tenant) }));
+        Assert.Equal("DCAB", string.Concat(target.Select(v => v.Name)));
+        target.Clear();
+        Assert.Equal((ulong)t.Count,
+            t.GatherByName(target, 1, 2, Constraint.String.Any, Constraint.Unsigned.Any,
+                new[] { Orderer.GenericAscending((TenantProp v) => v.Tenant) }));
+        Assert.Equal("BC", string.Concat(target.Select(v => v.Name)));
+    }
 }

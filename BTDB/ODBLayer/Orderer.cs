@@ -18,6 +18,14 @@ public interface IOrderer
 
 public class Orderer
 {
+    public static IOrderer GenericAscending<TInput, TBy>(Expression<Func<TInput, TBy>> byGetter)
+    {
+        var propInfo = byGetter.GetPropertyInfo();
+        if (propInfo.PropertyType != typeof(TBy)) throw new ArgumentException("Property getter is not returned as is");
+        if (propInfo.DeclaringType != typeof(TInput)) throw new ArgumentException("Property getter is not called on "+typeof(TInput).ToSimpleName());
+        return new AscendingPropertyOrderer(null, ObjectTypeDescriptor.GetPersistentName(propInfo));
+    }
+
     public static IOrderer Ascending<TInput, TBy>(Expression<Func<TInput, TBy>> byGetter)
     {
         var propInfo = byGetter.GetPropertyInfo();
@@ -38,6 +46,11 @@ public class Orderer
     public static IOrderer Descending<TInput, TBy>(Expression<Func<TInput, TBy>> byGetter)
     {
         return new FlipOrder(Ascending(byGetter));
+    }
+
+    public static IOrderer GenericDescending<TInput, TBy>(Expression<Func<TInput, TBy>> byGetter)
+    {
+        return new FlipOrder(GenericAscending(byGetter));
     }
 
     public static IOrderer Backwards(IOrderer orderer)
@@ -83,10 +96,10 @@ class AscendingLocalePropertyOrderer : IOrderer
 
 class AscendingPropertyOrderer : IOrderer
 {
-    readonly Type _ownerType;
+    readonly Type? _ownerType;
     readonly string _propName;
 
-    public AscendingPropertyOrderer(Type ownerType, string propName)
+    public AscendingPropertyOrderer(Type? ownerType, string propName)
     {
         _ownerType = ownerType;
         _propName = propName;
