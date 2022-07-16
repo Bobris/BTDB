@@ -23,7 +23,7 @@ namespace ODbDump
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 Console.WriteLine(
-                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, statm, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump");
+                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, statm, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump, printlast, updatelast");
                 return;
             }
 
@@ -64,6 +64,33 @@ namespace ODbDump
                     var iterator = new ODBIterator(tr, visitor);
                     iterator.Iterate();
 
+                    break;
+                }
+                case "printlast":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    {
+                        FileCollection = dfc,
+                        LenientOpen = true,
+                    });
+                    using var trkv = kdb.StartReadOnlyTransaction();
+                    Console.WriteLine("CommitUlong: " + trkv.GetCommitUlong());
+                    break;
+                }
+                case "updatelast":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    {
+                        FileCollection = dfc,
+                        LenientOpen = true,
+                    });
+                    using var trkv = kdb.StartWritingTransaction().Result;
+                    Console.WriteLine("CommitUlong: " + trkv.GetCommitUlong());
+                    Console.WriteLine("Setting it to: "+ulong.Parse(args[2]));
+                    trkv.SetCommitUlong(ulong.Parse(args[2]));
+                    trkv.Commit();
                     break;
                 }
                 case "interactive":
