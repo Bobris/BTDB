@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.9.0
+
 ### Added
 
 Relations new FirstByIndex(OrDefault) methods. It is similar to GatherBy just sorting is much faster because it does not need to be sorted.
