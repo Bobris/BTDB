@@ -236,6 +236,16 @@ All same like simple `Gather` but additionally as last parameter you can pass ar
         });
 ```
 
+### FirstById
+
+    Room FirstById(Constraint<ulong> companyId, Constraint<ulong> id);
+    Room? FirstByIdOrDefault(Constraint<ulong> companyId, Constraint<ulong> id);
+    Room FirstById(Constraint<ulong> companyId, Constraint<ulong> id, IOrderers[]? orderers);
+    Room? FirstByIdOrDefault(Constraint<ulong> companyId, Constraint<ulong> id, IOrderers[]? orderers);
+
+It is like GatherBy only with take one. It is faster because of that does not need to sort and allocate too much. Version without OrDefault throws is not item matches.
+First by primary key also support variants like `FirstByIdVariantName` and `FirstByIdOrDefaultVariantName`.
+
 ### Count
 
     uint|int|ulong|long CountById(AdvancedEnumeratorParam<ulong> param);
@@ -356,6 +366,16 @@ Scan by secondary key also support variants like `ScanByAgeVariantName`.
     ulong GatherByName(List<Person> toFill, long skip, long take, Constraint<ulong> tenantId, Constraint<string> name);
 
 It is exactly same counterpart for Scan like in primary key case. Also could be used with orderers.
+
+### First (by secondary index)
+
+    Person FirstByName(Constraint<ulong> tenantId, Constraint<string> name);
+    Person? FirstByNameOrDefault(Constraint<ulong> tenantId, Constraint<string> name);
+    Person FirstByName(Constraint<ulong> tenantId, Constraint<string> name, IOrderers[]? orderers);
+    Person? FirstByNameOrDefault(Constraint<ulong> tenantId, Constraint<string> name, IOrderers[]? orderers);
+
+It is like GatherBy only with take one. It is faster because of that does not need to sort and allocate too much. Version without OrDefault throws is not item matches.
+First by secondary key also support variants like `FirstByNameVariantName` and `FirstByNameOrDefaultVariantName`.
 
 ### Upgrade
 

@@ -488,6 +488,10 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
 
         ulong GatherByName(List<ThingWithSK> target, long skip, long take, Constraint<string> name,
             Constraint<ulong> age, IOrderer[] orderers);
+        ThingWithSK? FirstByNameOrDefault(Constraint<string> name,
+            Constraint<ulong> age, IOrderer[] orderers);
+        ThingWithSK FirstByName(Constraint<string> name,
+            Constraint<ulong> age, IOrderer[] orderers);
     }
 
     [Fact]
@@ -520,6 +524,35 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
             t.GatherByName(target, 1, 2, Constraint.String.Any, Constraint.Unsigned.Any,
                 new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
         Assert.Equal("CA", string.Concat(target.Select(v => v.Name)));
+    }
+
+    [Fact]
+    public void FirstBySecondaryKeyWithOrderersWorks()
+    {
+        FillThingWithSKData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+        Assert.Equal("D",
+            t.FirstByName(Constraint.String.Any, Constraint.Unsigned.Any,
+                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }).Name);
+        Assert.Throws<BTDBException>(()=>
+            t.FirstByName(Constraint.String.Exact("NotExisting"), Constraint.Unsigned.Any,
+                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
+    }
+
+    [Fact]
+    public void FirstBySecondaryKeyOrDefaultWithOrderersWorks()
+    {
+        FillThingWithSKData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+        Assert.Equal("D",
+            t.FirstByNameOrDefault(Constraint.String.Any, Constraint.Unsigned.Any,
+                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) })!.Name);
+        Assert.Null(t.FirstByNameOrDefault(Constraint.String.Exact("NotExisting"), Constraint.Unsigned.Any,
+                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
     }
 
     void FillThingWithSKData()

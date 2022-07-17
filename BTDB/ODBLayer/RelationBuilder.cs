@@ -201,7 +201,7 @@ public class RelationBuilder
                     BuildRemoveByIdPartialMethod(method, methodParameters, reqMethod);
                 else
                 {
-                    if (StripVariant(SubstringAfterBy(method.Name), false) == "Id")
+                    if (StripVariant(SubstringAfterBy(method.Name), false).IndexName == "Id")
                     {
                         if (ParametersEndsWithAdvancedEnumeratorParam(methodParameters))
                             BuildRemoveByIdAdvancedParamMethod(method, methodParameters, reqMethod);
@@ -215,15 +215,19 @@ public class RelationBuilder
                     }
                 }
             }
-            else if (method.Name.StartsWith("ScanBy"))
+            else if (method.Name.StartsWith("ScanBy", StringComparison.Ordinal))
             {
                 BuildScanByMethod(method, reqMethod);
             }
-            else if (method.Name.StartsWith("GatherBy"))
+            else if (method.Name.StartsWith("GatherBy", StringComparison.Ordinal))
             {
                 BuildGatherByMethod(method, reqMethod);
             }
-            else if (method.Name.StartsWith("FindBy"))
+            else if (method.Name.StartsWith("FirstBy", StringComparison.Ordinal))
+            {
+                BuildFirstByMethod(method, reqMethod);
+            }
+            else if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
             {
                 BuildFindByMethod(method, reqMethod);
             }
@@ -242,7 +246,7 @@ public class RelationBuilder
             else if (method.Name.StartsWith("ListBy", StringComparison.Ordinal)
             ) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
             {
-                if (StripVariant(method.Name.Substring(6), false) == "Id")
+                if (StripVariant(method.Name[6..], false).IndexName == "Id")
                 {
                     // List by primary key
                     BuildListByIdMethod(method, reqMethod);
@@ -262,7 +266,7 @@ public class RelationBuilder
             {
                 BuildAnyByMethod(method, reqMethod);
             }
-            else if (method.Name.StartsWith("UpdateById"))
+            else if (method.Name.StartsWith("UpdateById", StringComparison.Ordinal))
             {
                 BuildUpdateByIdMethod(method, reqMethod);
             }
@@ -296,7 +300,7 @@ public class RelationBuilder
     static string SubstringAfterBy(string name)
     {
         var byIndex = name.IndexOf("By", StringComparison.Ordinal);
-        return name.Substring(byIndex + 2);
+        return name[(byIndex + 2)..];
     }
 
     static bool ParametersEndsWithAdvancedEnumeratorParam(ParameterInfo[] methodParameters)
@@ -331,7 +335,7 @@ public class RelationBuilder
 
     void BuildScanByMethod(MethodInfo method, IILMethod reqMethod)
     {
-        var nameWithoutVariants = StripVariant(method.Name.Substring(6), false);
+        var nameWithoutVariants = StripVariant(SubstringAfterBy(method.Name), false).IndexName;
         if (nameWithoutVariants is "Id")
         {
             CreateMethodScanById(reqMethod.Generator, method.Name,
@@ -361,20 +365,84 @@ public class RelationBuilder
         }
     }
 
+    void BuildFirstByMethod(MethodInfo method, IILMethod reqMethod)
+    {
+        if (!method.ReturnType.IsClass)
+        {
+            RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                $"Method {method.Name} must have class return type.");
+        }
+        var nameWithoutVariants = StripVariant(SubstringAfterBy(method.Name), true);
+        if (nameWithoutVariants.IndexName is "Id")
+        {
+            CreateMethodFirstById(reqMethod.Generator, method.Name, method.ReturnType, method.GetParameters(), nameWithoutVariants.HasOrDefault);
+        }
+        else
+        {
+            CreateMethodFirstBy(reqMethod.Generator, method.Name, method.ReturnType, method.GetParameters(), nameWithoutVariants.HasOrDefault, nameWithoutVariants.IndexName);
+        }
+    }
+
+    void CreateMethodFirstBy(IILGen ilGenerator, string methodName, Type itemType, ParameterInfo[] methodParameters, bool hasOrDefault, string skName)
+    {
+        var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
+
+        var skIndex = ClientRelationVersionInfo.GetSecondaryKeyIndex(skName);
+
+        var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex);
+
+        var constraintsParameters = methodParameters.AsSpan();
+        var orderersLocal = DetectOrderers(ilGenerator, ref constraintsParameters, 0);
+        SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, secondaryKeyFields, constraintsLocal);
+
+        //call manipulator.FirstBy_
+        ilGenerator
+            .Ldarg(0) //manipulator
+            .LdcI4(RegisterLoadType(itemType!))
+            .Ldloc(constraintsLocal)
+            .LdcI4((int)skIndex)
+            .Ldloc(orderersLocal)
+            .LdcI4(hasOrDefault ? 1 : 0)
+            .Callvirt(
+            _relationDbManipulatorType.GetMethod(
+                nameof(RelationDBManipulator<IRelation>.FirstBySecondaryKey))!.MakeGenericMethod(itemType));
+    }
+
+    void CreateMethodFirstById(IILGen ilGenerator, string methodName, Type itemType, ParameterInfo[] methodParameters, bool hasOrDefault)
+    {
+        var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
+        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var constraintsParameters = methodParameters.AsSpan();
+        var orderersLocal = DetectOrderers(ilGenerator, ref constraintsParameters, 0);
+
+        SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, primaryKeyFields.Span, constraintsLocal);
+
+        //call manipulator.FirstBy_
+        ilGenerator
+            .Ldarg(0) //manipulator
+            .LdcI4(RegisterLoadType(itemType))
+            .Ldloc(constraintsLocal)
+            .Ldloc(orderersLocal)
+            .LdcI4(hasOrDefault ? 1 : 0)
+            .Callvirt(
+                _relationDbManipulatorType.GetMethod(
+                    nameof(RelationDBManipulator<IRelation>.FirstByPrimaryKey))!.MakeGenericMethod(itemType));
+    }
+
     void BuildFindByMethod(MethodInfo method, IILMethod reqMethod)
     {
         var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
 
-        var nameWithoutVariants = StripVariant(method.Name.Substring(6), true);
-        if (nameWithoutVariants is "Id" or "IdOrDefault")
+        var nameWithoutVariants = StripVariant(method.Name[6..], true);
+        if (nameWithoutVariants.IndexName is "Id")
         {
             CreateMethodFindById(reqMethod.Generator, method.Name,
-                method.GetParameters(), method.ReturnType, pushWriter, ctxLocFactory);
+                method.GetParameters(), method.ReturnType, pushWriter, ctxLocFactory, nameWithoutVariants.HasOrDefault);
         }
         else
         {
             CreateMethodFindBy(reqMethod.Generator, method.Name, method.GetParameters(),
-                method.ReturnType, pushWriter, ctxLocFactory);
+                method.ReturnType, pushWriter, ctxLocFactory, nameWithoutVariants.HasOrDefault, nameWithoutVariants.IndexName);
         }
     }
 
@@ -751,7 +819,7 @@ public class RelationBuilder
 
             var secondaryKeyIndex =
                 ClientRelationVersionInfo.GetSecondaryKeyIndex(
-                    StripVariant(method.Name.Substring(6), false));
+                    StripVariant(method.Name[6..], false).IndexName);
             var prefixParamCount = parameters.Length - 1;
 
             var skFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
@@ -823,7 +891,7 @@ public class RelationBuilder
             var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
             var secondaryKeyIndex =
                 ClientRelationVersionInfo.GetSecondaryKeyIndex(
-                    StripVariant(method.Name.Substring(6), false));
+                    StripVariant(method.Name[6..], false).IndexName);
 
             reqMethod.Generator
                 .Ldarg(0).Castclass(typeof(IRelationDbManipulator));
@@ -1233,7 +1301,7 @@ public class RelationBuilder
         var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
         var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
         var constraintsParameters = methodParameters.AsSpan(3..);
-        var orderersLocal = DetectOrderersInGather(ilGenerator, ref constraintsParameters);
+        var orderersLocal = DetectOrderers(ilGenerator, ref constraintsParameters, 3);
 
         SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, primaryKeyFields.Span, constraintsLocal, 3);
 
@@ -1252,13 +1320,13 @@ public class RelationBuilder
                 nameof(RelationDBManipulator<IRelation>.GatherByPrimaryKey))!.MakeGenericMethod(itemType));
     }
 
-    static IILLocal DetectOrderersInGather(IILGen ilGenerator, ref Span<ParameterInfo> constraintsParameters)
+    static IILLocal DetectOrderers(IILGen ilGenerator, ref Span<ParameterInfo> constraintsParameters, ushort addParamIdx)
     {
         var orderersLocal = ilGenerator.DeclareLocal(typeof(IOrderer[]));
         if (constraintsParameters.Length > 0 && constraintsParameters[^1].ParameterType == typeof(IOrderer[]))
         {
             ilGenerator
-                .Ldarg((ushort)(constraintsParameters.Length + 3))
+                .Ldarg((ushort)(constraintsParameters.Length + addParamIdx))
                 .Stloc(orderersLocal);
             constraintsParameters = constraintsParameters[..^1];
         }
@@ -1283,7 +1351,7 @@ public class RelationBuilder
         var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex);
 
         var constraintsParameters = methodParameters.AsSpan(3..);
-        var orderersLocal = DetectOrderersInGather(ilGenerator, ref constraintsParameters);
+        var orderersLocal = DetectOrderers(ilGenerator, ref constraintsParameters, 3);
         SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, secondaryKeyFields, constraintsLocal, 3);
 
         //call manipulator.GatherBy_
@@ -1362,7 +1430,7 @@ public class RelationBuilder
         var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
         if (!isPrefixBased) RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {methodName} must return IEnumerable<T> or IEnumerator<T> type.");
 
-        var skName = StripVariant(methodName[6..], false);
+        var skName = StripVariant(methodName[6..], false).IndexName;
         var skIndex = ClientRelationVersionInfo.GetSecondaryKeyIndex(skName);
 
         var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex);
@@ -1437,7 +1505,7 @@ public class RelationBuilder
 
     void CreateMethodFindById(IILGen ilGenerator, string methodName,
         ParameterInfo[] methodParameters, Type methodReturnType,
-        Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
+        Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory, bool hasOrDefault)
     {
         var spanLocal = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
         var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
@@ -1469,29 +1537,19 @@ public class RelationBuilder
         }
         else
         {
-            itemType = methodReturnType == typeof(void) ? ItemType : methodReturnType;
-            ilGenerator.LdcI4(ShouldThrowWhenKeyNotFound(methodName, methodReturnType) ? 1 : 0);
+            itemType = methodReturnType;
+            ilGenerator.LdcI4(hasOrDefault?0:1);
             ilGenerator.LdcI4(RegisterLoadType(itemType));
             ilGenerator.Callvirt(
                 _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.FindByIdOrDefault))!
                     .MakeGenericMethod(itemType));
-            if (methodReturnType == typeof(void))
-                ilGenerator.Pop();
         }
     }
 
     void CreateMethodFindBy(IILGen ilGenerator, string methodName,
         ParameterInfo[] methodParameters, Type methodReturnType,
-        Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
+        Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory, bool hasOrDefault, string skName)
     {
-        var allowDefault = false;
-        var skName = StripVariant(methodName.Substring(6), true);
-        if (skName.EndsWith("OrDefault"))
-        {
-            skName = skName.Substring(0, skName.Length - 9);
-            allowDefault = true;
-        }
-
         var skIndex = ClientRelationVersionInfo.GetSecondaryKeyIndex(skName);
         var localRemapped = RemapSecondaryKeyIndex(ilGenerator, skIndex);
         WriteRelationSKPrefix(ilGenerator, pushWriter, localRemapped);
@@ -1521,7 +1579,7 @@ public class RelationBuilder
         }
         else
         {
-            ilGenerator.LdcI4(allowDefault ? 0 : 1); //? should throw
+            ilGenerator.LdcI4(hasOrDefault ? 0 : 1); //? should throw
             ilGenerator.LdcI4(RegisterLoadType(methodReturnType));
             ilGenerator.Callvirt(
                 _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
@@ -1530,27 +1588,28 @@ public class RelationBuilder
         }
     }
 
-    string StripVariant(string name, bool withOrDefault)
+    (string IndexName, bool HasOrDefault) StripVariant(string name, bool withOrDefault)
     {
-        var result = "";
+        (string IndexName, bool HasOrDefault) result = ("", false);
 
         void Check(string id)
         {
             if (!name.StartsWith(id)) return;
             if (withOrDefault)
             {
-                if (name.Substring(id.Length).StartsWith("OrDefault"))
+                if (name[id.Length..].StartsWith("OrDefault"))
                 {
-                    if (result.Length < id.Length + 9)
+                    if (result.IndexName.Length < id.Length)
                     {
-                        result = id + "OrDefault";
+                        result = (id, true);
+                        return;
                     }
                 }
             }
 
-            if (result.Length < id.Length)
+            if (result.IndexName.Length < id.Length)
             {
-                result = id;
+                result = (id, false);
             }
         }
 
@@ -1561,7 +1620,7 @@ public class RelationBuilder
             Check(secondaryKeyName);
         }
 
-        return result.Length == 0 ? name : result;
+        return result.IndexName.Length == 0 ? (name, false) : result;
     }
 
     ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
@@ -1599,7 +1658,7 @@ public class RelationBuilder
     {
         if (methodName.StartsWith("RemoveBy") || methodName.StartsWith("ShallowRemoveBy"))
             return methodReturnType == typeof(void);
-        if (StripVariant(methodName.Substring(6), true) == "IdOrDefault")
+        if (StripVariant(methodName[6..], true) == ("Id", true))
             return false;
         return true;
     }

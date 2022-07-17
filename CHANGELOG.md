@@ -4,6 +4,8 @@
 
 ### Added
 
+Relations new FirstByIndex(OrDefault) methods. It is similar to GatherBy just sorting is much faster because it does not need to be sorted.
+
 `Orderer`.`GenericAscending` and `Orderer`.`GenericDescending` methods which just don't check property owner type equality with relation item type.
 
 `Bon` Binary object notation is allows creating and reading JavaScript/C# values with extensions like Dictionary/Map into binary notation. It is much faster to parse, write, skip, search by keys than JSON, size will be also smaller in most cases, in some cases much more smaller.

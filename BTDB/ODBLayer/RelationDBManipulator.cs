@@ -729,6 +729,150 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             loaderIndex);
     }
 
+    public TItem FirstByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target, IOrderer[]? orderers, bool hasOrDefault) where TItem : class
+    {
+        StructList<byte> keyBytes = new();
+        keyBytes.AddRange(_relationInfo.Prefix);
+
+        if (orderers == null || orderers.Length == 0)
+        {
+            var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
+                loaderIndex, constraints);
+
+            if (enumerator.MoveNextInGather())
+            {
+                return enumerator.CurrentInGather;
+            }
+
+            ThrowIfNotHasOrDefault(hasOrDefault);
+            return null!;
+        }
+        else
+        {
+            var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
+            var primaryKeyFields = relationVersionInfo.PrimaryKeyFields.Span;
+            var ordererIdxs = PrepareOrderers(ref constraints, orderers, primaryKeyFields);
+
+            var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
+                loaderIndex, constraints);
+
+            var sns = new SortNativeStorage(true);
+            try
+            {
+                enumerator.GatherForSorting(ref sns, ordererIdxs, orderers);
+                if (sns.First.IsEmpty)
+                {
+                    ThrowIfNotHasOrDefault(hasOrDefault);
+                    return null!;
+                }
+                return enumerator.CurrentByKeyIndex(sns.GetFirstKeyIndex());
+            }
+            finally
+            {
+                sns.Dispose();
+            }
+        }
+    }
+
+    public TItem FirstBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex, IOrderer[]? orderers, bool hasOrDefault) where TItem : class
+    {
+        StructList<byte> keyBytes = new();
+        keyBytes.AddRange(_relationInfo.PrefixSecondary);
+        var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
+        keyBytes.Add((byte)remappedSecondaryKeyIndex);
+
+        if (orderers == null || orderers.Length == 0)
+        {
+            var enumerator = new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
+                this,
+                loaderIndex, constraints, remappedSecondaryKeyIndex, this);
+
+            if (enumerator.MoveNextInGather())
+            {
+                return enumerator.CurrentInGather;
+            }
+
+            ThrowIfNotHasOrDefault(hasOrDefault);
+            return null!;
+        }
+        else
+        {
+            var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
+            var secondaryKeyInfo = relationVersionInfo.SecondaryKeys[secondaryKeyIndex];
+            var fields = secondaryKeyInfo.Fields;
+            var ordererIdxs = PrepareOrderersSK(ref constraints, orderers, fields, relationVersionInfo);
+
+            var enumerator = new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
+                this,
+                loaderIndex, constraints, remappedSecondaryKeyIndex, this);
+
+            var sns = new SortNativeStorage(true);
+            try
+            {
+                enumerator.GatherForSorting(ref sns, ordererIdxs, orderers);
+                if (sns.First.IsEmpty)
+                {
+                    ThrowIfNotHasOrDefault(hasOrDefault);
+                    return null!;
+                }
+                return enumerator.CurrentByKeyIndex(sns.GetFirstKeyIndex());
+            }
+            finally
+            {
+                sns.Dispose();
+            }
+        }
+    }
+
+    static void ThrowIfNotHasOrDefault(bool hasOrDefault)
+    {
+        if (!hasOrDefault)
+            throw new BTDBException("FirstBy didn't found item. Append OrDefault to method name if you don't care.");
+    }
+
+    int[] PrepareOrderers(ref ConstraintInfo[] constraints, IOrderer[] orderers, ReadOnlySpan<TableFieldInfo> primaryKeyFields)
+    {
+        var ordererIdxs = new int[orderers.Length];
+        Array.Fill(ordererIdxs, -2);
+        for (var i = 0; i < primaryKeyFields.Length; i++)
+        {
+            var fi = primaryKeyFields[i];
+            for (var j = 0; j < orderers.Length; j++)
+            {
+                if (orderers[j].ColumnName == fi.Name)
+                {
+                    ordererIdxs[j] = i;
+                    var type = orderers[j].ExpectedInput;
+                    if (type != null && type != typeof(T))
+                    {
+                        throw new BTDBException("Orderer[" + j + "] " + orderers[j].ColumnName + " of type " +
+                                                type.ToSimpleName() + " is not equal to " + typeof(T));
+                    }
+
+                    while (i >= constraints.Length)
+                    {
+                        var fi2 = primaryKeyFields[constraints.Length];
+                        var constraintType = typeof(Constraint<>).MakeGenericType(fi2.Handler!.HandledType()!);
+                        var constraintAny = (IConstraint)constraintType.GetField("Any")!.GetValue(null);
+                        constraints = constraints.Append(new() { Constraint = constraintAny! }).ToArray();
+                    }
+                }
+            }
+        }
+
+        for (var i = 0; i < orderers.Length; i++)
+        {
+            if (ordererIdxs[i] == -2)
+            {
+                throw new BTDBException("Unmatched orderer[" + i + "] " + orderers[i].ColumnName + " of " +
+                                        orderers[i].ExpectedInput?.ToSimpleName() + " in relation " +
+                                        _relationInfo.Name);
+            }
+        }
+
+        return ordererIdxs;
+    }
+
     public ulong GatherByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
         long skip, long take, IOrderer[]? orderers)
     {
@@ -767,48 +911,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         {
             var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
             var primaryKeyFields = relationVersionInfo.PrimaryKeyFields.Span;
-            var ordererIdxs = new int[orderers.Length];
-            Array.Fill(ordererIdxs, -2);
-            for (var i = 0; i < primaryKeyFields.Length; i++)
-            {
-                var fi = primaryKeyFields[i];
-                for (var j = 0; j < orderers.Length; j++)
-                {
-                    if (orderers[j].ColumnName == fi.Name)
-                    {
-                        ordererIdxs[j] = i;
-                        var type = orderers[j].ExpectedInput;
-                        if (type != null && type != typeof(T))
-                        {
-                            throw new BTDBException("Orderer[" + j + "] " + orderers[j].ColumnName + " of type " +
-                                                    type.ToSimpleName() + " is not equal to " + typeof(T));
-                        }
-
-                        while (i >= constraints.Length)
-                        {
-                            var fi2 = primaryKeyFields[constraints.Length];
-                            var constraintType = typeof(Constraint<>).MakeGenericType(fi2.Handler!.HandledType()!);
-                            var constraintAny = (IConstraint)constraintType.GetField("Any")!.GetValue(null);
-                            constraints = constraints.Append(new() { Constraint = constraintAny! }).ToArray();
-                        }
-                    }
-                }
-            }
-
-            for (var i = 0; i < orderers.Length; i++)
-            {
-                if (ordererIdxs[i] == -2)
-                {
-                    throw new BTDBException("Unmatched orderer[" + i + "] " + orderers[i].ColumnName + " of " +
-                                            orderers[i].ExpectedInput?.ToSimpleName() + " in relation " +
-                                            _relationInfo.Name);
-                }
-            }
+            var ordererIdxs = PrepareOrderers(ref constraints, orderers, primaryKeyFields);
 
             var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
                 loaderIndex, constraints);
 
-            var sns = new SortNativeStorage();
+            var sns = new SortNativeStorage(false);
             try
             {
                 enumerator.GatherForSorting(ref sns, ordererIdxs, orderers);
@@ -871,49 +979,13 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
             var secondaryKeyInfo = relationVersionInfo.SecondaryKeys[secondaryKeyIndex];
             var fields = secondaryKeyInfo.Fields;
-            var ordererIdxs = new int[orderers.Length];
-            Array.Fill(ordererIdxs, -2);
-            for (var i = 0; i < fields.Count; i++)
-            {
-                var fi = relationVersionInfo.GetFieldInfo(fields[i]);
-                for (var j = 0; j < orderers.Length; j++)
-                {
-                    if (orderers[j].ColumnName == fi.Name)
-                    {
-                        ordererIdxs[j] = i;
-                        var type = orderers[j].ExpectedInput;
-                        if (type != null && type != typeof(T))
-                        {
-                            throw new BTDBException("Orderer[" + j + "] " + orderers[j].ColumnName + " of type " +
-                                                    type.ToSimpleName() + " is not equal to " + typeof(T));
-                        }
-
-                        while (i >= constraints.Length)
-                        {
-                            var fi2 = relationVersionInfo.GetFieldInfo(fields[constraints.Length]);
-                            var constraintType = typeof(Constraint<>).MakeGenericType(fi2.Handler!.HandledType()!);
-                            var constraintAny = (IConstraint)constraintType.GetField("Any")!.GetValue(null);
-                            constraints = constraints.Append(new() { Constraint = constraintAny! }).ToArray();
-                        }
-                    }
-                }
-            }
-
-            for (var i = 0; i < orderers.Length; i++)
-            {
-                if (ordererIdxs[i] == -2)
-                {
-                    throw new BTDBException("Unmatched orderer[" + i + "] " + orderers[i].ColumnName + " of " +
-                                            orderers[i].ExpectedInput?.ToSimpleName() + " in relation " +
-                                            _relationInfo.Name);
-                }
-            }
+            var ordererIdxs = PrepareOrderersSK(ref constraints, orderers, fields, relationVersionInfo);
 
             var enumerator = new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
                 this,
                 loaderIndex, constraints, remappedSecondaryKeyIndex, this);
 
-            var sns = new SortNativeStorage();
+            var sns = new SortNativeStorage(false);
             try
             {
                 enumerator.GatherForSorting(ref sns, ordererIdxs, orderers);
@@ -932,6 +1004,50 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 sns.Dispose();
             }
         }
+    }
+
+    int[] PrepareOrderersSK(ref ConstraintInfo[] constraints, IOrderer[] orderers, IList<FieldId> fields,
+        RelationVersionInfo relationVersionInfo)
+    {
+        var ordererIdxs = new int[orderers.Length];
+        Array.Fill(ordererIdxs, -2);
+        for (var i = 0; i < fields.Count; i++)
+        {
+            var fi = relationVersionInfo.GetFieldInfo(fields[i]);
+            for (var j = 0; j < orderers.Length; j++)
+            {
+                if (orderers[j].ColumnName == fi.Name)
+                {
+                    ordererIdxs[j] = i;
+                    var type = orderers[j].ExpectedInput;
+                    if (type != null && type != typeof(T))
+                    {
+                        throw new BTDBException("Orderer[" + j + "] " + orderers[j].ColumnName + " of type " +
+                                                type.ToSimpleName() + " is not equal to " + typeof(T));
+                    }
+
+                    while (i >= constraints.Length)
+                    {
+                        var fi2 = relationVersionInfo.GetFieldInfo(fields[constraints.Length]);
+                        var constraintType = typeof(Constraint<>).MakeGenericType(fi2.Handler!.HandledType()!);
+                        var constraintAny = (IConstraint)constraintType.GetField("Any")!.GetValue(null);
+                        constraints = constraints.Append(new() { Constraint = constraintAny! }).ToArray();
+                    }
+                }
+            }
+        }
+
+        for (var i = 0; i < orderers.Length; i++)
+        {
+            if (ordererIdxs[i] == -2)
+            {
+                throw new BTDBException("Unmatched orderer[" + i + "] " + orderers[i].ColumnName + " of " +
+                                        orderers[i].ExpectedInput?.ToSimpleName() + " in relation " +
+                                        _relationInfo.Name);
+            }
+        }
+
+        return ordererIdxs;
     }
 
     public IEnumerable<TItem> ScanByPrimaryKeyPrefix<TItem>(int loaderIndex, ConstraintInfo[] constraints)
@@ -1110,15 +1226,19 @@ ref struct SortNativeStorage
     internal StructList<IntPtr> Storage;
     internal StructList<IntPtr> Items;
     internal Span<byte> FreeSpace;
+    internal ReadOnlySpan<byte> First;
     internal uint AllocSize;
+    internal bool OnlyFirst;
 
-    public SortNativeStorage()
+    public SortNativeStorage(bool onlyFirst)
     {
-        AllocSize = 256 * 1024;
+        OnlyFirst = onlyFirst;
+        AllocSize = 256 * 1024u;
         Storage = new();
         Items = new();
         FreeSpace = new();
         Writer = new();
+        First = new();
     }
 
     internal unsafe void AllocChunk()
@@ -1131,6 +1251,10 @@ ref struct SortNativeStorage
 
     internal void StartNewItem()
     {
+        if (OnlyFirst)
+        {
+            return;
+        }
         if (FreeSpace.Length < 128) AllocChunk();
         Writer = new(FreeSpace);
         Writer.WriteInt32(0); // Space for length
@@ -1143,6 +1267,23 @@ ref struct SortNativeStorage
         var lenOfKeyIndex = Writer.GetCurrentPosition() - endOfData;
         Writer.WriteUInt8((byte)lenOfKeyIndex);
         var span = Writer.GetSpan();
+        if (OnlyFirst)
+        {
+            if (First.IsEmpty)
+            {
+                First = Writer.GetPersistentSpanAndReset();
+            }
+            else if (First.SequenceCompareTo(Writer.GetSpan()) > 0)
+            {
+                First = Writer.GetPersistentSpanAndReset();
+            }
+            else
+            {
+                Writer.Reset();
+            }
+
+            return;
+        }
         if (Writer.HeapBuffer != null) // If it didn't fit free space in last chunk
         {
             while (span.Length >= AllocSize) AllocSize *= 2;
@@ -1166,6 +1307,15 @@ ref struct SortNativeStorage
     {
         var ptr = Items[idx].ToPointer();
         var len = Unsafe.Read<int>(ptr);
+        var lenDelta = Unsafe.Read<byte>((byte*)ptr + len - 1);
+        var delta = PackUnpack.UnsafeUnpackVUInt(ref Unsafe.AsRef<byte>((byte*)ptr + len - 1 - lenDelta), lenDelta);
+        return StartKeyIndex + delta;
+    }
+
+    public unsafe ulong GetFirstKeyIndex()
+    {
+        var ptr = Unsafe.AsPointer(ref MemoryMarshal.GetReference(First));
+        var len = First.Length;
         var lenDelta = Unsafe.Read<byte>((byte*)ptr + len - 1);
         var delta = PackUnpack.UnsafeUnpackVUInt(ref Unsafe.AsRef<byte>((byte*)ptr + len - 1 - lenDelta), lenDelta);
         return StartKeyIndex + delta;
