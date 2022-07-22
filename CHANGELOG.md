@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.9.1
+
 ### Fixed
 
 Bug in ScanBy with Constraint.First (didn't properly skipped nonfirst) when used on last property of key.
