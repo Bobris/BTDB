@@ -636,4 +636,52 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
                 new[] { Orderer.GenericAscending((TenantProp v) => v.Tenant) }));
         Assert.Equal("BC", string.Concat(target.Select(v => v.Name)));
     }
+
+    public class ThreePrimaryKeys
+    {
+        [PrimaryKey(1)]
+        public ulong TenantId { get; set; }
+        [PrimaryKey(2)]
+        public ulong ItemId { get; set; }
+        [PrimaryKey(3)]
+        public ulong Version { get; set; }
+
+        public ThreePrimaryKeys(ulong tenantId, ulong itemId, ulong version)
+        {
+            TenantId = tenantId;
+            ItemId = itemId;
+            Version = version;
+        }
+    }
+
+    public interface IThreePrimaryKeysTable : IRelation<ThreePrimaryKeys>
+    {
+        IEnumerable<ThreePrimaryKeys> ScanById(Constraint<ulong> tenantId, Constraint<ulong> itemId,
+            Constraint<ulong> version);
+    }
+
+    void FillThreePrimaryKeysWithData()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreePrimaryKeysTable>();
+        t.Upsert(new(1, 1, 1));
+        t.Upsert(new(1, 1, 2));
+        t.Upsert(new(1, 2, 1));
+        t.Upsert(new(1, 2, 2));
+        tr.Commit();
+    }
+
+    [Fact]
+    public void CollectListOfUniqueSecondaryKeys()
+    {
+        FillThreePrimaryKeysWithData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreePrimaryKeysTable>();
+
+        var data = t.ScanById(Constraint.Unsigned.Exact(1), Constraint.Unsigned.Any,
+            Constraint.First(Constraint.Unsigned.Any));
+
+        Assert.Equal(data, new []{new ThreePrimaryKeys(1,1,1), new ThreePrimaryKeys(1,2,1)});
+    }
 }
