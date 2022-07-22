@@ -110,7 +110,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
             i++;
         }
 
-        if (skipNextOn != -1 && i >= skipNextOn)
+        if (skipNextOn != -1 && i >= skipNextOn - 1)
         {
             goto goNextFast;
         }
@@ -344,7 +344,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
             i++;
         }
 
-        if (_skipNextOn != -1 && i >= _skipNextOn)
+        if (_skipNextOn != -1 && i >= _skipNextOn - 1)
         {
             goto goNextFast;
         }

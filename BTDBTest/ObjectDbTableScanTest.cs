@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using BTDB.KVDBLayer;
@@ -637,7 +638,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal("BC", string.Concat(target.Select(v => v.Name)));
     }
 
-    public class ThreePrimaryKeys
+    public class ThreePrimaryKeys: IEquatable<ThreePrimaryKeys>
     {
         [PrimaryKey(1)]
         public ulong TenantId { get; set; }
@@ -652,11 +653,33 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
             ItemId = itemId;
             Version = version;
         }
+
+        public bool Equals(ThreePrimaryKeys? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return TenantId == other.TenantId && ItemId == other.ItemId && Version == other.Version;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((ThreePrimaryKeys)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(TenantId, ItemId, Version);
+        }
     }
 
     public interface IThreePrimaryKeysTable : IRelation<ThreePrimaryKeys>
     {
         IEnumerable<ThreePrimaryKeys> ScanById(Constraint<ulong> tenantId, Constraint<ulong> itemId,
+            Constraint<ulong> version);
+        ulong GatherById(ICollection<ThreePrimaryKeys> target, long skip, long take, Constraint<ulong> tenantId, Constraint<ulong> itemId,
             Constraint<ulong> version);
     }
 
@@ -680,8 +703,14 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var t = tr.GetRelation<IThreePrimaryKeysTable>();
 
         var data = t.ScanById(Constraint.Unsigned.Exact(1), Constraint.Unsigned.Any,
-            Constraint.First(Constraint.Unsigned.Any));
+            Constraint.First(Constraint.Unsigned.Any)).ToList();
 
-        Assert.Equal(data, new []{new ThreePrimaryKeys(1,1,1), new ThreePrimaryKeys(1,2,1)});
+        Assert.Equal(new []{new ThreePrimaryKeys(1,1,1), new ThreePrimaryKeys(1,2,1)}, data);
+
+        data.Clear();
+        Assert.Equal(2ul, t.GatherById(data, 0, 100, Constraint.Unsigned.Exact(1), Constraint.Unsigned.Any,
+            Constraint.First(Constraint.Unsigned.Any)));
+
+        Assert.Equal(new []{new ThreePrimaryKeys(1,1,1), new ThreePrimaryKeys(1,2,1)}, data);
     }
 }
