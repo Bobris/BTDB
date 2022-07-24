@@ -9,11 +9,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.13.0" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
     <PackageReference Include="Disruptor" Version="4.0.0" />
-    <PackageReference Include="FluentAssertions" Version="5.10.3" />
+    <PackageReference Include="FluentAssertions" Version="6.7.0" />
     <PackageReference Include="HdrHistogram" Version="2.5.0" />
-    <PackageReference Include="protobuf-net" Version="3.0.101" />
+    <PackageReference Include="protobuf-net" Version="3.1.17" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\BTDB\BTDB.csproj" />

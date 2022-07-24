@@ -97,13 +97,6 @@ public static class PackUnpack
         BinaryPrimitives.WriteInt64LittleEndian(span, v);
     }
 
-    // This pattern is optimized by Roslyn that it place these data into constant data segment in executable
-    static ReadOnlySpan<byte> LzcToVUintLen => new byte[ /*65*/]
-    {
-            9, 9, 9, 9, 9, 9, 9, 9, 8, 8, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5,
-            4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1
-    };
-
     public static uint LengthVUInt(uint value)
     {
         /* Logically doing commented code, but branch less => much faster
@@ -113,13 +106,12 @@ public static class PackUnpack
         if (value < 0x10000000) return 4;
         return 5;
         */
-        return Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(LzcToVUintLen),
-            (IntPtr)(32 + BitOperations.LeadingZeroCount(value)));
+        return (uint)(352 - BitOperations.LeadingZeroCount(value) * 9) >> 6;
     }
 
     public static uint LengthVUInt(ulong value)
     {
-        /* Logically doing commented code, but branch less => much faster
+        /* Logically doing commented code, but branch less and memory access less => much faster
         if (value < 0x80) return 1;
         if (value < 0x4000) return 2;
         if (value < 0x200000) return 3;
@@ -130,8 +122,7 @@ public static class PackUnpack
         if (value < 0x0100000000000000) return 8;
         return 9;
         */
-        return Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(LzcToVUintLen),
-            (IntPtr)BitOperations.LeadingZeroCount(value));
+        return (uint)(20441 - BitOperations.LeadingZeroCount(value) * 287) >> 11;
     }
 
     public static uint LengthVUInt(byte[] data, int ofs)
@@ -348,8 +339,7 @@ public static class PackUnpack
         return 5;
         */
         value ^= value >> 31; // Convert negative value to -value-1 and don't touch zero or positive
-        return Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(LzcToVIntLen),
-            (IntPtr)32 + BitOperations.LeadingZeroCount((uint)value));
+        return ((uint)(40 - BitOperations.LeadingZeroCount((uint)value)) * 9) >> 6;
     }
 
     public static uint LengthVInt(long value)

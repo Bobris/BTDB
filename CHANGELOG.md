@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Optimized
+
+VUInt pack unpack calculations.
+
 ## 29.9.1
 
 ### Fixed

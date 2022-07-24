@@ -37,13 +37,13 @@ static class Program
         //new CompactorLatencyMeasurement().Run();
         //new ClassGenerator().Run();
         //new EventLayer2TestWithALotOfClasses().Run();
-        //new BenchTest().Verify();
-        //BenchmarkRunner.Run<BenchTest>();
+        //new BenchTest4().Verify();
+        BenchmarkRunner.Run<BenchTest4>();
         //new KeyValueDBRollbackTest().CanOpenDbAfterDeletingAndCompacting();
         //
         //var cts = new CancellationTokenSource();
         //Console.CancelKeyPress += delegate { cts.Cancel(); };
         //new CompactionStressTest().Run("e:/testdb", cts.Token);
-        new NativeVsManagedBugFinder().Torture();
+        //new NativeVsManagedBugFinder().Torture();
     }
 }
