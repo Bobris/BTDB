@@ -579,6 +579,27 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return (int)_kvtr.EraseAll(keyBytesPrefix);
     }
 
+    public void RemoveAll()
+    {
+        MarkModification();
+        if (_relationInfo.NeedImplementFreeContent())
+        {
+            var count = _kvtr.GetKeyValueCount(_relationInfo.Prefix);
+            for (var idx = 0L; idx < count; idx++)
+            {
+                if (!_kvtr.SetKeyIndex(_relationInfo.Prefix, idx))
+                    throw new BTDBException("Not found record in RemoveAll.");
+                var valueBytes = _kvtr.GetValue();
+                _relationInfo.FreeContent(_transaction, valueBytes);
+            }
+        }
+        _kvtr.EraseAll(_relationInfo.Prefix);
+        if (_hasSecondaryIndexes)
+        {
+            _kvtr.EraseAll(_relationInfo.PrefixSecondary);
+        }
+    }
+
     public long CountWithPrefix(in ReadOnlySpan<byte> keyBytesPrefix)
     {
         return _kvtr.GetKeyValueCount(keyBytesPrefix);

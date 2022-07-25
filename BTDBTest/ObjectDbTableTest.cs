@@ -2732,6 +2732,8 @@ namespace BTDBTest
 
             Assert.Equal((uint)0, table.CountByUploadTime(1, BatchType.Notification, param));
             Assert.Equal(new[] { 1ul, 2ul, 3ul }, table.FindByIdOnlyPk(1).Select(v => v.BatchId).ToList());
+            table.RemoveAll();
+            Assert.Equal(0, table.Count);
         }
 
         [Fact]

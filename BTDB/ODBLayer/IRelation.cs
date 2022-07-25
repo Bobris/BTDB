@@ -16,6 +16,9 @@ public interface IRelation<T> : ICovariantRelation<T>
 
 public interface IRelation
 {
+    /// Quickly remove all items including any dependent IDictionaries.
+    /// <exception cref="NotSupportedException">is thrown only as default implementation for custom relations</exception>
+    void RemoveAll() => throw new NotSupportedException();
     Type BtdbInternalGetRelationInterfaceType();
     IRelation? BtdbInternalNextInChain { get; set; }
 }

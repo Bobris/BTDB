@@ -129,6 +129,12 @@ advanced enumeration param can be used same way as in ListById
     int RemoveById(primaryKey1, primaryKey2, ..., primaryKey_N-1, AdvancedEnumeratorParam<typeof(primaryKeyField(N))>);
 ```
 
+### RemoveAll
+
+    void RemoveAll();
+
+This method is always available, because it is defined already in `IRelation`. It is even faster than RemoveById().
+
 ### Contains
 
     bool Contains(primaryKey1, ..., primaryKeyN);

@@ -62,6 +62,20 @@ public class ObjectDbTableFreeContentTest : IDisposable
         AssertNoLeaksInDb();
     }
 
+    [Fact]
+    public void FreeIDictionaryByRemoveAll()
+    {
+        var creator = InitILinks();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            links.RemoveAll();
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
     Func<IObjectDBTransaction, ILinks> InitILinks()
     {
         Func<IObjectDBTransaction, ILinks> creator;
