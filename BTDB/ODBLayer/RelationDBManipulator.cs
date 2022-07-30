@@ -249,6 +249,30 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return true;
     }
 
+    public (long Inserted, long Updated) UpsertRange(IEnumerable<T> items)
+    {
+        var inserted = 0L;
+        var updated = 0L;
+        if (_relationInfo.NeedImplementFreeContent())
+        {
+            foreach (var item in items)
+            {
+                if (Upsert(item)) inserted++;
+                else updated++;
+            }
+        }
+        else
+        {
+            foreach (var item in items)
+            {
+                if (ShallowUpsert(item)) inserted++;
+                else updated++;
+            }
+        }
+
+        return (inserted, updated);
+    }
+
     [SkipLocalsInit]
     public bool ShallowUpsert(T obj)
     {
@@ -593,6 +617,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 _relationInfo.FreeContent(_transaction, valueBytes);
             }
         }
+
         _kvtr.EraseAll(_relationInfo.Prefix);
         if (_hasSecondaryIndexes)
         {
@@ -725,6 +750,13 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return new RelationEnumerator<T>(_transaction, _relationInfo, _relationInfo.Prefix, this, 0);
     }
 
+    public IEnumerable<TAs> As<TAs>()
+    {
+        if (_kvtr.GetKeyValueCount(_relationInfo.Prefix) == 0) return Enumerable.Empty<TAs>();
+        var loaderInfo = new RelationInfo.ItemLoaderInfo(_relationInfo, typeof(TAs));
+        return new RelationEnumerator<TAs>(_transaction, _relationInfo.Prefix, this, loaderInfo);
+    }
+
     public TItem FindByIdOrDefault<TItem>(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound, int loaderIndex)
     {
         return (TItem)FindByIdOrDefaultInternal(_relationInfo.ItemLoaderInfos[loaderIndex], keyBytes,
@@ -750,7 +782,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             loaderIndex);
     }
 
-    public TItem FirstByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target, IOrderer[]? orderers, bool hasOrDefault) where TItem : class
+    public TItem FirstByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
+        IOrderer[]? orderers, bool hasOrDefault) where TItem : class
     {
         StructList<byte> keyBytes = new();
         keyBytes.AddRange(_relationInfo.Prefix);
@@ -786,6 +819,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                     ThrowIfNotHasOrDefault(hasOrDefault);
                     return null!;
                 }
+
                 return enumerator.CurrentByKeyIndex(sns.GetFirstKeyIndex());
             }
             finally
@@ -795,7 +829,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
     }
 
-    public TItem FirstBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex, IOrderer[]? orderers, bool hasOrDefault) where TItem : class
+    public TItem FirstBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex,
+        IOrderer[]? orderers, bool hasOrDefault) where TItem : class
     {
         StructList<byte> keyBytes = new();
         keyBytes.AddRange(_relationInfo.PrefixSecondary);
@@ -836,6 +871,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                     ThrowIfNotHasOrDefault(hasOrDefault);
                     return null!;
                 }
+
                 return enumerator.CurrentByKeyIndex(sns.GetFirstKeyIndex());
             }
             finally
@@ -851,7 +887,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             throw new BTDBException("FirstBy didn't found item. Append OrDefault to method name if you don't care.");
     }
 
-    int[] PrepareOrderers(ref ConstraintInfo[] constraints, IOrderer[] orderers, ReadOnlySpan<TableFieldInfo> primaryKeyFields)
+    int[] PrepareOrderers(ref ConstraintInfo[] constraints, IOrderer[] orderers,
+        ReadOnlySpan<TableFieldInfo> primaryKeyFields)
     {
         var ordererIdxs = new int[orderers.Length];
         Array.Fill(ordererIdxs, -2);
@@ -1276,6 +1313,7 @@ ref struct SortNativeStorage
         {
             return;
         }
+
         if (FreeSpace.Length < 128) AllocChunk();
         Writer = new(FreeSpace);
         Writer.WriteInt32(0); // Space for length
@@ -1305,6 +1343,7 @@ ref struct SortNativeStorage
 
             return;
         }
+
         if (Writer.HeapBuffer != null) // If it didn't fit free space in last chunk
         {
             while (span.Length >= AllocSize) AllocSize *= 2;

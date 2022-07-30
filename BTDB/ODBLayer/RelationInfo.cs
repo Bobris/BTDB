@@ -401,7 +401,7 @@ public class RelationInfo
             tr.Owner);
         foreach (var loadType in builder.LoadTypes)
         {
-            ItemLoaderInfos.Add(new ItemLoaderInfo(this, loadType));
+            ItemLoaderInfos.Add(new(this, loadType));
         }
 
         if (LastPersistedVersion > 0 &&

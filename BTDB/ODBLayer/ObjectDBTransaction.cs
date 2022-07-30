@@ -1079,7 +1079,17 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     {
         var builder = RelationBuilder.GetFromCache(interfaceType, _owner.RelationInfoResolver);
         var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType, builder);
-        return (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator.Create(relationInfo);
+        var factory = (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator.Create(relationInfo);
+        if (relationInfo.LastPersistedVersion == 0)
+        {
+            var upgrader =
+                Owner.ActualOptions.Container?.ResolveOptional(
+                    typeof(IRelationOnCreate<>).MakeGenericType(interfaceType));
+            if (upgrader != null)
+                upgrader.GetType().GetMethod("OnCreate", BindingFlags.Instance | BindingFlags.Public,
+                    new[] { typeof(IObjectDBTransaction), interfaceType })!.Invoke(upgrader, new object?[] {this, factory(this) });
+        }
+        return factory;
     }
 
     public void DeleteAllData()

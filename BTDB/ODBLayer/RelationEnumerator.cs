@@ -603,11 +603,16 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     }
 
     public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, byte[] keyBytes,
-        IRelationModificationCounter modificationCounter, int loaderIndex)
+        IRelationModificationCounter modificationCounter, int loaderIndex): this(tr, keyBytes, modificationCounter, relationInfo.ItemLoaderInfos[loaderIndex])
+    {
+    }
+
+    public RelationEnumerator(IInternalObjectDBTransaction tr, byte[] keyBytes,
+        IRelationModificationCounter modificationCounter, RelationInfo.ItemLoaderInfo loaderInfo)
     {
         _transaction = tr;
 
-        ItemLoader = relationInfo.ItemLoaderInfos[loaderIndex];
+        ItemLoader = loaderInfo;
         _keyValueTr = _transaction.KeyValueDBTransaction;
         _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
 
