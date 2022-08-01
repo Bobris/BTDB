@@ -40,7 +40,7 @@ public class BonTests
         Assert.True(bon.TryGetUndefined());
         Assert.True(bon.Eof);
         Assert.Equal(0u, bon.Items);
-        Assert.Equal("null\r\n/*undefined*/", new Bon(buffer).DumpToJson());
+        Assert.Equal("null\n/*undefined*/", new Bon(buffer).DumpToJson());
     }
 
     [Fact]
@@ -304,7 +304,7 @@ public class BonTests
         Assert.True(bonArrayItems.Eof);
         Assert.True(bon.Eof);
         Assert.Equal(0u, bon.Items);
-        Assert.Equal("[\r\n  42\r\n]", new Bon(buffer).DumpToJson());
+        Assert.Equal("[\n  42\n]", new Bon(buffer).DumpToJson());
     }
 
     [Fact]
@@ -328,7 +328,7 @@ public class BonTests
         Assert.True(bonArrayItems.Eof);
         Assert.True(bon.Eof);
         Assert.Equal(0u, bon.Items);
-        Assert.Equal("[\r\n  []\r\n]", new Bon(buffer).DumpToJson());
+        Assert.Equal("[\n  []\n]", new Bon(buffer).DumpToJson());
     }
 
     [Fact]
@@ -373,7 +373,7 @@ public class BonTests
         Assert.Equal(1, value);
         Assert.True(bon.Eof);
         Assert.Equal(0u, bon.Items);
-        Assert.Equal("{\r\n  \"a\": 1\r\n}", new Bon(buffer).DumpToJson());
+        Assert.Equal("{\n  \"a\": 1\n}", new Bon(buffer).DumpToJson());
     }
 
     [Fact]

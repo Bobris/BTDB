@@ -1271,7 +1271,7 @@ public ref struct Bon
         using var writer = new Utf8JsonWriter(stream, options);
         DumpToJson(writer);
         writer.Flush();
-        return Encoding.UTF8.GetString(stream.ToArray());
+        return Encoding.UTF8.GetString(stream.ToArray()).ReplaceLineEndings("\n");
     }
 }
 
