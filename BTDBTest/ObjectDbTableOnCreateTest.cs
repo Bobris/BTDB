@@ -94,6 +94,16 @@ public class ObjectDbTableOnCreateTest : IDisposable
             Assert.Equal(2, table.Count);
             Assert.Equal(42ul, table.FindByNameOrDefault("1337").Id);
             Assert.Equal(1u, table.FindByNameOrDefault("Code").Cost);
+            tr.Commit();
+        }
+        builder = new(ContainerBuilderBehaviour.UniqueRegistrations);
+        builder.RegisterFactory<JobTable2OnCreate>(_ => throw new("Should run only first time")).As<IRelationOnCreate<IJobTable2>>();
+        _container = builder.BuildAndVerify();
+        ReopenDb();
+        using (var tr = _db.StartTransaction())
+        {
+            var table = tr.GetRelation<IJobTable2>();
+            Assert.Equal(2, table.Count);
         }
     }
 }

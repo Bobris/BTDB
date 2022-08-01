@@ -103,6 +103,18 @@ It is like `Update`, but it does not try to compare and free any nested content.
 
 It is like `Upsert`, but it does not try to compare and free any nested content. It is especially faster without secondary indexes when it does not even need to read old value.
 
+### UpsertRange
+
+    (long Inserted, long Updated) UpsertRange(IEnumerable<T> items)
+
+Every relation have this method it is very useful with `As<T>()` when you want quicky upgrade old relation into new one. Other than that it is pretty self explanatory.
+
+### As
+
+    IEnumerable<T> As<T>()
+
+Returns list of all rows in relation deserialized into `T` class. It should not be used often because it does not cache generated deserialization code, its purpose is upgrade scenarios (See OnCreate below).
+
 ### Remove
 
     (void|bool) RemoveById(primaryKey1, ..., primaryKeyN);
@@ -398,3 +410,23 @@ If you have IIndirect property. You are on your own. And that's include any nest
 ## Modification check during enumeration
 
 When you Insert, RemoveById or insert item using Upsert during enumerating relation an exception will be thrown. It is still possible to modify by Update (or Upsert for existing items) see `CheckModificationDuringEnumerate` in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs) for details. Modification of secondary indexes during enumerating by secondary indexes are not detected in this moment.
+
+## OnCreate
+
+When relation is created for first time, BTDB will try to resolve `IRelationOnCreate<InterfaceOfRelation>`. It can be used for upgrading data from old relations or what ever into new Relation. Very useful when you need to change primary key and not loose data. Example:
+
+    public class Table2OnCreate : IRelationOnCreate<ITableV2>
+    {
+        public void OnCreate(IObjectDBTransaction transaction, ITableV2 creating)
+        {
+            var from = transaction.GetRelation<ITableV1>();
+            creating.UpsertRange(from.As<ItemV2>());
+            from.RemoveAll();
+        }
+    }
+
+    var builder = new ContainerBuilder();
+    builder.RegisterType<Table2OnCreate>().As<IRelationOnCreate<ITableV2>>();
+    var container = builder.Build();
+
+    db.Open(kvdb, false, new DBOptions().WithContainer(container));
