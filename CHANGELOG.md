@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.10.1
+
 ### Fixed
 
 FirstBySecondaryKey throwed when secondary key was modified new version.
