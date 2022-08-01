@@ -26,7 +26,7 @@ public interface IRelationDbManipulator : IRelation, IRelationModificationCounte
     public IInternalObjectDBTransaction Transaction { get; }
     public RelationInfo RelationInfo { get; }
 
-    public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
+    public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint remappedSecondaryKeyIndex,
         in ReadOnlySpan<byte> secondaryKey);
 }
 
@@ -83,10 +83,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         writer.WriteBlock(_relationInfo.Prefix);
     }
 
-    public void WriteRelationSKPrefix(ref SpanWriter writer, uint secondaryKeyIndex)
+    public void WriteRelationSKPrefix(ref SpanWriter writer, uint remappedSecondaryKeyIndex)
     {
         writer.WriteBlock(_relationInfo.PrefixSecondary);
-        writer.WriteUInt8((byte)secondaryKeyIndex);
+        writer.WriteUInt8((byte)remappedSecondaryKeyIndex);
     }
 
     public uint RemapPrimeSK(uint primeSecondaryKeyIndex)
@@ -854,7 +854,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         else
         {
             var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
-            var secondaryKeyInfo = relationVersionInfo.SecondaryKeys[secondaryKeyIndex];
+            var secondaryKeyInfo = relationVersionInfo.SecondaryKeys[remappedSecondaryKeyIndex];
             var fields = secondaryKeyInfo.Fields;
             var ordererIdxs = PrepareOrderersSK(ref constraints, orderers, fields, relationVersionInfo);
 
@@ -1035,7 +1035,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         else
         {
             var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
-            var secondaryKeyInfo = relationVersionInfo.SecondaryKeys[secondaryKeyIndex];
+            var secondaryKeyInfo = relationVersionInfo.SecondaryKeys[remappedSecondaryKeyIndex];
             var fields = secondaryKeyInfo.Fields;
             var ordererIdxs = PrepareOrderersSK(ref constraints, orderers, fields, relationVersionInfo);
 
@@ -1128,27 +1128,27 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
-    public unsafe object CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
+    public unsafe object CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint remappedSecondaryKeyIndex,
         in ReadOnlySpan<byte> secondaryKey)
     {
         Span<byte> pkBuffer = stackalloc byte[512];
         var pkWriter = new SpanWriter(Unsafe.AsPointer(ref MemoryMarshal.GetReference(pkBuffer)), pkBuffer.Length);
         WriteRelationPKPrefix(ref pkWriter);
         var reader = new SpanReader(secondaryKey);
-        _relationInfo.GetSKKeyValueToPKMerger(secondaryKeyIndex)
+        _relationInfo.GetSKKeyValueToPKMerger(remappedSecondaryKeyIndex)
             (ref reader, ref pkWriter);
         return FindByIdOrDefaultInternal(itemLoader, pkWriter.GetSpan(), true)!;
     }
 
-    public IEnumerator<TItem> FindBySecondaryKey<TItem>(uint secondaryKeyIndex,
+    public IEnumerator<TItem> FindBySecondaryKey<TItem>(uint remappedSecondaryKeyIndex,
         in ReadOnlySpan<byte> secKeyBytes, int loaderIndex)
     {
         return new RelationSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, secKeyBytes,
-            secondaryKeyIndex, this, loaderIndex);
+            remappedSecondaryKeyIndex, this, loaderIndex);
     }
 
     //secKeyBytes contains already AllRelationsSKPrefix
-    public TItem FindBySecondaryKeyOrDefault<TItem>(uint secondaryKeyIndex,
+    public TItem FindBySecondaryKeyOrDefault<TItem>(uint remappedSecondaryKeyIndex,
         in ReadOnlySpan<byte> secKeyBytes,
         bool throwWhenNotFound, int loaderIndex)
     {
@@ -1165,27 +1165,27 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         if (_kvtr.FindNextKey(secKeyBytes))
             throw new BTDBException("Ambiguous result.");
 
-        return (TItem)CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], secondaryKeyIndex,
+        return (TItem)CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], remappedSecondaryKeyIndex,
             keyBytes);
     }
 
-    ReadOnlySpan<byte> WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj, ref SpanWriter writer)
+    ReadOnlySpan<byte> WriteSecondaryKeyKey(uint remappedSecondaryKeyIndex, T obj, ref SpanWriter writer)
     {
-        var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex);
-        WriteRelationSKPrefix(ref writer, secondaryKeyIndex);
+        var keySaver = _relationInfo.GetSecondaryKeysKeySaver(remappedSecondaryKeyIndex);
+        WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);
         keySaver(_transaction, ref writer, obj); //secondary key
         return writer.GetSpan();
     }
 
-    ReadOnlySpan<byte> WriteSecondaryKeyKey(uint secondaryKeyIndex, in ReadOnlySpan<byte> keyBytes,
+    ReadOnlySpan<byte> WriteSecondaryKeyKey(uint remappedSecondaryKeyIndex, in ReadOnlySpan<byte> keyBytes,
         in ReadOnlySpan<byte> valueBytes)
     {
         var keyWriter = new SpanWriter();
-        WriteRelationSKPrefix(ref keyWriter, secondaryKeyIndex);
+        WriteRelationSKPrefix(ref keyWriter, remappedSecondaryKeyIndex);
 
         var version = (uint)PackUnpack.UnpackVUInt(valueBytes);
 
-        var keySaver = _relationInfo.GetPKValToSKMerger(version, secondaryKeyIndex);
+        var keySaver = _relationInfo.GetPKValToSKMerger(version, remappedSecondaryKeyIndex);
         var keyReader = new SpanReader(keyBytes);
         var valueReader = new SpanReader(valueBytes);
         keySaver(_transaction, ref keyWriter, ref keyReader, ref valueReader, _relationInfo.DefaultClientObject);

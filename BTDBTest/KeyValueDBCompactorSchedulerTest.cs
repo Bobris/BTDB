@@ -99,16 +99,16 @@ public class KeyValueDBCompactorSchedulerTest
                 e.Set();
                 return false;
             });
-            s.WaitTime = TimeSpan.FromMilliseconds(150);
+            s.WaitTime = TimeSpan.FromMilliseconds(1500);
             s.AdviceRunning(true);
             s.AdviceRunning(true);
             s.AdviceRunning(false);
-            Assert.False(e.WaitOne(100));
-            Assert.True(e.WaitOne(100));
+            Assert.False(e.WaitOne(1000));
+            Assert.True(e.WaitOne(1000));
             s.AdviceRunning(true);
-            Assert.False(e.WaitOne(50));
+            Assert.False(e.WaitOne(500));
             s.AdviceRunning(false);
-            Assert.True(e.WaitOne(50));
+            Assert.True(e.WaitOne(500));
         }
     }
 
