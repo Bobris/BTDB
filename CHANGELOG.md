@@ -5,6 +5,8 @@
 ### Added
 
 New relation method `void RemoveAll()`, you should guess what it does.
+New relation method `UpsertRange` and `As<T>`.
+`OnCreate` callback for relations which helps to write upgrade methods.
 
 ### Optimized
 
