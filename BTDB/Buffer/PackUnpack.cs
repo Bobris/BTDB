@@ -563,6 +563,7 @@ public static class PackUnpack
 
     public static uint SequenceEqualUpTo(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
     {
+        // TODO: Replace this in .Net 7 by MemoryExtensions.CommonPrefixLength
         var len = (uint)Math.Min(left.Length, right.Length);
         ref var first = ref MemoryMarshal.GetReference(left);
         ref var second = ref MemoryMarshal.GetReference(right);
