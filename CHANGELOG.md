@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.11.0
+
 ### Added
 
 Exposed property `IObjectDB.AutoRegisterTypes`.
