@@ -6,7 +6,7 @@ namespace BTDB.Allocators;
 class LeakDetectorWrapperAllocator : IOffHeapAllocator, IDisposable
 {
     IOffHeapAllocator _wrapped;
-    ConcurrentDictionary<IntPtr, IntPtr> _ptr2SizeMap = new ConcurrentDictionary<IntPtr, IntPtr>();
+    ConcurrentDictionary<IntPtr, IntPtr> _ptr2SizeMap = new();
 
     public LeakDetectorWrapperAllocator(IOffHeapAllocator wrap)
     {
@@ -37,10 +37,13 @@ class LeakDetectorWrapperAllocator : IOffHeapAllocator, IDisposable
         return res;
     }
 
-    public void Deallocate(IntPtr ptr)
+    public void Deallocate(IntPtr ptr, IntPtr size)
     {
-        if (!_ptr2SizeMap.TryRemove(ptr, out var size))
-            throw new InvalidOperationException("Trying to free memory which is not allocated " + ptr.ToInt64());
+        if (!_ptr2SizeMap.TryRemove(ptr, out var osize))
+            throw new InvalidOperationException($"Trying to free memory which is not allocated {ptr.ToInt64()}");
+        if (size != osize)
+            throw new InvalidOperationException(
+                $"Deallocate size is different from allocated {size.ToInt64()}!={osize.ToInt64()}");
         ptr -= 16;
         unsafe
         {
@@ -50,22 +53,27 @@ class LeakDetectorWrapperAllocator : IOffHeapAllocator, IDisposable
                 if (span[i] != 0xBB)
                     throw new InvalidOperationException("Overwrite of block at begging " + i);
             }
-            span = new Span<byte>((ptr + size.ToInt32() + 16).ToPointer(), 16);
+            span = new((ptr + osize.ToInt32() + 16).ToPointer(), 16);
             for (var i = 0; i < 16; i++)
             {
                 if (span[i] != 0xEE)
                     throw new InvalidOperationException("Overwrite of block at end " + i);
             }
-            new Span<byte>(ptr.ToPointer(), (int)size + 32).Fill(0xDD);
+            new Span<byte>(ptr.ToPointer(), (int)osize + 32).Fill(0xDD);
         }
-        _wrapped.Deallocate(ptr);
+        _wrapped.Deallocate(ptr, size + 32);
+    }
+
+    public (ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) GetStats()
+    {
+        return _wrapped.GetStats();
     }
 
     public void Dispose()
     {
         foreach (var i in _ptr2SizeMap)
         {
-            Deallocate(i.Key);
+            Deallocate(i.Key, i.Value);
         }
     }
 }

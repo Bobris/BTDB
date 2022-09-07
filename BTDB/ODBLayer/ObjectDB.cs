@@ -80,7 +80,7 @@ public class ObjectDB : IObjectDB
 
     internal IType2NameRegistry Type2NameRegistry => _type2Name;
 
-    internal bool AutoRegisterTypes { get; private set; }
+    public bool AutoRegisterTypes { get; set; }
 
     public DBOptions ActualOptions { get; private set; }
 

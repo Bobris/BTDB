@@ -932,6 +932,11 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
+    public (ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) GetNativeMemoryStats()
+    {
+        return (0, 0, 0, 0);
+    }
+
     public bool Compact(CancellationToken cancellation)
     {
         return new Compactor(this, cancellation).Run();

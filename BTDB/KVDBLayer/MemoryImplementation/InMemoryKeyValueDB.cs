@@ -73,6 +73,11 @@ public class InMemoryKeyValueDB : IKeyValueDB
         return "KeyValueCount:" + LastCommited.CalcKeyCount() + Environment.NewLine;
     }
 
+    public (ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) GetNativeMemoryStats()
+    {
+        return (0, 0, 0, 0);
+    }
+
     public bool Compact(CancellationToken cancellation)
     {
         return false;

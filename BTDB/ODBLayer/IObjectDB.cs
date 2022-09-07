@@ -40,4 +40,6 @@ public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
     void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, IRelation> factory);
 
     bool AllowAutoRegistrationOfRelations { get; set; }
+
+    bool AutoRegisterTypes { get; set; }
 }

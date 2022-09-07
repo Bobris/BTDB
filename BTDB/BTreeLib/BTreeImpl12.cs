@@ -976,7 +976,8 @@ public class BTreeImpl12
 
     void FreeLongKey(IntPtr ptr)
     {
-        _allocator.Deallocate(ptr);
+        var size = TreeNodeUtils.ReadInt32Aligned(ptr) + 4;
+        _allocator.Deallocate(ptr, (IntPtr)size);
     }
 
     internal void Dereference(IntPtr node)
@@ -1003,7 +1004,7 @@ public class BTreeImpl12
             }
         }
 
-        _allocator.Deallocate(node);
+        _allocator.Deallocate(node, (IntPtr)NodeUtils12.NodeSize(node));
     }
 
     static void CheckContent12(ReadOnlySpan<byte> content)

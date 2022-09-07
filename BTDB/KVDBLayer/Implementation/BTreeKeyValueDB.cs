@@ -1121,6 +1121,11 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
+    public (ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) GetNativeMemoryStats()
+    {
+        return _allocator.GetStats();
+    }
+
     public bool Compact(CancellationToken cancellation)
     {
         return new Compactor(this, cancellation).Run();

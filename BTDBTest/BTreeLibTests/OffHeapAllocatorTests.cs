@@ -16,7 +16,7 @@ public class OffHeapAllocatorTests
             *(int*)ptr = 0x12345678;
             Assert.Equal(0x12345678, *(int*)ptr);
         }
-        allocator.Deallocate(ptr);
+        allocator.Deallocate(ptr, (IntPtr)4);
     }
 
     [Fact]
@@ -26,13 +26,13 @@ public class OffHeapAllocatorTests
         var ptr1 = allocator.Allocate((IntPtr)4);
         var ptr2 = allocator.Allocate((IntPtr)8);
         var ptr3 = allocator.Allocate((IntPtr)16);
-        allocator.Deallocate(ptr2);
+        allocator.Deallocate(ptr2, (IntPtr)8);
         var leaks = allocator.QueryAllocations();
         Assert.Equal(2u, leaks.Count);
         Assert.Equal(20ul, leaks.Size);
-        allocator.Deallocate(ptr1);
-        allocator.Deallocate(ptr3);
-        Assert.Throws<InvalidOperationException>(() => allocator.Deallocate(ptr1));
+        allocator.Deallocate(ptr1, (IntPtr)4);
+        allocator.Deallocate(ptr3, (IntPtr)16);
+        Assert.Throws<InvalidOperationException>(() => allocator.Deallocate(ptr1, (IntPtr)4));
     }
 
     [Fact]

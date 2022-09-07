@@ -235,6 +235,11 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDB.CalcStats();
         }
 
+        public (ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) GetNativeMemoryStats()
+        {
+            return _keyValueDB.GetNativeMemoryStats();
+        }
+
         public bool Compact(CancellationToken cancellation)
         {
             return _keyValueDB.Compact(cancellation);

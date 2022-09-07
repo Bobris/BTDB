@@ -188,7 +188,7 @@ static class NodeUtils12
             var ptr = nodePtr + NodeHeader12.BranchHeaderSize;
             if (header.HasLongKeys)
             {
-                ptr += 8 * header._childCount;
+                ptr += 8 * header.KeyCount;
             }
             else
             {
@@ -198,7 +198,6 @@ static class NodeUtils12
             }
             return (int)(ptr.ToInt64() - nodePtr.ToInt64() + 8 * header._childCount);
         }
-
     }
 
     internal static unsafe long GetTotalSuffixLen(IntPtr nodePtr)
@@ -279,7 +278,7 @@ static class NodeUtils12
     internal static unsafe Span<byte> LongKeyPtrToSpan(IntPtr ptr)
     {
         var size = TreeNodeUtils.ReadInt32Aligned(ptr);
-        return new Span<byte>((ptr + 4).ToPointer(), size);
+        return new((ptr + 4).ToPointer(), size);
     }
 
     internal static unsafe Span<byte> GetLeftestKey(IntPtr nodePtr, out Span<byte> keySuffix)

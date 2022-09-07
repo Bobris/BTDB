@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Added
+
+Exposed property `IObjectDB.AutoRegisterTypes`.
+
+New method `(ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) IKeyValueDB.GetNativeMemoryStats();`.
+
 ## 29.10.1
 
 ### Fixed
