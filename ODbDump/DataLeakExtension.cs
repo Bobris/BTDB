@@ -51,12 +51,7 @@ namespace ODbDump
         {
             foreach (var unseenKey in visitor.UnseenKeys())
             {
-                foreach (var b in unseenKey.Key)
-                {
-                    Console.Write(' ');
-                    Console.Write(b.ToString("X2"));
-                }
-
+                Console.Write(Convert.ToHexString(unseenKey.Key));
                 Console.Write(" Value len:");
                 Console.WriteLine(unseenKey.ValueSize);
             }
@@ -71,6 +66,11 @@ namespace ODbDump
             using var visitor = new FindUnusedKeysVisitor();
             visitor.ImportAllKeys(tr);
             visitor.Iterate(tr);
+
+            byte[]?[] lastUnseenKeysD = new byte[10][];
+            byte[]?[] lastUnseenKeysO = new byte[10][];
+
+            int indexD = 0, indexO = 0;
             foreach (var unseenKey in visitor.UnseenKeys())
             {
                 var isDict = unseenKey.Key[0] == 2;
@@ -81,14 +81,49 @@ namespace ODbDump
                 var oid = r.ReadVUInt64();
 
                 if (isDict)
+                {
                     leakedDictionaries.TryAdd(oid, false);
+                    lastUnseenKeysD[indexD++ % 10] = unseenKey.Key;
+                }
                 else if (isObject)
+                {
                     leakedObjects.TryAdd(oid, false);
+                    lastUnseenKeysO[indexO++ % 10] = unseenKey.Key;
+                }
             }
 
+            WriteValidatingSamples("testDicts", lastUnseenKeysO, tr);
+            WriteValidatingSamples("testObjs", lastUnseenKeysD, tr);
             WriteSplitIdList(leakedDictionaries.Keys, "dicts", 1000);
             WriteSplitIdList(leakedObjects.Keys, "objs", 1000);
         }
+
+        // write last few leaked keys to validate that are present in the exact form on all db replicas before cleaning
+        static void WriteValidatingSamples(string varName, byte[]?[] lastUnseenKeys, IObjectDBTransaction tr)
+        {
+            var sb = new StringBuilder();
+            sb.Append($"var {varName} = new Dictionary<string, string>{{\n");
+            foreach (var key in lastUnseenKeys)
+            {
+                if (key == null) continue;
+                sb.Append("[\"");
+                sb.Append(Convert.ToHexString(key));
+                sb.Append("\"] = \"");
+                if (tr.KeyValueDBTransaction.FindFirstKey(key))
+                {
+                    var value = tr.KeyValueDBTransaction.GetValue();
+                    if (value.Length > 20)
+                        value = value.Slice(0, 20);
+                    sb.Append(Convert.ToHexString(value));
+                }
+                sb.Append('"');
+                sb.Append(", \n");
+            }
+
+            sb.Append("};");
+            Console.WriteLine(sb.ToString());
+        }
+
 
         static void WriteSplitIdList(IEnumerable<ulong> objIds, string name, int count)
         {
