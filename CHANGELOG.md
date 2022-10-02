@@ -2,6 +2,9 @@
 
 ## [unreleased]
 
+### Added
+ODbDump has new command `leakscodeapply` which enable apply output file from `leakscode` command on db (then can be compared dump before and after clean - must be the same)
+
 ## 29.11.0
 
 ### Added

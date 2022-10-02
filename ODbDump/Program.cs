@@ -23,7 +23,7 @@ namespace ODbDump
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 Console.WriteLine(
-                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, statm, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump, printlast, updatelast");
+                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, statm, fileheaders, compact, export, import, leaks, leakscode, leakscodeapply, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump, printlast, updatelast");
                 return;
             }
 
@@ -426,6 +426,28 @@ namespace ODbDump
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
                     odb.DumpLeaksCode();
+
+                    break;
+                }
+                case "leakscodeapply":
+                {
+                    if (args.Length != 3)
+                    {
+                        Console.WriteLine("usage: ODBDump Eagle_0 leakscodeapply eagle_leaks.txt");
+                        return;
+                    }
+
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    {
+                        FileCollection = dfc,
+                        ReadOnly = false,
+                        Compression = new SnappyCompressionStrategy(),
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+
+                    odb.ApplyLeaksCode(args[2]);
 
                     break;
                 }

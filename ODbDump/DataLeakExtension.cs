@@ -1,9 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
+using BTDB.Buffer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using ODbDump.Visitor;
+using BTDB.KVDBLayer;
 
 namespace ODbDump
 {
@@ -124,6 +128,50 @@ namespace ODbDump
             Console.WriteLine(sb.ToString());
         }
 
+        public static void ApplyLeaksCode(this IObjectDB db, string leaksFilePath)
+        {
+            var tr = db.StartTransaction();
+
+            using var reader = File.OpenText(leaksFilePath);
+            string? line;
+            while (!string.IsNullOrEmpty(line = reader.ReadLine()))
+            {
+                IEnumerable<ulong> ids;
+                byte firstKeyByte = 0;
+                if (line.StartsWith("var dicts"))
+                {
+                    ids = ParseIds(line);
+                    firstKeyByte = 2;
+                }
+                else if (line.StartsWith("var objs"))
+                {
+                    ids = ParseIds(line);
+                    firstKeyByte = 1;
+                }
+                else
+                    continue;
+
+                foreach (var id in ids)
+                {
+                    var prefix = new byte[1 + PackUnpack.LengthVUInt(id)];
+                    prefix[0] = firstKeyByte;
+                    var pos = 1;
+                    PackUnpack.PackVUInt(prefix, ref pos, id);
+                    tr.KeyValueDBTransaction.EraseAll(prefix.AsSpan());
+                }
+            }
+
+            tr.Commit();
+        }
+
+        static IEnumerable<ulong> ParseIds(string line)
+        {
+            var from = line.IndexOf('{');
+            var to = line.LastIndexOf('}');
+            if (from == -1 || to == -1)
+                return Array.Empty<ulong>();
+            return line.Substring(from + 1, to - from - 1).Split(',').Select(ulong.Parse);
+        }
 
         static void WriteSplitIdList(IEnumerable<ulong> objIds, string name, int count)
         {
