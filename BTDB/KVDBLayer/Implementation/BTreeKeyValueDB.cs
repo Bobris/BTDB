@@ -1865,4 +1865,28 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         DereferenceRoot((IRootNode)root);
     }
+
+    public bool IsCorruptedValue(ReadOnlySpan<byte> trueValue)
+    {
+        var valueFileId = MemoryMarshal.Read<uint>(trueValue);
+        if (valueFileId == 0)
+        {
+            var len = trueValue[4];
+            return len > 7;
+        }
+
+        var valueSize = MemoryMarshal.Read<int>(trueValue.Slice(8));
+        if (valueSize == 0) return false;
+        var valueOfs = MemoryMarshal.Read<uint>(trueValue.Slice(4));
+
+        if (valueSize < 0)
+        {
+            valueSize = -valueSize;
+        }
+
+        var file = FileCollection.GetFile(valueFileId);
+        if (file == null)
+            return true;
+        return valueOfs + (ulong)valueSize > file.GetSize();
+    }
 }

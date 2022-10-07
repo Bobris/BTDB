@@ -9,6 +9,7 @@ using BTDB.StreamLayer;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using BTDB.Collections;
 using Microsoft.Extensions.Primitives;
 using ODbDump.TrlDump;
@@ -17,13 +18,13 @@ namespace ODbDump
 {
     class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             if (args.Length < 1)
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 Console.WriteLine(
-                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, statm, fileheaders, compact, export, import, leaks, leakscode, leakscodeapply, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump, printlast, updatelast");
+                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, statm, fileheaders, compact, export, import, leaks, leakscode, leakscodeapply, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump, printlast, updatelast, fix");
                 return;
             }
 
@@ -47,11 +48,11 @@ namespace ODbDump
                 case "nicedump":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
@@ -69,7 +70,7 @@ namespace ODbDump
                 case "printlast":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         LenientOpen = true,
@@ -81,14 +82,14 @@ namespace ODbDump
                 case "updatelast":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         LenientOpen = true,
                     });
                     using var trkv = kdb.StartWritingTransaction().Result;
                     Console.WriteLine("CommitUlong: " + trkv.GetCommitUlong());
-                    Console.WriteLine("Setting it to: "+ulong.Parse(args[2]));
+                    Console.WriteLine("Setting it to: " + ulong.Parse(args[2]));
                     trkv.SetCommitUlong(ulong.Parse(args[2]));
                     trkv.Commit();
                     break;
@@ -96,11 +97,11 @@ namespace ODbDump
                 case "interactive":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
@@ -119,11 +120,11 @@ namespace ODbDump
                 case "comparedump":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
@@ -138,11 +139,11 @@ namespace ODbDump
                 case "comparesplitdump":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
@@ -157,11 +158,11 @@ namespace ODbDump
                 case "fulldiskdump":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
@@ -177,18 +178,19 @@ namespace ODbDump
                 {
                     var dbDir = args[0];
                     var openUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null;
-                    var fileName = Path.Combine(dbDir, "dump"+(openUpToCommitUlong.HasValue?openUpToCommitUlong.ToString():"")+".txt");
+                    var fileName = Path.Combine(dbDir,
+                        "dump" + (openUpToCommitUlong.HasValue ? openUpToCommitUlong.ToString() : "") + ".txt");
                     DiskDump(dbDir, fileName, openUpToCommitUlong);
                     break;
                 }
                 case "dump":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
@@ -207,11 +209,11 @@ namespace ODbDump
                 case "null":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
@@ -225,22 +227,64 @@ namespace ODbDump
                 case "check":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var transaction = kdb.StartReadOnlyTransaction();
                     var keyValueCount = transaction.GetKeyValueCount();
+                    Console.WriteLine("Checking " + keyValueCount + " pairs for corruption");
                     transaction.FindFirstKey(ReadOnlySpan<byte>.Empty);
+                    var corruptedCount = 0ul;
                     for (long kv = 0; kv < keyValueCount; kv++)
                     {
                         transaction.GetKey();
-                        transaction.GetValue();
+                        if (transaction.IsValueCorrupted()) corruptedCount++;
                         transaction.FindNextKey(ReadOnlySpan<byte>.Empty);
                     }
 
+                    if (corruptedCount == 0) Console.WriteLine("No corruption found");
+                    else Console.WriteLine("Found " + corruptedCount + " pairs corrupted!");
+                    break;
+                }
+                case "fix":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
+                    {
+                        FileCollection = dfc,
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
+                    });
+                    using var transaction = await kdb.StartWritingTransaction();
+                    var keyValueCount = transaction.GetKeyValueCount();
+                    Console.WriteLine("Scanning and fixing " + keyValueCount + " pairs for corruption");
+                    var corruptedCount = 0ul;
+                    for (long kv = 0; kv < keyValueCount; kv++)
+                    {
+                        transaction.SetKeyIndex(kv);
+                        if (transaction.IsValueCorrupted())
+                        {
+                            corruptedCount++;
+                            transaction.EraseCurrent();
+                        }
+                    }
+
+                    if (corruptedCount == 0) Console.WriteLine("No corruption found");
+                    else
+                    {
+                        Console.WriteLine("Erased " + corruptedCount + " pairs because of corruption! Now removing all secondary indexes so they could be rebuild");
+                        if (transaction.FindFirstKey(new byte[] { 4 }))
+                        {
+                            var first = transaction.GetKeyIndex();
+                            transaction.FindLastKey(new byte[] { 4 });
+                            var last = transaction.GetKeyIndex();
+                            transaction.EraseRange(first, last);
+                            Console.WriteLine("Erased "+(last-first+1)+" pairs of secondary indexes");
+                        }
+                    }
+                    transaction.Commit();
                     break;
                 }
                 case "stat":
@@ -253,7 +297,7 @@ namespace ODbDump
                         FileCollection = dfc,
                         ReadOnly = true,
                         Compression = new SnappyCompressionStrategy(),
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     sw.Stop();
                     Console.WriteLine(
@@ -272,7 +316,7 @@ namespace ODbDump
                         FileCollection = dfc,
                         ReadOnly = true,
                         Compression = new SnappyCompressionStrategy(),
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     sw.Stop();
                     Console.WriteLine(
@@ -349,7 +393,7 @@ namespace ODbDump
                     var sw = new Stopwatch();
                     sw.Start();
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null);
+                    using var kdb = new BTreeKeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null);
                     kdb.Logger = new ConsoleKvdbLogger();
                     sw.Stop();
                     Console.WriteLine(
@@ -372,12 +416,12 @@ namespace ODbDump
                 case "export":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
                         Compression = new SnappyCompressionStrategy(),
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var tr = kdb.StartReadOnlyTransaction();
                     using var st = File.Create(Path.Combine(args[0], "snapshot.dat"));
@@ -389,7 +433,7 @@ namespace ODbDump
                 {
                     using var st = File.OpenRead(Path.Combine(args[0], "snapshot.dat"));
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(dfc);
+                    using var kdb = new BTreeKeyValueDB(dfc);
                     using var tr = kdb.StartTransaction();
                     KeyValueDBExportImporter.Import(tr, st);
                     tr.Commit();
@@ -399,12 +443,12 @@ namespace ODbDump
                 case "leaks":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
                         Compression = new SnappyCompressionStrategy(),
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     Console.WriteLine("Leaks: ");
@@ -416,12 +460,12 @@ namespace ODbDump
                 case "leakscode":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
                         Compression = new SnappyCompressionStrategy(),
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
@@ -438,7 +482,7 @@ namespace ODbDump
                     }
 
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = false,
@@ -454,12 +498,12 @@ namespace ODbDump
                 case "frequency":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
                         Compression = new SnappyCompressionStrategy(),
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
@@ -473,12 +517,12 @@ namespace ODbDump
                 case "size":
                 {
                     using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
                     {
                         FileCollection = dfc,
                         ReadOnly = true,
                         Compression = new SnappyCompressionStrategy(),
-                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
@@ -647,7 +691,7 @@ namespace ODbDump
         static string DumpRelationContent(string dbDir, string relationName, ulong? openUpToCommitUlong)
         {
             using var dfc = new OnDiskFileCollection(dbDir);
-            using var kdb = new KeyValueDB(new KeyValueDBOptions
+            using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
             {
                 FileCollection = dfc,
                 ReadOnly = true,
@@ -670,7 +714,7 @@ namespace ODbDump
         static void DiskDump(string dbDir, string fileName, ulong? openUpToCommitUlong)
         {
             using var dfc = new OnDiskFileCollection(dbDir);
-            using var kdb = new KeyValueDB(new KeyValueDBOptions
+            using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
             {
                 FileCollection = dfc,
                 ReadOnly = true,
@@ -806,7 +850,7 @@ namespace ODbDump
                                         case "r":
                                         case "relations":
                                             foreach (var rel in iterator.RelationId2Info.Values
-                                                .Where(r => r.RowCount > 0).OrderBy(r => r.RowCount))
+                                                         .Where(r => r.RowCount > 0).OrderBy(r => r.RowCount))
                                             {
                                                 Console.WriteLine(rel.Id + " " + rel.Name + " " + rel.RowCount);
                                             }
@@ -886,9 +930,11 @@ namespace ODbDump
                     $"Pvl file {fileId} with size {size} created. Items in map {itemsInMap} roughly {roughMemory} bytes.");
             }
 
-            public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration, ulong beforeCompressionSize)
+            public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration,
+                ulong beforeCompressionSize)
             {
-                Console.WriteLine($"Kvi created {keyValueCount} keys with size {size} in {duration.TotalSeconds:F1} before compression size {beforeCompressionSize}");
+                Console.WriteLine(
+                    $"Kvi created {keyValueCount} keys with size {size} in {duration.TotalSeconds:F1} before compression size {beforeCompressionSize}");
             }
 
             public void TransactionLogCreated(uint fileId)

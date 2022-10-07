@@ -271,6 +271,13 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         }
     }
 
+    public bool IsValueCorrupted()
+    {
+        if (!IsValidKey()) return false;
+        var trueValue = _cursor.GetValue();
+        return _keyValueDB.IsCorruptedValue(trueValue);
+    }
+
     void EnsureValidKey()
     {
         if (!_cursor.IsValid())

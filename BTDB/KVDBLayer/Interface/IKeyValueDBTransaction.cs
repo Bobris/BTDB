@@ -109,6 +109,10 @@ public interface IKeyValueDBTransaction : IDisposable
     ReadOnlySpan<byte> GetValue();
 
     /// <summary>
+    /// Returns true if GetValue would throw exception because missing or incomplete value file or transaction file containing current value.
+    /// </summary>
+    bool IsValueCorrupted();
+    /// <summary>
     /// Overwrite current value with new content.
     /// </summary>
     void SetValue(in ReadOnlySpan<byte> value);

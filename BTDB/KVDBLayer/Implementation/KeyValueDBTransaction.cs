@@ -242,6 +242,14 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
         return GetClonedValue(ref Unsafe.AsRef((byte)0), 0);
     }
 
+    public bool IsValueCorrupted()
+    {
+        if (!IsValidKey()) return false;
+        var nodeIdxPair = _stack[^1];
+        var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
+        return _keyValueDB.IsCorruptedValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize);
+    }
+
     void EnsureValidKey()
     {
         if (_keyIndex < 0)

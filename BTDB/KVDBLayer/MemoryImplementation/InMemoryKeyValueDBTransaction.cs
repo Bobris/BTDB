@@ -224,6 +224,11 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
         return ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
     }
 
+    public bool IsValueCorrupted()
+    {
+        return false;
+    }
+
     void EnsureValidKey()
     {
         if (_keyIndex < 0)

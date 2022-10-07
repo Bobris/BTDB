@@ -3,7 +3,12 @@
 ## [unreleased]
 
 ### Added
+
 ODbDump has new command `leakscodeapply` which enable apply output file from `leakscode` command on db (then can be compared dump before and after clean - must be the same)
+
+ODbDump `check` command was improved to not stop on first error, but to count all corrupted pairs.
+
+ODbDump has new `fix` command to erase all corrupted pairs and also clear all secondary indexes so they could be rebuild on next app start.
 
 ## 29.11.0
 

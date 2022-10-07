@@ -1542,4 +1542,38 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         // Managed implementation does not need reference counting => nothing to do
     }
+
+    public bool IsCorruptedValue(uint valueFileId, uint valueOfs, int valueSize)
+    {
+        if (valueSize == 0) return false;
+        if (valueFileId == 0)
+        {
+            var len = valueSize >> 24;
+            switch (len)
+            {
+                case 7:
+                case 6:
+                case 5:
+                case 4:
+                case 3:
+                case 2:
+                case 1:
+                    return false;
+                default:
+                    return true;
+            }
+        }
+
+        if (valueSize < 0)
+        {
+            valueSize = -valueSize;
+        }
+
+        var file = FileCollection.GetFile(valueFileId);
+        if (file == null)
+            return true;
+        if (valueOfs + (ulong)valueSize > file.GetSize())
+            return true;
+        return false;
+    }
 }
