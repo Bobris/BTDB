@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using BTDB.Collections;
 using BTDB.KVDBLayer.BTreeMem;
 
 namespace BTDB.KVDBLayer;
@@ -15,7 +17,8 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
     long _keyIndex;
     long _cursorMovedCounter;
 
-    public InMemoryKeyValueDBTransaction(InMemoryKeyValueDB keyValueDB, IBTreeRootNode btreeRoot, bool writing, bool readOnly)
+    public InMemoryKeyValueDBTransaction(InMemoryKeyValueDB keyValueDB, IBTreeRootNode btreeRoot, bool writing,
+        bool readOnly)
     {
         _preapprovedWriting = writing;
         _readOnly = readOnly;
@@ -62,6 +65,7 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
                 return true;
             }
         }
+
         InvalidateCurrentKey();
         return false;
     }
@@ -78,6 +82,7 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
                 return true;
             }
         }
+
         InvalidateCurrentKey();
         return false;
     }
@@ -112,10 +117,12 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
             _preapprovedWriting = false;
             return;
         }
+
         if (_readOnly)
         {
             throw new BTDBTransactionRetryException("Cannot write from readOnly transaction");
         }
+
         var oldBTreeRoot = _btreeRoot;
         _btreeRoot = _keyValueDB.MakeWritableTransaction(this, oldBTreeRoot!);
         _btreeRoot.DescriptionForLeaks = _descriptionForLeaks;
@@ -166,6 +173,7 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
             InvalidateCurrentKey();
             return false;
         }
+
         _btreeRoot!.FillStackByIndex(_stack, index);
         return true;
     }
@@ -247,6 +255,7 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
             _keyIndex = keyIndexBackup;
             _btreeRoot!.FillStackByIndex(_stack, _keyIndex);
         }
+
         var nodeIdxPair = _stack[^1];
         ((IBTreeLeafNode)nodeIdxPair.Node).SetMemberValue(nodeIdxPair.Idx, value);
     }
@@ -269,13 +278,15 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
             InvalidateCurrentKey();
             return false;
         }
+
         MakeWritable();
         InvalidateCurrentKey();
         _btreeRoot!.EraseRange(keyIndex, keyIndex);
         return true;
     }
 
-    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value)
+    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength,
+        out ReadOnlySpan<byte> value)
     {
         _cursorMovedCounter++;
         if (_btreeRoot!.FindKey(_stack, out var keyIndex, exactKey, 0) != FindResult.Exact)
@@ -370,6 +381,7 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
             _writing = false;
             _preapprovedWriting = false;
         }
+
         _btreeRoot = null;
     }
 
@@ -424,4 +436,11 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
     public IKeyValueDB Owner => _keyValueDB;
 
     public bool RollbackAdvised { get; set; }
+
+    public Dictionary<(uint Depth, uint Children), uint> CalcBTreeStats()
+    {
+        var stats = new RefDictionary<(uint Depth, uint Children), uint>();
+        _btreeRoot!.CalcBTreeStats(stats, 0);
+        return stats.ToDictionary(kv => kv.Key, kv => kv.Value);
+    }
 }

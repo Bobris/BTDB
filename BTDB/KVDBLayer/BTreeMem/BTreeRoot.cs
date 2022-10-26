@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using BTDB.Collections;
 
 namespace BTDB.KVDBLayer.BTreeMem;
 
@@ -152,6 +153,11 @@ class BTreeRoot : IBTreeRootNode
     public IBTreeNode EraseOne(long transactionId, long keyIndex)
     {
         throw new ArgumentException();
+    }
+
+    public void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth)
+    {
+        _rootNode?.CalcBTreeStats(stats, depth);
     }
 
     public long TransactionId => _transactionId;

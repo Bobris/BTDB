@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTDB.Collections;
 
 namespace BTDB.KVDBLayer.BTree;
 
@@ -21,4 +22,5 @@ interface IBTreeNode
     IBTreeNode EraseOne(long transactionId, long keyIndex);
     void Iterate(ValuesIterateAction action);
     IBTreeNode ReplaceValues(ReplaceValuesCtx ctx);
+    void CalcBTreeStats(RefDictionary<(uint Depth, uint Children),uint> stats, uint depth);
 }

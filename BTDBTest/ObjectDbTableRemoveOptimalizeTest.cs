@@ -398,6 +398,10 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             set => _keyValueDBTransaction.RollbackAdvised = value;
         }
 
+        public Dictionary<(uint Depth, uint Children), uint> CalcBTreeStats()
+        {
+            return _keyValueDBTransaction.CalcBTreeStats();
+        }
 
         public void EraseCurrent()
         {

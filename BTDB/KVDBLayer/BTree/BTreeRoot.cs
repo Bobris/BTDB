@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using BTDB.Collections;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer.BTree;
@@ -287,6 +288,11 @@ class BTreeRoot : IBTreeRootNode
     IBTreeNode IBTreeNode.ReplaceValues(ReplaceValuesCtx ctx)
     {
         throw new InvalidOperationException();
+    }
+
+    public void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth)
+    {
+        _rootNode?.CalcBTreeStats(stats, depth);
     }
 
     public void ReplaceValues(ReplaceValuesCtx ctx)

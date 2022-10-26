@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using BTDB.Collections;
 
 namespace BTDB.KVDBLayer;
 
@@ -221,4 +222,6 @@ public interface IKeyValueDBTransaction : IDisposable
     /// This is just storage for boolean, add could store here that it does not want to commit transaction, it is up to infrastructure code around if it will listen this advice.
     /// </summary>
     bool RollbackAdvised { get; set; }
+
+    Dictionary<(uint Depth, uint Children), uint> CalcBTreeStats();
 }

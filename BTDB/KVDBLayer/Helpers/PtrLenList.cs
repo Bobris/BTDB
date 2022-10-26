@@ -20,8 +20,8 @@ public class PtrLenList
         KeyValuePair<ulong, ulong> cur;
         while (l < r)
         {
-            uint m = (l + r) / 2;
-            cur = _list[m];
+            var m = (l + r) / 2;
+            cur = _list![m];
             if (pos < cur.Key)
             {
                 r = m;
@@ -39,7 +39,7 @@ public class PtrLenList
         }
         while (l < _size)
         {
-            cur = _list[l];
+            cur = _list![l];
             if (pos + len <= cur.Key) return pos;
             pos = cur.Key + cur.Value;
             l++;
@@ -54,8 +54,8 @@ public class PtrLenList
         KeyValuePair<ulong, ulong> cur;
         while (l < r)
         {
-            uint m = (l + r) / 2;
-            cur = _list[m];
+            var m = (l + r) / 2;
+            cur = _list![m];
             if (excludePos < cur.Key)
             {
                 r = m;
@@ -70,7 +70,7 @@ public class PtrLenList
                 {
                     if (excludePos + excludeLen < cur.Key + cur.Value)
                     {
-                        _list[m] = new KeyValuePair<ulong, ulong>(excludePos + excludeLen, cur.Value - excludeLen);
+                        _list[m] = new(excludePos + excludeLen, cur.Value - excludeLen);
                         return true;
                     }
                     if (excludePos + excludeLen == cur.Key + cur.Value)
@@ -88,7 +88,7 @@ public class PtrLenList
                     if (excludePos + excludeLen < cur.Key + cur.Value)
                     {
                         r--;
-                        _list[r] = new KeyValuePair<ulong, ulong>(excludePos + excludeLen, cur.Key - excludePos + cur.Value - excludeLen);
+                        _list[r] = new(excludePos + excludeLen, cur.Key - excludePos + cur.Value - excludeLen);
                     }
                     Array.Copy(_list, r, _list, m, _size - r);
                     _size -= r - m;
@@ -96,7 +96,7 @@ public class PtrLenList
                 }
                 if (excludePos + excludeLen == cur.Key + cur.Value)
                 {
-                    _list[m] = new KeyValuePair<ulong, ulong>(cur.Key, excludePos - cur.Key);
+                    _list[m] = new(cur.Key, excludePos - cur.Key);
                     return true;
                 }
                 if (excludePos + excludeLen < cur.Key + cur.Value)
@@ -104,11 +104,11 @@ public class PtrLenList
                     GrowIfNeeded();
                     Array.Copy(_list, m + 1, _list, m + 2, _size - m - 1);
                     _size++;
-                    _list[m] = new KeyValuePair<ulong, ulong>(cur.Key, excludePos - cur.Key);
-                    _list[m + 1] = new KeyValuePair<ulong, ulong>(excludePos + excludeLen, cur.Key + cur.Value - excludePos - excludeLen);
+                    _list[m] = new(cur.Key, excludePos - cur.Key);
+                    _list[m + 1] = new(excludePos + excludeLen, cur.Key + cur.Value - excludePos - excludeLen);
                     return true;
                 }
-                _list[m] = new KeyValuePair<ulong, ulong>(cur.Key, excludePos - cur.Key);
+                _list[m] = new(cur.Key, excludePos - cur.Key);
                 l = m + 1;
                 break;
             }
@@ -118,15 +118,15 @@ public class PtrLenList
             return false;
         }
         r = l + 1;
-        while (r < _size && excludePos + excludeLen > _list[r].Key)
+        while (r < _size && excludePos + excludeLen > _list![r].Key)
         {
             r++;
         }
-        cur = _list[r - 1];
+        cur = _list![r - 1];
         if (excludePos + excludeLen < cur.Key + cur.Value)
         {
             r--;
-            _list[r] = new KeyValuePair<ulong, ulong>(excludePos + excludeLen, cur.Key - excludePos + cur.Value - excludeLen);
+            _list[r] = new(excludePos + excludeLen, cur.Key - excludePos + cur.Value - excludeLen);
         }
         Array.Copy(_list, r, _list, l, _size - r);
         _size -= r - l;
@@ -135,9 +135,9 @@ public class PtrLenList
 
     public bool TryFindLenAndRemove(ulong findLength, out ulong foundOnPosition)
     {
-        for (int i = 0; i < _size; i++)
+        for (var i = 0; i < _size; i++)
         {
-            ulong len = _list[i].Value;
+            var len = _list![i].Value;
             if (findLength > len) continue;
             foundOnPosition = _list[i].Key;
             if (findLength == len)
@@ -147,7 +147,7 @@ public class PtrLenList
             }
             else
             {
-                _list[i] = new KeyValuePair<ulong, ulong>(foundOnPosition + findLength, len - findLength);
+                _list[i] = new(foundOnPosition + findLength, len - findLength);
             }
             return true;
         }
@@ -162,14 +162,14 @@ public class PtrLenList
         {
             _list = new KeyValuePair<ulong, ulong>[4];
             _size = 1;
-            _list[0] = new KeyValuePair<ulong, ulong>(includePos, includeLen);
+            _list[0] = new(includePos, includeLen);
             return true;
         }
         uint l = 0, r = _size;
         KeyValuePair<ulong, ulong> cur;
         while (l < r)
         {
-            uint m = (l + r) / 2;
+            var m = (l + r) / 2;
             cur = _list[m];
             if (includePos < cur.Key)
             {
@@ -185,7 +185,7 @@ public class PtrLenList
                 {
                     return false;
                 }
-                bool result = true;
+                var result = true;
                 l = m + 1;
                 if (includePos < cur.Key + cur.Value) result = false;
                 else
@@ -201,7 +201,7 @@ public class PtrLenList
                     l++;
                 }
                 var lastOk = _list[l - 1];
-                _list[m] = new KeyValuePair<ulong, ulong>(cur.Key, Math.Max(lastOk.Key + lastOk.Value, includePos + includeLen) - cur.Key);
+                _list[m] = new(cur.Key, Math.Max(lastOk.Key + lastOk.Value, includePos + includeLen) - cur.Key);
                 Array.Copy(_list, l, _list, m + 1, _size - l);
                 _size -= l - (m + 1);
                 return result;
@@ -210,7 +210,7 @@ public class PtrLenList
         if (l == _size)
         {
             GrowIfNeeded();
-            _list[l] = new KeyValuePair<ulong, ulong>(includePos, includeLen);
+            _list[l] = new(includePos, includeLen);
             _size++;
             return true;
         }
@@ -219,13 +219,13 @@ public class PtrLenList
         {
             GrowIfNeeded();
             Array.Copy(_list, l, _list, l + 1, _size - l);
-            _list[l] = new KeyValuePair<ulong, ulong>(includePos, includeLen);
+            _list[l] = new(includePos, includeLen);
             _size++;
             return true;
         }
         if (includePos + includeLen == cur.Key)
         {
-            _list[l] = new KeyValuePair<ulong, ulong>(includePos, cur.Key + cur.Value - includePos);
+            _list[l] = new(includePos, cur.Key + cur.Value - includePos);
             return true;
         }
         while (r < _size && includePos + includeLen >= _list[r].Key)
@@ -233,13 +233,13 @@ public class PtrLenList
             r++;
         }
         cur = _list[r - 1];
-        _list[l] = new KeyValuePair<ulong, ulong>(includePos, Math.Max(cur.Key + cur.Value, includePos + includeLen) - includePos);
+        _list[l] = new(includePos, Math.Max(cur.Key + cur.Value, includePos + includeLen) - includePos);
         Array.Copy(_list, r, _list, l + 1, _size - r);
         _size -= r - (l + 1);
         return false;
     }
 
-    public PtrLenList MergeIntoNew(PtrLenList mergeWith)
+    public PtrLenList MergeIntoNew(PtrLenList? mergeWith)
     {
         if (mergeWith == null || mergeWith.Empty) return Clone();
         if (Empty) return mergeWith.Clone();
@@ -260,9 +260,9 @@ public class PtrLenList
 
     public IEnumerator<KeyValuePair<ulong, ulong>> GetEnumerator()
     {
-        for (int i = 0; i < _size; i++)
+        for (var i = 0; i < _size; i++)
         {
-            yield return _list[i];
+            yield return _list![i];
         }
     }
 
@@ -279,23 +279,23 @@ public class PtrLenList
         if (_size == 0) return res;
         res._size = _size;
         res._list = new KeyValuePair<ulong, ulong>[_size];
-        Array.Copy(_list, res._list, _size);
+        Array.Copy(_list!, res._list, _size);
         return res;
     }
 
-    public void MergeInPlace(PtrLenList mergeWith)
+    public void MergeInPlace(PtrLenList? mergeWith)
     {
         if (mergeWith == null) return;
-        foreach (KeyValuePair<ulong, ulong> range in mergeWith)
+        foreach (var range in mergeWith)
         {
             TryInclude(range.Key, range.Value);
         }
     }
 
-    internal void UnmergeInPlace(PtrLenList unmergeWith)
+    internal void UnmergeInPlace(PtrLenList? unmergeWith)
     {
         if (unmergeWith == null) return;
-        foreach (KeyValuePair<ulong, ulong> range in unmergeWith)
+        foreach (var range in unmergeWith)
         {
             TryExclude(range.Key, range.Value);
         }
@@ -306,8 +306,8 @@ public class PtrLenList
         uint l = 0, r = _size;
         while (l < r)
         {
-            uint m = (l + r) / 2;
-            var cur = _list[m];
+            var m = (l + r) / 2;
+            var cur = _list![m];
             if (position < cur.Key)
             {
                 r = m;
@@ -326,12 +326,12 @@ public class PtrLenList
 
     void GrowIfNeeded()
     {
-        if (_size == _list.Length)
+        if (_size == _list!.Length)
         {
             Array.Resize(ref _list, (int)_size * 2);
         }
     }
 
-    KeyValuePair<ulong, ulong>[] _list;
+    KeyValuePair<ulong, ulong>[]? _list;
     uint _size;
 }

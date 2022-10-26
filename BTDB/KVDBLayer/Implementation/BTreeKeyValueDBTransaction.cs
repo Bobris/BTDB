@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.BTreeLib;
+using BTDB.Collections;
 
 namespace BTDB.KVDBLayer;
 
@@ -69,6 +71,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
                 return true;
             }
         }
+
         InvalidateCurrentKey();
         return false;
     }
@@ -85,6 +88,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
                 return true;
             }
         }
+
         InvalidateCurrentKey();
         return false;
     }
@@ -98,20 +102,20 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         switch (result)
         {
             case FindResult.Previous when !_cursor.KeyHasPrefix(key.Slice(0, (int)prefixLen)):
+            {
+                if (!_cursor.MoveNext())
                 {
-                    if (!_cursor.MoveNext())
-                    {
-                        return FindResult.NotFound;
-                    }
-
-                    if (_cursor.KeyHasPrefix(key.Slice(0, (int)prefixLen)))
-                    {
-                        return FindResult.Next;
-                    }
-
-                    InvalidateCurrentKey();
                     return FindResult.NotFound;
                 }
+
+                if (_cursor.KeyHasPrefix(key.Slice(0, (int)prefixLen)))
+                {
+                    return FindResult.Next;
+                }
+
+                InvalidateCurrentKey();
+                return FindResult.NotFound;
+            }
             case FindResult.Next when !_cursor.KeyHasPrefix(key.Slice(0, (int)prefixLen)):
                 // FindResult.Previous is preferred that's why it has to be NotFound when next does not match prefix
                 InvalidateCurrentKey();
@@ -143,10 +147,12 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
             _keyValueDB.WriteStartTransaction();
             return;
         }
+
         if (_readOnly)
         {
             throw new BTDBTransactionRetryException("Cannot write from readOnly transaction");
         }
+
         BTreeRoot = _keyValueDB.MakeWritableTransaction(this, BTreeRoot!);
         _cursor.SetNewRoot(BTreeRoot);
         _cursor2?.SetNewRoot(BTreeRoot);
@@ -191,6 +197,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
             if (_cursor.KeyHasPrefix(prefix))
                 return true;
         }
+
         InvalidateCurrentKey();
         return false;
     }
@@ -237,7 +244,9 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
             var lastCommitted = (IRootNode)_keyValueDB.ReferenceAndGetLastCommitted();
             try
             {
-                throw new BTDBException($"GetValue failed in TrId:{BTreeRoot!.TransactionId},TRL:{BTreeRoot.TrLogFileId},Ofs:{BTreeRoot.TrLogOffset},ComUlong:{BTreeRoot.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
+                throw new BTDBException(
+                    $"GetValue failed in TrId:{BTreeRoot!.TransactionId},TRL:{BTreeRoot.TrLogFileId},Ofs:{BTreeRoot.TrLogOffset},ComUlong:{BTreeRoot.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}",
+                    ex);
             }
             finally
             {
@@ -261,7 +270,9 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
             var lastCommitted = (IRootNode)_keyValueDB.ReferenceAndGetLastCommitted();
             try
             {
-                throw new BTDBException($"GetValue failed in TrId:{BTreeRoot!.TransactionId},TRL:{BTreeRoot.TrLogFileId},Ofs:{BTreeRoot.TrLogOffset},ComUlong:{BTreeRoot.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
+                throw new BTDBException(
+                    $"GetValue failed in TrId:{BTreeRoot!.TransactionId},TRL:{BTreeRoot.TrLogFileId},Ofs:{BTreeRoot.TrLogOffset},ComUlong:{BTreeRoot.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}",
+                    ex);
             }
             finally
             {
@@ -293,7 +304,8 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         MakeWritable();
         Span<byte> trueValue = stackalloc byte[12];
         Span<byte> buffer = stackalloc byte[512];
-        _keyValueDB.WriteCreateOrUpdateCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length), value, trueValue);
+        _keyValueDB.WriteCreateOrUpdateCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length),
+            value, trueValue);
         _cursor.WriteValue(trueValue);
     }
 
@@ -315,6 +327,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
             InvalidateCurrentKey();
             return false;
         }
+
         MakeWritable();
         _keyValueDB.WriteEraseOneCommand(exactKey);
         _cursor.Erase();
@@ -322,7 +335,8 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         return true;
     }
 
-    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value)
+    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength,
+        out ReadOnlySpan<byte> value)
     {
         if (_cursor.Find(exactKey) != FindResult.Exact)
         {
@@ -369,6 +383,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
             _keyValueDB.WriteEraseOneCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length));
             _cursor.Erase();
         }
+
         InvalidateCurrentKey();
     }
 
@@ -451,6 +466,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         {
             _keyValueDB.DereferenceRoot(currentRoot);
         }
+
         GC.SuppressFinalize(this);
     }
 
@@ -468,7 +484,8 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         var trueValue = _cursor.GetValue();
         return new KeyValuePair<uint, uint>(
             (uint)keyLen,
-            _keyValueDB.CalcValueSize(MemoryMarshal.Read<uint>(trueValue), MemoryMarshal.Read<uint>(trueValue.Slice(4)), MemoryMarshal.Read<int>(trueValue.Slice(8))));
+            _keyValueDB.CalcValueSize(MemoryMarshal.Read<uint>(trueValue), MemoryMarshal.Read<uint>(trueValue.Slice(4)),
+                MemoryMarshal.Read<int>(trueValue.Slice(8))));
     }
 
     public ulong GetUlong(uint idx)
@@ -505,4 +522,11 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
     public IKeyValueDB Owner => _keyValueDB;
 
     public bool RollbackAdvised { get; set; }
+
+    public Dictionary<(uint Depth, uint Children), uint> CalcBTreeStats()
+    {
+        var stats = new RefDictionary<(uint Depth, uint Children), uint>();
+        BTreeRoot!.CalcBTreeStats(stats, 0);
+        return stats.ToDictionary(kv => kv.Key, kv => kv.Value);
+    }
 }

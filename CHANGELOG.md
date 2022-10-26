@@ -4,6 +4,8 @@
 
 ### Added
 
+New function `CalcBTreeStats` to calc count of node sizes.
+
 ODbDump has new command `leakscodeapply` which enable apply output file from `leakscode` command on db (then can be compared dump before and after clean - must be the same)
 
 ODbDump `check` command was improved to not stop on first error, but to count all corrupted pairs.

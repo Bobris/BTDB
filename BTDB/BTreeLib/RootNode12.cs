@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using BTDB.Collections;
 using BTDB.KVDBLayer.BTree;
 
 namespace BTDB.BTreeLib;
@@ -156,6 +157,13 @@ class RootNode12 : IRootNode
         if (Root == IntPtr.Zero)
             return;
         BTreeImpl12.KeyValueIterate(Root, ref keyValueIterateCtx, callback);
+    }
+
+    public void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth)
+    {
+        if (Root == IntPtr.Zero)
+            return;
+        BTreeImpl12.CalcBTreeStats(Root, stats, 0u);
     }
 
     public bool ShouldBeDisposed => _referenceCount == 0;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using BTDB.Collections;
 
 namespace BTDB.KVDBLayer.BTreeMem;
 
@@ -18,7 +19,7 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
 
     internal BTreeLeaf(long transactionId, int length, Func<BTreeLeafMember> memberGenerator)
     {
-        Debug.Assert(length > 0 && length <= MaxMembers);
+        Debug.Assert(length is > 0 and <= MaxMembers);
         TransactionId = transactionId;
         _keyValues = new BTreeLeafMember[length];
         for (var i = 0; i < _keyValues.Length; i++)
@@ -250,6 +251,11 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
             return this;
         }
         return new BTreeLeaf(transactionId, newKeyValues);
+    }
+
+    public void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth)
+    {
+        stats.GetOrAddValueRef((depth, (uint)_keyValues.Length))++;
     }
 
     public ReadOnlySpan<byte> GetKey(int idx)

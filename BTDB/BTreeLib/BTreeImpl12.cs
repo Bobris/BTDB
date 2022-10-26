@@ -336,8 +336,8 @@ public class BTreeImpl12
             {
                 var value = values.Slice(i, 12);
                 if (ctx._positionMap.TryGetValue(
-                    (((ulong)MemoryMarshal.Read<uint>(value)) << 32) + MemoryMarshal.Read<uint>(value.Slice(4)),
-                    out var targetOfs))
+                        (((ulong)MemoryMarshal.Read<uint>(value)) << 32) + MemoryMarshal.Read<uint>(value.Slice(4)),
+                        out var targetOfs))
                 {
                     if (!cloned)
                     {
@@ -467,7 +467,7 @@ public class BTreeImpl12
         if (stack.Length == 0)
             return -1;
         var res = 0L;
-        for (var i = 0; ; i++)
+        for (var i = 0;; i++)
         {
             var node = stack[i]._node;
             var pos = stack[i]._posInNode;
@@ -517,7 +517,7 @@ public class BTreeImpl12
             break;
         }
 
-    up:
+        up:
         if (idx == 0)
         {
             Dereference(rootNode.Root);
@@ -537,7 +537,7 @@ public class BTreeImpl12
         node = OverwriteInEraseFromBranch(curItem._node, curItem._posInNode, node, -count);
         goto up;
 
-    finish:
+        finish:
         left.Clear();
         right.Clear();
         while (rootNode.Root != IntPtr.Zero && NodeUtils12.Ptr2NodeHeader(rootNode.Root).IsDegenerated)
@@ -1073,7 +1073,8 @@ public class BTreeImpl12
             {
                 if (header._keyPrefixLength > 0)
                 {
-                    var prefix = new Span<byte>((top + NodeHeader12.LeafHeaderSize).ToPointer(), header._keyPrefixLength);
+                    var prefix = new Span<byte>((top + NodeHeader12.LeafHeaderSize).ToPointer(),
+                        header._keyPrefixLength);
                     if (header._keyPrefixLength > key.Length)
                     {
                         stack.Clear();
@@ -1396,7 +1397,7 @@ public class BTreeImpl12
                 {
                     stack.AddRef().Set(top, (byte)(idx - 1));
                     if (MoveNext(ref stack) && IsKeyPrefix(stack[stack.Count - 1]._node,
-                        stack[stack.Count - 1]._posInNode, keyPrefix))
+                            stack[stack.Count - 1]._posInNode, keyPrefix))
                     {
                         return true;
                     }
@@ -1479,8 +1480,10 @@ public class BTreeImpl12
                         {
                             return -1;
                         }
+
                         return res + header._childCount - 1;
                     }
+
                     // Trick here is to calculate children from back
                     res += (long)header._recursiveChildCount;
                     top = NodeUtils12.GetBranchValuePtr(top, header._childCount - 1);
@@ -2055,7 +2058,7 @@ public class BTreeImpl12
         internal void Run(ref StructList<CursorItem> stack, bool rightInsert)
         {
             var stackIdx = (int)stack.Count - 2;
-        again:
+            again:
             if (stackIdx < 0)
             {
                 var keyPrefix = NodeUtils12.GetLeftestKey(_newChildNode2, out var keySuffix);
@@ -2429,6 +2432,21 @@ public class BTreeImpl12
                 TestTreeCorrectness(child, ref stack);
                 stack.Pop();
             }
+        }
+    }
+
+    public static void CalcBTreeStats(IntPtr top, RefDictionary<(uint Depth, uint Children), uint> stats, uint depth)
+    {
+        if (top == IntPtr.Zero)
+            return;
+        ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+        stats.GetOrAddValueRef((depth, header._childCount))++;
+        if (header.IsNodeLeaf) return;
+        var children = NodeUtils12.GetBranchValuePtrs(top);
+
+        foreach (var child in children)
+        {
+            CalcBTreeStats(child, stats, depth + 1);
         }
     }
 }

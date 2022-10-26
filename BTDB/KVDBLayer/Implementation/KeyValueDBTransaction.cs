@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using BTDB.Collections;
 using BTDB.KVDBLayer.BTree;
 
 namespace BTDB.KVDBLayer;
@@ -71,6 +73,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
                 return true;
             }
         }
+
         InvalidateCurrentKey();
         return false;
     }
@@ -87,6 +90,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
                 return true;
             }
         }
+
         InvalidateCurrentKey();
         return false;
     }
@@ -125,10 +129,12 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
             _keyValueDB.WriteStartTransaction();
             return;
         }
+
         if (_readOnly)
         {
             throw new BTDBTransactionRetryException("Cannot write from readOnly transaction");
         }
+
         var oldBTreeRoot = _btreeRoot;
         _btreeRoot = _keyValueDB.MakeWritableTransaction(this, oldBTreeRoot!);
         _keyValueDB.StartedUsingBTreeRoot(_btreeRoot);
@@ -151,6 +157,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
             InvalidateCurrentKey();
             return false;
         }
+
         _keyIndex = index;
         _btreeRoot!.FillStackByIndex(_stack, _keyIndex);
         return true;
@@ -174,6 +181,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
             if (CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
                 return true;
         }
+
         InvalidateCurrentKey();
         return false;
     }
@@ -226,14 +234,17 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
         var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
         try
         {
-            return _keyValueDB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize, ref buffer, bufferLength);
+            return _keyValueDB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize, ref buffer,
+                bufferLength);
         }
         catch (BTDBException ex)
         {
             var oldestRoot = (IBTreeRootNode)_keyValueDB.ReferenceAndGetOldestRoot();
             var lastCommitted = (IBTreeRootNode)_keyValueDB.ReferenceAndGetLastCommitted();
             // no need to dereference roots because we know it is managed
-            throw new BTDBException($"GetValue failed in TrId:{_btreeRoot!.TransactionId},TRL:{_btreeRoot!.TrLogFileId},Ofs:{_btreeRoot!.TrLogOffset},ComUlong:{_btreeRoot!.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
+            throw new BTDBException(
+                $"GetValue failed in TrId:{_btreeRoot!.TransactionId},TRL:{_btreeRoot!.TrLogFileId},Ofs:{_btreeRoot!.TrLogOffset},ComUlong:{_btreeRoot!.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}",
+                ex);
         }
     }
 
@@ -268,10 +279,12 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
             _keyIndex = keyIndexBackup;
             _btreeRoot!.FillStackByIndex(_stack, _keyIndex);
         }
+
         var nodeIdxPair = _stack[^1];
         var memberValue = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
         var memberKey = ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx);
-        _keyValueDB.WriteCreateOrUpdateCommand(memberKey, value, out memberValue.ValueFileId, out memberValue.ValueOfs, out memberValue.ValueSize);
+        _keyValueDB.WriteCreateOrUpdateCommand(memberKey, value, out memberValue.ValueFileId, out memberValue.ValueOfs,
+            out memberValue.ValueSize);
         ((IBTreeLeafNode)nodeIdxPair.Node).SetMemberValue(nodeIdxPair.Idx, memberValue);
     }
 
@@ -286,6 +299,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
             _keyIndex = keyIndex;
             _btreeRoot!.FillStackByIndex(_stack, keyIndex);
         }
+
         _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
         InvalidateCurrentKey();
         _btreeRoot!.EraseOne(keyIndex);
@@ -299,6 +313,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
             InvalidateCurrentKey();
             return false;
         }
+
         var keyIndex = _keyIndex;
         MakeWritable();
         _keyValueDB.WriteEraseOneCommand(exactKey);
@@ -307,7 +322,8 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
         return true;
     }
 
-    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value)
+    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength,
+        out ReadOnlySpan<byte> value)
     {
         _cursorMovedCounter++;
         if (_btreeRoot!.FindKey(_stack, out _keyIndex, exactKey, 0) != FindResult.Exact)
@@ -316,6 +332,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
             value = ReadOnlySpan<byte>.Empty;
             return false;
         }
+
         var keyIndex = _keyIndex;
         value = GetClonedValue(ref buffer, bufferLength);
         MakeWritable();
@@ -349,6 +366,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
             _btreeRoot!.FillStackByIndex(_stack, lastKeyIndex);
             _keyValueDB.WriteEraseRangeCommand(firstKey, GetCurrentKeyFromStack());
         }
+
         _btreeRoot!.EraseRange(firstKeyIndex, lastKeyIndex);
     }
 
@@ -415,6 +433,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
             _writing = false;
             _preapprovedWriting = false;
         }
+
         if (_btreeRoot == null) return;
         _keyValueDB.FinishedUsingBTreeRoot(_btreeRoot);
         _btreeRoot = null;
@@ -473,4 +492,11 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
     }
 
     public bool RollbackAdvised { get; set; }
+
+    public Dictionary<(uint Depth, uint Children), uint> CalcBTreeStats()
+    {
+        var stats = new RefDictionary<(uint Depth, uint Children), uint>();
+        _btreeRoot!.CalcBTreeStats(stats, 0);
+        return stats.ToDictionary(kv => kv.Key, kv => kv.Value);
+    }
 }

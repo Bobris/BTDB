@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using BTDB.Collections;
 
 namespace BTDB.KVDBLayer.BTree;
 
@@ -432,6 +433,11 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         }
 
         return result;
+    }
+
+    public void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth)
+    {
+        stats.GetOrAddValueRef((depth, (uint)_keyValues.Length))++;
     }
 
     public ReadOnlySpan<byte> GetKey(int idx)

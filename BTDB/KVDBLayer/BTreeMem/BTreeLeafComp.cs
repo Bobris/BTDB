@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using BTDB.Collections;
 
 namespace BTDB.KVDBLayer.BTreeMem;
 
@@ -29,7 +30,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
 
     internal BTreeLeafComp(long transactionId, BTreeLeafMember[] newKeyValues)
     {
-        Debug.Assert(newKeyValues.Length > 0 && newKeyValues.Length <= MaxMembers);
+        Debug.Assert(newKeyValues.Length is > 0 and <= MaxMembers);
         TransactionId = transactionId;
         _keyBytes = new byte[newKeyValues.Sum(m => m.Key.Length)];
         _keyValues = new Member[newKeyValues.Length];
@@ -349,6 +350,11 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
             return this;
         }
         return new BTreeLeafComp(transactionId, newKeyBytes, newKeyValues);
+    }
+
+    public void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth)
+    {
+        stats.GetOrAddValueRef((depth, (uint)_keyValues.Length))++;
     }
 
     static void RecalculateOffsets(Member[] keyValues)

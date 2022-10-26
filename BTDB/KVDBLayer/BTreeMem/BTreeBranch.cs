@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using BTDB.Collections;
 
 namespace BTDB.KVDBLayer.BTreeMem;
 
@@ -69,6 +70,7 @@ class BTreeBranch : IBTreeNode
                 left = middle + 1;
             }
         }
+
         return left;
     }
 
@@ -100,6 +102,7 @@ class BTreeBranch : IBTreeNode
                 previousPairCount += newChildren[i].CalcKeyCount();
                 newPairCounts[i] = previousPairCount;
             }
+
             ctx.Node1 = null;
             ctx.Node2 = null;
             if (_children.Length < MaxChildren)
@@ -116,10 +119,12 @@ class BTreeBranch : IBTreeNode
                     _children = newChildren;
                     _pairCounts = newPairCounts;
                 }
+
                 if (ctx.SplitInRight) index++;
                 ctx.Stack[ctx.Depth] = new NodeIdxPair { Node = newBranch, Idx = index };
                 return;
             }
+
             if (ctx.SplitInRight) index++;
             ctx.Split = true;
 
@@ -143,6 +148,7 @@ class BTreeBranch : IBTreeNode
             {
                 splitPairCounts[i] = newPairCounts[keyCountLeft + i] - newPairCounts[keyCountLeft - 1];
             }
+
             ctx.Node2 = new BTreeBranch(ctx.TransactionId, splitKeys, splitChildren, splitPairCounts);
 
             if (index < keyCountLeft)
@@ -155,8 +161,10 @@ class BTreeBranch : IBTreeNode
                 ctx.Stack[ctx.Depth] = new NodeIdxPair { Node = ctx.Node2, Idx = index - keyCountLeft };
                 ctx.SplitInRight = true;
             }
+
             return;
         }
+
         if (ctx.Update)
         {
             if (TransactionId != ctx.TransactionId)
@@ -177,8 +185,10 @@ class BTreeBranch : IBTreeNode
                 ctx.Update = false;
                 ctx.Node1 = null;
             }
+
             ctx.Stack[ctx.Depth] = new NodeIdxPair { Node = newBranch, Idx = index };
         }
+
         Debug.Assert(newBranch.TransactionId == ctx.TransactionId);
         if (!ctx.Created) return;
         var pairCounts = newBranch._pairCounts;
@@ -224,6 +234,7 @@ class BTreeBranch : IBTreeNode
                 left = middle + 1;
             }
         }
+
         stack.Add(new NodeIdxPair { Node = this, Idx = left });
         _children[left].FillStackByIndex(stack, keyIndex - (left > 0 ? _pairCounts[left - 1] : 0));
     }
@@ -246,6 +257,7 @@ class BTreeBranch : IBTreeNode
                 left = middle + 1;
             }
         }
+
         return _children[left].FindLastWithPrefix(prefix) + (left > 0 ? _pairCounts[left - 1] : 0);
     }
 
@@ -293,32 +305,36 @@ class BTreeBranch : IBTreeNode
                 lastRemoved = i;
                 continue;
             }
+
             if (prevPairCount <= firstKeyIndex && lastKeyIndex < nextPairCount)
             {
                 firstRemoved = i;
                 lastRemoved = i;
                 firstPartialNode = _children[i].EraseRange(transactionId, firstKeyIndex - prevPairCount,
-                                                           lastKeyIndex - prevPairCount);
+                    lastKeyIndex - prevPairCount);
                 lastPartialNode = firstPartialNode;
                 break;
             }
+
             if (firstRemoved == -1 && firstKeyIndex < nextPairCount)
             {
                 if (prevPairCount > firstKeyIndex) throw new InvalidOperationException();
                 if (nextPairCount > lastKeyIndex) throw new InvalidOperationException();
                 firstRemoved = i;
                 firstPartialNode = _children[i].EraseRange(transactionId, firstKeyIndex - prevPairCount,
-                                                           nextPairCount - 1 - prevPairCount);
+                    nextPairCount - 1 - prevPairCount);
                 continue;
             }
+
             if (lastKeyIndex >= nextPairCount - 1) throw new InvalidOperationException();
             lastRemoved = i;
             lastPartialNode = _children[i].EraseRange(transactionId, 0, lastKeyIndex - prevPairCount);
             break;
         }
+
         var finalChildrenCount = firstRemoved - (firstPartialNode == null ? 1 : 0)
-                               + _children.Length + 1 - lastRemoved - (lastPartialNode == null ? 1 : 0)
-                               - (firstPartialNode == lastPartialNode && firstPartialNode != null ? 1 : 0);
+                                 + _children.Length + 1 - lastRemoved - (lastPartialNode == null ? 1 : 0)
+                                 - (firstPartialNode == lastPartialNode && firstPartialNode != null ? 1 : 0);
         var newKeys = new byte[finalChildrenCount - 1][];
         var newChildren = new IBTreeNode[finalChildrenCount];
         var newPairCounts = new long[finalChildrenCount];
@@ -329,11 +345,13 @@ class BTreeBranch : IBTreeNode
             newChildren[idx] = firstPartialNode;
             idx++;
         }
+
         if (lastPartialNode != null)
         {
             newChildren[idx] = lastPartialNode;
             idx++;
         }
+
         Array.Copy(_children, lastRemoved + 1, newChildren, idx, finalChildrenCount - idx);
         var previousPairCount = 0L;
         for (var i = 0; i < finalChildrenCount; i++)
@@ -341,10 +359,12 @@ class BTreeBranch : IBTreeNode
             previousPairCount += newChildren[i].CalcKeyCount();
             newPairCounts[i] = previousPairCount;
         }
+
         for (var i = 0; i < finalChildrenCount - 1; i++)
         {
             newKeys[i] = newChildren[i + 1].GetLeftMostKey();
         }
+
         if (transactionId == TransactionId)
         {
             _keys = newKeys;
@@ -352,6 +372,7 @@ class BTreeBranch : IBTreeNode
             _pairCounts = newPairCounts;
             return this;
         }
+
         return new BTreeBranch(transactionId, newKeys, newChildren, newPairCounts);
     }
 
@@ -373,6 +394,7 @@ class BTreeBranch : IBTreeNode
                 break;
             }
         }
+
         var finalChildrenCount = _children.Length - (firstPartialNode == null ? 1 : 0);
         var newKeys = new byte[finalChildrenCount - 1][];
         var newChildren = new IBTreeNode[finalChildrenCount];
@@ -384,6 +406,7 @@ class BTreeBranch : IBTreeNode
             newChildren[idx] = firstPartialNode;
             idx++;
         }
+
         Array.Copy(_children, firstRemoved + 1, newChildren, idx, finalChildrenCount - idx);
         var previousPairCount = 0L;
         for (var i = 0; i < finalChildrenCount; i++)
@@ -391,6 +414,7 @@ class BTreeBranch : IBTreeNode
             previousPairCount += newChildren[i].CalcKeyCount();
             newPairCounts[i] = previousPairCount;
         }
+
         if (firstPartialNode == null)
         {
             if (firstRemoved == 0)
@@ -411,6 +435,7 @@ class BTreeBranch : IBTreeNode
             if (firstRemoved > 0)
                 newKeys[firstRemoved - 1] = newChildren[firstRemoved].GetLeftMostKey();
         }
+
         if (transactionId == TransactionId)
         {
             _keys = newKeys;
@@ -418,6 +443,16 @@ class BTreeBranch : IBTreeNode
             _pairCounts = newPairCounts;
             return this;
         }
+
         return new BTreeBranch(transactionId, newKeys, newChildren, newPairCounts);
+    }
+
+    public void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth)
+    {
+        stats.GetOrAddValueRef((depth, (uint)_children.Length))++;
+        foreach (var child in _children)
+        {
+            child.CalcBTreeStats(stats, depth + 1);
+        }
     }
 }

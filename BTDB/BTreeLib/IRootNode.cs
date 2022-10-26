@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.KVDBLayer;
 using BTDB.KVDBLayer.BTree;
 using BTDB.StreamLayer;
@@ -35,6 +36,7 @@ public interface IRootNode : IRootNodeInternal, IDisposable
 
     void ValuesIterate(ValuesIterateAction visit);
     void KeyValueIterate(ref KeyValueIterateCtx keyValueIterateCtx, KeyValueIterateCallback callback);
+    void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth);
 }
 
 public ref struct KeyValueIterateCtx
