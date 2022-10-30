@@ -3041,6 +3041,52 @@ namespace BTDBTest
             Assert.Equal(HttpStatusCode.MultipleChoices, table.First().StatusCode);
             Assert.Equal(HttpStatusCode.Ambiguous, table.First().StatusCode); //also 300
         }
+
+        public class RowWithObject
+        {
+            [PrimaryKey(1)] public ulong Id { get; set; }
+            public object Anything { get; set; }
+        }
+
+        public interface IRowWithObjectTable : IRelation<RowWithObject>
+        {
+        }
+
+        [Fact]
+        public void StoringClassIntoObjectWorks()
+        {
+            _db.RegisterType(typeof(RowWithObject));
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IRowWithObjectTable>();
+            table.Upsert(new() { Id = 1, Anything = new RowWithObject { Id = 2 } });
+            Assert.True(table.First().Anything is RowWithObject);
+            Assert.Equal(2ul, ((RowWithObject)table.First().Anything).Id);
+        }
+
+        [Fact]
+        public void StoringBoxedIntIntoObjectThrows()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IRowWithObjectTable>();
+            Assert.Throws<InvalidOperationException>(() => table.Upsert(new() { Id = 1, Anything = 666 }));
+        }
+
+        [Fact]
+        public void StoringStringIntoObjectThrows()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IRowWithObjectTable>();
+            Assert.Throws<InvalidOperationException>(() => table.Upsert(new() { Id = 1, Anything = "bad" }));
+        }
+
+        [Fact]
+        public void StoringDelegateIntoObjectThrows()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IRowWithObjectTable>();
+            Assert.Throws<InvalidOperationException>(() => table.Upsert(new() { Id = 1, Anything = (Func<int>)(()=>1) }));
+        }
+
     }
 }
 

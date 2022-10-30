@@ -171,7 +171,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
-        public bool StartRelationKey()
+        public bool StartRelationKey(bool valueIsCorrupted)
         {
             Print("Key");
             _indent++;

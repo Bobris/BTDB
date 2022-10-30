@@ -36,8 +36,8 @@ public class ODBIteratorTest : IDisposable
         _db.Open(_lowDb, false,
             new DBOptions().WithSymmetricCipher(new AesGcmSymmetricCipher(new byte[]
             {
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-                    27, 28, 29, 30, 31
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+                27, 28, 29, 30, 31
             })));
     }
 
@@ -169,7 +169,7 @@ public class ODBIteratorTest : IDisposable
 
         public bool StartDictionary(ulong? dicid = null)
         {
-            Builder.AppendLine("StartDictionary"+(dicid.HasValue?" "+dicid.Value:""));
+            Builder.AppendLine("StartDictionary" + (dicid.HasValue ? " " + dicid.Value : ""));
             return true;
         }
 
@@ -238,7 +238,7 @@ public class ODBIteratorTest : IDisposable
             return true;
         }
 
-        public bool StartRelationKey()
+        public bool StartRelationKey(bool valueIsCorrupted)
         {
             Builder.AppendLine("BeginKey");
             return true;
@@ -672,13 +672,13 @@ public class ODBIteratorTest : IDisposable
             {
                 Id = 2,
                 BlobsIDict = new Dictionary<Blob, Blob>
-                { [blob] = blob, [new Blob { Name = "A" }] = blob }
+                    { [blob] = blob, [new Blob { Name = "A" }] = blob }
             });
             table.Insert(new WithReusedObjects
             {
                 Id = 3,
                 BlobsDict = new Dictionary<Blob, Blob>
-                { [blob] = blob, [new Blob { Name = "A" }] = blob }
+                    { [blob] = blob, [new Blob { Name = "A" }] = blob }
             });
             tr.Commit();
         }

@@ -49,13 +49,13 @@ public class ODBIterator
         _trkv = _tr.KeyValueDBTransaction;
         _fastVisitor = visitor;
         _visitor = visitor as IODBVisitor;
-        _usedTableIds = new HashSet<uint>();
-        _visitedOids = new HashSet<ulong>();
-        _usedTableVersions = new HashSet<TableIdVersionId>();
-        _tableVersionInfos = new Dictionary<TableIdVersionId, TableVersionInfo>();
+        _usedTableIds = new();
+        _visitedOids = new();
+        _usedTableVersions = new();
+        _tableVersionInfos = new();
 
-        _skippers = new Dictionary<IFieldHandler, SkipperFun>(ReferenceEqualityComparer<IFieldHandler>.Instance);
-        _loaders = new Dictionary<IFieldHandler, LoaderFun>(ReferenceEqualityComparer<IFieldHandler>.Instance);
+        _skippers = new(ReferenceEqualityComparer<IFieldHandler>.Instance);
+        _loaders = new(ReferenceEqualityComparer<IFieldHandler>.Instance);
     }
 
     public void LoadGlobalInfo(bool sortTableByNameAsc = false)
@@ -64,7 +64,7 @@ public class ODBIterator
         LoadRelationInfoDict();
         MarkLastDictId();
         _trkv.InvalidateCurrentKey();
-        _singletons = new Dictionary<uint, ulong>();
+        _singletons = new();
         while (_trkv.FindNextKey(ObjectDB.TableSingletonsPrefix))
         {
             _singletons.Add(
@@ -162,7 +162,8 @@ public class ODBIterator
         var prefix = BuildRelationPrefix(relation.Id);
         if (!_trkv.SetKeyIndex(prefix, pos)) return;
         var prevProtectionCounter = _trkv.CursorMovedCounter;
-        if (_visitor == null || _visitor.StartRelationKey())
+        var valueCorrupted = _trkv.IsValueCorrupted();
+        if (_visitor == null || _visitor.StartRelationKey(valueCorrupted))
         {
             var keyReader = new SpanReader(_trkv.GetKey().Slice(prefix.Length));
             var relationInfo = relation.VersionInfos[relation.LastPersistedVersion];
@@ -175,12 +176,12 @@ public class ODBIterator
             if (!_trkv.SetKeyIndex(prefix, pos)) return;
         }
 
-        if (_visitor == null || _visitor.StartRelationValue())
+        if (!valueCorrupted && (_visitor == null || _visitor.StartRelationValue()))
         {
             var valueReader = new SpanReader(_trkv.GetValue());
             var version = valueReader.ReadVUInt32();
             var relationInfo = relation.VersionInfos[version];
-            IterateFields(ref valueReader, relationInfo.Fields.Span, new HashSet<int>());
+            IterateFields(ref valueReader, relationInfo.Fields.Span, new());
             _visitor?.EndRelationValue();
         }
     }
@@ -212,7 +213,8 @@ public class ODBIterator
 
             _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
             prevProtectionCounter = _trkv.CursorMovedCounter;
-            if (_visitor == null || _visitor.StartRelationKey())
+            var valueCorrupted = _trkv.IsValueCorrupted();
+            if (_visitor == null || _visitor.StartRelationKey(valueCorrupted))
             {
                 var keyReader = new SpanReader(_trkv.GetKey().Slice(prefix.Length));
                 var relationInfo = relation.VersionInfos[relation.LastPersistedVersion];
@@ -225,12 +227,12 @@ public class ODBIterator
                 if (!_trkv.SetKeyIndex(prefix, pos)) break;
             }
 
-            if (_visitor == null || _visitor.StartRelationValue())
+            if (!valueCorrupted && (_visitor == null || _visitor.StartRelationValue()))
             {
                 var valueReader = new SpanReader(_trkv.GetValue());
                 var version = valueReader.ReadVUInt32();
                 var relationInfo = relation.VersionInfos[version];
-                IterateFields(ref valueReader, relationInfo.Fields.Span, new HashSet<int>());
+                IterateFields(ref valueReader, relationInfo.Fields.Span, new());
                 _visitor?.EndRelationValue();
             }
 
@@ -770,7 +772,7 @@ public class ODBIterator
 
     void MarkTableIdVersionFieldInfo(uint tableId, uint version)
     {
-        if (!_usedTableVersions.Add(new TableIdVersionId(tableId, version)))
+        if (!_usedTableVersions.Add(new(tableId, version)))
             return;
         MarkTableName(tableId);
         if (_trkv.Find(TwiceVuint2ByteBuffer(ObjectDB.TableVersionsPrefix, tableId, version), 0) ==
@@ -851,13 +853,13 @@ public class ODBIterator
 
     TableVersionInfo GetTableVersionInfo(uint tableId, uint version)
     {
-        if (_tableVersionInfos.TryGetValue(new TableIdVersionId(tableId, version), out var res))
+        if (_tableVersionInfos.TryGetValue(new(tableId, version), out var res))
             return res;
         if (_trkv.FindExactKey(TwiceVuint2ByteBuffer(ObjectDB.TableVersionsPrefix, tableId, version)))
         {
             var reader = new SpanReader(_trkv.GetValue());
             res = TableVersionInfo.Load(ref reader, _tr.Owner.FieldHandlerFactory, _tableId2Name[tableId]);
-            _tableVersionInfos.Add(new TableIdVersionId(tableId, version), res);
+            _tableVersionInfos.Add(new(tableId, version), res);
             return res;
         }
 

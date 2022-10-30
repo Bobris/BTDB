@@ -37,7 +37,7 @@ public interface IODBVisitor : IODBFastVisitor
     void EndObject();
 
     bool StartRelation(ODBIteratorRelationInfo relationInfo);
-    bool StartRelationKey();
+    bool StartRelationKey(bool valueIsCorrupted);
     void EndRelationKey();
     bool StartRelationValue();
     void EndRelationValue();

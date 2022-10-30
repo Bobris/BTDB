@@ -173,7 +173,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
-        public bool StartRelationKey()
+        public bool StartRelationKey(bool valueIsCorrupted)
         {
             _currentCount++;
             return false;

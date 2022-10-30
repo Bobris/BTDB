@@ -1,9 +1,14 @@
-﻿using BTDB.ODBLayer;
+﻿using System;
+using BTDB.ODBLayer;
 
 namespace ODbDump.Visitor
 {
     class ToNullVisitor : ToConsoleFastVisitor, IODBVisitor
     {
+        long _corruptedCount;
+        string? _curRelationName;
+        long _curRelationRows;
+
         public bool VisitSingleton(uint tableId, string? tableName, ulong oid)
         {
             return true;
@@ -123,11 +128,15 @@ namespace ODbDump.Visitor
 
         public bool StartRelation(ODBIteratorRelationInfo relationInfo)
         {
+            _corruptedCount = 0;
+            _curRelationName = relationInfo.Name;
+            _curRelationRows = relationInfo.RowCount;
             return true;
         }
 
-        public bool StartRelationKey()
+        public bool StartRelationKey(bool valueIsCorrupted)
         {
+            if (valueIsCorrupted) _corruptedCount++;
             return true;
         }
 
@@ -146,6 +155,11 @@ namespace ODbDump.Visitor
 
         public void EndRelation()
         {
+            if (_corruptedCount > 0)
+            {
+                Console.WriteLine("Relation " + _curRelationName + " has " + _corruptedCount + " corrupted out of " +
+                                  _curRelationRows + " rows");
+            }
         }
 
         public void InlineBackRef(int iid)

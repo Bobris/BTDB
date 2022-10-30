@@ -162,7 +162,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
-        public bool StartRelationKey()
+        public bool StartRelationKey(bool valueIsCorrupted)
         {
             Console.WriteLine("BeginKey");
             return true;
