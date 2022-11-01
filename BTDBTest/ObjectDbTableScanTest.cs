@@ -318,7 +318,8 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         AssertSameCondition(t.Where(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1), dst);
         dst.Clear();
         Assert.Equal((ulong)t.Count(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1),
-            t.GatherById(dst, 0, 1000, Constraint.First(Constraint.Unsigned.Any), Constraint.Unsigned.Any, new [] { Orderer.Ascending((ThreeUlongs v)=>v.N1) }));
+            t.GatherById(dst, 0, 1000, Constraint.First(Constraint.Unsigned.Any), Constraint.Unsigned.Any,
+                new[] { Orderer.Ascending((ThreeUlongs v) => v.N1) }));
         AssertSameCondition(t.Where(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1), dst);
     }
 
@@ -340,14 +341,15 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         AssertSameCondition(t.Where(v => v.N1 <= 3 && v.N2 == 3 && v.N3 == 1), dst);
         dst.Clear();
         Assert.Equal((ulong)t.Count(v => v.N2 == 1 && v.N3 == 1),
-            t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any), new [] { Orderer.Ascending((ThreeUlongs v)=>v.N1) }));
+            t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any),
+                new[] { Orderer.Ascending((ThreeUlongs v) => v.N1) }));
         AssertSameCondition(t.Where(v => v.N2 == 1 && v.N3 == 1), dst);
         dst.Clear();
         Assert.Equal((ulong)t.Count(v => v.N1 <= 3 && v.N2 == 3 && v.N3 == 1),
             t.GatherById(dst, 0, 1000, Constraint.Unsigned.UpTo(3),
-                Constraint.First(Constraint.Unsigned.Predicate(v => v > 2)), new [] { Orderer.Ascending((ThreeUlongs v)=>v.N1) }));
+                Constraint.First(Constraint.Unsigned.Predicate(v => v > 2)),
+                new[] { Orderer.Ascending((ThreeUlongs v) => v.N1) }));
         AssertSameCondition(t.Where(v => v.N1 <= 3 && v.N2 == 3 && v.N3 == 1), dst);
-
     }
 
     [Fact]
@@ -489,8 +491,10 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
 
         ulong GatherByName(List<ThingWithSK> target, long skip, long take, Constraint<string> name,
             Constraint<ulong> age, IOrderer[] orderers);
+
         ThingWithSK? FirstByNameOrDefault(Constraint<string> name,
             Constraint<ulong> age, IOrderer[] orderers);
+
         ThingWithSK FirstByName(Constraint<string> name,
             Constraint<ulong> age, IOrderer[] orderers);
     }
@@ -537,7 +541,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal("D",
             t.FirstByName(Constraint.String.Any, Constraint.Unsigned.Any,
                 new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }).Name);
-        Assert.Throws<BTDBException>(()=>
+        Assert.Throws<BTDBException>(() =>
             t.FirstByName(Constraint.String.Exact("NotExisting"), Constraint.Unsigned.Any,
                 new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
     }
@@ -553,7 +557,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
             t.FirstByNameOrDefault(Constraint.String.Any, Constraint.Unsigned.Any,
                 new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) })!.Name);
         Assert.Null(t.FirstByNameOrDefault(Constraint.String.Exact("NotExisting"), Constraint.Unsigned.Any,
-                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
+            new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
     }
 
     void FillThingWithSKData()
@@ -638,14 +642,11 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal("BC", string.Concat(target.Select(v => v.Name)));
     }
 
-    public class ThreePrimaryKeys: IEquatable<ThreePrimaryKeys>
+    public class ThreePrimaryKeys : IEquatable<ThreePrimaryKeys>
     {
-        [PrimaryKey(1)]
-        public ulong TenantId { get; set; }
-        [PrimaryKey(2)]
-        public ulong ItemId { get; set; }
-        [PrimaryKey(3)]
-        public ulong Version { get; set; }
+        [PrimaryKey(1)] public ulong TenantId { get; set; }
+        [PrimaryKey(2)] public ulong ItemId { get; set; }
+        [PrimaryKey(3)] public ulong Version { get; set; }
 
         public ThreePrimaryKeys(ulong tenantId, ulong itemId, ulong version)
         {
@@ -677,9 +678,16 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
 
     public interface IThreePrimaryKeysTable : IRelation<ThreePrimaryKeys>
     {
+        IEnumerable<ThreePrimaryKeys> ScanById(Constraint<ulong> tenantId, Constraint<ulong> itemId);
+
         IEnumerable<ThreePrimaryKeys> ScanById(Constraint<ulong> tenantId, Constraint<ulong> itemId,
             Constraint<ulong> version);
-        ulong GatherById(ICollection<ThreePrimaryKeys> target, long skip, long take, Constraint<ulong> tenantId, Constraint<ulong> itemId,
+
+        ulong GatherById(ICollection<ThreePrimaryKeys> target, long skip, long take, Constraint<ulong> tenantId,
+            Constraint<ulong> itemId);
+
+        ulong GatherById(ICollection<ThreePrimaryKeys> target, long skip, long take, Constraint<ulong> tenantId,
+            Constraint<ulong> itemId,
             Constraint<ulong> version);
     }
 
@@ -691,11 +699,23 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         t.Upsert(new(1, 1, 2));
         t.Upsert(new(1, 2, 1));
         t.Upsert(new(1, 2, 2));
+        t.Upsert(new(2, 1, 1));
+        t.Upsert(new(2, 1, 2));
+        t.Upsert(new(2, 1, 3));
+        t.Upsert(new(2, 1, 4));
+        t.Upsert(new(2, 2, 1));
+        t.Upsert(new(2, 2, 2));
+        t.Upsert(new(2, 2, 3));
+        t.Upsert(new(2, 2, 4));
+        t.Upsert(new(2, 3, 1));
+        t.Upsert(new(2, 3, 2));
+        t.Upsert(new(2, 3, 3));
+        t.Upsert(new(2, 3, 4));
         tr.Commit();
     }
 
     [Fact]
-    public void CollectListOfUniqueSecondaryKeys()
+    public void CollectListOfUniquePrimaryKeys()
     {
         FillThreePrimaryKeysWithData();
 
@@ -705,12 +725,73 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var data = t.ScanById(Constraint.Unsigned.Exact(1), Constraint.Unsigned.Any,
             Constraint.First(Constraint.Unsigned.Any)).ToList();
 
-        Assert.Equal(new []{new ThreePrimaryKeys(1,1,1), new ThreePrimaryKeys(1,2,1)}, data);
+        Assert.Equal(new[] { new ThreePrimaryKeys(1, 1, 1), new ThreePrimaryKeys(1, 2, 1) }, data);
 
         data.Clear();
         Assert.Equal(2ul, t.GatherById(data, 0, 100, Constraint.Unsigned.Exact(1), Constraint.Unsigned.Any,
             Constraint.First(Constraint.Unsigned.Any)));
 
-        Assert.Equal(new []{new ThreePrimaryKeys(1,1,1), new ThreePrimaryKeys(1,2,1)}, data);
+        Assert.Equal(new[] { new ThreePrimaryKeys(1, 1, 1), new ThreePrimaryKeys(1, 2, 1) }, data);
+    }
+
+    [Fact]
+    public void CollectListOfUniquePrimaryKeysOnNonlastLevel()
+    {
+        FillThreePrimaryKeysWithData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreePrimaryKeysTable>();
+
+        var data = t.ScanById(Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any)).ToList();
+
+        Assert.Equal(new[] { new ThreePrimaryKeys(1, 1, 1), new ThreePrimaryKeys(2, 1, 1) }, data);
+
+        data.Clear();
+        Assert.Equal(2ul,
+            t.GatherById(data, 0, 100, Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any)));
+
+        Assert.Equal(new[] { new ThreePrimaryKeys(1, 1, 1), new ThreePrimaryKeys(2, 1, 1) }, data);
+    }
+
+    [Fact]
+    public void CollectListOfUniquePrimaryKeysOnNonlastLevel2()
+    {
+        FillThreePrimaryKeysWithData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreePrimaryKeysTable>();
+
+        var data = t.ScanById(Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any),
+            Constraint.Unsigned.Exact(3)).ToList();
+
+        Assert.Equal(new[] { new ThreePrimaryKeys(2, 1, 3) }, data);
+
+        data.Clear();
+        Assert.Equal(1ul,
+            t.GatherById(data, 0, 100, Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any),
+                Constraint.Unsigned.Exact(3)));
+
+        Assert.Equal(new[] { new ThreePrimaryKeys(2, 1, 3) }, data);
+    }
+
+    [Fact]
+    public void CollectListOfUniquePrimaryKeysOnNonlastLevel3()
+    {
+        FillThreePrimaryKeysWithData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreePrimaryKeysTable>();
+
+        var data = t.ScanById(Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any),
+            Constraint.Unsigned.Exact(2)).ToList();
+
+        Assert.Equal(new[] { new ThreePrimaryKeys(1, 1, 2), new ThreePrimaryKeys(2, 1, 2) }, data);
+
+        data.Clear();
+        Assert.Equal(2ul,
+            t.GatherById(data, 0, 100, Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any),
+                Constraint.Unsigned.Exact(2)));
+
+        Assert.Equal(new[] { new ThreePrimaryKeys(1, 1, 2), new ThreePrimaryKeys(2, 1, 2) }, data);
     }
 }
