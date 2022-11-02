@@ -213,7 +213,8 @@ public class RelationInfo
                 .Stloc(0);
 
             var instanceTableFieldInfos = new StructList<TableFieldInfo>();
-            var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?, bool Init, Type ToType)>();
+            var loadInstructions =
+                new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?, bool Init, Type ToType)>();
             var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
                                                    BindingFlags.Instance);
             var persistentNameToPropertyInfo = new RefDictionary<string, PropertyInfo>();
@@ -259,7 +260,8 @@ public class RelationInfo
                             break;
                         }
 
-                        loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod, false, fieldType));
+                        loadInstructions.Add(
+                            (specializedSrcHandler, converterGenerator, setterMethod, false, fieldType));
                         continue;
                     }
                 }
@@ -937,6 +939,19 @@ public class RelationInfo
         var ilGenerator = method.Generator;
         ilGenerator.DeclareLocal(ClientType);
         StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType, 0);
+        foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
+                                                         BindingFlags.NonPublic))
+        {
+            if (methodInfo.GetCustomAttribute<OnSerializeAttribute>() == null) continue;
+            if (methodInfo.GetParameters().Length != 0)
+                throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
+                                        " must have zero parameters.");
+            if (methodInfo.ReturnType != typeof(void))
+                throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
+                                        " must return void.");
+            ilGenerator.Ldloc(0).Callvirt(methodInfo);
+        }
+
         CreateSaverIl(ilGenerator, fields,
             il => il.Ldloc(0), il => il.Ldarg(1), il => il.Ldarg(0));
         ilGenerator.Ret();
@@ -1126,7 +1141,8 @@ public class RelationInfo
             }
 
             FindPosition(pkIdx, skFields, out var skFieldIdx);
-            MergerInitializeBufferReader(ilGenerator, ref bufferInfo, ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex));
+            MergerInitializeBufferReader(ilGenerator, ref bufferInfo,
+                ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex));
             for (var idx = bufferInfo.ActualFieldIdx; idx < skFieldIdx; idx++)
             {
                 var field = skFields[idx];
@@ -1143,7 +1159,8 @@ public class RelationInfo
             }
 
             var skField = skFields[skFieldIdx];
-            GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int)skField.Index].Handler!, bufferInfo.PushReader,
+            GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int)skField.Index].Handler!,
+                bufferInfo.PushReader,
                 PushWriter, memoPositionLoc);
 
             bufferInfo.ActualFieldIdx = skFieldIdx + 1;
@@ -1177,8 +1194,9 @@ public class RelationInfo
 
         ilGenerator
             //skip all relations
-            .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!) // ObjectDB.AllRelationsSKPrefix
-                                                                                                 //skip relation id (it is just 32bit, but 64bit skip is faster)
+            .Do(bi.PushReader)
+            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!) // ObjectDB.AllRelationsSKPrefix
+            //skip relation id (it is just 32bit, but 64bit skip is faster)
             .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!)
             //skip secondary key index
             .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!);
@@ -1210,12 +1228,13 @@ public class RelationInfo
         var memoPos = ilGenerator.DeclareLocal(typeof(uint));
         var memoLen = ilGenerator.DeclareLocal(typeof(uint));
         var position = new MemorizedPositionWithLength
-        { Pos = memoPos, Length = memoLen };
+            { Pos = memoPos, Length = memoLen };
         MemorizeCurrentPosition(ilGenerator, pushReader, memoPos);
         handler.Skip(ilGenerator, pushReader, null);
         ilGenerator
             .Do(pushReader) //[VR]
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPositionWithoutController))!) //[posNew(uint)]
+            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader
+                .GetCurrentPositionWithoutController))!) //[posNew(uint)]
             .Ldloc(memoPos) //[posNew(uint), posOld(uint)]
             .Sub() //[readLen(uint)]
             .Stloc(memoLen); //[]
@@ -1233,7 +1252,8 @@ public class RelationInfo
             .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.CopyAbsoluteToWriter))!); //[]
     }
 
-    public static void CopyFromPos(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal posLocal, Action<IILGen> pushWriter)
+    public static void CopyFromPos(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal posLocal,
+        Action<IILGen> pushWriter)
     {
         ilGenerator
             .Do(pushReader) //[reader]
@@ -1414,7 +1434,7 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
         else if (id <= int.MinValue || id > 0)
         {
             if (!Transaction.KeyValueDBTransaction.FindExactKey(
-                ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong)id)))
+                    ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong)id)))
                 return;
             var reader = new SpanReader(Transaction.KeyValueDBTransaction.GetValue());
             var tableId = reader.ReadVUInt32();

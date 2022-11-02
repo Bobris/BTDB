@@ -4,6 +4,8 @@
 
 ### Added
 
+New OnSerializeAttribute to mark method on relation item to be run before `Insert`, `Upsert`, `Update` and all their variants.
+
 DB now throws exception when scalar value is tried to be stored as inline object (it didn't worked anyway).
 
 DB Iterator notify and skips about missing values in Relations. ODbDump `dumpnull` prints number of such missing values.

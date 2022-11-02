@@ -430,3 +430,22 @@ When relation is created for first time, BTDB will try to resolve `IRelationOnCr
     var container = builder.Build();
 
     db.Open(kvdb, false, new DBOptions().WithContainer(container));
+
+## OnSerialize
+
+You can define any number of parameter less void returning methods which will be run before any inserting or updating object to relation.
+
+```C#
+    public class Room
+    {
+        [PrimaryKey(1)]
+        public ulong CompanyId { get; set; }
+        public string Name { get; set; }
+
+        [OnSerialize]
+        void AnyMethodName()
+        {
+            Name ??= "Unknown";
+        }
+    }
+```

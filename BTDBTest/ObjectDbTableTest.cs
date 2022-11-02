@@ -3084,9 +3084,41 @@ namespace BTDBTest
         {
             using var tr = _db.StartTransaction();
             var table = tr.GetRelation<IRowWithObjectTable>();
-            Assert.Throws<InvalidOperationException>(() => table.Upsert(new() { Id = 1, Anything = (Func<int>)(()=>1) }));
+            Assert.Throws<InvalidOperationException>(() =>
+                table.Upsert(new() { Id = 1, Anything = (Func<int>)(() => 1) }));
         }
 
+        public class ItemWithOnSerialize
+        {
+            [PrimaryKey(1)] public ulong Id { get; set; }
+            public string Text { get; set; }
+
+            [OnSerialize]
+            void MakeTextUpperCase()
+            {
+                Text = Text.ToUpperInvariant();
+            }
+
+            [OnSerialize]
+            public void VerifyIdToBeHigherThan100()
+            {
+                if (Id < 100) throw new ArgumentOutOfRangeException(nameof(Id));
+            }
+        }
+
+        public interface IItemWithOnSerializeTable : IRelation<ItemWithOnSerialize>
+        {
+        }
+
+        [Fact]
+        public void UpsertRunningAllOnSerializeMethods()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IItemWithOnSerializeTable>();
+            Assert.Throws<ArgumentOutOfRangeException>(() => table.Upsert(new() { Id = 1, Text = "a" }));
+            table.Upsert(new() { Id = 1000, Text = "ahoj" });
+            Assert.Equal("AHOJ", table.First().Text);
+        }
     }
 }
 
