@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.12.0
+
 ### Added
 
 New OnSerializeAttribute to mark method on relation item to be run before `Insert`, `Upsert`, `Update` and all their variants.
