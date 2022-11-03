@@ -796,7 +796,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     {
         var ti = _owner.TablesInfo.FindByType(type);
         if (ti != null) return ti;
-        if (type.InheritsOrImplements(typeof(IEnumerable<>)) || !type.IsClass || type.IsDelegate() || type == typeof(string))
+        if (type.InheritsOrImplements(typeof(IEnumerable<>)) || !(type.IsClass || type.IsInterface) || type.IsDelegate() || type == typeof(string))
         {
             throw new InvalidOperationException("Cannot store " + type.ToSimpleName() +
                                                 " type to DB directly.");
