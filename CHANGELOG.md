@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 29.12.1
+
 ### Fixed Regression from 29.12.0
 
 Allow to register interfaces not just classes.
