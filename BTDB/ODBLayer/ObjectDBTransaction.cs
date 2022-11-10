@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -336,7 +337,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         }
     }
 
-    void ReadObjStart(ulong oid, out TableInfo tableInfo, out SpanReader reader)
+    void ReadObjStart(ulong oid, out TableInfo tableInfo, [UnscopedRef] out SpanReader reader)
     {
         reader = new(_keyValueTr!.GetValue());
         var tableId = reader.ReadVUInt32();

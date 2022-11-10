@@ -216,8 +216,8 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
 
     public ReadOnlySpan<byte> GetKey()
     {
-        byte b = 0;
-        return GetKey(ref b, 0);
+        Span<byte> dummyKeyBuffer = stackalloc byte[1];
+        return GetKey(ref MemoryMarshal.GetReference(dummyKeyBuffer), 0);
     }
 
     public byte[] GetKeyToArray()
@@ -225,7 +225,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         return _cursor.GetKeyAsArray();
     }
 
-    public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
+    public ReadOnlySpan<byte> GetKey(scoped ref byte buffer, int bufferLength)
     {
         return _cursor.GetKey(ref buffer, bufferLength);
     }

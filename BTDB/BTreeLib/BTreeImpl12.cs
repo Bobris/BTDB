@@ -1800,7 +1800,7 @@ public class BTreeImpl12
         }
     }
 
-    ReadOnlySpan<byte> GetShortKey(in ReadOnlySpan<ushort> keyOfs, in ReadOnlySpan<byte> keyData, int idx)
+    ReadOnlySpan<byte> GetShortKey(ReadOnlySpan<ushort> keyOfs, ReadOnlySpan<byte> keyData, int idx)
     {
         var start = keyOfs[idx];
         return keyData.Slice(start, keyOfs[idx + 1] - start);

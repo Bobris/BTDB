@@ -538,7 +538,7 @@ public ref struct SpanWriter
         WriteBlock(ref MemoryMarshal.GetReference(buf), (uint)buf.Length);
     }
 
-    public void WriteBlock(ReadOnlySpan<byte> data)
+    public void WriteBlock(scoped ReadOnlySpan<byte> data)
     {
         WriteBlock(ref MemoryMarshal.GetReference(data), (uint)data.Length);
     }

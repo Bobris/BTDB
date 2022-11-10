@@ -128,7 +128,7 @@ class Cursor12 : ICursor
         }
     }
 
-    public unsafe ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
+    public unsafe ReadOnlySpan<byte> GetKey(scoped ref byte buffer, int bufferLength)
     {
         if (_stack.Count == 0) return ReadOnlySpan<byte>.Empty;
         ref var stackItem = ref _stack[_stack.Count - 1];

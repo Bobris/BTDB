@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -12,7 +13,7 @@ namespace BTDB.StreamLayer;
 
 public ref struct SpanReader
 {
-    public SpanReader(in ReadOnlySpan<byte> data)
+    public SpanReader(ReadOnlySpan<byte> data)
     {
         Buf = data;
         Original = data;

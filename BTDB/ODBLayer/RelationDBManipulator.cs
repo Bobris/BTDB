@@ -64,14 +64,14 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         _modificationCounter++;
     }
 
-    ReadOnlySpan<byte> ValueBytes(T obj, ref SpanWriter writer)
+    ReadOnlySpan<byte> ValueBytes(T obj, scoped ref SpanWriter writer)
     {
         writer.WriteVUInt32(_relationInfo.ClientTypeVersion);
         _relationInfo.ValueSaver(_transaction, ref writer, obj);
         return writer.GetPersistentSpanAndReset();
     }
 
-    ReadOnlySpan<byte> KeyBytes(T obj, ref SpanWriter writer)
+    ReadOnlySpan<byte> KeyBytes(T obj, scoped ref SpanWriter writer)
     {
         WriteRelationPKPrefix(ref writer);
         _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj);

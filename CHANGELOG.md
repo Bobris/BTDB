@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Breaking changes
+
+Requires C#11 and .Net 7.0
+
 ## 29.12.1
 
 ### Fixed Regression from 29.12.0

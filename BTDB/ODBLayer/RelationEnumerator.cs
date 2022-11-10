@@ -3,6 +3,7 @@ using BTDB.StreamLayer;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
@@ -122,13 +123,15 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
 
         recordMatch:
         sortNativeStorage.StartNewItem();
-        var keyReader = new SpanReader(key);
-        for (var j = 0; j < orderers.Length; j++)
         {
-            var k = ordererIdx[j];
-            var start = k > 0 ? (uint)_constraints[k - 1].Offset : (uint)_keyBytesCount;
-            var end = (uint)_constraints[k].Offset;
-            orderers[j].CopyOrderedField(ref keyReader, start, end - start, ref sortNativeStorage.Writer);
+            var keyReader = new SpanReader(key);
+            for (var j = 0; j < orderers.Length; j++)
+            {
+                var k = ordererIdx[j];
+                var start = k > 0 ? (uint)_constraints[k - 1].Offset : (uint)_keyBytesCount;
+                var end = (uint)_constraints[k].Offset;
+                orderers[j].CopyOrderedField(key.Slice((int)start, (int)(end - start)), ref sortNativeStorage.Writer);
+            }
         }
 
         sortNativeStorage.FinishNewItem((ulong)KeyValueTr.GetKeyIndex());
@@ -878,7 +881,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         _seekNeeded = true;
     }
 
-    internal static ReadOnlySpan<byte> FindLastKeyWithPrefix(in ReadOnlySpan<byte> endKeyBytes,
+    internal static ReadOnlySpan<byte> FindLastKeyWithPrefix(scoped in ReadOnlySpan<byte> endKeyBytes,
         IKeyValueDBTransaction keyValueTr)
     {
         if (!keyValueTr.FindLastKey(endKeyBytes))

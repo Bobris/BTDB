@@ -794,4 +794,60 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
 
         Assert.Equal(new[] { new ThreePrimaryKeys(1, 1, 2), new ThreePrimaryKeys(2, 1, 2) }, data);
     }
+
+    public class Record
+    {
+        [PrimaryKey(1)] public ulong CompanyId { get; set; }
+
+        [PrimaryKey(2)] public ulong BatchId { get; set; }
+
+        [PrimaryKey(3)] public ulong MessageId { get; set; }
+
+        [SecondaryKey("Recipient", IncludePrimaryKeyOrder = 1)]
+        public string Recipient { get; set; }
+    }
+
+    public interface IRecordTable : IRelation<Record>
+    {
+        ulong GatherByRecipient(ICollection<Record> target, long skip, long take, Constraint<ulong> companyId,
+            Constraint<string> recipient);
+    }
+
+    [Fact]
+    public void CollectListOfSecondaryKeysOnNonlastLevel()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IRecordTable>();
+        var r = new Random(1);
+        for (var i = 0u; i < 1000u; i++)
+        {
+            var batches = r.Next(1, 2);
+            for (var j = 0u; j < batches; j++)
+            {
+                var messages = r.Next(1, 1);
+                for (var k = 0u; k < messages; k++)
+                {
+                    var recipient = r.Next(0, 3) switch
+                    {
+                        1 => "a",
+                        2 => "ab",
+                        _ => ""
+                    };
+                    t.Upsert(new()
+                    {
+                        CompanyId = i + 1000000, BatchId = j + 1000000, MessageId = k + 1000000, Recipient = recipient
+                    });
+                }
+            }
+        }
+
+        var res = new List<Record>();
+        Assert.Equal(1000u,
+            t.GatherByRecipient(res, 0, 1000000, Constraint<ulong>.Any, Constraint.First(Constraint<string>.Any)));
+        for (var i = 0u; i < res.Count; i++)
+        {
+            var record = res[(int)i];
+            Assert.Equal(i + 1000000, record.CompanyId);
+        }
+    }
 }

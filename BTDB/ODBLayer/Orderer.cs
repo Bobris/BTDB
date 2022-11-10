@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
@@ -13,7 +14,7 @@ public interface IOrderer
 {
     Type? ExpectedInput { get; }
     string? ColumnName { get; }
-    void CopyOrderedField(ref SpanReader reader, uint start, uint length, ref SpanWriter writer);
+    void CopyOrderedField(scoped ReadOnlySpan<byte> key, scoped ref SpanWriter writer);
 }
 
 public class Orderer
@@ -83,10 +84,10 @@ class AscendingLocalePropertyOrderer : IOrderer
     public string? ColumnName => _propName;
 
     [SkipLocalsInit]
-    public void CopyOrderedField(ref SpanReader reader, uint start, uint length, ref SpanWriter writer)
+    public void CopyOrderedField(scoped ReadOnlySpan<byte> key, scoped ref SpanWriter writer)
     {
         Span<char> bufStr = stackalloc char[512];
-        reader.SetCurrentPosition(start);
+        SpanReader reader = new (key);
         var realStr = reader.ReadStringOrderedAsSpan(ref MemoryMarshal.GetReference(bufStr), bufStr.Length);
         var keyLength = _compareInfo.GetSortKeyLength(realStr, _compareOptions);
         var keySpan = writer.BlockWriteToSpan(keyLength);
@@ -108,9 +109,9 @@ class AscendingPropertyOrderer : IOrderer
     public Type? ExpectedInput => _ownerType;
     public string? ColumnName => _propName;
 
-    public void CopyOrderedField(ref SpanReader reader, uint start, uint length, ref SpanWriter writer)
+    public void CopyOrderedField(scoped ReadOnlySpan<byte> key, scoped ref SpanWriter writer)
     {
-        reader.CopyAbsoluteToWriter(start, length, ref writer);
+        writer.WriteBlock(key);
     }
 }
 
@@ -127,10 +128,10 @@ class FlipOrder : IOrderer
 
     public IOrderer Wrapped { get; }
 
-    public void CopyOrderedField(ref SpanReader reader, uint start, uint length, ref SpanWriter writer)
+    public void CopyOrderedField(scoped ReadOnlySpan<byte> key, scoped ref SpanWriter writer)
     {
         var writeStart = writer.StartXor();
-        Wrapped.CopyOrderedField(ref reader, start, length, ref writer);
+        Wrapped.CopyOrderedField(key, ref writer);
         writer.FinishXor(writeStart);
     }
 }
