@@ -1102,7 +1102,7 @@ public class RelationBuilder
         IILLocal? ctxReaderLoc = null;
         reqMethod.Generator
             .Ldloca(valueSpan)
-            .Newobj(typeof(SpanReader).GetConstructor(new[] { typeof(ReadOnlySpan<byte>).MakeByRefType() })!)
+            .Newobj(typeof(SpanReader).GetConstructor(new[] { typeof(ReadOnlySpan<byte>) })!)
             .Stloc(readerLocal)
             .Ldloca(readerLocal)
             .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
