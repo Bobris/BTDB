@@ -1101,7 +1101,7 @@ public class RelationBuilder
         var memoPosLocal = reqMethod.Generator.DeclareLocal(typeof(uint));
         IILLocal? ctxReaderLoc = null;
         reqMethod.Generator
-            .Ldloca(valueSpan)
+            .Ldloc(valueSpan)
             .Newobj(typeof(SpanReader).GetConstructor(new[] { typeof(ReadOnlySpan<byte>) })!)
             .Stloc(readerLocal)
             .Ldloca(readerLocal)
