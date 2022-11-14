@@ -223,7 +223,7 @@ namespace Releaser
             };
             var process = Process.Start(start);
             process.WaitForExit();
-            var source = projDir + "/ODbDump/bin/Release/net6.0/publish";
+            var source = projDir + "/ODbDump/bin/Release/net7.0/publish";
             System.IO.Compression.ZipFile.CreateFromDirectory(source, projDir + "/ODbDump/bin/Release/ODbDump.zip", System.IO.Compression.CompressionLevel.Optimal, false);
         }
     }
