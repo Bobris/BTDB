@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 30.0.0
+
 ### Breaking changes
 
 Requires C#11 and .Net 7.0
