@@ -683,6 +683,32 @@ public ref struct SpanReader
         ReadBlock(data.AsSpan(offset, length));
     }
 
+    public void SkipBlock(ulong length)
+    {
+        if (length > (uint)Buf.Length)
+        {
+            if (Controller != null)
+            {
+                length -= (uint)Buf.Length;
+                Buf = new();
+
+                while (length > (uint)int.MaxValue + 1)
+                {
+                    if (Controller.SkipBlock(ref this, (uint)int.MaxValue + 1))
+                        PackUnpack.ThrowEndOfStreamException();
+                    length -= (uint)int.MaxValue + 1;
+                }
+                if (!Controller.SkipBlock(ref this, (uint)length))
+                    return;
+            }
+
+            Buf = new();
+            PackUnpack.ThrowEndOfStreamException();
+        }
+
+        PackUnpack.UnsafeAdvance(ref Buf, (int)length);
+    }
+
     public void SkipBlock(uint length)
     {
         if (length > Buf.Length)
@@ -894,18 +920,18 @@ public ref struct SpanReader
             case 0:
                 return new((uint)ReadInt32LE());
             case 1:
-            {
-                Span<byte> ip6Bytes = stackalloc byte[16];
-                ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
-                return new(ip6Bytes);
-            }
+                {
+                    Span<byte> ip6Bytes = stackalloc byte[16];
+                    ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
+                    return new(ip6Bytes);
+                }
             case 2:
-            {
-                Span<byte> ip6Bytes = stackalloc byte[16];
-                ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
-                var scopeId = (long)ReadVUInt64();
-                return new(ip6Bytes, scopeId);
-            }
+                {
+                    Span<byte> ip6Bytes = stackalloc byte[16];
+                    ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
+                    var scopeId = (long)ReadVUInt64();
+                    return new(ip6Bytes, scopeId);
+                }
             case 3:
                 return null;
             default: throw new InvalidDataException("Unknown type of IPAddress");
