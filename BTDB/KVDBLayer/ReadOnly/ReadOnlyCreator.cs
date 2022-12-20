@@ -55,7 +55,7 @@ public class ReadOnlyCreator
         var leafs = (keyCount + _maxChildren - 1) / _maxChildren;
         var order = 0L;
         var done = 0L;
-        var keys = new byte[][_maxChildren];
+        var keys = new byte[_maxChildren][];
         return BuildBranchNode(leafs, ref writer, (ref SpanWriter writer) =>
         {
             order++;
@@ -108,7 +108,7 @@ public class ReadOnlyCreator
         var order = 0L;
         var done = 0L;
         var nodes = new uint[_maxChildren];
-        var keys = new byte[][_maxChildren];
+        var keys = new byte[_maxChildren][];
         return BuildBranchNode(children, ref writer, (ref SpanWriter writer) =>
         {
             order++;
