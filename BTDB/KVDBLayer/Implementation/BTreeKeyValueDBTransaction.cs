@@ -232,7 +232,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
 
     public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
     {
-        if (!IsValidKey()) return new ReadOnlySpan<byte>();
+        if (!IsValidKey()) return new();
         var trueValue = _cursor.GetValue();
         try
         {

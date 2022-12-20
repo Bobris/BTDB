@@ -165,7 +165,7 @@ public static class PackUnpack
             case 3:
                 {
                     data = (byte)(0xC0 + (value >> 16));
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((ushort)value));
                     return;
                 }
@@ -178,7 +178,7 @@ public static class PackUnpack
             case 5:
                 {
                     data = (byte)(0xF0 + (value >> 32));
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((uint)value));
                     return;
                 }
@@ -186,17 +186,17 @@ public static class PackUnpack
                 {
                     var hiValue = (ushort)(0xF800u + (value >> 32));
                     Unsafe.WriteUnaligned(ref data, AsBigEndian(hiValue));
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)2);
+                    data = ref Unsafe.AddByteOffset(ref data, 2);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((uint)value));
                     return;
                 }
             case 7:
                 {
                     data = (byte)(0xFC + (value >> 48));
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     var hiValue = (ushort)(value >> 32);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian(hiValue));
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)2);
+                    data = ref Unsafe.AddByteOffset(ref data, 2);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((uint)value));
                     return;
                 }
@@ -209,7 +209,7 @@ public static class PackUnpack
             default:
                 {
                     data = 0xFF;
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian(value));
                     return;
                 }
@@ -259,6 +259,13 @@ public static class PackUnpack
         return !BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
     }
 
+    public static unsafe ulong UnsafeUnpackVUInt(nuint ptr)
+    {
+        ref var r = ref Unsafe.AsRef<byte>(ptr.ToPointer());
+        var l = LengthVUIntByFirstByte(r);
+        return UnsafeUnpackVUInt(ref r, l);
+    }
+
     public static ulong UnsafeUnpackVUInt(ref byte data, uint len)
     {
         switch (len)
@@ -270,7 +277,7 @@ public static class PackUnpack
             case 3:
                 {
                     var res = (data & 0x1Fu) << 16;
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     return res + AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data));
                 }
             case 4:
@@ -278,27 +285,27 @@ public static class PackUnpack
             case 5:
                 {
                     var res = (ulong)(data & 0x07u) << 32;
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     return res + AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data));
                 }
             case 6:
                 {
                     var res = (0x03fful & AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data))) << 32;
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)2);
+                    data = ref Unsafe.AddByteOffset(ref data, 2);
                     return res + AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data));
                 }
             case 7:
                 {
                     var res = (ulong)(data & 0x01u) << 48;
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     res += (ulong)AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data)) << 32;
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)2);
+                    data = ref Unsafe.AddByteOffset(ref data, 2);
                     return res + AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data));
                 }
             case 8:
                 return 0x00ff_ffff_ffff_fffful & AsBigEndian(Unsafe.ReadUnaligned<ulong>(ref data));
             case 9:
-                data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                data = ref Unsafe.AddByteOffset(ref data, 1);
                 return AsBigEndian(Unsafe.ReadUnaligned<ulong>(ref data));
         }
     }
@@ -310,7 +317,7 @@ public static class PackUnpack
         if ((uint)data.Length < (uint)ofs + len) throw new IndexOutOfRangeException();
         // All range checks were done already before, so now do it without them for speed
         var res = UnsafeUnpackVUInt(
-            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), (IntPtr)ofs), len);
+            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), ofs), len);
         ofs += (int)len;
         return res;
     }
@@ -356,7 +363,7 @@ public static class PackUnpack
         */
         value ^= value >> 63; // Convert negative value to -value-1 and don't touch zero or positive
         return Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(LzcToVIntLen),
-            (IntPtr)BitOperations.LeadingZeroCount((ulong)value));
+            BitOperations.LeadingZeroCount((ulong)value));
     }
 
     public static uint LengthVInt(byte[] data, int ofs)
@@ -405,7 +412,7 @@ public static class PackUnpack
                     value = 0xE00000u + value;
                     value ^= sign & 0xC00000u;
                     data = (byte)((ulong)value >> 16);
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((ushort)value));
                     return;
                 }
@@ -421,7 +428,7 @@ public static class PackUnpack
                     value = 0xF8_0000_0000L + value;
                     value ^= sign & 0xF0_0000_0000;
                     data = (byte)((ulong)value >> 32);
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((uint)value));
                     return;
                 }
@@ -430,7 +437,7 @@ public static class PackUnpack
                     value = 0xFC00_0000_0000L + value;
                     value ^= sign & 0xF800_0000_0000;
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((ushort)((ulong)value >> 32)));
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)2);
+                    data = ref Unsafe.AddByteOffset(ref data, 2);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((uint)value));
                     return;
                 }
@@ -439,16 +446,16 @@ public static class PackUnpack
                     value = 0xFE_0000_0000_0000L + value;
                     value ^= sign & 0xFC_0000_0000_0000;
                     data = (byte)((ulong)value >> 48);
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((ushort)((ulong)value >> 32)));
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)2);
+                    data = ref Unsafe.AddByteOffset(ref data, 2);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((uint)value));
                     return;
                 }
             default: // It always 9
                 {
                     data = (byte)((sign & 0xFF) ^ 0xFF);
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((ulong)value));
                     return;
                 }
@@ -478,7 +485,7 @@ public static class PackUnpack
                 {
                     var sign = (long)((data & 0x80) >> 7) - 1; // -1 for negative, 0 for positive
                     var res = (data & 0x0F) << 16;
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     return res + AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data)) - (0x10_0000 & sign);
                 }
             case 4:
@@ -490,26 +497,26 @@ public static class PackUnpack
                 {
                     var sign = (long)((data & 0x80) >> 7) - 1; // -1 for negative, 0 for positive
                     var res = (long)(data & 0x03u) << 32;
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     return res + AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data)) - (0x04_0000_0000 & sign);
                 }
             case 6:
                 {
                     var sign = (long)((data & 0x80) >> 7) - 1; // -1 for negative, 0 for positive
                     var res = (0x01ffL & AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data))) << 32;
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)2);
+                    data = ref Unsafe.AddByteOffset(ref data, 2);
                     return res + AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data)) - (0x0200_0000_0000 & sign);
                 }
             case 7:
                 {
                     var sign = (long)((data & 0x80) >> 7) - 1; // -1 for negative, 0 for positive
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                    data = ref Unsafe.AddByteOffset(ref data, 1);
                     var res = (long)AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data)) << 32;
-                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr)2);
+                    data = ref Unsafe.AddByteOffset(ref data, 2);
                     return res + AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data)) - (0x01_0000_0000_0000 & sign);
                 }
             default:
-                data = ref Unsafe.AddByteOffset(ref data, (IntPtr)1);
+                data = ref Unsafe.AddByteOffset(ref data, 1);
                 return (long)AsBigEndian(Unsafe.ReadUnaligned<ulong>(ref data));
         }
     }
@@ -521,7 +528,7 @@ public static class PackUnpack
         if ((uint)data.Length < (uint)ofs + len) throw new IndexOutOfRangeException();
         // All range checks were done already before, so now do it without them for speed
         var res = UnsafeUnpackVInt(
-            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), (IntPtr)ofs), len);
+            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), ofs), len);
         ofs += (int)len;
         return res;
     }
@@ -535,7 +542,7 @@ public static class PackUnpack
     public static ref byte UnsafeGetAndAdvance(ref ReadOnlySpan<byte> p, int delta)
     {
         ref var res = ref MemoryMarshal.GetReference(p);
-        p = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AddByteOffset(ref res, (IntPtr)delta), p.Length - delta);
+        p = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AddByteOffset(ref res, delta), p.Length - delta);
         return ref res;
     }
 
@@ -543,7 +550,7 @@ public static class PackUnpack
     public static ref byte UnsafeGetAndAdvance(ref Span<byte> p, int delta)
     {
         ref var res = ref MemoryMarshal.GetReference(p);
-        p = MemoryMarshal.CreateSpan(ref Unsafe.AddByteOffset(ref res, (IntPtr)delta), p.Length - delta);
+        p = MemoryMarshal.CreateSpan(ref Unsafe.AddByteOffset(ref res, delta), p.Length - delta);
         return ref res;
     }
 
@@ -551,14 +558,14 @@ public static class PackUnpack
     public static void UnsafeAdvance(ref ReadOnlySpan<byte> p, int delta)
     {
         p = MemoryMarshal.CreateReadOnlySpan(
-            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), (IntPtr)delta), p.Length - delta);
+            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), delta), p.Length - delta);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void UnsafeAdvance(ref Span<byte> p, int delta)
     {
         p = MemoryMarshal.CreateSpan(
-            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), (IntPtr)delta), p.Length - delta);
+            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), delta), p.Length - delta);
     }
 
     public static uint SequenceEqualUpTo(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
@@ -593,5 +600,5 @@ public static class PackUnpack
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static Vector<byte> LoadVector(ref byte start, nuint offset)
-        => Unsafe.ReadUnaligned<Vector<byte>>(ref Unsafe.AddByteOffset(ref start, (IntPtr)(ulong)offset));
+        => Unsafe.ReadUnaligned<Vector<byte>>(ref Unsafe.AddByteOffset(ref start, (IntPtr)offset));
 }

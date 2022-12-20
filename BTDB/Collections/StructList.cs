@@ -358,6 +358,12 @@ public struct StructList<T> : IEnumerable<T>
         _count = totalCount;
     }
 
+    public void SetCount(uint count)
+    {
+        if (count <= _count) _count = count;
+        else RepeatAdd(default, count - _count);
+    }
+
     public void AddRange(in ReadOnlySpan<T> range)
     {
         if (range.IsEmpty)

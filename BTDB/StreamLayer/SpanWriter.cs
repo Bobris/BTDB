@@ -328,6 +328,25 @@ public ref struct SpanWriter
     }
 
     [SkipLocalsInit]
+    public void WriteUInt16LE(ushort value)
+    {
+        if ((uint)Buf.Length < 2u)
+        {
+            if (!Resize(2))
+            {
+                Span<byte> buf = stackalloc byte[2];
+                ref var bufRef = ref MemoryMarshal.GetReference(buf);
+                Unsafe.As<byte, ushort>(ref bufRef) = PackUnpack.AsLittleEndian(value);
+                WriteBlock(ref bufRef, 2);
+                return;
+            }
+        }
+
+        Unsafe.As<byte, ushort>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 2)) =
+            PackUnpack.AsLittleEndian(value);
+    }
+
+    [SkipLocalsInit]
     public void WriteInt32(int value)
     {
         if ((uint)Buf.Length < 4u)
@@ -382,6 +401,25 @@ public ref struct SpanWriter
 
         Unsafe.As<byte, uint>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 4)) =
             PackUnpack.AsLittleEndian((uint)value);
+    }
+
+    [SkipLocalsInit]
+    public void WriteUInt32LE(uint value)
+    {
+        if ((uint)Buf.Length < 4u)
+        {
+            if (!Resize(4))
+            {
+                Span<byte> buf = stackalloc byte[4];
+                ref var bufRef = ref MemoryMarshal.GetReference(buf);
+                Unsafe.As<byte, uint>(ref bufRef) = PackUnpack.AsLittleEndian(value);
+                WriteBlock(ref bufRef, 4);
+                return;
+            }
+        }
+
+        Unsafe.As<byte, uint>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 4)) =
+            PackUnpack.AsLittleEndian(value);
     }
 
     public void WriteDateTime(DateTime value)

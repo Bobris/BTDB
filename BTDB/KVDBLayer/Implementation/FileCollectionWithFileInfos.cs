@@ -14,13 +14,14 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
     readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
     long _fileGeneration;
     internal static readonly byte[] MagicStartOfFile = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'2' };
-    internal static readonly byte[] MagicStartOfFileWithGuid = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'3' };
+
+    internal static readonly byte[] MagicStartOfFileWithGuid =
+        { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'3' };
 
     internal static void SkipHeader(ref SpanReader reader)
     {
         var magic = reader.ReadByteArrayRaw(MagicStartOfFile.Length);
-        var withGuid = BitArrayManipulation.CompareByteArray(magic, magic.Length,
-            MagicStartOfFileWithGuid, MagicStartOfFileWithGuid.Length) == 0;
+        var withGuid = magic.AsSpan().SequenceEqual(MagicStartOfFileWithGuid);
         if (withGuid) reader.SkipGuid();
     }
 
@@ -54,9 +55,7 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
                 var reader = new SpanReader(readerController);
                 var magic = reader.ReadByteArrayRaw(MagicStartOfFile.Length);
                 Guid? guid = null;
-                if (
-                    BitArrayManipulation.CompareByteArray(magic, magic.Length, MagicStartOfFileWithGuid,
-                        MagicStartOfFileWithGuid.Length) == 0)
+                if (magic.AsSpan().SequenceEqual(MagicStartOfFileWithGuid))
                 {
                     guid = reader.ReadGuid();
                     if (Guid.HasValue && Guid.Value != guid)
@@ -64,15 +63,15 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
                         _fileInfos.TryAdd(file.Index, UnknownFile.Instance);
                         continue;
                     }
+
                     Guid = guid;
                 }
-                else if (
-                    BitArrayManipulation.CompareByteArray(magic, magic.Length, MagicStartOfFile,
-                        MagicStartOfFile.Length) != 0)
+                else if (!magic.AsSpan().SequenceEqual(MagicStartOfFile))
                 {
                     _fileInfos.TryAdd(file.Index, UnknownFile.Instance);
                     continue;
                 }
+
                 var fileType = (KVFileType)reader.ReadUInt8();
                 IFileInfo fileInfo;
                 switch (fileType)
@@ -105,6 +104,7 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
                         fileInfo = UnknownFile.Instance;
                         break;
                 }
+
                 if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
                 _fileInfos.TryAdd(file.Index, fileInfo);
             }
@@ -113,6 +113,7 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
                 _fileInfos.TryAdd(file.Index, UnknownFile.Instance);
             }
         }
+
         if (!Guid.HasValue)
         {
             Guid = System.Guid.NewGuid();
@@ -139,7 +140,8 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
     public void DeleteAllUnknownFiles()
     {
         if (_fileInfos.All(fi => fi.Value.FileType != KVFileType.Unknown)) return;
-        foreach (var fileId in _fileInfos.Where(fi => fi.Value.FileType == KVFileType.Unknown).Select(fi => fi.Key).ToArray())
+        foreach (var fileId in _fileInfos.Where(fi => fi.Value.FileType == KVFileType.Unknown).Select(fi => fi.Key)
+                     .ToArray())
         {
             _fileCollection.GetFile(fileId).Remove();
             _fileInfos.TryRemove(fileId);

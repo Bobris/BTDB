@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Reflection;
-using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -102,9 +101,7 @@ public class TableFieldInfo : IEquatable<TableFieldInfo>
         var cb = hb.Configuration;
         if (ca == cb) return true;
         if (ca == null || cb == null) return false;
-        if (ca.Length != cb.Length) return false;
-        if (BitArrayManipulation.CompareByteArray(ca, ca.Length, cb, cb.Length) != 0) return false;
-        return true;
+        return ca.AsSpan().SequenceEqual(cb);
     }
 
     public bool Equals(TableFieldInfo other)

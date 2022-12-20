@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace BTDB.Buffer;
 
@@ -83,47 +81,12 @@ static class TreeNodeUtils
     {
         if (data.Length < prefix.Length)
             return false;
-        return data.Slice(0, prefix.Length).SequenceEqual(prefix);
+        return data[..prefix.Length].SequenceEqual(prefix);
     }
 
-    internal static unsafe int FindFirstDifference(in ReadOnlySpan<byte> buf1, in ReadOnlySpan<byte> buf2)
+    internal static int FindFirstDifference(in ReadOnlySpan<byte> buf1, in ReadOnlySpan<byte> buf2)
     {
-        var len = Math.Min(buf1.Length, buf2.Length);
-        if (len == 0) return 0;
-        fixed (byte* buf1Ptr = &MemoryMarshal.GetReference(buf1))
-        fixed (byte* buf2Ptr = &MemoryMarshal.GetReference(buf2))
-        {
-            var i = 0;
-            int n;
-            if (Vector.IsHardwareAccelerated && len >= Vector<byte>.Count)
-            {
-                n = len - Vector<byte>.Count;
-                while (n >= i)
-                {
-                    if (Unsafe.ReadUnaligned<Vector<byte>>(buf1Ptr + i) !=
-                        Unsafe.ReadUnaligned<Vector<byte>>(buf2Ptr + i))
-                        break;
-                    i += Vector<byte>.Count;
-                }
-            }
-
-            n = len - sizeof(long);
-            while (n >= i)
-            {
-                if (Unsafe.ReadUnaligned<long>(buf1Ptr + i) != Unsafe.ReadUnaligned<long>(buf2Ptr + i))
-                    break;
-                i += sizeof(long);
-            }
-
-            while (len > i)
-            {
-                if (*(buf1Ptr + i) != *(buf2Ptr + i))
-                    break;
-                i++;
-            }
-
-            return i;
-        }
+        return buf1.CommonPrefixLength(buf2);
     }
 
     internal static int FindFirstDifference(in ReadOnlySpan<byte> buf1, in ReadOnlySpan<byte> buf2a,
@@ -135,7 +98,7 @@ static class TreeNodeUtils
             return pos;
         }
 
-        return buf2a.Length + FindFirstDifference(buf1.Slice(buf2a.Length), buf2b);
+        return buf2a.Length + FindFirstDifference(buf1[buf2a.Length..], buf2b);
     }
 
     public static int FindFirstDifference(in Span<byte> buf1a, in Span<byte> buf1b, in Span<byte> buf2a,
@@ -144,13 +107,13 @@ static class TreeNodeUtils
         var pos = FindFirstDifference(buf1a, buf2a, buf2b);
         if (pos < buf1a.Length)
             return pos;
-        if (pos < buf2a.Length) return pos + FindFirstDifference(buf1b, buf2a.Slice(pos), buf2b);
+        if (pos < buf2a.Length) return pos + FindFirstDifference(buf1b, buf2a[pos..], buf2b);
         if (pos == buf2a.Length + buf2b.Length)
         {
             return pos;
         }
 
-        return pos + FindFirstDifference(buf1b, buf2b.Slice(pos - buf2a.Length));
+        return pos + FindFirstDifference(buf1b, buf2b[(pos - buf2a.Length)..]);
     }
 
     internal static uint CalcCommonPrefix(in Span<ByteBuffer> keys)
@@ -161,7 +124,21 @@ static class TreeNodeUtils
         {
             res = FindFirstDifference(first, keys[i].AsSyncReadOnlySpan());
             if (res == 0) return 0;
-            first = first.Slice(0, res);
+            first = first[..res];
+        }
+
+        return (uint)res;
+    }
+
+    internal static uint CalcCommonPrefix(in Span<byte[]> keys)
+    {
+        var first = keys[0].AsSpan();
+        var res = first.Length;
+        for (var i = 1; i < keys.Length; i++)
+        {
+            res = FindFirstDifference(first, keys[i].AsSpan());
+            if (res == 0) return 0;
+            first = first[..res];
         }
 
         return (uint)res;
