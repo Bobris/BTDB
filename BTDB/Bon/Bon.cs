@@ -880,20 +880,21 @@ public struct BonBuilder
 
 public ref struct Bon
 {
-    ReadOnlySpan<byte> _buf;
+    readonly ReadOnlySpan<byte> _buf;
     uint _ofs;
     uint _items;
 
-    public Bon(byte[] buf)
+    public Bon(byte[] buf) : this(buf.AsSpan())
     {
-        _buf = buf;
-        _ofs = Helpers.CalcStartOffsetOfBon(_buf);
-        _items = 1;
     }
 
-    public Bon(ByteBuffer buf)
+    public Bon(ByteBuffer buf) : this(buf.AsSyncReadOnlySpan())
     {
-        _buf = buf.AsSyncReadOnlySpan();
+    }
+
+    public Bon(ReadOnlySpan<byte> buf)
+    {
+        _buf = buf;
         _ofs = Helpers.CalcStartOffsetOfBon(_buf);
         _items = 1;
     }
