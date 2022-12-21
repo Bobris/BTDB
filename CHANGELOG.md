@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 30.1.0
+
 ### Added
 
 New Bon constructor.
