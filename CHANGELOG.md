@@ -2,6 +2,18 @@
 
 ## [unreleased]
 
+### Added
+
+New Bon constructor.
+
+### Fixed
+
+Very complex case of calling Remove before any deserialization on object with IDictionary changed to Dictionary.
+
+### WIP
+
+ReadOnlyDatabase = wait for final version.
+
 ## 30.0.0
 
 ### Breaking changes

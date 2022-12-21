@@ -91,6 +91,10 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         var tableVersion = reader.ReadVUInt32();
         var tableInfo = _owner.TablesInfo.FindById(tableId);
         if (tableInfo == null) _owner.ActualOptions.ThrowBTDBException($"Unknown TypeId {tableId} of inline object");
+        if (TryToEnsureClientTypeNotNull(tableInfo))
+        {
+            tableInfo.GetLoader(tableVersion); // Create loader eagerly will register all nested types
+        }
         var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
         var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
         freeContentTuple.Item2(this, null, ref reader, readerWithFree.DictIds);

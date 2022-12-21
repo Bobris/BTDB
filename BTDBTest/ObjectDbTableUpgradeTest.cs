@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Security.Principal;
 using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -617,7 +618,6 @@ public class ObjectDbTableUpgradeTest : IDisposable
     {
     }
 
-
     [RequireContentFree]
     public class ObjWithDictV2
     {
@@ -730,4 +730,93 @@ public class ObjectDbTableUpgradeTest : IDisposable
             Assert.NotNull(table.First());
         }
     }
+
+// Complex sample { IList<{ IDictionary<int,Obj> }> } in old version
+
+    public class S1ObjWithDictV1
+    {
+        public IDictionary<int, Obj> D { get; set; }
+    }
+
+    public class S1RowObjWithListV1
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public IList<S1ObjWithDictV1> L { get; set; }
+    }
+
+    public interface IS1RowObjWithListV1Table : IRelation<S1RowObjWithListV1>
+    {
+        bool RemoveById(ulong id);
+    }
+
+    [RequireContentFree]
+    public class S1ObjWithDictV2
+    {
+        public Dictionary<int, Obj> D { get; set; }
+    }
+
+    public class S1RowObjWithListV2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public IList<S1ObjWithDictV2> L { get; set; }
+    }
+
+    public interface IS1RowObjWithListV2Table : IRelation<S1RowObjWithListV2>
+    {
+        bool RemoveById(ulong id);
+    }
+
+    [Fact]
+    public void RemoveByIdDoesNotBreakMakingDictionaryEager()
+    {
+        _db.RegisterType(typeof(S1ObjWithDictV1), "S1ObjWithDict");
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IS1RowObjWithListV1Table>("T");
+            var table = creator(tr);
+            table.Upsert(new()
+            {
+                Id = 1, L = new List<S1ObjWithDictV1> {
+                    new () {
+                        D = new Dictionary<int, Obj> {
+                            { 1, new Obj { Num = 1 } }
+                            }
+                        }
+                    }
+            });
+            table.Upsert(new()
+            {
+                Id = 2, L = new List<S1ObjWithDictV1> {
+                    new () {
+                        D = new Dictionary<int, Obj> {
+                            { 2, new Obj { Num = 2 } }
+                        }
+                    }
+                }
+            });
+
+            tr.Commit();
+        }
+
+        ReopenDb();
+        _db.RegisterType(typeof(S1ObjWithDictV2), "S1ObjWithDict");
+
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IS1RowObjWithListV2Table>("T");
+            var table = creator(tr);
+            table.RemoveById(2);
+            Assert.Equal(1, table.Count);
+
+            Assert.Equal(1, table.First().L.Count);
+            Assert.Equal(1, table.First().L[0].D.Count);
+            Assert.Equal(1, table.First().L[0].D[1].Num);
+            table.Upsert(table.First());
+            // Assert no leaks in IDictionaries
+            Assert.Equal(0, tr.KeyValueDBTransaction.GetKeyValueCount(new[] { ObjectDB.AllDictionariesPrefixByte }));
+        }
+    }
+
 }
