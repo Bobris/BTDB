@@ -531,7 +531,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
             if (content != null)
             {
-                var reader = new SpanReader(content);
+                var reader = new SpanReader(content.AsSpan());
                 reader.SkipVUInt32();
                 obj = ReadObjFinish(oid, tableInfo, ref reader);
             }

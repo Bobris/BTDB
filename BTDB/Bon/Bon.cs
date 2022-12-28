@@ -867,6 +867,12 @@ public struct BonBuilder
 
     public ByteBuffer Finish()
     {
+        MoveToFinished();
+        return ByteBuffer.NewSync(_topData, 0, (int)_topPos);
+    }
+
+    void MoveToFinished()
+    {
         if (_state == State.Full)
         {
             Helpers.WriteByte(ref _topData, ref _topPos, (byte)(_topPos - _lastBonPos));
@@ -874,7 +880,12 @@ public struct BonBuilder
         }
 
         if (_state != State.Finished) ThrowWrongState();
-        return ByteBuffer.NewSync(_topData, 0, (int)_topPos);
+    }
+
+    public ReadOnlyMemory<byte> FinishAsMemory()
+    {
+        MoveToFinished();
+        return new(_topData, 0, (int)_topPos);
     }
 }
 

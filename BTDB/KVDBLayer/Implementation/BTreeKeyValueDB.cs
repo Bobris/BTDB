@@ -1476,17 +1476,17 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return (uint)Math.Abs(valueSize);
     }
 
-    public ReadOnlySpan<byte> ReadValue(ReadOnlySpan<byte> trueValue)
+    public ReadOnlyMemory<byte> ReadValueAsMemory(ReadOnlySpan<byte> trueValue)
     {
         var valueFileId = MemoryMarshal.Read<uint>(trueValue);
         if (valueFileId == 0)
         {
             var len = trueValue[4];
-            return trueValue.Slice(5, len);
+            return trueValue.Slice(5, len).ToArray();
         }
 
         var valueSize = MemoryMarshal.Read<int>(trueValue.Slice(8));
-        if (valueSize == 0) return new ReadOnlySpan<byte>();
+        if (valueSize == 0) return new ();
         var valueOfs = MemoryMarshal.Read<uint>(trueValue.Slice(4));
 
         var compressed = false;
@@ -1496,15 +1496,27 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             valueSize = -valueSize;
         }
 
-        Span<byte> result = new byte[valueSize];
+        Memory<byte> result = new byte[valueSize];
         var file = FileCollection.GetFile(valueFileId);
         if (file == null)
             throw new BTDBException(
                 $"ReadValue({valueFileId},{valueOfs},{valueSize}) compressed: {compressed} file does not exist in {CalcStats()}");
-        file.RandomRead(result, valueOfs, false);
+        file.RandomRead(result.Span, valueOfs, false);
         if (compressed)
-            result = _compression.DecompressValue(result);
+            result = _compression.DecompressValue(result.Span);
         return result;
+    }
+
+    public ReadOnlySpan<byte> ReadValue(ReadOnlySpan<byte> trueValue)
+    {
+        var valueFileId = MemoryMarshal.Read<uint>(trueValue);
+        if (valueFileId == 0)
+        {
+            var len = trueValue[4];
+            return trueValue.Slice(5, len);
+        }
+
+        return ReadValueAsMemory(trueValue).Span;
     }
 
     public ReadOnlySpan<byte> ReadValue(ReadOnlySpan<byte> trueValue, ref byte buffer, int bufferLength)

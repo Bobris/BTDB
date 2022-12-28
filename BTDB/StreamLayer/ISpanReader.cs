@@ -1,3 +1,5 @@
+using System;
+
 namespace BTDB.StreamLayer;
 
 public interface ISpanReader
@@ -46,4 +48,17 @@ public interface ISpanReader
     /// </summary>
     /// <param name="spanReader">owning SpanReader</param>
     void Sync(ref SpanReader spanReader);
+
+    /// <summary>
+    /// Try to return original continuous block of memory from storage
+    /// </summary>
+    /// <param name="spanReader">owning SpanReader</param>
+    /// <param name="length">how many bytes to read</param>
+    /// <param name="result">resulting ReadOnlyMemory</param>
+    /// <returns>true if possible</returns>
+    bool TryReadBlockAsMemory(ref SpanReader spanReader, uint length, out ReadOnlyMemory<byte> result)
+    {
+        result = new();
+        return false;
+    }
 }

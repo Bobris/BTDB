@@ -378,6 +378,11 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDBTransaction.GetValue();
         }
 
+        public ReadOnlyMemory<byte> GetValueAsMemory()
+        {
+            return _keyValueDBTransaction.GetValueAsMemory();
+        }
+
         public bool IsValueCorrupted()
         {
             return _keyValueDBTransaction.IsValueCorrupted();

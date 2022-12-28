@@ -258,11 +258,37 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
 
     public ReadOnlySpan<byte> GetValue()
     {
-        if (!IsValidKey()) return new ReadOnlySpan<byte>();
+        if (!IsValidKey()) return new();
         var trueValue = _cursor.GetValue();
         try
         {
             return _keyValueDB.ReadValue(trueValue);
+        }
+        catch (BTDBException ex)
+        {
+            var oldestRoot = (IRootNode)_keyValueDB.ReferenceAndGetOldestRoot();
+            var lastCommitted = (IRootNode)_keyValueDB.ReferenceAndGetLastCommitted();
+            try
+            {
+                throw new BTDBException(
+                    $"GetValue failed in TrId:{BTreeRoot!.TransactionId},TRL:{BTreeRoot.TrLogFileId},Ofs:{BTreeRoot.TrLogOffset},ComUlong:{BTreeRoot.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}",
+                    ex);
+            }
+            finally
+            {
+                _keyValueDB.DereferenceRootNodeInternal(oldestRoot);
+                _keyValueDB.DereferenceRootNodeInternal(lastCommitted);
+            }
+        }
+    }
+
+    public ReadOnlyMemory<byte> GetValueAsMemory()
+    {
+        if (!IsValidKey()) return new();
+        var trueValue = _cursor.GetValue();
+        try
+        {
+            return _keyValueDB.ReadValueAsMemory(trueValue);
         }
         catch (BTDBException ex)
         {

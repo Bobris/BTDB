@@ -1,3 +1,4 @@
+using System;
 using System.Security.Cryptography;
 using BTDB.Collections;
 using BTDB.Encrypted;
@@ -137,7 +138,7 @@ public class DBReaderCtx : IDBReaderCtx
             throw new CryptographicException();
         }
 
-        var r = new SpanReader(dec);
+        var r = new SpanReader(dec.AsSpan());
         return r.ReadString();
     }
 
@@ -157,7 +158,7 @@ public class DBReaderCtx : IDBReaderCtx
             throw new CryptographicException();
         }
 
-        var r = new SpanReader(dec);
+        var r = new SpanReader(dec.AsSpan());
         return r.ReadString();
     }
 

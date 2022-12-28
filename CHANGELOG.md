@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Support for `ReadOnlyMemory<byte>` type and end to end sample to stream Key,Bon relation enumerable though Stream.
+
 ## 30.1.0
 
 ### Added

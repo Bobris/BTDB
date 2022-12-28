@@ -49,7 +49,7 @@ public class RelationInfo
             _itemType = itemType;
             _valueLoaders = new RelationLoader?[_owner._relationVersions.Length];
             _primaryKeysLoader = CreatePkLoader(itemType, _owner.ClientRelationVersionInfo.PrimaryKeyFields.Span,
-                $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough);
+                $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough, out _loadAsMemory);
         }
 
         internal object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes)
@@ -59,8 +59,16 @@ public class RelationInfo
             reader.SkipVUInt64(); // RelationId
             var obj = _primaryKeysLoader(tr, ref reader);
             if (_primaryKeyIsEnough) return obj;
-            var valueBytes = tr.KeyValueDBTransaction.GetValue();
-            reader = new(valueBytes);
+            if (_loadAsMemory)
+            {
+                var valueBytes = tr.KeyValueDBTransaction.GetValue();
+                reader = new(valueBytes);
+            }
+            else
+            {
+                var valueBytes = tr.KeyValueDBTransaction.GetValueAsMemory();
+                reader = new(valueBytes);
+            }
             var version = reader.ReadVUInt32();
             GetValueLoader(version)(tr, ref reader, obj);
             return obj;
@@ -69,6 +77,7 @@ public class RelationInfo
         internal readonly RelationLoaderFunc _primaryKeysLoader;
         internal readonly bool _primaryKeyIsEnough;
         readonly RelationLoader?[] _valueLoaders;
+        internal readonly bool _loadAsMemory;
 
         internal RelationLoader GetValueLoader(uint version)
         {
@@ -86,8 +95,9 @@ public class RelationInfo
         }
 
         RelationLoaderFunc CreatePkLoader(Type instanceType, ReadOnlySpan<TableFieldInfo> fields, string loaderName,
-            out bool primaryKeyIsEnough)
+            out bool primaryKeyIsEnough, out bool loadAsMemory)
         {
+            loadAsMemory = false;
             var thatType = typeof(Func<>).MakeGenericType(instanceType);
             var method = ILBuilder.Instance.NewMethod(
                 loaderName, typeof(RelationLoaderFunc), typeof(Func<object>));
@@ -143,6 +153,7 @@ public class RelationInfo
                     var specializedSrcHandler =
                         srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null,
                             _owner._relationInfoResolver.FieldHandlerLogger);
+                    loadAsMemory |= specializedSrcHandler.DoesPreferLoadAsMemory();
                     var willLoad = specializedSrcHandler.HandledType();
                     var converterGenerator =
                         _owner._relationInfoResolver.TypeConvertorGenerator

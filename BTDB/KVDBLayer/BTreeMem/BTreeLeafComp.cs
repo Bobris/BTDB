@@ -372,7 +372,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         return _keyBytes.AsSpan(_keyValues[idx].KeyOffset, _keyValues[idx].KeyLength);
     }
 
-    public ReadOnlySpan<byte> GetMemberValue(int idx)
+    public ReadOnlyMemory<byte> GetMemberValue(int idx)
     {
         return _keyValues[idx].Value;
     }

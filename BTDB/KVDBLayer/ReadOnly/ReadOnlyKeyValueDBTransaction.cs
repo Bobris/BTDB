@@ -216,10 +216,15 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
 
     public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
     {
-        throw new NotImplementedException();
+        return GetValueAsMemory().Span;
     }
 
     public ReadOnlySpan<byte> GetValue()
+    {
+        return GetValueAsMemory().Span;
+    }
+
+    public ReadOnlyMemory<byte> GetValueAsMemory()
     {
         throw new NotImplementedException();
     }

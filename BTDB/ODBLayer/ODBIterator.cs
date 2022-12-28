@@ -674,7 +674,7 @@ public class ODBIterator
                     _visitor?.ScalarAsText($"Encrypted[{enc!.Length}] failed to decrypt");
                 }
 
-                var r = new SpanReader(dec);
+                var r = new SpanReader(dec.AsSpan());
                 _visitor?.ScalarAsText(r.ReadString()!);
             }
         }

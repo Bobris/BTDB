@@ -11,7 +11,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
 {
     readonly KeyValueDB _keyValueDB;
     IBTreeRootNode? _btreeRoot;
-    readonly List<NodeIdxPair> _stack = new List<NodeIdxPair>();
+    readonly List<NodeIdxPair> _stack = new();
     bool _writing;
     readonly bool _readOnly;
     bool _preapprovedWriting;
@@ -251,6 +251,26 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
     public ReadOnlySpan<byte> GetValue()
     {
         return GetClonedValue(ref Unsafe.AsRef((byte)0), 0);
+    }
+
+    public ReadOnlyMemory<byte> GetValueAsMemory()
+    {
+        if (!IsValidKey()) return new ();
+        var nodeIdxPair = _stack[^1];
+        var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
+        try
+        {
+            return _keyValueDB.ReadValueAsMemory(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize);
+        }
+        catch (BTDBException ex)
+        {
+            var oldestRoot = (IBTreeRootNode)_keyValueDB.ReferenceAndGetOldestRoot();
+            var lastCommitted = (IBTreeRootNode)_keyValueDB.ReferenceAndGetLastCommitted();
+            // no need to dereference roots because we know it is managed
+            throw new BTDBException(
+                $"GetValue failed in TrId:{_btreeRoot!.TransactionId},TRL:{_btreeRoot!.TrLogFileId},Ofs:{_btreeRoot!.TrLogOffset},ComUlong:{_btreeRoot!.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}",
+                ex);
+        }
     }
 
     public bool IsValueCorrupted()

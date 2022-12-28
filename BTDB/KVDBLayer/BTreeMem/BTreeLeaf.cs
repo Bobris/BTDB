@@ -263,7 +263,7 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
         return _keyValues[idx].Key;
     }
 
-    public ReadOnlySpan<byte> GetMemberValue(int idx)
+    public ReadOnlyMemory<byte> GetMemberValue(int idx)
     {
         return _keyValues[idx].Value;
     }

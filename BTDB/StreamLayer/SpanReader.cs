@@ -20,9 +20,26 @@ public ref struct SpanReader
         Controller = null;
     }
 
+    public SpanReader(ReadOnlyMemory<byte> data)
+    {
+        OriginalMemory = data;
+        Buf = data.Span;
+        Original = Buf;
+        Controller = null;
+    }
+
+    public SpanReader(byte[] data)
+    {
+        OriginalMemory = data;
+        Buf = data.AsSpan();
+        Original = Buf;
+        Controller = null;
+    }
+
     public SpanReader(in ByteBuffer data)
     {
-        Buf = data.AsSyncReadOnlySpan();
+        OriginalMemory = data.AsSyncReadOnlyMemory();
+        Buf = OriginalMemory.Span;
         Original = Buf;
         Controller = null;
     }
@@ -37,6 +54,7 @@ public ref struct SpanReader
 
     public ReadOnlySpan<byte> Buf;
     public ReadOnlySpan<byte> Original;
+    public ReadOnlyMemory<byte> OriginalMemory;
     public readonly ISpanReader? Controller;
 
     /// <summary>
@@ -698,6 +716,7 @@ public ref struct SpanReader
                         PackUnpack.ThrowEndOfStreamException();
                     length -= (uint)int.MaxValue + 1;
                 }
+
                 if (!Controller.SkipBlock(ref this, (uint)length))
                     return;
             }
@@ -863,10 +882,37 @@ public ref struct SpanReader
     public ReadOnlySpan<byte> ReadByteArrayAsSpan()
     {
         var length = ReadVUInt32();
-        if (length-- == 0) return new();
-        var res = Buf.Slice(0, (int)length);
+        if (length-- <= 1) return new();
+        var res = Buf[..(int)length];
         PackUnpack.UnsafeAdvance(ref Buf, (int)length);
         return res;
+    }
+
+    public ReadOnlyMemory<byte> ReadByteArrayAsMemory()
+    {
+        var length = ReadVUInt32();
+        if (length-- <= 1) return new();
+        if (length > Buf.Length) PackUnpack.ThrowEndOfStreamException();
+        return ReadBlockAsMemory(length);
+    }
+
+    ReadOnlyMemory<byte> ReadBlockAsMemory(uint length)
+    {
+        if (OriginalMemory.Length != 0)
+        {
+            var pos = GetCurrentPositionWithoutController();
+            PackUnpack.UnsafeAdvance(ref Buf, (int)length);
+            return OriginalMemory.Slice((int)pos, (int)length);
+        }
+
+        if (Controller != null && Controller.TryReadBlockAsMemory(ref this, length, out var res))
+        {
+            return res;
+        }
+
+        var resBuffer = new byte[length];
+        ReadBlock(resBuffer.AsSpan());
+        return resBuffer;
     }
 
     public byte[] ReadByteArrayRawTillEof()
@@ -874,6 +920,11 @@ public ref struct SpanReader
         var res = Buf.ToArray();
         PackUnpack.UnsafeAdvance(ref Buf, Buf.Length);
         return res;
+    }
+
+    public ReadOnlyMemory<byte> ReadByteArrayRawTillEofAsMemory()
+    {
+        return ReadBlockAsMemory((uint)Buf.Length);
     }
 
     public byte[] ReadByteArrayRaw(int len)
@@ -920,18 +971,18 @@ public ref struct SpanReader
             case 0:
                 return new((uint)ReadInt32LE());
             case 1:
-                {
-                    Span<byte> ip6Bytes = stackalloc byte[16];
-                    ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
-                    return new(ip6Bytes);
-                }
+            {
+                Span<byte> ip6Bytes = stackalloc byte[16];
+                ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
+                return new(ip6Bytes);
+            }
             case 2:
-                {
-                    Span<byte> ip6Bytes = stackalloc byte[16];
-                    ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
-                    var scopeId = (long)ReadVUInt64();
-                    return new(ip6Bytes, scopeId);
-                }
+            {
+                Span<byte> ip6Bytes = stackalloc byte[16];
+                ReadBlock(ref MemoryMarshal.GetReference(ip6Bytes), 16);
+                var scopeId = (long)ReadVUInt64();
+                return new(ip6Bytes, scopeId);
+            }
             case 3:
                 return null;
             default: throw new InvalidDataException("Unknown type of IPAddress");

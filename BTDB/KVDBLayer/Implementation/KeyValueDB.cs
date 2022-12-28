@@ -1204,6 +1204,61 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return (uint)Math.Abs(valueSize);
     }
 
+    public ReadOnlyMemory<byte> ReadValueAsMemory(uint valueFileId, uint valueOfs, int valueSize)
+    {
+        if (valueSize == 0) return new();
+        if (valueFileId == 0)
+        {
+            var len = valueSize >> 24;
+            var buf = new byte[len];
+            switch (len)
+            {
+                case 7:
+                    buf[6] = (byte)(valueOfs >> 24);
+                    goto case 6;
+                case 6:
+                    buf[5] = (byte)(valueOfs >> 16);
+                    goto case 5;
+                case 5:
+                    buf[4] = (byte)(valueOfs >> 8);
+                    goto case 4;
+                case 4:
+                    buf[3] = (byte)valueOfs;
+                    goto case 3;
+                case 3:
+                    buf[2] = (byte)valueSize;
+                    goto case 2;
+                case 2:
+                    buf[1] = (byte)(valueSize >> 8);
+                    goto case 1;
+                case 1:
+                    buf[0] = (byte)(valueSize >> 16);
+                    break;
+                default:
+                    throw new BTDBException("Corrupted DB");
+            }
+
+            return buf;
+        }
+
+        var compressed = false;
+        if (valueSize < 0)
+        {
+            compressed = true;
+            valueSize = -valueSize;
+        }
+
+        var result = new byte[valueSize];
+        var file = FileCollection.GetFile(valueFileId);
+        if (file == null)
+            throw new BTDBException(
+                $"ReadValue({valueFileId},{valueOfs},{valueSize}) compressed: {compressed} file does not exist in {CalcStats()}");
+        file.RandomRead(result, valueOfs, false);
+        if (compressed)
+            result = _compression.DecompressValue(result);
+        return result;
+    }
+
     public ReadOnlySpan<byte> ReadValue(uint valueFileId, uint valueOfs, int valueSize, ref byte buffer,
         int bufferLength)
     {

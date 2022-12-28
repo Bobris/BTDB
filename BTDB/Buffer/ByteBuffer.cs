@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace BTDB.Buffer;
 
-public struct ByteBuffer
+public struct ByteBuffer: IEquatable<ByteBuffer>
 {
     public readonly bool Equals(ByteBuffer other)
     {
@@ -131,7 +131,12 @@ public struct ByteBuffer
 
     public readonly ArraySegment<byte> ToArraySegment()
     {
-        return new ArraySegment<byte>(Buffer ?? Array.Empty<byte>(), Offset, Length);
+        return new(Buffer ?? Array.Empty<byte>(), Offset, Length);
+    }
+
+    public readonly ReadOnlyMemory<byte> AsSyncReadOnlyMemory()
+    {
+        return new(Buffer, Offset, Length);
     }
 
     public readonly byte[] ToByteArray()

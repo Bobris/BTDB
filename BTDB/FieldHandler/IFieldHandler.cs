@@ -19,6 +19,7 @@ public interface IFieldHandler
     // typeHandler is preferred FieldHandler for type could be null if unknown
     IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger);
     IFieldHandler SpecializeSaveForType(Type type);
+    bool DoesPreferLoadAsMemory() => false;
 }
 
 public enum NeedsFreeContent

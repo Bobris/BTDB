@@ -227,7 +227,14 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
 
     public ReadOnlySpan<byte> GetValue()
     {
-        if (!IsValidKey()) return new ReadOnlySpan<byte>();
+        if (!IsValidKey()) return new ();
+        var nodeIdxPair = _stack[^1];
+        return ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx).Span;
+    }
+
+    public ReadOnlyMemory<byte> GetValueAsMemory()
+    {
+        if (!IsValidKey()) return new ();
         var nodeIdxPair = _stack[^1];
         return ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
     }

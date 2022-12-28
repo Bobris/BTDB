@@ -1,5 +1,4 @@
 using System;
-using System.ComponentModel.Design;
 using System.Net;
 using System.Net.Sockets;
 using System.Numerics;
@@ -72,6 +71,24 @@ public ref struct SpanWriter
         {
             var res = InitialBuffer[..^Buf.Length];
             InitialBuffer = Buf;
+            return res;
+        }
+    }
+
+    public Memory<byte> GetPersistentMemoryAndReset()
+    {
+        if (Controller != null) ThrowCannotBeUsedWithController();
+        if (HeapBuffer != null)
+        {
+            var res = HeapBuffer.AsMemory(0, HeapBuffer.Length - Buf.Length);
+            Buf = InitialBuffer;
+            HeapBuffer = null;
+            return res;
+        }
+        else
+        {
+            var res = InitialBuffer[..^Buf.Length].ToArray();
+            Buf = InitialBuffer;
             return res;
         }
     }
@@ -184,7 +201,7 @@ public ref struct SpanWriter
         {
             var newSize = Math.Max((uint)InitialBuffer.Length * 2, 32);
             newSize = Math.Max(newSize, pos + spaceNeeded);
-            newSize = Math.Min(newSize, int.MaxValue);
+            newSize = Math.Min(newSize, (uint)Array.MaxLength);
             HeapBuffer = new byte[newSize];
             InitialBuffer[..(int)pos].CopyTo(HeapBuffer);
             Buf = HeapBuffer.AsSpan((int)pos, (int)(newSize - pos));
@@ -192,7 +209,7 @@ public ref struct SpanWriter
         else
         {
             var newSize = Math.Max((uint)HeapBuffer.Length * 2, pos + spaceNeeded);
-            newSize = Math.Min(newSize, int.MaxValue);
+            newSize = Math.Min(newSize, (uint)Array.MaxLength);
             Array.Resize(ref HeapBuffer, (int)newSize);
             Buf = HeapBuffer.AsSpan((int)pos, (int)(newSize - pos));
         }
@@ -716,6 +733,16 @@ public ref struct SpanWriter
         WriteBlock(value);
     }
 
+    public void WriteByteArray(ReadOnlyMemory<byte> value)
+    {
+        WriteByteArray(value.Span);
+    }
+
+    public void WriteByteArrayLength(ReadOnlyMemory<byte> value)
+    {
+        WriteVUInt32(1+(uint)value.Length);
+    }
+
     public void WriteByteArrayRaw(byte[]? value)
     {
         if (value == null) return;
@@ -725,6 +752,11 @@ public ref struct SpanWriter
     public void WriteBlock(ByteBuffer data)
     {
         WriteBlock(data.AsSyncReadOnlySpan());
+    }
+
+    public void WriteBlock(ReadOnlyMemory<byte> data)
+    {
+        WriteBlock(data.Span);
     }
 
     [SkipLocalsInit]
