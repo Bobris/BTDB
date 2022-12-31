@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Text;
 using BTDB.Buffer;
 using Microsoft.Extensions.Primitives;
@@ -486,13 +487,64 @@ public ref struct SpanWriter
             return;
         }
 
+        Resize((uint)l + 4);
+        WriteVUInt32((uint)(l + 1));
+
         fixed (char* strPtrStart = value)
         {
             var strPtr = strPtrStart;
             var strPtrEnd = strPtrStart + l;
-            var toEncode = (uint)(l + 1);
-        doEncode:
-            WriteVUInt32(toEncode);
+            goFast:
+            while (BitConverter.IsLittleEndian && strPtr + 4 <= strPtrEnd && Buf.Length >= 4)
+            {
+                var c4Data = Unsafe.Read<ulong>(strPtr);
+                if (!PackUnpack.AllCharsInUInt64AreAscii(c4Data))
+                {
+                    if (PackUnpack.AllCharsInUInt32AreAscii((uint)c4Data))
+                    {
+                        PackUnpack.UnsafeGetAndAdvance<ushort>(ref Buf) =
+                            (ushort)(((uint)c4Data >> 8) | c4Data);
+                        strPtr += 2;
+                        c4Data >>= 32;
+                    }
+
+                    if ((c4Data & 0xff80) == 0)
+                    {
+                        PackUnpack.UnsafeGetAndAdvance<byte>(ref Buf) = (byte)c4Data;
+                        strPtr++;
+                    }
+
+                    break;
+                }
+
+                PackUnpack.UnsafeGetAndAdvance<uint>(ref Buf) = PackUnpack.NarrowFourUtf16CharsToAscii(c4Data);
+                strPtr += 4;
+
+                if (Vector128.IsHardwareAccelerated && strPtr + 8 <= strPtrEnd && Buf.Length >= 8)
+                {
+                    var v = Unsafe.ReadUnaligned<Vector128<ushort>>(strPtr);
+                    if (!PackUnpack.AllCharsInVectorAreAscii(v)) continue;
+                    PackUnpack.UnsafeGetAndAdvance<ulong>(ref Buf) = PackUnpack.NarrowEightUtf16CharsToAscii(v);
+                    strPtr += 8;
+                    while (strPtr + 16 <= strPtrEnd && Buf.Length >= 16)
+                    {
+                        v = Unsafe.ReadUnaligned<Vector128<ushort>>(strPtr);
+                        var v2 = Unsafe.ReadUnaligned<Vector128<ushort>>(strPtr+8);
+                        if (!PackUnpack.AllCharsInVectorAreAscii(v | v2))
+                        {
+                            if (!PackUnpack.AllCharsInVectorAreAscii(v)) break;
+                            PackUnpack.UnsafeGetAndAdvance<ulong>(ref Buf) = PackUnpack.NarrowEightUtf16CharsToAscii(v);
+                            strPtr += 8;
+                            break;
+                        }
+
+                        PackUnpack.UnsafeGetAndAdvance<Vector128<byte>>(ref Buf) =
+                            PackUnpack.NarrowSixteenUtf16CharsToAscii(v, v2);
+                        strPtr += 16;
+                    }
+                }
+            }
+
             while (strPtr != strPtrEnd)
             {
                 var c = *strPtr++;
@@ -503,24 +555,21 @@ public ref struct SpanWriter
                         Resize(1);
                     }
 
-                    PackUnpack.UnsafeGetAndAdvance(ref Buf, 1) = (byte)c;
+                    PackUnpack.UnsafeGetAndAdvance<byte>(ref Buf) = (byte)c;
+                    goto goFast;
                 }
-                else
-                {
-                    if (char.IsHighSurrogate(c) && strPtr != strPtrEnd)
-                    {
-                        var c2 = *strPtr;
-                        if (char.IsLowSurrogate(c2))
-                        {
-                            toEncode = (uint)((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000);
-                            strPtr++;
-                            goto doEncode;
-                        }
-                    }
 
-                    toEncode = c;
-                    goto doEncode;
+                if (char.IsHighSurrogate(c) && strPtr != strPtrEnd)
+                {
+                    var c2 = *strPtr;
+                    if (char.IsLowSurrogate(c2))
+                    {
+                        WriteVUInt32((uint)((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000));
+                        strPtr++;
+                        continue;
+                    }
                 }
+                WriteVUInt32(c);
             }
         }
     }
@@ -588,6 +637,7 @@ public ref struct SpanWriter
             PackUnpack.UnsafeAdvance(ref Buf, Encoding.UTF8.GetBytes(value.AsSpan(), Buf));
             return;
         }
+
         Span<byte> buf = l <= 512 ? stackalloc byte[l] : new byte[l];
         Encoding.UTF8.GetBytes(value.AsSpan(), buf);
         WriteBlock(ref MemoryMarshal.GetReference(buf), (uint)buf.Length);
@@ -740,7 +790,7 @@ public ref struct SpanWriter
 
     public void WriteByteArrayLength(ReadOnlyMemory<byte> value)
     {
-        WriteVUInt32(1+(uint)value.Length);
+        WriteVUInt32(1 + (uint)value.Length);
     }
 
     public void WriteByteArrayRaw(byte[]? value)
@@ -915,7 +965,8 @@ public ref struct SpanWriter
 
     public void UpdateBuffer(ReadOnlySpan<byte> writtenBuffer)
     {
-        if (Unsafe.AreSame(ref MemoryMarshal.GetReference(InitialBuffer), ref MemoryMarshal.GetReference(writtenBuffer)))
+        if (Unsafe.AreSame(ref MemoryMarshal.GetReference(InitialBuffer),
+                ref MemoryMarshal.GetReference(writtenBuffer)))
         {
             Buf = InitialBuffer[writtenBuffer.Length..];
             HeapBuffer = null;

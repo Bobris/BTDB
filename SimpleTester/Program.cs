@@ -44,6 +44,7 @@ static class Program
         //var cts = new CancellationTokenSource();
         //Console.CancelKeyPress += delegate { cts.Cancel(); };
         //new CompactionStressTest().Run("e:/testdb", cts.Token);
-        new NativeVsManagedBugFinder().Torture();
+        //new NativeVsManagedBugFinder().Torture();
+        BenchmarkRunner.Run<BenchTestWriteString>();
     }
 }

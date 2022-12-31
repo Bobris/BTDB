@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Optimized
+
+SpanWriter.WriteString is now 12+ times faster for long (100+) ascii only strings.
+
 ### Added
 
 Support for `ReadOnlyMemory<byte>` type and end to end sample to stream Key,Bon relation enumerable though Stream.

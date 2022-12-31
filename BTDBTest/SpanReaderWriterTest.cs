@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Net;
+using System.Text;
 using BTDB.StreamLayer;
 using Xunit;
 
@@ -18,36 +19,55 @@ public class SpanReaderWriterTest
         var sw = new SpanWriter(buf);
         writeAction(ref sw);
         Assert.Equal(checkResult, sw.GetSpan().ToArray());
-        SpanReader sr;
         if (checkResult.Length > 1)
         {
-            sw = new SpanWriter(new Span<byte>());
+            sw = new(new Span<byte>());
             writeAction(ref sw);
             Assert.Equal(checkResult, sw.GetSpanAndReset().ToArray());
             writeAction(ref sw);
             Assert.Equal(checkResult, sw.GetSpan().ToArray());
         }
-        sr = new SpanReader(checkResult);
+        SpanReader sr = new(checkResult);
         readAction(ref sr);
         Assert.True(sr.Eof);
-        sw = new SpanWriter();
+        sw = new();
         writeAction(ref sw);
         writeAction(ref sw);
         Assert.Equal(checkResult.Concat(checkResult).ToArray(), sw.GetByteBufferAndReset().ToByteArray());
-        sr = new SpanReader(checkResult.Concat(checkResult).ToArray());
+        sr = new(checkResult.Concat(checkResult).ToArray());
         readAction(ref sr);
         readAction(ref sr);
         if (skipAction != null)
         {
-            sr = new SpanReader(checkResult.Concat(checkResult).ToArray());
+            sr = new(checkResult.Concat(checkResult).ToArray());
             skipAction(ref sr);
             readAction(ref sr);
             Assert.True(sr.Eof);
-            sr = new SpanReader(checkResult.Concat(checkResult).ToArray());
+            sr = new(checkResult.Concat(checkResult).ToArray());
             readAction(ref sr);
             skipAction(ref sr);
             Assert.True(sr.Eof);
         }
+    }
+
+    static void TestWriteRead(SpanWriterAction writeAction,
+        SpanReaderAction readAction, SpanReaderAction skipAction)
+    {
+        var sw = new SpanWriter();
+        writeAction(ref sw);
+        SpanReader sr = new(sw.GetSpan());
+        readAction(ref sr);
+        Assert.True(sr.Eof);
+        sr = new(sw.GetSpan());
+        skipAction(ref sr);
+        Assert.True(sr.Eof);
+        sw = new ();
+        writeAction(ref sw);
+        writeAction(ref sw);
+        sr = new(sw.GetSpan());
+        skipAction(ref sr);
+        readAction(ref sr);
+        Assert.True(sr.Eof);
     }
 
     [Fact]
@@ -55,7 +75,7 @@ public class SpanReaderWriterTest
     {
         var d = new DateTime(1976, 2, 2);
         TestDateTime(d, new byte[] { 0x08, 0xa6, 0x52, 0xcd, 0x43, 0xff, 0xc0, 0x00 });
-        d = new DateTime(d.Ticks, DateTimeKind.Utc);
+        d = new(d.Ticks, DateTimeKind.Utc);
         TestDateTime(d, new byte[] { 0x48, 0xa6, 0x52, 0xcd, 0x43, 0xff, 0xc0, 0x00 });
     }
 
@@ -68,7 +88,7 @@ public class SpanReaderWriterTest
     public void DateTimeOffsetTest()
     {
         var date = new DateTime(1976, 2, 2, 2, 2, 2, DateTimeKind.Utc);
-        TestDateOffsetTime(new DateTimeOffset(date), new byte[] { 0xff, 0x8, 0xa6, 0x52, 0xde, 0x50, 0x40, 0x49, 0x0, 0x80 });
+        TestDateOffsetTime(new(date), new byte[] { 0xff, 0x8, 0xa6, 0x52, 0xde, 0x50, 0x40, 0x49, 0x0, 0x80 });
         var dateWithOffset = new DateTimeOffset(date).ToOffset(TimeSpan.FromHours(4));
         TestDateOffsetTime(dateWithOffset, new byte[] { 0xff, 0x8, 0xa6, 0x52, 0xff, 0xd7, 0x51, 0xe9, 0x0, 0xfc, 0x21, 0x87, 0x11, 0xa0, 0x0 });
     }
@@ -86,8 +106,8 @@ public class SpanReaderWriterTest
     [Fact]
     public void TimeSpanTest()
     {
-        TestTimeSpan(new TimeSpan(1), new byte[] { 0x81 });
-        TestTimeSpan(new TimeSpan(1, 0, 0), new byte[] { 0xfc, 0x08, 0x61, 0xc4, 0x68, 0x00 });
+        TestTimeSpan(new(1), new byte[] { 0x81 });
+        TestTimeSpan(new(1, 0, 0), new byte[] { 0xfc, 0x08, 0x61, 0xc4, 0x68, 0x00 });
     }
 
     static void TestTimeSpan(TimeSpan value, byte[] checkResult)
@@ -108,6 +128,36 @@ public class SpanReaderWriterTest
     static void TestString(string value, byte[] checkResult)
     {
         TestWriteRead((ref SpanWriter w) => w.WriteString(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadString()), (ref SpanReader s) => s.SkipString());
+    }
+
+    [Fact]
+    public void StringTest2()
+    {
+        for (var i = 0; i < 64; i++)
+        {
+            var sb = new StringBuilder();
+            for (var k = 0; k < i; k++)
+            {
+                sb.Append((char)('A' + k));
+            }
+
+            sb.Append((char)0x80);
+            var first = sb.Length;
+            for (var j = 0; j < 64; j++)
+            {
+                sb.Remove(first, sb.Length - first);
+                for (var k = 0; k < j; k++)
+                {
+                    sb.Append((char)('a' + k));
+                }
+                TestString(sb.ToString());
+            }
+        }
+    }
+
+    static void TestString(string value)
+    {
+        TestWriteRead((ref SpanWriter w) => w.WriteString(value), (ref SpanReader r) => Assert.Equal(value, r.ReadString()), (ref SpanReader s) => s.SkipString());
     }
 
     [Fact]
