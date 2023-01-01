@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 30.2.0
+
 ### Optimized
 
 SpanWriter.WriteString is now 12+ times faster for long (100+) ascii only strings.
