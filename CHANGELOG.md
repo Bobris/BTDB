@@ -5,6 +5,8 @@
 ### Optimized
 
 SpanWriter.WriteString is now 12+ times faster for long (100+) ascii only strings.
+SpanReader.ReadString is now up to 14+ times faster for long ascii only strings.
+SpanReader.SkipString is now 100+ times faster for long ascii only strings.
 
 ### Added
 

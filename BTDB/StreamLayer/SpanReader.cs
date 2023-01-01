@@ -1,10 +1,11 @@
 using System;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.X86;
 using System.Text;
 using BTDB.Buffer;
 using Microsoft.Extensions.Primitives;
@@ -472,16 +473,28 @@ public ref struct SpanReader
         fixed (char* res = result)
         {
             var i = 0;
-            while (i < l)
+            var least = Math.Min(l, Buf.Length);
+            if ((Sse2.IsSupported || AdvSimd.Arm64.IsSupported) && BitConverter.IsLittleEndian && least >= 32)
             {
-                NeedOneByteInBuffer();
-                var cc = MemoryMarshal.GetReference(Buf);
-                if (cc < 0x80)
+                var processed = PackUnpack.WidenAsciiToUtf16Simd(
+                    (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Buf)), res, (nuint)least);
+                i = (int)processed;
+                PackUnpack.UnsafeAdvance(ref Buf, (int)processed);
+            }
+
+            while (true)
+            {
+                while (l - i >= 4 && Buf.Length >= 4)
                 {
-                    res[i++] = (char)cc;
-                    PackUnpack.UnsafeAdvance(ref Buf, 1);
-                    continue;
+                    var v4b = PackUnpack.UnsafeGet<uint>(Buf);
+                    if (!PackUnpack.AllBytesInUInt32AreAscii(v4b))
+                        break;
+                    PackUnpack.WidenFourAsciiBytesToUtf16(res + i, v4b);
+                    PackUnpack.UnsafeAdvance(ref Buf, 4);
+                    i += 4;
                 }
+
+                if (i >= l) break;
 
                 var c = ReadVUInt64();
                 if (c > 0xffff)
@@ -613,7 +626,7 @@ public ref struct SpanReader
                 ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), (uint)l)), l);
     }
 
-    public void SkipString()
+    public unsafe void SkipString()
     {
         var len = ReadVUInt64();
         if (len == 0) return;
@@ -621,20 +634,39 @@ public ref struct SpanReader
         if (len > int.MaxValue) throw new InvalidDataException($"Skipping String length overflowed with {len}");
         var l = (int)len;
         if (l == 0) return;
-        var i = 0;
-        while (i < l)
+
+        var least = Math.Min(l, Buf.Length);
+        if ((Sse2.IsSupported || AdvSimd.Arm64.IsSupported) && BitConverter.IsLittleEndian && least >= 16)
         {
+            var processed = PackUnpack.SkipAsciiToUtf16Simd(
+                (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Buf)), (nuint)least);
+            l -= (int)processed;
+            PackUnpack.UnsafeAdvance(ref Buf, (int)processed);
+        }
+
+        while (true)
+        {
+            while (l >= 4 && Buf.Length >= 4)
+            {
+                var v4b = PackUnpack.UnsafeGet<uint>(Buf);
+                if (!PackUnpack.AllBytesInUInt32AreAscii(v4b))
+                    break;
+                PackUnpack.UnsafeAdvance(ref Buf, 4);
+                l -= 4;
+            }
+
+            if (l <= 0) break;
             var c = ReadVUInt64();
             if (c > 0xffff)
             {
                 if (c > 0x10ffff)
                     throw new InvalidDataException(
                         $"Skipping String unicode value overflowed with {c}");
-                i += 2;
+                l -= 2;
             }
             else
             {
-                i++;
+                l--;
             }
         }
     }
