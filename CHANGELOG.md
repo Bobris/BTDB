@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 30.2.1
+
 ### Fixed
 
 Regression from 30.2.0 in SkipString.
