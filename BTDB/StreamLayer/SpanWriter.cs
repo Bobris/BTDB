@@ -220,6 +220,11 @@ public ref struct SpanWriter
         return true;
     }
 
+    void TryReserve(uint spaceNeeded)
+    {
+        if (Buf.Length < spaceNeeded) Resize(spaceNeeded);
+    }
+
     public void WriteByteZero()
     {
         if (Buf.IsEmpty)
@@ -489,7 +494,8 @@ public ref struct SpanWriter
             return;
         }
 
-        Resize((uint)l + 4);
+        TryReserve((uint)l + 4);
+
         WriteVUInt32((uint)(l + 1));
 
         fixed (char* strPtrStart = value)
@@ -592,7 +598,7 @@ public ref struct SpanWriter
     public unsafe void WriteStringOrderedPrefix(string value)
     {
         var l = value.Length;
-        Resize((uint)l + 1);
+        TryReserve((uint)l + 1);
 
         fixed (char* strPtrStart = value)
         {
@@ -675,7 +681,7 @@ public ref struct SpanWriter
                     }
                 }
 
-                WriteVUInt32((uint)c+1);
+                WriteVUInt32((uint)c + 1);
             }
         }
     }
@@ -970,7 +976,7 @@ public ref struct SpanWriter
         }
 
         // Reserve space at end
-        Resize(lenOfLen - 1);
+        TryReserve(lenOfLen - 1);
         PackUnpack.UnsafeAdvance(ref Buf, (int)lenOfLen - 1);
         // Make Space By Moving Memory
         InternalGetSpan(start, len - 1).CopyTo(InternalGetSpan(start + lenOfLen - 1, len - 1));
@@ -1032,11 +1038,7 @@ public ref struct SpanWriter
 
     public Span<byte> BlockWriteToSpan(int length)
     {
-        if (Buf.Length < length)
-        {
-            Resize((uint)length);
-        }
-
+        TryReserve((uint)length);
         return MemoryMarshal.CreateSpan(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, length), length);
     }
 }
