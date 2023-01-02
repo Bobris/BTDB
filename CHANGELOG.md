@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 30.2.2
+
 ### Fixed
 
 Regression in WriteString allocating too much memory if called multiple times.
