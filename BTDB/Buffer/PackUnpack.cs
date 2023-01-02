@@ -610,6 +610,26 @@ public static class PackUnpack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool AllCharsInUInt32AreAsciiM1(ref uint value)
+    {
+        if ((value & ~0x007F007Fu) != 0) return false;
+        var v = value + 0x00010001u;
+        if ((v & ~0x007F007Fu) != 0) return false;
+        value = v;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool AllCharsInUInt64AreAsciiM1(ref ulong value)
+    {
+        if ((value & ~0x007F007F_007F007Ful) != 0) return false;
+        var v = value + 0x00010001_00010001ul;
+        if ((v & ~0x007F007F_007F007Ful) != 0) return false;
+        value = v;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool AllCharsInVectorAreAscii(Vector128<ushort> utf16Vector)
     {
         // prefer architecture specific intrinsic as they offer better perf
@@ -935,6 +955,22 @@ public static class PackUnpack
 
             pAsciiBuffer += 16;
             processed += 16;
+        }
+    }
+
+    public static Vector128<ushort> Add1Saturate(Vector128<ushort> value)
+    {
+        if (Sse2.IsSupported)
+        {
+            return Sse2.AddSaturate(value, Vector128.Create((ushort)1));
+        }
+        else if (AdvSimd.IsSupported)
+        {
+            return AdvSimd.AddSaturate(value, Vector128.Create((ushort)1));
+        }
+        else
+        {
+            throw new PlatformNotSupportedException();
         }
     }
 }

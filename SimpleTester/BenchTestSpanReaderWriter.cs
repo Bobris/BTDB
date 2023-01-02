@@ -30,15 +30,15 @@ public class BenchTestSpanReaderWriter
     [Benchmark(Baseline = true)]
     public void Original()
     {
-        SpanReader reader = new(_buf);
-        reader.SkipStringSlow();
+        SpanWriter writer = new();
+        writer.WriteStringOrderedPrefixSlow(_str);
     }
     */
 
     [Benchmark]
     public void Faster()
     {
-        SpanReader reader = new(_buf);
-        reader.SkipString();
+        SpanWriter writer = new();
+        writer.WriteStringOrderedPrefix(_str);
     }
 }

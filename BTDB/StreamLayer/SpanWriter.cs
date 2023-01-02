@@ -5,6 +5,8 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.X86;
 using System.Text;
 using BTDB.Buffer;
 using Microsoft.Extensions.Primitives;
@@ -529,7 +531,7 @@ public ref struct SpanWriter
                     while (strPtr + 16 <= strPtrEnd && Buf.Length >= 16)
                     {
                         v = Unsafe.ReadUnaligned<Vector128<ushort>>(strPtr);
-                        var v2 = Unsafe.ReadUnaligned<Vector128<ushort>>(strPtr+8);
+                        var v2 = Unsafe.ReadUnaligned<Vector128<ushort>>(strPtr + 8);
                         if (!PackUnpack.AllCharsInVectorAreAscii(v | v2))
                         {
                             if (!PackUnpack.AllCharsInVectorAreAscii(v)) break;
@@ -569,6 +571,7 @@ public ref struct SpanWriter
                         continue;
                     }
                 }
+
                 WriteVUInt32(c);
             }
         }
@@ -582,49 +585,98 @@ public ref struct SpanWriter
             return;
         }
 
-        var l = value.Length;
-        var i = 0;
-        while (i < l)
-        {
-            var c = value[i];
-            if (char.IsHighSurrogate(c) && i + 1 < l)
-            {
-                var c2 = value[i + 1];
-                if (char.IsLowSurrogate(c2))
-                {
-                    WriteVUInt32((uint)((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000) + 1);
-                    i += 2;
-                    continue;
-                }
-            }
-
-            WriteVUInt32((uint)c + 1);
-            i++;
-        }
-
+        WriteStringOrderedPrefix(value);
         WriteByteZero();
     }
 
-    public void WriteStringOrderedPrefix(string value)
+    public unsafe void WriteStringOrderedPrefix(string value)
     {
         var l = value.Length;
-        var i = 0;
-        while (i < l)
+        Resize((uint)l + 1);
+
+        fixed (char* strPtrStart = value)
         {
-            var c = value[i];
-            if (char.IsHighSurrogate(c) && i + 1 < l)
+            var strPtr = strPtrStart;
+            var strPtrEnd = strPtrStart + l;
+            goFast:
+            while (BitConverter.IsLittleEndian && strPtr + 4 <= strPtrEnd && Buf.Length >= 4)
             {
-                var c2 = value[i + 1];
-                if (char.IsLowSurrogate(c2))
+                var c4Data = Unsafe.Read<ulong>(strPtr);
+                if (!PackUnpack.AllCharsInUInt64AreAsciiM1(ref c4Data))
                 {
-                    WriteVUInt32((uint)((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000) + 1);
-                    i += 2;
-                    continue;
+                    var c2Data = (uint)c4Data;
+                    if (PackUnpack.AllCharsInUInt32AreAsciiM1(ref c2Data))
+                    {
+                        PackUnpack.UnsafeGetAndAdvance<ushort>(ref Buf) =
+                            (ushort)((c2Data >> 8) | c2Data);
+                        strPtr += 2;
+                        c4Data >>= 32;
+                    }
+
+                    if ((c4Data & 0xffff) < 0x7f)
+                    {
+                        PackUnpack.UnsafeGetAndAdvance<byte>(ref Buf) = (byte)(c4Data + 1);
+                        strPtr++;
+                    }
+
+                    break;
+                }
+
+                PackUnpack.UnsafeGetAndAdvance<uint>(ref Buf) = PackUnpack.NarrowFourUtf16CharsToAscii(c4Data);
+                strPtr += 4;
+
+                if ((Sse2.IsSupported || AdvSimd.IsSupported) && strPtr + 8 <= strPtrEnd && Buf.Length >= 8)
+                {
+                    var v = PackUnpack.Add1Saturate(Unsafe.ReadUnaligned<Vector128<ushort>>(strPtr));
+                    if (!PackUnpack.AllCharsInVectorAreAscii(v)) continue;
+                    PackUnpack.UnsafeGetAndAdvance<ulong>(ref Buf) = PackUnpack.NarrowEightUtf16CharsToAscii(v);
+                    strPtr += 8;
+                    while (strPtr + 16 <= strPtrEnd && Buf.Length >= 16)
+                    {
+                        v = PackUnpack.Add1Saturate(Unsafe.ReadUnaligned<Vector128<ushort>>(strPtr));
+                        var v2 = PackUnpack.Add1Saturate(Unsafe.ReadUnaligned<Vector128<ushort>>(strPtr + 8));
+                        if (!PackUnpack.AllCharsInVectorAreAscii(v | v2))
+                        {
+                            if (!PackUnpack.AllCharsInVectorAreAscii(v)) break;
+                            PackUnpack.UnsafeGetAndAdvance<ulong>(ref Buf) = PackUnpack.NarrowEightUtf16CharsToAscii(v);
+                            strPtr += 8;
+                            break;
+                        }
+
+                        PackUnpack.UnsafeGetAndAdvance<Vector128<byte>>(ref Buf) =
+                            PackUnpack.NarrowSixteenUtf16CharsToAscii(v, v2);
+                        strPtr += 16;
+                    }
                 }
             }
 
-            WriteVUInt32((uint)c + 1);
-            i++;
+            while (strPtr != strPtrEnd)
+            {
+                var c = *strPtr++;
+                if (c < 0x7f)
+                {
+                    if (Buf.IsEmpty)
+                    {
+                        Resize(1);
+                    }
+
+                    PackUnpack.UnsafeGetAndAdvance<byte>(ref Buf) = (byte)(c + 1);
+                    goto goFast;
+                }
+
+                if (char.IsHighSurrogate(c) && strPtr != strPtrEnd)
+                {
+                    var c2 = *strPtr;
+                    if (char.IsLowSurrogate(c2))
+                    {
+                        WriteVUInt32((uint)((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10001));
+                        strPtr++;
+                        continue;
+                    }
+                }
+
+                WriteVUInt32((uint)c+1);
+            }
         }
     }
 

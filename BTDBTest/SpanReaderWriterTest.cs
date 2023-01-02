@@ -151,6 +151,7 @@ public class SpanReaderWriterTest
                     sb.Append((char)('a' + k));
                 }
                 TestString(sb.ToString());
+                TestStringOrdered(sb.ToString());
             }
         }
     }
@@ -158,6 +159,11 @@ public class SpanReaderWriterTest
     static void TestString(string value)
     {
         TestWriteRead((ref SpanWriter w) => w.WriteString(value), (ref SpanReader r) => Assert.Equal(value, r.ReadString()), (ref SpanReader s) => s.SkipString());
+    }
+
+    static void TestStringOrdered(string value)
+    {
+        TestWriteRead((ref SpanWriter w) => w.WriteStringOrdered(value), (ref SpanReader r) => Assert.Equal(value, r.ReadStringOrdered()), (ref SpanReader s) => s.SkipStringOrdered());
     }
 
     [Fact]

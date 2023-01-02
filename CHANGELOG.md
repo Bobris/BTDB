@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Optimized
+
+SpanWriter.WriteStringOrdered is now faster especially for ascii only strings.
+
 ## 30.2.0
 
 ### Optimized
