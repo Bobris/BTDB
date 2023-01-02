@@ -2,6 +2,9 @@
 
 ## [unreleased]
 
+### Fixed
+
+Regression from 30.2.0 in SkipString.
 ### Optimized
 
 SpanWriter.WriteStringOrdered is now faster especially for ascii only strings.
