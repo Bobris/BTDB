@@ -141,8 +141,25 @@ public class SpanReaderWriterTest
                 sb.Append((char)('A' + k));
             }
 
+            TestString(sb.ToString());
+            TestStringOrdered(sb.ToString());
+
             sb.Append((char)0x80);
             var first = sb.Length;
+            for (var j = 0; j < 64; j++)
+            {
+                sb.Remove(first, sb.Length - first);
+                for (var k = 0; k < j; k++)
+                {
+                    sb.Append((char)(' ' + k));
+                }
+                TestString(sb.ToString());
+                TestStringOrdered(sb.ToString());
+            }
+
+            sb.Remove(first - 1, 1);
+            sb.Append((char)0x7f);
+
             for (var j = 0; j < 64; j++)
             {
                 sb.Remove(first, sb.Length - first);

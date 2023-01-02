@@ -927,7 +927,7 @@ public static class PackUnpack
         Debug.Assert(elementCount >= SizeOfVector128);
 
         nuint processed = 0;
-        while (true)
+        while (processed + SizeOfVector128 <= elementCount)
         {
             Vector128<byte> asciiVector;
             bool containsNonAsciiBytes;
@@ -956,6 +956,8 @@ public static class PackUnpack
             pAsciiBuffer += 16;
             processed += 16;
         }
+
+        return processed;
     }
 
     public static Vector128<ushort> Add1Saturate(Vector128<ushort> value)
