@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Exposed `CompactorReadBytesPerSecondLimit` and `CompactorWriteBytesPerSecondLimit` properties so they could be modified on the fly.
+
 ## 30.2.2
 
 ### Fixed
@@ -13,6 +17,7 @@ Regression in WriteString allocating too much memory if called multiple times.
 ### Fixed
 
 Regression from 30.2.0 in SkipString.
+
 ### Optimized
 
 SpanWriter.WriteStringOrdered is now faster especially for ascii only strings.
