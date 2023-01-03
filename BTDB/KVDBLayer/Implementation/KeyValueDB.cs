@@ -50,8 +50,8 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
     readonly bool _lenientOpen;
     uint? _missingSomeTrlFiles;
     public uint CompactorRamLimitInMb { get; set; }
-    public ulong CompactorReadBytesPerSecondLimit { get; }
-    public ulong CompactorWriteBytesPerSecondLimit { get; }
+    public ulong CompactorReadBytesPerSecondLimit { get; set; }
+    public ulong CompactorWriteBytesPerSecondLimit { get; set; }
 
     public KeyValueDB(IFileCollection fileCollection)
         : this(fileCollection, new SnappyCompressionStrategy())

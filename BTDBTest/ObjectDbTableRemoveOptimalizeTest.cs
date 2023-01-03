@@ -269,6 +269,9 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDB.Transactions();
         }
 
+        public ulong CompactorReadBytesPerSecondLimit { get; set; }
+        public ulong CompactorWriteBytesPerSecondLimit { get; set; }
+
         public void Dispose()
         {
             _keyValueDB.Dispose();

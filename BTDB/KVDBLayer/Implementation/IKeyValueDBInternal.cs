@@ -18,8 +18,6 @@ interface IKeyValueDBInternal : IKeyValueDB
     // This will reference that root, after use you need to call DereferenceRootNodeInternal
     IRootNodeInternal ReferenceAndGetLastCommitted();
     void DereferenceRootNodeInternal(IRootNodeInternal root);
-    ulong CompactorWriteBytesPerSecondLimit { get; }
-    ulong CompactorReadBytesPerSecondLimit { get; }
     long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap);
     long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);
     ISpanWriter StartPureValuesFile(out uint fileId);

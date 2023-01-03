@@ -84,4 +84,7 @@ public class ReadOnlyKeyValueDB : IKeyValueDB
     {
         yield break;
     }
+
+    public ulong CompactorReadBytesPerSecondLimit { get; set; }
+    public ulong CompactorWriteBytesPerSecondLimit { get; set; }
 }
