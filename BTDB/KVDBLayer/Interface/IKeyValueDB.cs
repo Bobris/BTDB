@@ -38,4 +38,7 @@ public interface IKeyValueDB : IDisposable
     long MaxTrLogFileSize { get; set; }
 
     IEnumerable<IKeyValueDBTransaction> Transactions();
+
+    public ulong CompactorReadBytesPerSecondLimit { get; set; }
+    public ulong CompactorWriteBytesPerSecondLimit { get; set; }
 }

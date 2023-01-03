@@ -99,6 +99,9 @@ public class InMemoryKeyValueDB : IKeyValueDB
         }
     }
 
+    public ulong CompactorReadBytesPerSecondLimit { get; set; }
+    public ulong CompactorWriteBytesPerSecondLimit { get; set; }
+
     readonly ConditionalWeakTable<IKeyValueDBTransaction, object?> _transactions =
         new ConditionalWeakTable<IKeyValueDBTransaction, object?>();
 

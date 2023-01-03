@@ -49,8 +49,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    public ulong CompactorReadBytesPerSecondLimit { get; }
-    public ulong CompactorWriteBytesPerSecondLimit { get; }
+    public ulong CompactorReadBytesPerSecondLimit { get; set; }
+    public ulong CompactorWriteBytesPerSecondLimit { get; set; }
 
     readonly IOffHeapAllocator _allocator;
     readonly ICompressionStrategy _compression;
