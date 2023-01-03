@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 30.3.0
+
 ### Added
 
 Exposed `CompactorReadBytesPerSecondLimit` and `CompactorWriteBytesPerSecondLimit` properties so they could be modified on the fly.
