@@ -1259,13 +1259,21 @@ public class RelationBuilder
         var paramCount = methodParams.Length;
         var methodInfo = _relationDbManipulatorType.GetMethod(method.Name);
         if (methodInfo == null)
-            RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {method} is not supported.");
+            RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {method.Name} is not supported.");
         CheckReturnType(method.Name, methodInfo!.ReturnType, method.ReturnType);
         var calledMethodParams = methodInfo.GetParameters();
         CheckParameterCount(method.Name, calledMethodParams.Length, methodParams.Length);
         for (var i = 0; i < methodParams.Length; i++)
         {
             CheckParameterType(method.Name, i, calledMethodParams[i].ParameterType, methodParams[i].ParameterType);
+        }
+
+        if (method.Name == nameof(RelationDBManipulator<object>.ShallowUpsertWithSizes))
+        {
+            if (ClientRelationVersionInfo.SecondaryKeys.Count > 0)
+            {
+                RelationInfoResolver.ActualOptions.ThrowBTDBException($"Method {method.Name} cannot be used with relation with secondary indexes");
+            }
         }
 
         for (ushort i = 0; i <= paramCount; i++)

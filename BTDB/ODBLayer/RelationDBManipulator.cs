@@ -249,6 +249,38 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return true;
     }
 
+    [SkipLocalsInit]
+    public (bool Inserted, uint KeySize, uint OldValueSize, uint NewValueSize) ShallowUpsertWithSizes(T obj, bool allowInsert, bool allowUpdate)
+    {
+        Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
+
+        Span<byte> buf = stackalloc byte[512];
+        var writer = new SpanWriter(buf);
+        var keyBytes = KeyBytes(obj, ref writer);
+        var valueBytes = ValueBytes(obj, ref writer);
+
+        if (_kvtr.FindExactKey(keyBytes))
+        {
+            var oldValueSize = _kvtr.GetStorageSizeOfCurrentKey().Value;
+            if (allowUpdate)
+            {
+                _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+                return (false, (uint)keyBytes.Length, oldValueSize, (uint)valueBytes.Length);
+            }
+
+            return (false, (uint)keyBytes.Length, oldValueSize, oldValueSize);
+        }
+
+        if (allowInsert)
+        {
+            _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            MarkModification();
+            return (true, (uint)keyBytes.Length, 0, (uint)valueBytes.Length);
+        }
+
+        return (false, 0, 0, 0);
+    }
+
     public (long Inserted, long Updated) UpsertRange(IEnumerable<T> items)
     {
         var inserted = 0L;

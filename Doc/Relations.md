@@ -449,3 +449,16 @@ You can define any number of parameter less void returning methods which will be
         }
     }
 ```
+
+## ShallowUpsertWithSizes
+
+```C#
+(bool Inserted, uint KeySize, uint OldValueSize, uint NewValueSize) ShallowUpsertWithSizes(T obj, bool allowInsert, bool allowUpdate)
+```
+
+Special method which allow to get used sizes for key and values and supporting also only insert (obj, true, false) and only update (obj, false, true) behaviors.
+If called with (obj, false, false) it could be used for getting if obj exists in relation (KeySize>0) and stored value length (OldValueSize).
+
+Currently limitation is that it could be used only for relations without secondary keys.
+
+Note: It is "shallow" version only, so don't use with properties of IDictionary type or it could leak data.
