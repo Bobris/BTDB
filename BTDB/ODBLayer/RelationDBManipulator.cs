@@ -26,7 +26,8 @@ public interface IRelationDbManipulator : IRelation, IRelationModificationCounte
     public IInternalObjectDBTransaction Transaction { get; }
     public RelationInfo RelationInfo { get; }
 
-    public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint remappedSecondaryKeyIndex,
+    public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader,
+        uint remappedSecondaryKeyIndex,
         in ReadOnlySpan<byte> secondaryKey);
 }
 
@@ -250,7 +251,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
-    public (bool Inserted, uint KeySize, uint OldValueSize, uint NewValueSize) ShallowUpsertWithSizes(T obj, bool allowInsert, bool allowUpdate)
+    public (bool Inserted, uint KeySize, uint OldValueSize, uint NewValueSize) ShallowUpsertWithSizes(T obj,
+        bool allowInsert, bool allowUpdate)
     {
         Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
@@ -963,6 +965,63 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return ordererIdxs;
     }
 
+    public (ulong Count, ulong KeySizes, ulong ValueSizes) RemoveWithSizesByPrimaryKey(ConstraintInfo[] constraints)
+    {
+        if (_relationInfo.NeedImplementFreeContent())
+        {
+            throw new NotSupportedException("RemoveWithSizes does not support FreeContent");
+        }
+        SpanWriter writer = new();
+        StructList<byte> helperBuffer = new();
+        writer.WriteBlock(_relationInfo.Prefix);
+        var completedPrefix = false;
+        foreach (var constraint in constraints)
+        {
+            if (constraint.Constraint.IsAnyConstraint())
+            {
+                completedPrefix = true;
+            }
+            else
+                switch (constraint.Constraint.Prepare(ref helperBuffer))
+                {
+                    case IConstraint.MatchType.NoPrefix:
+                        throw new NotSupportedException("Only prefix constraints allowed");
+                    case IConstraint.MatchType.Prefix:
+                        if (completedPrefix)
+                            goto case IConstraint.MatchType.NoPrefix;
+                        completedPrefix = true;
+                        constraint.Constraint.WritePrefix(ref writer, helperBuffer);
+                        break;
+                    case IConstraint.MatchType.Exact:
+                        if (completedPrefix)
+                            goto case IConstraint.MatchType.NoPrefix;
+                        constraint.Constraint.WritePrefix(ref writer, helperBuffer);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+        }
+
+        var keySizes = 0ul;
+        var valueSizes = 0ul;
+        var count = 0ul;
+        var keyPrefix = writer.GetSpan();
+
+        if (_kvtr.FindFirstKey(keyPrefix))
+        {
+            do
+            {
+                var p = _kvtr.GetStorageSizeOfCurrentKey();
+                keySizes += p.Key;
+                valueSizes += p.Value;
+                count++;
+            } while (_kvtr.FindNextKey(keyPrefix));
+        }
+
+        _kvtr.EraseAll(keyPrefix);
+        return (count, keySizes, valueSizes);
+    }
+
     public ulong GatherByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
         long skip, long take, IOrderer[]? orderers)
     {
@@ -1160,7 +1219,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
-    public unsafe object CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint remappedSecondaryKeyIndex,
+    public unsafe object CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader,
+        uint remappedSecondaryKeyIndex,
         in ReadOnlySpan<byte> secondaryKey)
     {
         Span<byte> pkBuffer = stackalloc byte[512];
@@ -1197,7 +1257,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         if (_kvtr.FindNextKey(secKeyBytes))
             throw new BTDBException("Ambiguous result.");
 
-        return (TItem)CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], remappedSecondaryKeyIndex,
+        return (TItem)CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex],
+            remappedSecondaryKeyIndex,
             keyBytes);
     }
 

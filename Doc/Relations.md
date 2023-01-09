@@ -462,3 +462,15 @@ If called with (obj, false, false) it could be used for getting if obj exists in
 Currently limitation is that it could be used only for relations without secondary keys.
 
 Note: It is "shallow" version only, so don't use with properties of IDictionary type or it could leak data.
+
+## RemoveWithSizesById
+
+```C#
+(ulong Count, ulong KeySizes, ulong ValueSizes) RemoveWithSizesById(Constraint<ulong> tenantId, Constraint<string> key);
+```
+
+Allow very quickly remove rows if you complain to limitations.
+
+First limitation that it could be used only for constraints which are implementable by key prefix search.
+Second limitation is that it could be used only for relations without secondary keys.
+Also it does not FreeContent so don't use with properties of IDictionary type (it will throw).

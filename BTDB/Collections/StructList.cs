@@ -235,7 +235,7 @@ public struct StructList<T> : IEnumerable<T>
         get => _count;
     }
 
-    public T[] UnsafeBackingArray => _a!;
+    public T[]? UnsafeBackingArray => _a;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [DebuggerStepThrough]

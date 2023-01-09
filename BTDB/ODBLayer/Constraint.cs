@@ -27,6 +27,7 @@ public interface IConstraint
         YesSkipNext = 3 // This cannot be returned from MatchType.Exact
     }
 
+    public bool IsAnyConstraint();
     public MatchType Prepare(ref StructList<byte> buffer);
 
     // Will be called only for Prefix and Exact MatchTypes, for Exact it have to write full part of key
@@ -39,6 +40,8 @@ public interface IConstraint
 
 public abstract class Constraint<T> : IConstraint
 {
+    public virtual bool IsAnyConstraint() => false;
+
     public abstract IConstraint.MatchType Prepare(ref StructList<byte> buffer);
     public abstract void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer);
     public abstract IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer);
@@ -426,6 +429,8 @@ public class ConstraintStringUpTo : ConstraintUpTo<string>
 
 public abstract class ConstraintAny<T> : Constraint<T>
 {
+    public override bool IsAnyConstraint() => true;
+
     public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
     {
         return IConstraint.MatchType.NoPrefix;

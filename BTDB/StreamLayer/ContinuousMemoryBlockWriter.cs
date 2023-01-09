@@ -19,7 +19,7 @@ public sealed class ContinuousMemoryBlockWriter : ISpanWriter
 
     public ContinuousMemoryBlockWriter(in StructList<byte> buffer)
     {
-        _bytes = buffer.UnsafeBackingArray;
+        _bytes = buffer.UnsafeBackingArray ?? Array.Empty<byte>();
         _ofs = (int)buffer.Count;
     }
 
