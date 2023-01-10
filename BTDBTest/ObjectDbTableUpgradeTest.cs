@@ -819,4 +819,69 @@ public class ObjectDbTableUpgradeTest : IDisposable
         }
     }
 
+    public class ObjChild : Obj
+    {
+        public int Child { get; set; }
+    }
+
+
+    public class S2Obj
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public Obj O { get; set; }
+    }
+
+    public interface IS2ObjTable : IRelation<S2Obj>
+    {
+        bool RemoveById(ulong id);
+    }
+
+    public class S2ObjV2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public ObjChild O { get; set; }
+    }
+
+    public interface IS2ObjV2Table : IRelation<S2ObjV2>
+    {
+        bool RemoveById(ulong id);
+    }
+
+    public class MyObjToObjChildTypeConvertorGenerator : DefaultTypeConvertorGenerator
+    {
+        public static ObjChild Convert2ObjChild(Obj value) => new() { Num = value.Num, Child = 42 };
+    }
+
+    [Fact]
+    public void InlineChildObjPreserveDataWithCustomConvertor()
+    {
+        _db.RegisterType(typeof(Obj));
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IS2ObjTable>("T");
+            var table = creator(tr);
+            table.Upsert(new()
+            {
+                Id = 1, O = new () { Num = 2 }
+            });
+            tr.Commit();
+        }
+
+        ReopenDb();
+
+        _db.TypeConvertorGenerator = new MyObjToObjChildTypeConvertorGenerator();
+        _db.RegisterType(typeof(Obj));
+        _db.RegisterType(typeof(ObjChild));
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IS2ObjV2Table>("T");
+            var table = creator(tr);
+            Assert.Equal(1, table.Count);
+
+            Assert.Equal(2, table.First().O.Num);
+            Assert.Equal(42, table.First().O.Child);
+        }
+    }
 }

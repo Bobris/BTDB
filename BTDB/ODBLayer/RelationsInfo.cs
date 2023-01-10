@@ -10,22 +10,18 @@ namespace BTDB.ODBLayer;
 
 class RelationInfoResolver : IRelationInfoResolver
 {
+    readonly ObjectDB _objectDB;
+
     public RelationInfoResolver(ObjectDB objectDB)
     {
-        FieldHandlerFactory = objectDB.FieldHandlerFactory;
-        TypeConvertorGenerator = objectDB.TypeConvertorGenerator;
-        ActualOptions = objectDB.ActualOptions;
-        Container = objectDB.ActualOptions.Container;
-        FieldHandlerLogger = objectDB.FieldHandlerLogger;
+        _objectDB = objectDB;
     }
 
-    public IFieldHandlerFactory FieldHandlerFactory { get; }
-
-    public ITypeConvertorGenerator TypeConvertorGenerator { get; }
-
-    public IContainer? Container { get; }
-    public IFieldHandlerLogger? FieldHandlerLogger { get; }
-    public DBOptions ActualOptions { get; }
+    public IFieldHandlerFactory FieldHandlerFactory => _objectDB.FieldHandlerFactory;
+    public ITypeConvertorGenerator TypeConvertorGenerator => _objectDB.TypeConvertorGenerator;
+    public IContainer? Container => _objectDB.ActualOptions.Container;
+    public IFieldHandlerLogger? FieldHandlerLogger => _objectDB.FieldHandlerLogger;
+    public DBOptions ActualOptions => _objectDB.ActualOptions;
 }
 
 public class RelationsInfo
