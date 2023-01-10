@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 30.5.0
+
 ### Added
 
 CustomConverter for Relations could be set even after opening DB.
