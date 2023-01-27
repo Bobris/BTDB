@@ -147,4 +147,28 @@ public class KeyValueDBCompactorSchedulerTest
             Assert.True(e.WaitOne(100));
         }
     }
+
+    [Fact]
+    public void WhenCompactionFailsItShouldScheduleCompactingAgain()
+    {
+        var e = new AutoResetEvent(false);
+        var first = true;
+        using (var s = new CompactorScheduler())
+        {
+            s.AddCompactAction(token =>
+            {
+                if (first)
+                {
+                    first = false;
+                    throw new OutOfMemoryException();
+                }
+                e.Set();
+                return false;
+            });
+            s.WaitTime = TimeSpan.FromMilliseconds(1);
+            s.AdviceRunning(true);
+            Assert.True(e.WaitOne(1000));
+            Assert.False(first);
+        }
+    }
 }

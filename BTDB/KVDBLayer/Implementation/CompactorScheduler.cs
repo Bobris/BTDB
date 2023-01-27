@@ -109,8 +109,8 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
             _timerStarted = false;
             if (_running) return;
             _running = true;
-
         }
+
         try
         {
             var needed = false;
@@ -141,6 +141,7 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
             {
                 _running = false;
                 Monitor.PulseAll(_lock);
+                _timer.Change(WaitTime, TimeSpan.FromMilliseconds(-1));
             }
         }
     }
