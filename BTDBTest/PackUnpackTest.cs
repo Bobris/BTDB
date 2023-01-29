@@ -6,7 +6,6 @@ namespace BTDBTest;
 
 public class PackUnpackTest
 {
-
     [Fact]
     public void PackVUIntIsOrderable()
     {
@@ -26,6 +25,7 @@ public class PackUnpackTest
         {
             Assert.Equal((uint)o2, PackUnpack.LengthVUInt((uint)t));
         }
+
         Assert.Equal((uint)o2, PackUnpack.LengthVUInt(t));
         Assert.Equal((uint)o2, PackUnpack.LengthVUInt(buf2, 0));
         Assert.True(0 > BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2));
@@ -47,6 +47,7 @@ public class PackUnpackTest
             yield return t;
             yield return t + 1;
         }
+
         yield return ulong.MaxValue;
         yield return 123456789UL;
         yield return 123456789123456789UL;
@@ -67,10 +68,11 @@ public class PackUnpackTest
         var buf2 = new byte[9];
         var o2 = 0;
         PackUnpack.PackVInt(buf2, ref o2, t);
-        if (t >= int.MinValue && t <= int.MaxValue)
+        if (t is >= int.MinValue and <= int.MaxValue)
         {
             Assert.Equal((uint)o2, PackUnpack.LengthVInt((int)t));
         }
+
         Assert.Equal((uint)o2, PackUnpack.LengthVInt(t));
         Assert.Equal((uint)o2, PackUnpack.LengthVInt(buf2, 0));
         Assert.True(0 > BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2));
@@ -93,6 +95,7 @@ public class PackUnpackTest
             yield return t;
             yield return t + 1;
         }
+
         yield return long.MaxValue;
         yield return 123456789L;
         yield return 123456789123456789L;
@@ -117,6 +120,7 @@ public class PackUnpackTest
         {
             Assert.Equal((uint)o2, PackUnpack.LengthVInt((int)t));
         }
+
         Assert.Equal((uint)o2, PackUnpack.LengthVInt(t));
         Assert.Equal((uint)o2, PackUnpack.LengthVInt(buf2, 0));
         Assert.True(0 > BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2), $"{t - 1} is not before {t}");
@@ -138,9 +142,26 @@ public class PackUnpackTest
             yield return t;
             yield return t + 1;
         }
+
         yield return long.MinValue + 1;
         yield return -123456789L;
         yield return -123456789123456789L;
     }
 
+    [Fact]
+    public void DetectLengthOfSimpleCharactersUintWorks()
+    {
+        Assert.Equal((4u, false), PackUnpack.DetectLengthOfSimpleCharacters(0x12345678u));
+        Assert.Equal((3u, false), PackUnpack.DetectLengthOfSimpleCharacters(0x82345678u));
+        Assert.Equal((2u, false), PackUnpack.DetectLengthOfSimpleCharacters(0x12845678u));
+        Assert.Equal((1u, false), PackUnpack.DetectLengthOfSimpleCharacters(0x12348678u));
+        Assert.Equal((0u, false), PackUnpack.DetectLengthOfSimpleCharacters(0x12345688u));
+        Assert.Equal((1u, true), PackUnpack.DetectLengthOfSimpleCharacters(0x12345600u));
+        Assert.Equal((1u, true), PackUnpack.DetectLengthOfSimpleCharacters(0x12348600u));
+        Assert.Equal((2u, true), PackUnpack.DetectLengthOfSimpleCharacters(0x12340078u));
+        Assert.Equal((2u, true), PackUnpack.DetectLengthOfSimpleCharacters(0x12840078u));
+        Assert.Equal((3u, true), PackUnpack.DetectLengthOfSimpleCharacters(0x12005678u));
+        Assert.Equal((3u, true), PackUnpack.DetectLengthOfSimpleCharacters(0x82005678u));
+        Assert.Equal((4u, true), PackUnpack.DetectLengthOfSimpleCharacters(0x00345678u));
+    }
 }

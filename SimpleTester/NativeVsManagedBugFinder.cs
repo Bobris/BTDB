@@ -22,7 +22,7 @@ public class NativeVsManagedBugFinder
 
     public void Torture()
     {
-        var r = new Random(3);
+        var r = new Random(0);
         var opindex = 0;
         var tr1 = _kv1.StartWritingTransaction().GetAwaiter().GetResult();
         var tr2 = _kv2.StartWritingTransaction().GetAwaiter().GetResult();
@@ -35,12 +35,30 @@ public class NativeVsManagedBugFinder
                 tr.Dispose();
             }
         });*/
+        void DisposeAndNewWriteTransaction()
+        {
+            tr1.Dispose();
+            tr2.Dispose();
+            tr1 = _kv1.StartWritingTransaction().GetAwaiter().GetResult();
+            tr2 = _kv2.StartWritingTransaction().GetAwaiter().GetResult();
+        }
+
         while (true)
         {
             opindex++;
             //VerifyTree(((BTreeKeyValueDBTransaction)tr2).BTreeRoot);
             if (opindex % 50000 == 0)
             {
+                DisposeAndNewWriteTransaction();
+                var cc = tr1.GetKeyValueCount();
+                for (var i = 0; i < cc; i++)
+                {
+                    tr1.SetKeyIndex(i);
+                    tr2.SetKeyIndex(i);
+                    tr1.EraseCurrent();
+                    tr2.EraseCurrent();
+                    DisposeAndNewWriteTransaction();
+                }
                 var memStats = _kv2.GetNativeMemoryStats();
                 Console.WriteLine(opindex + " " + tr1.GetKeyValueCount() + " " + tr2.GetKeyValueCount() + " " +
                                   (memStats.AllocCount - memStats.DeallocCount) + " " +
@@ -68,10 +86,7 @@ public class NativeVsManagedBugFinder
             {
                 tr1.Commit();
                 tr2.Commit();
-                tr1.Dispose();
-                tr2.Dispose();
-                tr1 = _kv1.StartWritingTransaction().GetAwaiter().GetResult();
-                tr2 = _kv2.StartWritingTransaction().GetAwaiter().GetResult();
+                DisposeAndNewWriteTransaction();
             }
 
             var op = r.Next(4);
@@ -80,12 +95,13 @@ public class NativeVsManagedBugFinder
                 case 0: goto case 1;
                 case 1:
                 {
-                    var b = new byte[r.Next(3, 10)];
+                    var b = new byte[r.Next(5,100)*r.Next(4, 100)];
                     r.NextBytes(b);
-                    b[0] = (byte)(b[0] & 1);
+                    b[0] = 0;
                     b[1] = (byte)(b[1] & 1);
-                    var res1 = tr1.CreateOrUpdateKeyValue(b, b);
-                    var res2 = tr2.CreateOrUpdateKeyValue(b, b);
+                    b[2] = (byte)(b[2] & 1);
+                    var res1 = tr1.CreateOrUpdateKeyValue(b, Array.Empty<byte>());
+                    var res2 = tr2.CreateOrUpdateKeyValue(b, Array.Empty<byte>());
                     if (res1 != res2)
                     {
                         Console.WriteLine("Create " + opindex + " has different result " + res1 + " " + res2);

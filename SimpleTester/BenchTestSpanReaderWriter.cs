@@ -22,7 +22,7 @@ public class BenchTestSpanReaderWriter
             _str += "ABCDefgh1234!@#$";
         _str = _str[..N];
         SpanWriter writer = new();
-        writer.WriteString(_str);
+        writer.WriteStringOrdered(_str);
         _buf = writer.GetPersistentMemoryAndReset();
     }
 
@@ -30,15 +30,15 @@ public class BenchTestSpanReaderWriter
     [Benchmark(Baseline = true)]
     public void Original()
     {
-        SpanWriter writer = new();
-        writer.WriteStringOrderedPrefixSlow(_str);
+        SpanReader reader = new(_buf);
+        reader.SkipStringOrderedSlow();
     }
     */
 
     [Benchmark]
     public void Faster()
     {
-        SpanWriter writer = new();
-        writer.WriteStringOrderedPrefix(_str);
+        SpanReader reader = new(_buf);
+        reader.SkipStringOrdered();
     }
 }

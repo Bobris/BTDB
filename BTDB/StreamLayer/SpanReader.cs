@@ -673,21 +673,44 @@ public ref struct SpanReader
 
     public void SkipStringOrdered()
     {
-        var c = ReadVUInt32();
-        if (c == 0) return;
-        c--;
-        if (c > 0x10ffff)
+        var fastSkip = PackUnpack.DetectLengthOfSimpleCharacters(Buf);
+        if (fastSkip.WasEnd)
         {
-            if (c == 0x110000) return;
-            throw new InvalidDataException($"Skipping String unicode value overflowed with {c}");
+            PackUnpack.UnsafeAdvance(ref Buf, (int)fastSkip.Count);
+            return;
+        }
+
+        if (fastSkip.Count == 0)
+        {
+            var c = ReadVUInt32();
+            if (c == 0) return;
+            c--;
+            if (c > 0x10ffff)
+            {
+                if (c == 0x110000) return;
+                throw new InvalidDataException($"Skipping String unicode value overflowed with {c}");
+            }
+        }
+        else
+        {
+            PackUnpack.UnsafeAdvance(ref Buf, (int)fastSkip.Count);
         }
 
         while (true)
         {
-            c = ReadVUInt32();
+            var c = ReadVUInt32();
             if (c == 0) break;
             c--;
             if (c > 0x10ffff) throw new InvalidDataException($"Skipping String unicode value overflowed with {c}");
+            if (c < 127)
+            {
+                var fastSkip2 = PackUnpack.DetectLengthOfSimpleCharacters(Buf);
+                PackUnpack.UnsafeAdvance(ref Buf, (int)fastSkip2.Count);
+                if (fastSkip2.WasEnd)
+                {
+                    return;
+                }
+            }
         }
     }
 

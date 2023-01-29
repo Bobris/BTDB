@@ -975,4 +975,170 @@ public static class PackUnpack
             throw new PlatformNotSupportedException();
         }
     }
+
+    public static bool AreAllBytes1to127(uint value)
+    {
+        return (value & 0x80808080) == 0 && ((value + 0x7f7f7f7f) & 0x80808080) == 0x80808080;
+    }
+
+    public static (nuint Count, bool WasEnd) DetectLengthOfSimpleCharacters(uint value)
+    {
+        Debug.Assert(BitConverter.IsLittleEndian);
+        var hb = value & 0x80808080;
+        if (hb == 0)
+        {
+            var dz = (value + 0x7f7f7f7f) & 0x80808080;
+            if (dz == 0x80808080) return (4, false);
+            dz ^= 0x80808080;
+            return (((uint)BitOperations.TrailingZeroCount(dz) >> 3) + 1, true);
+        }
+
+        if ((value & 0x80) == 0x80) return (0, false);
+        var hbc = (uint)BitOperations.TrailingZeroCount(hb) >> 3;
+        var dzhb = ((value + 0x7f7f7f7f) & 0x80808080 | hb) ^ 0x80808080;
+        var dzc = ((uint)BitOperations.TrailingZeroCount(dzhb) >> 3) + 1;
+        if (dzc > hbc) return (hbc, false);
+        return (dzc, true);
+    }
+
+    public static bool AreAllBytes1to127(ulong value)
+    {
+        return (value & 0x80808080_80808080ul) == 0 &&
+               ((value + 0x7f7f7f7f_7f7f7f7ful) & 0x80808080_80808080ul) == 0x80808080_80808080ul;
+    }
+
+    public static (nuint Count, bool WasEnd) DetectLengthOfSimpleCharacters(ulong value)
+    {
+        Debug.Assert(BitConverter.IsLittleEndian);
+        var hb = value & 0x80808080_80808080ul;
+        if (hb == 0)
+        {
+            var dz = (value + 0x7f7f7f7f_7f7f7f7ful) & 0x80808080_80808080ul;
+            if (dz == 0x80808080_80808080ul) return (8, false);
+            dz ^= 0x80808080_80808080ul;
+            return (((uint)BitOperations.TrailingZeroCount(dz) >> 3) + 1, true);
+        }
+
+        if ((value & 0x80) == 0x80) return (0, false);
+        var hbc = (uint)BitOperations.TrailingZeroCount(hb) >> 3;
+        var dzhb = ((value + 0x7f7f7f7f_7f7f7f7ful) & 0x80808080_80808080ul | hb) ^ 0x80808080_80808080ul;
+        var dzc = ((uint)BitOperations.TrailingZeroCount(dzhb) >> 3) + 1;
+        if (dzc > hbc) return (hbc, false);
+        return (dzc, true);
+    }
+
+    public static bool AreAllBytes1to127(Vector128<byte> value)
+    {
+        var all80 = Vector128.Create((byte)0x80);
+        return (value & all80) == Vector128<byte>.Zero && ((value + Vector128.Create((byte)0x7f)) & all80) == all80;
+    }
+
+    public static (nuint Count, bool WasEnd) DetectLengthOfSimpleCharacters(Vector128<byte> value)
+    {
+        Debug.Assert(BitConverter.IsLittleEndian);
+        var all80 = Vector128.Create((byte)0x80);
+        var hb = value & all80;
+        if (hb == Vector128<byte>.Zero)
+        {
+            var dz = (value + Vector128.Create((byte)0x7f)) & all80;
+            if (dz == all80) return (16, false);
+            dz ^= all80;
+            return ((nuint)BitOperations.TrailingZeroCount(dz.ExtractMostSignificantBits()) + 1, true);
+        }
+
+        var hbc = (uint)BitOperations.TrailingZeroCount(hb.ExtractMostSignificantBits());
+        if (hbc == 0) return (0, false);
+        var dzhb = ((value + Vector128.Create((byte)0x7f)) & all80 | hb) ^ all80;
+        var dzc = (uint)BitOperations.TrailingZeroCount(dzhb.ExtractMostSignificantBits()) + 1;
+        if (dzc > hbc) return (hbc, false);
+        return (dzc, true);
+    }
+
+    public static (nuint Count, bool WasEnd) DetectLengthOfSimpleCharacters(ReadOnlySpan<byte> span)
+    {
+        nuint count = 0;
+        var len = (nuint)span.Length;
+        ref var ptr = ref MemoryMarshal.GetReference(span);
+        if (BitConverter.IsLittleEndian) goto last;
+        lastBytes:
+        while (len > 0)
+        {
+            if (ptr == 0) return (count + 1, true);
+            if (ptr >= 0x80) return (count, false);
+            count++;
+            len--;
+            ptr = ref Unsafe.Add(ref ptr, 1);
+        }
+        return (count, false);
+        last:
+        if (len < 4) goto lastBytes;
+        if (!AreAllBytes1to127(Unsafe.ReadUnaligned<uint>(ref ptr)) || len < 8)
+        {
+            var skip = DetectLengthOfSimpleCharacters(Unsafe.ReadUnaligned<uint>(ref ptr));
+            count += skip.Count;
+            if (skip.WasEnd) return (count, true);
+            len -= skip.Count;
+            ptr = ref Unsafe.Add(ref ptr, skip.Count);
+            goto lastBytes;
+        }
+
+        if (len < 16)
+        {
+            var skip = DetectLengthOfSimpleCharacters(Unsafe.ReadUnaligned<ulong>(ref ptr));
+            count += skip.Count;
+            if (skip.WasEnd) return (count, true);
+            len -= skip.Count;
+            ptr = ref Unsafe.Add(ref ptr, skip.Count);
+            goto lastBytes;
+        }
+
+        if (Vector128.IsHardwareAccelerated)
+        {
+            var all80 = Vector128.Create((byte)0x80);
+            var all7f = Vector128.Create((byte)0x7f);
+            while (len >= 16)
+            {
+                var value = Vector128.LoadUnsafe(ref ptr);
+                var hb = value & all80;
+                if (hb == Vector128<byte>.Zero)
+                {
+                    var dz = (value + all7f) & all80;
+                    if (dz == all80)
+                    {
+                        ptr = ref Unsafe.Add(ref ptr, 16);
+                        count += 16;
+                        len -= 16;
+                        continue;
+                    }
+
+                    dz ^= all80;
+                    return (count + (nuint)BitOperations.TrailingZeroCount(dz.ExtractMostSignificantBits()) + 1, true);
+                }
+
+                var hbc = (uint)BitOperations.TrailingZeroCount(hb.ExtractMostSignificantBits());
+                if (hbc == 0) return (count, false);
+                var dzhb = ((value + all7f) & all80 | hb) ^ all80;
+                var dzc = (uint)BitOperations.TrailingZeroCount(dzhb.ExtractMostSignificantBits()) + 1;
+                if (dzc > hbc) return (count + hbc, false);
+                return (count + dzc, true);
+            }
+        }
+
+        while (len >= 8)
+        {
+            if (!AreAllBytes1to127(Unsafe.ReadUnaligned<ulong>(ref ptr))) break;
+
+            ptr = ref Unsafe.Add(ref ptr, 8);
+            count += 8;
+            len -= 8;
+        }
+
+        goto last;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static (nuint Count, bool WasEnd) AddCount(nuint count, (nuint Count, bool WasEnd) detected)
+    {
+        return (count + detected.Count, detected.WasEnd);
+    }
 }
