@@ -52,7 +52,7 @@ public class TypeSerializers : ITypeSerializers
 
     public TypeSerializers(ITypeNameMapper? typeNameMapper = null, TypeSerializersOptions? options = null)
     {
-        ConvertorGenerator = DefaultTypeConvertorGenerator.Instance;
+        ConvertorGenerator = options?.ConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
         _typeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
         ForgotAllTypesAndSerializers();
         _loaderFactoryAction = LoaderFactory;

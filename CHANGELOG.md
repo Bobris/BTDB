@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+CustomConverter now could be defined for EventLayer and it works for class types in both EventLayer and EventLayer2.
+
 ## 31.0.0
 
 ### Optimized

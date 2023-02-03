@@ -1,4 +1,5 @@
 ﻿using BTDB.Encrypted;
+using BTDB.FieldHandler;
 
 namespace BTDB.EventStoreLayer;
 
@@ -17,4 +18,6 @@ public class TypeSerializersOptions
     public ISymmetricCipher? SymmetricCipher { get; set; }
 
     public TypeDescriptorOptions? TypeDescriptorOptions { get; set; }
+
+    public ITypeConvertorGenerator? ConvertorGenerator { get; set; }
 }

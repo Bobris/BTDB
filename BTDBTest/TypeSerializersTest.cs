@@ -679,4 +679,54 @@ public class TypeSerializersTest
             }
         });
     }
+
+    public class Obj
+    {
+        public int Num { get; set; }
+    }
+
+    public class ObjChild : Obj
+    {
+        public int Child { get; set; }
+    }
+
+    public class EObj
+    {
+        public Obj O { get; set; }
+    }
+
+    public class EObjV2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public ObjChild O { get; set; }
+    }
+
+    public class MyObjToObjChildTypeConvertorGenerator : DefaultTypeConvertorGenerator
+    {
+        public static ObjChild Convert2ObjChild(Obj value) => new() { Num = value.Num, Child = 42 };
+    }
+
+    [Fact]
+    public void CanUpgradeToDifferentType()
+    {
+        var value = new EObj() { O = new() { Num = 1 } };
+        _ts = new TypeSerializers(new EventStoreTest.OverloadableTypeMapper(typeof(EObj), "EObj"));
+        _mapping = _ts.CreateMapping();
+        var writer = new SpanWriter();
+        var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
+        storedDescriptorCtx.FinishNewDescriptors(ref writer);
+        storedDescriptorCtx.StoreObject(ref writer, value);
+        storedDescriptorCtx.CommitNewDescriptors();
+        var reader = new SpanReader(writer.GetSpan());
+        _ts = new TypeSerializers(new EventStoreTest.OverloadableTypeMapper(typeof(EObjV2), "EObj"),
+            new() { ConvertorGenerator = new MyObjToObjChildTypeConvertorGenerator() });
+        _mapping = _ts.CreateMapping();
+        _mapping.LoadTypeDescriptors(ref reader);
+        var valueV2 = _mapping.LoadObject(ref reader) as EObjV2;
+        Assert.Equal(1, valueV2.O.Num);
+        Assert.Equal(42, valueV2.O.Child);
+        _ts = new TypeSerializers();
+        _mapping = _ts.CreateMapping();
+    }
 }

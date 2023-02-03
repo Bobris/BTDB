@@ -31,7 +31,8 @@ public static class TypeDescriptorExtensions
                 .Do(pushCtx)
                 .Do(pushWriter)
                 .Do(pushSubValue)
-                .Callvirt(typeof(ITypeBinarySerializerContext).GetMethod(nameof(ITypeBinarySerializerContext.StoreObject))!);
+                .Callvirt(typeof(ITypeBinarySerializerContext).GetMethod(
+                    nameof(ITypeBinarySerializerContext.StoreObject))!);
         }
     }
 
@@ -47,7 +48,8 @@ public static class TypeDescriptorExtensions
             ilGenerator
                 .Do(pushCtx)
                 .Do(pushReader)
-                .Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext.SkipObject))!);
+                .Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext
+                    .SkipObject))!);
         }
     }
 
@@ -80,10 +82,24 @@ public static class TypeDescriptorExtensions
             ilGenerator
                 .Do(pushCtx)
                 .Do(pushReader)
-                .Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext.LoadObject))!);
+                .Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext
+                    .LoadObject))!);
             if (asType != typeof(object))
-                ilGenerator.Call(typeof(TypeDescriptorExtensions).GetMethod(nameof(IntelligentCast))!
-                    .MakeGenericMethod(asType));
+            {
+                var origType = descriptor.GetPreferredType();
+                var conv = convertorGenerator.GenerateConversion(origType, asType);
+                if (conv != null)
+                {
+                    ilGenerator.Call(typeof(TypeDescriptorExtensions).GetMethod(nameof(IntelligentCast))!
+                        .MakeGenericMethod(origType));
+                    conv(ilGenerator);
+                }
+                else
+                {
+                    ilGenerator.Call(typeof(TypeDescriptorExtensions).GetMethod(nameof(IntelligentCast))!
+                        .MakeGenericMethod(asType));
+                }
+            }
         }
     }
 
@@ -95,6 +111,7 @@ public static class TypeDescriptorExtensions
         {
             return indirect.ValueAsObject as T;
         }
+
         return (T)obj; // This will throw
     }
 

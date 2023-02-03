@@ -9,6 +9,7 @@ using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System.Linq;
 using BTDB.Encrypted;
+using BTDB.StreamLayer;
 
 namespace BTDBTest;
 
@@ -583,7 +584,7 @@ public class EventStore2Test
 
     public class EventWithPropertyWithoutGetter
     {
-        private int _x;
+        int _x;
 
         public int NoGetter
         {
@@ -1249,7 +1250,7 @@ public class EventStore2Test
         }
     }
 
-    private T SerializationInternal<T>(object input)
+    T SerializationInternal<T>(object input)
     {
         var serializer = new EventSerializer();
         var meta = serializer.Serialize(out _, input).ToAsyncSafe();
@@ -1287,4 +1288,51 @@ public class EventStore2Test
             Data = "TestData";
         }
     }
+
+    public class Obj
+    {
+        public int Num { get; set; }
+    }
+
+    public class ObjChild : Obj
+    {
+        public int Child { get; set; }
+    }
+
+    public class EObj
+    {
+        public Obj O { get; set; }
+    }
+
+    public class EObjV2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public ObjChild O { get; set; }
+    }
+
+    public class MyObjToObjChildTypeConvertorGenerator : DefaultTypeConvertorGenerator
+    {
+        public static ObjChild Convert2ObjChild(Obj value) => new() { Num = value.Num, Child = 42 };
+    }
+
+    [Fact]
+    public void CanUpgradeToDifferentType()
+    {
+        var value = new EObj() { O = new() { Num = 1 } };
+        var serializer = new EventSerializer(new OverloadableTypeMapper(typeof(EObj), "EObj"));
+        var meta = serializer.Serialize(out _, value).ToAsyncSafe();
+        serializer.ProcessMetadataLog(meta);
+        var data = serializer.Serialize(out _, value);
+
+        var deserializer = new EventDeserializer(new OverloadableTypeMapper(typeof(EObjV2), "EObj"),
+            new MyObjToObjChildTypeConvertorGenerator());
+        deserializer.ProcessMetadataLog(meta);
+        deserializer.Deserialize(out var deserializedObj, data);
+
+        var valueV2 = deserializedObj as EObjV2;
+        Assert.Equal(1, valueV2.O.Num);
+        Assert.Equal(42, valueV2.O.Child);
+    }
+
 }
