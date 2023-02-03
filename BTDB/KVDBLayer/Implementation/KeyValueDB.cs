@@ -1439,7 +1439,7 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         var fId = FileCollection.AddFile("pvl");
         fileId = fId.Index;
         var pureValues = new FilePureValues(FileCollection.NextGeneration(), FileCollection.Guid);
-        var writerController = fId.GetAppenderWriter();
+        var writerController = fId.GetExclusiveAppenderWriter();
         FileCollection.SetInfo(fId.Index, pureValues);
         var writer = new SpanWriter(writerController);
         pureValues.WriteHeader(ref writer);
@@ -1447,12 +1447,13 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return writerController;
     }
 
-    public long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap)
+    public long ReplaceBTreeValues(CancellationToken cancellation, RefDictionary<ulong, uint> newPositionMap, uint targetFileId)
     {
         var ctx = new ReplaceValuesCtx
         {
             _cancellation = cancellation,
-            _newPositionMap = newPositionMap
+            _newPositionMap = newPositionMap,
+            _targetFileId = targetFileId
         };
         while (true)
         {

@@ -383,9 +383,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     }
 
     long IKeyValueDBInternal.ReplaceBTreeValues(CancellationToken cancellation,
-        Dictionary<ulong, ulong> newPositionMap)
+        RefDictionary<ulong, uint> newPositionMap, uint targetFileId)
     {
-        return ReplaceBTreeValues(cancellation, newPositionMap);
+        return ReplaceBTreeValues(cancellation, newPositionMap, targetFileId);
     }
 
     long[] IKeyValueDBInternal.CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
@@ -1733,7 +1733,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         var fId = FileCollection.AddFile("pvl");
         fileId = fId.Index;
         var pureValues = new FilePureValues(FileCollection.NextGeneration(), FileCollection.Guid);
-        var writerController = fId.GetAppenderWriter();
+        var writerController = fId.GetExclusiveAppenderWriter();
         FileCollection.SetInfo(fId.Index, pureValues);
         var writer = new SpanWriter(writerController);
         pureValues.WriteHeader(ref writer);
@@ -1741,13 +1741,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return writerController;
     }
 
-    long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap)
+    long ReplaceBTreeValues(CancellationToken cancellation, RefDictionary<ulong, uint> newPositionMap, uint targetFileId)
     {
         byte[] restartKey = null;
         while (true)
         {
             var iterationTimeOut = DateTime.UtcNow + TimeSpan.FromMilliseconds(50);
-            using (var tr = StartWritingTransaction().Result)
+            using (var tr = StartWritingTransaction().GetAwaiter().GetResult())
             {
                 var newRoot = ((BTreeKeyValueDBTransaction)tr).BTreeRoot;
                 var cursor = newRoot!.CreateCursor();
@@ -1765,6 +1765,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 ctx._operationTimeout = iterationTimeOut;
                 ctx._interrupted = false;
                 ctx._positionMap = newPositionMap;
+                ctx._targetFileId = targetFileId;
                 ctx._cancellation = cancellation;
                 cursor.ValueReplacer(ref ctx);
                 restartKey = ctx._interruptedKey;

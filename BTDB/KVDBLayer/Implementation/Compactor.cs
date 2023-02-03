@@ -15,7 +15,7 @@ class Compactor
     IRootNodeInternal? _root;
     RefDictionary<uint, FileStat> _fileStats;
 
-    Dictionary<ulong, ulong> _newPositionMap;
+    RefDictionary<ulong, uint> _newPositionMap;
     BytesPerSecondLimiter _writerBytesPerSecondLimiter;
     readonly CancellationToken _cancellation;
 
@@ -166,15 +166,11 @@ class Compactor
             var toRemoveFileIds = new StructList<uint>();
             do
             {
-                _newPositionMap = new Dictionary<ulong, ulong>();
-                do
-                {
-                    CompactOnePureValueFileIteration(ref toRemoveFileIds);
-                    totalWaste = CalcTotalWaste();
-                } while (_newPositionMap.Count * 50 / (1024 * 1024) < _keyValueDB.CompactorRamLimitInMb &&
-                         !IsWasteSmall(totalWaste));
+                _newPositionMap = new();
+                var pvlFileId = CompactOnePureValueFileIteration(ref toRemoveFileIds);
+                btreesCorrectInTransactionId = _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap, pvlFileId);
+                totalWaste = CalcTotalWaste();
 
-                btreesCorrectInTransactionId = _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap);
             } while (!IsWasteSmall(totalWaste));
 
             var usedFileGens = _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
@@ -208,7 +204,7 @@ class Compactor
         }
     }
 
-    void CompactOnePureValueFileIteration(ref StructList<uint> toRemoveFileIds)
+    uint CompactOnePureValueFileIteration(ref StructList<uint> toRemoveFileIds)
     {
         _cancellation.ThrowIfCancellationRequested();
         _writerBytesPerSecondLimiter = new(_keyValueDB.CompactorWriteBytesPerSecondLimit);
@@ -222,7 +218,7 @@ class Compactor
                     : _keyValueDB.MaxTrLogFileSize - writer.GetCurrentPositionWithoutWriter());
             firstIteration = false;
             if (wastefulFileId == 0) break;
-            MoveValuesContent(writer, wastefulFileId, valueFileId);
+            MoveValuesContent(writer, wastefulFileId);
             if (_fileStats.GetOrFakeValueRef(wastefulFileId).IsFreeToDelete())
                 toRemoveFileIds.Add(wastefulFileId);
             _fileStats.GetOrFakeValueRef(wastefulFileId) = new FileStat(0);
@@ -231,8 +227,9 @@ class Compactor
         var valueFile = _keyValueDB.FileCollection.GetFile(valueFileId);
         valueFile!.HardFlushTruncateSwitchToReadOnlyMode();
         _keyValueDB.Logger?.CompactionCreatedPureValueFile(valueFileId, valueFile.GetSize(),
-            (uint)_newPositionMap.Count, 28 * (ulong)_newPositionMap.EnsureCapacity(0)
+            (uint)_newPositionMap.Count, 20 * (ulong)_newPositionMap.Capacity
         );
+        return valueFileId;
     }
 
     void ForbidDeleteOfFilesUsedByStillRunningOldTransaction()
@@ -249,7 +246,7 @@ class Compactor
         return totalWaste < (ulong)_keyValueDB.MaxTrLogFileSize / 4;
     }
 
-    void MoveValuesContent(ISpanWriter writer, uint wastefulFileId, uint pvlFileId)
+    void MoveValuesContent(ISpanWriter writer, uint wastefulFileId)
     {
         const uint blockSize = 256 * 1024;
         var wastefulStream = _keyValueDB.FileCollection.GetFile(wastefulFileId);
@@ -273,8 +270,7 @@ class Compactor
         {
             if (valueFileId != wastefulFileId) return;
             var size = (uint)Math.Abs(valueSize);
-            _newPositionMap.Add(((ulong)wastefulFileId << 32) | valueOfs,
-                ((ulong)pvlFileId << 32) + (ulong)writer.GetCurrentPositionWithoutWriter());
+            _newPositionMap.GetOrAddValueRef(((ulong)wastefulFileId << 32) | valueOfs) = (uint)writer.GetCurrentPositionWithoutWriter();
             pos = valueOfs;
             while (size > 0)
             {
@@ -323,7 +319,7 @@ class Compactor
 
     void InitFileStats(long dontTouchGeneration)
     {
-        _fileStats = new RefDictionary<uint, FileStat>();
+        _fileStats = new();
         foreach (var (key, value) in _keyValueDB.FileCollection.FileInfos)
         {
             if (value.SubDBId != 0) continue;

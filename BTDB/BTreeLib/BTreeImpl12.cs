@@ -336,7 +336,7 @@ public class BTreeImpl12
             {
                 var value = values.Slice(i, 12);
                 if (ctx._positionMap.TryGetValue(
-                        (((ulong)MemoryMarshal.Read<uint>(value)) << 32) + MemoryMarshal.Read<uint>(value.Slice(4)),
+                        ((ulong)MemoryMarshal.Read<uint>(value) << 32) + MemoryMarshal.Read<uint>(value.Slice(4)),
                         out var targetOfs))
                 {
                     if (!cloned)
@@ -347,8 +347,8 @@ public class BTreeImpl12
                         cloned = true;
                     }
 
-                    var valueFileId = (uint)(targetOfs >> 32);
-                    var valueFileOfs = (uint)targetOfs;
+                    var valueFileId = ctx._targetFileId;
+                    var valueFileOfs = targetOfs;
                     MemoryMarshal.Write(value, ref valueFileId);
                     MemoryMarshal.Write(value.Slice(4), ref valueFileOfs);
                 }

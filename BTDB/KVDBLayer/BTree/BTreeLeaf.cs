@@ -286,8 +286,8 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
                     keyValues = newKeyValues;
                 }
 
-                keyValues[i].ValueFileId = (uint)(newOffset >> 32);
-                keyValues[i].ValueOfs = (uint)newOffset;
+                keyValues[i].ValueFileId = ctx._targetFileId;
+                keyValues[i].ValueOfs = newOffset;
             }
         }
 

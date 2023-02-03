@@ -4,6 +4,8 @@
 
 ### Optimized
 
+Decreased Compaction memory usage.
+
 SpanReader.SkipStringOrdered is now 80+ times faster for long ascii only strings.
 
 ## 30.5.0

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using BTDB.Collections;
 using BTDB.KVDBLayer.BTree;
 using BTDB.StreamLayer;
 
@@ -18,7 +19,7 @@ interface IKeyValueDBInternal : IKeyValueDB
     // This will reference that root, after use you need to call DereferenceRootNodeInternal
     IRootNodeInternal ReferenceAndGetLastCommitted();
     void DereferenceRootNodeInternal(IRootNodeInternal root);
-    long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap);
+    long ReplaceBTreeValues(CancellationToken cancellation, RefDictionary<ulong, uint> newPositionMap, uint targetFileId);
     long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);
     ISpanWriter StartPureValuesFile(out uint fileId);
     bool LoadUsedFilesFromKeyIndex(uint fileId, IKeyIndex info);
