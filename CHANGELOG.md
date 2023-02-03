@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.0.0
+
 ### Optimized
 
 Decreased Compaction memory usage.
