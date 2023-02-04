@@ -25,7 +25,8 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     readonly TypeDescriptorOptions? _typeDescriptorOptions;
     readonly BindingFlags _propertyBindingFlags;
 
-    public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type, TypeDescriptorOptions? typeDescriptorOptions) :
+    public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type,
+        TypeDescriptorOptions? typeDescriptorOptions) :
         this(typeSerializers, typeSerializers.TypeNameMapper.ToName(type), type.IsSealed, typeDescriptorOptions)
     {
         _type = type;
@@ -45,7 +46,8 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         }
     }
 
-    ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, string name, bool @sealed, TypeDescriptorOptions? typeDescriptorOptions)
+    ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, string name, bool @sealed,
+        TypeDescriptorOptions? typeDescriptorOptions)
     {
         _typeSerializers = typeSerializers;
         _typeDescriptorOptions = typeDescriptorOptions;
@@ -64,7 +66,8 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public string Name { get; }
 
-    public static void CheckObjectTypeIsGoodDto(Type type, BindingFlags propertyBindingFlags = BindingFlags.Instance | BindingFlags.Public)
+    public static void CheckObjectTypeIsGoodDto(Type type,
+        BindingFlags propertyBindingFlags = BindingFlags.Instance | BindingFlags.Public)
     {
         var isInterface = type.IsInterface;
         foreach (var propertyInfo in type.GetProperties(propertyBindingFlags))
@@ -82,8 +85,8 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         }
 
         foreach (var fieldInfo in type.GetFields(BindingFlags.NonPublic |
-                                                  BindingFlags.Public |
-                                                  BindingFlags.Instance))
+                                                 BindingFlags.Public |
+                                                 BindingFlags.Instance))
         {
             if (fieldInfo.IsPrivate) continue;
             if (ShouldNotBeStored(fieldInfo)) continue;
@@ -115,7 +118,8 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             }
         }
 
-        _fields.Sort(Comparer<KeyValuePair<string, ITypeDescriptor>>.Create((l, r) => string.Compare(l.Key, r.Key, StringComparison.InvariantCulture)));
+        _fields.Sort(Comparer<KeyValuePair<string, ITypeDescriptor>>.Create((l, r) =>
+            string.Compare(l.Key, r.Key, StringComparison.InvariantCulture)));
         return true;
     }
 
@@ -477,7 +481,8 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     .Do(pushObj)
                     .Castclass(_objectTypeDescriptor._type!)
                     .Callvirt(allProps.First(p => GetPersistentName(p) == pair.Key).GetAnyGetMethod()!)
-                    .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
+                    .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(
+                        nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
             }
         }
     }
@@ -537,14 +542,16 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         Action<IILGen> pushValue, Type valueType)
     {
         if (GetPreferredType() != valueType)
-            throw new ArgumentException("value type does not match my type");
+            throw new ArgumentException(
+                $"value type {valueType.ToSimpleName()} does not match my type {GetPreferredType().ToSimpleName()}");
         var locValue = ilGenerator.DeclareLocal(_type!, "value");
         ilGenerator
             .Do(pushValue)
             .Stloc(locValue);
         foreach (var (name, typeDescriptor) in _fields)
         {
-            var methodInfo = _type.GetProperties(_propertyBindingFlags).First(p => GetPersistentName(p) == name).GetAnyGetMethod();
+            var methodInfo = _type.GetProperties(_propertyBindingFlags).First(p => GetPersistentName(p) == name)
+                .GetAnyGetMethod();
             typeDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
                 il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo!.ReturnType);
         }

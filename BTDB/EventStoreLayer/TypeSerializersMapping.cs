@@ -6,6 +6,7 @@ using BTDB.Collections;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
@@ -500,7 +501,15 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         ref var actions = ref infoForType.Type2Actions.GetOrAddValueRef(objType);
         if (!actions.KnownSimpleSaver)
         {
-            actions.SimpleSaver = typeSerializers.GetSimpleSaver(infoForType.Descriptor, objType);
+            try
+            {
+                actions.SimpleSaver = typeSerializers.GetSimpleSaver(infoForType.Descriptor, objType);
+            }
+            catch (Exception e)
+            {
+                throw new BTDBException(
+                    $"Failed creating SimpleSaver for {objType.ToSimpleName()} with descriptor {infoForType.Descriptor.Describe()}", e);
+            }
             actions.KnownSimpleSaver = true;
         }
         var simpleSaver = actions.SimpleSaver;
