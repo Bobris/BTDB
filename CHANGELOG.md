@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.1.1
+
 ### Improved
 
 Diagnosing EventLayer serialization exceptions.
