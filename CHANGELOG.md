@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Optimized
+
+SpanReader.ReadStringOrdered is now up 15 times for long ascii only strings.
+
 ## 31.1.1
 
 ### Improved

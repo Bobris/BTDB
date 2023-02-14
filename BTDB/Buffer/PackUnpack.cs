@@ -1069,6 +1069,7 @@ public static class PackUnpack
             len--;
             ptr = ref Unsafe.Add(ref ptr, 1);
         }
+
         return (count, false);
         last:
         if (len < 4) goto lastBytes;
@@ -1136,9 +1137,135 @@ public static class PackUnpack
         goto last;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static (nuint Count, bool WasEnd) AddCount(nuint count, (nuint Count, bool WasEnd) detected)
+    public static unsafe (nuint Count, bool WasEnd) ReadAndExpandSimpleCharacters(ReadOnlySpan<byte> span,
+        ref Span<char> targetBuf, ref uint targetOfs)
     {
-        return (count + detected.Count, detected.WasEnd);
+        nuint count = 0;
+        var len = (nuint)span.Length;
+        ref var ptr = ref MemoryMarshal.GetReference(span);
+        if (BitConverter.IsLittleEndian || !Sse2.IsSupported) goto last;
+        lastBytes:
+        while (len > 0)
+        {
+            if (ptr == 0) return (count + 1, true);
+            if (ptr >= 0x80) return (count, false);
+            if (targetBuf.Length <= targetOfs)
+            {
+                var newCharBuf = (Span<char>)new char[targetBuf.Length * 2];
+                targetBuf.CopyTo(newCharBuf);
+                targetBuf = newCharBuf;
+            }
+
+            targetBuf[(int)targetOfs++] = (char)(ptr - 1);
+            count++;
+            len--;
+            ptr = ref Unsafe.Add(ref ptr, 1);
+        }
+
+        return (count, false);
+        last:
+        if (len < 4) goto lastBytes;
+        if (!AreAllBytes1to127(Unsafe.ReadUnaligned<uint>(ref ptr)) || len < 8)
+        {
+            goto lastBytes;
+        }
+
+
+        if (Vector128.IsHardwareAccelerated && Sse2.IsSupported)
+        {
+            var all80 = Vector128.Create((byte)0x80);
+            var all7f = Vector128.Create((byte)0x7f);
+            var all01 = Vector128.Create((byte)0x01);
+            var all00 = Vector128<byte>.Zero;
+
+            while (len >= 16)
+            {
+                if (targetBuf.Length < targetOfs + 16)
+                {
+                    var newCharBuf = (Span<char>)new char[targetBuf.Length * 2];
+                    targetBuf.CopyTo(newCharBuf);
+                    targetBuf = newCharBuf;
+                }
+
+                var value = Vector128.LoadUnsafe(ref ptr);
+
+                // It is ok to do more work than needed => buffer will be cropped by actual used size
+                var finalValue = Sse2.SubtractSaturate(value, all01);
+                var low = Sse2.UnpackLow(finalValue, all00);
+                Sse2.Store(
+                    (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(targetBuf)) + 2 * targetOfs,
+                    low);
+
+                var high = Sse2.UnpackHigh(finalValue, all00);
+                Sse2.Store(
+                    (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(targetBuf)) + 2 * targetOfs + 16,
+                    high);
+
+                var hb = value & all80;
+                if (hb == Vector128<byte>.Zero)
+                {
+                    var dz = (value + all7f) & all80;
+                    if (dz == all80)
+                    {
+                        targetOfs += 16;
+                        ptr = ref Unsafe.Add(ref ptr, 16);
+                        count += 16;
+                        len -= 16;
+                        continue;
+                    }
+
+                    dz ^= all80;
+                    var bytesUntilZero = (nuint)BitOperations.TrailingZeroCount(dz.ExtractMostSignificantBits());
+                    targetOfs += (uint)bytesUntilZero;
+                    return (count + bytesUntilZero + 1, true);
+                }
+
+                var hbc = (uint)BitOperations.TrailingZeroCount(hb.ExtractMostSignificantBits());
+                if (hbc == 0) return (count, false);
+                var dzhb = ((value + all7f) & all80 | hb) ^ all80;
+                var dzc = (uint)BitOperations.TrailingZeroCount(dzhb.ExtractMostSignificantBits()) + 1;
+                if (dzc > hbc)
+                {
+                    targetOfs += hbc;
+                    return (count + hbc, false);
+                }
+
+                targetOfs += dzc - 1;
+                return (count + dzc, true);
+            }
+
+            if (len >= 8)
+            {
+                if (targetBuf.Length < targetOfs + 8)
+                {
+                    var newCharBuf = (Span<char>)new char[targetBuf.Length * 2];
+                    targetBuf.CopyTo(newCharBuf);
+                    targetBuf = newCharBuf;
+                }
+
+                var value = Unsafe.ReadUnaligned<ulong>(ref ptr);
+
+                // It is ok to do more work than needed => buffer will be cropped by actual used size
+                var finalValue = Sse2.SubtractSaturate(Vector128.Create<ulong>(value).AsByte(), all01);
+                var low = Sse2.UnpackLow(finalValue, all00);
+                Sse2.Store(
+                    (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(targetBuf)) + 2 * targetOfs,
+                    low);
+
+                var skip = DetectLengthOfSimpleCharacters(value);
+                count += skip.Count;
+                if (skip.WasEnd)
+                {
+                    targetOfs += (uint)(skip.Count - 1);
+                    return (count, true);
+                }
+
+                targetOfs += (uint)skip.Count;
+                len -= skip.Count;
+                ptr = ref Unsafe.Add(ref ptr, skip.Count);
+            }
+        }
+
+        goto lastBytes;
     }
 }

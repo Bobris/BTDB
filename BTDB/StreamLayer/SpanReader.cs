@@ -563,48 +563,85 @@ public ref struct SpanReader
     [SkipLocalsInit]
     public string? ReadStringOrdered()
     {
-        var len = 0;
+        var len = 0u;
         Span<char> charStackBuf = stackalloc char[256];
         var charBuf = charStackBuf;
 
-        while (true)
+        var fastSkip = PackUnpack.ReadAndExpandSimpleCharacters(Buf, ref charBuf, ref len);
+        if (fastSkip.WasEnd)
+        {
+            PackUnpack.UnsafeAdvance(ref Buf, (int)fastSkip.Count);
+            return len == 0 ? "" : new(charBuf[..(int)len]);
+        }
+
+        if (fastSkip.Count == 0)
         {
             var c = ReadVUInt32();
-            if (c == 0) break;
+            if (c == 0) return "";
             c--;
+            if (c == 0x110000) return null;
+            if (charBuf.Length < len + 2)
+            {
+                var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
+                charBuf.CopyTo(newCharBuf);
+                charBuf = newCharBuf;
+            }
             if (c > 0xffff)
             {
                 if (c > 0x10ffff)
                 {
-                    if (len == 0 && c == 0x110000) return null;
                     throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
                 }
-
                 c -= 0x10000;
-                if (charBuf.Length < len + 2)
-                {
-                    var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
-                    charBuf.CopyTo(newCharBuf);
-                    charBuf = newCharBuf;
-                }
-
                 Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c >> 10) + 0xD800);
                 Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c & 0x3FF) + 0xDC00);
             }
             else
             {
-                if (charBuf.Length < len + 1)
-                {
-                    var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
-                    charBuf.CopyTo(newCharBuf);
-                    charBuf = newCharBuf;
-                }
-
                 Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)c;
             }
         }
+        else
+        {
+            PackUnpack.UnsafeAdvance(ref Buf, (int)fastSkip.Count);
+        }
 
-        return len == 0 ? "" : new(charBuf.Slice(0, len));
+        while (true)
+        {
+            var c = ReadVUInt32();
+            if (c == 0) return new(charBuf[..(int)len]);
+
+            if (charBuf.Length < len + 2)
+            {
+                var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
+                charBuf.CopyTo(newCharBuf);
+                charBuf = newCharBuf;
+            }
+            c--;
+            if (c > 0xffff)
+            {
+                if (c > 0x10ffff)
+                {
+                    throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
+                }
+                c -= 0x10000;
+                Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c >> 10) + 0xD800);
+                Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c & 0x3FF) + 0xDC00);
+            }
+            else
+            {
+                Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)c;
+                if (c < 127)
+                {
+                    var fastSkip2 = PackUnpack.ReadAndExpandSimpleCharacters(Buf, ref charBuf, ref len);
+                    PackUnpack.UnsafeAdvance(ref Buf, (int)fastSkip2.Count);
+                    if (fastSkip2.WasEnd)
+                    {
+                        return new(charBuf[..(int)len]);
+                    }
+                }
+            }
+        }
     }
 
     [SkipLocalsInit]
