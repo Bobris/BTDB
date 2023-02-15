@@ -520,7 +520,15 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         }
         if (!actions.KnownComplexSaver)
         {
-            actions.ComplexSaver = typeSerializers.GetComplexSaver(infoForType.Descriptor, objType);
+            try
+            {
+                actions.ComplexSaver = typeSerializers.GetComplexSaver(infoForType.Descriptor, objType);
+            }
+            catch (Exception e)
+            {
+                throw new BTDBException(
+                    $"Failed creating SimpleSaver for {objType.ToSimpleName()} with descriptor {infoForType.Descriptor.Describe()}", e);
+            }
             actions.KnownComplexSaver = true;
         }
         var complexSaver = actions.ComplexSaver;

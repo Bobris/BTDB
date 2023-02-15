@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Improved
+
+Diagnosing EventLayer serialization exceptions also for another case.
+
 ### Optimized
 
 SpanReader.ReadStringOrdered is now up 15 times for long ascii only strings.
