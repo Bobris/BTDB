@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.2.1
+
 ### Fixed
 
 ReadOnlyMemory<byte> was not working in EventLayers.
