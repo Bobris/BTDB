@@ -850,4 +850,26 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
             Assert.Equal(i + 1000000, record.CompanyId);
         }
     }
+
+    public class ObjWithGuid
+    {
+        [PrimaryKey(1)] public Guid Id { get; set; }
+
+        public string? Name { get; set; }
+    }
+
+    public interface IObjectWithTable : IRelation<ObjWithGuid>
+    {
+        IEnumerable<ObjWithGuid> ScanById(Constraint<Guid> id);
+    }
+
+    [Fact]
+    public void ConstraintGuidAnyIsSupported()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IObjectWithTable>();
+        var g1 = Guid.NewGuid();
+        t.Upsert(new() { Id = g1, Name = "me" });
+        Assert.Equal(g1, t.ScanById(Constraint<Guid>.Any).First().Id);
+    }
 }

@@ -76,6 +76,10 @@ public abstract class Constraint<T> : IConstraint
         {
             Any = Unsafe.As<Constraint<T>>(new ConstraintDateTimeAny());
         }
+        else if (typeof(T) == typeof(Guid))
+        {
+            Any = Unsafe.As<Constraint<T>>(new ConstraintGuidAny());
+        }
         else if (SignedFieldHandler.IsCompatibleWith(typeof(T)))
         {
             Any = new ConstraintSignedAny<T>();
@@ -446,6 +450,15 @@ public class ConstraintDateTimeAny : ConstraintAny<DateTime>
     public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
     {
         reader.SkipDateTime();
+        return IConstraint.MatchResult.Yes;
+    }
+}
+
+public class ConstraintGuidAny : ConstraintAny<Guid>
+{
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    {
+        reader.SkipGuid();
         return IConstraint.MatchResult.Yes;
     }
 }

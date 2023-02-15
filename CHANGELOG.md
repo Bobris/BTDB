@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+`Constraint<Guid>.Any` is supported.
+
 ## 31.2.1
 
 ### Fixed
