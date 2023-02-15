@@ -1128,4 +1128,21 @@ public class EventStoreTest
         a.Store(null, new[] { new Dictionary<int, IList<bool>> { { 1, new List<bool> { true } } } });
         a.Store(null, new[] { new Dictionary<int, IList<bool>> { { 1, new[] { true } } } });
     }
+
+    public class ObjWithReadOnlyMemory
+    {
+        public ReadOnlyMemory<byte> Data { get; set; }
+    }
+
+    [Fact]
+    public void SupportsReadOnlyMemory()
+    {
+        var manager = new EventStoreManager();
+        var appender = manager.AppendToStore(new MemoryEventFileStorage());
+        appender.Store(null, new object[] { new ObjWithReadOnlyMemory { Data = "ahoj"u8.ToArray() } });
+        var eventObserver = new StoringEventObserver();
+        appender.ReadFromStartToEnd(eventObserver);
+        var ev = eventObserver.Events[0][0] as ObjWithReadOnlyMemory;
+        Assert.Equal(ev.Data.ToArray(), "ahoj"u8.ToArray());
+    }
 }

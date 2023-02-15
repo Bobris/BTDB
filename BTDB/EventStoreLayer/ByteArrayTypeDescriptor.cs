@@ -70,6 +70,7 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
     public IEnumerable<Type> GetNativeTypes()
     {
         yield return typeof(ByteBuffer);
+        yield return typeof(ReadOnlyMemory<byte>);
     }
 
     public bool AnyOpNeedsCtx()
@@ -81,12 +82,18 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
         Action<IILGen> pushDescriptor, Type targetType)
     {
         pushReader(ilGenerator);
+        if (targetType == typeof(ReadOnlyMemory<byte>))
+        {
+            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayAsMemory))!);
+            return;
+        }
         ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArray))!);
         if (targetType == typeof(ByteBuffer))
         {
             ilGenerator.Call(() => ByteBuffer.NewAsync(null));
             return;
         }
+
 
         if (targetType != typeof(object))
         {
@@ -114,7 +121,10 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
                 typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(byte[]) })!);
         else if (valueType == typeof(ByteBuffer))
             ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray),
-                new[] { typeof(ByteBuffer) })!);
+                new[] { valueType })!);
+        else if (valueType == typeof(ReadOnlyMemory<byte>))
+            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray),
+                new[] { valueType })!);
         else throw new ArgumentOutOfRangeException(nameof(valueType));
     }
 

@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+ReadOnlyMemory<byte> was not working in EventLayers.
+
 ## 31.2.0
 
 ### Improved
