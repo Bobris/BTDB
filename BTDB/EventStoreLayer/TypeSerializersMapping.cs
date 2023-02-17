@@ -290,9 +290,17 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         if (action != null)
         {
             ctx ??= new DescriptorSerializerContext(this);
-            action(obj, ctx);
+            try
+            {
+                action(obj, ctx);
+            }
+            catch (Exception e)
+            {
+                throw new BTDBException(
+                    $"Failed store new descriptors for {objType.ToSimpleName()} with descriptor {infoForType.Descriptor.Describe()}", e);
+            }
         }
-        if (ctx != null && ctx.SomeTypeStored)
+        if (ctx is { SomeTypeStored: true })
         {
             return ctx;
         }

@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Improved
+
+Diagnosing EventLayer serialization exceptions also for another another case.
+
 ## 31.3.0
 
 ### Added
