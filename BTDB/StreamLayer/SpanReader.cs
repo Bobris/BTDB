@@ -973,8 +973,10 @@ public ref struct SpanReader
 
     public ReadOnlySpan<byte> ReadByteArrayAsSpan()
     {
+        Debug.Assert(Controller == null);
         var length = ReadVUInt32();
         if (length-- <= 1) return new();
+        if (length > Buf.Length) PackUnpack.ThrowEndOfStreamException();
         var res = Buf[..(int)length];
         PackUnpack.UnsafeAdvance(ref Buf, (int)length);
         return res;
@@ -984,7 +986,6 @@ public ref struct SpanReader
     {
         var length = ReadVUInt32();
         if (length-- <= 1) return new();
-        if (length > Buf.Length) PackUnpack.ThrowEndOfStreamException();
         return ReadBlockAsMemory(length);
     }
 

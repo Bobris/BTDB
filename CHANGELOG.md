@@ -5,6 +5,7 @@
 ### Fixed
 
 In EventLayers Nested ValueTuples containing objects generated invalid IL code.
+`SpanReader.ReadByteArrayAsMemory()` didn't worked correctly with `SpanReader.Controller!=null`.
 
 ## 31.3.1
 
