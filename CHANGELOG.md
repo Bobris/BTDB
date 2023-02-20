@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.3.2
+
 ### Fixed
 
 In EventLayers Nested ValueTuples containing objects generated invalid IL code.
