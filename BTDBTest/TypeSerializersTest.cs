@@ -214,7 +214,7 @@ public class TypeSerializersTest
     public void DictionaryCanHaveContent()
     {
         TestSerialization(new ClassWithDict
-        { Dict = new Dictionary<int, string> { { 1, "a" }, { 2, "b" }, { 3, "c" } } });
+            { Dict = new Dictionary<int, string> { { 1, "a" }, { 2, "b" }, { 3, "c" } } });
     }
 
     [Fact]
@@ -235,26 +235,26 @@ public class TypeSerializersTest
         var ts = new TypeSerializers();
         var res = new object[]
         {
-                "",
-                1,
-                1U,
-                (byte)1,
-                (sbyte)1,
-                (short)1,
-                (ushort)1,
-                1L,
-                1UL,
-                (double)1,
-                (decimal)1,
-                new DateTime(),
-                new TimeSpan(),
-                Guid.Empty,
-                Array.Empty<byte>(),
-                ByteBuffer.NewEmpty(),
-                false,
-                new EncryptedString(),
-                (1, 2u),
-                new Tuple<int, uint>(1, 2)
+            "",
+            1,
+            1U,
+            (byte)1,
+            (sbyte)1,
+            (short)1,
+            (ushort)1,
+            1L,
+            1UL,
+            (double)1,
+            (decimal)1,
+            new DateTime(),
+            new TimeSpan(),
+            Guid.Empty,
+            Array.Empty<byte>(),
+            ByteBuffer.NewEmpty(),
+            false,
+            new EncryptedString(),
+            (1, 2u),
+            new Tuple<int, uint>(1, 2)
         }.Select(o => ts.DescriptorOf(o)!.Describe());
         this.Assent(string.Join("\n", res) + "\n");
     }
@@ -293,14 +293,14 @@ public class TypeSerializersTest
         var ts = new TypeSerializers();
         var res = new object[]
         {
-                new List<int>(),
-                new Dictionary<string, double>(),
-                new SimpleDto(),
-                new ClassWithList(),
-                new ClassWithDict(),
-                new SelfPointing1(),
-                new SelfPointing2(),
-                new TestEnum()
+            new List<int>(),
+            new Dictionary<string, double>(),
+            new SimpleDto(),
+            new ClassWithList(),
+            new ClassWithDict(),
+            new SelfPointing1(),
+            new SelfPointing2(),
+            new TestEnum()
         }.Select(o => ts.DescriptorOf(o).Describe());
         this.Assent(string.Join("\n", res));
     }
@@ -379,8 +379,8 @@ public class TypeSerializersTest
         Assert.Equal(
             new[]
             {
-                    new KeyValuePair<string, object>("IntField", 42),
-                    new KeyValuePair<string, object>("StringField", "Hello")
+                new KeyValuePair<string, object>("IntField", 42),
+                new KeyValuePair<string, object>("StringField", "Hello")
             }, ((IEnumerable<KeyValuePair<string, object>>)obj)!.ToArray());
     }
 
@@ -412,7 +412,7 @@ public class TypeSerializersTest
     public void CanDeserializeDictionaryToDynamic()
     {
         var value = new Dictionary<int, SimpleDto>
-                { { 10, new SimpleDto { IntField = 42, StringField = "Hello" } } };
+            { { 10, new SimpleDto { IntField = 42, StringField = "Hello" } } };
         var obj = ConvertToDynamicThroughSerialization(value);
         Assert.Equal(value.Count, obj.Count);
         Assert.Equal(value[10].IntField, obj[10].IntField);
@@ -501,11 +501,11 @@ public class TypeSerializersTest
         TestSerialization(new ClassWithIDict
         {
             Dict = new Dictionary<Guid, IList<SimpleDto>>
-                {
-                    { Guid.NewGuid(), new List<SimpleDto> { new SimpleDto { IntField = 1, StringField = "a" } } },
-                    { Guid.NewGuid(), new List<SimpleDto> { new SimpleDto { IntField = 2, StringField = "b" } } },
-                    { Guid.NewGuid(), new List<SimpleDto> { new SimpleDto { IntField = 3, StringField = "c" } } }
-                }
+            {
+                { Guid.NewGuid(), new List<SimpleDto> { new SimpleDto { IntField = 1, StringField = "a" } } },
+                { Guid.NewGuid(), new List<SimpleDto> { new SimpleDto { IntField = 2, StringField = "b" } } },
+                { Guid.NewGuid(), new List<SimpleDto> { new SimpleDto { IntField = 3, StringField = "c" } } }
+            }
         });
     }
 
@@ -632,9 +632,9 @@ public class TypeSerializersTest
         TestSerialization(new ClassWithBoxedIEnumerable
         {
             Value = new List<int>
-                {
-                    1, 2, 3
-                }
+            {
+                1, 2, 3
+            }
         });
     }
 
@@ -661,9 +661,9 @@ public class TypeSerializersTest
         TestSerialization(new ClassWithBoxedIEnumerable
         {
             Value = new MyList<int>
-                {
-                    1, 2, 3
-                }
+            {
+                1, 2, 3
+            }
         });
     }
 
@@ -728,5 +728,29 @@ public class TypeSerializersTest
         Assert.Equal(42, valueV2.O.Child);
         _ts = new TypeSerializers();
         _mapping = _ts.CreateMapping();
+    }
+
+    public class ClassWithTupleInList
+    {
+        public IList<(ulong Id, InnerClass)> Items { get; set; }
+    }
+
+    public class InnerClass
+    {
+    }
+
+    [Fact]
+    public void CanSerializeListOfTuplesWithObjectInIt()
+    {
+        var writer = new SpanWriter();
+        var value = new ClassWithTupleInList()
+            { Items = new List<(ulong Id, InnerClass a)> { { (1, new()) } } };
+        var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
+        storedDescriptorCtx.FinishNewDescriptors(ref writer);
+        storedDescriptorCtx.StoreObject(ref writer, value);
+        storedDescriptorCtx.CommitNewDescriptors();
+        var reader = new SpanReader(writer.GetSpan());
+        _mapping.LoadTypeDescriptors(ref reader);
+        Assert.IsType<ClassWithTupleInList>(_mapping.LoadObject(ref reader));
     }
 }

@@ -194,6 +194,13 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Brfalse(finish)
                 .Ldloca(localValue)
                 .Call(nullableType.GetMethod("get_Value")!)
+                .Do(il =>
+                {
+                    if (itemType.IsValueType)
+                    {
+                        il.Box(itemType);
+                    }
+                })
                 .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!)
                 .Mark(finish);
         }

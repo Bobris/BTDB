@@ -486,7 +486,14 @@ public class TypeSerializers : ITypeSerializers
             ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>(
                 "GatherAllObjectsForTypeExtraction_" + pair.descriptor.Name);
         var il = method.Generator;
-        gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), pair.type);
+        gen.GenerateTypeIterator(il, ilgen =>
+        {
+            ilgen.Ldarg(0);
+            if (pair.type.IsValueType)
+            {
+                ilgen.UnboxAny(pair.type);
+            }
+        }, ilgen => ilgen.Ldarg(1), pair.type);
         il.Ret();
         return method.Create();
     }

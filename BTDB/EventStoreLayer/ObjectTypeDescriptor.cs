@@ -476,11 +476,20 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             foreach (var pair in _objectTypeDescriptor._fields)
             {
                 if (pair.Value.Sealed) continue;
+                var getter = allProps.First(p => GetPersistentName(p) == pair.Key).GetAnyGetMethod()!;
+                var itemType = getter.ReturnType;
                 ilGenerator
                     .Do(pushCtx)
                     .Do(pushObj)
                     .Castclass(_objectTypeDescriptor._type!)
-                    .Callvirt(allProps.First(p => GetPersistentName(p) == pair.Key).GetAnyGetMethod()!)
+                    .Callvirt(getter)
+                    .Do(il =>
+                    {
+                        if (itemType.IsValueType)
+                        {
+                            il.Box(itemType);
+                        }
+                    })
                     .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(
                         nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
             }

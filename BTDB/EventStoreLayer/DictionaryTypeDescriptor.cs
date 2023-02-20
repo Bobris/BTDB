@@ -256,6 +256,13 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     .Do(pushCtx)
                     .Ldloca(localPair)
                     .Call(typeKeyValuePair.GetProperty("Key")!.GetGetMethod()!)
+                    .Do(il =>
+                    {
+                        if (keyType.IsValueType)
+                        {
+                            il.Box(keyType);
+                        }
+                    })
                     .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
             }
             if (!_owner._valueDescriptor.Sealed)
@@ -264,6 +271,13 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     .Do(pushCtx)
                     .Ldloca(localPair)
                     .Call(typeKeyValuePair.GetProperty("Value")!.GetGetMethod()!)
+                    .Do(il =>
+                    {
+                        if (valueType.IsValueType)
+                        {
+                            il.Box(valueType);
+                        }
+                    })
                     .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
             }
             ilGenerator

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Dynamic;
+using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
@@ -402,15 +403,23 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 ilGenerator
                     .Do(pushCtx)
                     .Do(pushObj);
+                Type itemType = null;
                 if (type.IsValueType)
                 {
-                    ilGenerator.Ldfld(type.GetField(TupleFieldHandler.TupleFieldName[idx])!);
+                    var fieldInfo = type.GetField(TupleFieldHandler.TupleFieldName[idx])!;
+                    itemType = fieldInfo.FieldType;
+                    ilGenerator.Ldfld(fieldInfo);
                 }
                 else
                 {
-                    ilGenerator.Callvirt(type.GetProperty(TupleFieldHandler.TupleFieldName[idx])!.GetGetMethod()!);
+                    var methodInfo = type.GetProperty(TupleFieldHandler.TupleFieldName[idx])!.GetGetMethod()!;
+                    itemType = methodInfo.ReturnType;
+                    ilGenerator.Callvirt(methodInfo);
                 }
-
+                if (itemType.IsValueType)
+                {
+                    ilGenerator.Box(itemType);
+                }
                 ilGenerator.Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(
                     nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
             }

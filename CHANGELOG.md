@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+In EventLayers Nested ValueTuples containing objects generated invalid IL code.
+
 ## 31.3.1
 
 ### Improved

@@ -288,6 +288,11 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                             .Ldloc(localEnumerator)
                             .Callvirt(currentGetter!);
                     }
+
+                    if (itemType.IsValueType)
+                    {
+                        il.Box(itemType);
+                    }
                 })
                 .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!)
                 .Br(next)
