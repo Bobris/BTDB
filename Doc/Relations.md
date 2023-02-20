@@ -240,9 +240,9 @@ Scan by primary key also support variants like `ScanByIdVariantName`.
 
 Gather is like Scan with Count and Skip and Take. It is perfect to implement paging, when you need to calculate total number of matching rows, but also return only rows from some position (skip) and at most some count (take). First parameter can be anything inheriting from `ICollection<T>` only method which Gather calls from this interface is `Add`. It means `target` does not need to be empty, it will just add new rows. Variants does not need to append VariantName to method name, because it is defined by first parameter which you can easily overload.
 
-### Garter with sorting/ordering
+### Gather with sorting/ordering
 
-    ulong GatherById(ICollection<Room> target, long skip, long take, Constraint<ulong> companyId, Constraint<ulong> id, IOrderers[]? orderers);
+    ulong GatherById(ICollection<Room> target, long skip, long take, Constraint<ulong> companyId, Constraint<ulong> id, IOrderer[]? orderers);
 
 All same like simple `Gather` but additionally as last parameter you can pass array of "orderers". You can order by property included in used index. Sort is also stable, that means empty or null orderers will just do simple Gather without sorting. Logical order of operations is where constraints, sort, skip, take.
 
