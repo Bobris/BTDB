@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
