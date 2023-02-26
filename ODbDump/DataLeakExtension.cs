@@ -61,45 +61,69 @@ namespace ODbDump
             }
         }
 
-        public static void DumpLeaksCode(this IObjectDB db)
+        public static void DumpLeaksCode(this IObjectDB db, string? onDiskFileCollectionDirectory)
         {
+            CheckDirectoryEmpty(onDiskFileCollectionDirectory);
+
             var leakedObjects = new Dictionary<ulong, bool>();
             var leakedDictionaries = new Dictionary<ulong, bool>();
 
             using var tr = db.StartReadOnlyTransaction();
-            using var visitor = new FindUnusedKeysVisitor();
-            visitor.ImportAllKeys(tr);
-            visitor.Iterate(tr);
-
-            byte[]?[] lastUnseenKeysD = new byte[10][];
-            byte[]?[] lastUnseenKeysO = new byte[10][];
-
-            int indexD = 0, indexO = 0;
-            foreach (var unseenKey in visitor.UnseenKeys())
+            using (var visitor = new FindUnusedKeysVisitor(onDiskFileCollectionDirectory))
             {
-                var isDict = unseenKey.Key[0] == 2;
-                var isObject = unseenKey.Key[0] == 1;
+                visitor.ImportAllKeys(tr);
+                visitor.Iterate(tr);
 
-                var r = new SpanReader(unseenKey.Key);
-                r.SkipUInt8();
-                var oid = r.ReadVUInt64();
+                byte[]?[] lastUnseenKeysD = new byte[10][];
+                byte[]?[] lastUnseenKeysO = new byte[10][];
 
-                if (isDict)
+                int indexD = 0, indexO = 0;
+                foreach (var unseenKey in visitor.UnseenKeys())
                 {
-                    leakedDictionaries.TryAdd(oid, false);
-                    lastUnseenKeysD[indexD++ % 10] = unseenKey.Key;
+                    var isDict = unseenKey.Key[0] == 2;
+                    var isObject = unseenKey.Key[0] == 1;
+
+                    var r = new SpanReader(unseenKey.Key);
+                    r.SkipUInt8();
+                    var oid = r.ReadVUInt64();
+
+                    if (isDict)
+                    {
+                        leakedDictionaries.TryAdd(oid, false);
+                        lastUnseenKeysD[indexD++ % 10] = unseenKey.Key;
+                    }
+                    else if (isObject)
+                    {
+                        leakedObjects.TryAdd(oid, false);
+                        lastUnseenKeysO[indexO++ % 10] = unseenKey.Key;
+                    }
                 }
-                else if (isObject)
-                {
-                    leakedObjects.TryAdd(oid, false);
-                    lastUnseenKeysO[indexO++ % 10] = unseenKey.Key;
-                }
+
+                WriteValidatingSamples("testDicts", lastUnseenKeysO, tr);
+                WriteValidatingSamples("testObjs", lastUnseenKeysD, tr);
+                WriteSplitIdList(leakedDictionaries.Keys, "dicts", 1000);
+                WriteSplitIdList(leakedObjects.Keys, "objs", 1000);
             }
 
-            WriteValidatingSamples("testDicts", lastUnseenKeysO, tr);
-            WriteValidatingSamples("testObjs", lastUnseenKeysD, tr);
-            WriteSplitIdList(leakedDictionaries.Keys, "dicts", 1000);
-            WriteSplitIdList(leakedObjects.Keys, "objs", 1000);
+            CleanDirectoryWhenUsed(onDiskFileCollectionDirectory);
+        }
+
+        static void CheckDirectoryEmpty(string? onDiskFileCollectionDirectory)
+        {
+            if (onDiskFileCollectionDirectory == null)
+                return;
+            if (Directory.EnumerateFiles(onDiskFileCollectionDirectory).Any())
+                throw new Exception($"Folder {onDiskFileCollectionDirectory} must be empty.");
+        }
+
+        static void CleanDirectoryWhenUsed(string? onDiskFileCollectionDirectory)
+        {
+            if (onDiskFileCollectionDirectory == null)
+                return;
+            foreach (var file in Directory.EnumerateFiles(onDiskFileCollectionDirectory))
+            {
+                File.Delete(file);
+            }
         }
 
         // write last few leaked keys to validate that are present in the exact form on all db replicas before cleaning
@@ -180,7 +204,7 @@ namespace ODbDump
             foreach (var id in objIds)
             {
                 if (subIdx++ > 0)
-                    sb.Append(",");
+                    sb.Append(',');
                 sb.Append(id);
 
                 if (subIdx >= count)

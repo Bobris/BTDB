@@ -4,6 +4,8 @@
 
 ### Improved
 
+ODbDump `leakscode` has more memory optimal variant db on disk to reduce memory usage on big db's
+
 ODbDump `trldump` command outputs statistic about used space
 
 ## 31.3.2

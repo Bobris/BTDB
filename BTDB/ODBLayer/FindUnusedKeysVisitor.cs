@@ -2,15 +2,14 @@
 using System.Collections.Generic;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
-using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
 
 public class FindUnusedKeysVisitor : IDisposable
 {
-    IFileCollection _memoryFileCollection;
+    IFileCollection _fileCollection;
     IKeyValueDB _keyValueDb;
-    IKeyValueDBTransaction _kvtr;
+    IKeyValueDBTransaction? _kvtr;
     readonly byte[] _tempBytes = new byte[32];
 
     public struct UnseenKey
@@ -19,10 +18,13 @@ public class FindUnusedKeysVisitor : IDisposable
         public uint ValueSize { get; set; }
     }
 
-    public FindUnusedKeysVisitor()
+    public FindUnusedKeysVisitor(string? onDiskFileCollectionDictionary = null)
     {
-        _memoryFileCollection = new InMemoryFileCollection();
-        _keyValueDb = new KeyValueDB(_memoryFileCollection);
+        if (onDiskFileCollectionDictionary != null)
+            _fileCollection = new OnDiskFileCollection(onDiskFileCollectionDictionary);
+        else
+            _fileCollection = new InMemoryFileCollection();
+        _keyValueDb = new KeyValueDB(_fileCollection);
     }
 
     IEnumerable<byte[]> SupportedKeySpaces()
@@ -98,8 +100,8 @@ public class FindUnusedKeysVisitor : IDisposable
     {
         _keyValueDb?.Dispose();
         _keyValueDb = null;
-        _memoryFileCollection?.Dispose();
-        _memoryFileCollection = null;
+        _fileCollection?.Dispose();
+        _fileCollection = null;
     }
 
     ReadOnlySpan<byte> Vuint2ByteBuffer(uint v)
@@ -111,7 +113,7 @@ public class FindUnusedKeysVisitor : IDisposable
 
     void MarkKeyAsUsed(IKeyValueDBTransaction tr)
     {
-        _kvtr.EraseCurrent(tr.GetKey());
+        _kvtr!.EraseCurrent(tr.GetKey());
     }
 
     class VisitorForFindUnused : IODBFastVisitor

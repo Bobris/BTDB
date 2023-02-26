@@ -465,11 +465,10 @@ namespace ODbDump
                         FileCollection = dfc,
                         ReadOnly = true,
                         Compression = new SnappyCompressionStrategy(),
-                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
                     });
                     using var odb = new ObjectDB();
                     odb.Open(kdb, false);
-                    odb.DumpLeaksCode();
+                    odb.DumpLeaksCode(args.Length >= 3 ? args[2] : null);
 
                     break;
                 }
