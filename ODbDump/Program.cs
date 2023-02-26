@@ -577,6 +577,7 @@ namespace ODbDump
 
                         visitor.EndOperation();
                     }
+                    visitor.WriteStatistics();
                 }
                     break;
                 default:

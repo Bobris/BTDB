@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Improved
+
+ODbDump `trldump` command outputs statistic about used space
+
 ## 31.3.2
 
 ### Fixed
