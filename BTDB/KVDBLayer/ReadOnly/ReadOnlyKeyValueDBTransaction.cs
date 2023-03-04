@@ -78,7 +78,7 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
 
     public long GetKeyValueCount()
     {
-        return (long)_owner._keyValueCount;
+        return _owner._keyValueCount;
     }
 
     public long GetKeyIndex()
@@ -201,32 +201,60 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
 
     public ReadOnlySpan<byte> GetKey()
     {
-        throw new NotImplementedException();
+        return GetKeyToArray().AsSpan();
     }
 
     public byte[] GetKeyToArray()
     {
-        throw new NotImplementedException();
+        if (_cursorStack.Count == 0) return Array.Empty<byte>();
+        ref var top = ref _cursorStack.Last;
+        Debug.Assert(top._isLeaf);
+        var begin = _owner._begin;
+        var suffix = GetKeySuffixSpan(begin, top, top._pos);
+        var keyLen = top._prefixLen + (uint)suffix.Length;
+        var res = new byte[keyLen];
+        CreateSpan(begin + top._prefixOffset, top._prefixLen).CopyTo(res.AsSpan());
+        suffix.CopyTo(res.AsSpan((int)top._prefixLen));
+        return res;
     }
 
     public ReadOnlySpan<byte> GetKey(scoped ref byte buffer, int bufferLength)
     {
-        throw new NotImplementedException();
+        if (_cursorStack.Count == 0) return new();
+        ref var top = ref _cursorStack.Last;
+        Debug.Assert(top._isLeaf);
+        var begin = _owner._begin;
+        var suffix = GetKeySuffixSpan(begin, top, top._pos);
+        var keyLen = top._prefixLen + (uint)suffix.Length;
+        var res = keyLen >= bufferLength ? MemoryMarshal.CreateSpan(ref buffer, (int)keyLen) : new byte[keyLen];
+        CreateSpan(begin + top._prefixOffset, top._prefixLen).CopyTo(res);
+        suffix.CopyTo(res[(int)top._prefixLen..]);
+        return res;
     }
 
     public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
     {
-        return GetValueAsMemory().Span;
+        return GetValue();
     }
 
-    public ReadOnlySpan<byte> GetValue()
+    public unsafe ReadOnlySpan<byte> GetValue()
     {
-        return GetValueAsMemory().Span;
+        if (_cursorStack.Count == 0) return new();
+        ref var top = ref _cursorStack.Last;
+        Debug.Assert(top._isLeaf);
+        var begin = _owner._begin;
+        var ofs = ReadUInt32LE(begin + top._valuePtrOffset + (uint)top._pos * 4);
+        if (ofs == 0) return new();
+
+        ref var r = ref Unsafe.AsRef<byte>((begin + ofs).ToPointer());
+        var l = PackUnpack.LengthVUIntByFirstByte(r);
+        var valueLen = PackUnpack.UnsafeUnpackVUInt(ref r, l);
+        return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref r, l), (int)valueLen);
     }
 
     public ReadOnlyMemory<byte> GetValueAsMemory()
     {
-        throw new NotImplementedException();
+        return new UnmanagedMemoryManager<byte>(GetValue()).Memory;
     }
 
     public bool IsValueCorrupted()
@@ -322,7 +350,7 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
 
     public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
     {
-        if (_keyIndex==-2) return new();
+        if (_keyIndex == -2) return new();
         ref var top = ref _cursorStack.Last;
         Debug.Assert(top._isLeaf);
         var begin = _owner._begin;
