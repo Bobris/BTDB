@@ -7,7 +7,7 @@
     <Nullable>annotations</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <PackageId>BTDB</PackageId>
-    <Version>31.4.1</Version>
+    <Version>31.4.2</Version>
     <Authors>Boris Letocha, Lubos Karasek</Authors>
     <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
