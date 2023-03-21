@@ -2,6 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
@@ -29,6 +30,7 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
         internal uint _prefixLen;
         internal uint _firstKeyOffset;
         internal uint _valuePtrOffset;
+        internal int KeysCount => _directChildren - (_isLeaf ? 0 : 1);
     }
 
     public ReadOnlyKeyValueDBTransaction(ReadOnlyKeyValueDB owner)
@@ -46,7 +48,108 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
     public DateTime CreatedTime { get; }
     public string? DescriptionForLeaks { get; set; }
 
+    int BinarySearch(UIntPtr ownerBegin, in StackItem top, in ReadOnlySpan<byte> keyWhole)
+    {
+        var key = keyWhole;
+        if (top._prefixLen > 0)
+        {
+            var prefix = GetPrefixSpan(ownerBegin, top);
+            if (key.Length < prefix.Length)
+            {
+                if (key.SequenceCompareTo(prefix) < 0)
+                {
+                    return 0;
+                }
+
+                return 2 * top.KeysCount;
+            }
+
+            var comp = key[..prefix.Length].SequenceCompareTo(prefix);
+            switch (comp)
+            {
+                case < 0:
+                    return 0;
+                case > 0:
+                    return 2 * top.KeysCount;
+                default:
+                    key = key[prefix.Length..];
+                    break;
+            }
+        }
+        var l = 0;
+        var r = top.KeysCount;
+        while (l < r)
+        {
+            var m = (l + r) / 2;
+            var middleKey = GetKeySuffixSpan(ownerBegin, top, (uint)m);
+            var comp = middleKey.SequenceCompareTo(key);
+            switch (comp)
+            {
+                case 0:
+                    return m * 2 + 1;
+                case < 0:
+                    l = m + 1;
+                    break;
+                default:
+                    r = m;
+                    break;
+            }
+        }
+
+        return l * 2;
+    }
+
     public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
+    {
+        InvalidateCurrentKey();
+        if (_cursorStack.Count == 0) SinkTo(_owner._rootNodeOffset);
+        var ownerBegin = _owner._begin;
+
+        while (true)
+        {
+            ref var top = ref _cursorStack.Last;
+            var idx = BinarySearch(ownerBegin, top, prefix);
+            if (top._isLeaf)
+            {
+                if ((idx & 1) == 1)
+                {
+                    top._pos = (byte)(idx / 2);
+                    _keyIndex = -1;
+                    return true;
+                }
+
+                idx = (int)((uint)idx / 2);
+                top._pos = (byte)idx;
+                _keyIndex = -1;
+                if (idx < top._directChildren && KeyMatchesPrefix(prefix))
+                {
+                    return true;
+                }
+
+                if (idx == top._directChildren)
+                {
+                    top._pos = (byte)(idx - 1);
+                    if (MoveNext() && KeyMatchesPrefix(prefix))
+                    {
+                        return true;
+                    }
+                }
+
+                InvalidateCurrentKey();
+                return false;
+            }
+
+            if ((idx & 1) == 1)
+            {
+                idx++;
+            }
+
+            idx = (int)((uint)idx / 2);
+            SinkToPos((byte)idx);
+        }
+    }
+
+    bool MoveNext()
     {
         throw new NotImplementedException();
     }
