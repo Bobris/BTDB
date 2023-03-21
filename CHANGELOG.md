@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+`ReadOnlySequenceSpanReader`
+
 ### Improved
 
 ODbDump `leakscode` has more memory optimal variant db on disk to reduce memory usage on big db's
