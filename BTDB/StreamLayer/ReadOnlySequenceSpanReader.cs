@@ -87,6 +87,6 @@ public class ReadOnlySequenceSpanReader : ISpanReader
         _pos += length;
         _sequence = _sequence.Slice(length);
         Init(ref spanReader);
-        return false;
+        return true;
     }
 }

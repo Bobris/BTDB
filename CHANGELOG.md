@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+`ReadOnlySequenceSpanReader`
+
 ## 31.4.1
 
 ## 31.4.0
