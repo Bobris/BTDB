@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -15,6 +16,55 @@ using IOCDomain;
 
 public class IocTests
 {
+    public interface IAmLazy
+    {
+
+    }
+    public class SuperLazy : IAmLazy{}
+
+
+    public class WantLazy1
+    {
+        readonly Lazy<IAmLazy> _v;
+
+        public WantLazy1(Lazy<IAmLazy> v)
+        {
+            _v = v;
+        }
+
+        public IAmLazy Materialize => _v.Value;
+    }
+
+    public class WantLazy2
+    {
+        readonly Lazy<IAmLazy> _v;
+
+        public WantLazy2(Lazy<IAmLazy> v)
+        {
+            _v = v;
+        }
+
+        public IAmLazy Materialize => _v.Value;
+    }
+
+    [Fact]
+    public void LazySingletonsAreThreadSafe()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<SuperLazy>().As<IAmLazy>().SingleInstance();
+        builder.RegisterType<WantLazy1>().AsSelf();
+        builder.RegisterType<WantLazy2>().AsSelf();
+
+        var container = builder.Build();
+        var a = container.Resolve<WantLazy1>();
+        var b = container.Resolve<WantLazy2>();
+
+        var task1 = Task.Run(() => { var r = a.Materialize;});
+        var task2 = Task.Run(() => { var r2 = b.Materialize;});
+
+        Task.WaitAll(task1, task2);
+    }
+
     [Fact]
     public void AlwaysNew()
     {
