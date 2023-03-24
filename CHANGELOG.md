@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.4.3
+
 ### Fixed
 
 IOC: Lazy Singletons were not threadsafe
