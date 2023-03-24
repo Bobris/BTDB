@@ -134,8 +134,11 @@ public class ContainerImpl : IContainer
             }
         }
 
-        var context = new GenerationContext(this, registration, buildContext);
-        return (Func<object>)context.GenerateFunc(typeof(Func<object>));
+        lock (_buildingLock) // Lazy builder could call this method outside of normal Container builder
+        {
+            var context = new GenerationContext(this, registration, buildContext);
+            return (Func<object>)context.GenerateFunc(typeof(Func<object>));
+        }
     }
 
     Func<object>? Build(object? key, Type type)
