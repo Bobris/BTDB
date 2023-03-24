@@ -191,7 +191,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
             public void Init(ref SpanWriter spanWriter)
             {
                 spanWriter.Buf = new(_file._pointer + Ofs,
-                    (int)Math.Min((ulong)_file._trueLength - Ofs, int.MaxValue));
+                    (int)Math.Min((ulong)_file._cachedLength - Ofs, int.MaxValue));
                 spanWriter.InitialBuffer = spanWriter.Buf;
             }
 
@@ -228,7 +228,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
             public void WriteBlockWithoutWriter(ref byte buffer, uint length)
             {
                 ExpandIfNeeded((long)Ofs + length);
-                Unsafe.CopyBlockUnaligned(ref buffer, ref Unsafe.AsRef<byte>(_file._pointer + Ofs),
+                Unsafe.CopyBlockUnaligned(ref Unsafe.AsRef<byte>(_file._pointer + Ofs), ref buffer,
                     length);
                 Ofs += length;
             }
