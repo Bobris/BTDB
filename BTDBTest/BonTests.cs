@@ -391,8 +391,10 @@ public class BonTests
         builder.FinishArray();
         builder.WriteKey("b");
         builder.Write("last");
+        Assert.Equal(29u, builder.EstimateLowerBoundSize());
         builder.FinishObject();
         var buffer = builder.Finish();
+        Assert.Equal(36, buffer.Length);
         this.Assent(new Bon(buffer).DumpToJson());
     }
 

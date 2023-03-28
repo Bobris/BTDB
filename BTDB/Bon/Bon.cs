@@ -437,7 +437,7 @@ public struct BonBuilder
 
     State _state = State.Empty;
     uint _lastBonPos = 0;
-    StructList<(StructList<uint>, byte[], uint, uint, State)> _stack = new();
+    StructList<(StructList<uint> ObjKeys, byte[] Data, uint Pos, uint Items, State State)> _stack = new();
     StructList<uint> _objKeys = new();
     byte[] _topData = Array.Empty<byte>();
     uint _topPos = 0;
@@ -446,6 +446,17 @@ public struct BonBuilder
 
     public BonBuilder()
     {
+    }
+
+    public uint EstimateLowerBoundSize()
+    {
+        var res = _topPos;
+        foreach (var item in _stack)
+        {
+            res += item.Item3;
+        }
+
+        return res;
     }
 
     public void Write(string? value)
@@ -477,15 +488,15 @@ public struct BonBuilder
         _lastBonPos = _topPos;
         switch (value)
         {
-            case >= 0 and <= 10:
-                Helpers.WriteByte(ref _topData, ref _topPos, (byte)(Helpers.Code0 + (int)value));
-                break;
-            case >= -10 and <= -1:
-                Helpers.WriteByte(ref _topData, ref _topPos, (byte)(Helpers.CodeM1 - 1 + (int)-value));
-                break;
-            case >= 0:
+            case > 10:
                 Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeInteger);
                 Helpers.WriteVUInt64(ref _topData, ref _topPos, (ulong)value);
+                break;
+            case >= 0:
+                Helpers.WriteByte(ref _topData, ref _topPos, (byte)(Helpers.Code0 + (int)value));
+                break;
+            case >= -10:
+                Helpers.WriteByte(ref _topData, ref _topPos, (byte)(Helpers.CodeM1 - 1 + (int)-value));
                 break;
             default:
                 Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeMInteger);
@@ -502,7 +513,7 @@ public struct BonBuilder
         _lastBonPos = _topPos;
         switch (value)
         {
-            case >= 0 and <= 10:
+            case <= 10:
                 Helpers.WriteByte(ref _topData, ref _topPos, (byte)(Helpers.Code0 + (int)value));
                 break;
             default:
@@ -1182,17 +1193,17 @@ public ref struct Bon
                 break;
             case BonType.Float:
                 TryGetDouble(out var d);
-                if (d == Double.PositiveInfinity)
+                switch (d)
                 {
-                    writer.WriteStringValue("+∞");
-                }
-                else if (d == Double.NegativeInfinity)
-                {
-                    writer.WriteStringValue("-∞");
-                }
-                else
-                {
-                    writer.WriteNumberValue(d);
+                    case double.PositiveInfinity:
+                        writer.WriteStringValue("+∞");
+                        break;
+                    case double.NegativeInfinity:
+                        writer.WriteStringValue("-∞");
+                        break;
+                    default:
+                        writer.WriteNumberValue(d);
+                        break;
                 }
 
                 break;

@@ -2,11 +2,26 @@
 
 ## [unreleased]
 
+### Added
+
+`BonBuilder.builder.EstimateLowerBoundSize()` method.
+
 ## 31.4.3
 
 ### Fixed
 
 IOC: Lazy Singletons were not threadsafe
+
+## 31.4.3
+
+### Fixed
+
+IOC: Lazy Singletons were not threadsafe
+=======
+### Added
+
+`BonBuilder.builder.EstimateLowerBoundSize()` method.
+>>>>>>> e7279773... BonBuilder.builder.EstimateLowerBoundSize()
 
 ## 31.4.2
 
