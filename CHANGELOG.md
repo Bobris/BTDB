@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.5.0
+
 ### Added
 
 `BonBuilder.builder.EstimateLowerBoundSize()` method.
