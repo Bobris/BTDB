@@ -558,18 +558,18 @@ public static class PackUnpack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe ref T UnsafeGetAndAdvance<T>(ref Span<byte> p) where T : unmanaged
+    public static ref T UnsafeGetAndAdvance<T>(ref Span<byte> p) where T : unmanaged
     {
-        ref var res = ref Unsafe.AsRef<T>(Unsafe.AsPointer(ref MemoryMarshal.GetReference(p)));
-        p = MemoryMarshal.CreateSpan(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), sizeof(T)),
-            p.Length - sizeof(T));
+        ref var res = ref Unsafe.As<byte, T>(ref MemoryMarshal.GetReference(p));
+        p = MemoryMarshal.CreateSpan(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), Unsafe.SizeOf<T>()),
+            p.Length - Unsafe.SizeOf<T>());
         return ref res;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe T UnsafeGet<T>(in ReadOnlySpan<byte> p) where T : unmanaged
+    public static T UnsafeGet<T>(in ReadOnlySpan<byte> p) where T : unmanaged
     {
-        return Unsafe.ReadUnaligned<T>(Unsafe.AsPointer(ref MemoryMarshal.GetReference(p)));
+        return Unsafe.ReadUnaligned<T>(ref MemoryMarshal.GetReference(p));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -789,7 +789,7 @@ public static class PackUnpack
         return (value.AsUInt64().ToScalar() & 0x8080808080808080) != 0;
     }
 
-    public static unsafe nuint WidenAsciiToUtf16Simd(byte* pAsciiBuffer, char* pUtf16Buffer, nuint elementCount)
+    public static unsafe nuint WidenAsciiToUtf16Simd(ref byte pAsciiBuffer, char* pUtf16Buffer, nuint elementCount)
     {
         var SizeOfVector128 = (uint)Unsafe.SizeOf<Vector128<byte>>();
         nuint MaskOfAllBitsInVector128 = SizeOfVector128 - 1;
@@ -805,20 +805,18 @@ public static class PackUnpack
         // We're going to get the best performance when we have aligned writes, so we'll take the
         // hit of potentially unaligned reads in order to hit this sweet spot.
 
-        Vector128<byte> asciiVector;
         Vector128<byte> utf16FirstHalfVector;
-        bool containsNonAsciiBytes;
 
         // First, perform an unaligned read of the first part of the input buffer.
+        var asciiVector = Vector128.LoadUnsafe(ref pAsciiBuffer); // unaligned load
+        bool containsNonAsciiBytes;
 
         if (Sse2.IsSupported)
         {
-            asciiVector = Sse2.LoadVector128(pAsciiBuffer); // unaligned load
             containsNonAsciiBytes = (uint)Sse2.MoveMask(asciiVector) != 0;
         }
         else if (AdvSimd.Arm64.IsSupported)
         {
-            asciiVector = AdvSimd.LoadVector128(pAsciiBuffer);
             containsNonAsciiBytes = ContainsNonAsciiByte(asciiVector);
         }
         else
@@ -871,15 +869,13 @@ public static class PackUnpack
         do
         {
             // In a loop, perform an unaligned read, widen to two vectors, then aligned write the two vectors.
-
+            asciiVector = Vector128.LoadUnsafe(ref pAsciiBuffer, currentOffset); // unaligned load
             if (Sse2.IsSupported)
             {
-                asciiVector = Sse2.LoadVector128(pAsciiBuffer + currentOffset); // unaligned load
                 containsNonAsciiBytes = (uint)Sse2.MoveMask(asciiVector) != 0;
             }
             else if (AdvSimd.Arm64.IsSupported)
             {
-                asciiVector = AdvSimd.LoadVector128(pAsciiBuffer + currentOffset);
                 containsNonAsciiBytes = ContainsNonAsciiByte(asciiVector);
             }
             else
@@ -918,7 +914,7 @@ public static class PackUnpack
         return currentOffset;
     }
 
-    public static unsafe nuint SkipAsciiToUtf16Simd(byte* pAsciiBuffer, nuint elementCount)
+    public static nuint SkipAsciiToUtf16Simd(ref byte pAsciiBuffer, nuint elementCount)
     {
         var SizeOfVector128 = (uint)Unsafe.SizeOf<Vector128<byte>>();
 
@@ -929,16 +925,14 @@ public static class PackUnpack
         nuint processed = 0;
         while (processed + SizeOfVector128 <= elementCount)
         {
-            Vector128<byte> asciiVector;
             bool containsNonAsciiBytes;
+            var asciiVector = Vector128.LoadUnsafe(ref pAsciiBuffer); // unaligned load
             if (Sse2.IsSupported)
             {
-                asciiVector = Sse2.LoadVector128(pAsciiBuffer); // unaligned load
                 containsNonAsciiBytes = (uint)Sse2.MoveMask(asciiVector) != 0;
             }
             else if (AdvSimd.Arm64.IsSupported)
             {
-                asciiVector = AdvSimd.LoadVector128(pAsciiBuffer);
                 containsNonAsciiBytes = ContainsNonAsciiByte(asciiVector);
             }
             else
@@ -953,7 +947,7 @@ public static class PackUnpack
                 return processed;
             }
 
-            pAsciiBuffer += 16;
+            pAsciiBuffer = ref Unsafe.Add(ref pAsciiBuffer, 16);
             processed += 16;
         }
 

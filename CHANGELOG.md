@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+ReadString and SkipString could rarely randomly crash. (had pointer instead of managed reference without pinning buffer)
+
 ## 31.5.0
 
 ### Added
@@ -18,12 +22,13 @@ IOC: Lazy Singletons were not threadsafe
 
 ### Fixed
 
-IOC: Lazy Singletons were not threadsafe
-=======
+# IOC: Lazy Singletons were not threadsafe
+
 ### Added
 
 `BonBuilder.builder.EstimateLowerBoundSize()` method.
->>>>>>> e7279773... BonBuilder.builder.EstimateLowerBoundSize()
+
+> > > > > > > e7279773... BonBuilder.builder.EstimateLowerBoundSize()
 
 ## 31.4.2
 

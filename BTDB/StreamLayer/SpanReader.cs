@@ -477,7 +477,7 @@ public ref struct SpanReader
             if ((Sse2.IsSupported || AdvSimd.Arm64.IsSupported) && BitConverter.IsLittleEndian && least >= 32)
             {
                 var processed = PackUnpack.WidenAsciiToUtf16Simd(
-                    (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Buf)), res, (nuint)least);
+                    ref MemoryMarshal.GetReference(Buf), res, (nuint)least);
                 i = (int)processed;
                 PackUnpack.UnsafeAdvance(ref Buf, (int)processed);
             }
@@ -663,7 +663,7 @@ public ref struct SpanReader
                 ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), (uint)l)), l);
     }
 
-    public unsafe void SkipString()
+    public void SkipString()
     {
         var len = ReadVUInt64();
         if (len == 0) return;
@@ -676,7 +676,7 @@ public ref struct SpanReader
         if ((Sse2.IsSupported || AdvSimd.Arm64.IsSupported) && BitConverter.IsLittleEndian && least >= 16)
         {
             var processed = PackUnpack.SkipAsciiToUtf16Simd(
-                (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Buf)), (nuint)least);
+                ref MemoryMarshal.GetReference(Buf), (nuint)least);
             l -= (int)processed;
             PackUnpack.UnsafeAdvance(ref Buf, (int)processed);
         }
