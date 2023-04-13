@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.5.1
+
 ### Fixed
 
 ReadString and SkipString could rarely randomly crash. (had pointer instead of managed reference without pinning buffer)
