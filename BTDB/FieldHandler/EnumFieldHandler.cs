@@ -273,6 +273,10 @@ public class EnumFieldHandler : IFieldHandler
     {
         if (typeHandler == this) return this;
         var enumTypeHandler = typeHandler as EnumFieldHandler;
+        if (typeHandler == null && Nullable.GetUnderlyingType(type) is { } underlyingType)
+        {
+            type = underlyingType;
+        }
         if (typeHandler == null && type.IsEnum)
         {
             enumTypeHandler = new EnumFieldHandler(type);

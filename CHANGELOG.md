@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Change type of db field from enum to nullable enum does not report upgrade incompatibility.
+
 ## 31.5.1
 
 ### Fixed
