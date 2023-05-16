@@ -884,4 +884,45 @@ public class ObjectDbTableUpgradeTest : IDisposable
             Assert.Equal(42, table.First().O.Child);
         }
     }
+
+    public enum TestEnum
+    {
+        Test
+    }
+
+    public class ObjV1
+    {
+        public TestEnum MyTestEnum { get; set; }
+    }
+
+    public class ObjV2
+    {
+        public TestEnum? MyTestEnum { get; set; }
+    }
+
+    public interface IObjV1Table : IRelation<ObjV1> { }
+
+    public interface IObjV2Table : IRelation<ObjV2> { }
+
+    [Fact]
+    public void UpgradeNotNullableEnumToNullableEnum()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IObjV1Table>("MyRelation");
+            var objV1Table = creator(tr);
+            var job1 = new ObjV1 { MyTestEnum = TestEnum.Test };
+            objV1Table.Upsert(job1);
+            tr.Commit();
+        }
+
+        ReopenDb();
+
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IObjV2Table>("MyRelation");
+            var objV2Table = creator(tr);
+            objV2Table.ToList();
+        }
+    }
 }
