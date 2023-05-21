@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+XXHash64 implementation, very fast noncryptographic hash. Fletcher checksum slightly optimized.
+
 ## 31.5.2
 
 ### Fixed
