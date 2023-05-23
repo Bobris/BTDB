@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Async versions of DB Import and Export.
+
 ## 31.6.0
 
 ### Added
