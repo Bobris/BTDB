@@ -143,6 +143,11 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         ((IRootNode)root).ValuesIterate(visit);
     }
 
+    public void GatherUsedFiles(CancellationToken cancellation, IRootNodeInternal root, ISet<uint> usedFileIds)
+    {
+        ((IRootNode)root).GatherUsedFiles(cancellation, usedFileIds);
+    }
+
     internal Span<KeyIndexInfo> BuildKeyIndexInfos()
     {
         var keyIndexes = new StructList<KeyIndexInfo>();

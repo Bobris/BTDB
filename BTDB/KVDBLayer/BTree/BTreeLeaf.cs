@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using BTDB.Collections;
 
 namespace BTDB.KVDBLayer.BTree;
@@ -265,6 +266,17 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
         {
             if (member.ValueFileId == 0) continue;
             action(member.ValueFileId, member.ValueOfs, member.ValueSize);
+        }
+    }
+
+    public void GatherUsedFiles(CancellationToken cancellation, ISet<uint> usedFileIds)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        var kv = _keyValues;
+        foreach (var member in kv)
+        {
+            if (member.ValueFileId == 0) continue;
+            usedFileIds.Add(member.ValueFileId);
         }
     }
 

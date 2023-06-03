@@ -4,8 +4,10 @@ using BTDB.Collections;
 using BTDB.KVDBLayer;
 using BTDB.KVDBLayer.BTree;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using BTDB.StreamLayer;
 
 namespace BTDB.BTreeLib;
@@ -2447,6 +2449,34 @@ public class BTreeImpl12
         foreach (var child in children)
         {
             CalcBTreeStats(child, stats, depth + 1);
+        }
+    }
+
+    internal static void GatherUsedFiles(IntPtr nodePtr, CancellationToken cancellation, ISet<uint> usedFileIds)
+    {
+        ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+        if (header.IsNodeLeaf)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var values = NodeUtils12.GetLeafValues(nodePtr);
+            while (values.Length >= 12)
+            {
+                var valueFileId = MemoryMarshal.Read<uint>(values);
+                if (valueFileId != 0)
+                {
+                    usedFileIds.Add(valueFileId);
+                }
+
+                values = values.Slice(12);
+            }
+        }
+        else
+        {
+            var children = NodeUtils12.GetBranchValuePtrs(nodePtr);
+            foreach (var child in children)
+            {
+                GatherUsedFiles(child, cancellation, usedFileIds);
+            }
         }
     }
 }

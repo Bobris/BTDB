@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.Collections;
@@ -37,6 +38,7 @@ public interface IRootNode : IRootNodeInternal, IDisposable
     void ValuesIterate(ValuesIterateAction visit);
     void KeyValueIterate(ref KeyValueIterateCtx keyValueIterateCtx, KeyValueIterateCallback callback);
     void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth);
+    void GatherUsedFiles(CancellationToken cancellation, ISet<uint> usedFileIds);
 }
 
 public ref struct KeyValueIterateCtx

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using BTDB.Collections;
 using BTDB.StreamLayer;
 
@@ -455,6 +456,14 @@ class BTreeBranch : IBTreeNode
         foreach (var child in _children)
         {
             child.Iterate(action);
+        }
+    }
+
+    public void GatherUsedFiles(CancellationToken cancellation, ISet<uint> usedFileIds)
+    {
+        foreach (var child in _children)
+        {
+            child.GatherUsedFiles(cancellation, usedFileIds);
         }
     }
 

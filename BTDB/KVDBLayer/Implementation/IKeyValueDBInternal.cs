@@ -29,4 +29,5 @@ interface IKeyValueDBInternal : IKeyValueDB
     uint CalculatePreserveKeyIndexKeyFromKeyIndexInfos(ReadOnlySpan<KeyIndexInfo> keyIndexes);
     uint GetTrLogFileId(IRootNodeInternal root);
     void IterateRoot(IRootNodeInternal root, ValuesIterateAction visit);
+    void GatherUsedFiles(CancellationToken cancellation, IRootNodeInternal root, ISet<uint> usedFileIds);
 }

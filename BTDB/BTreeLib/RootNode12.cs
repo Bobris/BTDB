@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using BTDB.Collections;
 using BTDB.KVDBLayer.BTree;
@@ -164,6 +165,13 @@ class RootNode12 : IRootNode
         if (Root == IntPtr.Zero)
             return;
         BTreeImpl12.CalcBTreeStats(Root, stats, 0u);
+    }
+
+    public void GatherUsedFiles(CancellationToken cancellation, ISet<uint> usedFileIds)
+    {
+        if (Root == IntPtr.Zero)
+            return;
+        BTreeImpl12.GatherUsedFiles(Root, cancellation, usedFileIds);
     }
 
     public bool ShouldBeDisposed => _referenceCount == 0;

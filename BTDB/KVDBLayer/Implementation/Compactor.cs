@@ -234,11 +234,12 @@ class Compactor
 
     void ForbidDeleteOfFilesUsedByStillRunningOldTransaction()
     {
-        _keyValueDB.IterateRoot(_root, (valueFileId, valueOfs, valueSize) =>
+        var usedSet = new HashSet<uint>();
+        _keyValueDB.GatherUsedFiles(_cancellation, _root!, usedSet);
+        foreach (var usedId in usedSet)
         {
-            _cancellation.ThrowIfCancellationRequested();
-            _fileStats.GetOrFakeValueRef(valueFileId).MarkForbidToDelete();
-        });
+            _fileStats.GetOrFakeValueRef(usedId).MarkForbidToDelete();
+        }
     }
 
     bool IsWasteSmall(ulong totalWaste)
@@ -266,7 +267,7 @@ class Compactor
             readLimiter.Limit(pos);
         }
 
-        _keyValueDB.IterateRoot(_root, (valueFileId, valueOfs, valueSize) =>
+        _keyValueDB.IterateRoot(_root!, (valueFileId, valueOfs, valueSize) =>
         {
             if (valueFileId != wastefulFileId) return;
             var size = (uint)Math.Abs(valueSize);

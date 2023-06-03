@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using BTDB.Collections;
 using BTDB.StreamLayer;
 
@@ -162,6 +163,11 @@ class BTreeRoot : IBTreeRootNode
     public void Iterate(ValuesIterateAction action)
     {
         _rootNode?.Iterate(action);
+    }
+
+    public void GatherUsedFiles(CancellationToken cancellation, ISet<uint> usedFileIds)
+    {
+        _rootNode?.GatherUsedFiles(cancellation, usedFileIds);
     }
 
     public long TransactionId => _transactionId;

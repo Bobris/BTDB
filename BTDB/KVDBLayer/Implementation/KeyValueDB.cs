@@ -330,6 +330,11 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         ((IBTreeRootNode)root).Iterate(visit);
     }
 
+    public void GatherUsedFiles(CancellationToken cancellation, IRootNodeInternal root, ISet<uint> usedFileIds)
+    {
+        ((IBTreeRootNode)root).GatherUsedFiles(cancellation, usedFileIds);
+    }
+
     long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration,
         bool fullSpeed = false)
     {
