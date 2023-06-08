@@ -109,7 +109,7 @@ static class Program
 
             var client = new GitHubClient(new ProductHeaderValue("BTDB-releaser"));
             client.SetRequestTimeout(TimeSpan.FromMinutes(15));
-            var fileNameOfGithubToken = Environment.GetEnvironmentVariable("USERPROFILE") + "/.github/token.txt";
+            var fileNameOfGithubToken = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/.github/token.txt";
             string githubToken;
             try
             {
