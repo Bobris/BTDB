@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.8.0
+
 ### Removed
 
 Now DB trl files are never resized, so method `SetSize` is never used now and its implementation does not matter.
