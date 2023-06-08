@@ -1,0 +1,4 @@
+{
+    "dotnet.defaultSolution": "BTDB.sln",
+    "cmake.configureOnOpen": false
+}

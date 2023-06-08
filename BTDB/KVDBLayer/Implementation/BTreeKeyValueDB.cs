@@ -720,15 +720,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 cursor2 = _lastCommitted.CreateCursor();
             }
 
-
             while (!reader.Eof)
             {
                 var command = (KVCommandType)reader.ReadUInt8();
-                if (command == 0 && afterTemporaryEnd)
-                {
-                    collectionFile.SetSize(reader.GetCurrentPosition() - 1);
-                    return true;
-                }
 
                 if (finishReading)
                 {

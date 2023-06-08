@@ -555,11 +555,6 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
             while (!reader.Eof)
             {
                 var command = (KVCommandType)reader.ReadUInt8();
-                if (command == 0 && afterTemporaryEnd)
-                {
-                    collectionFile.SetSize(reader.GetCurrentPosition() - 1);
-                    return true;
-                }
 
                 if (finishReading)
                 {

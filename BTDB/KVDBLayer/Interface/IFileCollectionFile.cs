@@ -25,6 +25,8 @@ public interface IFileCollectionFile
 
     // Flush() and synchronously wait for OS file buffers to flush
     void HardFlush();
+
+    [Obsolete("It should be used only in append only mode")]
     void SetSize(long size);
     void Truncate();
 
