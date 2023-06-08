@@ -1,5 +1,4 @@
 ﻿using LibGit2Sharp;
-using LibGit2Sharp.Handlers;
 using Octokit;
 using System;
 using System.Diagnostics;
@@ -8,7 +7,6 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Xml;
 
 namespace Releaser
 {
@@ -107,6 +105,8 @@ namespace Releaser
                 }
                 Build(projDir, newVersion, nugetToken);
                 BuildODbDump(projDir);
+
+
                 var client = new GitHubClient(new ProductHeaderValue("BTDB-releaser"));
                 client.SetRequestTimeout(TimeSpan.FromMinutes(15));
                 var fileNameOfGithubToken = Environment.GetEnvironmentVariable("USERPROFILE") + "/.github/token.txt";
