@@ -3119,6 +3119,68 @@ namespace BTDBTest
             table.Upsert(new() { Id = 1000, Text = "ahoj" });
             Assert.Equal("AHOJ", table.First().Text);
         }
+
+        public class ItemWithLazyDictionary
+        {
+            [PrimaryKey(1)]
+            public ulong Id { get; set; }
+            public IDictionary<ulong, InnerObject> LazyDictionary { get; set; }
+
+            public class InnerObject
+            {
+                public bool Flag { get; set; }
+            }
+        }
+
+        public interface IItemWithLazyDictionaryTable : IRelation<ItemWithLazyDictionary>
+        {
+            ItemWithLazyDictionary FindById(ulong id);
+            void Update(ItemWithLazyDictionary itemWithLazyDictionary);
+        }
+
+        [Fact]
+        public void LazyDictionaryShouldStoreChanges()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var table = tr.GetRelation<IItemWithLazyDictionaryTable>();
+                table.Upsert(new()
+                {
+                    Id = 1,
+                    LazyDictionary = new Dictionary<ulong, ItemWithLazyDictionary.InnerObject>
+                    {
+                        {1, new ItemWithLazyDictionary.InnerObject()}
+                    }
+                });
+
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var table = tr.GetRelation<IItemWithLazyDictionaryTable>();
+                foreach (var itemWithLazyDictionary in table.ToList())
+                {
+                    Assert.False(itemWithLazyDictionary.LazyDictionary[1].Flag);
+                    itemWithLazyDictionary.LazyDictionary[1].Flag = true;
+                    Assert.True(itemWithLazyDictionary.LazyDictionary[1].Flag, "Should be true because we set it right before");
+
+                    table.Update(itemWithLazyDictionary);
+                }
+
+                Assert.True(table.FindById(1).LazyDictionary[1].Flag, "Should be true because we set true in previous iteration and call update");
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var table = tr.GetRelation<IItemWithLazyDictionaryTable>();
+                foreach (var itemWithLazyDictionary in table.ToList())
+                {
+                    Assert.True(itemWithLazyDictionary.LazyDictionary[1].Flag, "Should be true because we set true in previous transaction");
+                }
+            }
+        }
     }
 }
 
