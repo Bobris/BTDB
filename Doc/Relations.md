@@ -450,6 +450,29 @@ You can define any number of parameter less void returning methods which will be
     }
 ```
 
+## OnBeforeRemove
+
+You can define any number of instance methods with OnBeforeRemove attribute.
+This is useful for cases you have foreign key to this relation and you need to check if it is safe to remove this object or you can implement cascade delete.
+Only result types allowed are void and bool. If bool is returned then true means that remove is prevented. If there are multiple methods then at least one of them must return true to prevent remove, but all methods are called in all cases and you should not dependent on their order of calling.
+As parameters you can use IObjectDBTransaction. All other parameters must be resolvable by IContainer.
+Of course nothing is free, if you define any OnBeforeRemove method then all removes especially range removes are slower because they need to deserialize all removing items.
+
+```C#
+    public class Room
+    {
+        [PrimaryKey(1)]
+        public ulong CompanyId { get; set; }
+        public string Name { get; set; }
+
+        [OnBeforeRemove]
+        bool AnyMethodName(IObjectDBTransaction transaction, IContainer container)
+        {
+            return true; // true prevents remove
+        }
+    }
+```
+
 ## ShallowUpsertWithSizes
 
 ```C#

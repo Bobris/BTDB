@@ -482,7 +482,7 @@ public class RelationBuilder
             .Call(SpanWriterGetSpanMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan);
-        if (isPrefixBased)
+        if (isPrefixBased && DoesNotHaveOnBeforeRemove(ItemType))
         {
             reqMethod.Generator.Callvirt(
                 (AllKeyPrefixesAreSame(ClientRelationVersionInfo, count)
@@ -498,6 +498,11 @@ public class RelationBuilder
             if (method.ReturnType == typeof(void))
                 reqMethod.Generator.Pop();
         }
+    }
+
+    static bool DoesNotHaveOnBeforeRemove(Type itemType)
+    {
+        return itemType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).All(m => m.GetCustomAttribute<OnBeforeRemoveAttribute>() == null);
     }
 
     void BuildRemoveByIdAdvancedParamMethod(MethodInfo method, ParameterInfo[] parameters, IILMethod reqMethod)

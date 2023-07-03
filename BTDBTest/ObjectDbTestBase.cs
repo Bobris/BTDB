@@ -2,6 +2,7 @@ using System;
 using BTDB.Collections;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
+using BTDB.IOC;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -14,6 +15,7 @@ public abstract class ObjectDbTestBase : IDisposable
     protected readonly ITestOutputHelper _output;
     protected IKeyValueDB _lowDb;
     protected IObjectDB _db;
+    protected IContainer? _container;
     StructList<string> _fieldHandlerLoggerMessages;
 
     protected ObjectDbTestBase(ITestOutputHelper output)
@@ -23,7 +25,7 @@ public abstract class ObjectDbTestBase : IDisposable
         {
             CompactorScheduler = null,
             Compression = new NoCompressionStrategy(),
-            FileCollection = new InMemoryFileCollection()
+            FileCollection = new InMemoryFileCollection(),
         });
         OpenDb();
     }
@@ -64,6 +66,6 @@ public abstract class ObjectDbTestBase : IDisposable
             {
                     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
                     27, 28, 29, 30, 31
-            })));
+            })).WithContainer(_container));
     }
 }

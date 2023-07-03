@@ -232,6 +232,12 @@ public static class ILGenExtensions
         return il;
     }
 
+    public static IILGen Or(this IILGen il)
+    {
+        il.Emit(OpCodes.Or);
+        return il;
+    }
+
     public static IILGen Ldloc(this IILGen il, IILLocal localBuilder)
     {
         il.Emit(OpCodes.Ldloc, localBuilder);

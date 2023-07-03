@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
+using BTDB.IOC;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
@@ -3118,6 +3119,70 @@ namespace BTDBTest
             Assert.Throws<ArgumentOutOfRangeException>(() => table.Upsert(new() { Id = 1, Text = "a" }));
             table.Upsert(new() { Id = 1000, Text = "ahoj" });
             Assert.Equal("AHOJ", table.First().Text);
+        }
+
+        public class ItemWithOnBeforeRemove
+        {
+            [PrimaryKey(1)] public ulong Id { get; set; }
+            public int Number { get; set; }
+
+            public static ulong CallCounter;
+
+            [OnBeforeRemove]
+            void VoidReturningBeforeRemove(IObjectDBTransaction tr, uint add)
+            {
+                CallCounter += tr.KeyValueDBTransaction.GetCommitUlong() + add;
+            }
+
+            // return true to prevent remove
+            [OnBeforeRemove]
+            public bool PreventRemoveForOddNumbers()
+            {
+                return Number % 2 == 1;
+            }
+        }
+
+        public interface IItemWithOnBeforeRemoveTable : IRelation<ItemWithOnBeforeRemove>
+        {
+            int RemoveById(ulong id);
+        }
+
+        [Fact]
+        public void SimpleOnBeforeRemoveWorks()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterInstance<uint>(0u).Named<uint>("add");
+            _container = builder.Build();
+            ReopenDb();
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IItemWithOnBeforeRemoveTable>();
+            table.Upsert(new() { Id = 1, Number = 1 });
+            table.Upsert(new() { Id = 2, Number = 2 });
+            ItemWithOnBeforeRemove.CallCounter = 0;
+            tr.KeyValueDBTransaction.SetCommitUlong(1);
+            Assert.Equal(0, table.RemoveById(1));
+            Assert.Equal(1, table.RemoveById(2));
+            Assert.Equal(2ul, ItemWithOnBeforeRemove.CallCounter);
+            _container = null;
+        }
+
+        [Fact]
+        public void RemoveAllOnBeforeRemoveWorks()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterInstance<uint>(2u).Named<uint>("add");
+            _container = builder.Build();
+            ReopenDb();
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IItemWithOnBeforeRemoveTable>();
+            table.Upsert(new() { Id = 1, Number = 1 });
+            table.Upsert(new() { Id = 2, Number = 2 });
+            ItemWithOnBeforeRemove.CallCounter = 0;
+            tr.KeyValueDBTransaction.SetCommitUlong(1);
+            table.RemoveAll();
+            Assert.Equal(1,table.Count);
+            Assert.Equal(6ul, ItemWithOnBeforeRemove.CallCounter);
+            _container = null;
         }
     }
 }

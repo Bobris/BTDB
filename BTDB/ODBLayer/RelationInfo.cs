@@ -11,6 +11,7 @@ using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.IOC;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 using Extensions = BTDB.FieldHandler.Extensions;
@@ -22,6 +23,8 @@ delegate void RelationLoader(IInternalObjectDBTransaction transaction, ref SpanR
 delegate object RelationLoaderFunc(IInternalObjectDBTransaction transaction, ref SpanReader reader);
 
 delegate void RelationSaver(IInternalObjectDBTransaction transaction, ref SpanWriter writer, object value);
+
+delegate bool RelationBeforeRemove(IInternalObjectDBTransaction transaction, IContainer container, object value);
 
 public class RelationInfo
 {
@@ -35,6 +38,7 @@ public class RelationInfo
     RelationVersionInfo?[] _relationVersions = Array.Empty<RelationVersionInfo?>();
     RelationSaver _primaryKeysSaver;
     RelationSaver _valueSaver;
+    RelationBeforeRemove? _beforeRemove;
 
     internal StructList<ItemLoaderInfo> ItemLoaderInfos;
 
@@ -699,6 +703,7 @@ public class RelationInfo
         _valueSaver = CreateSaver(ClientRelationVersionInfo.Fields.Span, $"RelationValueSaver_{Name}");
         _primaryKeysSaver = CreateSaver(ClientRelationVersionInfo.PrimaryKeyFields.Span,
             $"RelationKeySaver_{Name}");
+        _beforeRemove = CreateBeforeRemove($"RelationBeforeRemove_{Name}");
         if (ClientRelationVersionInfo.SecondaryKeys.Count > 0)
         {
             _secondaryKeysSavers = new RelationSaver[ClientRelationVersionInfo.SecondaryKeys.Keys.Max() + 1];
@@ -714,6 +719,8 @@ public class RelationInfo
     internal RelationSaver ValueSaver => _valueSaver;
 
     internal RelationSaver PrimaryKeysSaver => _primaryKeysSaver;
+
+    internal RelationBeforeRemove? BeforeRemove => _beforeRemove;
 
     void CreateSaverIl(IILGen ilGen, ReadOnlySpan<TableFieldInfo> fields,
         Action<IILGen> pushInstance,
@@ -942,6 +949,79 @@ public class RelationInfo
                 .Stloc(readerCtxLocal);
             bufferInfo.PushCtx = il => il.Ldloc(readerCtxLocal);
         }
+    }
+
+    RelationBeforeRemove? CreateBeforeRemove(string functionName)
+    {
+        var hasBeforeRemove = false;
+        foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
+                                                         BindingFlags.NonPublic))
+        {
+            if (methodInfo.GetCustomAttribute<OnBeforeRemoveAttribute>() == null) continue;
+            if (methodInfo.ReturnType != typeof(void) && methodInfo.ReturnType != typeof(bool))
+                throw new BTDBException("OnBeforeRemove method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
+                                        " must return void or bool.");
+            hasBeforeRemove = true;
+        }
+        if (!hasBeforeRemove) return null;
+        var method = ILBuilder.Instance.NewMethod<RelationBeforeRemove>(functionName);
+        var ilGenerator = method.Generator;
+        var clientTypeLoc = ilGenerator.DeclareLocal(ClientType);
+        var resultLoc = ilGenerator.DeclareLocal(typeof(bool));
+        StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType, (ushort)clientTypeLoc.Index);
+        ilGenerator
+            .LdcI4(0)
+            .Stloc(resultLoc);
+        foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
+                                                         BindingFlags.NonPublic))
+        {
+            if (methodInfo.GetCustomAttribute<OnBeforeRemoveAttribute>() == null) continue;
+            var parameters = methodInfo.GetParameters();
+            var paramLocs = new IILLocal[parameters.Length];
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameter = parameters[i];
+                if (parameter.ParameterType == typeof(IObjectDBTransaction)) continue;
+                paramLocs[i] = ilGenerator.DeclareLocal(parameter.ParameterType);
+                ilGenerator.Ldarg(1);
+                ilGenerator.Ldstr(parameter.Name!);
+                ilGenerator.Ldtoken(parameter.ParameterType);
+                ilGenerator.Call(() => Type.GetTypeFromHandle(new()));
+                ilGenerator.Callvirt(() => default(IContainer).ResolveNamed("", null));
+                ilGenerator.UnboxAny(parameter.ParameterType);
+                ilGenerator.Stloc(paramLocs[i]);
+            }
+
+            var withBoolResult = methodInfo.ReturnType == typeof(bool);
+            if (withBoolResult)
+            {
+                ilGenerator
+                    .Ldloc(resultLoc);
+            }
+            ilGenerator
+                .Ldloc(clientTypeLoc);
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameter = parameters[i];
+                if (parameter.ParameterType == typeof(IObjectDBTransaction))
+                {
+                    ilGenerator.Ldarg(0).Castclass(typeof(IObjectDBTransaction));
+                    continue;
+                }
+                ilGenerator.Ldloc(paramLocs[i]);
+            }
+            ilGenerator
+                .Call(methodInfo);
+            if (withBoolResult)
+            {
+                ilGenerator.Or().Stloc(resultLoc);
+            }
+        }
+
+        ilGenerator
+            .Ldloc(resultLoc)
+            .Ret();
+        return method.Create();
     }
 
     RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName)

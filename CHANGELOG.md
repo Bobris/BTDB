@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+`OnBeforeRemove` attribute to help to implement foreign keys prevent removal or cascading delete.
+
 ## 31.8.0
 
 ### Removed

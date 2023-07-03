@@ -8,7 +8,6 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Collections;
-using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -509,6 +508,21 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         Span<byte> valueBuffer = stackalloc byte[512];
 
+        var beforeRemove = _relationInfo.BeforeRemove;
+        if (beforeRemove != null)
+        {
+            if (!_kvtr.FindExactKey(keyBytes))
+            {
+                if (throwWhenNotFound)
+                    throw new BTDBException("Not found record to delete.");
+                return false;
+            }
+
+            var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, keyBytes);
+            if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+                return false;
+        }
+
         if (!_kvtr.EraseCurrent(keyBytes, ref MemoryMarshal.GetReference(valueBuffer), valueBuffer.Length,
                 out var value))
         {
@@ -531,6 +545,21 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     [SkipLocalsInit]
     public bool ShallowRemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
     {
+        var beforeRemove = _relationInfo.BeforeRemove;
+        if (beforeRemove != null)
+        {
+            if (!_kvtr.FindExactKey(keyBytes))
+            {
+                if (throwWhenNotFound)
+                    throw new BTDBException("Not found record to delete.");
+                return false;
+            }
+
+            var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, keyBytes);
+            if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+                return false;
+        }
+
         if (_hasSecondaryIndexes)
         {
             Span<byte> valueBuffer = stackalloc byte[512];
@@ -564,9 +593,17 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         var keysToDelete = new StructList<byte[]>();
         var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix,
             this, 0);
+        var beforeRemove = _relationInfo.BeforeRemove;
         while (enumerator.MoveNext())
         {
-            keysToDelete.Add(_kvtr.GetKeyToArray());
+            var key = _kvtr.GetKeyToArray();
+            if (beforeRemove != null)
+            {
+                var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, key);
+                if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+                    continue;
+            }
+            keysToDelete.Add(key);
         }
 
         foreach (var key in keysToDelete)
@@ -581,6 +618,17 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
             if (_relationInfo.NeedImplementFreeContent())
                 _relationInfo.FreeContent(_transaction, valueBytes);
+
+            if (beforeRemove != null)
+            {
+                MarkModification();
+                _kvtr.EraseCurrent();
+            }
+        }
+
+        if (beforeRemove != null)
+        {
+            return (int)keysToDelete.Count;
         }
 
         return RemovePrimaryKeysByPrefix(keyBytesPrefix);
@@ -598,12 +646,13 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 break;
         }
 
+        var notDeleted = 0;
         foreach (var key in keysToDelete)
         {
-            RemoveById(key, true);
+            notDeleted += RemoveById(key, true) ? 0 : 1;
         }
 
-        return (int)keysToDelete.Count;
+        return (int)keysToDelete.Count - notDeleted;
     }
 
     public int RemoveByKeyPrefixWithoutIterate(in ReadOnlySpan<byte> keyBytesPrefix)
@@ -640,6 +689,11 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     public void RemoveAll()
     {
         MarkModification();
+        if (_relationInfo.BeforeRemove != null)
+        {
+            RemoveByPrimaryKeyPrefix(_relationInfo.Prefix);
+            return;
+        }
         if (_relationInfo.NeedImplementFreeContent())
         {
             var count = _kvtr.GetKeyValueCount(_relationInfo.Prefix);
@@ -971,6 +1025,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         {
             throw new NotSupportedException("RemoveWithSizes does not support FreeContent");
         }
+
+        if (_relationInfo.BeforeRemove != null)
+        {
+            throw new NotSupportedException("RemoveWithSizes does not support OnBeforeRemove");
+        }
+
         SpanWriter writer = new();
         StructList<byte> helperBuffer = new();
         writer.WriteBlock(_relationInfo.Prefix);
