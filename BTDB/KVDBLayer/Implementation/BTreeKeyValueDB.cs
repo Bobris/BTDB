@@ -765,8 +765,28 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         }
 
                         cursor.Upsert(keyBuf.AsSyncReadOnlySpan(), trueValue);
-                    }
                         break;
+                    }
+                    case KVCommandType.UpdateKeySuffix:
+                    {
+                        if (_nextRoot == null) return false;
+                        var keyPrefix = reader.ReadVUInt32();
+                        var keyLen = reader.ReadVUInt32();
+                        var key = new byte[keyLen];
+                        reader.ReadBlock(key);
+                        if (!cursor.FindFirst(key[..(int)keyPrefix]))
+                        {
+                            if (!_lenientOpen)
+                            {
+                                _nextRoot = null;
+                                return false;
+                            }
+
+                            break;
+                        }
+                        cursor.UpdateKeySuffix(key);
+                        break;
+                    }
                     case KVCommandType.EraseOne:
                     {
                         if (_nextRoot == null) return false;
@@ -788,8 +808,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             _nextRoot = null;
                             return false;
                         }
-                    }
                         break;
+                    }
                     case KVCommandType.EraseRange:
                     {
                         if (_nextRoot == null) return false;
@@ -828,8 +848,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
                         if (findResult == FindResult.Next) cursor2.MovePrevious();
                         cursor.EraseTo(cursor2);
-                    }
                         break;
+                    }
                     case KVCommandType.DeltaUlongs:
                     {
                         if (_nextRoot == null) return false;
@@ -837,8 +857,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         var delta = reader.ReadVUInt64();
                         // overflow is expected in case Ulong is decreasing but that should be rare
                         _nextRoot.SetUlong(idx, unchecked(_nextRoot.GetUlong(idx) + delta));
-                    }
                         break;
+                    }
                     case KVCommandType.TransactionStart:
                         if (!reader.CheckMagic(MagicStartOfTransaction))
                             return false;
@@ -1462,6 +1482,22 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             trueValue.Clear();
         }
 
+        writer.Sync();
+    }
+
+    public void WriteUpdateKeySuffixCommand(in ReadOnlySpan<byte> key, uint prefixLen)
+    {
+        var trlPos = _writerWithTransactionLog!.GetCurrentPositionWithoutWriter();
+        if (trlPos > 256 && trlPos + key.Length + 16 > MaxTrLogFileSize)
+        {
+            WriteStartOfNewTransactionLogFile();
+        }
+
+        var writer = new SpanWriter(_writerWithTransactionLog!);
+        writer.WriteUInt8((byte)KVCommandType.UpdateKeySuffix);
+        writer.WriteVUInt32(prefixLen);
+        writer.WriteVUInt32((uint)key.Length);
+        writer.WriteBlock(key);
         writer.Sync();
     }
 

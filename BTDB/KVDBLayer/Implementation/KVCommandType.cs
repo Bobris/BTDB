@@ -16,7 +16,8 @@ public enum KVCommandType : byte
     TemporaryEndOfFile,
     CommitWithDeltaUlong,
     DeltaUlongs,
+    UpdateKeySuffix,
     CommandMask = 31,
     FirstParamCompressed = 32,
-    SecondParamCompressed = 64
+    SecondParamCompressed = 64,
 }

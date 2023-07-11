@@ -326,6 +326,11 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDBTransaction.CreateOrUpdateKeyValue(key, value);
         }
 
+        public bool UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
+        {
+            return _keyValueDBTransaction.UpdateKeySuffix(key, prefixLen);
+        }
+
         public long GetKeyValueCount()
         {
             return _keyValueDBTransaction.GetKeyValueCount();

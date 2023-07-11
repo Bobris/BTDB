@@ -202,6 +202,41 @@ class BTreeBranch : IBTreeNode
         }
     }
 
+    public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
+    {
+        var index = Find(ctx.Key[..(int)ctx.PrefixLen]);
+        ctx.Stack!.Add(new NodeIdxPair { Node = this, Idx = index });
+        ctx.Depth++;
+        _children[index].UpdateKeySuffix(ref ctx);
+        ctx.Depth--;
+        var newBranch = this;
+
+        if (ctx.Update)
+        {
+            if (_transactionId != ctx.TransactionId)
+            {
+                var newKeys = new byte[_keys.Length][];
+                var newChildren = new IBTreeNode[_children.Length];
+                var newPairCounts = new long[_children.Length];
+                Array.Copy(_keys, newKeys, _keys.Length);
+                Array.Copy(_children, newChildren, _children.Length);
+                newChildren[index] = ctx.Node!;
+                Array.Copy(_pairCounts, newPairCounts, _pairCounts.Length);
+                newBranch = new BTreeBranch(ctx.TransactionId, newKeys, newChildren, newPairCounts);
+                ctx.Node = newBranch;
+            }
+            else
+            {
+                _children[index] = ctx.Node!;
+                ctx.Update = false;
+                ctx.Node = null;
+            }
+        }
+
+        ctx.Stack![ctx.Depth] = new NodeIdxPair { Node = newBranch, Idx = index };
+        Debug.Assert(newBranch._transactionId == ctx.TransactionId);
+    }
+
     public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
     {
         var idx = Find(key);

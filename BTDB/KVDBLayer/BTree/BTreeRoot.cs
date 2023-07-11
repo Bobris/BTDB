@@ -51,6 +51,25 @@ class BTreeRoot : IBTreeRootNode
         }
     }
 
+    public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
+    {
+        ctx.TransactionId = _transactionId;
+        if (ctx.Stack == null) ctx.Stack = new();
+        else ctx.Stack.Clear();
+        if (_rootNode == null)
+        {
+            ctx.KeyIndex = -1;
+            ctx.Updated = false;
+            return;
+        }
+        ctx.Depth = 0;
+        _rootNode.UpdateKeySuffix(ref ctx);
+        if (ctx.Update)
+        {
+            _rootNode = ctx.Node;
+        }
+    }
+
     public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
     {
         throw new InvalidOperationException();

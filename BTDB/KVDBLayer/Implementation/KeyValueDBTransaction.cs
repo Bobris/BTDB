@@ -119,6 +119,22 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
         return ctx.Created;
     }
 
+    public bool UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
+    {
+        _cursorMovedCounter++;
+        MakeWritable();
+        var ctx = new UpdateKeySuffixCtx
+        {
+            Key = key,
+            PrefixLen = prefixLen,
+            Stack = _stack
+        };
+        _btreeRoot!.UpdateKeySuffix(ref ctx);
+        _keyIndex = ctx.KeyIndex;
+        if (ctx.Updated) _keyValueDB.WriteUpdateKeySuffixCommand(key, prefixLen);
+        return ctx.Updated;
+    }
+
     void MakeWritable()
     {
         if (_writing) return;

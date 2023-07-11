@@ -979,7 +979,7 @@ public class BTreeImpl12
     void FreeLongKey(IntPtr ptr)
     {
         var size = TreeNodeUtils.ReadInt32Aligned(ptr) + 4;
-        _allocator.Deallocate(ptr, (IntPtr)size);
+        _allocator.Deallocate(ptr, size);
     }
 
     internal void Dereference(IntPtr node)
@@ -1018,7 +1018,7 @@ public class BTreeImpl12
     {
         CheckContent12(content);
         MakeUnique(rootNode, stack.AsSpan());
-        ref var stackItem = ref stack[stack.Count - 1];
+        ref var stackItem = ref stack.Last;
         content.CopyTo(NodeUtils12.GetLeafValues(stackItem._node).Slice(stackItem._posInNode * 12, 12));
     }
 
@@ -1802,19 +1802,69 @@ public class BTreeImpl12
         }
     }
 
-    ReadOnlySpan<byte> GetShortKey(ReadOnlySpan<ushort> keyOfs, ReadOnlySpan<byte> keyData, int idx)
+    internal void UpdateKeySuffix(RootNode12 rootNode, ref StructList<CursorItem> stack, in ReadOnlySpan<byte> key)
+    {
+        ref var top = ref stack.Last;
+        var prefix = NodeUtils12.GetPrefixSpan(top._node);
+        ref var header = ref NodeUtils12.Ptr2NodeHeader(top._node);
+        if (header.HasLongKeys)
+        {
+            MakeUnique(rootNode, stack.AsSpan());
+            ref var stackItem = ref stack.Last;
+            var longKeys = NodeUtils12.GetLongKeyPtrs(stackItem._node);
+            // This could be optimized by overwriting the key in place if its has same length
+            FreeLongKey(longKeys[stackItem._posInNode]);
+            longKeys[stackItem._posInNode] = AllocateLongKey(key[prefix.Length..]);
+            return;
+        }
+
+        var keyOfs = NodeUtils12.GetKeySpans(top._node, out var keyData);
+        var oldKey = GetShortKey(keyOfs, keyData, top._posInNode);
+        if (oldKey.Length == key.Length - prefix.Length)
+        {
+            MakeUnique(rootNode, stack.AsSpan());
+            ref var stackItem = ref stack.Last;
+            keyOfs = NodeUtils12.GetKeySpans(stackItem._node, out keyData);
+            oldKey = GetShortKey(keyOfs, keyData, top._posInNode);
+            key[prefix.Length..].CopyTo(oldKey);
+            return;
+        }
+
+        var newNode = AllocateLeaf(header._childCount, (uint)prefix.Length,
+            (ulong)keyData.Length + (ulong)(key.Length - prefix.Length) - (ulong)oldKey.Length, out var keyPusher);
+
+        for (var i = 0; i < header._childCount; i++)
+        {
+            if (i == top._posInNode)
+            {
+                keyPusher.AddKey(key);
+            }
+            else
+            {
+                keyPusher.AddKey(prefix, GetShortKey(keyOfs, keyData, i));
+            }
+        }
+        keyPusher.Finish();
+        var newValues = NodeUtils12.GetLeafValues(newNode);
+        var oldValues = NodeUtils12.GetLeafValues(top._node);
+        oldValues.CopyTo(newValues);
+        MakeUnique(rootNode, stack.AsSpan()[..^1]);
+        OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, newNode);
+    }
+
+    static Span<byte> GetShortKey(ReadOnlySpan<ushort> keyOfs, Span<byte> keyData, int idx)
     {
         var start = keyOfs[idx];
         return keyData.Slice(start, keyOfs[idx + 1] - start);
     }
 
-    int CalcCommonPrefix(IntPtr nodePtr, in ReadOnlySpan<byte> key)
+    static int CalcCommonPrefix(IntPtr nodePtr, in ReadOnlySpan<byte> key)
     {
         var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
         return TreeNodeUtils.FindFirstDifference(prefix, key);
     }
 
-    int CalcCommonPrefix(IntPtr nodePtr, int startIdx, int endIdx, in ReadOnlySpan<byte> key)
+    static int CalcCommonPrefix(IntPtr nodePtr, int startIdx, int endIdx, in ReadOnlySpan<byte> key)
     {
         var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
         var common = TreeNodeUtils.FindFirstDifference(prefix, key);
@@ -1959,7 +2009,7 @@ public class BTreeImpl12
         return ClampPrefixSize(prefix.Length + common);
     }
 
-    int BinarySearch(IntPtr nodePtr, in ReadOnlySpan<byte> keyWhole)
+    static int BinarySearch(IntPtr nodePtr, in ReadOnlySpan<byte> keyWhole)
     {
         ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
         var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
@@ -2109,13 +2159,13 @@ public class BTreeImpl12
                     var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
                     for (var i = 0; i < idx; i++)
                     {
-                        keyPusher.AddKey(_owner.GetShortKey(keyOfs, keyData, i));
+                        keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
                     }
 
                     keyPusher.AddKey(keyPrefix, keySuffix);
                     for (int i = idx; i < keyOfs.Length - 1; i++)
                     {
-                        keyPusher.AddKey(_owner.GetShortKey(keyOfs, keyData, i));
+                        keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
                     }
                 }
 
@@ -2162,13 +2212,13 @@ public class BTreeImpl12
                         var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
                         for (var i = 0; i < idx; i++)
                         {
-                            keyPusher.AddKey(_owner.GetShortKey(keyOfs, keyData, i));
+                            keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
                         }
 
                         keyPusher.AddKey(keyPrefix, keySuffix);
                         for (int i = idx; i < splitPos - 1; i++)
                         {
-                            keyPusher.AddKey(_owner.GetShortKey(keyOfs, keyData, i));
+                            keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
                         }
                     }
 
@@ -2200,7 +2250,7 @@ public class BTreeImpl12
                         var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
                         for (var i = splitPos; i < MaxChildren - 1; i++)
                         {
-                            keyPusher.AddKey(_owner.GetShortKey(keyOfs, keyData, i));
+                            keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
                         }
                     }
 
@@ -2233,7 +2283,7 @@ public class BTreeImpl12
                         var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
                         for (var i = 0; i < splitPos - 1; i++)
                         {
-                            keyPusher.AddKey(_owner.GetShortKey(keyOfs, keyData, i));
+                            keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
                         }
                     }
 
@@ -2266,13 +2316,13 @@ public class BTreeImpl12
                         var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
                         for (var i = splitPos; i < idx; i++)
                         {
-                            keyPusher.AddKey(_owner.GetShortKey(keyOfs, keyData, i));
+                            keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
                         }
 
                         keyPusher.AddKey(keyPrefix, keySuffix);
                         for (int i = idx; i < MaxChildren - 1; i++)
                         {
-                            keyPusher.AddKey(_owner.GetShortKey(keyOfs, keyData, i));
+                            keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
                         }
                     }
 

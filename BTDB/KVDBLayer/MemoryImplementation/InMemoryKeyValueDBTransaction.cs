@@ -108,6 +108,22 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
         return ctx.Created;
     }
 
+    public bool UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
+    {
+        _cursorMovedCounter++;
+        MakeWritable();
+        if (prefixLen == key.Length) return false;
+        var ctx = new UpdateKeySuffixCtx
+        {
+            Key = key,
+            PrefixLen = prefixLen,
+            Stack = _stack
+        };
+        _btreeRoot!.UpdateKeySuffix(ref ctx);
+        _keyIndex = ctx.KeyIndex;
+        return ctx.Updated;
+    }
+
     void MakeWritable()
     {
         if (_writing) return;

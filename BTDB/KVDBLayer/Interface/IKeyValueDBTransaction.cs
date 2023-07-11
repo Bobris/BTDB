@@ -51,6 +51,12 @@ public interface IKeyValueDBTransaction : IDisposable
     bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
 
     /// <summary>
+    /// Updates key with preserving value. If multiple keys of prefixLen of key exists it will throw BTDBException.
+    /// </summary>
+    /// <returns>true for update, false when prefixLen of key was not found</returns>
+    bool UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen);
+
+    /// <summary>
     /// In current prefix will calculate number of key value pairs
     /// </summary>
     /// <returns>count</returns>

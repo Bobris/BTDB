@@ -1193,6 +1193,22 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         writer.Sync();
     }
 
+    public void WriteUpdateKeySuffixCommand(in ReadOnlySpan<byte> key, uint prefixLen)
+    {
+        var trlPos = _writerWithTransactionLog!.GetCurrentPositionWithoutWriter();
+        if (trlPos > 256 && trlPos + key.Length + 16 > MaxTrLogFileSize)
+        {
+            WriteStartOfNewTransactionLogFile();
+        }
+
+        var writer = new SpanWriter(_writerWithTransactionLog!);
+        writer.WriteUInt8((byte)KVCommandType.UpdateKeySuffix);
+        writer.WriteVUInt32(prefixLen);
+        writer.WriteVUInt32((uint)key.Length);
+        writer.WriteBlock(key);
+        writer.Sync();
+    }
+
     public static uint CalcValueSize(uint valueFileId, uint valueOfs, int valueSize)
     {
         if (valueSize == 0) return 0;

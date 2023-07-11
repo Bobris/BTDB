@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using BTDB.Collections;
 
@@ -134,6 +135,31 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
             ctx.Stack!.Add(new NodeIdxPair { Node = rightNode, Idx = index - keyCountLeft });
             ctx.SplitInRight = true;
         }
+    }
+
+    public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
+    {
+        var index = Find(ctx.Key[..(int)ctx.PrefixLen]);
+        Debug.Assert((index & 1) == 0);
+        index = index / 2 - 1;
+        ctx.KeyIndex = index;
+        var m = _keyValues[index];
+        if (m.Key.AsSpan().SequenceEqual(ctx.Key))
+        {
+            return;
+        }
+        ctx.Updated = true;
+        m.Key = ctx.Key.ToArray();
+        var leaf = this;
+        if (ctx.TransactionId != TransactionId)
+        {
+            leaf = new BTreeLeaf(ctx.TransactionId, _keyValues.Length);
+            Array.Copy(_keyValues, leaf._keyValues, _keyValues.Length);
+            ctx.Node = leaf;
+            ctx.Update = true;
+        }
+        leaf._keyValues[index] = m;
+        ctx.Stack!.Add(new NodeIdxPair { Node = leaf, Idx = index });
     }
 
     public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)

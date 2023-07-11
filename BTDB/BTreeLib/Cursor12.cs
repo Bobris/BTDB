@@ -50,6 +50,13 @@ class Cursor12 : ICursor
         return new Cursor12(this);
     }
 
+    public void UpdateKeySuffix(in ReadOnlySpan<byte> key)
+    {
+        AssertWritable();
+        AssertValid();
+        _rootNode.Impl.UpdateKeySuffix(_rootNode, ref _stack, key);
+    }
+
     public void Erase()
     {
         AssertWritable();

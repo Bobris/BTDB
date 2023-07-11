@@ -27,6 +27,7 @@ public interface ICursor
 
     void WriteValue(in ReadOnlySpan<byte> content);
     bool Upsert(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> content);
+    void UpdateKeySuffix(in ReadOnlySpan<byte> key);
     void Erase();
     long EraseTo(ICursor to);
     void BuildTree(long keyCount, ref SpanReader reader, BuildTreeCallback generator);

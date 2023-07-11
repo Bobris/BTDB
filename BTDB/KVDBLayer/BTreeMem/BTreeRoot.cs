@@ -19,13 +19,13 @@ class BTreeRoot : IBTreeRootNode
     public void CreateOrUpdate(ref CreateOrUpdateCtx ctx)
     {
         ctx.TransactionId = _transactionId;
-        if (ctx.Stack == null) ctx.Stack = new List<NodeIdxPair>();
+        if (ctx.Stack == null) ctx.Stack = new();
         else ctx.Stack.Clear();
         if (_rootNode == null)
         {
             _rootNode = ctx.Key.Length > BTreeLeafComp.MaxTotalLen ? BTreeLeaf.CreateFirst(ref ctx) : BTreeLeafComp.CreateFirst(ref ctx);
             _keyValueCount = 1;
-            ctx.Stack.Add(new NodeIdxPair { Node = _rootNode, Idx = 0 });
+            ctx.Stack.Add(new() { Node = _rootNode, Idx = 0 });
             ctx.KeyIndex = 0;
             ctx.Created = true;
             return;
@@ -35,7 +35,7 @@ class BTreeRoot : IBTreeRootNode
         if (ctx.Split)
         {
             _rootNode = new BTreeBranch(ctx.TransactionId, ctx.Node1, ctx.Node2);
-            ctx.Stack.Insert(0, new NodeIdxPair { Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0 });
+            ctx.Stack.Insert(0, new() { Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0 });
         }
         else if (ctx.Update)
         {
@@ -44,6 +44,25 @@ class BTreeRoot : IBTreeRootNode
         if (ctx.Created)
         {
             _keyValueCount++;
+        }
+    }
+
+    public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
+    {
+        ctx.TransactionId = _transactionId;
+        if (ctx.Stack == null) ctx.Stack = new();
+        else ctx.Stack.Clear();
+        if (_rootNode == null)
+        {
+            ctx.KeyIndex = -1;
+            ctx.Updated = false;
+            return;
+        }
+        ctx.Depth = 0;
+        _rootNode.UpdateKeySuffix(ref ctx);
+        if (ctx.Update)
+        {
+            _rootNode = ctx.Node;
         }
     }
 
@@ -66,12 +85,12 @@ class BTreeRoot : IBTreeRootNode
             if (keyIndex < 0)
             {
                 keyIndex = 0;
-                stack[^1] = new NodeIdxPair { Node = stack[^1].Node, Idx = 0 };
+                stack[^1] = new() { Node = stack[^1].Node, Idx = 0 };
                 result = FindResult.Next;
             }
             else
             {
-                if (!KeyStartsWithPrefix(key.Slice(0, (int)prefixLen), GetKeyFromStack(stack)))
+                if (!KeyStartsWithPrefix(key[..(int)prefixLen], GetKeyFromStack(stack)))
                 {
                     result = FindResult.Next;
                     keyIndex++;
@@ -81,7 +100,7 @@ class BTreeRoot : IBTreeRootNode
                     }
                 }
             }
-            if (!KeyStartsWithPrefix(key.Slice(0, (int)prefixLen), GetKeyFromStack(stack)))
+            if (!KeyStartsWithPrefix(key[..(int)prefixLen], GetKeyFromStack(stack)))
             {
                 return FindResult.NotFound;
             }
@@ -92,7 +111,7 @@ class BTreeRoot : IBTreeRootNode
     internal static bool KeyStartsWithPrefix(in ReadOnlySpan<byte> prefix, in ReadOnlySpan<byte> key)
     {
         if (key.Length < prefix.Length) return false;
-        return prefix.SequenceEqual(key.Slice(0, prefix.Length));
+        return prefix.SequenceEqual(key[..prefix.Length]);
     }
 
     static ReadOnlySpan<byte> GetKeyFromStack(List<NodeIdxPair> stack)
@@ -131,8 +150,8 @@ class BTreeRoot : IBTreeRootNode
 
     public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
     {
-        stack.Add(new NodeIdxPair { Node = _rootNode!, Idx = 0 });
-        _rootNode.FillStackByLeftMost(stack, 0);
+        stack.Add(new() { Node = _rootNode!, Idx = 0 });
+        _rootNode!.FillStackByLeftMost(stack, 0);
     }
 
     public void FillStackByRightMost(List<NodeIdxPair> stack, int idx)
@@ -205,7 +224,7 @@ class BTreeRoot : IBTreeRootNode
             if (pair.Node.NextIdxValid(pair.Idx))
             {
                 stack.RemoveRange(idx + 1, stack.Count - idx - 1);
-                stack[idx] = new NodeIdxPair { Node = pair.Node, Idx = pair.Idx + 1 };
+                stack[idx] = new() { Node = pair.Node, Idx = pair.Idx + 1 };
                 pair.Node.FillStackByLeftMost(stack, pair.Idx + 1);
                 return true;
             }
@@ -223,7 +242,7 @@ class BTreeRoot : IBTreeRootNode
             if (pair.Idx > 0)
             {
                 stack.RemoveRange(idx + 1, stack.Count - idx - 1);
-                stack[idx] = new NodeIdxPair { Node = pair.Node, Idx = pair.Idx - 1 };
+                stack[idx] = new() { Node = pair.Node, Idx = pair.Idx - 1 };
                 pair.Node.FillStackByRightMost(stack, pair.Idx - 1);
                 return true;
             }

@@ -137,6 +137,31 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         return result;
     }
 
+    public bool UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
+    {
+        _cursorMovedCounter++;
+        MakeWritable();
+        if (!_cursor.FindFirst(key[..(int)prefixLen])) return false;
+        if (_cursor.MoveNext())
+        {
+            if (_cursor.KeyHasPrefix(key[..(int)prefixLen]))
+            {
+                BTDBException.ThrowNonUniqueKey(key[..(int)prefixLen]);
+            }
+
+            _cursor.MovePrevious();
+        }
+
+        _keyIndex = -1;
+        if (_cursor.KeyHasPrefix(key) && _cursor.GetKeyLength() == key.Length)
+        {
+            return false;
+        }
+        _cursor.UpdateKeySuffix(key);
+        _keyValueDB.WriteUpdateKeySuffixCommand(key, prefixLen);
+        return true;
+    }
+
     void MakeWritable()
     {
         if (_writing) return;

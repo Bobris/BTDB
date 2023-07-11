@@ -230,6 +230,66 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         RecalculateOffsets(rightNode._keyValues);
     }
 
+    public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
+    {
+        var index = Find(ctx.Key[..(int)ctx.PrefixLen]);
+        Debug.Assert((index & 1) == 0);
+        index = (int)((uint)index / 2) - 1;
+        ctx.KeyIndex = index;
+        var m = _keyValues[index];
+        if (_keyBytes.AsSpan(m.KeyOffset, m.KeyLength).SequenceEqual(ctx.Key))
+        {
+            return;
+        }
+        ctx.Updated = true;
+        if (ctx.Key.Length + (long)_keyBytes!.Length - m.KeyLength > MaxTotalLen)
+        {
+            var currentKeyValues = new BTreeLeafMember[_keyValues.Length];
+            for (var i = 0; i < currentKeyValues.Length; i++)
+            {
+                var member = _keyValues[i];
+                if (i == index)
+                {
+                    currentKeyValues[i] = new BTreeLeafMember
+                    {
+                        Key = ctx.Key.ToArray(),
+                        Value = member.Value
+                    };
+                    continue;
+                }
+                currentKeyValues[i] = new BTreeLeafMember
+                {
+                    Key = _keyBytes.AsSpan(member.KeyOffset, member.KeyLength).ToArray(),
+                    Value = member.Value
+                };
+            }
+
+            ctx.Node = new BTreeLeaf(ctx.TransactionId, currentKeyValues);
+            ctx.Update = true;
+            ctx.Stack.Add(new NodeIdxPair { Node = ctx.Node, Idx = index });
+            return;
+        }
+        var leaf = this;
+        if (ctx.TransactionId != TransactionId)
+        {
+            leaf = new BTreeLeafComp(ctx.TransactionId, _keyValues.Length);
+            Array.Copy(_keyValues, leaf._keyValues, _keyValues.Length);
+            leaf._keyBytes = _keyBytes;
+            ctx.Node = leaf;
+            ctx.Update = true;
+        }
+
+        var newTotalLen = ctx.Key.Length + _keyBytes!.Length - m.KeyLength;
+        var newKeyBytes = new byte[newTotalLen];
+        Array.Copy(_keyBytes, 0, newKeyBytes, 0, m.KeyOffset);
+        ctx.Key.CopyTo(newKeyBytes.AsSpan(m.KeyOffset));
+        Array.Copy(_keyBytes, m.KeyOffset + m.KeyLength, newKeyBytes, m.KeyOffset + ctx.Key.Length, _keyBytes.Length - m.KeyOffset - m.KeyLength);
+        leaf._keyValues[index].KeyLength = (ushort)ctx.Key.Length;
+        leaf._keyBytes = newKeyBytes;
+        ctx.Stack.Add(new NodeIdxPair { Node = leaf, Idx = index });
+        RecalculateOffsets(leaf._keyValues);
+    }
+
     public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
     {
         var idx = Find(key);

@@ -179,6 +179,11 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
         throw new NotSupportedException();
     }
 
+    public bool UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
+    {
+        throw new NotSupportedException();
+    }
+
     public long GetKeyValueCount()
     {
         return _owner._keyValueCount;
