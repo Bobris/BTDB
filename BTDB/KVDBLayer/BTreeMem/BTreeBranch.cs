@@ -80,6 +80,7 @@ class BTreeBranch : IBTreeNode
         ctx.Stack.Add(new NodeIdxPair { Node = this, Idx = index });
         ctx.Depth++;
         _children[index].CreateOrUpdate(ref ctx);
+        if (index > 0) ctx.KeyIndex += _pairCounts[index - 1];
         ctx.Depth--;
         var newBranch = this;
         if (ctx.Split)

@@ -264,6 +264,7 @@ public abstract class KeyValueDBTestBase
             key[1] = (byte)(i % 256);
             using var tr1 = db.StartTransaction();
             tr1.CreateOrUpdateKeyValue(key.AsSpan(0, 2 + i * 10), ReadOnlySpan<byte>.Empty);
+            Assert.Equal(i, tr1.GetKeyIndex());
             if (i % 100 == 0 || i == transactionCount - 1)
             {
                 for (var j = 0; j < i; j++)
