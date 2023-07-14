@@ -3,7 +3,7 @@ using Xunit.Abstractions;
 
 namespace BTDBTest;
 
-public class KeyValueDBTest : KeyValueDBTestBase
+public class KeyValueDBTest : KeyValueDBFileTestBase
 {
     public KeyValueDBTest(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {

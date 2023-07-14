@@ -6,7 +6,7 @@ using Xunit.Abstractions;
 
 namespace BTDBTest;
 
-public class BTreeKeyValueDBTest : KeyValueDBTestBase, IDisposable
+public class BTreeKeyValueDBTest : KeyValueDBFileTestBase, IDisposable
 {
     readonly LeakDetectorWrapperAllocator _allocator;
 
