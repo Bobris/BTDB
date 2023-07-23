@@ -262,10 +262,15 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
     public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
     {
         var index = Find(ctx.Key[..(int)ctx.PrefixLen]);
-        Debug.Assert((index & 1) == 0);
-        index = (int)((uint)index / 2) - 1;
+        index = (int)((uint)index / 2);
+        if (index == _keyValues.Length) return;
         ctx.KeyIndex = index;
         var m = _keyValues[index];
+        if (!_keyBytes.AsSpan(m.KeyOffset, Math.Min(m.KeyLength, (int)ctx.PrefixLen))
+                .SequenceEqual(ctx.Key[..(int)ctx.PrefixLen]))
+        {
+            return;
+        }
         if (_keyBytes.AsSpan(m.KeyOffset, m.KeyLength).SequenceEqual(ctx.Key))
         {
             return;

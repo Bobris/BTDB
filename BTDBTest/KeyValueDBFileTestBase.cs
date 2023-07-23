@@ -622,7 +622,48 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         }
     }
 
-    protected KeyValueDBFileTestBase(ITestOutputHelper testOutputHelper): base(testOutputHelper)
+    [Theory]
+    [InlineData(100)]
+    [InlineData(100000)]
+    public void CanChangeKeySuffixAndDataAreCorrectlyReplayedFromTrl(int keyLength)
+    {
+        using var fc = new InMemoryFileCollection();
+        {
+            using var db = NewKeyValueDB(fc);
+            using var tr = db.StartTransaction();
+            var key = new byte[keyLength];
+            for (var i = 0; i < 250; i++)
+            {
+                key[10] = (byte)i;
+                tr.CreateOrUpdateKeyValue(key, new byte[i]);
+            }
+            key[keyLength - 1] = 1;
+            for (var i = 0; i < 250; i++)
+            {
+                key[10] = (byte)i;
+                Assert.True(tr.UpdateKeySuffix(key, (uint)keyLength / 2));
+                Assert.True(key.AsSpan().SequenceEqual(tr.GetKey()));
+                Assert.Equal(i, tr.GetValue().Length);
+                Assert.Equal(i, tr.GetKeyIndex());
+                Assert.Equal(250, tr.GetKeyValueCount());
+            }
+            tr.Commit();
+        }
+        {
+            using var db = NewKeyValueDB(fc);
+            using var tr = db.StartTransaction();
+            var key = new byte[keyLength];
+            key[keyLength - 1] = 1;
+            for (var i = 0; i < 250; i++)
+            {
+                key[10] = (byte)i;
+                Assert.True(tr.FindExactKey(key));
+                Assert.Equal(i, tr.GetValue().Length);
+            }
+        }
+    }
+
+    protected KeyValueDBFileTestBase(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {
     }
 }

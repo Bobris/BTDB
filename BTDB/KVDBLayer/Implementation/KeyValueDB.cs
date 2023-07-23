@@ -607,6 +607,29 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             }
                         }
                         break;
+                    case KVCommandType.UpdateKeySuffix:
+                    {
+                        if (_nextRoot == null) return false;
+                        var keyPrefix = reader.ReadVUInt32();
+                        var keyLen = reader.ReadVUInt32();
+                        var key = new byte[keyLen];
+                        reader.ReadBlock(key);
+                        var ctx = new UpdateKeySuffixCtx
+                        {
+                            Key = key.AsSpan(),
+                            PrefixLen = keyPrefix
+                        };
+                        _nextRoot.UpdateKeySuffix(ref ctx);
+                        if (!ctx.Updated)
+                        {
+                            if (!_lenientOpen)
+                            {
+                                _nextRoot = null;
+                                return false;
+                            }
+                        }
+                        break;
+                    }
                     case KVCommandType.EraseOne:
                         {
                             if (_nextRoot == null) return false;

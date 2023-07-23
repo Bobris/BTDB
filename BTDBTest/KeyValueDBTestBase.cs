@@ -805,6 +805,64 @@ public abstract class KeyValueDBTestBase
         }
     }
 
+    [Fact]
+    public void CanChangeKeySuffix()
+    {
+        using var db = NewKeyValueDB();
+        using (var tr = db.StartTransaction())
+        {
+            tr.CreateOrUpdateKeyValue(Key1, new byte[1]);
+            Assert.True(tr.UpdateKeySuffix(Key3, 3));
+            Assert.Equal(Key3, tr.GetKey().ToArray());
+            Assert.Equal(1, tr.GetValue().Length);
+            Assert.Equal(1, tr.GetKeyValueCount());
+            Assert.Equal(0, tr.GetKeyIndex());
+            Assert.Equal(FindResult.Exact, tr.Find(Key3, (uint)Key3.Length));
+            tr.Commit();
+        }
+
+        using (var tr = db.StartTransaction())
+        {
+            Assert.Equal(FindResult.Exact, tr.Find(Key3, (uint)Key3.Length));
+            Assert.Equal(Key3, tr.GetKey().ToArray());
+            Assert.Equal(1, tr.GetValue().Length);
+            Assert.Equal(1, tr.GetKeyValueCount());
+            Assert.Equal(0, tr.GetKeyIndex());
+            tr.Commit();
+        }
+    }
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(100000)]
+    public void CanChangeKeySuffixInMany(int keyLength)
+    {
+        using var db = NewKeyValueDB();
+        using var tr = db.StartTransaction();
+        var key = new byte[keyLength];
+        key[1] = 1;
+        for (var i = 0; i < 250; i++)
+        {
+            key[10] = (byte)i;
+            tr.CreateOrUpdateKeyValue(key, new byte[1]);
+        }
+        key[keyLength - 1] = 1;
+        for (var i = 0; i < 250; i++)
+        {
+            key[10] = (byte)i;
+            Assert.True(tr.UpdateKeySuffix(key, (uint)keyLength / 2));
+            Assert.True(key.AsSpan().SequenceEqual(tr.GetKey()));
+            Assert.Equal(1, tr.GetValue().Length);
+            Assert.Equal(i, tr.GetKeyIndex());
+            Assert.Equal(250, tr.GetKeyValueCount());
+        }
+
+        key[10] = 250;
+        Assert.False(tr.UpdateKeySuffix(key, (uint)keyLength / 2));
+        key[1] = 0;
+        Assert.False(tr.UpdateKeySuffix(key, (uint)keyLength / 2));
+    }
+
     protected readonly byte[] Key1 = { 1, 2, 3 };
 
     // ReSharper disable once MemberCanBePrivate.Global

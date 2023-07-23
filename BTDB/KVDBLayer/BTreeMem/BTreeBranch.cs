@@ -202,9 +202,13 @@ class BTreeBranch : IBTreeNode
     public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
     {
         var index = Find(ctx.Key[..(int)ctx.PrefixLen]);
-        ctx.Stack.Add(new NodeIdxPair { Node = this, Idx = index });
+        if (index < _keys.Length && _keys[index].AsSpan(0, Math.Min((int)ctx.PrefixLen, _keys[index].Length))
+                .SequenceEqual(ctx.Key[..(int)ctx.PrefixLen]))
+            index++;
+        ctx.Stack.Add(new() { Node = this, Idx = index });
         ctx.Depth++;
         _children[index].UpdateKeySuffix(ref ctx);
+        if (index > 0) ctx.KeyIndex += _pairCounts[index - 1];
         ctx.Depth--;
         var newBranch = this;
 

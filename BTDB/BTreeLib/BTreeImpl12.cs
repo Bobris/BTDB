@@ -930,9 +930,9 @@ public class BTreeImpl12
         while (!header.IsNodeLeaf)
         {
             ref var stackItem = ref stack[stack.Count - 1];
-            stack.AddRef().Set(NodeUtils12.GetBranchValuePtr(stackItem._node, stackItem._posInNode), 0);
-            header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
-            stackItem._posInNode = (byte)(header._childCount - 1);
+            var childNode = NodeUtils12.GetBranchValuePtr(stackItem._node, stackItem._posInNode);
+            header = ref NodeUtils12.Ptr2NodeHeader(childNode);
+            stack.AddRef().Set(childNode, (byte)(header._childCount - 1));
         }
 
         return true;

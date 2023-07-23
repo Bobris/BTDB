@@ -148,9 +148,8 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
             {
                 BTDBException.ThrowNonUniqueKey(key[..(int)prefixLen]);
             }
-
-            _cursor.MovePrevious();
         }
+        _cursor.MovePrevious();
 
         _keyIndex = -1;
         if (_cursor.KeyHasPrefix(key) && _cursor.GetKeyLength() == key.Length)
