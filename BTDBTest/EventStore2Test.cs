@@ -1040,7 +1040,7 @@ public class EventStore2Test
         deserializer.ProcessMetadataLog(meta);
         Assert.True(deserializer.Deserialize(out obj2, data));
 
-        Assert.Equal(obj, obj2);
+        Assert.Equivalent(obj, obj2);
     }
 
     [Fact]
@@ -1063,7 +1063,7 @@ public class EventStore2Test
         deserializer.ProcessMetadataLog(meta);
         Assert.True(deserializer.Deserialize(out obj2, data));
 
-        Assert.Equal(obj, obj2);
+        Assert.Equivalent(obj, obj2);
     }
 
     [Fact(Skip = "Generic serialization of structs is hard to implement, that's why it is not working for now.")]
