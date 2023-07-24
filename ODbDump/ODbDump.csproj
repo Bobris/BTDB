@@ -18,8 +18,4 @@
   <ItemGroup>
     <PackageReference Include="Crc32.NET" Version="1.2.0" />
   </ItemGroup>
-  <ItemGroup>
-    <None Remove="tlrdump.txt" />
-    <None Remove="tlrdump.bad" />
-  </ItemGroup>
 </Project>
