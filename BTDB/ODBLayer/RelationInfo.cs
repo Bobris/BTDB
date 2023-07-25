@@ -247,7 +247,7 @@ public class RelationInfo
                 if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
                 if (pi.GetIndexParameters().Length != 0) continue;
                 var tfi = TableFieldInfo.Build(_owner.Name, pi, _owner._relationInfoResolver.FieldHandlerFactory,
-                    FieldHandlerOptions.None);
+                    FieldHandlerOptions.None, false);
                 instanceTableFieldInfos.Add(tfi);
                 persistentNameToPropertyInfo.GetOrAddValueRef(tfi.Name) = pi;
             }

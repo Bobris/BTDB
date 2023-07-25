@@ -121,7 +121,7 @@ public class RelationBuilder
             {
                 actualPKAttribute = (PrimaryKeyAttribute)pks[0];
                 var fieldInfo = TableFieldInfo.Build(_name, pi, RelationInfoResolver.FieldHandlerFactory,
-                    FieldHandlerOptions.Orderable);
+                    FieldHandlerOptions.Orderable, actualPKAttribute.InKeyValue);
                 if (fieldInfo.Handler!.NeedsCtx())
                     RelationInfoResolver.ActualOptions.ThrowBTDBException(
                         $"Unsupported key field {fieldInfo.Name} type.");
@@ -133,13 +133,18 @@ public class RelationBuilder
             List<SecondaryKeyAttribute> currentList = null;
             for (var i = 0; i < sks.Length; i++)
             {
+                if (actualPKAttribute?.InKeyValue ?? false)
+                {
+                    RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                        $"Secondary key {((SecondaryKeyAttribute)sks[i]).Name} cannot be defined on property {pi.Name} because it is part of primary key in key value.");
+                }
                 if (i == 0)
                 {
-                    currentList = new List<SecondaryKeyAttribute>(sks.Length);
-                    secondaryKeys.Add(new Tuple<int, IList<SecondaryKeyAttribute>>(id, currentList));
+                    currentList = new(sks.Length);
+                    secondaryKeys.Add(new(id, currentList));
                     if (actualPKAttribute == null)
                         secondaryKeyFields.Add(TableFieldInfo.Build(_name, pi,
-                            RelationInfoResolver.FieldHandlerFactory, FieldHandlerOptions.Orderable));
+                            RelationInfoResolver.FieldHandlerFactory, FieldHandlerOptions.Orderable, false));
                 }
 
                 var key = (SecondaryKeyAttribute)sks[i];
@@ -151,7 +156,7 @@ public class RelationBuilder
 
             if (actualPKAttribute == null)
                 fields.Add(TableFieldInfo.Build(_name, pi, RelationInfoResolver.FieldHandlerFactory,
-                    FieldHandlerOptions.None));
+                    FieldHandlerOptions.None, false));
         }
 
         return new RelationVersionInfo(primaryKeys, secondaryKeys, secondaryKeyFields.ToArray(), fields.ToArray());

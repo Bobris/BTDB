@@ -327,7 +327,7 @@ public class TableInfo
             if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
             if (pi.GetIndexParameters().Length != 0) continue;
             fields.Add(TableFieldInfo.Build(Name, pi, _tableInfoResolver.FieldHandlerFactory,
-                FieldHandlerOptions.None));
+                FieldHandlerOptions.None, pi.GetCustomAttribute<PrimaryKeyAttribute>()?.InKeyValue ?? false));
         }
 
         var tvi = new TableVersionInfo(fields.ToArray());
