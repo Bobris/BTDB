@@ -140,21 +140,9 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
 
     public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
     {
-        var index = Find(ctx.Key[..(int)ctx.PrefixLen]);
-        index = (int)((uint)index / 2);
-        if (index == _keyValues.Length) return;
-        ctx.KeyIndex = index;
+        var index = ctx.Stack[ctx.Depth].Idx;
         var m = _keyValues[index];
-        if (!m.Key.AsSpan(0, Math.Min(m.Key.Length, (int)ctx.PrefixLen))
-                .SequenceEqual(ctx.Key[..(int)ctx.PrefixLen]))
-        {
-            return;
-        }
-        if (m.Key.AsSpan().SequenceEqual(ctx.Key))
-        {
-            return;
-        }
-        ctx.Updated = true;
+        ctx.Result = UpdateKeySuffixResult.Updated;
         m.Key = ctx.Key.ToArray();
         var leaf = this;
         if (ctx.TransactionId != TransactionId)
@@ -165,7 +153,6 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
             ctx.Update = true;
         }
         leaf._keyValues[index] = m;
-        ctx.Stack.Add(new NodeIdxPair { Node = leaf, Idx = index });
     }
 
     public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)

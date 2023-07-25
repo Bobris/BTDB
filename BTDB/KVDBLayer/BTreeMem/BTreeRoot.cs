@@ -23,24 +23,28 @@ class BTreeRoot : IBTreeRootNode
         else ctx.Stack.Clear();
         if (_rootNode == null)
         {
-            _rootNode = ctx.Key.Length > BTreeLeafComp.MaxTotalLen ? BTreeLeaf.CreateFirst(ref ctx) : BTreeLeafComp.CreateFirst(ref ctx);
+            _rootNode = ctx.Key.Length > BTreeLeafComp.MaxTotalLen
+                ? BTreeLeaf.CreateFirst(ref ctx)
+                : BTreeLeafComp.CreateFirst(ref ctx);
             _keyValueCount = 1;
             ctx.Stack.Add(new() { Node = _rootNode, Idx = 0 });
             ctx.KeyIndex = 0;
             ctx.Created = true;
             return;
         }
+
         ctx.Depth = 0;
         _rootNode.CreateOrUpdate(ref ctx);
         if (ctx.Split)
         {
-            _rootNode = new BTreeBranch(ctx.TransactionId, ctx.Node1, ctx.Node2);
+            _rootNode = new BTreeBranch(ctx.TransactionId, ctx.Node1!, ctx.Node2!);
             ctx.Stack.Insert(0, new() { Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0 });
         }
         else if (ctx.Update)
         {
             _rootNode = ctx.Node1;
         }
+
         if (ctx.Created)
         {
             _keyValueCount++;
@@ -50,16 +54,31 @@ class BTreeRoot : IBTreeRootNode
     public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
     {
         ctx.TransactionId = _transactionId;
-        if (ctx.Stack == null) ctx.Stack = new();
-        else ctx.Stack.Clear();
-        if (_rootNode == null)
+        ctx.Stack ??= new();
+        if (FindKey(ctx.Stack, out ctx.KeyIndex, ctx.Key[..(int)ctx.PrefixLen], ctx.PrefixLen) == FindResult.NotFound)
         {
-            ctx.KeyIndex = -1;
-            ctx.Updated = false;
+            ctx.Result = UpdateKeySuffixResult.NotFound;
             return;
         }
+
+        if (FindNextKey(ctx.Stack))
+        {
+            if (KeyStartsWithPrefix(ctx.Key[..(int)ctx.PrefixLen], GetKeyFromStack(ctx.Stack)))
+            {
+                ctx.Result = UpdateKeySuffixResult.NotUniquePrefix;
+                return;
+            }
+            FindPreviousKey(ctx.Stack);
+        }
+
+        if (ctx.Key.SequenceEqual(GetKeyFromStack(ctx.Stack)))
+        {
+            ctx.Result = UpdateKeySuffixResult.NothingToDo;
+            return;
+        }
+
         ctx.Depth = 0;
-        _rootNode.UpdateKeySuffix(ref ctx);
+        _rootNode!.UpdateKeySuffix(ref ctx);
         if (ctx.Update)
         {
             _rootNode = ctx.Node;
@@ -79,6 +98,7 @@ class BTreeRoot : IBTreeRootNode
             keyIndex = -1;
             return FindResult.NotFound;
         }
+
         var result = _rootNode.FindKey(stack, out keyIndex, key);
         if (result == FindResult.Previous)
         {
@@ -100,11 +120,13 @@ class BTreeRoot : IBTreeRootNode
                     }
                 }
             }
+
             if (!KeyStartsWithPrefix(key[..(int)prefixLen], GetKeyFromStack(stack)))
             {
                 return FindResult.NotFound;
             }
         }
+
         return result;
     }
 
@@ -184,13 +206,15 @@ class BTreeRoot : IBTreeRootNode
 
     public IBTreeRootNode NewTransactionRoot()
     {
-        ulong[]? newulongs = null;
+        ulong[]? newUlongs = null;
         if (_ulongs != null)
         {
-            newulongs = new ulong[_ulongs.Length];
-            Array.Copy(_ulongs, newulongs, newulongs.Length);
+            newUlongs = new ulong[_ulongs.Length];
+            Array.Copy(_ulongs, newUlongs, newUlongs.Length);
         }
-        return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode, CommitUlong = CommitUlong, _ulongs = newulongs };
+
+        return new BTreeRoot(_transactionId + 1)
+            { _keyValueCount = _keyValueCount, _rootNode = _rootNode, CommitUlong = CommitUlong, _ulongs = newUlongs };
     }
 
     public void EraseRange(long firstKeyIndex, long lastKeyIndex)
@@ -203,6 +227,7 @@ class BTreeRoot : IBTreeRootNode
             _keyValueCount = 0;
             return;
         }
+
         if (firstKeyIndex == lastKeyIndex)
         {
             _keyValueCount--;
@@ -228,8 +253,10 @@ class BTreeRoot : IBTreeRootNode
                 pair.Node.FillStackByLeftMost(stack, pair.Idx + 1);
                 return true;
             }
+
             idx--;
         }
+
         return false;
     }
 
@@ -246,8 +273,10 @@ class BTreeRoot : IBTreeRootNode
                 pair.Node.FillStackByRightMost(stack, pair.Idx - 1);
                 return true;
             }
+
             idx--;
         }
+
         return false;
     }
 
@@ -259,6 +288,7 @@ class BTreeRoot : IBTreeRootNode
             _rootNode = null;
             return;
         }
+
         _rootNode = BuildTreeNode(keyCount, memberGenerator);
     }
 
@@ -268,24 +298,26 @@ class BTreeRoot : IBTreeRootNode
         var order = 0L;
         var done = 0L;
         return BuildBranchNode(leafCount, () =>
+        {
+            order++;
+            var reach = keyCount * order / leafCount;
+            var todo = (int)(reach - done);
+            done = reach;
+            var keyValues = new BTreeLeafMember[todo];
+            long totalKeyLen = 0;
+            for (var i = 0; i < keyValues.Length; i++)
             {
-                order++;
-                var reach = keyCount * order / leafCount;
-                var todo = (int)(reach - done);
-                done = reach;
-                var keyValues = new BTreeLeafMember[todo];
-                long totalKeyLen = 0;
-                for (var i = 0; i < keyValues.Length; i++)
-                {
-                    keyValues[i] = memberGenerator();
-                    totalKeyLen += keyValues[i].Key.Length;
-                }
-                if (totalKeyLen > BTreeLeafComp.MaxTotalLen)
-                {
-                    return new BTreeLeaf(_transactionId, keyValues);
-                }
-                return new BTreeLeafComp(_transactionId, keyValues);
-            });
+                keyValues[i] = memberGenerator();
+                totalKeyLen += keyValues[i].Key.Length;
+            }
+
+            if (totalKeyLen > BTreeLeafComp.MaxTotalLen)
+            {
+                return new BTreeLeaf(_transactionId, keyValues);
+            }
+
+            return new BTreeLeafComp(_transactionId, keyValues);
+        });
     }
 
     IBTreeNode BuildBranchNode(long count, Func<IBTreeNode> generator)

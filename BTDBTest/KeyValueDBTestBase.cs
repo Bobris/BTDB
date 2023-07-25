@@ -812,7 +812,7 @@ public abstract class KeyValueDBTestBase
         using (var tr = db.StartTransaction())
         {
             tr.CreateOrUpdateKeyValue(Key1, new byte[1]);
-            Assert.True(tr.UpdateKeySuffix(Key3, 3));
+            Assert.Equal(UpdateKeySuffixResult.Updated, tr.UpdateKeySuffix(Key3, 3));
             Assert.Equal(Key3, tr.GetKey().ToArray());
             Assert.Equal(1, tr.GetValue().Length);
             Assert.Equal(1, tr.GetKeyValueCount());
@@ -832,6 +832,26 @@ public abstract class KeyValueDBTestBase
         }
     }
 
+    [Fact]
+    public void UpdateKeySuffixChecksForKeyPrefixUniqueness()
+    {
+        using var db = NewKeyValueDB();
+        using var tr = db.StartTransaction();
+        tr.CreateOrUpdateKeyValue(Key1, new byte[1]);
+        tr.CreateOrUpdateKeyValue(Key2, new byte[1]);
+        Assert.Equal(UpdateKeySuffixResult.NotUniquePrefix, tr.UpdateKeySuffix(Key3, 1));
+    }
+
+    [Fact]
+    public void UpdateKeySuffixChecksForKeyModification()
+    {
+        using var db = NewKeyValueDB();
+        using var tr = db.StartTransaction();
+        tr.CreateOrUpdateKeyValue(Key1, new byte[1]);
+        tr.CreateOrUpdateKeyValue(Key2, new byte[1]);
+        Assert.Equal(UpdateKeySuffixResult.NothingToDo, tr.UpdateKeySuffix(Key1, 2));
+    }
+
     [Theory]
     [InlineData(100)]
     [InlineData(100000)]
@@ -844,23 +864,24 @@ public abstract class KeyValueDBTestBase
         for (var i = 0; i < 250; i++)
         {
             key[10] = (byte)i;
-            tr.CreateOrUpdateKeyValue(key, new byte[1]);
+            tr.CreateOrUpdateKeyValue(key, new byte[i]);
         }
+
         key[keyLength - 1] = 1;
         for (var i = 0; i < 250; i++)
         {
             key[10] = (byte)i;
-            Assert.True(tr.UpdateKeySuffix(key, (uint)keyLength / 2));
+            Assert.Equal(UpdateKeySuffixResult.Updated, tr.UpdateKeySuffix(key, (uint)keyLength / 2));
             Assert.True(key.AsSpan().SequenceEqual(tr.GetKey()));
-            Assert.Equal(1, tr.GetValue().Length);
+            Assert.Equal(i, tr.GetValue().Length);
             Assert.Equal(i, tr.GetKeyIndex());
             Assert.Equal(250, tr.GetKeyValueCount());
         }
 
         key[10] = 250;
-        Assert.False(tr.UpdateKeySuffix(key, (uint)keyLength / 2));
+        Assert.Equal(UpdateKeySuffixResult.NotFound, tr.UpdateKeySuffix(key, (uint)keyLength / 2));
         key[1] = 0;
-        Assert.False(tr.UpdateKeySuffix(key, (uint)keyLength / 2));
+        Assert.Equal(UpdateKeySuffixResult.NotFound, tr.UpdateKeySuffix(key, (uint)keyLength / 2));
     }
 
     protected readonly byte[] Key1 = { 1, 2, 3 };

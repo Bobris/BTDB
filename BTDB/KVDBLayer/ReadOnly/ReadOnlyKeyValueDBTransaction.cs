@@ -179,7 +179,7 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
         throw new NotSupportedException();
     }
 
-    public bool UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
+    public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
     {
         throw new NotSupportedException();
     }

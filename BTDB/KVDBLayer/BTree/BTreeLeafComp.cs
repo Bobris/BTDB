@@ -261,21 +261,9 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
 
     public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
     {
-        var index = Find(ctx.Key[..(int)ctx.PrefixLen]);
-        index = (int)((uint)index / 2);
-        if (index == _keyValues.Length) return;
-        ctx.KeyIndex = index;
+        var index = ctx.Stack[ctx.Depth].Idx;
         var m = _keyValues[index];
-        if (!_keyBytes.AsSpan(m.KeyOffset, Math.Min(m.KeyLength, (int)ctx.PrefixLen))
-                .SequenceEqual(ctx.Key[..(int)ctx.PrefixLen]))
-        {
-            return;
-        }
-        if (_keyBytes.AsSpan(m.KeyOffset, m.KeyLength).SequenceEqual(ctx.Key))
-        {
-            return;
-        }
-        ctx.Updated = true;
+        ctx.Result = UpdateKeySuffixResult.Updated;
         if (ctx.Key.Length + (long)_keyBytes!.Length - m.KeyLength > MaxTotalLen)
         {
             var currentKeyValues = new BTreeLeafMember[_keyValues.Length];
@@ -304,7 +292,6 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
 
             ctx.Node = new BTreeLeaf(ctx.TransactionId, currentKeyValues);
             ctx.Update = true;
-            ctx.Stack!.Add(new NodeIdxPair { Node = ctx.Node, Idx = index });
             return;
         }
         var leaf = this;
@@ -324,7 +311,6 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         Array.Copy(_keyBytes, m.KeyOffset + m.KeyLength, newKeyBytes, m.KeyOffset + ctx.Key.Length, _keyBytes.Length - m.KeyOffset - m.KeyLength);
         leaf._keyValues[index].KeyLength = (ushort)ctx.Key.Length;
         leaf._keyBytes = newKeyBytes;
-        ctx.Stack!.Add(new NodeIdxPair { Node = leaf, Idx = index });
         RecalculateOffsets(leaf._keyValues);
     }
 

@@ -37,7 +37,7 @@ class BTreeBranch : IBTreeNode
 
     public BTreeBranch(long transactionId, int count, ref SpanReader reader, BuildBranchNodeGenerator generator)
     {
-        Debug.Assert(count > 0 && count <= MaxChildren);
+        Debug.Assert(count is > 0 and <= MaxChildren);
         _transactionId = transactionId;
         _keys = new byte[count - 1][];
         _pairCounts = new long[count];
@@ -158,7 +158,7 @@ class BTreeBranch : IBTreeNode
 
             if (index < keyCountLeft)
             {
-                ctx.Stack![ctx.Depth] = new NodeIdxPair { Node = ctx.Node1, Idx = index };
+                ctx.Stack![ctx.Depth] = new NodeIdxPair { Node = ctx.Node1!, Idx = index };
                 ctx.SplitInRight = false;
             }
             else
@@ -205,14 +205,9 @@ class BTreeBranch : IBTreeNode
 
     public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
     {
-        var index = Find(ctx.Key[..(int)ctx.PrefixLen]);
-        if (index < _keys.Length && _keys[index].AsSpan(0, Math.Min((int)ctx.PrefixLen, _keys[index].Length))
-                .SequenceEqual(ctx.Key[..(int)ctx.PrefixLen]))
-            index++;
-        ctx.Stack!.Add(new() { Node = this, Idx = index });
+        var index = ctx.Stack![ctx.Depth].Idx;
         ctx.Depth++;
         _children[index].UpdateKeySuffix(ref ctx);
-        if (index > 0) ctx.KeyIndex += _pairCounts[index - 1];
         ctx.Depth--;
         var newBranch = this;
 

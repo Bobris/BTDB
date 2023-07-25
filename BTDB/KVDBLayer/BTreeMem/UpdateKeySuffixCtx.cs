@@ -8,7 +8,7 @@ ref struct UpdateKeySuffixCtx
     internal ReadOnlySpan<byte> Key;
     internal uint PrefixLen;
 
-    internal bool Updated;
+    internal UpdateKeySuffixResult Result;
     internal List<NodeIdxPair> Stack;
     internal long KeyIndex;
     internal bool Update; // Node set

@@ -641,7 +641,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             for (var i = 0; i < 250; i++)
             {
                 key[10] = (byte)i;
-                Assert.True(tr.UpdateKeySuffix(key, (uint)keyLength / 2));
+                Assert.Equal(UpdateKeySuffixResult.Updated, tr.UpdateKeySuffix(key, (uint)keyLength / 2));
                 Assert.True(key.AsSpan().SequenceEqual(tr.GetKey()));
                 Assert.Equal(i, tr.GetValue().Length);
                 Assert.Equal(i, tr.GetKeyIndex());

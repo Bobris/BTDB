@@ -101,22 +101,22 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         if (prefixLen == 0) return result;
         switch (result)
         {
-            case FindResult.Previous when !_cursor.KeyHasPrefix(key.Slice(0, (int)prefixLen)):
-            {
-                if (!_cursor.MoveNext())
+            case FindResult.Previous when !_cursor.KeyHasPrefix(key[..(int)prefixLen]):
                 {
+                    if (!_cursor.MoveNext())
+                    {
+                        return FindResult.NotFound;
+                    }
+
+                    if (_cursor.KeyHasPrefix(key[..(int)prefixLen]))
+                    {
+                        return FindResult.Next;
+                    }
+
+                    InvalidateCurrentKey();
                     return FindResult.NotFound;
                 }
-
-                if (_cursor.KeyHasPrefix(key.Slice(0, (int)prefixLen)))
-                {
-                    return FindResult.Next;
-                }
-
-                InvalidateCurrentKey();
-                return FindResult.NotFound;
-            }
-            case FindResult.Next when !_cursor.KeyHasPrefix(key.Slice(0, (int)prefixLen)):
+            case FindResult.Next when !_cursor.KeyHasPrefix(key[..(int)prefixLen]):
                 // FindResult.Previous is preferred that's why it has to be NotFound when next does not match prefix
                 InvalidateCurrentKey();
                 return FindResult.NotFound;
@@ -137,16 +137,16 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         return result;
     }
 
-    public bool UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
+    public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
     {
         _cursorMovedCounter++;
         MakeWritable();
-        if (!_cursor.FindFirst(key[..(int)prefixLen])) return false;
+        if (!_cursor.FindFirst(key[..(int)prefixLen])) return UpdateKeySuffixResult.NotFound;
         if (_cursor.MoveNext())
         {
             if (_cursor.KeyHasPrefix(key[..(int)prefixLen]))
             {
-                BTDBException.ThrowNonUniqueKey(key[..(int)prefixLen]);
+                return UpdateKeySuffixResult.NotUniquePrefix;
             }
         }
         _cursor.MovePrevious();
@@ -154,11 +154,11 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         _keyIndex = -1;
         if (_cursor.KeyHasPrefix(key) && _cursor.GetKeyLength() == key.Length)
         {
-            return false;
+            return UpdateKeySuffixResult.NothingToDo;
         }
         _cursor.UpdateKeySuffix(key);
         _keyValueDB.WriteUpdateKeySuffixCommand(key, prefixLen);
-        return true;
+        return UpdateKeySuffixResult.Updated;
     }
 
     void MakeWritable()
@@ -534,8 +534,8 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         var trueValue = _cursor.GetValue();
         return new KeyValuePair<uint, uint>(
             (uint)keyLen,
-            _keyValueDB.CalcValueSize(MemoryMarshal.Read<uint>(trueValue), MemoryMarshal.Read<uint>(trueValue.Slice(4)),
-                MemoryMarshal.Read<int>(trueValue.Slice(8))));
+            _keyValueDB.CalcValueSize(MemoryMarshal.Read<uint>(trueValue), MemoryMarshal.Read<uint>(trueValue[4..]),
+                MemoryMarshal.Read<int>(trueValue[8..])));
     }
 
     public ulong GetUlong(uint idx)

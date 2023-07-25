@@ -21,14 +21,4 @@ public class BTDBException : Exception
         : base(info, context)
     {
     }
-
-    public static void ThrowNonUniqueKey(ReadOnlySpan<byte> keyPrefix)
-    {
-        var sb = new StringBuilder();
-        foreach (var b in keyPrefix)
-        {
-            sb.Append($"{b:X2}");
-        }
-        throw new BTDBException("KeyPrefix in UpdateKeySuffix is not unique: "+sb);
-    }
 }

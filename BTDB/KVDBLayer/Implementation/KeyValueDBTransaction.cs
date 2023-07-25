@@ -119,7 +119,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
         return ctx.Created;
     }
 
-    public bool UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
+    public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
     {
         _cursorMovedCounter++;
         MakeWritable();
@@ -131,8 +131,8 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
         };
         _btreeRoot!.UpdateKeySuffix(ref ctx);
         _keyIndex = ctx.KeyIndex;
-        if (ctx.Updated) _keyValueDB.WriteUpdateKeySuffixCommand(key, prefixLen);
-        return ctx.Updated;
+        if (ctx.Result == UpdateKeySuffixResult.Updated) _keyValueDB.WriteUpdateKeySuffixCommand(key, prefixLen);
+        return ctx.Result;
     }
 
     void MakeWritable()
@@ -271,7 +271,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
 
     public ReadOnlyMemory<byte> GetValueAsMemory()
     {
-        if (!IsValidKey()) return new ();
+        if (!IsValidKey()) return new();
         var nodeIdxPair = _stack[^1];
         var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
         try

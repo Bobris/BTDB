@@ -21,7 +21,7 @@ class BTreeRoot : IBTreeRootNode
     public void CreateOrUpdate(ref CreateOrUpdateCtx ctx)
     {
         ctx.TransactionId = _transactionId;
-        if (ctx.Stack == null) ctx.Stack = new List<NodeIdxPair>();
+        if (ctx.Stack == null) ctx.Stack = new();
         else ctx.Stack.Clear();
         if (_rootNode == null)
         {
@@ -54,12 +54,24 @@ class BTreeRoot : IBTreeRootNode
     public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
     {
         ctx.TransactionId = _transactionId;
-        if (ctx.Stack == null) ctx.Stack = new();
-        else ctx.Stack.Clear();
-        if (_rootNode == null)
+        ctx.Stack ??= new();
+        if (FindKey(ctx.Stack, out ctx.KeyIndex, ctx.Key[..(int)ctx.PrefixLen], ctx.PrefixLen) == FindResult.NotFound)
         {
-            ctx.KeyIndex = -1;
-            ctx.Updated = false;
+            ctx.Result = UpdateKeySuffixResult.NotFound;
+            return;
+        }
+        if (FindNextKey(ctx.Stack))
+        {
+            if (KeyStartsWithPrefix(ctx.Key[..(int)ctx.PrefixLen], GetKeyFromStack(ctx.Stack)))
+            {
+                ctx.Result = UpdateKeySuffixResult.NotUniquePrefix;
+                return;
+            }
+            FindPreviousKey(ctx.Stack);
+        }
+        if (ctx.Key.SequenceEqual(GetKeyFromStack(ctx.Stack)))
+        {
+            ctx.Result = UpdateKeySuffixResult.NothingToDo;
             return;
         }
         ctx.Depth = 0;
@@ -94,7 +106,7 @@ class BTreeRoot : IBTreeRootNode
             }
             else
             {
-                if (!KeyStartsWithPrefix(key.Slice(0, (int)prefixLen), GetKeyFromStack(stack)))
+                if (!KeyStartsWithPrefix(key[..(int)prefixLen], GetKeyFromStack(stack)))
                 {
                     result = FindResult.Next;
                     keyIndex++;
@@ -104,7 +116,7 @@ class BTreeRoot : IBTreeRootNode
                     }
                 }
             }
-            if (!KeyStartsWithPrefix(key.Slice(0, (int)prefixLen), GetKeyFromStack(stack)))
+            if (!KeyStartsWithPrefix(key[..(int)prefixLen], GetKeyFromStack(stack)))
             {
                 return FindResult.NotFound;
             }
@@ -116,7 +128,7 @@ class BTreeRoot : IBTreeRootNode
     {
         if (prefix.Length == 0) return true;
         if (key.Length < prefix.Length) return false;
-        return prefix.SequenceEqual(key.Slice(0, prefix.Length));
+        return prefix.SequenceEqual(key[..prefix.Length]);
     }
 
     static ReadOnlySpan<byte> GetKeyFromStack(List<NodeIdxPair> stack)
@@ -283,7 +295,7 @@ class BTreeRoot : IBTreeRootNode
 
     public bool FindPreviousKey(List<NodeIdxPair> stack)
     {
-        int idx = stack.Count - 1;
+        var idx = stack.Count - 1;
         while (idx >= 0)
         {
             var pair = stack[idx];
