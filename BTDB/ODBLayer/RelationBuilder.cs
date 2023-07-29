@@ -32,6 +32,9 @@ public class RelationBuilder
     static readonly MethodInfo SpanWriterGetPersistentSpanAndResetMethodInfo =
         typeof(SpanWriter).GetMethod(nameof(SpanWriter.GetPersistentSpanAndReset))!;
 
+    static readonly MethodInfo SpanWriterNoControllerGetCurrentPosition =
+        typeof(SpanWriter).GetMethod(nameof(SpanWriter.NoControllerGetCurrentPosition))!;
+
     static Dictionary<(Type, string?), RelationBuilder> _relationBuilderCache = new();
     static readonly object RelationBuilderCacheLock = new();
 
@@ -1081,7 +1084,6 @@ public class RelationBuilder
         var returningBoolVariant = EnsureVoidOrBoolResult(method, method.Name);
         var parameters = method.GetParameters();
         var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
-        var valueSpan = StackAllocReadOnlySpan(reqMethod.Generator);
         var pkFields = ClientRelationVersionInfo.PrimaryKeyFields;
         if (parameters.Length < pkFields.Length)
         {
@@ -1089,160 +1091,189 @@ public class RelationBuilder
                 $"Not enough parameters in {method.Name} (expected at least {pkFields.Length}).");
         }
 
-        SerializePKListPrefixBytes(reqMethod.Generator, method.Name, parameters.AsSpan(0, pkFields.Length), pushWriter,
-            ctxLocFactory);
-        var updateByIdStartMethod =
-            _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.UpdateByIdStart));
-        var keyBytesLocal = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
-        reqMethod.Generator
-            .Do(pushWriter)
-            .Call(SpanWriterGetPersistentSpanAndResetMethodInfo)
-            .Stloc(keyBytesLocal)
-            .Ldarg(0)
-            .Ldloc(keyBytesLocal)
-            .Do(pushWriter)
-            .Ldloca(valueSpan)
-            .LdcI4(returningBoolVariant ? 0 : 1)
-            .Call(updateByIdStartMethod!);
-        if (returningBoolVariant)
+        if (parameters.Length == pkFields.Length)
         {
-            var somethingToUpdateLabel = reqMethod.Generator.DefineLabel();
+            var lenOfPkWoInKeyValuesLocal = reqMethod.Generator.DeclareLocal(typeof(int));
+            SerializePKListPrefixBytes(reqMethod.Generator, method.Name, parameters.AsSpan(0, pkFields.Length),
+                pushWriter,
+                ctxLocFactory, lenOfPkWoInKeyValuesLocal);
+            var updateByIdInKeyValuesMethod =
+                _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.UpdateByIdInKeyValues));
+            var keyBytesLocal = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             reqMethod.Generator
-                .BrtrueS(somethingToUpdateLabel)
-                .LdcI4(0)
-                .Ret()
-                .Mark(somethingToUpdateLabel);
+                .Do(pushWriter)
+                .Call(SpanWriterGetPersistentSpanAndResetMethodInfo)
+                .Stloc(keyBytesLocal)
+                .Ldarg(0)
+                .Ldloc(keyBytesLocal)
+                .Ldloc(lenOfPkWoInKeyValuesLocal)
+                .LdcI4(returningBoolVariant ? 0 : 1)
+                .Call(updateByIdInKeyValuesMethod!);
+            if (!returningBoolVariant)
+            {
+                reqMethod.Generator.Pop();
+            }
         }
         else
         {
-            reqMethod.Generator.Pop();
+            var valueSpan = StackAllocReadOnlySpan(reqMethod.Generator);
+            SerializePKListPrefixBytes(reqMethod.Generator, method.Name, parameters.AsSpan(0, pkFields.Length),
+                pushWriter,
+                ctxLocFactory);
+            var updateByIdStartMethod =
+                _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.UpdateByIdStart));
+            var keyBytesLocal = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
+            reqMethod.Generator
+                .Do(pushWriter)
+                .Call(SpanWriterGetPersistentSpanAndResetMethodInfo)
+                .Stloc(keyBytesLocal)
+                .Ldarg(0)
+                .Ldloc(keyBytesLocal)
+                .Do(pushWriter)
+                .Ldloca(valueSpan)
+                .LdcI4(returningBoolVariant ? 0 : 1)
+                .Call(updateByIdStartMethod!);
+            if (returningBoolVariant)
+            {
+                var somethingToUpdateLabel = reqMethod.Generator.DefineLabel();
+                reqMethod.Generator
+                    .BrtrueS(somethingToUpdateLabel)
+                    .LdcI4(0)
+                    .Ret()
+                    .Mark(somethingToUpdateLabel);
+            }
+            else
+            {
+                reqMethod.Generator.Pop();
+            }
+
+            var updateParams = parameters.AsSpan(pkFields.Length);
+            // valueSpan contains oldValue
+            // writer contains latest version id
+            var readerLocal = reqMethod.Generator.DeclareLocal(typeof(SpanReader));
+            var memoPosLocal = reqMethod.Generator.DeclareLocal(typeof(uint));
+            IILLocal? ctxReaderLoc = null;
+            reqMethod.Generator
+                .Ldloc(valueSpan)
+                .Newobj(typeof(SpanReader).GetConstructor(new[] { typeof(ReadOnlySpan<byte>) })!)
+                .Stloc(readerLocal)
+                .Ldloca(readerLocal)
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
+            var valueFields = ClientRelationVersionInfo.Fields.Span;
+
+            var copyMode = false;
+
+            var usedParams = new HashSet<int>();
+
+            foreach (var valueField in valueFields)
+            {
+                var paramIndex = -1;
+                for (var j = 0; j < updateParams.Length; j++)
+                {
+                    if (!string.Equals(updateParams[j].Name, valueField.Name, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    paramIndex = j;
+                    break;
+                }
+
+                var newCopyMode = paramIndex == -1;
+                if (copyMode != newCopyMode)
+                {
+                    if (newCopyMode)
+                    {
+                        RelationInfo.MemorizeCurrentPosition(reqMethod.Generator, il => il.Ldloca(readerLocal),
+                            memoPosLocal);
+                    }
+                    else
+                    {
+                        RelationInfo.CopyFromPos(reqMethod.Generator, il => il.Ldloca(readerLocal), memoPosLocal,
+                            pushWriter);
+                    }
+
+                    copyMode = newCopyMode;
+                }
+
+                var handler = valueField.Handler!;
+                if (!copyMode)
+                {
+                    if (!usedParams.Add(paramIndex))
+                    {
+                        RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                            $"Method {method.Name} matched parameter {updateParams[paramIndex].Name} more than once.");
+                    }
+
+                    var parameterType = updateParams[paramIndex].ParameterType;
+                    var specializedHandler = handler.SpecializeSaveForType(parameterType);
+                    var converter = RelationInfoResolver.TypeConvertorGenerator.GenerateConversion(parameterType,
+                        specializedHandler.HandledType()!);
+                    if (converter == null)
+                    {
+                        RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                            $"Method {method.Name} matched parameter {updateParams[paramIndex].Name} has wrong type {parameterType.ToSimpleName()} not convertible to {specializedHandler.HandledType().ToSimpleName()}");
+                    }
+
+                    var pushCtx = default(Action<IILGen>);
+                    if (specializedHandler.NeedsCtx())
+                    {
+                        pushCtx = il => il.Ldloc(ctxLocFactory());
+                    }
+
+                    specializedHandler.Save(reqMethod.Generator, pushWriter, pushCtx, il =>
+                    {
+                        il.Ldarg((ushort)(1 + pkFields.Length + paramIndex));
+                        converter!(il);
+                    });
+                }
+
+                var pushReaderCtx = default(Action<IILGen>);
+                if (handler.NeedsCtx())
+                {
+                    if (ctxReaderLoc == null)
+                    {
+                        ctxReaderLoc = reqMethod.Generator.DeclareLocal(typeof(IDBReaderCtx));
+                        reqMethod.Generator
+                            .Ldarg(0)
+                            .Callvirt(() => ((IRelationDbManipulator)null)!.Transaction)
+                            .Newobj(() => new DBReaderCtx(null))
+                            .Stloc(ctxReaderLoc);
+                    }
+
+                    var loc = ctxReaderLoc;
+                    pushReaderCtx = il => il.Ldloc(loc);
+                }
+
+                handler.Skip(reqMethod.Generator, il => il.Ldloca(readerLocal), pushReaderCtx);
+            }
+
+            if (copyMode)
+            {
+                RelationInfo.CopyFromPos(reqMethod.Generator, il => il.Ldloca(readerLocal), memoPosLocal, pushWriter);
+            }
+
+            if (updateParams.Length != usedParams.Count)
+            {
+                var missing = new List<string>();
+                for (var i = 0; i < updateParams.Length; i++)
+                {
+                    if (!usedParams.Contains(i)) missing.Add(updateParams[i].Name);
+                }
+
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Method {method.Name} parameters {string.Join(", ", missing)} does not match any relation fields.");
+            }
+
+            var updateByIdFinishMethod =
+                _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.UpdateByIdFinish));
+            reqMethod.Generator
+                .Ldarg(0)
+                .Ldloc(keyBytesLocal)
+                .Ldloc(valueSpan)
+                .Do(pushWriter)
+                .Call(SpanWriterGetPersistentSpanAndResetMethodInfo)
+                .Call(updateByIdFinishMethod!);
+            if (returningBoolVariant)
+                reqMethod.Generator.LdcI4(1);
         }
-
-        var updateParams = parameters.AsSpan(pkFields.Length);
-        // valueSpan contains oldValue
-        // writer contains latest version id
-        var readerLocal = reqMethod.Generator.DeclareLocal(typeof(SpanReader));
-        var memoPosLocal = reqMethod.Generator.DeclareLocal(typeof(uint));
-        IILLocal? ctxReaderLoc = null;
-        reqMethod.Generator
-            .Ldloc(valueSpan)
-            .Newobj(typeof(SpanReader).GetConstructor(new[] { typeof(ReadOnlySpan<byte>) })!)
-            .Stloc(readerLocal)
-            .Ldloca(readerLocal)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
-        var valueFields = ClientRelationVersionInfo.Fields.Span;
-
-        var copyMode = false;
-
-        var usedParams = new HashSet<int>();
-
-        foreach (var valueField in valueFields)
-        {
-            var paramIndex = -1;
-            for (var j = 0; j < updateParams.Length; j++)
-            {
-                if (!string.Equals(updateParams[j].Name, valueField.Name, StringComparison.OrdinalIgnoreCase)) continue;
-                paramIndex = j;
-                break;
-            }
-
-            var newCopyMode = paramIndex == -1;
-            if (copyMode != newCopyMode)
-            {
-                if (newCopyMode)
-                {
-                    RelationInfo.MemorizeCurrentPosition(reqMethod.Generator, il => il.Ldloca(readerLocal),
-                        memoPosLocal);
-                }
-                else
-                {
-                    RelationInfo.CopyFromPos(reqMethod.Generator, il => il.Ldloca(readerLocal), memoPosLocal,
-                        pushWriter);
-                }
-
-                copyMode = newCopyMode;
-            }
-
-            var handler = valueField.Handler!;
-            if (!copyMode)
-            {
-                if (!usedParams.Add(paramIndex))
-                {
-                    RelationInfoResolver.ActualOptions.ThrowBTDBException(
-                        $"Method {method.Name} matched parameter {updateParams[paramIndex].Name} more than once.");
-                }
-
-                var parameterType = updateParams[paramIndex].ParameterType;
-                var specializedHandler = handler.SpecializeSaveForType(parameterType);
-                var converter = RelationInfoResolver.TypeConvertorGenerator.GenerateConversion(parameterType,
-                    specializedHandler.HandledType()!);
-                if (converter == null)
-                {
-                    RelationInfoResolver.ActualOptions.ThrowBTDBException(
-                        $"Method {method.Name} matched parameter {updateParams[paramIndex].Name} has wrong type {parameterType.ToSimpleName()} not convertible to {specializedHandler.HandledType().ToSimpleName()}");
-                }
-
-                var pushCtx = default(Action<IILGen>);
-                if (specializedHandler.NeedsCtx())
-                {
-                    pushCtx = il => il.Ldloc(ctxLocFactory());
-                }
-
-                specializedHandler.Save(reqMethod.Generator, pushWriter, pushCtx, il =>
-                {
-                    il.Ldarg((ushort)(1 + pkFields.Length + paramIndex));
-                    converter!(il);
-                });
-            }
-
-            var pushReaderCtx = default(Action<IILGen>);
-            if (handler.NeedsCtx())
-            {
-                if (ctxReaderLoc == null)
-                {
-                    ctxReaderLoc = reqMethod.Generator.DeclareLocal(typeof(IDBReaderCtx));
-                    reqMethod.Generator
-                        .Ldarg(0)
-                        .Callvirt(() => ((IRelationDbManipulator)null)!.Transaction)
-                        .Newobj(() => new DBReaderCtx(null))
-                        .Stloc(ctxReaderLoc);
-                }
-
-                var loc = ctxReaderLoc;
-                pushReaderCtx = il => il.Ldloc(loc);
-            }
-
-            handler.Skip(reqMethod.Generator, il => il.Ldloca(readerLocal), pushReaderCtx);
-        }
-
-        if (copyMode)
-        {
-            RelationInfo.CopyFromPos(reqMethod.Generator, il => il.Ldloca(readerLocal), memoPosLocal, pushWriter);
-        }
-
-        if (updateParams.Length != usedParams.Count)
-        {
-            var missing = new List<string>();
-            for (var i = 0; i < updateParams.Length; i++)
-            {
-                if (!usedParams.Contains(i)) missing.Add(updateParams[i].Name);
-            }
-
-            RelationInfoResolver.ActualOptions.ThrowBTDBException(
-                $"Method {method.Name} parameters {string.Join(", ", missing)} does not match any relation fields.");
-        }
-
-        var updateByIdFinishMethod =
-            _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.UpdateByIdFinish));
-        reqMethod.Generator
-            .Ldarg(0)
-            .Ldloc(keyBytesLocal)
-            .Ldloc(valueSpan)
-            .Do(pushWriter)
-            .Call(SpanWriterGetPersistentSpanAndResetMethodInfo)
-            .Call(updateByIdFinishMethod!);
-        if (returningBoolVariant)
-            reqMethod.Generator.LdcI4(1);
         reqMethod.Generator.Ret();
     }
 
@@ -1699,7 +1730,7 @@ public class RelationBuilder
 
     ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
         ReadOnlySpan<ParameterInfo> methodParameters,
-        ReadOnlySpan<TableFieldInfo> fields, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
+        ReadOnlySpan<TableFieldInfo> fields, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory, IILLocal? lenOfPkWoInKeyValuesLocal = null)
     {
         var idx = 0;
         foreach (var field in fields)
@@ -1707,6 +1738,16 @@ public class RelationBuilder
             if (idx == methodParameters.Length)
             {
                 break;
+            }
+
+            if (field.InKeyValue && lenOfPkWoInKeyValuesLocal != null)
+            {
+                ilGenerator
+                    .Do(pushWriter)
+                    .Call(SpanWriterNoControllerGetCurrentPosition)
+                    .ConvI4()
+                    .Stloc(lenOfPkWoInKeyValuesLocal);
+                lenOfPkWoInKeyValuesLocal = null;
             }
 
             var par = methodParameters[idx++];
@@ -1887,13 +1928,13 @@ public class RelationBuilder
     }
 
     void SerializePKListPrefixBytes(IILGen ilGenerator, string methodName,
-        ReadOnlySpan<ParameterInfo> methodParameters, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
+        ReadOnlySpan<ParameterInfo> methodParameters, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory, IILLocal? lenOfPkWoInKeyValuesLocal = null)
     {
         WriteRelationPKPrefix(ilGenerator, pushWriter);
 
         var keyFields = ClientRelationVersionInfo.PrimaryKeyFields;
         SaveMethodParameters(ilGenerator, methodName, methodParameters,
-            keyFields.Span, pushWriter, ctxLocFactory);
+            keyFields.Span, pushWriter, ctxLocFactory, lenOfPkWoInKeyValuesLocal);
     }
 
     static void SaveKeyFieldFromArgument(IILGen ilGenerator, TableFieldInfo field, int parameterId,

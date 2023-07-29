@@ -29,6 +29,7 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
     public interface IPersonTable : IRelation<Person>
     {
         IEnumerable<Person> ScanById(Constraint<ulong> tenantId, Constraint<string> email, Constraint<DateTime> lastLogin);
+        bool UpdateById(uint tenantId, string email, DateTime lastLogin);
     }
 
     [Fact]
@@ -44,6 +45,23 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
                         Constraint.DateTime.UpTo(new DateTime(2023, 1, 1, 0, 0, 0, DateTimeKind.Utc)))
                     .Select(p => p.Name)));
     }
+
+    [Fact]
+    public void SimpleCaseUpdateByIdWorks()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        Assert.False(t.UpdateById(1, "c@b.cd", new DateTime(2023, 7, 30, 0, 0, 0, DateTimeKind.Utc)));
+        Assert.True(t.UpdateById(1, "b@b.cd", new DateTime(2023, 7, 30, 0, 0, 0, DateTimeKind.Utc)));
+        Assert.Equal("A",
+            string.Join("",
+                t.ScanById(Constraint<ulong>.Any, Constraint<string>.Any,
+                        Constraint.DateTime.UpTo(new DateTime(2023, 1, 1, 0, 0, 0, DateTimeKind.Utc)))
+                    .Select(p => p.Name)));
+    }
+
 
     void FillPersonData()
     {

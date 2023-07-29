@@ -389,8 +389,11 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
         else
         {
-            var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
-            IfNotUniquePrefixThrow(updateSuffixResult);
+            if (lenOfPkWoInKeyValues > 0)
+            {
+                var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+                IfNotUniquePrefixThrow(updateSuffixResult);
+            }
             if (!_kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
             {
                 return false;
@@ -487,6 +490,21 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         {
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
+    }
+
+    [SkipLocalsInit]
+    public bool UpdateByIdInKeyValues(ReadOnlySpan<byte> keyBytes, int lenOfPkWoInKeyValues, bool throwIfNotFound)
+    {
+        var updateKeySuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+        IfNotUniquePrefixThrow(updateKeySuffixResult);
+        if (updateKeySuffixResult == UpdateKeySuffixResult.NotFound)
+        {
+            if (throwIfNotFound)
+                throw new BTDBException("Not found record to update.");
+            return false;
+        }
+
+        return true;
     }
 
     [SkipLocalsInit]
