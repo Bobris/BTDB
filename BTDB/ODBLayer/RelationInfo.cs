@@ -22,7 +22,7 @@ delegate void RelationLoader(IInternalObjectDBTransaction transaction, ref SpanR
 
 delegate object RelationLoaderFunc(IInternalObjectDBTransaction transaction, ref SpanReader reader);
 
-delegate void RelationSaver(IInternalObjectDBTransaction transaction, ref SpanWriter writer, object value);
+delegate int RelationSaver(IInternalObjectDBTransaction transaction, ref SpanWriter writer, object value);
 
 delegate bool RelationBeforeRemove(IInternalObjectDBTransaction transaction, IContainer container, object value);
 
@@ -174,7 +174,7 @@ public class RelationInfo
 
             primaryKeyIsEnough = props.Count == usedFields;
             // Remove useless skips from end
-            while (loadInstructions.Count > 0 && loadInstructions.Last.Item2 == null)
+            while (loadInstructions is { Count: > 0, Last.Item2: null })
             {
                 loadInstructions.RemoveAt(^1);
             }
@@ -285,7 +285,7 @@ public class RelationInfo
             }
 
             // Remove useless skips from end
-            while (loadInstructions.Count > 0 && loadInstructions.Last.Item2 == null)
+            while (loadInstructions is { Count: > 0, Last.Item2: null })
             {
                 loadInstructions.RemoveAt(^1);
             }
@@ -390,10 +390,10 @@ public class RelationInfo
 
     readonly
         ConcurrentDictionary<SimpleLoaderType, object> //object is of type Action<AbstractBufferedReader, IReaderCtx, (object or value type same as in conc. dic. key)>
-        _simpleLoader = new ConcurrentDictionary<SimpleLoaderType, object>();
+        _simpleLoader = new();
 
-    internal readonly List<ulong> FreeContentOldDict = new List<ulong>();
-    internal readonly List<ulong> FreeContentNewDict = new List<ulong>();
+    internal readonly List<ulong> FreeContentOldDict = new();
+    internal readonly List<ulong> FreeContentNewDict = new();
     internal byte[] Prefix;
     internal byte[] PrefixSecondary;
 
@@ -620,7 +620,7 @@ public class RelationInfo
         for (var i = 0; i < indexes.Length; i++)
         {
             keySavers[i] = CreateSaver(ClientRelationVersionInfo.GetSecondaryKeyFields(indexes[i].Key),
-                $"Relation_{Name}_Upgrade_SK_{indexes[i].Value.Name}_KeySaver");
+                $"Relation_{Name}_Upgrade_SK_{indexes[i].Value.Name}_KeySaver", false);
         }
 
         var keyWriter = new SpanWriter();
@@ -700,9 +700,9 @@ public class RelationInfo
 
     void CreateCreatorLoadersAndSavers()
     {
-        _valueSaver = CreateSaver(ClientRelationVersionInfo.Fields.Span, $"RelationValueSaver_{Name}");
+        _valueSaver = CreateSaver(ClientRelationVersionInfo.Fields.Span, $"RelationValueSaver_{Name}", false);
         _primaryKeysSaver = CreateSaver(ClientRelationVersionInfo.PrimaryKeyFields.Span,
-            $"RelationKeySaver_{Name}");
+            $"RelationKeySaver_{Name}", true);
         _beforeRemove = CreateBeforeRemove($"RelationBeforeRemove_{Name}");
         if (ClientRelationVersionInfo.SecondaryKeys.Count > 0)
         {
@@ -711,7 +711,7 @@ public class RelationInfo
             {
                 _secondaryKeysSavers[idx] = CreateSaver(
                     ClientRelationVersionInfo.GetSecondaryKeyFields(idx),
-                    $"Relation_{Name}_SK_{secondaryKeyInfo.Name}_KeySaver");
+                    $"Relation_{Name}_SK_{secondaryKeyInfo.Name}_KeySaver", false);
             }
         }
     }
@@ -724,12 +724,24 @@ public class RelationInfo
 
     void CreateSaverIl(IILGen ilGen, ReadOnlySpan<TableFieldInfo> fields,
         Action<IILGen> pushInstance,
-        Action<IILGen> pushWriter, Action<IILGen> pushTransaction)
+        Action<IILGen> pushWriter, Action<IILGen> pushTransaction, Action<IILGen>? pushLenOfKey)
     {
         var writerCtxLocal = CreateWriterCtx(ilGen, fields, pushTransaction);
         var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var wasInKeyValueField = false;
         foreach (var field in fields)
         {
+            if (field.InKeyValue && pushLenOfKey != null)
+            {
+                if (!wasInKeyValueField)
+                {
+                    wasInKeyValueField = true;
+                    pushWriter(ilGen);
+                    ilGen.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.NoControllerGetCurrentPosition))!);
+                    ilGen.ConvI4();
+                    pushLenOfKey(ilGen);
+                }
+            }
             var getter = props.First(p => GetPersistentName(p) == field.Name).GetAnyGetMethod();
             var handler = field.Handler!.SpecializeSaveForType(getter!.ReturnType);
             handler.Save(ilGen, pushWriter, il => il.Ldloc(writerCtxLocal!), il =>
@@ -879,7 +891,7 @@ public class RelationInfo
                     var loc = defaultObjectLoc;
                     CreateSaverIl(ilGenerator,
                         new[] { ClientRelationVersionInfo.GetSecondaryKeyField((int)skf.Index) },
-                        il => il.Ldloc(loc), PushWriter, il => il.Ldarg(0));
+                        il => il.Ldloc(loc), PushWriter, il => il.Ldarg(0), null);
                 }
             }
         }
@@ -1024,27 +1036,33 @@ public class RelationInfo
         return method.Create();
     }
 
-    RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName)
+    RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName, bool forPrimaryKey)
     {
         var method = ILBuilder.Instance.NewMethod<RelationSaver>(saverName);
         var ilGenerator = method.Generator;
-        ilGenerator.DeclareLocal(ClientType);
-        StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType, 0);
-        foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
-                                                         BindingFlags.NonPublic))
+        StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType, (ushort)ilGenerator.DeclareLocal(ClientType).Index);
+        var result = ilGenerator.DeclareLocal(typeof(int));
+        ilGenerator
+            .LdcI4(0)
+            .Stloc(result);
+        if (forPrimaryKey)
         {
-            if (methodInfo.GetCustomAttribute<OnSerializeAttribute>() == null) continue;
-            if (methodInfo.GetParameters().Length != 0)
-                throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
-                                        " must have zero parameters.");
-            if (methodInfo.ReturnType != typeof(void))
-                throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
-                                        " must return void.");
-            ilGenerator.Ldloc(0).Callvirt(methodInfo);
+            foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
+                                                             BindingFlags.NonPublic))
+            {
+                if (methodInfo.GetCustomAttribute<OnSerializeAttribute>() == null) continue;
+                if (methodInfo.GetParameters().Length != 0)
+                    throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
+                                            " must have zero parameters.");
+                if (methodInfo.ReturnType != typeof(void))
+                    throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
+                                            " must return void.");
+                ilGenerator.Ldloc(0).Callvirt(methodInfo);
+            }
         }
-
         CreateSaverIl(ilGenerator, fields,
-            il => il.Ldloc(0), il => il.Ldarg(1), il => il.Ldarg(0));
+            il => il.Ldloc(0), il => il.Ldarg(1), il => il.Ldarg(0), forPrimaryKey? (il => il.Stloc(result)):null);
+        ilGenerator.Ldloc(result);
         ilGenerator.Ret();
         return method.Create();
     }
@@ -1224,9 +1242,9 @@ public class RelationInfo
         var pks = ClientRelationVersionInfo.PrimaryKeyFields.Span;
         for (var pkIdx = 0; pkIdx < pks.Length; pkIdx++)
         {
-            if (outOfOrderPKParts.ContainsKey(pkIdx))
+            if (pks[pkIdx].InKeyValue) break;
+            if (outOfOrderPKParts.TryGetValue(pkIdx, out var memo))
             {
-                var memo = outOfOrderPKParts[pkIdx];
                 CopyFromMemorizedPosition(ilGenerator, bufferInfo.PushReader, PushWriter, memo);
                 continue;
             }
@@ -1237,7 +1255,7 @@ public class RelationInfo
             for (var idx = bufferInfo.ActualFieldIdx; idx < skFieldIdx; idx++)
             {
                 var field = skFields[idx];
-                if (field.IsFromPrimaryKey)
+                if (field.IsFromPrimaryKey && !pks[(int)field.Index].InKeyValue)
                 {
                     outOfOrderPKParts[(int)field.Index] = SkipWithMemorizing(ilGenerator, bufferInfo.PushReader,
                         pks[(int)field.Index].Handler!);

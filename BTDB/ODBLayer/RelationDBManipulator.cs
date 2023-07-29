@@ -71,10 +71,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return writer.GetPersistentSpanAndReset();
     }
 
-    ReadOnlySpan<byte> KeyBytes(T obj, scoped ref SpanWriter writer)
+    ReadOnlySpan<byte> KeyBytes(T obj, scoped ref SpanWriter writer, out int lenOfPkWoInKeyValues)
     {
         WriteRelationPKPrefix(ref writer);
-        _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj);
+        lenOfPkWoInKeyValues = _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj);
         return writer.GetPersistentSpanAndReset();
     }
 
@@ -191,10 +191,18 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         Span<byte> buf = stackalloc byte[512];
         var writer = new SpanWriter(buf);
-        var keyBytes = KeyBytes(obj, ref writer);
+        var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
 
-        if (_kvtr.FindExactKey(keyBytes))
-            return false;
+        if (lenOfPkWoInKeyValues > 0)
+        {
+            if (_kvtr.FindFirstKey(keyBytes[..lenOfPkWoInKeyValues]))
+                return false;
+        }
+        else
+        {
+            if (_kvtr.FindExactKey(keyBytes))
+                return false;
+        }
 
         var valueBytes = ValueBytes(obj, ref writer);
 
@@ -217,10 +225,22 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         Span<byte> buf = stackalloc byte[512];
         var writer = new SpanWriter(buf);
-        var keyBytes = KeyBytes(obj, ref writer);
+        var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
         var valueBytes = ValueBytes(obj, ref writer);
 
-        if (_kvtr.FindExactKey(keyBytes))
+        var update = false;
+        if (lenOfPkWoInKeyValues > 0)
+        {
+            var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+            IfNotUniquePrefixThrow(updateSuffixResult);
+            if (updateSuffixResult is UpdateKeySuffixResult.Updated or UpdateKeySuffixResult.NothingToDo) update = true;
+        }
+        else
+        {
+            if (_kvtr.FindExactKey(keyBytes)) update = true;
+        }
+
+        if (update)
         {
             var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
 
@@ -237,7 +257,6 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             FreeContentInUpdate(oldValueBytes, valueBytes);
             return false;
         }
-
         _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         if (_hasSecondaryIndexes)
         {
@@ -257,14 +276,33 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         Span<byte> buf = stackalloc byte[512];
         var writer = new SpanWriter(buf);
-        var keyBytes = KeyBytes(obj, ref writer);
-        var valueBytes = ValueBytes(obj, ref writer);
+        var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
 
-        if (_kvtr.FindExactKey(keyBytes))
+        var update = false;
+        if (lenOfPkWoInKeyValues > 0)
+        {
+            if (!allowUpdate)
+            {
+                if (_kvtr.FindFirstKey(keyBytes[..lenOfPkWoInKeyValues]))
+                {
+                    var oldSize = _kvtr.GetStorageSizeOfCurrentKey();
+                    return (false, oldSize.Key, oldSize.Value, oldSize.Value);
+                }
+            }
+            var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+            IfNotUniquePrefixThrow(updateSuffixResult);
+            if (updateSuffixResult is UpdateKeySuffixResult.Updated or UpdateKeySuffixResult.NothingToDo) update = true;
+        }
+        else
+        {
+            if (_kvtr.FindExactKey(keyBytes)) update = true;
+        }
+        if (update)
         {
             var oldValueSize = _kvtr.GetStorageSizeOfCurrentKey().Value;
             if (allowUpdate)
             {
+                var valueBytes = ValueBytes(obj, ref writer);
                 _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
                 return (false, (uint)keyBytes.Length, oldValueSize, (uint)valueBytes.Length);
             }
@@ -274,6 +312,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         if (allowInsert)
         {
+            var valueBytes = ValueBytes(obj, ref writer);
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
             MarkModification();
             return (true, (uint)keyBytes.Length, 0, (uint)valueBytes.Length);
@@ -313,12 +352,23 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         Span<byte> buf = stackalloc byte[512];
         var writer = new SpanWriter(buf);
-        var keyBytes = KeyBytes(obj, ref writer);
+        var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
         var valueBytes = ValueBytes(obj, ref writer);
 
         if (_hasSecondaryIndexes)
         {
-            if (_kvtr.FindExactKey(keyBytes))
+            var update = false;
+            if (lenOfPkWoInKeyValues > 0)
+            {
+                var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+                IfNotUniquePrefixThrow(updateSuffixResult);
+                if (updateSuffixResult is UpdateKeySuffixResult.Updated or UpdateKeySuffixResult.NothingToDo) update = true;
+            }
+            else
+            {
+                if (_kvtr.FindExactKey(keyBytes)) update = true;
+            }
+            if (update)
             {
                 var oldValueBytes =
                     _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
@@ -339,6 +389,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
         else
         {
+            var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+            IfNotUniquePrefixThrow(updateSuffixResult);
             if (!_kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
             {
                 return false;
@@ -349,6 +401,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return true;
     }
 
+    void IfNotUniquePrefixThrow(UpdateKeySuffixResult updateSuffixResult)
+    {
+        if (updateSuffixResult is UpdateKeySuffixResult.NotUniquePrefix)
+            throw new BTDBException("Relation " + _relationInfo.Name + " upsert failed due to not unique PK prefix");
+    }
+
     [SkipLocalsInit]
     public void Update(T obj)
     {
@@ -356,11 +414,22 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         Span<byte> buf = stackalloc byte[512];
         var writer = new SpanWriter(buf);
-        var keyBytes = KeyBytes(obj, ref writer);
+        var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
         var valueBytes = ValueBytes(obj, ref writer);
 
-        if (!_kvtr.FindExactKey(keyBytes))
-            throw new BTDBException("Not found record to update.");
+        if (lenOfPkWoInKeyValues > 0)
+        {
+            if (!_kvtr.FindFirstKey(keyBytes[..lenOfPkWoInKeyValues]))
+                throw new BTDBException("Not found record to update.");
+            var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+            IfNotUniquePrefixThrow(updateSuffixResult);
+            Debug.Assert(updateSuffixResult != UpdateKeySuffixResult.NotFound);
+        }
+        else
+        {
+            if (!_kvtr.FindExactKey(keyBytes))
+                throw new BTDBException("Not found record to update.");
+        }
 
         var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
         _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
@@ -383,12 +452,23 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         Span<byte> buf = stackalloc byte[512];
         var writer = new SpanWriter(buf);
-        var keyBytes = KeyBytes(obj, ref writer);
+        var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
+
+        if (lenOfPkWoInKeyValues > 0)
+        {
+            if (!_kvtr.FindFirstKey(keyBytes[..lenOfPkWoInKeyValues]))
+                throw new BTDBException("Not found record to update.");
+            var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+            IfNotUniquePrefixThrow(updateSuffixResult);
+            Debug.Assert(updateSuffixResult != UpdateKeySuffixResult.NotFound);
+        }
+        else
+        {
+            if (!_kvtr.FindExactKey(keyBytes))
+                throw new BTDBException("Not found record to update.");
+        }
+
         var valueBytes = ValueBytes(obj, ref writer);
-
-        if (!_kvtr.FindExactKey(keyBytes))
-            throw new BTDBException("Not found record to update.");
-
         if (_hasSecondaryIndexes)
         {
             var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);

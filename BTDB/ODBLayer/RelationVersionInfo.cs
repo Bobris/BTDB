@@ -113,6 +113,8 @@ public class RelationVersionInfo
             //fill all not present parts of primary key
             foreach (var pk in primaryKeyFields)
             {
+                if (pk.Value.InKeyValue)
+                    continue;
                 if (!usedPKFields.ContainsKey(pk.Key))
                     info.Fields.Add(new FieldId(true, (uint)PrimaryKeyFields.Span.IndexOf(primaryKeyFields[pk.Key])));
             }
