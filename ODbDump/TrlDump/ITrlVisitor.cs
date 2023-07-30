@@ -1,24 +1,24 @@
 ﻿using BTDB.KVDBLayer;
 
-namespace ODbDump.TrlDump
+namespace ODbDump.TrlDump;
+
+public interface ITrlVisitor
 {
-    public interface ITrlVisitor
-    {
-        void StartFile(uint index, ulong size);
+    void StartFile(uint index, ulong size);
 
-        void StartOperation(KVCommandType type);
-        //generic detail
-        void OperationDetail(string detail);
-        //detail for CreateOrUpdate
-        void UpsertObject(ulong oid, uint tableId, int keyLength, int valueLength);
-        void UpsertODBDictionary(ulong oid, int keyLength, int valueLength);
-        void UpsertRelationValue(ulong relationIdx, int keyLength, int valueLength);
-        void UpsertRelationSecondaryKey(ulong relationIdx, int skIndex, int keyLength, int valueLength);
+    void StartOperation(KVCommandType type);
+    //generic detail
+    void OperationDetail(string detail);
+    //detail for CreateOrUpdate
+    void UpsertObject(ulong oid, uint tableId, int keyLength, int valueLength);
+    void UpsertODBDictionary(ulong oid, int keyLength, int valueLength);
+    void UpsertRelationValue(ulong relationIdx, int keyLength, int valueLength);
+    void ModifyRelationInKeyValue(ulong relationIdx, int keyLength, int prefixLength);
+    void UpsertRelationSecondaryKey(ulong relationIdx, int skIndex, int keyLength, int valueLength);
 
-        void EraseObject(ulong oid);
-        void EraseODBDictionary(ulong oid, int keyLength);
-        void EraseRelationValue(ulong relationIdx, int keyLength);
+    void EraseObject(ulong oid);
+    void EraseODBDictionary(ulong oid, int keyLength);
+    void EraseRelationValue(ulong relationIdx, int keyLength);
 
-        void EndOperation();
-    }
+    void EndOperation();
 }

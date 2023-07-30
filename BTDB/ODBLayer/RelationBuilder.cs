@@ -1091,12 +1091,12 @@ public class RelationBuilder
                 $"Not enough parameters in {method.Name} (expected at least {pkFields.Length}).");
         }
 
+        var lenOfPkWoInKeyValuesLocal = reqMethod.Generator.DeclareLocal(typeof(int));
+        SerializePKListPrefixBytes(reqMethod.Generator, method.Name, parameters.AsSpan(0, pkFields.Length),
+            pushWriter,
+            ctxLocFactory, lenOfPkWoInKeyValuesLocal);
         if (parameters.Length == pkFields.Length)
         {
-            var lenOfPkWoInKeyValuesLocal = reqMethod.Generator.DeclareLocal(typeof(int));
-            SerializePKListPrefixBytes(reqMethod.Generator, method.Name, parameters.AsSpan(0, pkFields.Length),
-                pushWriter,
-                ctxLocFactory, lenOfPkWoInKeyValuesLocal);
             var updateByIdInKeyValuesMethod =
                 _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.UpdateByIdInKeyValues));
             var keyBytesLocal = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
@@ -1117,9 +1117,6 @@ public class RelationBuilder
         else
         {
             var valueSpan = StackAllocReadOnlySpan(reqMethod.Generator);
-            SerializePKListPrefixBytes(reqMethod.Generator, method.Name, parameters.AsSpan(0, pkFields.Length),
-                pushWriter,
-                ctxLocFactory);
             var updateByIdStartMethod =
                 _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.UpdateByIdStart));
             var keyBytesLocal = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
@@ -1131,6 +1128,7 @@ public class RelationBuilder
                 .Ldloc(keyBytesLocal)
                 .Do(pushWriter)
                 .Ldloca(valueSpan)
+                .Ldloc(lenOfPkWoInKeyValuesLocal)
                 .LdcI4(returningBoolVariant ? 0 : 1)
                 .Call(updateByIdStartMethod!);
             if (returningBoolVariant)

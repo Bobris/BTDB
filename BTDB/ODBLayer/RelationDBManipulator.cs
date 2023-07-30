@@ -509,13 +509,27 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
     [SkipLocalsInit]
     public bool UpdateByIdStart(ReadOnlySpan<byte> keyBytes, ref SpanWriter writer, ref ReadOnlySpan<byte> valueBytes,
-        bool throwIfNotFound)
+        int lenOfPkWoInKeyValues, bool throwIfNotFound)
     {
-        if (!_kvtr.FindExactKey(keyBytes))
+        if (lenOfPkWoInKeyValues > 0)
         {
-            if (throwIfNotFound)
-                throw new BTDBException("Not found record to update.");
-            return false;
+            var updateKeySuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+            IfNotUniquePrefixThrow(updateKeySuffixResult);
+            if (updateKeySuffixResult == UpdateKeySuffixResult.NotFound)
+            {
+                if (throwIfNotFound)
+                    throw new BTDBException("Not found record to update.");
+                return false;
+            }
+        }
+        else
+        {
+            if (!_kvtr.FindExactKey(keyBytes))
+            {
+                if (throwIfNotFound)
+                    throw new BTDBException("Not found record to update.");
+                return false;
+            }
         }
 
         valueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(valueBytes), valueBytes.Length);

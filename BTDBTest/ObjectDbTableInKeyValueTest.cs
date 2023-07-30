@@ -30,6 +30,7 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
     {
         IEnumerable<Person> ScanById(Constraint<ulong> tenantId, Constraint<string> email, Constraint<DateTime> lastLogin);
         bool UpdateById(uint tenantId, string email, DateTime lastLogin);
+        bool UpdateById(uint tenantId, string email, DateTime lastLogin, string name);
     }
 
     [Fact]
@@ -47,7 +48,7 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
     }
 
     [Fact]
-    public void SimpleCaseUpdateByIdWorks()
+    public void JustKeyCaseUpdateByIdWorks()
     {
         FillPersonData();
 
@@ -62,6 +63,24 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
                     .Select(p => p.Name)));
     }
 
+    [Fact]
+    public void FullCaseUpdateByIdWorks()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        Assert.False(t.UpdateById(1, "c@b.cd", new DateTime(2023, 7, 30, 0, 0, 0, DateTimeKind.Utc), "does not matter"));
+        Assert.True(t.UpdateById(1, "b@b.cd", new DateTime(2023, 7, 30, 0, 0, 0, DateTimeKind.Utc), "OK"));
+        Assert.Equal("A",
+            string.Join("",
+                t.ScanById(Constraint<ulong>.Any, Constraint<string>.Any,
+                        Constraint.DateTime.UpTo(new DateTime(2023, 1, 1, 0, 0, 0, DateTimeKind.Utc)))
+                    .Select(p => p.Name)));
+        Assert.Equal("OK",
+            t.ScanById(Constraint.Unsigned.Exact(1), Constraint.String.Exact("b@b.cd"), Constraint<DateTime>.Any)
+                .Single().Name);
+    }
 
     void FillPersonData()
     {
