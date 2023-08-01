@@ -85,7 +85,7 @@ will throw if does not exist
 
     (void|bool) UpdateById(primaryKey1, ..., primaryKeyN, valueField1, ..., valueFieldN)
 
-Faster update but can change only nonprimary fields and must be simple types (no classes, IIndirect<T>, IDictionary<K,V>, IOrderedSet<T>). Value properties could be any number and in any order by they must match parameter name case insensitively. Returns true if found and updated, void variant throw when does not exists. Any suffix could be appended to function name `UpdateById`, use to disambiguate when multiple overrides would have same types of value sets.
+Faster update but can change only nonprimary fields (or InKeyValues) and must be simple types (no classes, IIndirect<T>, IDictionary<K,V>, IOrderedSet<T>). Value properties could be any number and in any order by they must match parameter name case insensitively. Returns true if found and updated, void variant throw when does not exists. Any suffix could be appended to function name `UpdateById`, use to disambiguate when multiple overrides would have same types of value sets. All primary keys including InKeyValue must be always specified, if no additional value fields are specified update is only in memory and does not read or writes value.
 
 ### Upsert (Insert or Update)
 
@@ -497,3 +497,32 @@ Allow very quickly remove rows if you complain to limitations.
 First limitation that it could be used only for constraints which are implementable by key prefix search.
 Second limitation is that it could be used only for relations without secondary keys.
 Also it does not FreeContent so don't use with properties of IDictionary type (it will throw).
+
+## InKeyValue
+
+```C#
+    public class Person
+    {
+        [PrimaryKey(1)]
+        public uint TenantId { get; set; }
+
+        [PrimaryKey(2)]
+        public string? Email { get; set; }
+
+        [PrimaryKey(3, InKeyValue = true)]
+        public DateTime LastLogin { get; set; }
+
+        public string? Name { get; set; }
+    }
+
+    public interface IPersonTable : IRelation<Person>
+    {
+        IEnumerable<Person> ScanById(Constraint<ulong> tenantId, Constraint<string> email, Constraint<DateTime> lastLogin);
+        bool UpdateById(uint tenantId, string email, DateTime lastLogin);
+    }
+```
+
+Fields with InKeyValue are allowed only at end of primary key and they cannot be in any secondary keys.
+Primary key without InKeyValue fields must be unique. In example above it means that where cannot be two persons with same tenant and email with just different LastLogins. These InKeyValue fields could be used in Scan/GatherById for relatively fast searching without need to introduce Secondary Keys. This is very useful for implementation of expiration of relation rows. UpdateById method in example could be used for modification of LastLogin for known tenantId and email.
+
+Data in database will be automaticaly upgraded when only InKeyValue fields are added/removed/modified in primary key definition.
