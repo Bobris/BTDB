@@ -2,7 +2,13 @@
 
 ## [unreleased]
 
+### Fixed
+
+Bug in ReadOnlySequenceSpanReader.ReadBlock.
+
 ### Added
+
+Huge feature in relations InKeyValue allowing optimize modification and search of small number of fields into Primary Key. Documentation will come in future commit.
 
 `OnBeforeRemove` attribute to help to implement foreign keys prevent removal or cascading delete.
 

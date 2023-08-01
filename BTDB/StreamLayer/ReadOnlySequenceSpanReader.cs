@@ -45,7 +45,7 @@ public class ReadOnlySequenceSpanReader : ISpanReader
             var canSkip = (int)Math.Min(spanReader.Buf.Length, length);
             Unsafe.CopyBlockUnaligned(ref buffer,
                 ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, canSkip), (uint)canSkip);
-            buffer = Unsafe.Add(ref buffer, canSkip);
+            buffer = ref Unsafe.Add(ref buffer, canSkip);
             length -= (uint)canSkip;
         }
 
