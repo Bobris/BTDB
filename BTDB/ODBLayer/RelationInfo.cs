@@ -46,13 +46,25 @@ public class RelationInfo
     {
         readonly RelationInfo _owner;
         readonly Type _itemType;
+        readonly ReadOnlyMemory<TableFieldInfo> _pkFields;
 
         public ItemLoaderInfo(RelationInfo owner, Type itemType)
         {
             _owner = owner;
             _itemType = itemType;
+            _pkFields = _owner.ClientRelationVersionInfo.PrimaryKeyFields;
             _valueLoaders = new RelationLoader?[_owner._relationVersions.Length];
             _primaryKeysLoader = CreatePkLoader(itemType, _owner.ClientRelationVersionInfo.PrimaryKeyFields.Span,
+                $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough, out _loadAsMemory);
+        }
+
+        public ItemLoaderInfo(RelationInfo owner, Type itemType, ReadOnlyMemory<TableFieldInfo> pkFields)
+        {
+            _owner = owner;
+            _itemType = itemType;
+            _pkFields = pkFields;
+            _valueLoaders = new RelationLoader?[_owner._relationVersions.Length];
+            _primaryKeysLoader = CreatePkLoader(itemType, pkFields.Span,
                 $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough, out _loadAsMemory);
         }
 
@@ -257,6 +269,16 @@ public class RelationInfo
                 var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
                 if (fieldInfo != null)
                 {
+                    foreach (var pkField in _pkFields.Span)
+                    {
+                        if (pkField.Name != srcFieldInfo.Name) continue;
+                        fieldInfo = null;
+                        break;
+                    }
+                }
+
+                if (fieldInfo != null)
+                {
                     var setterMethod = fieldInfo.GetAnySetMethod();
                     var fieldType = setterMethod!.GetParameters()[0].ParameterType;
                     var specializedSrcHandler =
@@ -457,7 +479,10 @@ public class RelationInfo
         var db = tr.Owner;
         var pkFields = info.PrimaryKeyFields;
         var prevPkFields = previousInfo.PrimaryKeyFields;
-        if (pkFields.Length != prevPkFields.Length)
+        var pkFieldsUnique = CountNonInKeyValues(pkFields);
+        var prevPkFieldsUnique = CountNonInKeyValues(prevPkFields);
+
+        if (pkFieldsUnique != prevPkFieldsUnique)
         {
             if (db.ActualOptions.SelfHealing)
             {
@@ -470,7 +495,7 @@ public class RelationInfo
                 $"Change of primary key in relation '{name}' is not allowed. Field count {pkFields.Length} != {prevPkFields.Length}.");
         }
 
-        for (var i = 0; i < pkFields.Length; i++)
+        for (var i = 0; i < pkFieldsUnique; i++)
         {
             if (ArePrimaryKeyFieldsCompatible(pkFields.Span[i].Handler!, prevPkFields.Span[i].Handler!)) continue;
             db.Logger?.ReportIncompatiblePrimaryKey(name, pkFields.Span[i].Name);
@@ -482,6 +507,48 @@ public class RelationInfo
 
             throw new BTDBException(
                 $"Change of primary key in relation '{name}' is not allowed. Field '{pkFields.Span[i].Name}' is not compatible.");
+        }
+
+        if (pkFields.Length == prevPkFields.Length)
+        {
+            for (int i = pkFieldsUnique; i < pkFields.Length; i++)
+            {
+                if (!ArePrimaryKeyFieldsCompatible(pkFields.Span[i].Handler!, prevPkFields.Span[i].Handler!)) goto NeedRebuild;
+            }
+            return;
+        }
+        NeedRebuild:
+
+        ItemLoaderInfos.Add(new(this, _clientType, prevPkFields));
+        var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
+        var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this,
+            Prefix, new SimpleModificationCounter(), (int)ItemLoaderInfos.Count-1);
+
+        var keyWriter = new SpanWriter();
+
+        while (enumerator!.MoveNext())
+        {
+            var obj = enumerator.Current;
+
+            keyWriter.WriteBlock(Prefix);
+            var lenOfPkWoInKeyValues = PrimaryKeysSaver(tr, ref keyWriter, obj);
+            var keyBytes = keyWriter.GetSpan();
+            tr.KeyValueDBTransaction.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+            keyWriter.Reset();
+        }
+        ItemLoaderInfos.RemoveAt(^1);
+        return;
+
+        int CountNonInKeyValues(ReadOnlyMemory<TableFieldInfo> fields)
+        {
+            var res = 0;
+            foreach (var field in fields.Span)
+            {
+                if (field.InKeyValue) continue;
+                res++;
+            }
+
+            return res;
         }
     }
 
