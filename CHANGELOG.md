@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.9.0
+
 ### Fixed
 
 Bug in ReadOnlySequenceSpanReader.ReadBlock.
