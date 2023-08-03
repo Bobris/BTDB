@@ -118,11 +118,17 @@ public class RelationBuilder
         {
             if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
             if (pi.GetIndexParameters().Length != 0) continue;
-            var pks = pi.GetCustomAttributes(typeof(PrimaryKeyAttribute), true);
-            PrimaryKeyAttribute actualPKAttribute = null;
-            if (pks.Length != 0)
+            var pks = pi.GetCustomAttributes<PrimaryKeyAttribute>(true);
+            var actualPKAttribute = pks.FirstOrDefault();
+            if (pi.GetCustomAttribute<InKeyValueAttribute>() is {} inKeyValueAttribute)
             {
-                actualPKAttribute = (PrimaryKeyAttribute)pks[0];
+                if (actualPKAttribute != null)
+                    RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                        $"Property {pi.Name} cannot have both PrimaryKeyAttribute and InKeyValueAttribute.");
+                actualPKAttribute = new (inKeyValueAttribute.Order,true);
+            }
+            if (actualPKAttribute != null)
+            {
                 var fieldInfo = TableFieldInfo.Build(_name, pi, RelationInfoResolver.FieldHandlerFactory,
                     FieldHandlerOptions.Orderable, actualPKAttribute.InKeyValue);
                 if (fieldInfo.Handler!.NeedsCtx())

@@ -21,7 +21,7 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
         [PrimaryKey(2)]
         public string? Email { get; set; }
 
-        [PrimaryKey(3, InKeyValue = true)]
+        [InKeyValue(3)]
         public DateTime LastLogin { get; set; }
 
         public string? Name { get; set; }
@@ -137,7 +137,7 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
 
         public string Name { get; set; }
 
-        [PrimaryKey(2, InKeyValue = true)]
+        [InKeyValue(2)]
         public int Age { get; set; }
     }
 

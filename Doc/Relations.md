@@ -509,7 +509,9 @@ Also it does not FreeContent so don't use with properties of IDictionary type (i
         [PrimaryKey(2)]
         public string? Email { get; set; }
 
-        [PrimaryKey(3, InKeyValue = true)]
+        // Next line could be written as [PrimaryKey(3, InKeyValue = true)]
+        // but it is more idiomatic to use InKeyValue attribute
+        [InKeyValue(3)]
         public DateTime LastLogin { get; set; }
 
         public string? Name { get; set; }

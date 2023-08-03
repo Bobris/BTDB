@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+New more succinct way to declare InKeyValue.
+
 ## 31.9.0
 
 ### Fixed
