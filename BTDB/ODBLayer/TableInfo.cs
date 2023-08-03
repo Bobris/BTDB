@@ -1,15 +1,15 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
+using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
-using BTDB.StreamLayer;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using BTDB.Collections;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 using Extensions = BTDB.FieldHandler.Extensions;
 
 namespace BTDB.ODBLayer;
@@ -77,7 +77,7 @@ public class TableInfo
         }
     }
 
-    bool _freeContentRequired = false;
+    bool _freeContentRequired;
     internal TableVersionInfo? ClientTableVersionInfo
     {
         get

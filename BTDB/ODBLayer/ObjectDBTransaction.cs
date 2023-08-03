@@ -792,7 +792,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(key.AsSpan()),
             ref MemoryMarshal.GetReference(prefix), (uint)prefix.Length);
         PackUnpack.UnsafePackVUInt(
-            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(key.AsSpan()), (IntPtr)prefix.Length), oid,
+            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(key.AsSpan()), prefix.Length), oid,
             len);
         return key;
     }

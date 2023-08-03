@@ -31,7 +31,7 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>
         var len = PackUnpack.LengthVUInt(id);
         var prefix = new byte[ObjectDB.AllDictionariesPrefixLen + len];
         MemoryMarshal.GetReference(prefix.AsSpan()) = ObjectDB.AllDictionariesPrefixByte;
-        PackUnpack.UnsafePackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(prefix.AsSpan()), (IntPtr)ObjectDB.AllDictionariesPrefixLen), id, len);
+        PackUnpack.UnsafePackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(prefix.AsSpan()), ObjectDB.AllDictionariesPrefixLen), id, len);
         _prefix = prefix;
         _keyReader = ((ReaderFun<TKey>)config.KeyReader)!;
         _keyWriter = ((WriterFun<TKey>)config.KeyWriter)!;

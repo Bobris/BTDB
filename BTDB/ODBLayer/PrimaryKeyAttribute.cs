@@ -2,7 +2,7 @@ using System;
 
 namespace BTDB.ODBLayer;
 
-[AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
+[AttributeUsage(AttributeTargets.Property)]
 public class PrimaryKeyAttribute : Attribute
 {
     public uint Order { get; set; }

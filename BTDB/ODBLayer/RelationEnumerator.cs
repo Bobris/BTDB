@@ -1,13 +1,12 @@
-using BTDB.KVDBLayer;
-using BTDB.StreamLayer;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
 using BTDB.Collections;
+using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 // ReSharper disable MemberCanBeProtected.Global
 
@@ -635,22 +634,20 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
             _seekNeeded = false;
             return ret;
         }
-        else
-        {
-            _pos++;
-            if (_keyValueTr.CursorMovedCounter == _prevProtectionCounter)
-            {
-                var ret = _keyValueTr.FindNextKey(KeyBytes);
-                _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                return ret;
-            }
 
-            _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
-            if (!_keyValueTr.SetKeyIndex(KeyBytes, _pos))
-                return false;
+        _pos++;
+        if (_keyValueTr.CursorMovedCounter == _prevProtectionCounter)
+        {
+            var ret = _keyValueTr.FindNextKey(KeyBytes);
             _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            return true;
+            return ret;
         }
+
+        _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
+        if (!_keyValueTr.SetKeyIndex(KeyBytes, _pos))
+            return false;
+        _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
+        return true;
     }
 
     public T Current

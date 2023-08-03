@@ -2,10 +2,7 @@ using System;
 
 namespace BTDB.ODBLayer;
 
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+[AttributeUsage(AttributeTargets.Method)]
 public class OnBeforeRemoveAttribute : Attribute
 {
-    public OnBeforeRemoveAttribute()
-    {
-    }
 }

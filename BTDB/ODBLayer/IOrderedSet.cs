@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace BTDB.ODBLayer;
@@ -16,26 +17,26 @@ public class OrderedSet<T> : HashSet<T>, IOrderedSet<T>
 {
     public IEnumerable<T> GetReverseEnumerator()
     {
-        throw new System.NotSupportedException();
+        throw new NotSupportedException();
     }
 
     public IEnumerable<T> GetIncreasingEnumerator(T start)
     {
-        throw new System.NotSupportedException();
+        throw new NotSupportedException();
     }
 
     public IEnumerable<T> GetDecreasingEnumerator(T start)
     {
-        throw new System.NotSupportedException();
+        throw new NotSupportedException();
     }
 
     public long RemoveRange(AdvancedEnumeratorParam<T> param)
     {
-        throw new System.NotSupportedException();
+        throw new NotSupportedException();
     }
 
     public IEnumerable<T> GetAdvancedEnumerator(AdvancedEnumeratorParam<T> param)
     {
-        throw new System.NotSupportedException();
+        throw new NotSupportedException();
     }
 }
