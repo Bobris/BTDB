@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using BTDB.FieldHandler;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
 using Xunit.Abstractions;
@@ -178,5 +179,29 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
             var t = tr.GetRelation<IDataV1Table>();
             Assert.Equal(11, t.First().Age);
         }
+    }
+
+    public class InvalidData
+    {
+        [PrimaryKey(1)]
+        public uint Id { get; set; }
+
+        [InKeyValue(2)]
+        public int Age { get; set; }
+
+        [PrimaryKey(3)]
+        public string Name { get; set; }
+    }
+
+    public interface IInvalidDataTable : IRelation<InvalidData>
+    {
+    }
+
+    [Fact]
+    public void InvalidDataTest()
+    {
+        using var tr = _db.StartTransaction();
+        Assert.Equal("PrimaryKey Name cannot be after InKeyValue Age",
+            Assert.Throws<BTDBException>(() => tr.GetRelation<IInvalidDataTable>()).Message);
     }
 }

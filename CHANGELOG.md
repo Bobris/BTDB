@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Validation that InKeyValues must be after all PrimaryKeys.
+
 ## 31.10.0
 
 ### Added

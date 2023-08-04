@@ -62,6 +62,21 @@ public class RelationVersionInfo
                                ReadOnlyMemory<TableFieldInfo> fields)
     {
         PrimaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToArray();
+        var firstInKeyValue = PrimaryKeyFields.Length;
+        var lastPrimaryKeyField = 0;
+        for (var i = 0; i < PrimaryKeyFields.Span.Length; i++)
+        {
+            var fi = PrimaryKeyFields.Span[i];
+            if (fi.InKeyValue && i < firstInKeyValue)
+                firstInKeyValue = i;
+            if (!fi.InKeyValue && i > lastPrimaryKeyField)
+                lastPrimaryKeyField = i;
+        }
+
+        if (firstInKeyValue < lastPrimaryKeyField)
+            throw new BTDBException($"PrimaryKey " + PrimaryKeyFields.Span[lastPrimaryKeyField].Name +
+                                    " cannot be after InKeyValue " + PrimaryKeyFields.Span[firstInKeyValue].Name);
+
         _secondaryKeyFields = secondaryKeyFields;
         CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields);
         Fields = fields;
