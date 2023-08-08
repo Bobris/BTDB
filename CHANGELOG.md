@@ -6,6 +6,10 @@
 
 Validation that InKeyValues must be after all PrimaryKeys.
 
+### Fixed
+
+Regression ShallowUpdate when value is complex.
+
 ## 31.10.0
 
 ### Added

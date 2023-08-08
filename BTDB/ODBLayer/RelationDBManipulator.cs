@@ -456,6 +456,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         Span<byte> buf = stackalloc byte[512];
         var writer = new SpanWriter(buf);
         var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
+        var valueBytes = ValueBytes(obj, ref writer);
 
         if (lenOfPkWoInKeyValues > 0)
         {
@@ -471,7 +472,6 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 throw new BTDBException("Not found record to update.");
         }
 
-        var valueBytes = ValueBytes(obj, ref writer);
         if (_hasSecondaryIndexes)
         {
             var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
