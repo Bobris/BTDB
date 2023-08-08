@@ -334,10 +334,10 @@ public class RelationBuilder
         var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
 
         WriteRelationPKPrefix(reqMethod.Generator, pushWriter);
-        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
 
         var count = SaveMethodParameters(reqMethod.Generator, "Contains", method.GetParameters(),
-            primaryKeyFields.Span, pushWriter, ctxLocFactory);
+            primaryKeyFields, pushWriter, ctxLocFactory);
         if (count != primaryKeyFields.Length)
             RelationInfoResolver.ActualOptions.ThrowBTDBException(
                 $"Number of parameters in Contains does not match primary key count {primaryKeyFields.Length}.");
@@ -479,9 +479,9 @@ public class RelationBuilder
 
         WriteRelationPKPrefix(reqMethod.Generator, pushWriter);
 
-        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
 
-        var count = SaveMethodParameters(reqMethod.Generator, method.Name, methodParameters, primaryKeyFields.Span,
+        var count = SaveMethodParameters(reqMethod.Generator, method.Name, methodParameters, primaryKeyFields,
             pushWriter, ctxLocFactory);
         if (!isPrefixBased && count != primaryKeyFields.Length)
             RelationInfoResolver.ActualOptions.ThrowBTDBException(
@@ -532,7 +532,7 @@ public class RelationBuilder
 
         var prefixParamCount = parameters.Length - 1;
 
-        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
+        var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
         var field = primaryKeyFields[prefixParamCount];
 
         if (parameters.Length != primaryKeyFields.Length)
@@ -599,7 +599,7 @@ public class RelationBuilder
 
         WriteRelationPKPrefix(il, pushWriter);
 
-        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
+        var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
         SaveMethodParameters(il, method.Name, methodParameters[..^1], primaryKeyFields, pushWriter, ctxLocFactory);
 
         var localSpan = il.DeclareLocal(typeof(ReadOnlySpan<byte>));
@@ -648,7 +648,7 @@ public class RelationBuilder
 
             var prefixParamCount = parameters.Length - 1;
 
-            var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
+            var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
             var field = primaryKeyFields[prefixParamCount];
 
             if (parameters.Length != primaryKeyFields.Length)
@@ -826,7 +826,7 @@ public class RelationBuilder
 
         var prefixParamCount = parameters.Length - 1;
 
-        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
+        var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
         var field = primaryKeyFields[prefixParamCount];
 
         if (parameters.Length != primaryKeyFields.Length)
@@ -1090,7 +1090,7 @@ public class RelationBuilder
         var returningBoolVariant = EnsureVoidOrBoolResult(method, method.Name);
         var parameters = method.GetParameters();
         var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
-        var pkFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var pkFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
         if (parameters.Length < pkFields.Length)
         {
             RelationInfoResolver.ActualOptions.ThrowBTDBException(
@@ -1222,9 +1222,11 @@ public class RelationBuilder
                         pushCtx = il => il.Ldloc(ctxLocFactory());
                     }
 
+                    var argIndex = (ushort)(1 + pkFields.Length + paramIndex);
+
                     specializedHandler.Save(reqMethod.Generator, pushWriter, pushCtx, il =>
                     {
-                        il.Ldarg((ushort)(1 + pkFields.Length + paramIndex));
+                        il.Ldarg(argIndex);
                         converter!(il);
                     });
                 }
@@ -1380,10 +1382,10 @@ public class RelationBuilder
     {
         CheckReturnType(methodName, typeof((ulong Count, ulong KeySizes, ulong ValueSizes)), returnType);
         var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
-        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
         var constraintsParameters = methodParameters.AsSpan();
 
-        SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, primaryKeyFields.Span,
+        SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, primaryKeyFields,
             constraintsLocal);
 
         //call manipulator.RemoveWithSizesBy_
@@ -1400,11 +1402,11 @@ public class RelationBuilder
     {
         var itemType = ParseGatherParams(methodParameters, methodName);
         var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
-        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
         var constraintsParameters = methodParameters.AsSpan(3..);
         var orderersLocal = DetectOrderers(ilGenerator, ref constraintsParameters, 3);
 
-        SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, primaryKeyFields.Span,
+        SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, primaryKeyFields,
             constraintsLocal, 3);
 
         //call manipulator.GatherBy_
@@ -1514,9 +1516,9 @@ public class RelationBuilder
             RelationInfoResolver.ActualOptions.ThrowBTDBException(
                 $"Method {methodName} must return IEnumerable<T> or IEnumerator<T> type.");
 
-        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
 
-        SaveMethodConstraintParameters(ilGenerator, methodName, methodParameters, primaryKeyFields.Span,
+        SaveMethodConstraintParameters(ilGenerator, methodName, methodParameters, primaryKeyFields,
             constraintsLocal);
 
         //call manipulator.ScanBy_
@@ -1620,9 +1622,9 @@ public class RelationBuilder
         var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
         WriteRelationPKPrefix(ilGenerator, pushWriter);
 
-        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
 
-        var count = SaveMethodParameters(ilGenerator, methodName, methodParameters, primaryKeyFields.Span,
+        var count = SaveMethodParameters(ilGenerator, methodName, methodParameters, primaryKeyFields,
             pushWriter, ctxLocFactory);
         if (!isPrefixBased && count != primaryKeyFields.Length)
             RelationInfoResolver.ActualOptions.ThrowBTDBException(
@@ -1653,6 +1655,18 @@ public class RelationBuilder
                 _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.FindByIdOrDefault))!
                     .MakeGenericMethod(itemType));
         }
+    }
+
+    static ReadOnlySpan<TableFieldInfo> FilterOutInKeyValues(ReadOnlySpan<TableFieldInfo> fields)
+    {
+        // InKeyValues are always at the end of the primary key
+        var count = 0;
+        foreach (var field in fields)
+        {
+            if (field.InKeyValue) break;
+            count++;
+        }
+        return fields[..count];
     }
 
     void CreateMethodFindBy(IILGen ilGenerator, string methodName,
@@ -1936,9 +1950,9 @@ public class RelationBuilder
     {
         WriteRelationPKPrefix(ilGenerator, pushWriter);
 
-        var keyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var keyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
         SaveMethodParameters(ilGenerator, methodName, methodParameters,
-            keyFields.Span, pushWriter, ctxLocFactory, lenOfPkWoInKeyValuesLocal);
+            keyFields, pushWriter, ctxLocFactory, lenOfPkWoInKeyValuesLocal);
     }
 
     static void SaveKeyFieldFromArgument(IILGen ilGenerator, TableFieldInfo field, int parameterId,

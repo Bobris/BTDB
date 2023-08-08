@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+InKeyValues should not be required in most "ById" methods.
+
 ## 31.11.0
 
 ### Added
