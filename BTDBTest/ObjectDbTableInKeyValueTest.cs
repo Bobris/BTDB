@@ -35,6 +35,8 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
         bool UpdateById(uint tenantId, string email, DateTime lastLogin, string name);
         void Insert(Person person);
         void Update(Person person);
+        Person FindById(uint tenantId, string email);
+        void RemoveById(uint tenantId, string email);
     }
 
     [Fact]
@@ -65,6 +67,27 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
                 t.ScanById(Constraint<ulong>.Any, Constraint<string>.Any,
                         Constraint.DateTime.UpTo(new DateTime(2023, 1, 1, 0, 0, 0, DateTimeKind.Utc)))
                     .Select(p => p.Name)));
+    }
+
+    [Fact]
+    public void FindByIdWorks()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        Assert.NotNull(t.FindById(1, "b@b.cd"));
+    }
+
+    [Fact]
+    public void RemoveByIdWorks()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonTable>();
+        t.RemoveById(1, "b@b.cd");
+        Assert.Equal(3,t.Count);
     }
 
     [Fact]

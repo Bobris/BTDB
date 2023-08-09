@@ -570,7 +570,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
     public bool Contains(in ReadOnlySpan<byte> keyBytes)
     {
-        return _kvtr.FindExactKey(keyBytes);
+        return _kvtr.FindFirstKey(keyBytes);
     }
 
     void CompareAndRelease(List<ulong> oldItems, List<ulong> newItems,
@@ -616,7 +616,65 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
+    // ReSharper disable once UnusedMember.Global
     public bool RemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
+    {
+        Span<byte> valueBuffer = stackalloc byte[512];
+
+        var fullKeyBytes = keyBytes;
+        var beforeRemove = _relationInfo.BeforeRemove;
+        if (beforeRemove != null)
+        {
+            if (!_kvtr.FindFirstKey(keyBytes))
+            {
+                if (throwWhenNotFound)
+                    throw new BTDBException("Not found record to delete.");
+                return false;
+            }
+
+            if (_relationInfo.HasInKeyValue)
+            {
+                fullKeyBytes = _kvtr.GetKey();
+            }
+            var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, fullKeyBytes);
+            if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+                return false;
+        }
+        else
+        {
+            if (_relationInfo.HasInKeyValue)
+            {
+                if (!_kvtr.FindFirstKey(keyBytes))
+                {
+                    if (throwWhenNotFound)
+                        throw new BTDBException("Not found record to delete.");
+                    return false;
+                }
+                fullKeyBytes = _kvtr.GetKey();
+            }
+        }
+
+        if (!_kvtr.EraseCurrent(fullKeyBytes, ref MemoryMarshal.GetReference(valueBuffer), valueBuffer.Length,
+                out var value))
+        {
+            if (throwWhenNotFound)
+                throw new BTDBException("Not found record to delete.");
+            return false;
+        }
+
+        if (_hasSecondaryIndexes)
+        {
+            RemoveSecondaryIndexes(fullKeyBytes, value);
+        }
+
+        _relationInfo.FreeContent(_transaction, value);
+
+        MarkModification();
+        return true;
+    }
+
+    [SkipLocalsInit]
+    public bool RemoveByIdWithFullKey(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
     {
         Span<byte> valueBuffer = stackalloc byte[512];
 
@@ -655,28 +713,48 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
+    // ReSharper disable once UnusedMember.Global
     public bool ShallowRemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
     {
         var beforeRemove = _relationInfo.BeforeRemove;
+        var fullKeyBytes = keyBytes;
         if (beforeRemove != null)
         {
-            if (!_kvtr.FindExactKey(keyBytes))
+            if (!_kvtr.FindFirstKey(keyBytes))
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found record to delete.");
                 return false;
             }
 
-            var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, keyBytes);
+            if (_relationInfo.HasInKeyValue)
+            {
+                fullKeyBytes = _kvtr.GetKey();
+            }
+
+            var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, fullKeyBytes);
             if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
                 return false;
+        }
+        else
+        {
+            if (_relationInfo.HasInKeyValue)
+            {
+                if (!_kvtr.FindFirstKey(keyBytes))
+                {
+                    if (throwWhenNotFound)
+                        throw new BTDBException("Not found record to delete.");
+                    return false;
+                }
+                fullKeyBytes = _kvtr.GetKey();
+            }
         }
 
         if (_hasSecondaryIndexes)
         {
             Span<byte> valueBuffer = stackalloc byte[512];
 
-            if (!_kvtr.EraseCurrent(keyBytes, ref valueBuffer.GetPinnableReference(), valueBuffer.Length,
+            if (!_kvtr.EraseCurrent(fullKeyBytes, ref valueBuffer.GetPinnableReference(), valueBuffer.Length,
                     out var value))
             {
                 if (throwWhenNotFound)
@@ -684,11 +762,11 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 return false;
             }
 
-            RemoveSecondaryIndexes(keyBytes, value);
+            RemoveSecondaryIndexes(fullKeyBytes, value);
         }
         else
         {
-            if (!_kvtr.EraseCurrent(keyBytes))
+            if (!_kvtr.EraseCurrent(fullKeyBytes))
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found record to delete.");
@@ -720,6 +798,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         foreach (var key in keysToDelete)
         {
+            // Exact key is correct even for HasInKeyValue because full key is used in cycle above
             if (!_kvtr.FindExactKey(key))
                 throw new BTDBException("Not found record to delete.");
 
@@ -761,7 +840,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         var notDeleted = 0;
         foreach (var key in keysToDelete)
         {
-            notDeleted += RemoveById(key, true) ? 0 : 1;
+            notDeleted += RemoveByIdWithFullKey(key, true) ? 0 : 1;
         }
 
         return (int)keysToDelete.Count - notDeleted;
@@ -939,7 +1018,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         foreach (var key in keysToDelete)
         {
-            RemoveById(key, true);
+            RemoveByIdWithFullKey(key, true);
         }
 
         return (int)keysToDelete.Count;
@@ -966,13 +1045,17 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     object? FindByIdOrDefaultInternal(RelationInfo.ItemLoaderInfo itemLoader, in ReadOnlySpan<byte> keyBytes,
         bool throwWhenNotFound)
     {
-        if (!_kvtr.FindExactKey(keyBytes))
+        if (!_kvtr.FindFirstKey(keyBytes))
         {
             if (throwWhenNotFound)
                 throw new BTDBException("Not found.");
             return default;
         }
 
+        if (_relationInfo.HasInKeyValue)
+        {
+            return itemLoader.CreateInstance(_transaction, _kvtr.GetKey());
+        }
         return itemLoader.CreateInstance(_transaction, keyBytes);
     }
 

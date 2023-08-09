@@ -39,6 +39,7 @@ public class RelationInfo
     RelationSaver _primaryKeysSaver;
     RelationSaver _valueSaver;
     RelationBeforeRemove? _beforeRemove;
+    bool _hasInKeyValue;
 
     internal StructList<ItemLoaderInfo> ItemLoaderInfos;
 
@@ -436,6 +437,13 @@ public class RelationInfo
         LoadUnresolvedVersionInfos(tr.KeyValueDBTransaction);
         ResolveVersionInfos();
         ClientRelationVersionInfo = CreateVersionInfoFromPrime(builder.ClientRelationVersionInfo);
+        _hasInKeyValue = false;
+        foreach (var fieldInfo in ClientRelationVersionInfo.PrimaryKeyFields.Span)
+        {
+            if (!fieldInfo.InKeyValue) continue;
+            _hasInKeyValue = true;
+            break;
+        }
         Extensions.RegisterFieldHandlers(ClientRelationVersionInfo.GetAllFields().ToArray().Select(a => a.Handler),
             tr.Owner);
         foreach (var loadType in builder.LoadTypes)
@@ -788,6 +796,7 @@ public class RelationInfo
     internal RelationSaver PrimaryKeysSaver => _primaryKeysSaver;
 
     internal RelationBeforeRemove? BeforeRemove => _beforeRemove;
+    internal bool HasInKeyValue => _hasInKeyValue;
 
     void CreateSaverIl(IILGen ilGen, ReadOnlySpan<TableFieldInfo> fields,
         Action<IILGen> pushInstance,

@@ -508,7 +508,7 @@ public class RelationBuilder
         else
         {
             reqMethod.Generator.LdcI4(ShouldThrowWhenKeyNotFound(method.Name, method.ReturnType) ? 1 : 0);
-            reqMethod.Generator.Callvirt(_relationDbManipulatorType.GetMethod(method.Name)!);
+            reqMethod.Generator.Callvirt(_relationDbManipulatorType.GetMethod(method.Name)!); // RemoveById or ShallowRemoveById
             if (method.ReturnType == typeof(void))
                 reqMethod.Generator.Pop();
         }
