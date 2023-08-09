@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.11.2
+
 ### Fixed
 
 Now "ById" methods should really work.
