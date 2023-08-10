@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.11.3
+
 ### Fixed
 
 Upgrading to nullable property in secondary key.
