@@ -982,8 +982,23 @@ public class RelationInfo
 
     {
         var pushCtx = WriterOrContextForHandler(writerCtxLocal);
-        skHandler.SpecializeSaveForType(valueHandler.HandledType()!).Save(ilGenerator, pushWriter, pushCtx,
-            il => { valueHandler.Load(ilGenerator, buffer.PushReader, buffer.PushCtx); });
+        var sourceType = valueHandler.HandledType()!;
+        var targetType = skHandler.HandledType()!;
+        if (sourceType == targetType)
+            skHandler.Save(ilGenerator, pushWriter, pushCtx,
+                il => { valueHandler.Load(ilGenerator, buffer.PushReader, buffer.PushCtx); });
+        else
+        {
+            var converter = DefaultTypeConvertorGenerator.Instance.GenerateConversion(sourceType, targetType);
+            if (converter == null)
+                throw new BTDBException($"Cannot convert {sourceType.ToSimpleName()} to {targetType.ToSimpleName()}");
+            skHandler.Save(ilGenerator, pushWriter, pushCtx,
+                il =>
+                {
+                    valueHandler.Load(ilGenerator, buffer.PushReader, buffer.PushCtx);
+                    ilGenerator.Do(converter);
+                });
+        }
     }
 
     static void StoreIntoLocal(IILGen ilGenerator, IFieldHandler valueHandler, BufferInfo bufferInfo,

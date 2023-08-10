@@ -925,4 +925,46 @@ public class ObjectDbTableUpgradeTest : IDisposable
             objV2Table.ToList();
         }
     }
+
+    public class Obj2V1
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        [SecondaryKey("A")] public ulong Sk { get; set; }
+    }
+
+    public class Obj2V2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        [SecondaryKey("A")] public ulong? Sk { get; set; }
+    }
+
+    public interface IObj2V1Table : IRelation<Obj2V1> { }
+
+    public interface IObj2V2Table : IRelation<Obj2V2> { }
+
+    [Fact]
+    public void UpgradeNotNullableSecondaryKeyToNullableSecondaryKeyWorks()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IObj2V1Table>("MyRelation");
+            var objV1Table = creator(tr);
+            var job1 = new Obj2V1 { Id=2, Sk=4 };
+            objV1Table.Upsert(job1);
+            tr.Commit();
+        }
+
+        ReopenDb();
+
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IObj2V2Table>("MyRelation");
+            var objV2Table = creator(tr);
+            Assert.Equal(4ul, objV2Table.ToList()[0].Sk);
+            objV2Table.Upsert(new() { Id = 2, Sk = 5 });
+        }
+    }
+
 }
