@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using BTDB.IL;
-using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC;
 
+/*
 class BuildContext : IBuildContext
 {
     readonly ContainerImpl _container;
@@ -145,3 +145,4 @@ class BuildContext : IBuildContext
         return _parent!;
     }
 }
+*/

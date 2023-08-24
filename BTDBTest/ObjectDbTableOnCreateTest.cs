@@ -97,7 +97,7 @@ public class ObjectDbTableOnCreateTest : IDisposable
             tr.Commit();
         }
         builder = new(ContainerBuilderBehaviour.UniqueRegistrations);
-        builder.RegisterFactory<JobTable2OnCreate>(_ => throw new("Should run only first time")).As<IRelationOnCreate<IJobTable2>>();
+        builder.RegisterFactory<JobTable2OnCreate>((_,_) => (_,_) => throw new("Should run only first time")).As<IRelationOnCreate<IJobTable2>>();
         _container = builder.BuildAndVerify();
         ReopenDb();
         using (var tr = _db.StartTransaction())

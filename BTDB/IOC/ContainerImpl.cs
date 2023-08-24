@@ -1,27 +1,18 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using BTDB.IL;
-using BTDB.IOC.CRegs;
+using BTDB.KVDBLayer;
 
 namespace BTDB.IOC;
 
 public class ContainerImpl : IContainer
 {
-    readonly ConcurrentDictionary<KeyAndType, Func<object>> _workers =
-        new ConcurrentDictionary<KeyAndType, Func<object>>();
+    internal readonly Dictionary<KeyAndType, CReg> Registrations = new();
 
-    readonly object _buildingLock = new object();
-    internal readonly Dictionary<KeyAndType, ICReg> Registrations = new Dictionary<KeyAndType, ICReg>();
-
-    // ReSharper disable MemberCanBePrivate.Global
-    public readonly object[] SingletonLocks;
-    public readonly object?[] Singletons;
-
-    public object[] Instances;
-    // ReSharper restore MemberCanBePrivate.Global
+    internal readonly object?[] Singletons;
 
     internal ContainerImpl(ReadOnlySpan<IRegistration> registrations, ContainerVerification containerVerification)
     {
@@ -31,20 +22,33 @@ public class ContainerImpl : IContainer
             ((IContanerRegistration)registration).Register(context);
         }
 
-        SingletonLocks = new object[context.SingletonCount];
-        for (var i = 0; i < context.SingletonCount; i++)
+        foreach (var cReg in Registrations.Values)
         {
-            SingletonLocks[i] = new object();
+            if (cReg.Lifetime == Lifetime.Singleton)
+            {
+                cReg.SingletonId = context.SingletonCount++;
+            }
         }
 
         Singletons = new object[context.SingletonCount];
-        Instances = context.Instances;
-        context.AddCReg(new KeyAndType(null, typeof(IContainer)), true, false,
-            new ContainerInjectImpl());
-        if (containerVerification == ContainerVerification.None) return;
-        foreach (var (_, reg) in Registrations)
+        Registrations[new(null, typeof(IContainer))] = new()
         {
-            reg.Verify(containerVerification, this);
+            Factory = (_, _) => (container, _) => container,
+            Lifetime = Lifetime.Singleton,
+            SingletonId = uint.MaxValue
+        };
+        if (containerVerification == ContainerVerification.None) return;
+        if ((containerVerification & ContainerVerification.SingletonsUsingOnlySingletons) != 0)
+        {
+            foreach (var (_, reg) in Registrations)
+            {
+                if (reg.Lifetime == Lifetime.Singleton)
+                {
+                    var ctx = new CreateFactoryCtx();
+                    ctx.VerifySingletons = true;
+                    reg.Factory(this, ctx);
+                }
+            }
         }
     }
 
@@ -60,19 +64,9 @@ public class ContainerImpl : IContainer
 
     public object ResolveKeyed(object? key, Type type)
     {
-        // ReSharper disable once InconsistentlySynchronizedField
-        if (_workers.TryGetValue(new KeyAndType(key, type), out var worker))
-        {
-            return worker();
-        }
-
-        lock (_buildingLock)
-        {
-            worker = TryBuild(key, type);
-        }
-
-        if (worker == null) ThrowNotResolvable(key, type);
-        return worker();
+        var factory = CreateFactory(new CreateFactoryCtx(), type, key);
+        if (factory == null) ThrowNotResolvable(key, type);
+        return factory(this, null);
     }
 
     public object? ResolveOptional(Type type)
@@ -87,17 +81,122 @@ public class ContainerImpl : IContainer
 
     public object? ResolveOptionalKeyed(object key, Type type)
     {
-        if (_workers.TryGetValue(new KeyAndType(key, type), out var worker))
+        var factory = CreateFactory(new CreateFactoryCtx(), type, key);
+        return factory?.Invoke(this, null);
+    }
+
+    public Func<IContainer, IResolvingCtx?, object?>? CreateFactory(ICreateFactoryCtx ctx, Type type, object? key)
+    {
+        var ctxImpl = (CreateFactoryCtx)ctx;
+        if (Registrations.TryGetValue(new(key, type), out var cReg))
         {
-            return worker?.Invoke();
+            goto haveFactory;
         }
 
-        lock (_buildingLock)
+        if (Registrations.TryGetValue(new(null, type), out cReg))
         {
-            worker = TryBuild(key, type);
+            goto haveFactory;
         }
 
-        return worker?.Invoke();
+        if (type.IsGenericType)
+        {
+            var genericTypeDefinition = type.GetGenericTypeDefinition();
+            if (genericTypeDefinition == typeof(Func<>))
+            {
+                var nestedType = type.GetGenericArguments()[0];
+                var nestedFactory = CreateFactory(ctx, nestedType, key);
+                if (nestedFactory == null)
+                {
+                    throw new BTDBException("Unable to resolve dependency of Func<> " + nestedType.ToSimpleName());
+                }
+
+                return (c, r) => () => nestedFactory(c, r);
+            }
+
+            if (genericTypeDefinition == typeof(IEnumerable<>))
+            {
+                var nestedType = type.GetGenericArguments()[0];
+                var enumerableBackup = ctxImpl.Enumerate;
+                ctxImpl.Enumerate = true;
+                var nestedFactory = CreateFactory(ctx, nestedType, key);
+                if (nestedFactory == null)
+                {
+                    var emptyArray = Array.CreateInstance(nestedType, 0);
+                    return (c, r) => emptyArray;
+                }
+
+                ctxImpl.Enumerate = enumerableBackup;
+            }
+        }
+
+        if (type.IsInterface || type.IsAbstract)
+            return null;
+        throw new NotImplementedException();
+        haveFactory:
+        if (cReg.Lifetime == Lifetime.Singleton && cReg.SingletonId != uint.MaxValue)
+        {
+            ctxImpl.SingletonDeepness++;
+            try
+            {
+                var f = cReg.Factory(this, ctx);
+                var sid = cReg.SingletonId;
+                return (container, resolvingCtx) =>
+                {
+                    ref var singleton = ref ((ContainerImpl)container).Singletons[sid];
+                    var instance = Volatile.Read(ref singleton);
+                    if (instance != null)
+                    {
+                        if (instance.GetType() == typeof(SingletonLocker))
+                        {
+                            lock (instance)
+                            {
+                            }
+
+                            return Volatile.Read(ref singleton);
+                        }
+
+                        return instance;
+                    }
+
+                    var mySingletonLocker = new SingletonLocker();
+                    Monitor.Enter(mySingletonLocker);
+                    instance = Interlocked.CompareExchange(ref singleton, mySingletonLocker, null);
+                    if (instance == null)
+                    {
+                        instance = f(container, resolvingCtx);
+                        Volatile.Write(ref singleton, instance);
+                        Monitor.Exit(mySingletonLocker);
+                        return instance;
+                    }
+
+                    if (instance!.GetType() == typeof(SingletonLocker))
+                    {
+                        lock (instance)
+                        {
+                        }
+
+                        return Volatile.Read(ref singleton);
+                    }
+
+                    return instance;
+                };
+            }
+            finally
+            {
+                ctxImpl.SingletonDeepness--;
+            }
+        }
+
+        if (ctxImpl.VerifySingletons && ctxImpl.SingletonDeepness > 0 && cReg.SingletonId != uint.MaxValue)
+        {
+            throw new BTDBException("Transient dependency " + new KeyAndType(key, type));
+        }
+
+        return cReg.Factory(this, ctx);
+    }
+
+    class SingletonLocker
+    {
     }
 
     [DoesNotReturn]
@@ -109,50 +208,5 @@ public class ContainerImpl : IContainer
         }
 
         throw new ArgumentException($"Type {type.ToSimpleName()} with key {key} cannot be resolved");
-    }
-
-    Func<object>? TryBuild(object? key, Type type)
-    {
-        if (!_workers.TryGetValue(new KeyAndType(key, type), out var worker))
-        {
-            worker = Build(key, type);
-            if (worker == null) return null;
-            _workers.TryAdd(new KeyAndType(key, type), worker);
-        }
-
-        return worker;
-    }
-
-    internal Func<object> BuildFromRegistration(ICRegILGen registration, IBuildContext buildContext)
-    {
-        if (registration is ICRegFuncOptimized regOpt)
-        {
-            var result = (Func<object>)regOpt.BuildFuncOfT(this, typeof(Func<object>));
-            if (result != null)
-            {
-                return result;
-            }
-        }
-
-        lock (_buildingLock) // Lazy builder could call this method outside of normal Container builder
-        {
-            var context = new GenerationContext(this, registration, buildContext);
-            return (Func<object>)context.GenerateFunc(typeof(Func<object>));
-        }
-    }
-
-    Func<object>? Build(object? key, Type type)
-    {
-        var buildContext = new BuildContext(this);
-        var registration = buildContext.ResolveNeedBy(type, key);
-        return registration != null ? BuildFromRegistration(registration, buildContext) : null;
-    }
-
-    public int AddInstance(object instance)
-    {
-        var result = Instances.Length;
-        Array.Resize(ref Instances, result + 1);
-        Instances[result] = instance;
-        return result;
     }
 }
