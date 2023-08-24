@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -315,7 +316,7 @@ public class IocTests
     public void RegisterFactory()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterFactory(c => new InjectingContainer(c)).As<InjectingContainer>();
+        builder.RegisterFactory<InjectingContainer>((_,_) => (c,_)=> new InjectingContainer(c)).As<InjectingContainer>();
         var container = builder.Build();
         var obj = container.Resolve<InjectingContainer>();
         Assert.Same(container, obj.Container);
@@ -326,7 +327,7 @@ public class IocTests
     public void RegisterFactoryAsSingleton()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterFactory(c => new InjectingContainer(c)).As<InjectingContainer>().SingleInstance();
+        builder.RegisterFactory<InjectingContainer>((_,_) => (c,_)=> new InjectingContainer(c)).As<InjectingContainer>().SingleInstance();
         var container = builder.Build();
         var obj = container.Resolve<InjectingContainer>();
         Assert.Same(container, obj.Container);
@@ -337,7 +338,7 @@ public class IocTests
     public void RegisterFactorySpecificInstanceType()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterFactory(c => new InjectingContainer(c), typeof(InjectingContainer));
+        builder.RegisterFactory((_,_) => (c,_)=> new InjectingContainer(c), typeof(InjectingContainer)).As<InjectingContainer>();
         var container = builder.Build();
         var obj = container.Resolve<InjectingContainer>();
         Assert.Same(container, obj.Container);
@@ -348,7 +349,7 @@ public class IocTests
     public void RegisterFactorySpecificInstanceTypeAsSingleton()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterFactory(c => new InjectingContainer(c), typeof(InjectingContainer)).SingleInstance();
+        builder.RegisterFactory((_,_) => (c,_)=> new InjectingContainer(c), typeof(InjectingContainer)).As<InjectingContainer>().SingleInstance();
         var container = builder.Build();
         var obj = container.Resolve<InjectingContainer>();
         Assert.Same(container, obj.Container);
@@ -397,7 +398,7 @@ public class IocTests
     public void RegisterAssemblyTypes()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterAssemblyTypes(typeof(Logger).Assembly);
+        builder.AutoRegisterTypes();
         var container = builder.Build();
         var log = container.Resolve<Logger>();
         Assert.NotNull(log);
@@ -407,7 +408,7 @@ public class IocTests
     public void RegisterAssemblyTypesWithWhereAndAsImplementedInterfaces()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
+        builder.AutoRegisterTypes()
             .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps"))
             .AsImplementedInterfaces();
         var container = builder.Build();
@@ -421,9 +422,8 @@ public class IocTests
     public void RegisterAssemblyTypesWithWhereAndAsImplementedInterfaces2()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
-            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces()
-            .PropertiesAutowired();
+        builder.AutoRegisterTypes()
+            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces();
         var container = builder.Build();
         var root = container.Resolve<IWebService>();
         Assert.NotNull(root);
@@ -435,7 +435,7 @@ public class IocTests
     public void RegisterAssemblyTypesWithWhereAndAsImplementedInterfacesAsSingleton()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
+        builder.AutoRegisterTypes()
             .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps"))
             .AsImplementedInterfaces().SingleInstance();
         var container = builder.Build();
@@ -449,9 +449,9 @@ public class IocTests
     public void RegisterAssemblyTypesWithWhereAndAsImplementedInterfacesAsSingleton2()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
+        builder.AutoRegisterTypes()
             .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces()
-            .SingleInstance().PropertiesAutowired();
+            .SingleInstance();
         var container = builder.Build();
         var root = container.Resolve<IWebService>();
         Assert.NotNull(root);
@@ -512,7 +512,7 @@ public class IocTests
     }
 
     [Fact]
-    public void NullInstanceResovedAsConstructorParameter()
+    public void NullInstanceResolvedAsConstructorParameter()
     {
         var builder = new ContainerBuilder();
         builder.RegisterInstance<ILogger>(null);
@@ -552,7 +552,7 @@ public class IocTests
     public void FuncWithTwoObjectParametersWithProps()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterType<DatabaseWithProps>().As<IDatabase>().PropertiesAutowired();
+        builder.RegisterType<DatabaseWithProps>().As<IDatabase>();
         var container = builder.Build();
         var factory = container.Resolve<Func<IErrorHandler, ILogger, IDatabase>>();
         var logger = new Logger();
@@ -565,15 +565,17 @@ public class IocTests
     public void AutowiredWithPropsRequired()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterType<DatabaseWithProps>().As<IDatabase>().PropertiesAutowired();
+        builder.RegisterType<DatabaseWithProps>().As<IDatabase>();
         var container = builder.Build();
         Assert.Throws<ArgumentException>(() => container.Resolve<Func<IErrorHandler, IDatabase>>());
         Assert.Throws<ArgumentException>(() => container.Resolve<Func<ILogger, IDatabase>>());
     }
 
-    public class DatabaseWithOptionalProps : IDatabase
+    public partial class DatabaseWithOptionalProps : IDatabase
     {
+        [BTDB.IOC.Dependency]
         public ILogger? Logger { get; private set; }
+        [BTDB.IOC.Dependency]
         public IErrorHandler? ErrorHandler { get; private set; }
     }
 
@@ -581,7 +583,7 @@ public class IocTests
     public void FuncWithOptionalProps()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterType<DatabaseWithOptionalProps>().As<IDatabase>().PropertiesAutowired();
+        builder.RegisterType<DatabaseWithOptionalProps>().As<IDatabase>();
         var container = builder.Build();
         var factory = container.Resolve<Func<IDatabase>>();
         var obj = factory();
@@ -590,8 +592,8 @@ public class IocTests
 
     public class DatabaseWithDependencyProps : IDatabase
     {
-        [Dependency] public ILogger Logger { get; private set; }
-        [Dependency] public IErrorHandler? ErrorHandler { get; private set; }
+        [BTDB.IOC.Dependency] public ILogger Logger { get; private set; }
+        [BTDB.IOC.Dependency] public IErrorHandler? ErrorHandler { get; private set; }
     }
 
     [Fact]
@@ -609,8 +611,8 @@ public class IocTests
 
     public class ClassWithRenamedDependencyProps
     {
-        [Dependency] public ILogger Logger { get; set; }
-        [Dependency("SuperLogger")] public ILogger Logger2 { get; set; }
+        [BTDB.IOC.Dependency] public ILogger Logger { get; set; }
+        [BTDB.IOC.Dependency("SuperLogger")] public ILogger Logger2 { get; set; }
     }
 
     [Fact]
@@ -873,12 +875,27 @@ public class IocTests
         builder.RegisterInstance(3).Named<int>("j");
         builder.RegisterInstance("A").Named<string>("s");
         builder.RegisterType<MultipleConstructors>().Keyed<MultipleConstructors>(1);
-        builder.RegisterType<MultipleConstructors>().UsingConstructor().Keyed<MultipleConstructors>(2);
-        builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(int)).Keyed<MultipleConstructors>(3);
-        builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(string))
-            .Keyed<MultipleConstructors>(4);
-        builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(int), typeof(int))
-            .Keyed<MultipleConstructors>(5);
+        builder.RegisterFactory<MultipleConstructors>((_,_)=>(_,_)=>new MultipleConstructors()).Keyed<MultipleConstructors>(2);
+        builder.RegisterFactory<MultipleConstructors>((c,r)=>
+        {
+            var pi = c.CreateFactory(r, typeof(int), "i");
+            if (pi == null) throw new Exception("Value for parameter i is not registered");
+            return (c2, r2) => new MultipleConstructors((int)pi(c2,r2));
+        }).Keyed<MultipleConstructors>(3);
+        builder.RegisterFactory<MultipleConstructors>((c,r)=>
+        {
+            var ps = c.CreateFactory(r, typeof(string), "s");
+            if (ps == null) throw new Exception("Value for parameter s is not registered");
+            return (c2, r2) => new MultipleConstructors((string)ps(c2,r2));
+        }).Keyed<MultipleConstructors>(4);
+        builder.RegisterFactory<MultipleConstructors>((c,r)=>
+        {
+            var pi = c.CreateFactory(r, typeof(int), "i");
+            if (pi == null) throw new Exception("Value for parameter i is not registered");
+            var pj = c.CreateFactory(r, typeof(int), "j");
+            if (pj == null) throw new Exception("Value for parameter j is not registered");
+            return (c2, r2) => new MultipleConstructors((int)pi(c2,r2),(int)pj(c2,r2));
+        }).Keyed<MultipleConstructors>(5);
         var container = builder.Build();
         Assert.Equal("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(1).Desc);
         Assert.Equal("", container.ResolveKeyed<MultipleConstructors>(2).Desc);
@@ -1408,7 +1425,7 @@ public class IocTests
     public void InjectStructByFactory()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterFactory(c => new Foo(TimeSpan.FromHours(1)));
+        builder.RegisterFactory<Foo>((_,_) => (_,_) => new Foo(TimeSpan.FromHours(1)));
         var container = builder.Build();
         var foo = container.Resolve<Foo>();
         Assert.Equal(TimeSpan.FromHours(1), foo.Bar);

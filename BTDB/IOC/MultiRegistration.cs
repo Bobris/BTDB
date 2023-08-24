@@ -1,48 +1,45 @@
 using System;
 using System.Reflection;
+using BTDB.Collections;
 using BTDB.IL;
 
 namespace BTDB.IOC;
 
-class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeConstructorPropertiesScanTrait>, IContanerRegistration
+class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeScanTrait>, ILiveScopeTrait, ILiveScopeTraitImpl, IScanTrait, IScanTraitImpl, IContanerRegistration
 {
-    readonly AsTraitImpl _asTrait = new AsTraitImpl();
-    readonly LiveScopeTraitImpl _liveScopeTrait = new LiveScopeTraitImpl();
-    readonly ScanTraitImpl _scanTrait = new ScanTraitImpl();
-    readonly ConstructorTraitImpl _constructorTrait = new ConstructorTraitImpl();
-    readonly PropertiesTraitImpl _propertiesTrait = new PropertiesTraitImpl();
-    readonly Assembly[] _froms;
+    Lifetime _lifetime = Lifetime.AlwaysNew;
 
-    public MultiRegistration(Assembly[] froms)
+    public void SingleInstance()
     {
-        _froms = froms;
+        _lifetime = Lifetime.Singleton;
+    }
+
+    public Lifetime Lifetime => _lifetime;
+
+    StructList<Predicate<Type>> _filters;
+
+    public void Where(Predicate<Type> filter)
+    {
+        _filters.Add(filter);
+    }
+
+    public bool MatchFilter(Type type)
+    {
+        foreach (var predicate in _filters)
+        {
+            if (!predicate(type)) return false;
+        }
+        return true;
     }
 
     public void Register(ContainerRegistrationContext context)
     {
-        foreach (var assembly in _froms)
+        foreach (var (typeToken, value) in IContainer.FactoryRegistry)
         {
-            foreach (var type in assembly.GetTypes())
-            {
-                if (!type.IsClass) continue;
-                if (type.IsAbstract) continue;
-                if (type.IsGenericTypeDefinition) continue;
-                if (type.IsDelegate()) continue;
-                if (!_scanTrait.MatchFilter(type)) continue;
-                if (_constructorTrait.ChooseConstructor(type, _constructorTrait.ReturnPossibleConstructors(type)) == null)
-                    continue;
-                ((IContanerRegistration)new SingleRegistration(type, _asTrait, _liveScopeTrait, _constructorTrait, _propertiesTrait)).Register(context);
-            }
+            var type = Type.GetTypeFromHandle(RuntimeTypeHandle.FromIntPtr(typeToken));
+            if (type == null) continue;
+            if (!MatchFilter(type)) continue;
+            ((IContanerRegistration)new SingleRegistration(type, this, _lifetime)).Register(context);
         }
-    }
-
-    public override object InternalTraits(Type trait)
-    {
-        if (trait == typeof(IAsTrait)) return _asTrait;
-        if (trait == typeof(ILiveScopeTrait)) return _liveScopeTrait;
-        if (trait == typeof(IConstructorTrait)) return _constructorTrait;
-        if (trait == typeof(IPropertiesTrait)) return _propertiesTrait;
-        if (trait == typeof(IScanTrait)) return _scanTrait;
-        throw new ArgumentOutOfRangeException();
     }
 }

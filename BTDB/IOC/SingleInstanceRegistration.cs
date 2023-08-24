@@ -1,5 +1,4 @@
 using System;
-using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC;
 
@@ -7,7 +6,6 @@ class SingleInstanceRegistration : RegistrationBaseImpl<IAsTrait>, IContanerRegi
 {
     readonly object _instance;
     readonly Type _implementationType;
-    readonly AsTraitImpl _asTrait = new AsTraitImpl();
 
     public SingleInstanceRegistration(object instance, Type type)
     {
@@ -17,13 +15,19 @@ class SingleInstanceRegistration : RegistrationBaseImpl<IAsTrait>, IContanerRegi
 
     public void Register(ContainerRegistrationContext context)
     {
-        var reg = new InstanceImpl(_instance, _implementationType, context.AddInstance(_instance));
-        context.AddCReg(_asTrait.GetAsTypesFor(_implementationType), _asTrait.PreserveExistingDefaults, _asTrait.UniqueRegistration, reg);
-    }
+        object Factory(IContainer container, IResolvingCtx? ctx)
+        {
+            return _instance;
+        }
 
-    public override object InternalTraits(Type trait)
-    {
-        if (trait == typeof(IAsTrait)) return _asTrait;
-        throw new ArgumentOutOfRangeException();
+        Func<IContainer, IResolvingCtx?, object> FactoryFactory(IContainer container,
+            ICreateFactoryCtx createFactoryCtx)
+        {
+            return Factory;
+        }
+
+        context.AddCReg(GetAsTypesFor(_implementationType), PreserveExistingDefaults, UniqueRegistration,
+            new() { Factory = FactoryFactory, Lifetime = Lifetime.AlwaysNew, SingletonId = uint.MaxValue });
     }
 }
+

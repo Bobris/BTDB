@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Reflection;
 using BTDB.Collections;
 
 namespace BTDB.IOC;
@@ -30,7 +29,7 @@ public class ContainerBuilder
         _builderBehaviour = builderBehaviour;
     }
 
-    public IRegistration<IAsLiveScopeConstructorPropertiesTrait> RegisterType(Type type)
+    public IRegistration<IAsLiveScopeTrait> RegisterType(Type type)
     {
         var registration = new SingleRegistration(type);
         _registrations.Add(registration);
@@ -59,30 +58,23 @@ public class ContainerBuilder
         return registration;
     }
 
-    public IRegistration<IAsLiveScopeTrait> RegisterFactory<T>(Func<IContainer, T> factory) where T : class
+    public IRegistration<IAsLiveScopeTrait> RegisterFactory<T>(Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>> factory) where T : class
     {
         var registration = new SingleFactoryRegistration(factory, typeof(T));
         _registrations.Add(registration);
         return registration;
     }
 
-    public IRegistration<IAsLiveScopeTrait> RegisterFactory(Func<IContainer, object> factory, Type instanceType)
+    public IRegistration<IAsLiveScopeTrait> RegisterFactory(Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>> factory, Type instanceType)
     {
         var registration = new SingleFactoryRegistration(factory, instanceType);
         _registrations.Add(registration);
         return registration;
     }
 
-    public IRegistration<IAsLiveScopeConstructorPropertiesScanTrait> RegisterAssemblyTypes(Assembly from)
+    public IRegistration<IAsLiveScopeScanTrait> AutoRegisterTypes()
     {
-        return RegisterAssemblyTypes(new[] { from });
-    }
-
-    public IRegistration<IAsLiveScopeConstructorPropertiesScanTrait> RegisterAssemblyTypes(params Assembly[] froms)
-    {
-        var registration = new MultiRegistration(froms);
-        _registrations.Add(registration);
-        return registration;
+        return new MultiRegistration();
     }
 
     public IContainer Build()

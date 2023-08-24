@@ -1,66 +1,47 @@
 using System;
-using System.Linq;
-using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC;
 
-class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeConstructorPropertiesTrait>, IContanerRegistration
+class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerRegistration, ILiveScopeTrait,
+    ILiveScopeTraitImpl
 {
     readonly Type _implementationType;
-    readonly AsTraitImpl _asTrait;
-    readonly LiveScopeTraitImpl _liveScopeTrait;
-    readonly ConstructorTraitImpl _constructorTrait;
-    readonly PropertiesTraitImpl _propertiesTrait;
+
+    Lifetime _lifetime = Lifetime.AlwaysNew;
+
+    public void SingleInstance()
+    {
+        _lifetime = Lifetime.Singleton;
+    }
+
+    public Lifetime Lifetime => _lifetime;
 
     public SingleRegistration(Type implementationType)
     {
-        _liveScopeTrait = new LiveScopeTraitImpl();
-        _asTrait = new AsTraitImpl();
-        _constructorTrait = new ConstructorTraitImpl();
-        _propertiesTrait = new PropertiesTraitImpl();
         _implementationType = implementationType;
     }
 
-    internal SingleRegistration(Type implementationType, AsTraitImpl asTrait, LiveScopeTraitImpl liveScopeTrait, ConstructorTraitImpl constructorTrait, PropertiesTraitImpl propertiesTrait)
+    internal SingleRegistration(Type implementationType, IAsTraitImpl asTrait, Lifetime lifetime)
     {
         _implementationType = implementationType;
-        _asTrait = asTrait;
-        _liveScopeTrait = liveScopeTrait;
-        _constructorTrait = constructorTrait;
-        _propertiesTrait = propertiesTrait;
+        UniqueRegistration = asTrait.UniqueRegistration;
+        _preserveExistingDefaults = asTrait.PreserveExistingDefaults;
+        foreach (var keyAndType in asTrait.GetAsTypesFor(_implementationType))
+        {
+            _asTypes.Add(keyAndType);
+        }
+
+        _lifetime = lifetime;
     }
 
     public void Register(ContainerRegistrationContext context)
     {
-        ICReg reg;
-        var possibleConstructors = _constructorTrait.ReturnPossibleConstructors(_implementationType).ToList();
-        var bestConstructor = _constructorTrait.ChooseConstructor(_implementationType, possibleConstructors);
-        if (bestConstructor == null)
+        if (!IContainer.FactoryRegistry.TryGetValue(_implementationType.TypeHandle.Value, out var factory))
         {
-            throw new ArgumentException($"Cannot find public constructor for {_implementationType.FullName}");
-        }
-        switch (_liveScopeTrait.Lifetime)
-        {
-            case Lifetime.AlwaysNew:
-                reg = new AlwaysNewImpl(_implementationType, bestConstructor, _propertiesTrait.ArePropertiesAutowired);
-                break;
-            case Lifetime.Singleton:
-                reg = new SingletonImpl(_implementationType, new AlwaysNewImpl(_implementationType, bestConstructor, _propertiesTrait.ArePropertiesAutowired), context.SingletonCount);
-                context.SingletonCount++;
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
+            throw new ArgumentException($"Factory is not registered for type {_implementationType.FullName}");
         }
 
-        context.AddCReg(_asTrait.GetAsTypesFor(_implementationType), _asTrait.PreserveExistingDefaults, _asTrait.UniqueRegistration, reg);
-    }
-
-    public override object InternalTraits(Type trait)
-    {
-        if (trait == typeof(IAsTrait)) return _asTrait;
-        if (trait == typeof(ILiveScopeTrait)) return _liveScopeTrait;
-        if (trait == typeof(IConstructorTrait)) return _constructorTrait;
-        if (trait == typeof(IPropertiesTrait)) return _propertiesTrait;
-        throw new ArgumentOutOfRangeException();
+        context.AddCReg(GetAsTypesFor(_implementationType), PreserveExistingDefaults, UniqueRegistration,
+            new() { Factory = factory, Lifetime = Lifetime });
     }
 }
