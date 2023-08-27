@@ -1,15 +1,9 @@
-using System.Runtime.CompilerServices;
-using BTDB.IOC;
+using BTDB;
 
 namespace BTDBTest.IOCDomain;
 
+[Generate]
 public class Logger : ILogger
 {
     public bool Verbose { get; set; }
-
-    [ModuleInitializer]
-    public static void Init()
-    {
-        IContainer.RegisterFactory(typeof(Logger).TypeHandle.Value, (_, _) => (_, _) => new Logger());
-    }
 }

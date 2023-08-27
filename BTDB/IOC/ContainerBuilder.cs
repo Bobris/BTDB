@@ -74,7 +74,9 @@ public class ContainerBuilder
 
     public IRegistration<IAsLiveScopeScanTrait> AutoRegisterTypes()
     {
-        return new MultiRegistration();
+        var registration = new MultiRegistration();
+        _registrations.Add(registration);
+        return registration;
     }
 
     public IContainer Build()
