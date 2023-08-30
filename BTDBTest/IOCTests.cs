@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using BTDB;
 using Xunit;
 
 namespace BTDBTest;
@@ -1390,7 +1391,8 @@ public class IocTests
         Assert.Throws<BTDBException>(() => builder.BuildAndVerify());
     }
 
-    class Foo
+    [Generate]
+    internal class Foo
     {
         internal TimeSpan? Bar;
 

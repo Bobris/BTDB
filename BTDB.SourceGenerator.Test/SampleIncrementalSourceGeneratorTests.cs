@@ -61,6 +61,24 @@ public class SampleIncrementalSourceGeneratorTests
             """);
     }
 
+    [Fact]
+    public Task VerifyIocRegistrationForDependencyProperties()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+                                     public interface ILogger
+                                     {
+                                     }
+
+                                     [BTDB.Generate]
+                                     public class ErrorHandler
+                                     {
+                                         [BTDB.IOC.Dependency]
+                                         public ILogger Logger { get; init; }
+                                     }
+                                     """);
+    }
+
     static Task VerifySourceGenerator(string sourceCode)
     {
         var generator = new SourceGenerator();

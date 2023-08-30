@@ -14,7 +14,8 @@ static file class LoggerRegistration
         {
             return (container2, ctx2) =>
             {
-                return new global::TestNamespace.Logger();
+                var res = new global::TestNamespace.Logger();
+                return res;
             };
         });
     }
