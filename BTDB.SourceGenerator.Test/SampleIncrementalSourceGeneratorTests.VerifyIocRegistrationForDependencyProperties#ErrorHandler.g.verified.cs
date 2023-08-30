@@ -10,11 +10,11 @@ static file class ErrorHandlerRegistration
     {
         BTDB.IOC.IContainer.RegisterFactory(typeof(global::ErrorHandler).TypeHandle.Value, (container, ctx) =>
         {
-            var f0 = container.CreateFactory(ctx, typeof(global::ILogger), "logger");
-            if (f0 == null) throw new BTDB.KVDBLayer.BTDBException("Cannot resolve ILogger logger parameter of ErrorHandler");
+            var f0 = container.CreateFactory(ctx, typeof(global::ILogger), "Logger");
+            if (f0 == null) throw new BTDB.KVDBLayer.BTDBException("Cannot resolve ILogger Logger property of ErrorHandler");
             return (container2, ctx2) =>
             {
-                var res = new global::ErrorHandler(Unsafe.As<global::ILogger>(f0(container2, ctx2)));
+                var res = new global::ErrorHandler() { Logger = Unsafe.As<global::ILogger>(f0(container2, ctx2)) };
                 return res;
             };
         });

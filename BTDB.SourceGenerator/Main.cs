@@ -61,7 +61,18 @@ public class SourceGenerator : IIncrementalGenerator
                                              p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated))
                                          .ToImmutableArray() ??
                                      ImmutableArray<ParameterInfo>.Empty;
-                    return new GenerationInfo(namespaceName, className, symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, parameters);
+
+                    var propertyInfos = symbol.GetMembers()
+                        .OfType<IPropertySymbol>()
+                        .Where(p=> p.GetAttributes().Any(a => a.AttributeClass?.Name == "DependencyAttribute") && p.SetMethod is { DeclaredAccessibility: Accessibility.Public or Accessibility.Internal })
+                        .Select(p => new PropertyInfo(p.Name,
+                            p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                            p.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "DependencyAttribute")
+                                ?.ConstructorArguments.FirstOrDefault().Value as string,
+                            p.Type.IsReferenceType,
+                            p.NullableAnnotation == NullableAnnotation.Annotated, p.SetMethod!.IsInitOnly))
+                        .ToImmutableArray();
+                    return new GenerationInfo(namespaceName, className, symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, parameters, propertyInfos);
                 }
 
                 return null!;
@@ -87,6 +98,8 @@ public class SourceGenerator : IIncrementalGenerator
 
             var factoryCode = new StringBuilder();
             var parametersCode = new StringBuilder();
+            var propertyCode = new StringBuilder();
+            var propertyInitOnlyCode = new StringBuilder();
             var parameterIndex = 0;
 
             foreach (var (name, type, isReference, optional) in generationInfo.ConstructorParameters)
@@ -110,7 +123,61 @@ public class SourceGenerator : IIncrementalGenerator
                 }
                 parameterIndex++;
             }
+            foreach (var propertyInfo in generationInfo.Properties)
+            {
+                var name = propertyInfo.Name;
+                var type = propertyInfo.Type;
+                var dependencyName = propertyInfo.DependencyName ?? name;
+                var isReference = propertyInfo.IsReference;
+                var optional = propertyInfo.Optional;
+                factoryCode.Append($"var f{parameterIndex} = container.CreateFactory(ctx, typeof({type}), \"{dependencyName}\");");
+                factoryCode.Append("\n            ");
+                if (!optional)
+                {
+                    factoryCode.Append(
+                        $"if (f{parameterIndex} == null) throw new BTDB.KVDBLayer.BTDBException(\"Cannot resolve {type.Replace("global::","")} {name} property of {generationInfo.FullName.Replace("global::","")}\");");
+                    factoryCode.Append("\n            ");
+                }
+                if (propertyInfo.IsInitOnly)
+                {
+                    if (propertyInitOnlyCode.Length > 0) propertyInitOnlyCode.Append(", ");
+                    if (!optional)
+                    {
+                        propertyInitOnlyCode.Append($"{name} = ");
+                        propertyInitOnlyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
+                        propertyInitOnlyCode.Append($"f{parameterIndex}(container2, ctx2))");
+                    }
+                    else
+                    {
+                        propertyInitOnlyCode.Append($"{name} = f{parameterIndex} != null ?");
+                        propertyInitOnlyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
+                        propertyInitOnlyCode.Append($"f{parameterIndex}(container2, ctx2)) : default");
+                    }
+                }
+                else
+                {
+                    if (!optional)
+                    {
+                        propertyCode.Append($"res.{name} = ");
+                        propertyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
+                        propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
+                    }
+                    else
+                    {
+                        propertyCode.Append($"if (f{parameterIndex}!=null) res.{name} = ");
+                        propertyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"(({type})");
+                        propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
+                    }
+                    propertyCode.Append("\n                ");
+                }
+                parameterIndex++;
+            }
 
+            if (propertyInitOnlyCode.Length > 0)
+            {
+                propertyInitOnlyCode.Append(" }");
+                propertyInitOnlyCode.Insert(0, " { ");
+            }
             // language=c#
             var code = $$"""
                 // <auto-generated/>
@@ -126,7 +193,8 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             {{factoryCode}}return (container2, ctx2) =>
                             {
-                                return new {{generationInfo.FullName}}({{parametersCode}});
+                                var res = new {{generationInfo.FullName}}({{parametersCode}}){{propertyInitOnlyCode}};
+                                {{propertyCode}}return res;
                             };
                         });
                     }
@@ -141,6 +209,8 @@ public class SourceGenerator : IIncrementalGenerator
     }
 }
 
-record GenerationInfo(string? Namespace, string Name, string FullName, bool IsPartial, ImmutableArray<ParameterInfo> ConstructorParameters);
+record GenerationInfo(string? Namespace, string Name, string FullName, bool IsPartial, ImmutableArray<ParameterInfo> ConstructorParameters, ImmutableArray<PropertyInfo> Properties);
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional);
+
+record PropertyInfo(string Name, string Type, string? DependencyName, bool IsReference, bool Optional, bool IsInitOnly);
