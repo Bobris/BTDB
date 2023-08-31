@@ -22,6 +22,9 @@ public interface IContainer
 
 public interface IResolvingCtx
 {
+    object Exchange(int idx, object value);
+    object Get(int idx);
+    void Set(int idx, object value);
 }
 
 public interface ICreateFactoryCtx

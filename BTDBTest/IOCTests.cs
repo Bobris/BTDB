@@ -6,8 +6,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Tasks;
 using BTDB;
 using Xunit;
@@ -16,7 +14,7 @@ namespace BTDBTest;
 
 using IOCDomain;
 
-public class IocTests
+public partial class IocTests
 {
     public interface IAmLazy
     {
@@ -610,6 +608,7 @@ public class IocTests
         Assert.Same(logger, obj.Logger);
     }
 
+    [Generate]
     public class ClassWithRenamedDependencyProps
     {
         [BTDB.IOC.Dependency] public ILogger Logger { get; set; }
@@ -771,16 +770,14 @@ public class IocTests
     }
 
     [Fact]
-    public void CanInstantiatePrivateClassAsSingleton()
+    public void PrivateClassesAreIgnoredBySourceGenerator()
     {
         var builder = new ContainerBuilder();
         builder.RegisterType<PrivateLogger>().As<ILogger>().SingleInstance();
-        var container = builder.Build();
-        var log1 = container.Resolve<ILogger>();
-        Assert.NotNull(log1);
+        Assert.Throws<ArgumentException>(() => builder.Build());
     }
 
-    public class PublicClassWithPrivateConstructor : ILogger
+    public partial class PublicClassWithPrivateConstructor : ILogger
     {
         PublicClassWithPrivateConstructor()
         {
@@ -788,11 +785,12 @@ public class IocTests
     }
 
     [Fact]
-    public void BuildingContainerWithRegisteredTypeWithPrivateConstructorShouldThrow()
+    public void BuildingContainerWithRegisteredPartialClassWithPrivateConstructorWorks()
     {
         var builder = new ContainerBuilder();
         builder.RegisterType<PublicClassWithPrivateConstructor>().As<ILogger>();
-        Assert.Throws<ArgumentException>(() => builder.Build());
+        var container = builder.Build();
+        Assert.NotNull(container.Resolve<ILogger>());
     }
 
     public class HardCycle1 : ICycle1
@@ -1080,22 +1078,23 @@ public class IocTests
         Assert.NotNull(container.Resolve<Logger>());
     }
 
-    class ClassDependency
+    internal class ClassDependency
     {
     }
 
-    struct StructDependency
+    internal struct StructDependency
     {
     }
 
-    enum EnumDependency
+    internal enum EnumDependency
     {
         Foo,
         Bar,
         FooBar = Foo | Bar
     }
 
-    abstract class OptionalClass<T>
+    [Generate]
+    internal abstract class OptionalClass<T>
     {
         public T Value { get; }
 
@@ -1116,133 +1115,133 @@ public class IocTests
         public override string ToString() => $"{Value}";
     }
 
-    class ClassWithTrueBool : OptionalClass<bool>
+    internal class ClassWithTrueBool : OptionalClass<bool>
     {
         public ClassWithTrueBool(bool foo = true) : base(foo)
         {
         }
     }
 
-    class ClassWithFalseBool : OptionalClass<bool>
+    internal class ClassWithFalseBool : OptionalClass<bool>
     {
         public ClassWithFalseBool(bool foo = false) : base(foo)
         {
         }
     }
 
-    class ClassWithInt16 : OptionalClass<Int16>
+    internal class ClassWithInt16 : OptionalClass<Int16>
     {
         public ClassWithInt16(Int16 foo = 11111) : base(foo)
         {
         }
     }
 
-    class ClassWithInt32 : OptionalClass<Int32>
+    internal class ClassWithInt32 : OptionalClass<Int32>
     {
         public ClassWithInt32(Int32 foo = Int32.MaxValue) : base(foo)
         {
         }
     }
 
-    class ClassWithInt64 : OptionalClass<Int64>
+    internal class ClassWithInt64 : OptionalClass<Int64>
     {
         public ClassWithInt64(Int64 foo = Int64.MaxValue) : base(foo)
         {
         }
     }
 
-    class ClassWithFloat : OptionalClass<float>
+    internal class ClassWithFloat : OptionalClass<float>
     {
         public ClassWithFloat(float foo = 1.1f) : base(foo)
         {
         }
     }
 
-    class ClassWithDouble : OptionalClass<double>
+    internal class ClassWithDouble : OptionalClass<double>
     {
         public ClassWithDouble(double foo = 2.2d) : base(foo)
         {
         }
     }
 
-    class ClassWithDoubleCastedFromFloat : OptionalClass<double>
+    internal class ClassWithDoubleCastedFromFloat : OptionalClass<double>
     {
         public ClassWithDoubleCastedFromFloat(double foo = 2.2f) : base(foo)
         {
         }
     }
 
-    class ClassWithDecimal : OptionalClass<decimal>
+    internal class ClassWithDecimal : OptionalClass<decimal>
     {
         public ClassWithDecimal(decimal foo = 3.3m) : base(foo)
         {
         }
     }
 
-    class ClassWithString : OptionalClass<string>
+    internal class ClassWithString : OptionalClass<string>
     {
         public ClassWithString(string foo = "str") : base(foo)
         {
         }
     }
 
-    class ClassWithClass : OptionalClass<ClassDependency>
+    internal class ClassWithClass : OptionalClass<ClassDependency>
     {
         public ClassWithClass(ClassDependency foo = default) : base(foo)
         {
         }
     }
 
-    class ClassWithStruct : OptionalClass<StructDependency>
+    internal class ClassWithStruct : OptionalClass<StructDependency>
     {
         public ClassWithStruct(StructDependency foo = default) : base(foo)
         {
         }
     }
 
-    class ClassWithEnum : OptionalClass<EnumDependency>
+    internal class ClassWithEnum : OptionalClass<EnumDependency>
     {
         public ClassWithEnum(EnumDependency foo = EnumDependency.Foo) : base(foo)
         {
         }
     }
 
-    class ClassWithEnum2 : OptionalClass<EnumDependency>
+    internal class ClassWithEnum2 : OptionalClass<EnumDependency>
     {
         public ClassWithEnum2(EnumDependency foo = EnumDependency.FooBar) : base(foo)
         {
         }
     }
 
-    class ClassWithNullable : OptionalClass<int?>
+    internal class ClassWithNullable : OptionalClass<int?>
     {
         public ClassWithNullable(int? foo = default) : base(foo)
         {
         }
     }
 
-    class ClassWithNullable2 : OptionalClass<int?>
+    internal class ClassWithNullable2 : OptionalClass<int?>
     {
         public ClassWithNullable2(int? foo = 10) : base(foo)
         {
         }
     }
 
-    class ClassWithNullableStruct : OptionalClass<StructDependency?>
+    internal class ClassWithNullableStruct : OptionalClass<StructDependency?>
     {
         public ClassWithNullableStruct(StructDependency? foo = default) : base(foo)
         {
         }
     }
 
-    class ClassWithDateTime : OptionalClass<DateTime>
+    internal class ClassWithDateTime : OptionalClass<DateTime>
     {
         public ClassWithDateTime(DateTime foo = default) : base(foo)
         {
         }
     }
 
-    class ClassWithNullableDateTime : OptionalClass<DateTime?>
+    internal class ClassWithNullableDateTime : OptionalClass<DateTime?>
     {
         public ClassWithNullableDateTime(DateTime? foo = default) : base(foo)
         {
@@ -1258,7 +1257,7 @@ public class IocTests
     [InlineData(typeof(ClassWithFloat))]
     [InlineData(typeof(ClassWithDouble))]
     [InlineData(typeof(ClassWithDoubleCastedFromFloat))]
-    //[InlineData(typeof(ClassWithDecimal), Skip = "Not supported yet")]
+    [InlineData(typeof(ClassWithDecimal))]
     [InlineData(typeof(ClassWithString))]
     [InlineData(typeof(ClassWithClass))]
     [InlineData(typeof(ClassWithStruct))]
@@ -1267,7 +1266,7 @@ public class IocTests
     [InlineData(typeof(ClassWithNullable))]
     [InlineData(typeof(ClassWithNullable2))]
     [InlineData(typeof(ClassWithNullableStruct))]
-    //[InlineData(typeof(ClassWithDateTime), Skip = "Not supported yet")]
+    [InlineData(typeof(ClassWithDateTime))]
     [InlineData(typeof(ClassWithNullableDateTime))]
     public void ResolveWithOptionalParameterWithoutRegister(Type type)
     {
@@ -1286,9 +1285,9 @@ public class IocTests
         Assert.Equal(expected, actual);
     }
 
-    class ClassWithRegisteredOptionalParam : OptionalClass<ClassWithInt32>
+    internal class ClassWithRegisteredOptionalParam : OptionalClass<ClassWithInt32?>
     {
-        public ClassWithRegisteredOptionalParam(ClassWithInt32 t = null) : base(t)
+        public ClassWithRegisteredOptionalParam(ClassWithInt32? t = null) : base(t)
         {
         }
     }
@@ -1317,7 +1316,7 @@ public class IocTests
         Assert.Null(dateTimeParameter.RawDefaultValue);
     }
 
-    class ClassWithDispose : ILogger, IAsyncDisposable, IDisposable
+    internal class ClassWithDispose : ILogger, IAsyncDisposable, IDisposable
     {
         public async ValueTask DisposeAsync()
         {
