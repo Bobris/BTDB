@@ -175,6 +175,12 @@ public class ContainerImpl : IContainer
 
                 ctxImpl.Enumerate = enumerableBackup;
             }
+
+            if (genericTypeDefinition == typeof(Nullable<>))
+            {
+                return null;
+            }
+
             throw new NotImplementedException();
         }
 

@@ -1270,10 +1270,6 @@ public partial class IocTests
     [InlineData(typeof(ClassWithNullableDateTime))]
     public void ResolveWithOptionalParameterWithoutRegister(Type type)
     {
-        object Create(Type t) => Activator.CreateInstance(t,
-            BindingFlags.CreateInstance | BindingFlags.Public | BindingFlags.Instance |
-            BindingFlags.OptionalParamBinding, null, new object[] { Type.Missing }, CultureInfo.CurrentCulture);
-
         var expected = Create(type);
 
         var containerBuilder = new ContainerBuilder();
@@ -1283,6 +1279,11 @@ public partial class IocTests
         var actual = container.Resolve(type);
 
         Assert.Equal(expected, actual);
+        return;
+
+        object? Create(Type t) => Activator.CreateInstance(t,
+            BindingFlags.CreateInstance | BindingFlags.Public | BindingFlags.Instance |
+            BindingFlags.OptionalParamBinding, null, new[] { Type.Missing }, CultureInfo.CurrentCulture);
     }
 
     internal class ClassWithRegisteredOptionalParam : OptionalClass<ClassWithInt32?>

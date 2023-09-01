@@ -71,7 +71,8 @@ public class SourceGenerator : IIncrementalGenerator
                     var parameters = constructor?.Parameters.Select(p => new ParameterInfo(p.Name,
                                              p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                                              p.Type.IsReferenceType,
-                                             p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated))
+                                             p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
+                                             p.HasExplicitDefaultValue ? p.ExplicitDefaultValue!=null ? ExtractDefaultValue(p.DeclaringSyntaxReferences[0], p.Type) : null : null))
                                          .ToImmutableArray() ??
                                      ImmutableArray<ParameterInfo>.Empty;
 
@@ -80,35 +81,13 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         parentDeclarations = classDeclarationSyntax.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().Select(c =>
                         {
-                            if (c.Modifiers.All(m => m.ValueText != "partial"))
+                            if (c.Modifiers.All(m => m.ValueText != "partial") || c.Modifiers.Any(m=>m.ValueText=="file"))
                             {
                                 isPartial = false;
                                 return "";
                             }
 
-                            var mod = c.Modifiers.ToString();
-                            if (mod.Contains("public") || mod.Contains("internal"))
-                            {
-                            }
-                            else if (mod.Contains("private"))
-                            {
-                                mod = mod.Replace("private", "internal");
-                            }
-                            else if (mod.Contains("file"))
-                            {
-                                isPartial = false;
-                                return "";
-                            }
-                            else if (mod.Contains("protected"))
-                            {
-                                mod = mod.Replace("protected", "internal");
-                            }
-                            else
-                            {
-                                mod = "internal " + mod;
-                            }
-
-                            return mod + " " + c.Keyword.ValueText + " " + c.Identifier.ValueText;
+                            return c.Modifiers + " " + c.Keyword.ValueText + " " + c.Identifier.ValueText;
                         }).ToImmutableArray();
                     }
                     var propertyInfos = symbol.GetMembers()
@@ -128,6 +107,18 @@ public class SourceGenerator : IIncrementalGenerator
             }).Where(i => i != null);
 
         context.RegisterSourceOutput(gen.Collect(), GenerateCode);
+    }
+
+    static string? ExtractDefaultValue(SyntaxReference syntaxReference, ITypeSymbol typeSymbol)
+    {
+        var p = (ParameterSyntax)syntaxReference.GetSyntax();
+        var s = p.Default?.Value.ToString();
+        if (s == null) return null;
+        if (s.StartsWith(typeSymbol.Name + "."))
+        {
+            return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + s.Substring(typeSymbol.Name.Length);
+        }
+        return $"({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}){s}";
     }
 
     static void GenerateCode(SourceProductionContext context,
@@ -151,7 +142,7 @@ public class SourceGenerator : IIncrementalGenerator
             var propertyInitOnlyCode = new StringBuilder();
             var parameterIndex = 0;
 
-            foreach (var (name, type, isReference, optional) in generationInfo.ConstructorParameters)
+            foreach (var (name, type, isReference, optional, defaultValue) in generationInfo.ConstructorParameters)
             {
                 if (parameterIndex > 0) parametersCode.Append(", ");
                 factoryCode.Append($"var f{parameterIndex} = container.CreateFactory(ctx, typeof({type}), \"{name}\");");
@@ -168,7 +159,8 @@ public class SourceGenerator : IIncrementalGenerator
                 {
                     parametersCode.Append($"f{parameterIndex} != null ? ");
                     parametersCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"(({type})");
-                    parametersCode.Append($"f{parameterIndex}(container2, ctx2)) : default({type})");
+                    parametersCode.Append($"f{parameterIndex}(container2, ctx2)) : " +
+                                          (defaultValue ?? $"default({type})"));
                 }
                 parameterIndex++;
             }
@@ -272,6 +264,6 @@ public class SourceGenerator : IIncrementalGenerator
 
 record GenerationInfo(string? Namespace, string Name, string FullName, bool IsPartial, ImmutableArray<ParameterInfo> ConstructorParameters, ImmutableArray<PropertyInfo> Properties, ImmutableArray<string> ParentDeclarations);
 
-record ParameterInfo(string Name, string Type, bool IsReference, bool Optional);
+record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
 
 record PropertyInfo(string Name, string Type, string? DependencyName, bool IsReference, bool Optional, bool IsInitOnly);
