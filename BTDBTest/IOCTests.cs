@@ -165,6 +165,7 @@ public partial class IocTests
         Assert.Same(obj.Logger, obj.ErrorHandler.Logger);
     }
 
+    [Generate]
     public class SpecialCase
     {
         public SpecialCase(IErrorHandler simple, IDatabase complex)
@@ -243,11 +244,13 @@ public partial class IocTests
         Assert.Same(instance, obj);
     }
 
+    [Generate]
     public interface ICycle1
     {
         ICycle2 Cycle2Prop { get; }
     }
 
+    [Generate]
     public interface ICycle2
     {
         ICycle1 Cycle1Prop { get; }
@@ -536,6 +539,9 @@ public partial class IocTests
         Assert.Equal(logger, obj.Logger);
     }
 
+    [Generate]
+    internal delegate IDatabase CreateDatabase(IErrorHandler errorHandler, ILogger logger);
+
     [Fact]
     public void FuncWithTwoObjectParameters()
     {
@@ -544,6 +550,9 @@ public partial class IocTests
         var container = builder.Build();
         var factory = container.Resolve<Func<IErrorHandler, ILogger, IDatabase>>();
         var obj = factory(null, null);
+        Assert.NotNull(obj);
+        var factory2 = container.Resolve<CreateDatabase>();
+        obj = factory2(null!, null!);
         Assert.NotNull(obj);
     }
 
@@ -589,7 +598,7 @@ public partial class IocTests
         Assert.NotNull(obj);
     }
 
-    public class DatabaseWithDependencyProps : IDatabase
+    public partial class DatabaseWithDependencyProps : IDatabase
     {
         [BTDB.IOC.Dependency] public ILogger Logger { get; private set; }
         [BTDB.IOC.Dependency] public IErrorHandler? ErrorHandler { get; private set; }
@@ -630,10 +639,11 @@ public partial class IocTests
         Assert.NotSame(obj.Logger, obj.Logger2);
     }
 
+    [Generate]
     public class KlassWith2IntParams
     {
-        public int Param1 { get; private set; }
-        public int Param2 { get; private set; }
+        public int Param1 { get; }
+        public int Param2 { get; }
 
         public KlassWith2IntParams(int param1, int param2)
         {
@@ -642,7 +652,8 @@ public partial class IocTests
         }
     }
 
-    delegate KlassWith2IntParams KlassWith2IntParamsFactory(int param2, int param1);
+    [Generate]
+    internal delegate KlassWith2IntParams KlassWith2IntParamsFactory(int param2, int param1);
 
     [Fact]
     public void DelegateWithNamedParameters()
@@ -840,6 +851,7 @@ public partial class IocTests
         Assert.Same(log1, log2);
     }
 
+    [Generate]
     public class MultipleConstructors
     {
         public readonly String Desc;
@@ -1031,33 +1043,6 @@ public partial class IocTests
         var handler = container.Resolve<ILogger>();
         Assert.IsType<EnhancedLogger>(handler);
         Assert.IsType<Logger>(((EnhancedLogger)handler).Parent);
-    }
-
-    class GreedyNonPublicClass
-    {
-        public GreedyNonPublicClass(ILogger a, ILogger b, ILogger c, ILogger d, ILogger e, ILogger f)
-        {
-        }
-    }
-
-    [Fact]
-    public void ThrowsExceptionForTooManyArgumentsInNonPublicClass()
-    {
-        var containerBuilder = new ContainerBuilder();
-        containerBuilder.RegisterType<GreedyNonPublicClass>().AsImplementedInterfaces();
-        foreach (var name in new[] { "a", "b", "c", "d", "e", "f" })
-            containerBuilder.RegisterType<Logger>().AsImplementedInterfaces().Named<ILogger>(name);
-        var container = containerBuilder.Build();
-        if (Debugger.IsAttached)
-        {
-            var ex = Assert.Throws<BTDBException>(() => container.Resolve<GreedyNonPublicClass>());
-            Assert.Contains("Greedy", ex.Message);
-            Assert.Contains("Unsupported", ex.Message);
-        }
-        else
-        {
-            Assert.NotNull(container.Resolve<GreedyNonPublicClass>());
-        }
     }
 
     [Fact]

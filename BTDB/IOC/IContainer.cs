@@ -29,4 +29,7 @@ public interface IResolvingCtx
 
 public interface ICreateFactoryCtx
 {
+    int GetParamSize();
+    bool HasResolvingCtx();
+    int AddInstanceToCtx(Type paramType, string? name = null);
 }

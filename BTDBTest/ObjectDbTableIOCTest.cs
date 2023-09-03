@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using BTDB;
 using BTDB.FieldHandler;
 using BTDB.IOC;
 using BTDB.KVDBLayer;
@@ -40,6 +41,7 @@ public class ObjectDbTableIOCTest : IDisposable
         OpenDb();
     }
 
+    [Generate]
     public class Item
     {
         public Item(string param)
@@ -81,6 +83,7 @@ public class ObjectDbTableIOCTest : IDisposable
         Assert.Equal("Hello", item.Param);
     }
 
+    [Generate]
     public class SingletonItem
     {
         public SingletonItem(string param)

@@ -106,8 +106,10 @@ public class TableInfo
             factory = container.ResolveOptional(factoryType);
         }
 
+
         if (factory != null)
         {
+            factoryType = factory.GetType();
             // ReSharper disable once EqualExpressionComparison intentional
             if (((Func<object>)factory)() == ((Func<object>)factory)())
             {
