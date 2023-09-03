@@ -28,6 +28,11 @@ class ContainerRegistrationContext
 
     public void AddCReg(KeyAndType asType, bool preserveExistingDefaults, bool uniqueRegistration, CReg registration)
     {
+        if (registration.Lifetime == Lifetime.Singleton && registration.SingletonId == uint.MaxValue)
+        {
+            registration.SingletonId = SingletonCount++;
+        }
+
         if (!_registrations.TryGetValue(asType, out var currentReg))
         {
             _registrations.Add(asType, registration);

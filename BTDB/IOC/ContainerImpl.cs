@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -22,14 +21,6 @@ public class ContainerImpl : IContainer
             ((IContanerRegistration)registration).Register(context);
         }
 
-        foreach (var cReg in Registrations.Values)
-        {
-            if (cReg.Lifetime == Lifetime.Singleton)
-            {
-                cReg.SingletonId = context.SingletonCount++;
-            }
-        }
-
         Singletons = new object[context.SingletonCount];
         Registrations[new(null, typeof(IContainer))] = new()
         {
@@ -46,6 +37,7 @@ public class ContainerImpl : IContainer
                 {
                     var ctx = new CreateFactoryCtx();
                     ctx.VerifySingletons = true;
+                    ctx.SingletonDeepness = 1;
                     reg.Factory(this, ctx);
                 }
             }
@@ -88,7 +80,7 @@ public class ContainerImpl : IContainer
     public Func<IContainer, IResolvingCtx?, object?>? CreateFactory(ICreateFactoryCtx ctx, Type type, object? key)
     {
         var ctxImpl = (CreateFactoryCtx)ctx;
-        if (ctxImpl.IsBound(type, out var paramIdx))
+        if (ctxImpl.IsBound(type, key as string, out var paramIdx))
         {
             return (c, r) => r!.Get(paramIdx);
         }
@@ -101,6 +93,14 @@ public class ContainerImpl : IContainer
         if (Registrations.TryGetValue(new(null, type), out cReg))
         {
             goto haveFactory;
+        }
+
+        if (type.IsDelegate())
+        {
+            if (IContainer.FactoryRegistry.TryGetValue(type.TypeHandle.Value, out var factory))
+            {
+                return factory(this, ctx);
+            }
         }
 
         if (type.IsGenericType)
@@ -129,7 +129,8 @@ public class ContainerImpl : IContainer
                 else
                 {
                     if (genericArguments[0].IsValueType)
-                        throw new NotSupportedException("Func<,> with value type argument is not supported");
+                        throw new NotSupportedException(
+                            "Func<,> with value type argument is not supported, if you define identical delegate type with [Generate], it will be supported.");
                     var hasResolvingCtx = ctxImpl.HasResolvingCtx();
                     var p1Idx = ctxImpl.AddInstanceToCtx(genericArguments[0]);
                     var nestedFactory = CreateFactory(ctx, nestedType, key);
@@ -162,6 +163,50 @@ public class ContainerImpl : IContainer
                 }
             }
 
+            if (genericTypeDefinition == typeof(Tuple<>))
+            {
+                var nestedType = type.GetGenericArguments()[0];
+                VerifyNonValueType(nestedType);
+                var nestedFactory = CreateFactory(ctx, nestedType, key);
+                if (nestedFactory == null) return null;
+
+                return (c, r) => Tuple.Create(nestedFactory(c, r));
+            }
+
+            if (genericTypeDefinition == typeof(Tuple<,>))
+            {
+                var genericArguments = type.GetGenericArguments();
+                var nestedType1 = genericArguments[0];
+                VerifyNonValueType(nestedType1);
+                var nestedType2 = genericArguments[1];
+                VerifyNonValueType(nestedType2);
+                var nestedFactory1 = CreateFactory(ctx, nestedType1, key);
+                if (nestedFactory1 == null) return null;
+                var nestedFactory2 = CreateFactory(ctx, nestedType2, key);
+                if (nestedFactory2 == null) return null;
+
+                return (c, r) => Tuple.Create(nestedFactory1(c, r), nestedFactory2(c, r));
+            }
+
+            if (genericTypeDefinition == typeof(Tuple<,,>))
+            {
+                var genericArguments = type.GetGenericArguments();
+                var nestedType1 = genericArguments[0];
+                VerifyNonValueType(nestedType1);
+                var nestedType2 = genericArguments[1];
+                VerifyNonValueType(nestedType2);
+                var nestedType3 = genericArguments[2];
+                VerifyNonValueType(nestedType3);
+                var nestedFactory1 = CreateFactory(ctx, nestedType1, key);
+                if (nestedFactory1 == null) return null;
+                var nestedFactory2 = CreateFactory(ctx, nestedType2, key);
+                if (nestedFactory2 == null) return null;
+                var nestedFactory3 = CreateFactory(ctx, nestedType3, key);
+                if (nestedFactory3 == null) return null;
+
+                return (c, r) => Tuple.Create(nestedFactory1(c, r), nestedFactory2(c, r), nestedFactory3(c, r));
+            }
+
             if (genericTypeDefinition == typeof(IEnumerable<>))
             {
                 var nestedType = type.GetGenericArguments()[0];
@@ -176,6 +221,26 @@ public class ContainerImpl : IContainer
                 ctxImpl.Enumerate = enumerableBackup;
             }
 
+            if (genericTypeDefinition == typeof(Lazy<>))
+            {
+                var nestedType = type.GetGenericArguments()[0];
+                if (ctxImpl.GetLazyFactory(nestedType, out var lazyFactory))
+                {
+                    return lazyFactory;
+                }
+                Func<IContainer, IResolvingCtx?, object>? nestedFactory = null;
+                lazyFactory = (c, r) =>
+                {
+                    return new Lazy<object>(() => nestedFactory!(c, r));
+                };
+                ctxImpl.RegisterLazyFactory(nestedType, lazyFactory);
+                var backupResolvingStack = ctxImpl.BackupResolvingStack();
+                nestedFactory = CreateFactory(ctx, nestedType, key);
+                ctxImpl.RestoreResolvingStack(backupResolvingStack);
+                if (nestedFactory == null) return null;
+                return lazyFactory;
+            }
+
             if (genericTypeDefinition == typeof(Nullable<>))
             {
                 return null;
@@ -186,20 +251,46 @@ public class ContainerImpl : IContainer
 
         return null;
         haveFactory:
-        if (cReg.Lifetime == Lifetime.Singleton && cReg.SingletonId != uint.MaxValue)
+        ctxImpl.PushResolving(cReg);
+        try
         {
-            ctxImpl.SingletonDeepness++;
-            try
+            if (cReg.Lifetime == Lifetime.Singleton && cReg.SingletonId != uint.MaxValue)
             {
-                var f = cReg.Factory(this, ctx);
-                var sid = cReg.SingletonId;
-                return (container, resolvingCtx) =>
+                ctxImpl.SingletonDeepness++;
+                try
                 {
-                    ref var singleton = ref ((ContainerImpl)container).Singletons[sid];
-                    var instance = Volatile.Read(ref singleton);
-                    if (instance != null)
+                    var f = cReg.Factory(this, ctx);
+                    var sid = cReg.SingletonId;
+                    return (container, resolvingCtx) =>
                     {
-                        if (instance.GetType() == typeof(SingletonLocker))
+                        ref var singleton = ref ((ContainerImpl)container).Singletons[sid];
+                        var instance = Volatile.Read(ref singleton);
+                        if (instance != null)
+                        {
+                            if (instance.GetType() == typeof(SingletonLocker))
+                            {
+                                lock (instance)
+                                {
+                                }
+
+                                return Volatile.Read(ref singleton);
+                            }
+
+                            return instance;
+                        }
+
+                        var mySingletonLocker = new SingletonLocker();
+                        Monitor.Enter(mySingletonLocker);
+                        instance = Interlocked.CompareExchange(ref singleton, mySingletonLocker, null);
+                        if (instance == null)
+                        {
+                            instance = f(container, resolvingCtx);
+                            Volatile.Write(ref singleton, instance);
+                            Monitor.Exit(mySingletonLocker);
+                            return instance;
+                        }
+
+                        if (instance!.GetType() == typeof(SingletonLocker))
                         {
                             lock (instance)
                             {
@@ -209,43 +300,32 @@ public class ContainerImpl : IContainer
                         }
 
                         return instance;
-                    }
-
-                    var mySingletonLocker = new SingletonLocker();
-                    Monitor.Enter(mySingletonLocker);
-                    instance = Interlocked.CompareExchange(ref singleton, mySingletonLocker, null);
-                    if (instance == null)
-                    {
-                        instance = f(container, resolvingCtx);
-                        Volatile.Write(ref singleton, instance);
-                        Monitor.Exit(mySingletonLocker);
-                        return instance;
-                    }
-
-                    if (instance!.GetType() == typeof(SingletonLocker))
-                    {
-                        lock (instance)
-                        {
-                        }
-
-                        return Volatile.Read(ref singleton);
-                    }
-
-                    return instance;
-                };
+                    };
+                }
+                finally
+                {
+                    ctxImpl.SingletonDeepness--;
+                }
             }
-            finally
+
+            if (ctxImpl.VerifySingletons && ctxImpl.SingletonDeepness > 0 && cReg.SingletonId != uint.MaxValue)
             {
-                ctxImpl.SingletonDeepness--;
+                throw new BTDBException("Transient dependency " + new KeyAndType(key, type));
             }
-        }
 
-        if (ctxImpl.VerifySingletons && ctxImpl.SingletonDeepness > 0 && cReg.SingletonId != uint.MaxValue)
+            return cReg.Factory(this, ctx);
+        }
+        finally
         {
-            throw new BTDBException("Transient dependency " + new KeyAndType(key, type));
+            ctxImpl.PopResolving();
         }
+    }
 
-        return cReg.Factory(this, ctx);
+    static void VerifyNonValueType(Type nestedType)
+    {
+        if (nestedType.IsValueType)
+            throw new NotSupportedException(
+                "Tuple<> with value type argument is not supported.");
     }
 
     class SingletonLocker
@@ -264,7 +344,7 @@ public class ContainerImpl : IContainer
     }
 }
 
-sealed class ResolvingCtx : IResolvingCtx
+public sealed class ResolvingCtx : IResolvingCtx
 {
     readonly object[] _params;
 

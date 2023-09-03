@@ -37,7 +37,7 @@ class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeScanTrait>, ILiveScop
         foreach (var (typeToken, value) in IContainer.FactoryRegistry)
         {
             var type = Type.GetTypeFromHandle(RuntimeTypeHandle.FromIntPtr(typeToken));
-            if (type == null) continue;
+            if (type is not { IsClass: true }) continue;
             if (!MatchFilter(type)) continue;
             ((IContanerRegistration)new SingleRegistration(type, this, _lifetime)).Register(context);
         }
