@@ -16,13 +16,14 @@ using IOCDomain;
 
 public partial class IocTests
 {
+    [Generate]
     public interface IAmLazy
     {
 
     }
     public class SuperLazy : IAmLazy{}
 
-
+    [Generate]
     public class WantLazy1
     {
         readonly Lazy<IAmLazy> _v;
@@ -35,6 +36,7 @@ public partial class IocTests
         public IAmLazy Materialize => _v.Value;
     }
 
+    [Generate]
     public class WantLazy2
     {
         readonly Lazy<IAmLazy> _v;
@@ -292,6 +294,7 @@ public partial class IocTests
         Assert.Same(obj1, obj2.Cycle1Prop);
     }
 
+    [Generate]
     public class InjectingContainer
     {
         readonly IContainer _container;
@@ -915,6 +918,7 @@ public partial class IocTests
         Assert.Equal("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(5).Desc);
     }
 
+    [Generate]
     public interface ISupport
     {
     }
@@ -923,6 +927,7 @@ public partial class IocTests
     {
     }
 
+    [Generate]
     public interface INotify
     {
     }
@@ -941,7 +946,7 @@ public partial class IocTests
         }
     }
 
-
+    [Generate]
     public interface IRefinable
     {
     }
@@ -954,6 +959,7 @@ public partial class IocTests
         }
     }
 
+    [Generate]
     public interface IOwinServer
     {
     }
@@ -966,6 +972,7 @@ public partial class IocTests
         }
     }
 
+    [Generate]
     public interface IWorld
     {
     }
@@ -995,6 +1002,7 @@ public partial class IocTests
         var world = container.Resolve<IWorld>();
     }
 
+    [Generate]
     public interface IHandler
     {
     }

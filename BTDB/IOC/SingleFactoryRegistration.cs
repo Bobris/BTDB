@@ -25,6 +25,10 @@ class SingleFactoryRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, ILive
     public void Register(ContainerRegistrationContext context)
     {
         context.AddCReg(GetAsTypesFor(_implementationType), PreserveExistingDefaults, UniqueRegistration,
-            new CReg { Factory = _factory, Lifetime = _lifetime });
+            new CReg
+            {
+                Factory = _factory, Lifetime = _lifetime,
+                SingletonId = _lifetime == Lifetime.Singleton ? uint.MaxValue : 0
+            });
     }
 }

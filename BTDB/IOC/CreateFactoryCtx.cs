@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using BTDB.Collections;
 
 namespace BTDB.IOC;
@@ -8,11 +9,13 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
 {
     internal uint SingletonDeepness;
     internal bool VerifySingletons;
-    internal bool Enumerate;
+    internal int Enumerate = -1;
 
     readonly Dictionary<(Type, string?), int> _paramTypeToIndex = new();
-    readonly Dictionary<Type, Func<IContainer, IResolvingCtx?, object?>> _lazyFactories = new();
+    readonly Dictionary<(Type type, int Enumerate, ImmutableArray<(CReg, int)>), Func<IContainer, IResolvingCtx, object>> _lazyFactories = new();
+    StructList<(CReg, int)> _enumeratingIndexes;
     StructList<CReg> _resolvingStack;
+    StructList<int> _enumeratingStack;
 
     public int GetParamSize()
     {
@@ -35,7 +38,20 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
     public bool IsBound(Type paramType, string? name, out int idx)
     {
         if (_paramTypeToIndex.TryGetValue((paramType, name), out idx)) return true;
-        if (name != null) return _paramTypeToIndex.TryGetValue((paramType, null), out idx);
+        if (name != null)
+        {
+            if (_paramTypeToIndex.TryGetValue((paramType, null), out idx)) return true;
+            var onlyOne = false;
+            foreach (var ((item1, _), value) in _paramTypeToIndex)
+            {
+                if (item1 != paramType) continue;
+                idx = value;
+                if (onlyOne) return false;
+                onlyOne = true;
+            }
+
+            return onlyOne;
+        }
         foreach (var ((item1, _), value) in _paramTypeToIndex)
         {
             if (item1 != paramType) continue;
@@ -48,12 +64,25 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
 
     public bool GetLazyFactory(Type type, out Func<IContainer, IResolvingCtx?, object?>? factory)
     {
-        return _lazyFactories.TryGetValue(type, out factory);
+        if ((_enumeratingIndexes.Count > 0 || Enumerate >= 0) &&
+            _lazyFactories.TryGetValue((type, Enumerate, _enumeratingIndexes.ToImmutableArray()), out factory))
+            return true;
+        foreach (var ((type1, enumerate, immutableArray), value) in _lazyFactories)
+        {
+            if (type1 == type && enumerate == -1 && immutableArray.IsEmpty)
+            {
+                factory = value;
+                return true;
+            }
+        }
+
+        factory = null;
+        return false;
     }
 
     public void RegisterLazyFactory(Type type, Func<IContainer, IResolvingCtx?, object?> factory)
     {
-        _lazyFactories.Add(type, factory);
+        _lazyFactories.Add((type, Enumerate, _enumeratingIndexes.ToImmutableArray()), factory);
     }
 
     public void PushResolving(CReg cReg)
@@ -64,11 +93,15 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         }
 
         _resolvingStack.Add(cReg);
+        _enumeratingStack.Add(Enumerate);
+        Enumerate = -1;
     }
 
     public void PopResolving()
     {
         _resolvingStack.RemoveAt(^1);
+        Enumerate = _enumeratingStack[^1];
+        _enumeratingStack.RemoveAt(^1);
     }
 
     public StructList<CReg> BackupResolvingStack()
@@ -81,5 +114,48 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
     public void RestoreResolvingStack(StructList<CReg> backup)
     {
         _resolvingStack = backup;
+    }
+
+    public CReg Enumerating(CReg cReg)
+    {
+        foreach (var (item1, item2) in _enumeratingIndexes)
+        {
+            if (item1 == cReg) return cReg.Multi[item2];
+        }
+
+        _enumeratingIndexes.Add((cReg, 0));
+        return cReg.Multi[0];
+    }
+
+    public int StartEnumerate()
+    {
+        var res = Enumerate;
+        Enumerate = (int)_enumeratingIndexes.Count;
+        return res;
+    }
+
+    public bool IncrementEnumerable()
+    {
+        var i = (int)_enumeratingIndexes.Count - 1;
+        while (i >= Enumerate)
+        {
+            var (cReg, idx) = _enumeratingIndexes[i];
+            if (idx + 1 < cReg.Multi.Count)
+            {
+                _enumeratingIndexes[i] = (cReg, idx + 1);
+                return true;
+            }
+
+            _enumeratingIndexes[i] = (cReg, 0);
+            i--;
+        }
+        return false;
+    }
+
+    public void FinishEnumerate(int enumerableBackup)
+    {
+        while (_enumeratingIndexes.Count > Enumerate)
+            _enumeratingIndexes.Pop();
+        Enumerate = enumerableBackup;
     }
 }
