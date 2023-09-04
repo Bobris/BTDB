@@ -18,5 +18,6 @@ class CReg
             Lifetime = registration.Lifetime;
             SingletonId = registration.SingletonId;
         }
+        Multi.Add(registration);
     }
 }

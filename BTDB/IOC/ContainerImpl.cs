@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
+using BTDB.Collections;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 
@@ -210,15 +213,7 @@ public class ContainerImpl : IContainer
             if (genericTypeDefinition == typeof(IEnumerable<>))
             {
                 var nestedType = type.GetGenericArguments()[0];
-                var enumerableBackup = ctxImpl.Enumerate;
-                ctxImpl.Enumerate = true;
-                var nestedFactory = CreateFactory(ctx, nestedType, key);
-                if (nestedFactory == null)
-                {
-                    return (_, _) => Array.Empty<object>();
-                }
-
-                ctxImpl.Enumerate = enumerableBackup;
+                return CreateArrayFactory(ctx, key, ctxImpl, nestedType);
             }
 
             if (genericTypeDefinition == typeof(Lazy<>))
@@ -231,6 +226,7 @@ public class ContainerImpl : IContainer
                 Func<IContainer, IResolvingCtx?, object>? nestedFactory = null;
                 lazyFactory = (c, r) =>
                 {
+                    // ReSharper disable once AccessToModifiedClosure - solving chicken egg problem
                     return new Lazy<object>(() => nestedFactory!(c, r));
                 };
                 ctxImpl.RegisterLazyFactory(nestedType, lazyFactory);
@@ -245,12 +241,20 @@ public class ContainerImpl : IContainer
             {
                 return null;
             }
+        }
 
-            throw new NotImplementedException();
+        if (type.IsSZArray)
+        {
+            var nestedType = type.GetElementType()!;
+            return CreateArrayFactory(ctx, key, ctxImpl, nestedType);
         }
 
         return null;
         haveFactory:
+        if (ctxImpl.Enumerate>=0 && cReg.Multi.Count > 1)
+        {
+            cReg = ctxImpl.Enumerating(cReg);
+        }
         ctxImpl.PushResolving(cReg);
         try
         {
@@ -318,6 +322,41 @@ public class ContainerImpl : IContainer
         finally
         {
             ctxImpl.PopResolving();
+        }
+    }
+
+    Func<IContainer, IResolvingCtx?, object?>? CreateArrayFactory(ICreateFactoryCtx ctx, object? key, CreateFactoryCtx ctxImpl, Type nestedType)
+    {
+        if (nestedType.IsValueType) throw new NotSupportedException("IEnumerable<> or Array<> with value type argument is not supported.");
+        var enumerableBackup = ctxImpl.StartEnumerate();
+        var nestedFactory = CreateFactory(ctx, nestedType, key);
+        if (nestedFactory == null)
+        {
+            return (_, _) => Array.CreateInstance(nestedType, 0);
+        }
+
+        StructList<Func<IContainer, IResolvingCtx?, object?>> factories = new();
+        factories.Add(nestedFactory);
+        while (ctxImpl.IncrementEnumerable())
+        {
+            factories.Add(CreateFactory(ctx, nestedType, key));
+        }
+
+        ctxImpl.FinishEnumerate(enumerableBackup);
+
+        return Factory;
+
+        Array Factory(IContainer c, IResolvingCtx? r)
+        {
+            var res = Array.CreateInstance(nestedType, factories.Count);
+            var i = 0;
+            ref var dataRef = ref Unsafe.As<byte,object>(ref MemoryMarshal.GetArrayDataReference(res));
+            foreach (var factory in factories)
+            {
+                Unsafe.Add(ref dataRef, i++) = factory(c, r);
+            }
+
+            return res;
         }
     }
 

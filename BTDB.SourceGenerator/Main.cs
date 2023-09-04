@@ -209,7 +209,7 @@ public class SourceGenerator : IIncrementalGenerator
              internal static void Register4BTDB()
              {
                  BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}).TypeHandle.Value, Factory);
-                 BTDB.IOC.IContainer.RegisterFactory(typeof(Func<{{funcParams}}object>).TypeHandle.Value, Factory);
+                 BTDB.IOC.IContainer.RegisterFactory(typeof(Func<{{funcParams}}{{resultingType}}>).TypeHandle.Value, Factory);
                  static Func<BTDB.IOC.IContainer,BTDB.IOC.IResolvingCtx?,object> Factory(BTDB.IOC.IContainer container, BTDB.IOC.ICreateFactoryCtx ctx)
                  {
                      var hasResolvingCtx = ctx.HasResolvingCtx();
