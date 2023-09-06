@@ -67,6 +67,8 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         if ((_enumeratingIndexes.Count > 0 || Enumerate >= 0) &&
             _lazyFactories.TryGetValue((type, Enumerate, _enumeratingIndexes.ToImmutableArray()), out factory))
             return true;
+        // To make it easier Lazy factory could match global/root factory
+        // In theory it should match also all parent enumerating scopes, not just root
         foreach (var ((type1, enumerate, immutableArray), value) in _lazyFactories)
         {
             if (type1 == type && enumerate == -1 && immutableArray.IsEmpty)
