@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
         <IsPackable>false</IsPackable>
@@ -11,6 +10,16 @@
 
         <RootNamespace>BTDB.SourceGenerator</RootNamespace>
         <PackageId>BTDB.SourceGenerator</PackageId>
+        <Version>31.11.3</Version>
+        <Authors>Boris Letocha</Authors>
+        <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+        <Description>SourceGenerator for BTDB features to not need runtime code generation</Description>
+        <PackageTags>BTDB IOC</PackageTags>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
     </PropertyGroup>
 
     <ItemGroup>
