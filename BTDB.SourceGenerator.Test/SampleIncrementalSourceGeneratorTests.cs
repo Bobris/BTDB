@@ -79,6 +79,18 @@ public class SampleIncrementalSourceGeneratorTests
                                      """);
     }
 
+    [Fact]
+    public Task VerifyDelegateGeneration()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public delegate ILogger Factory(int a, string b);
+            ");
+    }
+
     static Task VerifySourceGenerator(string sourceCode)
     {
         var generator = new SourceGenerator();
