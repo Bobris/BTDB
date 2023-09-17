@@ -12,6 +12,7 @@ public interface IContainer
     object? ResolveOptionalNamed(string name, Type type);
     object? ResolveOptionalKeyed(object key, Type type);
     Func<IContainer,IResolvingCtx?,object?>? CreateFactory(ICreateFactoryCtx ctx, Type type, object? key);
+    Func<IContainer,IResolvingCtx?,object?> CreateFactory(Type type);
 
     internal static readonly Dictionary<nint, Func<IContainer, ICreateFactoryCtx, Func<IContainer,IResolvingCtx?,object>>> FactoryRegistry = new();
     public static void RegisterFactory(nint typeToken, Func<IContainer, ICreateFactoryCtx, Func<IContainer,IResolvingCtx?,object>> factory)
@@ -32,4 +33,10 @@ public interface ICreateFactoryCtx
     int GetParamSize();
     bool HasResolvingCtx();
     int AddInstanceToCtx(Type paramType, string? name = null);
+}
+
+public struct DispatcherItem
+{
+    public Func<IContainer, Func<IContainer, object, object?>> ExecuteFactory;
+    public Func<IContainer, object, object?>? Execute;
 }

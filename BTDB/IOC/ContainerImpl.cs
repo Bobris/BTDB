@@ -325,6 +325,13 @@ public class ContainerImpl : IContainer
         }
     }
 
+    public Func<IContainer, IResolvingCtx?, object?> CreateFactory(Type type)
+    {
+        var res = CreateFactory(new CreateFactoryCtx(), type, null);
+        if (res == null) ThrowNotResolvable(null, type);
+        return res;
+    }
+
     Func<IContainer, IResolvingCtx?, object?>? CreateArrayFactory(ICreateFactoryCtx ctx, object? key, CreateFactoryCtx ctxImpl, Type nestedType)
     {
         if (nestedType.IsValueType) throw new NotSupportedException("IEnumerable<> or Array<> with value type argument is not supported.");
