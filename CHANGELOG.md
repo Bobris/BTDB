@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.12.0
+
 ### Added
 
 Automatic conversion from Nullable to its underlying value.
