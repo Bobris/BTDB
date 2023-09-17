@@ -967,4 +967,27 @@ public class ObjectDbTableUpgradeTest : IDisposable
         }
     }
 
+    [Fact]
+    public void UpgradeNullableSecondaryKeyToNonNullableSecondaryKeyWorks()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IObj2V2Table>("MyRelation");
+            var objV1Table = creator(tr);
+            var job1 = new Obj2V2 { Id=2, Sk=4 };
+            objV1Table.Upsert(job1);
+            tr.Commit();
+        }
+
+        ReopenDb();
+
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IObj2V1Table>("MyRelation");
+            var objV2Table = creator(tr);
+            Assert.Equal(4ul, objV2Table.ToList()[0].Sk);
+            objV2Table.Upsert(new() { Id = 2, Sk = 5 });
+        }
+    }
+
 }

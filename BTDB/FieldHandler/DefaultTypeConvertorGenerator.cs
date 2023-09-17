@@ -83,7 +83,23 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
             Action<IILGen> res = il =>
             {
                 conv.Invoke(il);
-                GenerateConversion(underTo, to)(il);
+                GenerateConversion(underTo, to)!(il);
+            };
+            _conversions.Add(new(from, to), res);
+            return res;
+        }
+        if (Nullable.GetUnderlyingType(from) == to)
+        {
+            var res = GenerateFromNullableConversion(from);
+            _conversions.Add(new(from, to), res);
+            return res;
+        }
+        if (Nullable.GetUnderlyingType(from) is { } underFrom && GenerateConversion(underFrom, to) is { } conv2)
+        {
+            Action<IILGen> res = il =>
+            {
+                GenerateConversion(from, underFrom)!(il);
+                conv2.Invoke(il);
             };
             _conversions.Add(new(from, to), res);
             return res;
@@ -212,6 +228,18 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
         return il =>
         {
             il.Newobj(to.GetConstructor(new[] { from })!);
+        };
+    }
+
+    Action<IILGen> GenerateFromNullableConversion(Type from)
+    {
+        return il =>
+        {
+            var loc = il.DeclareLocal(from);
+            il
+                .Stloc(loc)
+                .Ldloca(loc)
+                .Call(from.GetMethod(nameof(Nullable<int>.GetValueOrDefault), 0, Array.Empty<Type>())!);
         };
     }
 

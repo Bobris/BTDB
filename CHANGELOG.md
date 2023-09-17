@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Automatic conversion from Nullable to its underlying value.
+
 ## 31.11.3
 
 ### Fixed
