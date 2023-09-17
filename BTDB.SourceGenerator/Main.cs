@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
@@ -7,10 +9,6 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace BTDB.SourceGenerator;
 
-/// <summary>
-/// A sample source generator that creates a custom report based on class properties. The target class should be annotated with the 'Generators.ReportAttribute' attribute.
-/// When using the source code as a baseline, an incremental source generator is preferable because it reduces the performance overhead.
-/// </summary>
 [Generator]
 public class SourceGenerator : IIncrementalGenerator
 {
@@ -28,7 +26,7 @@ public class SourceGenerator : IIncrementalGenerator
                 // Symbols allow us to get the compile-time information.
                 if (semanticModel.GetDeclaredSymbol(syntaxContext.Node) is not INamedTypeSymbol symbol)
                     return null!;
-                if (syntaxContext.Node is DelegateDeclarationSyntax delegateDeclarationSyntax)
+                if (syntaxContext.Node is DelegateDeclarationSyntax)
                 {
                     if (!symbol.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: AttributeName } attr &&
@@ -55,7 +53,20 @@ public class SourceGenerator : IIncrementalGenerator
                     return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, parameters,
                         new[] { new PropertyInfo("", returnType, null, true, false, false) }.ToImmutableArray(),
-                        ImmutableArray<string>.Empty);
+                        ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty);
+                }
+                if (syntaxContext.Node is InterfaceDeclarationSyntax)
+                {
+                    var dispatchers = DetectDispatcherInfo(symbol);
+                    if (dispatchers.Length == 0) return null;
+                    var containingNamespace = symbol.ContainingNamespace;
+                    var namespaceName = containingNamespace.IsGlobalNamespace
+                        ? null
+                        : containingNamespace.ToDisplayString();
+                    var interfaceName = symbol.Name;
+                    return new(GenerationType.Interface, namespaceName, interfaceName,
+                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, ImmutableArray<ParameterInfo>.Empty,
+                        ImmutableArray<PropertyInfo>.Empty, ImmutableArray<string>.Empty, dispatchers.ToImmutableArray());
                 }
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
                 {
@@ -83,6 +94,17 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         return null!;
                     }
+
+                    var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
+                    foreach (var (name, type, resultType, ifaceName) in symbol.AllInterfaces.SelectMany(
+                                 DetectDispatcherInfo))
+                    {
+                        var m = symbol.GetMembers().OfType<IMethodSymbol>().FirstOrDefault(m =>
+                            m.Name == name && m.Parameters.Length == 1);
+                        if (m == null) continue;
+                        dispatchers.Add(new(name, m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), m.ReturnType.SpecialType == SpecialType.System_Void ? null : m.ReturnType.ToDisplayString(), ifaceName));
+                    }
+
                     var containingNamespace = symbol.ContainingNamespace;
                     var namespaceName = containingNamespace.IsGlobalNamespace
                         ? null
@@ -129,13 +151,74 @@ public class SourceGenerator : IIncrementalGenerator
                             p.Type.IsReferenceType,
                             p.NullableAnnotation == NullableAnnotation.Annotated, p.SetMethod!.IsInitOnly))
                         .ToImmutableArray();
-                    return new GenerationInfo(GenerationType.Class, namespaceName, className, symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, parameters, propertyInfos, parentDeclarations);
+                    return new GenerationInfo(GenerationType.Class, namespaceName, className, symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, parameters, propertyInfos, parentDeclarations, dispatchers.ToImmutable());
                 }
 
                 return null!;
             }).Where(i => i != null);
 
-        context.RegisterSourceOutput(gen.Collect(), GenerateCode);
+        context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
+    }
+
+    static DispatcherInfo[] DetectDispatcherInfo(INamedTypeSymbol symbol)
+    {
+        if (!symbol.GetAttributes().Any(a =>
+                a.AttributeClass is { Name: AttributeName } attr &&
+                attr.ContainingNamespace?.ToDisplayString() == Namespace))
+        {
+            return Array.Empty<DispatcherInfo>();
+        }
+
+        if (symbol is not { Kind: SymbolKind.NamedType, TypeKind: TypeKind.Interface })
+        {
+            return Array.Empty<DispatcherInfo>();
+        }
+
+        if (symbol.DeclaredAccessibility == Accessibility.Private)
+        {
+            return Array.Empty<DispatcherInfo>();
+        }
+
+        var builder = new List<DispatcherInfo>();
+        foreach (var member in symbol.GetMembers())
+        {
+            if (member is IMethodSymbol { IsPartialDefinition: true, Parameters.Length: 1 } methodSymbol &&
+                methodSymbol.Name.StartsWith("Create") && methodSymbol.Name.EndsWith("Dispatcher")
+                &&
+                IsContainer(methodSymbol.Parameters[0].Type)
+                &&
+                methodSymbol.ReturnType is IFunctionPointerTypeSymbol
+                {
+                    Signature:
+                    {
+                        ReturnType: { } returnType,
+                        Parameters: { Length: 2 } parameters
+                    }
+                } && IsNullableObject(returnType) && IsContainer(parameters[0].Type) && IsObject(parameters[1].Type))
+            {
+                builder.Add(new(methodSymbol.Name.Substring(6, methodSymbol.Name.Length - 6 - 10),
+                    parameters[1].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    returnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+            }
+        }
+
+        return builder.Count == 0 ? Array.Empty<DispatcherInfo>() : builder.ToArray();
+    }
+
+    static bool IsObject(ITypeSymbol type)
+    {
+        return type.Name == "Object" && type.ContainingNamespace?.ToDisplayString() == "System" && type.NullableAnnotation != NullableAnnotation.Annotated;
+    }
+
+    static bool IsNullableObject(ITypeSymbol type)
+    {
+        return type.Name == "Object" && type.ContainingNamespace?.ToDisplayString() == "System" && type.NullableAnnotation == NullableAnnotation.Annotated;
+    }
+
+    static bool IsContainer(ITypeSymbol type)
+    {
+        return type.Name == "IContainer" && type.ContainingNamespace?.ToDisplayString() == "BTDB.IOC" && type.NullableAnnotation != NullableAnnotation.Annotated;
     }
 
     static string? ExtractDefaultValue(SyntaxReference syntaxReference, ITypeSymbol typeSymbol)
@@ -159,11 +242,74 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 GenerateDelegateFactory(context, generationInfo);
             }
+            else if (generationInfo.GenType == GenerationType.Interface)
+            {
+                GenerateInterfaceFactory(context, generationInfo);
+            }
             else
             {
                 GenerateClassFactory(context, generationInfo);
             }
         }
+    }
+
+    static void GenerateInterfaceFactory(SourceProductionContext context, GenerationInfo generationInfo)
+    {
+        var namespaceLine = "";
+        if (generationInfo.Namespace != null)
+        {
+            // language=c#
+            namespaceLine = $"\nnamespace {generationInfo.Namespace};\n";
+        }
+
+        var factoryCode = new StringBuilder();
+        // language=c#
+        factoryCode.Append($$"""
+         // <auto-generated/>
+         #nullable enable
+         using System;
+         using System.Runtime.CompilerServices;
+         {{namespaceLine}}
+         public partial interface {{generationInfo.Name}}
+         {
+         """);
+
+        foreach (var (name, type, resultType, _) in generationInfo.Dispatchers)
+        {
+            // language=c#
+            factoryCode.Append($$"""
+
+                 public static readonly BTDB.Collections.RefDictionary<nint, BTDB.IOC.DispatcherItem> {{name}}Handlers = new();
+
+                 public static unsafe partial delegate*<BTDB.IOC.IContainer, {{type}}, {{resultType}}?> Create{{name}}Dispatcher(BTDB.IOC.IContainer container)
+                 {
+                     foreach(var idx in {{name}}Handlers.Index)
+                     {
+                         {{name}}Handlers.ValueRef(idx).Execute = {{name}}Handlers.ValueRef(idx).ExecuteFactory(container);
+                     }
+                     static {{resultType}}? Consume(BTDB.IOC.IContainer container, {{type}} message)
+                     {
+                         if ({{name}}Handlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
+                         {
+                             return Unsafe.As<{{resultType}}>(handler.Execute!(container, message));
+                         }
+                         throw new InvalidOperationException($"No handler for message {message.GetType().FullName}");
+                     }
+
+                     return &Consume;
+                 }
+
+             """);
+        }
+
+        // language=c#
+        factoryCode.Append($$"""
+            }
+
+            """);
+        context.AddSource(
+            $"{(generationInfo.Namespace == null ? "" : generationInfo.Namespace + ".") + generationInfo.Name}.g.cs",
+            SourceText.From(factoryCode.ToString(), Encoding.UTF8));
     }
 
     static void GenerateDelegateFactory(SourceProductionContext context, GenerationInfo generationInfo)
@@ -183,7 +329,7 @@ public class SourceGenerator : IIncrementalGenerator
         var parametersCode = new StringBuilder();
         var parameterIndex = 0;
 
-        foreach (var (name, type, isReference, optional, defaultValue) in generationInfo.ConstructorParameters)
+        foreach (var (name, type, _, _, _) in generationInfo.ConstructorParameters)
         {
             if (parameterIndex > 0) parametersCode.Append(", ");
             parametersCode.Append($"{type} p{parameterIndex}");
@@ -240,6 +386,7 @@ public class SourceGenerator : IIncrementalGenerator
                  }
              }
          }
+
          """;
 
         context.AddSource(
@@ -360,6 +507,23 @@ public class SourceGenerator : IIncrementalGenerator
             declarations.Append($"static file class {generationInfo.Name}Registration\n{{\n");
         }
 
+        var dispatchers = new StringBuilder();
+        foreach (var (name, type, resultType, ifaceName) in generationInfo.Dispatchers)
+        {
+            // language=c#
+            dispatchers.Append($$"""
+
+                                 {{ifaceName}}.{{name}}Handlers.GetOrAddValueRef(typeof({{type}}).TypeHandle.Value).ExecuteFactory = (BTDB.IOC.IContainer c) => {
+                                    var nestedFactory = c.CreateFactory(typeof({{generationInfo.FullName}}));
+                                    return (container, message) =>
+                                    {
+                                        var res = nestedFactory(container, null);
+                                        {{(resultType != null ? "return " : "")}}Unsafe.As<{{generationInfo.FullName}}>(res).{{name}}(Unsafe.As<{{type}}>(message));
+                                        {{(resultType != null ? "" : "return null;")}}
+                                    };
+                                 };
+                         """);
+        }
         // language=c#
         var code = $$"""
                      // <auto-generated/>
@@ -376,9 +540,10 @@ public class SourceGenerator : IIncrementalGenerator
                                      var res = new {{generationInfo.FullName}}({{parametersCode}}){{propertyInitOnlyCode}};
                                      {{propertyCode}}return res;
                                  };
-                             });
+                             });{{dispatchers}}
                          }
                      {{(generationInfo.IsPartial ? new string('}', generationInfo.ParentDeclarations.Length) : "}")}}
+
                      """;
 
         context.AddSource(
@@ -390,11 +555,14 @@ public class SourceGenerator : IIncrementalGenerator
 enum GenerationType
 {
     Class,
-    Delegate
+    Delegate,
+    Interface
 }
 
-record GenerationInfo(GenerationType GenType, string? Namespace, string Name, string FullName, bool IsPartial, ImmutableArray<ParameterInfo> ConstructorParameters, ImmutableArray<PropertyInfo> Properties, ImmutableArray<string> ParentDeclarations);
+record GenerationInfo(GenerationType GenType, string? Namespace, string Name, string FullName, bool IsPartial, ImmutableArray<ParameterInfo> ConstructorParameters, ImmutableArray<PropertyInfo> Properties, ImmutableArray<string> ParentDeclarations, ImmutableArray<DispatcherInfo> Dispatchers);
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
 
 record PropertyInfo(string Name, string Type, string? DependencyName, bool IsReference, bool Optional, bool IsInitOnly);
+
+record DispatcherInfo(string Name, string? Type, string? ResultType, string IfaceName);
