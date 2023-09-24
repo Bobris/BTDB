@@ -759,9 +759,9 @@ public ref struct SpanWriter
         WriteBlock(data.AsSpan());
     }
 
-    public void WriteGuid(Guid value)
+    public unsafe void WriteGuid(Guid value)
     {
-        WriteBlock(ref Unsafe.As<Guid, byte>(ref Unsafe.AsRef(value)), 16);
+        WriteBlock(ref Unsafe.AsRef<byte>(&value), 16);
     }
 
     public void WriteSingle(float value)
@@ -776,7 +776,7 @@ public ref struct SpanWriter
 
     public void WriteHalf(Half value)
     {
-        WriteInt16(Unsafe.As<Half, short>(ref Unsafe.AsRef(value)));
+        WriteInt16(Unsafe.BitCast<Half, short>(value));
     }
 
     public void WriteDecimal(decimal value)

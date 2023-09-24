@@ -16,9 +16,4 @@ public class BTDBException : Exception
         : base(message, innerException)
     {
     }
-
-    BTDBException(SerializationInfo info, StreamingContext context)
-        : base(info, context)
-    {
-    }
 }

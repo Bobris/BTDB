@@ -141,20 +141,20 @@ public static class Helpers
             {
                 WriteByte(ref data, ref pos, CodeHalf);
                 MemoryMarshal.Write(WriteBlock(ref data, ref pos, 2),
-                    ref Unsafe.AsRef(PackUnpack.AsLittleEndian(Unsafe.As<Half, ushort>(ref Unsafe.AsRef(h)))));
+                    PackUnpack.AsLittleEndian(Unsafe.BitCast<Half, ushort>(h)));
             }
             else
             {
                 WriteByte(ref data, ref pos, CodeFloat);
                 MemoryMarshal.Write(WriteBlock(ref data, ref pos, 4),
-                    ref Unsafe.AsRef(PackUnpack.AsLittleEndian(Unsafe.As<float, uint>(ref Unsafe.AsRef(f)))));
+                    PackUnpack.AsLittleEndian(Unsafe.BitCast<float, uint>(f)));
             }
         }
         else
         {
             WriteByte(ref data, ref pos, CodeDouble);
             MemoryMarshal.Write(WriteBlock(ref data, ref pos, 8),
-                ref Unsafe.AsRef(PackUnpack.AsLittleEndian(Unsafe.As<double, ulong>(ref Unsafe.AsRef(value)))));
+                PackUnpack.AsLittleEndian(Unsafe.BitCast<double, ulong>(value)));
         }
     }
 
@@ -226,20 +226,16 @@ public static class Helpers
             case CodeHalf:
             {
                 ofs++;
-                Half h = new();
-                Unsafe.As<Half, ushort>(ref Unsafe.AsRef(h)) =
-                    PackUnpack.AsLittleEndian(MemoryMarshal.Read<ushort>(bon[(int)ofs..]));
-                value = (double)h;
+                value = (double)Unsafe.BitCast<ushort, Half>(
+                    PackUnpack.AsLittleEndian(MemoryMarshal.Read<ushort>(bon[(int)ofs..])));
                 ofs += 2;
                 return true;
             }
             case CodeFloat:
             {
                 ofs++;
-                float f = new();
-                Unsafe.As<float, uint>(ref Unsafe.AsRef(f)) =
-                    PackUnpack.AsLittleEndian(MemoryMarshal.Read<uint>(bon[(int)ofs..]));
-                value = f;
+                value = Unsafe.BitCast<uint, float>(
+                    PackUnpack.AsLittleEndian(MemoryMarshal.Read<uint>(bon[(int)ofs..])));
                 ofs += 4;
                 return true;
             }
@@ -247,8 +243,8 @@ public static class Helpers
             {
                 ofs++;
                 value = 0;
-                Unsafe.As<double, ulong>(ref Unsafe.AsRef(value)) =
-                    PackUnpack.AsLittleEndian(MemoryMarshal.Read<ulong>(bon[(int)ofs..]));
+                value = Unsafe.BitCast<ulong, double>(
+                    PackUnpack.AsLittleEndian(MemoryMarshal.Read<ulong>(bon[(int)ofs..])));
                 ofs += 8;
                 return true;
             }
@@ -555,7 +551,7 @@ public struct BonBuilder
         Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeDateTime);
         var v = value.ToBinary();
         MemoryMarshal.Write(Helpers.WriteBlock(ref _topData, ref _topPos, 8),
-            ref Unsafe.AsRef(PackUnpack.AsLittleEndian(Unsafe.As<long, ulong>(ref Unsafe.AsRef(v)))));
+            PackUnpack.AsLittleEndian(Unsafe.BitCast<long, ulong>(v)));
         AfterBon();
     }
 
@@ -564,7 +560,8 @@ public struct BonBuilder
         BeforeBon();
         _lastBonPos = _topPos;
         Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeGuid);
-        MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Guid, byte>(ref Unsafe.AsRef(value)), 16)
+        var reference = value;
+        MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Guid, byte>(ref reference), 16)
             .CopyTo(Helpers.WriteBlock(ref _topData, ref _topPos, 16));
         AfterBon();
     }
@@ -1233,10 +1230,8 @@ public ref struct Bon
                 writer.WriteStartObject();
                 TryGetObject(out var o);
                 var ov = o.Values();
-                while (true)
+                while (o.NextKey() is { } k)
                 {
-                    var k = o.NextKey();
-                    if (k == null) break;
                     writer.WritePropertyName(k);
                     ov.DumpToJson(writer);
                 }
@@ -1249,10 +1244,8 @@ public ref struct Bon
                 writer.WritePropertyName("__type__");
                 writer.WriteStringValue(cn);
                 var cv = c.Values();
-                while (true)
+                while (c.NextKey() is { } k)
                 {
-                    var k = c.NextKey();
-                    if (k == null) break;
                     writer.WritePropertyName(k);
                     cv.DumpToJson(writer);
                 }

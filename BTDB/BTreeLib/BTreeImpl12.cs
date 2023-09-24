@@ -351,8 +351,8 @@ public class BTreeImpl12
 
                     var valueFileId = ctx._targetFileId;
                     var valueFileOfs = targetOfs;
-                    MemoryMarshal.Write(value, ref valueFileId);
-                    MemoryMarshal.Write(value.Slice(4), ref valueFileOfs);
+                    MemoryMarshal.Write(value, valueFileId);
+                    MemoryMarshal.Write(value.Slice(4), valueFileOfs);
                 }
             }
         }

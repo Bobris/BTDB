@@ -266,7 +266,7 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
 
     public ReadOnlySpan<byte> GetValue()
     {
-        return GetClonedValue(ref Unsafe.AsRef((byte)0), 0);
+        return GetClonedValue(ref Unsafe.NullRef<byte>(), 0);
     }
 
     public ReadOnlyMemory<byte> GetValueAsMemory()

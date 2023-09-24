@@ -15,7 +15,7 @@ public class AesGcmSymmetricCipher : ISymmetricCipher
 
     public AesGcmSymmetricCipher(byte[] key)
     {
-        _aes = new AesGcm(key);
+        _aes = new AesGcm(key, TagSize);
         var aes = Aes.Create();
         aes.Key = key;
         aes.Mode = CipherMode.CBC;

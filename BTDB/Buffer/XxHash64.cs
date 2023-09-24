@@ -48,7 +48,7 @@ public struct XxHash64
     {
         if (len == 0) return;
         var bufLen = (uint)_fullLength & 31;
-        ref var myBuf = ref Unsafe.AsRef(_buf[0]);
+        ref var myBuf = ref _buf[0];
         if (bufLen != 0)
         {
             var copyLen = Math.Min(32u - bufLen, len);
@@ -79,7 +79,7 @@ public struct XxHash64
 
     public unsafe ulong Digest()
     {
-        ref var myBuf = ref Unsafe.AsRef(_buf[0]);
+        ref var myBuf = ref _buf[0];
         var bufLen = (uint)_fullLength & 31;
         // _v3 will be used as seed when _fullLength < 32
         return Finalize(ref myBuf, bufLen, _v1, _v2, _v3, _v4, _fullLength);
@@ -181,7 +181,6 @@ public struct XxHash64
 
         return Avalanche(hash);
     }
-
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static void ProcessMultipliesOf32Bytes(ref byte input, uint len, ref ulong v1, ref ulong v2, ref ulong v3,

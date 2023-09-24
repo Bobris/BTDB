@@ -274,7 +274,7 @@ public class ILExtensionsTest
         var il = method.Generator;
         il
             .Localloc(128)
-            .LdcI4(4)
+            .LdcI4(8)
             .Add()
             .Ldind(typeof(int))
             .Ret();

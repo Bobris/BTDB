@@ -518,7 +518,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         trueValue.Clear();
                         var vFileId = reader2.ReadVUInt32();
                         if (vFileId > 0) usedFileIds.Add(vFileId);
-                        MemoryMarshal.Write(trueValue, ref vFileId);
+                        MemoryMarshal.Write(trueValue, vFileId);
                         var valueOfs = reader2.ReadVUInt32();
                         var valueSize = reader2.ReadVInt32();
                         if (vFileId == 0)
@@ -556,8 +556,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         }
                         else
                         {
-                            MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
-                            MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
+                            MemoryMarshal.Write(trueValue.Slice(4), valueOfs);
+                            MemoryMarshal.Write(trueValue.Slice(8), valueSize);
                         }
                     });
                 reader.Sync();
@@ -584,7 +584,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             var vFileId = reader2.ReadVUInt32();
                             if (vFileId > 0) usedFileIds.Add(vFileId);
                             trueValue.Clear();
-                            MemoryMarshal.Write(trueValue, ref vFileId);
+                            MemoryMarshal.Write(trueValue, vFileId);
                             var valueOfs = reader2.ReadVUInt32();
                             var valueSize = reader2.ReadVInt32();
                             if (vFileId == 0)
@@ -622,8 +622,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             }
                             else
                             {
-                                MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
-                                MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
+                                MemoryMarshal.Write(trueValue.Slice(4), valueOfs);
+                                MemoryMarshal.Write(trueValue.Slice(8), valueSize);
                             }
                         });
                     reader.Sync();
@@ -758,9 +758,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         }
                         else
                         {
-                            MemoryMarshal.Write(trueValue, ref fileId);
-                            MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
-                            MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
+                            MemoryMarshal.Write(trueValue, fileId);
+                            MemoryMarshal.Write(trueValue.Slice(4), valueOfs);
+                            MemoryMarshal.Write(trueValue.Slice(8), valueSize);
                             reader.SkipBlock(valueLen);
                         }
 

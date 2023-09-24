@@ -11,7 +11,7 @@ Currently this project these parts:
 - Bon (Binary object notation)
 - Incremental SourceGenerator for IOC Container factory generation
 
-All code written in C# 11 and licensed under very permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting .Net 7.0, main code has just 1 dependency (Microsoft.Extensions.Primitives). Code is tested using xUnit Framework. Used in production on Windows and Linux, on OSX works as well.
+All code written in C# 11 and licensed under very permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting .Net 8.0, main code has just 1 dependency (Microsoft.Extensions.Primitives). Code is tested using xUnit Framework. Used in production on Windows and Linux, on OSX works as well.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
 It is available in Nuget <http://www.nuget.org/packages/BTDB>. Source code drops are Github releases.
 

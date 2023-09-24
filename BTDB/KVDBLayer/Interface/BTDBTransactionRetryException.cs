@@ -10,9 +10,4 @@ public class BTDBTransactionRetryException : Exception
         : base(message)
     {
     }
-
-    BTDBTransactionRetryException(SerializationInfo info, StreamingContext context)
-        : base(info, context)
-    {
-    }
 }
