@@ -34,27 +34,36 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         return null!;
                     }
+
                     if (symbol.DeclaredAccessibility == Accessibility.Private)
                     {
                         return null!;
                     }
+
                     var containingNamespace = symbol.ContainingNamespace;
                     var namespaceName = containingNamespace.IsGlobalNamespace
                         ? null
                         : containingNamespace.ToDisplayString();
                     var delegateName = symbol.Name;
-                    var returnType = symbol.DelegateInvokeMethod!.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    var returnType =
+                        symbol.DelegateInvokeMethod!.ReturnType.ToDisplayString(
+                            SymbolDisplayFormat.FullyQualifiedFormat);
                     var parameters = symbol.DelegateInvokeMethod!.Parameters.Select(p => new ParameterInfo(p.Name,
-                                             p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                             p.Type.IsReferenceType,
-                                             p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
-                                             p.HasExplicitDefaultValue ? p.ExplicitDefaultValue!=null ? ExtractDefaultValue(p.DeclaringSyntaxReferences[0], p.Type) : null : null))
-                                         .ToImmutableArray();
+                            p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                            p.Type.IsReferenceType,
+                            p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
+                            p.HasExplicitDefaultValue
+                                ? p.ExplicitDefaultValue != null
+                                    ? ExtractDefaultValue(p.DeclaringSyntaxReferences[0], p.Type)
+                                    : null
+                                : null))
+                        .ToImmutableArray();
                     return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, parameters,
                         new[] { new PropertyInfo("", returnType, null, true, false, false) }.ToImmutableArray(),
                         ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty);
                 }
+
                 if (syntaxContext.Node is InterfaceDeclarationSyntax)
                 {
                     var dispatchers = DetectDispatcherInfo(symbol);
@@ -65,9 +74,12 @@ public class SourceGenerator : IIncrementalGenerator
                         : containingNamespace.ToDisplayString();
                     var interfaceName = symbol.Name;
                     return new(GenerationType.Interface, namespaceName, interfaceName,
-                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, ImmutableArray<ParameterInfo>.Empty,
-                        ImmutableArray<PropertyInfo>.Empty, ImmutableArray<string>.Empty, dispatchers.ToImmutableArray());
+                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false,
+                        ImmutableArray<ParameterInfo>.Empty,
+                        ImmutableArray<PropertyInfo>.Empty, ImmutableArray<string>.Empty,
+                        dispatchers.ToImmutableArray());
                 }
+
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
                 {
                     var isPartial = classDeclarationSyntax.Modifiers
@@ -102,7 +114,10 @@ public class SourceGenerator : IIncrementalGenerator
                         var m = symbol.GetMembers().OfType<IMethodSymbol>().FirstOrDefault(m =>
                             m.Name == name && m.Parameters.Length == 1);
                         if (m == null) continue;
-                        dispatchers.Add(new(name, m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), m.ReturnType.SpecialType == SpecialType.System_Void ? null : m.ReturnType.ToDisplayString(), ifaceName));
+                        dispatchers.Add(new(name,
+                            m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                            m.ReturnType.SpecialType == SpecialType.System_Void ? null : m.ReturnType.ToDisplayString(),
+                            ifaceName));
                     }
 
                     var containingNamespace = symbol.ContainingNamespace;
@@ -123,27 +138,36 @@ public class SourceGenerator : IIncrementalGenerator
                                              p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                                              p.Type.IsReferenceType,
                                              p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
-                                             p.HasExplicitDefaultValue ? p.ExplicitDefaultValue!=null ? ExtractDefaultValue(p.DeclaringSyntaxReferences[0], p.Type) : null : null))
+                                             p.HasExplicitDefaultValue
+                                                 ? p.ExplicitDefaultValue != null
+                                                     ? ExtractDefaultValue(p.DeclaringSyntaxReferences[0], p.Type)
+                                                     : null
+                                                 : null))
                                          .ToImmutableArray() ??
                                      ImmutableArray<ParameterInfo>.Empty;
 
                     var parentDeclarations = ImmutableArray<string>.Empty;
                     if (isPartial)
                     {
-                        parentDeclarations = classDeclarationSyntax.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().Select(c =>
-                        {
-                            if (c.Modifiers.All(m => m.ValueText != "partial") || c.Modifiers.Any(m=>m.ValueText=="file"))
+                        parentDeclarations = classDeclarationSyntax.AncestorsAndSelf().OfType<TypeDeclarationSyntax>()
+                            .Select(c =>
                             {
-                                isPartial = false;
-                                return "";
-                            }
+                                if (c.Modifiers.All(m => m.ValueText != "partial") ||
+                                    c.Modifiers.Any(m => m.ValueText == "file"))
+                                {
+                                    isPartial = false;
+                                    return "";
+                                }
 
-                            return c.Modifiers + " " + c.Keyword.ValueText + " " + c.Identifier.ValueText;
-                        }).ToImmutableArray();
+                                return c.Modifiers + " " + c.Keyword.ValueText + " " + c.Identifier.ValueText;
+                            }).ToImmutableArray();
                     }
+
                     var propertyInfos = symbol.GetMembers()
                         .OfType<IPropertySymbol>()
-                        .Where(p=> p.GetAttributes().Any(a => a.AttributeClass?.Name == "DependencyAttribute") && (isPartial || p.SetMethod is { DeclaredAccessibility: Accessibility.Public or Accessibility.Internal }))
+                        .Where(p => p.GetAttributes().Any(a => a.AttributeClass?.Name == "DependencyAttribute") &&
+                                    (isPartial || p.SetMethod is
+                                        { DeclaredAccessibility: Accessibility.Public or Accessibility.Internal }))
                         .Select(p => new PropertyInfo(p.Name,
                             p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                             p.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "DependencyAttribute")
@@ -151,7 +175,9 @@ public class SourceGenerator : IIncrementalGenerator
                             p.Type.IsReferenceType,
                             p.NullableAnnotation == NullableAnnotation.Annotated, p.SetMethod!.IsInitOnly))
                         .ToImmutableArray();
-                    return new GenerationInfo(GenerationType.Class, namespaceName, className, symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, parameters, propertyInfos, parentDeclarations, dispatchers.ToImmutable());
+                    return new GenerationInfo(GenerationType.Class, namespaceName, className,
+                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, parameters,
+                        propertyInfos, parentDeclarations, dispatchers.ToImmutable());
                 }
 
                 return null!;
@@ -208,17 +234,20 @@ public class SourceGenerator : IIncrementalGenerator
 
     static bool IsObject(ITypeSymbol type)
     {
-        return type.Name == "Object" && type.ContainingNamespace?.ToDisplayString() == "System" && type.NullableAnnotation != NullableAnnotation.Annotated;
+        return type.Name == "Object" && type.ContainingNamespace?.ToDisplayString() == "System" &&
+               type.NullableAnnotation != NullableAnnotation.Annotated;
     }
 
     static bool IsNullableObject(ITypeSymbol type)
     {
-        return type.Name == "Object" && type.ContainingNamespace?.ToDisplayString() == "System" && type.NullableAnnotation == NullableAnnotation.Annotated;
+        return type.Name == "Object" && type.ContainingNamespace?.ToDisplayString() == "System" &&
+               type.NullableAnnotation == NullableAnnotation.Annotated;
     }
 
     static bool IsContainer(ITypeSymbol type)
     {
-        return type.Name == "IContainer" && type.ContainingNamespace?.ToDisplayString() == "BTDB.IOC" && type.NullableAnnotation != NullableAnnotation.Annotated;
+        return type.Name == "IContainer" && type.ContainingNamespace?.ToDisplayString() == "BTDB.IOC" &&
+               type.NullableAnnotation != NullableAnnotation.Annotated;
     }
 
     static string? ExtractDefaultValue(SyntaxReference syntaxReference, ITypeSymbol typeSymbol)
@@ -228,8 +257,10 @@ public class SourceGenerator : IIncrementalGenerator
         if (s == null) return null;
         if (s.StartsWith(typeSymbol.Name + "."))
         {
-            return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + s.Substring(typeSymbol.Name.Length);
+            return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) +
+                   s.Substring(typeSymbol.Name.Length);
         }
+
         return $"({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}){s}";
     }
 
@@ -265,41 +296,41 @@ public class SourceGenerator : IIncrementalGenerator
         var factoryCode = new StringBuilder();
         // language=c#
         factoryCode.Append($$"""
-         // <auto-generated/>
-         #nullable enable
-         using System;
-         using System.Runtime.CompilerServices;
-         {{namespaceLine}}
-         public partial interface {{generationInfo.Name}}
-         {
-         """);
+            // <auto-generated/>
+            #nullable enable
+            using System;
+            using System.Runtime.CompilerServices;
+            {{namespaceLine}}
+            public partial interface {{generationInfo.Name}}
+            {
+            """);
 
         foreach (var (name, type, resultType, _) in generationInfo.Dispatchers)
         {
             // language=c#
             factoryCode.Append($$"""
 
-                 public static readonly BTDB.Collections.RefDictionary<nint, BTDB.IOC.DispatcherItem> {{name}}Handlers = new();
+                    public static readonly BTDB.Collections.RefDictionary<nint, BTDB.IOC.DispatcherItem> {{name}}Handlers = new();
 
-                 public static unsafe partial delegate*<BTDB.IOC.IContainer, {{type}}, {{resultType}}?> Create{{name}}Dispatcher(BTDB.IOC.IContainer container)
-                 {
-                     foreach(var idx in {{name}}Handlers.Index)
-                     {
-                         {{name}}Handlers.ValueRef(idx).Execute = {{name}}Handlers.ValueRef(idx).ExecuteFactory(container);
-                     }
-                     static {{resultType}}? Consume(BTDB.IOC.IContainer container, {{type}} message)
-                     {
-                         if ({{name}}Handlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
-                         {
-                             return Unsafe.As<{{resultType}}>(handler.Execute!(container, message));
-                         }
-                         throw new InvalidOperationException($"No handler for message {message.GetType().FullName}");
-                     }
+                    public static unsafe partial delegate*<BTDB.IOC.IContainer, {{type}}, {{resultType}}?> Create{{name}}Dispatcher(BTDB.IOC.IContainer container)
+                    {
+                        foreach(var idx in {{name}}Handlers.Index)
+                        {
+                            {{name}}Handlers.ValueRef(idx).Execute = {{name}}Handlers.ValueRef(idx).ExecuteFactory(container);
+                        }
+                        static {{resultType}}? Consume(BTDB.IOC.IContainer container, {{type}} message)
+                        {
+                            if ({{name}}Handlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
+                            {
+                                return Unsafe.As<{{resultType}}>(handler.Execute!(container, message));
+                            }
+                            throw new InvalidOperationException($"No handler for message {message.GetType().FullName}");
+                        }
 
-                     return &Consume;
-                 }
+                        return &Consume;
+                    }
 
-             """);
+                """);
         }
 
         // language=c#
@@ -334,8 +365,10 @@ public class SourceGenerator : IIncrementalGenerator
             if (parameterIndex > 0) parametersCode.Append(", ");
             parametersCode.Append($"{type} p{parameterIndex}");
             funcParams.Append($"{type},");
-            factoryCode1.Append($"var p{parameterIndex}Idx = ctx.AddInstanceToCtx(typeof({type}), \"{name}\");\n            ");
-            factoryCode2.Append($"var p{parameterIndex}Backup = r.Exchange(p{parameterIndex}Idx, p{parameterIndex});\n                    ");
+            factoryCode1.Append(
+                $"var p{parameterIndex}Idx = ctx.AddInstanceToCtx(typeof({type}), \"{name}\");\n            ");
+            factoryCode2.Append(
+                $"var p{parameterIndex}Backup = r.Exchange(p{parameterIndex}Idx, p{parameterIndex});\n                    ");
             factoryCode3.Append($"    r.Set(p{parameterIndex}Idx, p{parameterIndex}Backup);\n                    ");
             factoryCode4.Append($"r.Set(p{parameterIndex}Idx, p{parameterIndex});\n                    ");
             parameterIndex++;
@@ -344,50 +377,50 @@ public class SourceGenerator : IIncrementalGenerator
         var resultingType = generationInfo.Properties[0].Type;
         // language=c#
         var code = $$"""
-         // <auto-generated/>
-         #nullable enable
-         using System;
-         using System.Runtime.CompilerServices;
-         {{namespaceLine}}
-         static file class {{generationInfo.Name}}Registration
-         {
-             [ModuleInitializer]
-             internal static void Register4BTDB()
-             {
-                 BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}).TypeHandle.Value, Factory);
-                 BTDB.IOC.IContainer.RegisterFactory(typeof(Func<{{funcParams}}{{resultingType}}>).TypeHandle.Value, Factory);
-                 static Func<BTDB.IOC.IContainer,BTDB.IOC.IResolvingCtx?,object> Factory(BTDB.IOC.IContainer container, BTDB.IOC.ICreateFactoryCtx ctx)
-                 {
-                     var hasResolvingCtx = ctx.HasResolvingCtx();
-                     {{factoryCode1}}var nestedFactory = container.CreateFactory(ctx, typeof({{resultingType}}), null);
-                     if (nestedFactory == null) return null;
-                     if (hasResolvingCtx)
-                     {
-                         return (c, r) => ({{parametersCode}}) =>
-                         {
-                             {{factoryCode2}}try
-                             {
-                                 return nestedFactory(c, r);
-                             }
-                             finally
-                             {
-                             {{factoryCode3}}}
-                         };
-                     }
-                     else
-                     {
-                         var paramSize = ctx.GetParamSize();
-                         return (c, _) => ({{parametersCode}}) =>
-                         {
-                             var r = new global::BTDB.IOC.ResolvingCtx(paramSize);
-                             {{factoryCode4}}return nestedFactory(c, r);
-                         };
-                     }
-                 }
-             }
-         }
+            // <auto-generated/>
+            #nullable enable
+            using System;
+            using System.Runtime.CompilerServices;
+            {{namespaceLine}}
+            static file class {{generationInfo.Name}}Registration
+            {
+                [ModuleInitializer]
+                internal static void Register4BTDB()
+                {
+                    BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), Factory);
+                    BTDB.IOC.IContainer.RegisterFactory(typeof(Func<{{funcParams}}{{resultingType}}>), Factory);
+                    static Func<BTDB.IOC.IContainer,BTDB.IOC.IResolvingCtx?,object> Factory(BTDB.IOC.IContainer container, BTDB.IOC.ICreateFactoryCtx ctx)
+                    {
+                        var hasResolvingCtx = ctx.HasResolvingCtx();
+                        {{factoryCode1}}var nestedFactory = container.CreateFactory(ctx, typeof({{resultingType}}), null);
+                        if (nestedFactory == null) return null;
+                        if (hasResolvingCtx)
+                        {
+                            return (c, r) => ({{parametersCode}}) =>
+                            {
+                                {{factoryCode2}}try
+                                {
+                                    return nestedFactory(c, r);
+                                }
+                                finally
+                                {
+                                {{factoryCode3}}}
+                            };
+                        }
+                        else
+                        {
+                            var paramSize = ctx.GetParamSize();
+                            return (c, _) => ({{parametersCode}}) =>
+                            {
+                                var r = new global::BTDB.IOC.ResolvingCtx(paramSize);
+                                {{factoryCode4}}return nestedFactory(c, r);
+                            };
+                        }
+                    }
+                }
+            }
 
-         """;
+            """;
 
         context.AddSource(
             $"{(generationInfo.Namespace == null ? "" : generationInfo.Namespace + ".") + generationInfo.Name}.g.cs",
@@ -513,38 +546,39 @@ public class SourceGenerator : IIncrementalGenerator
             // language=c#
             dispatchers.Append($$"""
 
-                                 {{ifaceName}}.{{name}}Handlers.GetOrAddValueRef(typeof({{type}}).TypeHandle.Value).ExecuteFactory = (BTDB.IOC.IContainer c) => {
-                                    var nestedFactory = c.CreateFactory(typeof({{generationInfo.FullName}}));
-                                    return (container, message) =>
-                                    {
-                                        var res = nestedFactory(container, null);
-                                        {{(resultType != null ? "return " : "")}}Unsafe.As<{{generationInfo.FullName}}>(res).{{name}}(Unsafe.As<{{type}}>(message));
-                                        {{(resultType != null ? "" : "return null;")}}
-                                    };
-                                 };
-                         """);
+                        {{ifaceName}}.{{name}}Handlers.GetOrAddValueRef(typeof({{type}}).TypeHandle.Value).ExecuteFactory = (BTDB.IOC.IContainer c) => {
+                           var nestedFactory = c.CreateFactory(typeof({{generationInfo.FullName}}));
+                           return (container, message) =>
+                           {
+                               var res = nestedFactory(container, null);
+                               {{(resultType != null ? "return " : "")}}Unsafe.As<{{generationInfo.FullName}}>(res).{{name}}(Unsafe.As<{{type}}>(message));
+                               {{(resultType != null ? "" : "return null;")}}
+                           };
+                        };
+                """);
         }
+
         // language=c#
         var code = $$"""
-                     // <auto-generated/>
-                     using System;
-                     using System.Runtime.CompilerServices;
-                     {{namespaceLine}}
-                     {{declarations}}    [ModuleInitializer]
-                         internal static void Register4BTDB()
-                         {
-                             BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}).TypeHandle.Value, (container, ctx) =>
-                             {
-                                 {{factoryCode}}return (container2, ctx2) =>
-                                 {
-                                     var res = new {{generationInfo.FullName}}({{parametersCode}}){{propertyInitOnlyCode}};
-                                     {{propertyCode}}return res;
-                                 };
-                             });{{dispatchers}}
-                         }
-                     {{(generationInfo.IsPartial ? new string('}', generationInfo.ParentDeclarations.Length) : "}")}}
+            // <auto-generated/>
+            using System;
+            using System.Runtime.CompilerServices;
+            {{namespaceLine}}
+            {{declarations}}    [ModuleInitializer]
+                internal static void Register4BTDB()
+                {
+                    BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), (container, ctx) =>
+                    {
+                        {{factoryCode}}return (container2, ctx2) =>
+                        {
+                            var res = new {{generationInfo.FullName}}({{parametersCode}}){{propertyInitOnlyCode}};
+                            {{propertyCode}}return res;
+                        };
+                    });{{dispatchers}}
+                }
+            {{(generationInfo.IsPartial ? new string('}', generationInfo.ParentDeclarations.Length) : "}")}}
 
-                     """;
+            """;
 
         context.AddSource(
             $"{(generationInfo.Namespace == null ? "" : generationInfo.Namespace + ".") + generationInfo.Name}.g.cs",
@@ -559,7 +593,9 @@ enum GenerationType
     Interface
 }
 
-record GenerationInfo(GenerationType GenType, string? Namespace, string Name, string FullName, bool IsPartial, ImmutableArray<ParameterInfo> ConstructorParameters, ImmutableArray<PropertyInfo> Properties, ImmutableArray<string> ParentDeclarations, ImmutableArray<DispatcherInfo> Dispatchers);
+record GenerationInfo(GenerationType GenType, string? Namespace, string Name, string FullName, bool IsPartial,
+    ImmutableArray<ParameterInfo> ConstructorParameters, ImmutableArray<PropertyInfo> Properties,
+    ImmutableArray<string> ParentDeclarations, ImmutableArray<DispatcherInfo> Dispatchers);
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
 

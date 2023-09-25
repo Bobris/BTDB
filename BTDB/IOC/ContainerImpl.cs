@@ -18,7 +18,7 @@ public class ContainerImpl : IContainer
 
     internal ContainerImpl(ReadOnlySpan<IRegistration> registrations, ContainerVerification containerVerification)
     {
-        var context = new ContainerRegistrationContext(this, Registrations);
+        var context = new ContainerRegistrationContext(Registrations);
         foreach (var registration in registrations)
         {
             ((IContanerRegistration)registration).Register(context);
@@ -223,6 +223,7 @@ public class ContainerImpl : IContainer
                 {
                     return lazyFactory;
                 }
+
                 Func<IContainer, IResolvingCtx?, object>? nestedFactory = null;
                 lazyFactory = (c, r) =>
                 {
@@ -251,10 +252,11 @@ public class ContainerImpl : IContainer
 
         return null;
         haveFactory:
-        if (ctxImpl.Enumerate>=0 && cReg.Multi.Count > 1)
+        if (ctxImpl.Enumerate >= 0 && cReg.Multi.Count > 1)
         {
             cReg = ctxImpl.Enumerating(cReg);
         }
+
         ctxImpl.PushResolving(cReg);
         try
         {
@@ -332,9 +334,11 @@ public class ContainerImpl : IContainer
         return res;
     }
 
-    Func<IContainer, IResolvingCtx?, object?>? CreateArrayFactory(ICreateFactoryCtx ctx, object? key, CreateFactoryCtx ctxImpl, Type nestedType)
+    Func<IContainer, IResolvingCtx?, object?>? CreateArrayFactory(ICreateFactoryCtx ctx, object? key,
+        CreateFactoryCtx ctxImpl, Type nestedType)
     {
-        if (nestedType.IsValueType) throw new NotSupportedException("IEnumerable<> or Array<> with value type argument is not supported.");
+        if (nestedType.IsValueType)
+            throw new NotSupportedException("IEnumerable<> or Array<> with value type argument is not supported.");
         var enumerableBackup = ctxImpl.StartEnumerate();
         var nestedFactory = CreateFactory(ctx, nestedType, key);
         if (nestedFactory == null)
@@ -357,7 +361,7 @@ public class ContainerImpl : IContainer
         {
             var res = Array.CreateInstance(nestedType, factories.Count);
             var i = 0;
-            ref var dataRef = ref Unsafe.As<byte,object>(ref MemoryMarshal.GetArrayDataReference(res));
+            ref var dataRef = ref Unsafe.As<byte, object>(ref MemoryMarshal.GetArrayDataReference(res));
             foreach (var factory in factories)
             {
                 Unsafe.Add(ref dataRef, i++) = factory(c, r);

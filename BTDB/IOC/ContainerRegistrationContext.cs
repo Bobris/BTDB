@@ -7,18 +7,17 @@ namespace BTDB.IOC;
 
 class ContainerRegistrationContext
 {
-    readonly ContainerImpl _container;
     readonly Dictionary<KeyAndType, CReg> _registrations;
 
-    internal ContainerRegistrationContext(ContainerImpl container, Dictionary<KeyAndType, CReg> registrations)
+    internal ContainerRegistrationContext(Dictionary<KeyAndType, CReg> registrations)
     {
-        _container = container;
         _registrations = registrations;
     }
 
-    internal uint SingletonCount { get; set; }
+    internal uint SingletonCount { get; private set; }
 
-    public void AddCReg(IEnumerable<KeyAndType> asTypes, bool preserveExistingDefaults, bool uniqueRegistration, CReg registration)
+    public void AddCReg(IEnumerable<KeyAndType> asTypes, bool preserveExistingDefaults, bool uniqueRegistration,
+        CReg registration)
     {
         foreach (var asType in asTypes)
         {

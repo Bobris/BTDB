@@ -1,10 +1,13 @@
 using System;
+using System.Reflection;
 using BTDB;
 using BTDB.IOC;
 
 var builder = new ContainerBuilder();
+builder.RegisterType<Klass>();
 builder.AutoRegisterTypes().AsSelf();
 var container = builder.Build();
+container.Resolve<Klass>();
 unsafe
 {
     var h = IAnyHandler.CreateConsumeDispatcher(container);
@@ -22,5 +25,13 @@ class Example : IAnyHandler
     internal void Consume(string message)
     {
         Console.WriteLine(message);
+    }
+}
+
+class Klass
+{
+    Klass()
+    {
+        Console.WriteLine("Ok");
     }
 }

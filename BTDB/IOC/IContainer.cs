@@ -11,13 +11,17 @@ public interface IContainer
     object? ResolveOptional(Type type);
     object? ResolveOptionalNamed(string name, Type type);
     object? ResolveOptionalKeyed(object key, Type type);
-    Func<IContainer,IResolvingCtx?,object?>? CreateFactory(ICreateFactoryCtx ctx, Type type, object? key);
-    Func<IContainer,IResolvingCtx?,object?> CreateFactory(Type type);
+    Func<IContainer, IResolvingCtx?, object?>? CreateFactory(ICreateFactoryCtx ctx, Type type, object? key);
+    Func<IContainer, IResolvingCtx?, object?> CreateFactory(Type type);
 
-    internal static readonly Dictionary<nint, Func<IContainer, ICreateFactoryCtx, Func<IContainer,IResolvingCtx?,object>>> FactoryRegistry = new();
-    public static void RegisterFactory(nint typeToken, Func<IContainer, ICreateFactoryCtx, Func<IContainer,IResolvingCtx?,object>> factory)
+    internal static readonly
+        Dictionary<nint, Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>>>
+        FactoryRegistry = new();
+
+    public static void RegisterFactory(Type type,
+        Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>> factory)
     {
-        FactoryRegistry[typeToken] = factory;
+        FactoryRegistry[type.TypeHandle.Value] = factory;
     }
 }
 
