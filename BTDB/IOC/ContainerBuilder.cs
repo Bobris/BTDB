@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reflection;
 using BTDB.Collections;
 
 namespace BTDB.IOC;
@@ -58,16 +59,46 @@ public class ContainerBuilder
         return registration;
     }
 
-    public IRegistration<IAsLiveScopeTrait> RegisterFactory<T>(Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>> factory) where T : class
+    public IRegistration<IAsLiveScopeTrait> RegisterFactory<T>(
+        Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>> factory) where T : class
     {
         var registration = new SingleFactoryRegistration(factory, typeof(T));
         _registrations.Add(registration);
         return registration;
     }
 
-    public IRegistration<IAsLiveScopeTrait> RegisterFactory(Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>> factory, Type instanceType)
+    public IRegistration<IAsLiveScopeTrait> RegisterFactory(
+        Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>> factory, Type instanceType)
     {
         var registration = new SingleFactoryRegistration(factory, instanceType);
+        _registrations.Add(registration);
+        return registration;
+    }
+
+    /// Partially obsolete, it is better to use RegisterFactory with Func&lt;IContainer, ICreateFactoryCtx, Func&lt;IContainer, IResolvingCtx?, object&gt;&gt; factory
+    public IRegistration<IAsLiveScopeTrait> RegisterFactory<T>(Func<IContainer, T> factory) where T : class
+    {
+        var registration = new SingleFactoryRegistration(factory, typeof(T));
+        _registrations.Add(registration);
+        return registration;
+    }
+
+    /// Partially obsolete, it is better to use RegisterFactory with Func&lt;IContainer, ICreateFactoryCtx, Func&lt;IContainer, IResolvingCtx?, object&gt;&gt; factory
+    public IRegistration<IAsLiveScopeTrait> RegisterFactory(Func<IContainer, object> factory, Type instanceType)
+    {
+        var registration = new SingleFactoryRegistration(factory, instanceType);
+        _registrations.Add(registration);
+        return registration;
+    }
+
+    public IRegistration<IAsLiveScopeScanTrait> RegisterAssemblyTypes(Assembly from)
+    {
+        return RegisterAssemblyTypes(new[] { from });
+    }
+
+    public IRegistration<IAsLiveScopeScanTrait> RegisterAssemblyTypes(params Assembly[] fromParams)
+    {
+        var registration = new MultiRegistration(fromParams);
         _registrations.Add(registration);
         return registration;
     }

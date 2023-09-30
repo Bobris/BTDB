@@ -11,8 +11,8 @@ static file class FactoryRegistration
     [ModuleInitializer]
     internal static void Register4BTDB()
     {
-        BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Factory).TypeHandle.Value, Factory);
-        BTDB.IOC.IContainer.RegisterFactory(typeof(Func<int,string,ILogger>).TypeHandle.Value, Factory);
+        BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Factory), Factory);
+        BTDB.IOC.IContainer.RegisterFactory(typeof(Func<int,string,ILogger>), Factory);
         static Func<BTDB.IOC.IContainer,BTDB.IOC.IResolvingCtx?,object> Factory(BTDB.IOC.IContainer container, BTDB.IOC.ICreateFactoryCtx ctx)
         {
             var hasResolvingCtx = ctx.HasResolvingCtx();

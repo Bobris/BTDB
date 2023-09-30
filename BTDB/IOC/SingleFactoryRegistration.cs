@@ -2,10 +2,11 @@ using System;
 
 namespace BTDB.IOC;
 
-class SingleFactoryRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, ILiveScopeTrait, ILiveScopeTraitImpl, IContanerRegistration
+class SingleFactoryRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, ILiveScopeTrait, ILiveScopeTraitImpl,
+    IContanerRegistration
 {
     readonly Type _implementationType;
-    readonly Func<IContainer, ICreateFactoryCtx, Func<IContainer,IResolvingCtx?,object>> _factory;
+    readonly Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>> _factory;
 
     Lifetime _lifetime = Lifetime.AlwaysNew;
 
@@ -16,10 +17,17 @@ class SingleFactoryRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, ILive
 
     public Lifetime Lifetime => _lifetime;
 
-    public SingleFactoryRegistration(Func<IContainer, ICreateFactoryCtx, Func<IContainer,IResolvingCtx?,object>> factory, Type type)
+    public SingleFactoryRegistration(
+        Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>> factory, Type type)
     {
         _factory = factory;
         _implementationType = type;
+    }
+
+    public SingleFactoryRegistration(Func<IContainer, object> factory, Type instanceType)
+    {
+        _factory = (_, _) => (c, _) => factory(c);
+        _implementationType = instanceType;
     }
 
     public void Register(ContainerRegistrationContext context)

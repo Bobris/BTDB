@@ -97,7 +97,8 @@ public class ILExtensionsTest
         var method = new ILBuilderRelease().NewMethod<Func<int>>("PrivateAccess");
         var il = method.Generator;
         var local = il.DeclareLocal(typeof(Nested), "n");
-        var propertyInfos = typeof(Nested).GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+        var propertyInfos = typeof(Nested).GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
+                                                         BindingFlags.Instance | BindingFlags.FlattenHierarchy);
         var propertyInfo = propertyInfos.First(p => p.Name == "PrivateProperty");
         il
             .Newobj(() => new Nested())
@@ -203,7 +204,7 @@ public class ILExtensionsTest
             .Dup() //[n-1, n-1]
             .Starg(0) //[n-1]
             .Ldloc(ret) //[n-1, ret]
-            .Mul()  //[(n-1)*ret] -> ret
+            .Mul() //[(n-1)*ret] -> ret
             .Stloc(ret) //[ret]
             .Br(next)
             .Mark(finish)
@@ -221,7 +222,8 @@ public class ILExtensionsTest
         var sumLocal = il.DeclareLocal(typeof(int), "sum");
         var dictType = typeof(Dictionary<int, int>);
         var getEnumeratorMethod =
-            dictType.GetMethods().Single(m => m.Name == "GetEnumerator" && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
+            dictType.GetMethods().Single(m =>
+                m.Name == "GetEnumerator" && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
         var enumeratorType = getEnumeratorMethod.ReturnType;
         var moveNextMethod = enumeratorType.GetMethod("MoveNext");
         var currentGetter =
@@ -274,11 +276,18 @@ public class ILExtensionsTest
         var il = method.Generator;
         il
             .Localloc(128)
-            .LdcI4(8)
+            .LdcI4(96)
             .Add()
             .Ldind(typeof(int))
             .Ret();
 
+        void MakeStackDirty()
+        {
+            Span<byte> stack = stackalloc byte[256];
+            stack.Fill(42);
+        }
+
+        MakeStackDirty();
         Assert.NotEqual(0, method.Create()());
     }
 }

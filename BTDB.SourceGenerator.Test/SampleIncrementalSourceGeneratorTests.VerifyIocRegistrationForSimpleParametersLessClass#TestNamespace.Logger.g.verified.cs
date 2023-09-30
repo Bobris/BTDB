@@ -10,7 +10,7 @@ static file class LoggerRegistration
     [ModuleInitializer]
     internal static void Register4BTDB()
     {
-        BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Logger).TypeHandle.Value, (container, ctx) =>
+        BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Logger), (container, ctx) =>
         {
             return (container2, ctx2) =>
             {

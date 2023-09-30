@@ -100,40 +100,36 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
 
             if (dependencyFactories.Count == 0)
             {
-                if (parameterFactories.Count == 0)
+                return parameterFactories.Count switch
                 {
-                    return (_, _) => invoker.Invoke();
-                }
-
-                if (parameterFactories.Count == 1)
-                {
-                    return (container2, ctx2) => invoker.Invoke(parameterFactories[0].Item1?.Invoke(container2, ctx2) ??
-                                                                parameterFactories[0].Item2);
-                }
-
-                if (parameterFactories.Count == 2)
-                {
-                    return (container2, ctx2) =>
+                    0 => (_, _) => invoker.Invoke(),
+                    1 => (container2, ctx2) => invoker.Invoke(parameterFactories[0].Item1?.Invoke(container2, ctx2) ??
+                                                              parameterFactories[0].Item2),
+                    2 => (container2, ctx2) =>
                     {
-                        var p1 = parameterFactories[0].Item1?.Invoke(container2, ctx2) ??
-                                 parameterFactories[0].Item2;
-                        var p2 = parameterFactories[1].Item1?.Invoke(container2, ctx2) ??
-                                 parameterFactories[1].Item2;
+                        var p1 = parameterFactories[0].Item1?.Invoke(container2, ctx2) ?? parameterFactories[0].Item2;
+                        var p2 = parameterFactories[1].Item1?.Invoke(container2, ctx2) ?? parameterFactories[1].Item2;
                         return invoker.Invoke(p1, p2);
-                    };
-                }
-
-                return (container2, ctx2) =>
-                {
-                    Span<object?> parameterInstances = new object[(int)parameterFactories.Count];
-                    for (var i = 0; i < parameterFactories.Count; i++)
+                    },
+                    3 => (container2, ctx2) =>
                     {
-                        parameterInstances[i] = parameterFactories[i].Item1?.Invoke(container2, ctx2) ??
-                                                parameterFactories[i].Item2;
-                    }
+                        var p1 = parameterFactories[0].Item1?.Invoke(container2, ctx2) ?? parameterFactories[0].Item2;
+                        var p2 = parameterFactories[1].Item1?.Invoke(container2, ctx2) ?? parameterFactories[1].Item2;
+                        var p3 = parameterFactories[2].Item1?.Invoke(container2, ctx2) ?? parameterFactories[2].Item2;
+                        return invoker.Invoke(p1, p2, p3);
+                    },
+                    _ => (container2, ctx2) =>
+                    {
+                        Span<object?> parameterInstances = new object[(int)parameterFactories.Count];
+                        for (var i = 0; i < parameterFactories.Count; i++)
+                        {
+                            parameterInstances[i] = parameterFactories[i].Item1?.Invoke(container2, ctx2) ??
+                                                    parameterFactories[i].Item2;
+                        }
 
-                    var res = invoker.Invoke(parameterInstances);
-                    return res;
+                        var res = invoker.Invoke(parameterInstances);
+                        return res;
+                    }
                 };
             }
 

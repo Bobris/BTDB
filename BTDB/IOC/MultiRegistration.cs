@@ -5,18 +5,29 @@ using BTDB.IL;
 
 namespace BTDB.IOC;
 
-class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeScanTrait>, ILiveScopeTrait, ILiveScopeTraitImpl, IScanTrait, IScanTraitImpl, IContanerRegistration
+class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeScanTrait>, ILiveScopeTrait, ILiveScopeTraitImpl, IScanTrait,
+    IScanTraitImpl, IContanerRegistration
 {
-    Lifetime _lifetime = Lifetime.AlwaysNew;
-
     public void SingleInstance()
     {
-        _lifetime = Lifetime.Singleton;
+        Lifetime = Lifetime.Singleton;
     }
 
-    public Lifetime Lifetime => _lifetime;
+    public Lifetime Lifetime { get; private set; } = Lifetime.AlwaysNew;
 
-    StructList<Predicate<Type>> _filters;
+    StructList<Predicate<Type>> _filters = new();
+
+    readonly Assembly[]? _fromAssemblies;
+
+    public MultiRegistration()
+    {
+        _fromAssemblies = null;
+    }
+
+    public MultiRegistration(Assembly[] fromParams)
+    {
+        _fromAssemblies = fromParams;
+    }
 
     public void Where(Predicate<Type> filter)
     {
@@ -29,17 +40,32 @@ class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeScanTrait>, ILiveScop
         {
             if (!predicate(type)) return false;
         }
+
         return true;
     }
 
     public void Register(ContainerRegistrationContext context)
     {
-        foreach (var (typeToken, value) in IContainer.FactoryRegistry)
+        if (_fromAssemblies == null)
         {
-            var type = Type.GetTypeFromHandle(RuntimeTypeHandle.FromIntPtr(typeToken));
-            if (type is not { IsClass: true }) continue;
-            if (!MatchFilter(type)) continue;
-            ((IContanerRegistration)new SingleRegistration(type, this, _lifetime)).Register(context);
+            foreach (var (typeToken, value) in IContainer.FactoryRegistry)
+            {
+                var type = Type.GetTypeFromHandle(RuntimeTypeHandle.FromIntPtr(typeToken));
+                if (type is not { IsClass: true }) continue;
+                if (!MatchFilter(type)) continue;
+                ((IContanerRegistration)new SingleRegistration(type, this, Lifetime)).Register(context);
+            }
+        }
+        else
+        {
+            foreach (var assembly in _fromAssemblies)
+            {
+                foreach (var type in assembly.GetTypes())
+                {
+                    if (!type.IsClass || type.IsAbstract || !MatchFilter(type)) continue;
+                    ((IContanerRegistration)new SingleRegistration(type, this, Lifetime)).Register(context);
+                }
+            }
         }
     }
 }
