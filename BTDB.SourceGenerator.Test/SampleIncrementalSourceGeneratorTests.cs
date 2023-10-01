@@ -62,21 +62,50 @@ public class SampleIncrementalSourceGeneratorTests
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForSingleParameterPrivateConstructor()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            public interface ILogger
+            {
+            }
+
+            public interface IErrorHandler
+            {
+                ILogger Logger { get; }
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler : IErrorHandler
+            {
+                readonly ILogger _logger;
+
+                private ErrorHandler(ILogger logger)
+                {
+                    _logger = logger;
+                }
+
+                public ILogger Logger => _logger;
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForDependencyProperties()
     {
         // language=cs
         return VerifySourceGenerator("""
-                                     public interface ILogger
-                                     {
-                                     }
+            public interface ILogger
+            {
+            }
 
-                                     [BTDB.Generate]
-                                     public class ErrorHandler
-                                     {
-                                         [BTDB.IOC.Dependency]
-                                         public ILogger Logger { get; init; }
-                                     }
-                                     """);
+            [BTDB.Generate]
+            public class ErrorHandler
+            {
+                [BTDB.IOC.Dependency]
+                public ILogger Logger { get; init; }
+            }
+            """);
     }
 
     [Fact]

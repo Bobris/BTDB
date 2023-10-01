@@ -59,7 +59,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 : null))
                         .ToImmutableArray();
                     return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
-                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, parameters,
+                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, parameters,
                         new[] { new PropertyInfo("", returnType, null, true, false, false) }.ToImmutableArray(),
                         ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty);
                 }
@@ -74,7 +74,7 @@ public class SourceGenerator : IIncrementalGenerator
                         : containingNamespace.ToDisplayString();
                     var interfaceName = symbol.Name;
                     return new(GenerationType.Interface, namespaceName, interfaceName,
-                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false,
+                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false,
                         ImmutableArray<ParameterInfo>.Empty,
                         ImmutableArray<PropertyInfo>.Empty, ImmutableArray<string>.Empty,
                         dispatchers.ToImmutableArray());
@@ -175,8 +175,11 @@ public class SourceGenerator : IIncrementalGenerator
                             p.Type.IsReferenceType,
                             p.NullableAnnotation == NullableAnnotation.Annotated, p.SetMethod!.IsInitOnly))
                         .ToImmutableArray();
+                    var privateConstructor =
+                        constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected;
                     return new GenerationInfo(GenerationType.Class, namespaceName, className,
-                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, parameters,
+                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
+                        parameters,
                         propertyInfos, parentDeclarations, dispatchers.ToImmutable());
                 }
 
@@ -540,6 +543,23 @@ public class SourceGenerator : IIncrementalGenerator
             declarations.Append($"static file class {generationInfo.Name}Registration\n{{\n");
         }
 
+        if (generationInfo.PrivateConstructor)
+        {
+            var constructorParameters = new StringBuilder();
+            foreach (var (name, type, _, _, _) in generationInfo.ConstructorParameters)
+            {
+                if (constructorParameters.Length > 0) constructorParameters.Append(", ");
+                constructorParameters.Append($"{type} {name}");
+            }
+
+            // language=c#
+            declarations.Append($"""
+                    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+                    extern static {generationInfo.FullName} Constr({constructorParameters});
+
+                """);
+        }
+
         var dispatchers = new StringBuilder();
         foreach (var (name, type, resultType, ifaceName) in generationInfo.Dispatchers)
         {
@@ -571,12 +591,12 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         {{factoryCode}}return (container2, ctx2) =>
                         {
-                            var res = new {{generationInfo.FullName}}({{parametersCode}}){{propertyInitOnlyCode}};
+                            var res = {{(generationInfo.PrivateConstructor ? "Constr" : "new " + generationInfo.FullName)}}({{parametersCode}}){{propertyInitOnlyCode}};
                             {{propertyCode}}return res;
                         };
                     });{{dispatchers}}
                 }
-            {{(generationInfo.IsPartial ? new string('}', generationInfo.ParentDeclarations.Length) : "}")}}
+            {{(generationInfo.IsPartial ? new('}', generationInfo.ParentDeclarations.Length) : "}")}}
 
             """;
 
@@ -594,6 +614,7 @@ enum GenerationType
 }
 
 record GenerationInfo(GenerationType GenType, string? Namespace, string Name, string FullName, bool IsPartial,
+    bool PrivateConstructor,
     ImmutableArray<ParameterInfo> ConstructorParameters, ImmutableArray<PropertyInfo> Properties,
     ImmutableArray<string> ParentDeclarations, ImmutableArray<DispatcherInfo> Dispatchers);
 

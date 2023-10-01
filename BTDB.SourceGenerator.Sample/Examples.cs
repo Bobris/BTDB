@@ -4,7 +4,7 @@ using BTDB;
 using BTDB.IOC;
 
 var builder = new ContainerBuilder();
-builder.RegisterType<Klass>();
+//builder.RegisterType<Klass>();
 builder.AutoRegisterTypes().AsSelf();
 var container = builder.Build();
 container.Resolve<Klass>();
@@ -28,9 +28,10 @@ class Example : IAnyHandler
     }
 }
 
-class Klass
+[Generate]
+public class Klass
 {
-    Klass()
+    private Klass()
     {
         Console.WriteLine("Ok");
     }
