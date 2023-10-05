@@ -653,14 +653,13 @@ public ref struct SpanReader
         if (l == 0) return "";
         if (l <= (uint)Buf.Length)
         {
-            return Encoding.UTF8.GetString((byte*)Unsafe.AsPointer(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, l)),
-                l);
+            return Encoding.UTF8.GetString(MemoryMarshal.CreateSpan(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, l),
+                l));
         }
 
         Span<byte> buf = l <= 512 ? stackalloc byte[l] : new byte[l];
         return Encoding.UTF8.GetString(
-            (byte*)Unsafe.AsPointer(
-                ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), (uint)l)), l);
+            MemoryMarshal.CreateSpan(ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), (uint)l), l));
     }
 
     public void SkipString()
