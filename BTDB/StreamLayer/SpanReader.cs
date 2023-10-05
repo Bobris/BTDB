@@ -586,12 +586,14 @@ public ref struct SpanReader
                 charBuf.CopyTo(newCharBuf);
                 charBuf = newCharBuf;
             }
+
             if (c > 0xffff)
             {
                 if (c > 0x10ffff)
                 {
                     throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
                 }
+
                 c -= 0x10000;
                 Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c >> 10) + 0xD800);
                 Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c & 0x3FF) + 0xDC00);
@@ -617,6 +619,7 @@ public ref struct SpanReader
                 charBuf.CopyTo(newCharBuf);
                 charBuf = newCharBuf;
             }
+
             c--;
             if (c > 0xffff)
             {
@@ -624,6 +627,7 @@ public ref struct SpanReader
                 {
                     throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
                 }
+
                 c -= 0x10000;
                 Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c >> 10) + 0xD800);
                 Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c & 0x3FF) + 0xDC00);
@@ -645,7 +649,7 @@ public ref struct SpanReader
     }
 
     [SkipLocalsInit]
-    public unsafe string ReadStringInUtf8()
+    public string ReadStringInUtf8()
     {
         var len = ReadVUInt64();
         if (len > int.MaxValue) throw new InvalidDataException($"Reading Utf8 String length overflowed with {len}");
@@ -659,7 +663,8 @@ public ref struct SpanReader
 
         Span<byte> buf = l <= 512 ? stackalloc byte[l] : new byte[l];
         return Encoding.UTF8.GetString(
-            MemoryMarshal.CreateSpan(ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), (uint)l), l));
+            MemoryMarshal.CreateSpan(ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), (uint)l),
+                l));
     }
 
     public void SkipString()
