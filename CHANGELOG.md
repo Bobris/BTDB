@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Fix crash in ReadStringInUtf8
+
 ## 31.12.0
 
 ### Added
