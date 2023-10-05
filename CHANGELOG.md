@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.12.1
+
 ### Fixed
 
 Fix crash in ReadStringInUtf8
