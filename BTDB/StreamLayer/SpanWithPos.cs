@@ -27,7 +27,7 @@ public ref struct SpanWithPos
 
     public SpanWithPos()
     {
-        Buf = Unsafe.NullRef<byte>();
+        Buf = ref Unsafe.NullRef<byte>();
         Length = 0;
         Pos = 0;
     }
