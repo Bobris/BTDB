@@ -205,7 +205,7 @@ public ref struct SpanReader
     public short ReadVInt16()
     {
         var res = ReadVInt64();
-        if (res > short.MaxValue || res < short.MinValue)
+        if (res is > short.MaxValue or < short.MinValue)
             throw new InvalidDataException(
                 $"Reading VInt16 overflowed with {res}");
         return (short)res;
@@ -214,7 +214,7 @@ public ref struct SpanReader
     public void SkipVInt16()
     {
         var res = ReadVInt64();
-        if (res > short.MaxValue || res < short.MinValue)
+        if (res is > short.MaxValue or < short.MinValue)
             throw new InvalidDataException(
                 $"Skipping VInt16 overflowed with {res}");
     }
@@ -235,7 +235,7 @@ public ref struct SpanReader
     public int ReadVInt32()
     {
         var res = ReadVInt64();
-        if (res > int.MaxValue || res < int.MinValue)
+        if (res is > int.MaxValue or < int.MinValue)
             throw new InvalidDataException(
                 $"Reading VInt32 overflowed with {res}");
         return (int)res;
@@ -244,7 +244,7 @@ public ref struct SpanReader
     public void SkipVInt32()
     {
         var res = ReadVInt64();
-        if (res > int.MaxValue || res < int.MinValue)
+        if (res is > int.MaxValue or < int.MinValue)
             throw new InvalidDataException(
                 $"Skipping VInt32 overflowed with {res}");
     }
@@ -886,15 +886,9 @@ public ref struct SpanReader
         return BitConverter.Int32BitsToSingle(ReadInt32());
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static unsafe Half Int16BitsToHalf(short value)
-    {
-        return *(Half*)&value;
-    }
-
     public Half ReadHalf()
     {
-        return Int16BitsToHalf(ReadInt16());
+        return BitConverter.Int16BitsToHalf(ReadInt16());
     }
 
     public void SkipDouble()

@@ -1145,7 +1145,7 @@ public static class PackUnpack
             if (ptr >= 0x80) return (count, false);
             if (targetBuf.Length <= targetOfs)
             {
-                var newCharBuf = (Span<char>)new char[targetBuf.Length * 2];
+                var newCharBuf = (Span<char>)GC.AllocateUninitializedArray<char>(targetBuf.Length * 2);
                 targetBuf.CopyTo(newCharBuf);
                 targetBuf = newCharBuf;
             }
@@ -1176,7 +1176,7 @@ public static class PackUnpack
             {
                 if (targetBuf.Length < targetOfs + 16)
                 {
-                    var newCharBuf = (Span<char>)new char[targetBuf.Length * 2];
+                    var newCharBuf = (Span<char>)GC.AllocateUninitializedArray<char>(targetBuf.Length * 2);
                     targetBuf.CopyTo(newCharBuf);
                     targetBuf = newCharBuf;
                 }

@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace BTDB.StreamLayer;
 
-public class PlatformMethods
+public static class PlatformMethods
 {
     static PlatformMethods()
     {
