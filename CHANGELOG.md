@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.12.2
+
 ### Fixed
 
 Prefixed RemoveById now correctly works with OnBeforeRemove.
