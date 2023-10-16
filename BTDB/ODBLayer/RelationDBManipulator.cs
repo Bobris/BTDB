@@ -257,6 +257,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             FreeContentInUpdate(oldValueBytes, valueBytes);
             return false;
         }
+
         _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         if (_hasSecondaryIndexes)
         {
@@ -289,6 +290,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                     return (false, oldSize.Key, oldSize.Value, oldSize.Value);
                 }
             }
+
             var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
             IfNotUniquePrefixThrow(updateSuffixResult);
             if (updateSuffixResult is UpdateKeySuffixResult.Updated or UpdateKeySuffixResult.NothingToDo) update = true;
@@ -297,6 +299,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         {
             if (_kvtr.FindExactKey(keyBytes)) update = true;
         }
+
         if (update)
         {
             var oldValueSize = _kvtr.GetStorageSizeOfCurrentKey().Value;
@@ -362,12 +365,14 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             {
                 var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
                 IfNotUniquePrefixThrow(updateSuffixResult);
-                if (updateSuffixResult is UpdateKeySuffixResult.Updated or UpdateKeySuffixResult.NothingToDo) update = true;
+                if (updateSuffixResult is UpdateKeySuffixResult.Updated or UpdateKeySuffixResult.NothingToDo)
+                    update = true;
             }
             else
             {
                 if (_kvtr.FindExactKey(keyBytes)) update = true;
             }
+
             if (update)
             {
                 var oldValueBytes =
@@ -394,6 +399,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 var updateSuffixResult = _kvtr.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
                 IfNotUniquePrefixThrow(updateSuffixResult);
             }
+
             if (!_kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
             {
                 return false;
@@ -636,6 +642,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             {
                 fullKeyBytes = _kvtr.GetKey();
             }
+
             var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, fullKeyBytes);
             if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
                 return false;
@@ -650,6 +657,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                         throw new BTDBException("Not found record to delete.");
                     return false;
                 }
+
                 fullKeyBytes = _kvtr.GetKey();
             }
         }
@@ -746,6 +754,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                         throw new BTDBException("Not found record to delete.");
                     return false;
                 }
+
                 fullKeyBytes = _kvtr.GetKey();
             }
         }
@@ -793,6 +802,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
                     continue;
             }
+
             keysToDelete.Add(key);
         }
 
@@ -813,7 +823,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             if (beforeRemove != null)
             {
                 MarkModification();
-                _kvtr.EraseCurrent();
+                _kvtr.EraseCurrent(key);
             }
         }
 
@@ -885,6 +895,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             RemoveByPrimaryKeyPrefix(_relationInfo.Prefix);
             return;
         }
+
         if (_relationInfo.NeedImplementFreeContent())
         {
             var count = _kvtr.GetKeyValueCount(_relationInfo.Prefix);
@@ -1056,6 +1067,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         {
             return itemLoader.CreateInstance(_transaction, _kvtr.GetKey());
         }
+
         return itemLoader.CreateInstance(_transaction, keyBytes);
     }
 

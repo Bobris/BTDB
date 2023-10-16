@@ -7,6 +7,10 @@
 IOC does not use Runtime IL code generation, but SourceGenerator. Some features were lost, some features could be sill added back if there will be demand. Assembly scanning was changed most. And all resolvable classes had to be marked by `[Generate]` attribute on itself or any parent classes or interfaces.
 It does allow to use IOC in AOT builds. More features will follow.
 
+### Fixed
+
+Prefixed RemoveById now correctly works with OnBeforeRemove.
+
 ## 31.12.0
 
 ### Added
