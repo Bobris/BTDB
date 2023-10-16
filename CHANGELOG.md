@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Prefixed RemoveById now correctly works with OnBeforeRemove.
+
 ## 31.12.1
 
 ### Fixed

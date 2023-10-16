@@ -3180,9 +3180,44 @@ namespace BTDBTest
             ItemWithOnBeforeRemove.CallCounter = 0;
             tr.KeyValueDBTransaction.SetCommitUlong(1);
             table.RemoveAll();
-            Assert.Equal(1,table.Count);
+            Assert.Equal(1, table.Count);
             Assert.Equal(6ul, ItemWithOnBeforeRemove.CallCounter);
             _container = null;
+        }
+
+        public class ProcessingPipelineV2
+        {
+            [PrimaryKey(1)] public ulong CompanyId { get; set; }
+            [PrimaryKey(2)] public ulong Id { get; set; }
+
+            [PrimaryKey(3)]
+            [SecondaryKey("StateVersion", Order = 4)]
+            public ulong VersionNumber { get; set; } = 1;
+
+            [SecondaryKey("StateVersion", Order = 3, IncludePrimaryKeyOrder = 2)]
+            public bool VersionState { get; set; }
+
+            public string? VersionComment { get; set; }
+
+            [OnBeforeRemove]
+            void TryRemoveProcessingPipelineData()
+            {
+                Assert.Equal(1ul, VersionNumber);
+            }
+        }
+
+        public interface IProcessingPipelineV2Table : IRelation<ProcessingPipelineV2>
+        {
+            int RemoveById(ulong companyId, ulong id);
+        }
+
+        [Fact]
+        void PrefixRemoveByIdIsCorrectlyCalledWithOnBeforeRemove()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IProcessingPipelineV2Table>();
+            table.Upsert(new ProcessingPipelineV2 { CompanyId = 1, Id = 1, VersionNumber = 1 });
+            Assert.Equal(1, table.RemoveById(1, 1));
         }
     }
 }

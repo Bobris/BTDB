@@ -120,13 +120,14 @@ public class RelationBuilder
             if (pi.GetIndexParameters().Length != 0) continue;
             var pks = pi.GetCustomAttributes<PrimaryKeyAttribute>(true);
             var actualPKAttribute = pks.FirstOrDefault();
-            if (pi.GetCustomAttribute<InKeyValueAttribute>() is {} inKeyValueAttribute)
+            if (pi.GetCustomAttribute<InKeyValueAttribute>() is { } inKeyValueAttribute)
             {
                 if (actualPKAttribute != null)
                     RelationInfoResolver.ActualOptions.ThrowBTDBException(
                         $"Property {pi.Name} cannot have both PrimaryKeyAttribute and InKeyValueAttribute.");
-                actualPKAttribute = new (inKeyValueAttribute.Order,true);
+                actualPKAttribute = new(inKeyValueAttribute.Order, true);
             }
+
             if (actualPKAttribute != null)
             {
                 var fieldInfo = TableFieldInfo.Build(_name, pi, RelationInfoResolver.FieldHandlerFactory,
@@ -147,6 +148,7 @@ public class RelationBuilder
                     RelationInfoResolver.ActualOptions.ThrowBTDBException(
                         $"Secondary key {((SecondaryKeyAttribute)sks[i]).Name} cannot be defined on property {pi.Name} because it is part of primary key in key value.");
                 }
+
                 if (i == 0)
                 {
                     currentList = new(sks.Length);
@@ -496,10 +498,10 @@ public class RelationBuilder
             .Call(SpanWriterGetSpanMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan);
-        if (isPrefixBased && DoesNotHaveOnBeforeRemove(ItemType))
+        if (isPrefixBased)
         {
             reqMethod.Generator.Callvirt(
-                (AllKeyPrefixesAreSame(ClientRelationVersionInfo, count)
+                (DoesNotHaveOnBeforeRemove(ItemType) && AllKeyPrefixesAreSame(ClientRelationVersionInfo, count)
                     ? _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
                         .RemoveByKeyPrefixWithoutIterate))
                     : _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
@@ -508,7 +510,8 @@ public class RelationBuilder
         else
         {
             reqMethod.Generator.LdcI4(ShouldThrowWhenKeyNotFound(method.Name, method.ReturnType) ? 1 : 0);
-            reqMethod.Generator.Callvirt(_relationDbManipulatorType.GetMethod(method.Name)!); // RemoveById or ShallowRemoveById
+            reqMethod.Generator.Callvirt(
+                _relationDbManipulatorType.GetMethod(method.Name)!); // RemoveById or ShallowRemoveById
             if (method.ReturnType == typeof(void))
                 reqMethod.Generator.Pop();
         }
@@ -516,7 +519,8 @@ public class RelationBuilder
 
     static bool DoesNotHaveOnBeforeRemove(Type itemType)
     {
-        return itemType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).All(m => m.GetCustomAttribute<OnBeforeRemoveAttribute>() == null);
+        return itemType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .All(m => m.GetCustomAttribute<OnBeforeRemoveAttribute>() == null);
     }
 
     void BuildRemoveByIdAdvancedParamMethod(MethodInfo method, ParameterInfo[] parameters, IILMethod reqMethod)
@@ -1280,6 +1284,7 @@ public class RelationBuilder
             if (returningBoolVariant)
                 reqMethod.Generator.LdcI4(1);
         }
+
         reqMethod.Generator.Ret();
     }
 
@@ -1666,6 +1671,7 @@ public class RelationBuilder
             if (field.InKeyValue) break;
             count++;
         }
+
         return fields[..count];
     }
 
@@ -1748,7 +1754,8 @@ public class RelationBuilder
 
     ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
         ReadOnlySpan<ParameterInfo> methodParameters,
-        ReadOnlySpan<TableFieldInfo> fields, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory, IILLocal? lenOfPkWoInKeyValuesLocal = null)
+        ReadOnlySpan<TableFieldInfo> fields, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory,
+        IILLocal? lenOfPkWoInKeyValuesLocal = null)
     {
         var idx = 0;
         foreach (var field in fields)
@@ -1946,7 +1953,8 @@ public class RelationBuilder
     }
 
     void SerializePKListPrefixBytes(IILGen ilGenerator, string methodName,
-        ReadOnlySpan<ParameterInfo> methodParameters, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory, IILLocal? lenOfPkWoInKeyValuesLocal = null)
+        ReadOnlySpan<ParameterInfo> methodParameters, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory,
+        IILLocal? lenOfPkWoInKeyValuesLocal = null)
     {
         WriteRelationPKPrefix(ilGenerator, pushWriter);
 
