@@ -22,7 +22,7 @@ public class BrotliDecompressSpanReader : ISpanReader, IDisposable
         _source = source;
         _decoder = new();
         _ofs = 0;
-        _buf = new byte[256 * 1024];
+        _buf = GC.AllocateUninitializedArray<byte>(256 * 1024);
         _usedOfs = 0;
         _usedLen = 0;
     }

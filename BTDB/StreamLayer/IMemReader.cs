@@ -13,9 +13,10 @@ public interface IMemReader
     void Init(ref MemReader memReader);
 
     /// <summary>
-    /// Fill Buf with advisePrefetchLength bytes of data. Postcondition is that memReader.Current+advisePrefetchLength&lt;=memReader.End.
+    /// Fill Buf with advisePrefetchLength bytes of data. Post-condition is that memReader.Current+advisePrefetchLength&lt;=memReader.End.
     /// </summary>
     /// <param name="memReader">owning MemReader</param>
+    /// <param name="advisePrefetchLength">minimum size of buffer to fill (usually this parameter should be under 100 bytes)</param>
     void FillBuf(ref MemReader memReader, nuint advisePrefetchLength);
 
     /// <summary>
@@ -31,16 +32,14 @@ public interface IMemReader
     /// <param name="memReader">owning MemReader</param>
     /// <param name="buffer">reference to first byte of buffer to fill with length bytes</param>
     /// <param name="length">size of data to read</param>
-    /// <returns>true if not enough data to fill buffer</returns>
-    bool ReadBlock(ref MemReader memReader, ref byte buffer, nuint length);
+    void ReadBlock(ref MemReader memReader, ref byte buffer, nuint length);
 
     /// <summary>
     /// Skip data of length. Called only when memReader.Current==memReader.End.
     /// </summary>
     /// <param name="memReader">owning MemReader</param>
     /// <param name="length">how much to skip</param>
-    /// <returns>true if not enough data to fill buffer</returns>
-    bool SkipBlock(ref MemReader memReader, nuint length);
+    void SkipBlock(ref MemReader memReader, nuint length);
 
     /// <summary>
     /// Seek to position in MemReader.

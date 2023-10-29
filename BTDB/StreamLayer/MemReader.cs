@@ -620,7 +620,8 @@ public struct MemReader
                     Current = End;
                 }
 
-                if (!Controller.ReadBlock(ref this, ref buffer, length)) return;
+                Controller.ReadBlock(ref this, ref buffer, length);
+                return;
             }
 
             Current = End;
@@ -648,13 +649,12 @@ public struct MemReader
 
                 while (length > (uint)int.MaxValue + 1)
                 {
-                    if (Controller.SkipBlock(ref this, (uint)int.MaxValue + 1))
-                        PackUnpack.ThrowEndOfStreamException();
+                    Controller.SkipBlock(ref this, (uint)int.MaxValue + 1);
                     length -= (uint)int.MaxValue + 1;
                 }
 
-                if (!Controller.SkipBlock(ref this, length))
-                    return;
+                Controller.SkipBlock(ref this, length);
+                return;
             }
 
             Current = End;
@@ -793,7 +793,7 @@ public struct MemReader
     [SkipLocalsInit]
     public unsafe bool CheckMagic(ReadOnlySpan<byte> magic)
     {
-        if (End-Current < magic.Length)
+        if (End - Current < magic.Length)
         {
             if (Controller == null) return false;
 
@@ -807,7 +807,8 @@ public struct MemReader
             }
         }
 
-        if (!MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef<byte>((void *)Current), magic.Length).SequenceEqual(magic)) return false;
+        if (!MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef<byte>((void*)Current), magic.Length)
+                .SequenceEqual(magic)) return false;
         Current += magic.Length;
         return true;
     }
@@ -906,7 +907,7 @@ public struct MemReader
     public unsafe void CopyAbsoluteToWriter(uint start, uint len, ref SpanWriter writer)
     {
         Debug.Assert(Controller == null);
-        writer.WriteBlock(MemoryMarshal.CreateSpan(ref Unsafe.AsRef<byte>((void *)(Start+(nint)start)), (int)len));
+        writer.WriteBlock(MemoryMarshal.CreateSpan(ref Unsafe.AsRef<byte>((void*)(Start + (nint)start)), (int)len));
     }
 
     public unsafe void CopyFromPosToWriter(uint start, ref SpanWriter writer)
