@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Fixed EventStore upgrade from T? to T
+
 ## 31.12.2
 
 ### Fixed

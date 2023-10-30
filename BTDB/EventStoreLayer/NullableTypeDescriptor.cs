@@ -116,10 +116,28 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
     {
-        var genericArguments = targetType.GetGenericArguments();
-        var itemType = genericArguments.Length > 0 ? targetType.GetGenericArguments()[0] : typeof(object);
-
-        if (itemType == typeof(object))
+        var itemType = Nullable.GetUnderlyingType(targetType);
+        if (targetType.IsValueType && itemType == null)
+        {
+            var localResult = ilGenerator.DeclareLocal(targetType);
+            var finish = ilGenerator.DefineLabel();
+            var noValue = ilGenerator.DefineLabel();
+            ilGenerator
+                .Do(pushReader)
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
+                .Brfalse(noValue);
+            _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor)!.NestedType(0)), targetType, _convertorGenerator);
+            ilGenerator
+                .Stloc(localResult)
+                .BrS(finish)
+                .Mark(noValue)
+                .Ldloca(localResult)
+                .InitObj(targetType)
+                .Mark(finish)
+                .Ldloc(localResult);
+        }
+        else if (itemType == null)
         {
             var noValue = ilGenerator.DefineLabel();
             var finish = ilGenerator.DefineLabel();
