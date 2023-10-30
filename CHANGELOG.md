@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.12.3
+
 ### Fixed
 
 Fixed EventStore upgrade from T? to T
