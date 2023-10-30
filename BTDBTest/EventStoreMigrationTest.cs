@@ -49,8 +49,8 @@ public class EventStoreMigrationTest
         options.IgnoreIIndirect = ignoreIndirect;
         options.SymmetricCipher = new AesGcmSymmetricCipher(new byte[]
         {
-                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-                28, 29, 30, 31
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+            28, 29, 30, 31
         });
 
         if (serializeNonPublicProperties)
@@ -66,8 +66,8 @@ public class EventStoreMigrationTest
         var appender = manager.AppendToStore(storage);
         var events = new[]
         {
-                @event
-            };
+            @event
+        };
         appender.Store(null, events);
         manager = new EventStoreManager(options);
         manager.SetNewTypeNameMapper(mapper);
@@ -188,6 +188,11 @@ public class EventStoreMigrationTest
         public int A { get; set; }
     }
 
+    public class EventWithNullableUlong
+    {
+        public ulong? A { get; set; }
+    }
+
     public class EventWithUlong
     {
         public ulong A { get; set; }
@@ -211,6 +216,46 @@ public class EventStoreMigrationTest
             A = -1
         }, mapper);
         Assert.Equal(0xffffffff, obj2.A);
+    }
+
+    [Fact]
+    public void CanMigrateNullableUlongToUlong()
+    {
+        var parentMapper = new FullNameTypeMapper();
+        var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(EventWithUlong),
+            parentMapper.ToName(typeof(EventWithNullableUlong)),
+            parentMapper
+        );
+        var obj = (EventWithUlong)PassThroughEventStorage(new EventWithNullableUlong
+        {
+            A = 42
+        }, mapper);
+        Assert.Equal(42ul, obj.A);
+        var obj2 = (EventWithUlong)PassThroughEventStorage(new EventWithNullableUlong
+        {
+            A = null
+        }, mapper);
+        Assert.Equal(0ul, obj2.A);
+    }
+
+    [Fact]
+    public void CanMigrateUlongToNullableUlong()
+    {
+        var parentMapper = new FullNameTypeMapper();
+        var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(EventWithNullableUlong),
+            parentMapper.ToName(typeof(EventWithUlong)),
+            parentMapper
+        );
+        var obj = (EventWithNullableUlong)PassThroughEventStorage(new EventWithUlong
+        {
+            A = 42
+        }, mapper);
+        Assert.Equal(42ul, obj.A);
+        var obj2 = (EventWithNullableUlong)PassThroughEventStorage(new EventWithUlong
+        {
+            A = 0
+        }, mapper);
+        Assert.Equal(0ul, obj2.A);
     }
 
     public class EventWithString
@@ -300,7 +345,7 @@ public class EventStoreMigrationTest
         var obj = PassThroughEventStorage(new EventDictIndirectAbstract
         {
             Items = new Dictionary<ulong, IIndirect<ItemBase>>
-                    {{1, new DBIndirect<ItemBase>(new ItemBase1 {A = 1, B = 2})}}
+                { { 1, new DBIndirect<ItemBase>(new ItemBase1 { A = 1, B = 2 }) } }
         }, mapper, false);
         Assert.IsType<EventDictAbstract>(obj);
         var res = (EventDictAbstract)obj;
