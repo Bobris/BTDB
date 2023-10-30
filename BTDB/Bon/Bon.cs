@@ -9,6 +9,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using BTDB.Buffer;
 using BTDB.Collections;
+using BTDB.StreamLayer;
 
 namespace BTDB.Bon;
 
@@ -158,94 +159,78 @@ public static class Helpers
         }
     }
 
-    public static uint CalcStartOffsetOfBon(ReadOnlySpan<byte> bon)
+    public static nint CalcStartOffsetOfBon(ref MemReader reader)
     {
-        return (uint)bon.Length - bon[^1] - 1;
+        var len = reader.GetLength();
+        reader.SetCurrentPosition(len - 1);
+        var b = reader.ReadUInt8();
+        return len - b - 1;
     }
 
-    public static uint SkipItemOfBon(ReadOnlySpan<byte> bon, uint ofs)
+    public static void SkipItemOfBon(ref MemReader reader)
     {
-        var b = bon[(int)ofs++];
+        var b = reader.ReadUInt8();
         switch (b)
         {
             case < 64:
                 break;
             case >= 128:
-                ofs += PackUnpack.LengthVUIntByFirstByte(bon[(int)ofs]);
+                reader.SkipVUInt64();
                 break;
             case 64:
-                ofs += 2;
+                reader.Skip2Bytes();
                 break;
             case 65:
-                ofs += 4;
+                reader.Skip4Bytes();
                 break;
             case 66 or 67:
-                ofs += 8;
+                reader.Skip8Bytes();
                 break;
             case 68:
-                ofs += 16;
+                reader.SkipBlock(16);
                 break;
         }
-
-        return ofs;
     }
 
-    public static bool TryGetDouble(ReadOnlySpan<byte> bon, ref uint ofs, out double value)
+    public static bool TryGetDouble(ref MemReader reader, out double value)
     {
-        var b = bon[(int)ofs];
+        var b = reader.PeekUInt8();
         switch (b)
         {
             case >= Code0 and <= CodeM10:
             {
-                ofs++;
+                reader.Skip1Byte();
                 value = b < CodeM1 ? b - Code0 : CodeM1 - b - 1;
                 return true;
             }
             case CodeInteger:
             {
-                ofs++;
-                var data = bon[(int)ofs..];
-                var len = PackUnpack.LengthVUIntByFirstByte(data[0]);
-                if ((uint)data.Length < len) PackUnpack.ThrowEndOfStreamException();
-                // All range checks were done already before, so now do it without them for speed
-                value = PackUnpack.UnsafeUnpackVUInt(ref MemoryMarshal.GetReference(data), len);
-                ofs += len;
+                reader.Skip1Byte();
+                value = reader.ReadVUInt64();
                 return true;
             }
             case CodeMInteger:
             {
-                ofs++;
-                var data = bon[(int)ofs..];
-                var len = PackUnpack.LengthVUIntByFirstByte(data[0]);
-                if ((uint)data.Length < len) PackUnpack.ThrowEndOfStreamException();
-                // All range checks were done already before, so now do it without them for speed
-                value = -(double)PackUnpack.UnsafeUnpackVUInt(ref MemoryMarshal.GetReference(data), len);
-                ofs += len;
+                reader.Skip1Byte();
+                value = -(double)reader.ReadVUInt64();
                 return true;
             }
             case CodeHalf:
             {
-                ofs++;
-                value = (double)Unsafe.BitCast<ushort, Half>(
-                    PackUnpack.AsLittleEndian(MemoryMarshal.Read<ushort>(bon[(int)ofs..])));
-                ofs += 2;
+                reader.Skip1Byte();
+                value = (double)Unsafe.BitCast<ushort, Half>(reader.ReadUInt16LE());
                 return true;
             }
             case CodeFloat:
             {
-                ofs++;
-                value = Unsafe.BitCast<uint, float>(
-                    PackUnpack.AsLittleEndian(MemoryMarshal.Read<uint>(bon[(int)ofs..])));
-                ofs += 4;
+                reader.Skip1Byte();
+                value = Unsafe.BitCast<uint, float>(reader.ReadUInt32LE());
                 return true;
             }
             case CodeDouble:
             {
-                ofs++;
-                value = 0;
-                value = Unsafe.BitCast<ulong, double>(
-                    PackUnpack.AsLittleEndian(MemoryMarshal.Read<ulong>(bon[(int)ofs..])));
-                ofs += 8;
+                reader.Skip1Byte();
+                value = Unsafe.BitCast<ulong, double>(reader.ReadUInt64LE());
                 return true;
             }
         }
@@ -254,17 +239,15 @@ public static class Helpers
         return false;
     }
 
-    public static bool TryGetDateTime(ReadOnlySpan<byte> bon, ref uint ofs, out DateTime value)
+    public static bool TryGetDateTime(ref MemReader reader, out DateTime value)
     {
-        var b = bon[(int)ofs];
+        var b = reader.PeekUInt8();
         switch (b)
         {
             case CodeDateTime:
             {
-                ofs++;
-                value = DateTime.FromBinary(
-                    (long)PackUnpack.AsLittleEndian(MemoryMarshal.Read<ulong>(bon[(int)ofs..])));
-                ofs += 8;
+                reader.Skip1Byte();
+                value = DateTime.FromBinary(reader.ReadInt64LE());
                 return true;
             }
         }
@@ -273,16 +256,15 @@ public static class Helpers
         return false;
     }
 
-    public static bool TryGetGuid(ReadOnlySpan<byte> bon, ref uint ofs, out Guid value)
+    public static bool TryGetGuid(ref MemReader reader, out Guid value)
     {
-        var b = bon[(int)ofs];
+        var b = reader.PeekUInt8();
         switch (b)
         {
             case CodeGuid:
             {
-                ofs++;
-                value = new(bon[(int)ofs..((int)ofs + 16)]);
-                ofs += 16;
+                reader.Skip1Byte();
+                value = reader.ReadGuid();
                 return true;
             }
         }
@@ -291,22 +273,22 @@ public static class Helpers
         return false;
     }
 
-    public static bool TryGetString(ReadOnlySpan<byte> bon, ref uint ofs, out string value)
+    public static bool TryGetString(ref MemReader reader, out string value)
     {
-        var b = bon[(int)ofs];
+        var b = reader.PeekUInt8();
         switch (b)
         {
             case CodeStringEmpty:
             {
-                ofs++;
+                reader.Skip1Byte();
                 value = "";
                 return true;
             }
             case CodeStringPtr:
             {
-                ofs++;
-                var strOfs = ReadVUInt(bon, ref ofs);
-                value = ReadUtf8WithVUintLen(bon, strOfs);
+                reader.Skip1Byte();
+                var strOfs = reader.ReadVUInt64();
+                value = ReadUtf8WithVUintLen(ref reader, strOfs);
                 return true;
             }
         }
@@ -315,53 +297,27 @@ public static class Helpers
         return false;
     }
 
-    public static bool TryGetLong(ReadOnlySpan<byte> bon, ref uint ofs, out long value)
+    public static bool TryGetLong(ref MemReader reader, out long value)
     {
-        var b = bon[(int)ofs];
+        var b = reader.PeekUInt8();
         switch (b)
         {
             case >= Code0 and <= CodeM10:
             {
-                ofs++;
+                reader.Skip1Byte();
                 value = b < CodeM1 ? b - Code0 : CodeM1 - b - 1;
                 return true;
             }
             case CodeInteger:
             {
-                ofs++;
-                var data = bon[(int)ofs..];
-                var len = PackUnpack.LengthVUIntByFirstByte(data[0]);
-                if ((uint)data.Length < len) PackUnpack.ThrowEndOfStreamException();
-                // All range checks were done already before, so now do it without them for speed
-                var v = PackUnpack.UnsafeUnpackVUInt(ref MemoryMarshal.GetReference(data), len);
-                if (v > long.MaxValue)
-                {
-                    ofs--;
-                    value = 0;
-                    return false;
-                }
-
-                value = (long)v;
-                ofs += len;
+                reader.Skip1Byte();
+                value = (long)reader.ReadVUInt64();
                 return true;
             }
             case CodeMInteger:
             {
-                ofs++;
-                var data = bon[(int)ofs..];
-                var len = PackUnpack.LengthVUIntByFirstByte(data[0]);
-                if ((uint)data.Length < len) PackUnpack.ThrowEndOfStreamException();
-                // All range checks were done already before, so now do it without them for speed
-                var v = -(long)PackUnpack.UnsafeUnpackVUInt(ref MemoryMarshal.GetReference(data), len);
-                if (v >= 0)
-                {
-                    value = 0;
-                    ofs--;
-                    return false;
-                }
-
-                value = v;
-                ofs += len;
+                reader.Skip1Byte();
+                value = -(long)reader.ReadVUInt64();
                 return true;
             }
         }
@@ -370,26 +326,21 @@ public static class Helpers
         return false;
     }
 
-    public static bool TryGetULong(ReadOnlySpan<byte> bon, ref uint ofs, out ulong value)
+    public static bool TryGetULong(ref MemReader reader, out ulong value)
     {
-        var b = bon[(int)ofs];
+        var b = reader.PeekUInt8();
         switch (b)
         {
             case >= Code0 and < CodeM1:
             {
-                ofs++;
+                reader.Skip1Byte();
                 value = (ulong)(b - Code0);
                 return true;
             }
             case CodeInteger:
             {
-                ofs++;
-                var data = bon[(int)ofs..];
-                var len = PackUnpack.LengthVUIntByFirstByte(data[0]);
-                if ((uint)data.Length < len) PackUnpack.ThrowEndOfStreamException();
-                // All range checks were done already before, so now do it without them for speed
-                value = PackUnpack.UnsafeUnpackVUInt(ref MemoryMarshal.GetReference(data), len);
-                ofs += len;
+                reader.Skip1Byte();
+                value = reader.ReadVUInt64();
                 return true;
             }
         }
@@ -398,20 +349,13 @@ public static class Helpers
         return false;
     }
 
-    public static string ReadUtf8WithVUintLen(ReadOnlySpan<byte> bon, uint ofs)
+    public static string ReadUtf8WithVUintLen(ref MemReader reader, ulong ofs)
     {
-        var len = ReadVUInt(bon, ref ofs);
-        return Encoding.UTF8.GetString(bon[(int)ofs..(int)(ofs + len)]);
-    }
-
-    public static uint ReadVUInt(ReadOnlySpan<byte> bon, ref uint ofs)
-    {
-        var data = bon[(int)ofs..];
-        var len = PackUnpack.LengthVUIntByFirstByte(data[0]);
-        ofs += len;
-        if ((uint)data.Length < len) PackUnpack.ThrowEndOfStreamException();
-        // All range checks were done already before, so now do it without them for speed
-        return (uint)PackUnpack.UnsafeUnpackVUInt(ref MemoryMarshal.GetReference(data), len);
+        var pos = reader.GetCurrentPosition();
+        reader.SetCurrentPosition((long)ofs);
+        var res = reader.ReadStringInUtf8();
+        reader.SetCurrentPosition(pos);
+        return res;
     }
 }
 
@@ -897,33 +841,39 @@ public struct BonBuilder
     }
 }
 
-public ref struct Bon
+public struct Bon
 {
-    readonly ReadOnlySpan<byte> _buf;
-    uint _ofs;
+    MemReader _reader;
     uint _items;
 
-    public Bon(byte[] buf) : this(buf.AsSpan())
+    public Bon(byte[] buf) : this(new ReadOnlyMemoryMemReader(buf))
     {
     }
 
-    public Bon(ByteBuffer buf) : this(buf.AsSyncReadOnlySpan())
+    public Bon(ByteBuffer buf) : this(new ReadOnlyMemoryMemReader(buf.AsSyncReadOnlyMemory()))
     {
     }
 
-    public Bon(ReadOnlySpan<byte> buf)
+    public Bon(IMemReader reader)
     {
-        _buf = buf;
-        _ofs = Helpers.CalcStartOffsetOfBon(_buf);
+        _reader = new(reader);
+        _reader.SetCurrentPosition(Helpers.CalcStartOffsetOfBon(ref _reader));
+        _items = 1;
+    }
+
+    public Bon(in MemReader reader)
+    {
+        _reader = reader;
+        _reader.SetCurrentPosition(Helpers.CalcStartOffsetOfBon(ref _reader));
         _items = 1;
     }
 
     public uint Items => _items;
 
-    public Bon(ReadOnlySpan<byte> buf, uint ofs, uint items)
+    public Bon(in MemReader reader, long ofs, uint items)
     {
-        _buf = buf;
-        _ofs = ofs;
+        _reader = reader;
+        _reader.SetCurrentPosition(ofs);
         _items = items;
     }
 
@@ -932,13 +882,13 @@ public ref struct Bon
         get
         {
             Debug.Assert(_items > 0);
-            return Helpers.BonTypeFromByte(_buf[(int)_ofs]);
+            return Helpers.BonTypeFromByte(_reader.PeekUInt8());
         }
     }
 
     public bool TryGetDouble(out double value)
     {
-        return ItemConsumed(Helpers.TryGetDouble(_buf, ref _ofs, out value));
+        return ItemConsumed(Helpers.TryGetDouble(ref _reader, out value));
     }
 
     bool ItemConsumed(bool result)
@@ -952,48 +902,46 @@ public ref struct Bon
     public void Skip()
     {
         Debug.Assert(_items > 0);
-        _ofs = Helpers.SkipItemOfBon(_buf, _ofs);
+        Helpers.SkipItemOfBon(ref _reader);
         _items--;
     }
 
     public bool TryGetLong(out long value)
     {
-        return ItemConsumed(Helpers.TryGetLong(_buf, ref _ofs, out value));
+        return ItemConsumed(Helpers.TryGetLong(ref _reader, out value));
     }
 
     public bool TryGetULong(out ulong value)
     {
-        return ItemConsumed(Helpers.TryGetULong(_buf, ref _ofs, out value));
+        return ItemConsumed(Helpers.TryGetULong(ref _reader, out value));
     }
 
     public bool TryGetDateTime(out DateTime value)
     {
-        return ItemConsumed(Helpers.TryGetDateTime(_buf, ref _ofs, out value));
+        return ItemConsumed(Helpers.TryGetDateTime(ref _reader, out value));
     }
 
     public bool TryGetGuid(out Guid value)
     {
-        return ItemConsumed(Helpers.TryGetGuid(_buf, ref _ofs, out value));
+        return ItemConsumed(Helpers.TryGetGuid(ref _reader, out value));
     }
 
     public bool TryGetString(out string value)
     {
-        return ItemConsumed(Helpers.TryGetString(_buf, ref _ofs, out value));
+        return ItemConsumed(Helpers.TryGetString(ref _reader, out value));
     }
 
     public bool TryGetBool(out bool value)
     {
         value = false;
-        var b = _buf[(int)_ofs];
+        var b = _reader.PeekUInt8();
         switch (b)
         {
-            case Helpers.CodeFalse:
-                _ofs++;
-                _items--;
-                return true;
             case Helpers.CodeTrue:
                 value = true;
-                _ofs++;
+                goto case Helpers.CodeFalse;
+            case Helpers.CodeFalse:
+                _reader.Skip1Byte();
                 _items--;
                 return true;
             default:
@@ -1003,9 +951,9 @@ public ref struct Bon
 
     public bool TryGetUndefined()
     {
-        if (_buf[(int)_ofs] == Helpers.CodeUndefined)
+        if (_reader.PeekUInt8() == Helpers.CodeUndefined)
         {
-            _ofs++;
+            _reader.Skip1Byte();
             _items--;
             return true;
         }
@@ -1015,9 +963,9 @@ public ref struct Bon
 
     public bool TryGetNull()
     {
-        if (_buf[(int)_ofs] == Helpers.CodeNull)
+        if (_reader.PeekUInt8() == Helpers.CodeNull)
         {
-            _ofs++;
+            _reader.Skip1Byte();
             _items--;
             return true;
         }
@@ -1027,21 +975,24 @@ public ref struct Bon
 
     public bool TryGetByteArray(out ReadOnlySpan<byte> value)
     {
-        var b = _buf[(int)_ofs];
+        var b = _reader.PeekUInt8();
         switch (b)
         {
             case Helpers.CodeByteArrayEmpty:
-                _ofs++;
+                _reader.Skip1Byte();
                 _items--;
                 value = new();
                 return true;
             case Helpers.CodeByteArrayPtr:
             {
-                _ofs++;
+                _reader.Skip1Byte();
                 _items--;
-                var ofs = Helpers.ReadVUInt(_buf, ref _ofs);
-                var len = Helpers.ReadVUInt(_buf, ref ofs);
-                value = _buf.Slice((int)ofs, (int)len);
+                var ofs = _reader.ReadVUInt64();
+                var pos = _reader.GetCurrentPosition();
+                _reader.SetCurrentPosition((long)ofs);
+                var len = _reader.ReadVUInt32();
+                value = _reader.ReadBlockAsSpan(len);
+                _reader.SetCurrentPosition(pos);
                 return true;
             }
             default:
@@ -1052,21 +1003,24 @@ public ref struct Bon
 
     public bool TryGetArray(out Bon bon)
     {
-        var b = _buf[(int)_ofs];
+        var b = _reader.PeekUInt8();
         switch (b)
         {
             case Helpers.CodeArrayEmpty:
-                _ofs++;
+                _reader.Skip1Byte();
                 _items--;
                 bon = new(new(), 0, 0);
                 return true;
             case Helpers.CodeArrayPtr:
             {
-                _ofs++;
+                _reader.Skip1Byte();
                 _items--;
-                var ofs = Helpers.ReadVUInt(_buf, ref _ofs);
-                var items = Helpers.ReadVUInt(_buf, ref ofs);
-                bon = new(_buf, ofs, items);
+                var ofs = _reader.ReadVUInt64();
+                var pos = _reader.GetCurrentPosition();
+                _reader.SetCurrentPosition((long)ofs);
+                var items = _reader.ReadVUInt32();
+                bon = new(_reader, _reader.GetCurrentPosition(), items);
+                _reader.SetCurrentPosition(pos);
                 return true;
             }
             default:
@@ -1077,23 +1031,27 @@ public ref struct Bon
 
     public bool TryGetObject(out KeyedBon bon)
     {
-        var b = _buf[(int)_ofs];
+        var b = _reader.PeekUInt8();
         switch (b)
         {
             case Helpers.CodeObjectEmpty:
-                _ofs++;
+                _reader.Skip1Byte();
                 _items--;
                 bon = new(new(), 0, 0, 0);
                 return true;
             case Helpers.CodeObjectPtr:
             {
-                _ofs++;
+                _reader.Skip1Byte();
                 _items--;
-                var ofs = Helpers.ReadVUInt(_buf, ref _ofs);
-                var ofsKeys = Helpers.ReadVUInt(_buf, ref ofs);
-                var items = Helpers.ReadVUInt(_buf, ref ofsKeys);
-
-                bon = new(_buf, ofs, ofsKeys, items);
+                var ofs = _reader.ReadVUInt64();
+                var pos = _reader.GetCurrentPosition();
+                _reader.SetCurrentPosition((long)ofs);
+                var ofsKeys = _reader.ReadVUInt64();
+                ofs = (ulong)_reader.GetCurrentPosition();
+                _reader.SetCurrentPosition((long)ofsKeys);
+                var items = _reader.ReadVUInt32();
+                bon = new(_reader, (long)ofs, _reader.GetCurrentPosition(), items);
+                _reader.SetCurrentPosition(pos);
                 return true;
             }
             default:
@@ -1104,19 +1062,24 @@ public ref struct Bon
 
     public bool TryGetClass(out KeyedBon bon, out string name)
     {
-        var b = _buf[(int)_ofs];
+        var b = _reader.PeekUInt8();
         switch (b)
         {
             case Helpers.CodeClassPtr:
             {
-                _ofs++;
+                _reader.Skip1Byte();
                 _items--;
-                var ofs = Helpers.ReadVUInt(_buf, ref _ofs);
-                var ofsKeys = Helpers.ReadVUInt(_buf, ref ofs);
-                var items = Helpers.ReadVUInt(_buf, ref ofsKeys);
-                var nameOfs = Helpers.ReadVUInt(_buf, ref ofsKeys);
-                name = Helpers.ReadUtf8WithVUintLen(_buf, nameOfs);
-                bon = new(_buf, ofs, ofsKeys, items);
+                var ofs = _reader.ReadVUInt64();
+                var pos = _reader.GetCurrentPosition();
+                _reader.SetCurrentPosition((long)ofs);
+                var ofsKeys = _reader.ReadVUInt64();
+                ofs = (ulong)_reader.GetCurrentPosition();
+                _reader.SetCurrentPosition((long)ofsKeys);
+                var items = _reader.ReadVUInt32();
+                var nameOfs = _reader.ReadVUInt64();
+                name = Helpers.ReadUtf8WithVUintLen(ref _reader, nameOfs);
+                bon = new(_reader, (long)ofs, _reader.GetCurrentPosition(), items);
+                _reader.SetCurrentPosition(pos);
                 return true;
             }
             default:
@@ -1128,21 +1091,24 @@ public ref struct Bon
 
     public bool TryGetDictionary(out Bon bon)
     {
-        var b = _buf[(int)_ofs];
+        var b = _reader.PeekUInt8();
         switch (b)
         {
             case Helpers.CodeDictionaryEmpty:
-                _ofs++;
+                _reader.Skip1Byte();
                 _items--;
                 bon = new(new(), 0, 0);
                 return true;
             case Helpers.CodeDictionaryPtr:
             {
-                _ofs++;
+                _reader.Skip1Byte();
                 _items--;
-                var ofs = Helpers.ReadVUInt(_buf, ref _ofs);
-                var items = Helpers.ReadVUInt(_buf, ref ofs);
-                bon = new(_buf, ofs, items * 2);
+                var ofs = _reader.ReadVUInt64();
+                var pos = _reader.GetCurrentPosition();
+                _reader.SetCurrentPosition((long)ofs);
+                var items = _reader.ReadVUInt32();
+                bon = new(_reader, _reader.GetCurrentPosition(), items * 2);
+                _reader.SetCurrentPosition(pos);
                 return true;
             }
             default:
@@ -1173,13 +1139,13 @@ public ref struct Bon
                 writer.WriteBooleanValue(b);
                 break;
             case BonType.Integer:
-                if (TryGetLong(out var l))
-                {
-                    writer.WriteNumberValue(l);
-                }
-                else if (TryGetULong(out var ul))
+                if (TryGetULong(out var ul))
                 {
                     writer.WriteNumberValue(ul);
+                }
+                else if (TryGetLong(out var l))
+                {
+                    writer.WriteNumberValue(l);
                 }
                 else
                 {
@@ -1291,18 +1257,18 @@ public ref struct Bon
     }
 }
 
-public ref struct KeyedBon
+public struct KeyedBon
 {
-    readonly ReadOnlySpan<byte> _buf;
-    readonly uint _ofs;
-    readonly uint _ofsKeys;
+    MemReader _reader;
+    readonly long _ofs;
+    readonly long _ofsKeys;
+    long _keysOfsIter;
     readonly uint _items;
-    uint _keysOfsIter;
     uint _keysItemsIter;
 
-    public KeyedBon(ReadOnlySpan<byte> buf, uint ofs, uint ofsKeys, uint items)
+    public KeyedBon(in MemReader reader, long ofs, long ofsKeys, uint items)
     {
-        _buf = buf;
+        _reader = reader;
         _ofs = ofs;
         _ofsKeys = ofsKeys;
         _items = items;
@@ -1314,7 +1280,7 @@ public ref struct KeyedBon
 
     public Bon Values()
     {
-        return new(_buf, _ofs, _items);
+        return new(_reader, _ofs, _items);
     }
 
     public void Reset()
@@ -1326,21 +1292,26 @@ public ref struct KeyedBon
     public string? NextKey()
     {
         if (_keysItemsIter == 0) return null;
-        var ofs = Helpers.ReadVUInt(_buf, ref _keysOfsIter);
+        _reader.SetCurrentPosition(_keysOfsIter);
+        var ofs = _reader.ReadVUInt64();
         _keysItemsIter--;
-        return Helpers.ReadUtf8WithVUintLen(_buf, ofs);
+        _keysOfsIter = _reader.GetCurrentPosition();
+        return Helpers.ReadUtf8WithVUintLen(ref _reader, ofs);
     }
 
     public bool TryGet(string key, out Bon bon)
     {
         var l = Encoding.UTF8.GetByteCount(key);
         var ofs = _ofsKeys;
-        var keyBuf = l > 256 ? new byte[l] : stackalloc byte[l];
+        var keyBuf = l > 256 ? GC.AllocateUninitializedArray<byte>(l) : stackalloc byte[l];
         var first = true;
         for (var i = 0; i < _items; i++)
         {
-            var kOfs = Helpers.ReadVUInt(_buf, ref ofs);
-            var kLen = Helpers.ReadVUInt(_buf, ref kOfs);
+            _reader.SetCurrentPosition(ofs);
+            var kOfs = _reader.ReadVUInt64();
+            ofs = _reader.GetCurrentPosition();
+            _reader.SetCurrentPosition((long)kOfs);
+            var kLen = _reader.ReadVUInt32();
             if (kLen != l) continue;
             if (first)
             {
@@ -1348,8 +1319,8 @@ public ref struct KeyedBon
                 first = false;
             }
 
-            if (!_buf[(int)kOfs..(int)(kOfs + l)].SequenceEqual(keyBuf)) continue;
-            bon = new(_buf, _ofs, (uint)i + 1);
+            if (!_reader.ReadBlockAsSpan((uint)l).SequenceEqual(keyBuf)) continue;
+            bon = new(_reader, _ofs, (uint)i + 1);
             while (i-- > 0)
             {
                 bon.Skip();

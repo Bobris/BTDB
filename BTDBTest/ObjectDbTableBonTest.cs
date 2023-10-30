@@ -63,7 +63,7 @@ public class ObjectDbTableBonTest : ObjectDbTestBase
     {
         var reader = new SpanReader(buffer);
         var key = reader.ReadStringInUtf8();
-        var bon = new Bon(reader.ReadByteArrayAsMemory().Span);
+        var bon = new Bon(new ReadOnlyMemoryMemReader(reader.ReadByteArrayAsMemory()));
         // From here it is just sample
         if (!bon.TryGetArray(out var bona)) throw new InvalidDataException();
         return key.Length + bona.Items;

@@ -74,6 +74,7 @@ public struct MemReader
 
     public void SetCurrentPosition(long position)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(position);
         if (Controller != null)
         {
             Controller.SetCurrentPosition(ref this, position);
@@ -97,6 +98,12 @@ public struct MemReader
         var res = *(byte*)Current;
         Current++;
         return res;
+    }
+
+    public unsafe byte PeekUInt8()
+    {
+        if (Current >= End) FillBuf();
+        return *(byte*)Current;
     }
 
     public sbyte ReadInt8Ordered()
@@ -498,9 +505,9 @@ public struct MemReader
         }
     }
 
-    [SkipLocalsInit]
     public unsafe string ReadStringInUtf8()
     {
+        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
         var len = ReadVUInt64();
         if (len > int.MaxValue) throw new InvalidDataException($"Reading Utf8 String length overflowed with {len}");
         if (len == 0) return "";
@@ -638,6 +645,15 @@ public struct MemReader
         ReadBlock(ref MemoryMarshal.GetReference(buffer), (uint)buffer.Length);
     }
 
+    public unsafe ReadOnlySpan<byte> ReadBlockAsSpan(uint length)
+    {
+        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        if (Current + length > End) FillBuf(length);
+        var res = new ReadOnlySpan<byte>((byte*)Current, (int)length);
+        Current += (nint)length;
+        return res;
+    }
+
     public void SkipBlock(uint length)
     {
         if (length > End - Current)
@@ -673,20 +689,21 @@ public struct MemReader
 
     public unsafe ReadOnlySpan<byte> ReadByteArrayAsSpan()
     {
+        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
         var length = ReadVUInt32();
         if (length-- <= 1) return new();
         if (Current + length > End) FillBuf(length);
-        var res = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef<byte>((byte*)Current), (int)length);
+        var res = new ReadOnlySpan<byte>((byte*)Current, (int)length);
         Current += (nint)length;
         return res;
     }
 
-    [SkipLocalsInit]
-    public Guid ReadGuid()
+    public unsafe Guid ReadGuid()
     {
-        Span<byte> buffer = stackalloc byte[16];
-        ReadBlock(ref MemoryMarshal.GetReference(buffer), 16);
-        return new(buffer);
+        if (Current + 16 > End) FillBuf(16);
+        var res = new Guid(new ReadOnlySpan<byte>((byte*)Current, 16));
+        Current += 16;
+        return res;
     }
 
     public void SkipGuid()
@@ -807,8 +824,7 @@ public struct MemReader
             }
         }
 
-        if (!MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef<byte>((void*)Current), magic.Length)
-                .SequenceEqual(magic)) return false;
+        if (!new ReadOnlySpan<byte>((void*)Current, magic.Length).SequenceEqual(magic)) return false;
         Current += magic.Length;
         return true;
     }
@@ -904,17 +920,16 @@ public struct MemReader
         }
     }
 
-    public unsafe void CopyAbsoluteToWriter(uint start, uint len, ref SpanWriter writer)
+    public unsafe void CopyAbsoluteToWriter(uint start, uint len, ref MemWriter writer)
     {
-        Debug.Assert(Controller == null);
-        writer.WriteBlock(MemoryMarshal.CreateSpan(ref Unsafe.AsRef<byte>((void*)(Start + (nint)start)), (int)len));
+        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        writer.WriteBlock(new ReadOnlySpan<byte>((void*)(Start + (nint)start), (int)len));
     }
 
-    public unsafe void CopyFromPosToWriter(uint start, ref SpanWriter writer)
+    public unsafe void CopyFromPosToWriter(uint start, ref MemWriter writer)
     {
-        Debug.Assert(Controller == null);
-        writer.WriteBlock(MemoryMarshal.CreateSpan(ref Unsafe.AsRef<byte>((void*)(Start + (nint)start)),
-            (int)(Current - Start - start)));
+        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        writer.WriteBlock(new ReadOnlySpan<byte>((void*)(Start + (nint)start), (int)(Current - Start - start)));
     }
 
     public override unsafe string ToString()
@@ -936,5 +951,19 @@ public struct MemReader
                "|" +
                Convert.ToHexString(MemoryMarshal.CreateSpan(ref Unsafe.AsRef<byte>((byte*)Start), (int)length)
                    .Slice((int)pos, int.Min((int)(length - pos), 50)));
+    }
+
+    public void UnreadByte()
+    {
+        if (Current == Start)
+            SetCurrentPosition(GetCurrentPosition() - 1);
+        else
+            Current--;
+    }
+
+    public nint GetLength()
+    {
+        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        return End - Start;
     }
 }
