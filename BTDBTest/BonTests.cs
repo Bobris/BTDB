@@ -3,6 +3,7 @@ using System.Globalization;
 using Assent;
 using BTDB.Bon;
 using BTDB.Buffer;
+using BTDB.StreamLayer;
 using Xunit;
 
 namespace BTDBTest;
@@ -14,9 +15,9 @@ public class BonTests
     {
         var builder = new BonBuilder();
         builder.WriteNull();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(2, buffer.Length);
-        var bon = new Bon(buffer);
+        var bon = new Bon(new ReadOnlyMemoryMemReader(buffer));
         Assert.False(bon.Eof);
         Assert.Equal(1u, bon.Items);
         Assert.Equal(BonType.Null, bon.BonType);
@@ -31,7 +32,7 @@ public class BonTests
     {
         var builder = new BonBuilder();
         builder.WriteUndefined();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(2, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -48,7 +49,7 @@ public class BonTests
     {
         var builder = new BonBuilder();
         builder.Write("");
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(2, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -66,7 +67,7 @@ public class BonTests
     {
         var builder = new BonBuilder();
         builder.Write("Hello");
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         // Len(5) Hello CodeStringPtr(130) Ofs(0) LastBonLen(2)
         Assert.Equal(1 + 5 + 1 + 1 + 1, buffer.Length);
         var bon = new Bon(buffer);
@@ -87,7 +88,7 @@ public class BonTests
         {
             var builder = new BonBuilder();
             builder.Write(i);
-            var buffer = builder.Finish();
+            var buffer = builder.FinishAsMemory();
             Assert.Equal(1 + 1, buffer.Length);
             var bon = new Bon(buffer);
             Assert.False(bon.Eof);
@@ -112,7 +113,7 @@ public class BonTests
     {
         var builder = new BonBuilder();
         builder.Write(i);
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + (int)PackUnpack.LengthVInt(i) + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -133,7 +134,7 @@ public class BonTests
     {
         var builder = new BonBuilder();
         builder.Write(i);
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + (int)PackUnpack.LengthVUInt(i) + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -164,7 +165,7 @@ public class BonTests
     {
         var builder = new BonBuilder();
         builder.Write(i);
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + byteLen + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -194,7 +195,7 @@ public class BonTests
         var dt = new DateTime(2022, 7, 5, 21, 15, 42, 123);
         var builder = new BonBuilder();
         builder.Write(dt);
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + 8 + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -213,7 +214,7 @@ public class BonTests
         var g = Guid.NewGuid();
         var builder = new BonBuilder();
         builder.Write(g);
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + 16 + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -232,7 +233,7 @@ public class BonTests
         var g = Array.Empty<byte>();
         var builder = new BonBuilder();
         builder.Write(g);
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -251,7 +252,7 @@ public class BonTests
         var g = new byte[] { 1, 0, 42, 255 };
         var builder = new BonBuilder();
         builder.Write(g);
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + 4 + 1 + 1 + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -270,7 +271,7 @@ public class BonTests
         var builder = new BonBuilder();
         builder.StartArray();
         builder.FinishArray();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -291,7 +292,7 @@ public class BonTests
         builder.StartArray();
         builder.Write(42);
         builder.FinishArray();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + 2 + 1 + 1 + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -315,7 +316,7 @@ public class BonTests
         builder.StartArray();
         builder.FinishArray();
         builder.FinishArray();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + 1 + 1 + 1 + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -337,7 +338,7 @@ public class BonTests
         var builder = new BonBuilder();
         builder.StartObject();
         builder.FinishObject();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(1 + 1, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -359,7 +360,7 @@ public class BonTests
         builder.WriteKey("a");
         builder.Write(1);
         builder.FinishObject();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(9, buffer.Length);
         var bon = new Bon(buffer);
         Assert.False(bon.Eof);
@@ -393,7 +394,7 @@ public class BonTests
         builder.Write("last");
         Assert.Equal(29u, builder.EstimateLowerBoundSize());
         builder.FinishObject();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(36, buffer.Length);
         this.Assent(new Bon(buffer).DumpToJson());
     }
@@ -408,7 +409,7 @@ public class BonTests
         builder.WriteKey("b");
         builder.Write("last");
         builder.FinishClass();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         this.Assent(new Bon(buffer).DumpToJson());
     }
 
@@ -418,7 +419,7 @@ public class BonTests
         var builder = new BonBuilder();
         builder.StartDictionary();
         builder.FinishDictionary();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         Assert.Equal(2, buffer.Length);
         Assert.Equal("[]", new Bon(buffer).DumpToJson());
     }
@@ -433,7 +434,7 @@ public class BonTests
         builder.Write(2);
         builder.Write(4);
         builder.FinishDictionary();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         this.Assent(new Bon(buffer).DumpToJson());
     }
 
@@ -459,7 +460,7 @@ public class BonTests
 
         builder.FinishArray();
         builder.FinishObject();
-        var buffer = builder.Finish();
+        var buffer = builder.FinishAsMemory();
         var bon = new Bon(buffer);
         Assert.True(bon.TryGetObject(out var keyedBon));
         Assert.True(keyedBon.TryGet("last", out var array));

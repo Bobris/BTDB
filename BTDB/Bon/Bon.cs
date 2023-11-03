@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -81,58 +80,7 @@ public static class Helpers
         };
     }
 
-    static void Reserve(ref byte[] data, uint len)
-    {
-        Array.Resize(ref data, (int)Math.Min((uint)Array.MaxLength, Math.Max(data.Length * 2, len)));
-    }
-
-    public static Span<byte> WriteBlock(ref byte[] data, ref uint pos, uint len)
-    {
-        if (pos + len > data.Length)
-        {
-            Reserve(ref data, pos + len);
-        }
-
-        var res = data.AsSpan((int)pos, (int)len);
-        pos += len;
-        return res;
-    }
-
-    public static void WriteByte(ref byte[] data, ref uint pos, byte value)
-    {
-        if (pos >= data.Length)
-        {
-            Reserve(ref data, pos + 1);
-        }
-
-        data[pos++] = value;
-    }
-
-    public static void WriteUtf8String(ref byte[] data, ref uint pos, ReadOnlySpan<char> value)
-    {
-        var l = Encoding.UTF8.GetByteCount(value);
-        WriteVUInt32(ref data, ref pos, (uint)l);
-        Encoding.UTF8.GetBytes(value, WriteBlock(ref data, ref pos, (uint)l));
-    }
-
-    public static void WriteVUInt32(ref byte[] data, ref uint pos, uint value)
-    {
-        var len = PackUnpack.LengthVUInt(value);
-        PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(WriteBlock(ref data, ref pos, len)), value, len);
-    }
-
-    public static void WriteVUInt64(ref byte[] data, ref uint pos, ulong value)
-    {
-        var len = PackUnpack.LengthVUInt(value);
-        PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(WriteBlock(ref data, ref pos, len)), value, len);
-    }
-
-    public static void Write(ref byte[] data, ref uint pos, bool value)
-    {
-        WriteByte(ref data, ref pos, value ? CodeTrue : CodeFalse);
-    }
-
-    public static void Write(ref byte[] data, ref uint pos, double value)
+    public static void Write(ref MemWriter data, double value)
     {
         var f = (float)value;
         if (f == value)
@@ -140,22 +88,19 @@ public static class Helpers
             var h = (Half)value;
             if ((double)h == value)
             {
-                WriteByte(ref data, ref pos, CodeHalf);
-                MemoryMarshal.Write(WriteBlock(ref data, ref pos, 2),
-                    PackUnpack.AsLittleEndian(Unsafe.BitCast<Half, ushort>(h)));
+                data.WriteUInt8(CodeHalf);
+                data.WriteUInt16LE(Unsafe.BitCast<Half, ushort>(h));
             }
             else
             {
-                WriteByte(ref data, ref pos, CodeFloat);
-                MemoryMarshal.Write(WriteBlock(ref data, ref pos, 4),
-                    PackUnpack.AsLittleEndian(Unsafe.BitCast<float, uint>(f)));
+                data.WriteUInt8(CodeFloat);
+                data.WriteUInt32LE(Unsafe.BitCast<float, uint>(f));
             }
         }
         else
         {
-            WriteByte(ref data, ref pos, CodeDouble);
-            MemoryMarshal.Write(WriteBlock(ref data, ref pos, 8),
-                PackUnpack.AsLittleEndian(Unsafe.BitCast<double, ulong>(value)));
+            data.WriteUInt8(CodeDouble);
+            data.WriteUInt64LE(Unsafe.BitCast<double, ulong>(value));
         }
     }
 
@@ -376,71 +321,82 @@ public struct BonBuilder
     };
 
     State _state = State.Empty;
-    uint _lastBonPos = 0;
-    StructList<(StructList<uint> ObjKeys, byte[] Data, uint Pos, uint Items, State State)> _stack = new();
-    StructList<uint> _objKeys = new();
-    byte[] _topData = Array.Empty<byte>();
-    uint _topPos = 0;
+    ulong _lastBonPos = 0;
+    StructList<(StructList<ulong> ObjKeys, MemWriter Data, uint Items, State State)> _stack = new();
+    StructList<ulong> _objKeys = new();
+    MemWriter _topData;
     uint _items = 0;
-    readonly Dictionary<string, uint> _strCache = new();
+    readonly Dictionary<string, ulong> _strCache = new();
+    readonly Dictionary<StructList<ulong>, ulong> _objKeysCache = new();
+
+    public BonBuilder(MemWriter memWriter)
+    {
+        _topData = memWriter;
+    }
 
     public BonBuilder()
     {
+        _topData = new();
     }
 
-    public uint EstimateLowerBoundSize()
+    public BonBuilder(IMemWriter memWriter)
     {
-        var res = _topPos;
+        _topData = new(memWriter);
+    }
+
+    public ulong EstimateLowerBoundSize()
+    {
+        var res = _topData.GetCurrentPosition();
         foreach (var item in _stack)
         {
-            res += item.Item3;
+            res += item.Data.GetCurrentPosition();
         }
 
-        return res;
+        return (ulong)res;
     }
 
     public void Write(string? value)
     {
         BeforeBon();
-        BasicWriteString(ref _topData, ref _topPos, out _lastBonPos, value);
+        BasicWriteString(ref _topData, out _lastBonPos, value);
         AfterBon();
     }
 
     public void Write(bool value)
     {
         BeforeBon();
-        _lastBonPos = _topPos;
-        Helpers.Write(ref _topData, ref _topPos, value);
+        _lastBonPos = (ulong)_topData.GetCurrentPosition();
+        _topData.WriteUInt8(value ? Helpers.CodeTrue : Helpers.CodeFalse);
         AfterBon();
     }
 
     public void Write(double value)
     {
         BeforeBon();
-        _lastBonPos = _topPos;
-        Helpers.Write(ref _topData, ref _topPos, value);
+        _lastBonPos = (ulong)_topData.GetCurrentPosition();
+        Helpers.Write(ref _topData, value);
         AfterBon();
     }
 
     public void Write(long value)
     {
         BeforeBon();
-        _lastBonPos = _topPos;
+        _lastBonPos = (ulong)_topData.GetCurrentPosition();
         switch (value)
         {
             case > 10:
-                Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeInteger);
-                Helpers.WriteVUInt64(ref _topData, ref _topPos, (ulong)value);
+                _topData.WriteUInt8(Helpers.CodeInteger);
+                _topData.WriteVUInt64((ulong)value);
                 break;
             case >= 0:
-                Helpers.WriteByte(ref _topData, ref _topPos, (byte)(Helpers.Code0 + (int)value));
+                _topData.WriteUInt8((byte)(Helpers.Code0 + (int)value));
                 break;
             case >= -10:
-                Helpers.WriteByte(ref _topData, ref _topPos, (byte)(Helpers.CodeM1 - 1 + (int)-value));
+                _topData.WriteUInt8((byte)(Helpers.CodeM1 - 1 - (int)value));
                 break;
             default:
-                Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeMInteger);
-                Helpers.WriteVUInt64(ref _topData, ref _topPos, (ulong)-value);
+                _topData.WriteUInt8(Helpers.CodeMInteger);
+                _topData.WriteVUInt64((ulong)-value);
                 break;
         }
 
@@ -450,15 +406,15 @@ public struct BonBuilder
     public void Write(ulong value)
     {
         BeforeBon();
-        _lastBonPos = _topPos;
+        _lastBonPos = (ulong)_topData.GetCurrentPosition();
         switch (value)
         {
             case <= 10:
-                Helpers.WriteByte(ref _topData, ref _topPos, (byte)(Helpers.Code0 + (int)value));
+                _topData.WriteUInt8((byte)(Helpers.Code0 + (int)value));
                 break;
             default:
-                Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeInteger);
-                Helpers.WriteVUInt64(ref _topData, ref _topPos, value);
+                _topData.WriteUInt8(Helpers.CodeInteger);
+                _topData.WriteVUInt64(value);
                 break;
         }
 
@@ -468,45 +424,35 @@ public struct BonBuilder
     public void WriteNull()
     {
         BeforeBon();
-        _lastBonPos = _topPos;
-        Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeNull);
+        _lastBonPos = (ulong)_topData.GetCurrentPosition();
+        _topData.WriteUInt8(Helpers.CodeNull);
         AfterBon();
     }
 
     public void WriteUndefined()
     {
-        if (_state == State.Empty)
-        {
-            _lastBonPos = _topPos;
-            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeUndefined);
-            _items++;
-            if (_state == State.Empty) _state = State.Full;
-        }
-        else
-        {
-            ThrowWrongState();
-        }
+        BeforeBon();
+        _lastBonPos = (ulong)_topData.GetCurrentPosition();
+        _topData.WriteUInt8(Helpers.CodeUndefined);
+        AfterBon();
     }
 
     public void Write(DateTime value)
     {
         BeforeBon();
-        _lastBonPos = _topPos;
-        Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeDateTime);
+        _lastBonPos = (ulong)_topData.GetCurrentPosition();
+        _topData.WriteUInt8(Helpers.CodeDateTime);
         var v = value.ToBinary();
-        MemoryMarshal.Write(Helpers.WriteBlock(ref _topData, ref _topPos, 8),
-            PackUnpack.AsLittleEndian(Unsafe.BitCast<long, ulong>(v)));
+        _topData.WriteInt64LE(v);
         AfterBon();
     }
 
     public void Write(Guid value)
     {
         BeforeBon();
-        _lastBonPos = _topPos;
-        Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeGuid);
-        var reference = value;
-        MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Guid, byte>(ref reference), 16)
-            .CopyTo(Helpers.WriteBlock(ref _topData, ref _topPos, 16));
+        _lastBonPos = (ulong)_topData.GetCurrentPosition();
+        _topData.WriteUInt8(Helpers.CodeGuid);
+        _topData.WriteGuid(value);
         AfterBon();
     }
 
@@ -516,25 +462,23 @@ public struct BonBuilder
 
         if (value.IsEmpty)
         {
-            _lastBonPos = _topPos;
-            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeByteArrayEmpty);
+            _lastBonPos = (ulong)_topData.GetCurrentPosition();
+            _topData.WriteUInt8(Helpers.CodeByteArrayEmpty);
         }
         else
         {
-            ref var rootPos = ref _topPos;
             ref var rootData = ref _topData;
             if (_stack.Count > 0)
             {
-                rootPos = ref _stack[0].Item3;
                 rootData = ref _stack[0].Item2;
             }
 
-            var pos = rootPos;
-            Helpers.WriteVUInt32(ref rootData, ref rootPos, (uint)value.Length);
-            value.CopyTo(Helpers.WriteBlock(ref rootData, ref rootPos, (uint)value.Length));
-            _lastBonPos = _topPos;
-            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeByteArrayPtr);
-            Helpers.WriteVUInt32(ref _topData, ref _topPos, pos);
+            var pos = rootData.GetCurrentPosition();
+            rootData.WriteVUInt32((uint)value.Length);
+            rootData.WriteBlock(value);
+            _lastBonPos = (ulong)_topData.GetCurrentPosition();
+            _topData.WriteUInt8(Helpers.CodeByteArrayPtr);
+            _topData.WriteVUInt64((ulong)pos);
         }
 
         AfterBon();
@@ -551,29 +495,27 @@ public struct BonBuilder
     {
         if (_state != State.Array) ThrowWrongState();
         var items = _items;
-        var bytes = _topData[..(int)_topPos];
+        var bytes = _topData;
         StackPop();
         if (items == 0)
         {
-            _lastBonPos = _topPos;
-            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeArrayEmpty);
+            _lastBonPos = (ulong)_topData.GetCurrentPosition();
+            _topData.WriteUInt8(Helpers.CodeArrayEmpty);
         }
         else
         {
-            ref var rootPos = ref _topPos;
             ref var rootData = ref _topData;
             if (_stack.Count > 0)
             {
-                rootPos = ref _stack[0].Item3;
                 rootData = ref _stack[0].Item2;
             }
 
-            var pos = rootPos;
-            Helpers.WriteVUInt32(ref rootData, ref rootPos, items);
-            bytes.CopyTo(Helpers.WriteBlock(ref rootData, ref rootPos, (uint)bytes.Length));
-            _lastBonPos = _topPos;
-            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeArrayPtr);
-            Helpers.WriteVUInt32(ref _topData, ref _topPos, pos);
+            var pos = rootData.GetCurrentPosition();
+            rootData.WriteVUInt32(items);
+            rootData.WriteBlock(bytes.GetSpan());
+            _lastBonPos = (ulong)_topData.GetCurrentPosition();
+            _topData.WriteUInt8(Helpers.CodeArrayPtr);
+            _topData.WriteVUInt64((ulong)pos);
         }
 
         AfterBon();
@@ -599,44 +541,39 @@ public struct BonBuilder
 
         var items = _items;
         var objKeys = _objKeys;
-        var bytes = _topData[..(int)_topPos];
+        var bytes = _topData;
         StackPop();
         if (items == 0)
         {
-            _lastBonPos = _topPos;
-            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeObjectEmpty);
+            _lastBonPos = (ulong)_topData.GetCurrentPosition();
+            _topData.WriteUInt8(Helpers.CodeObjectEmpty);
         }
         else
         {
-            ref var rootPos = ref _topPos;
             ref var rootData = ref _topData;
             if (_stack.Count > 0)
             {
-                rootPos = ref _stack[0].Item3;
                 rootData = ref _stack[0].Item2;
             }
 
-            var posKeys = rootPos;
-            Helpers.WriteVUInt32(ref rootData, ref rootPos, items);
-            foreach (var keyOfs in objKeys)
+            if (!_objKeysCache.TryGetValue(objKeys, out var posKeys))
             {
-                Helpers.WriteVUInt32(ref rootData, ref rootPos, keyOfs);
+                posKeys = (ulong)rootData.GetCurrentPosition();
+                rootData.WriteVUInt32(items);
+                foreach (var keyOfs in objKeys)
+                {
+                    rootData.WriteVUInt64(keyOfs);
+                }
+
+                _objKeysCache.Add(objKeys, posKeys);
             }
 
-            var posKeys2 = rootData.AsSpan(0, (int)posKeys)
-                .IndexOf(rootData.AsSpan((int)posKeys, (int)rootPos - (int)posKeys));
-            if (posKeys2 >= 0)
-            {
-                rootPos = posKeys;
-                posKeys = (uint)posKeys2;
-            }
-
-            var pos = rootPos;
-            Helpers.WriteVUInt32(ref rootData, ref rootPos, posKeys);
-            bytes.CopyTo(Helpers.WriteBlock(ref rootData, ref rootPos, (uint)bytes.Length));
-            _lastBonPos = _topPos;
-            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeObjectPtr);
-            Helpers.WriteVUInt32(ref _topData, ref _topPos, pos);
+            var pos = rootData.GetCurrentPosition();
+            rootData.WriteVUInt64(posKeys);
+            rootData.WriteBlock(bytes.GetSpan());
+            _lastBonPos = (ulong)_topData.GetCurrentPosition();
+            _topData.WriteUInt8(Helpers.CodeObjectPtr);
+            _topData.WriteVUInt64((ulong)pos);
         }
 
         AfterBon();
@@ -656,38 +593,33 @@ public struct BonBuilder
 
         var items = _items;
         var objKeys = _objKeys;
-        var bytes = _topData[..(int)_topPos];
+        var bytes = _topData;
         StackPop();
-        ref var rootPos = ref _topPos;
         ref var rootData = ref _topData;
         if (_stack.Count > 0)
         {
-            rootPos = ref _stack[0].Item3;
             rootData = ref _stack[0].Item2;
         }
 
-        var posKeys = rootPos;
-        Helpers.WriteVUInt32(ref rootData, ref rootPos, items);
-        foreach (var keyOfs in objKeys)
+        if (!_objKeysCache.TryGetValue(objKeys, out var posKeys))
         {
-            Helpers.WriteVUInt32(ref rootData, ref rootPos, keyOfs);
+            posKeys = (ulong)rootData.GetCurrentPosition();
+            rootData.WriteVUInt32(items);
+            foreach (var keyOfs in objKeys)
+            {
+                rootData.WriteVUInt64(keyOfs);
+            }
+
+            // TODO: cannot share same cache with object because it contains type name
+            _objKeysCache.Add(objKeys, posKeys);
         }
 
-        var posKeys2 = rootData.AsSpan(0, (int)posKeys)
-            .IndexOf(rootData.AsSpan((int)posKeys, (int)rootPos - (int)posKeys));
-        if (posKeys2 >= 0)
-        {
-            rootPos = posKeys;
-            posKeys = (uint)posKeys2;
-        }
-
-        var pos = rootPos;
-        Helpers.WriteVUInt32(ref rootData, ref rootPos, posKeys);
-        if (bytes.Length > 0)
-            bytes.CopyTo(Helpers.WriteBlock(ref rootData, ref rootPos, (uint)bytes.Length));
-        _lastBonPos = _topPos;
-        Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeClassPtr);
-        Helpers.WriteVUInt32(ref _topData, ref _topPos, pos);
+        var pos = rootData.GetCurrentPosition();
+        rootData.WriteVUInt64(posKeys);
+        rootData.WriteBlock(bytes.GetSpan());
+        _lastBonPos = (ulong)_topData.GetCurrentPosition();
+        _topData.WriteUInt8(Helpers.CodeClassPtr);
+        _topData.WriteVUInt64((ulong)pos);
 
         AfterBon();
     }
@@ -704,29 +636,27 @@ public struct BonBuilder
         if (_state != State.DictionaryKey) ThrowWrongState();
 
         var items = _items;
-        var bytes = _topData[..(int)_topPos];
+        var bytes = _topData;
         StackPop();
         if (items == 0)
         {
-            _lastBonPos = _topPos;
-            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeDictionaryEmpty);
+            _lastBonPos = (ulong)_topData.GetCurrentPosition();
+            _topData.WriteUInt8(Helpers.CodeDictionaryEmpty);
         }
         else
         {
-            ref var rootPos = ref _topPos;
             ref var rootData = ref _topData;
             if (_stack.Count > 0)
             {
-                rootPos = ref _stack[0].Item3;
                 rootData = ref _stack[0].Item2;
             }
 
-            var pos = rootPos;
-            Helpers.WriteVUInt32(ref rootData, ref rootPos, items / 2);
-            bytes.CopyTo(Helpers.WriteBlock(ref rootData, ref rootPos, (uint)bytes.Length));
-            _lastBonPos = _topPos;
-            Helpers.WriteByte(ref _topData, ref _topPos, Helpers.CodeDictionaryPtr);
-            Helpers.WriteVUInt32(ref _topData, ref _topPos, pos);
+            var pos = rootData.GetCurrentPosition();
+            rootData.WriteVUInt32(items / 2);
+            rootData.WriteBlock(bytes.GetSpan());
+            _lastBonPos = (ulong)_topData.GetCurrentPosition();
+            _topData.WriteUInt8(Helpers.CodeDictionaryPtr);
+            _topData.WriteVUInt64((ulong)pos);
         }
 
         AfterBon();
@@ -734,16 +664,15 @@ public struct BonBuilder
 
     void StackPush()
     {
-        _stack.Add((_objKeys, _topData, _topPos, _items, _state));
+        _stack.Add((_objKeys, _topData, _items, _state));
         _objKeys = new();
-        _topData = Array.Empty<byte>();
-        _topPos = 0;
+        _topData = new();
         _items = 0;
     }
 
     void StackPop()
     {
-        (_objKeys, _topData, _topPos, _items, _state) = _stack.Last;
+        (_objKeys, _topData, _items, _state) = _stack.Last;
         _stack.Pop();
     }
 
@@ -770,24 +699,24 @@ public struct BonBuilder
         }
     }
 
-    void BasicWriteString(ref byte[] data, ref uint pos, out uint bonPos, string? value)
+    void BasicWriteString(ref MemWriter data, out ulong bonPos, string? value)
     {
         if (value == null)
         {
-            bonPos = pos;
-            Helpers.WriteByte(ref data, ref pos, Helpers.CodeNull);
+            bonPos = (ulong)data.GetCurrentPosition();
+            data.WriteUInt8(Helpers.CodeNull);
         }
         else if (value.Length == 0)
         {
-            bonPos = pos;
-            Helpers.WriteByte(ref data, ref pos, Helpers.CodeStringEmpty);
+            bonPos = (ulong)data.GetCurrentPosition();
+            data.WriteUInt8(Helpers.CodeStringEmpty);
         }
         else
         {
             var ofs = WriteDedupString(value);
-            bonPos = pos;
-            Helpers.WriteByte(ref data, ref pos, Helpers.CodeStringPtr);
-            Helpers.WriteVUInt32(ref data, ref pos, ofs);
+            bonPos = (ulong)data.GetCurrentPosition();
+            data.WriteUInt8(Helpers.CodeStringPtr);
+            data.WriteVUInt64(ofs);
         }
     }
 
@@ -796,38 +725,36 @@ public struct BonBuilder
         throw new InvalidOperationException("State " + _state + " is not valid for this operation");
     }
 
-    uint WriteDedupString(string value)
+    ulong WriteDedupString(string value)
     {
         if (_strCache.TryGetValue(value, out var pos))
         {
             return pos;
         }
 
-        ref var rootPos = ref _topPos;
-        ref var rootData = ref _topData;
+        ref var writer = ref _topData;
         if (_stack.Count > 0)
         {
-            rootPos = ref _stack[0].Item3;
-            rootData = ref _stack[0].Item2;
+            writer = ref _stack[0].Data;
         }
 
-        pos = rootPos;
-        Helpers.WriteUtf8String(ref rootData, ref rootPos, value);
+        pos = (ulong)writer.GetCurrentPosition();
+        writer.WriteStringInUtf8(value);
         _strCache[value] = pos;
         return pos;
     }
 
-    public ByteBuffer Finish()
+    public MemWriter Finish()
     {
         MoveToFinished();
-        return ByteBuffer.NewSync(_topData, 0, (int)_topPos);
+        return _topData;
     }
 
     void MoveToFinished()
     {
         if (_state == State.Full)
         {
-            Helpers.WriteByte(ref _topData, ref _topPos, (byte)(_topPos - _lastBonPos));
+            _topData.WriteUInt8((byte)((ulong)_topData.GetCurrentPosition() - _lastBonPos));
             _state = State.Finished;
         }
 
@@ -836,8 +763,7 @@ public struct BonBuilder
 
     public ReadOnlyMemory<byte> FinishAsMemory()
     {
-        MoveToFinished();
-        return new(_topData, 0, (int)_topPos);
+        return Finish().GetPersistentMemoryAndReset();
     }
 }
 
@@ -846,7 +772,7 @@ public struct Bon
     MemReader _reader;
     uint _items;
 
-    public Bon(byte[] buf) : this(new ReadOnlyMemoryMemReader(buf))
+    public Bon(ReadOnlyMemory<byte> buf) : this(new ReadOnlyMemoryMemReader(buf))
     {
     }
 

@@ -108,7 +108,7 @@ public struct MemWriter
         return ByteBuffer.NewAsync(GetPersistentMemoryAndReset());
     }
 
-    public long GetCurrentPosition()
+    public readonly long GetCurrentPosition()
     {
         if (Controller is IMemWriter controller) return controller.GetCurrentPosition(this);
         return Current - Start;
@@ -273,6 +273,13 @@ public struct MemWriter
         if (Current + 4 > End) Resize();
         Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsLittleEndian(value));
         Current += 4;
+    }
+
+    public unsafe void WriteUInt64LE(ulong value)
+    {
+        if (Current + 8 > End) Resize();
+        Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsLittleEndian(value));
+        Current += 8;
     }
 
     public void WriteDateTime(DateTime value)

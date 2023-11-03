@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace BTDB.Collections;
 
-public struct StructList<T> : IEnumerable<T>
+public struct StructList<T> : IEnumerable<T>, IEquatable<StructList<T>>
 {
     T[]? _a;
     uint _count;
@@ -255,7 +255,6 @@ public struct StructList<T> : IEnumerable<T>
         return _a.AsSpan(0, (int)_count);
     }
 
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [DebuggerStepThrough]
     public static implicit operator ReadOnlyMemory<T>(in StructList<T> value) => value.AsReadOnlyMemory();
@@ -276,7 +275,7 @@ public struct StructList<T> : IEnumerable<T>
     [DebuggerStepThrough]
     public readonly ReadOnlySpan<T> AsReadOnlySpan(int start)
     {
-        return AsReadOnlySpan().Slice(start);
+        return AsReadOnlySpan()[start..];
     }
 
     [DebuggerStepThrough]
@@ -294,8 +293,8 @@ public struct StructList<T> : IEnumerable<T>
     public struct Enumerator : IEnumerator<T>
     {
         int _position;
-        int _count;
-        T[] _array;
+        readonly int _count;
+        readonly T[] _array;
 
         public Enumerator(int count, T[] array)
         {
@@ -322,6 +321,7 @@ public struct StructList<T> : IEnumerable<T>
 
         public void Dispose()
         {
+            // Nothing is needed
         }
     }
 
@@ -455,5 +455,26 @@ public struct StructList<T> : IEnumerable<T>
     {
         if (_count > 1)
             Array.Sort(_a!, 0, (int)_count, comparer);
+    }
+
+    public readonly bool Equals(StructList<T> other)
+    {
+        return AsReadOnlySpan().SequenceEqual(other.AsReadOnlySpan());
+    }
+
+    public override readonly bool Equals(object? obj)
+    {
+        return obj is StructList<T> other && Equals(other);
+    }
+
+    public override readonly int GetHashCode()
+    {
+        var hash = new HashCode();
+        foreach (var t in AsReadOnlySpan())
+        {
+            hash.Add(t);
+        }
+
+        return hash.ToHashCode();
     }
 }
