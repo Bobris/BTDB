@@ -327,7 +327,7 @@ public struct BonBuilder
     MemWriter _topData;
     uint _items = 0;
     readonly Dictionary<string, ulong> _strCache = new();
-    readonly Dictionary<StructList<ulong>, ulong> _objKeysCache = new();
+    readonly Dictionary<(bool IsClass, StructList<ulong> ObjKeys), ulong> _objKeysCache = new();
 
     public BonBuilder(MemWriter memWriter)
     {
@@ -556,7 +556,7 @@ public struct BonBuilder
                 rootData = ref _stack[0].Item2;
             }
 
-            if (!_objKeysCache.TryGetValue(objKeys, out var posKeys))
+            if (!_objKeysCache.TryGetValue((false, objKeys), out var posKeys))
             {
                 posKeys = (ulong)rootData.GetCurrentPosition();
                 rootData.WriteVUInt32(items);
@@ -565,7 +565,7 @@ public struct BonBuilder
                     rootData.WriteVUInt64(keyOfs);
                 }
 
-                _objKeysCache.Add(objKeys, posKeys);
+                _objKeysCache.Add((false, objKeys), posKeys);
             }
 
             var pos = rootData.GetCurrentPosition();
@@ -601,7 +601,7 @@ public struct BonBuilder
             rootData = ref _stack[0].Item2;
         }
 
-        if (!_objKeysCache.TryGetValue(objKeys, out var posKeys))
+        if (!_objKeysCache.TryGetValue((true, objKeys), out var posKeys))
         {
             posKeys = (ulong)rootData.GetCurrentPosition();
             rootData.WriteVUInt32(items);
@@ -610,8 +610,7 @@ public struct BonBuilder
                 rootData.WriteVUInt64(keyOfs);
             }
 
-            // TODO: cannot share same cache with object because it contains type name
-            _objKeysCache.Add(objKeys, posKeys);
+            _objKeysCache.Add((true, objKeys), posKeys);
         }
 
         var pos = rootData.GetCurrentPosition();
