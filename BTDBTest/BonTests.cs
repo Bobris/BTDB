@@ -378,6 +378,17 @@ public class BonTests
     }
 
     [Fact]
+    public void DuplicateKeyIsForbidden()
+    {
+        var builder = new BonBuilder();
+        builder.StartObject();
+        Assert.True(builder.TryWriteKey("a"));
+        builder.Write(1);
+        Assert.False(builder.TryWriteKey("a"));
+        Assert.Throws<ArgumentException>(() => builder.WriteKey("a"));
+    }
+
+    [Fact]
     public void CanStoreComplexArrayObjectCombination()
     {
         var builder = new BonBuilder();

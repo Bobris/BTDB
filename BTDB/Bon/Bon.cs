@@ -322,12 +322,16 @@ public struct BonBuilder
 
     State _state = State.Empty;
     ulong _lastBonPos = 0;
-    StructList<(StructList<ulong> ObjKeys, MemWriter Data, uint Items, State State)> _stack = new();
+
+    StructList<(StructList<ulong> ObjKeys, MemWriter Data, uint Items, State State, HashSet<string>? ObjKeysSet)>
+        _stack = new();
+
     StructList<ulong> _objKeys = new();
     MemWriter _topData;
     uint _items = 0;
     readonly Dictionary<string, ulong> _strCache = new();
     readonly Dictionary<(bool IsClass, StructList<ulong> ObjKeys), ulong> _objKeysCache = new();
+    HashSet<string>? _objKeysSet;
 
     public BonBuilder(MemWriter memWriter)
     {
@@ -526,13 +530,21 @@ public struct BonBuilder
         BeforeBon();
         StackPush();
         _state = State.ObjectKey;
+        _objKeysSet = new();
     }
 
     public void WriteKey(string name)
     {
+        if (!TryWriteKey(name)) throw new ArgumentException("Key " + name + " already written");
+    }
+
+    public bool TryWriteKey(string name)
+    {
         if (_state is not State.ObjectKey and not State.ClassKey) ThrowWrongState();
+        if (!_objKeysSet!.Add(name)) return false;
         _objKeys.Add(WriteDedupString(name));
         _state = _state == State.ObjectKey ? State.ObjectValue : State.ClassValue;
+        return true;
     }
 
     public void FinishObject()
@@ -585,6 +597,7 @@ public struct BonBuilder
         StackPush();
         _state = State.ClassKey;
         _objKeys.Add(WriteDedupString(name));
+        _objKeysSet = new();
     }
 
     public void FinishClass()
@@ -663,15 +676,16 @@ public struct BonBuilder
 
     void StackPush()
     {
-        _stack.Add((_objKeys, _topData, _items, _state));
+        _stack.Add((_objKeys, _topData, _items, _state, _objKeysSet));
         _objKeys = new();
+        _objKeysSet = null;
         _topData = new();
         _items = 0;
     }
 
     void StackPop()
     {
-        (_objKeys, _topData, _items, _state) = _stack.Last;
+        (_objKeys, _topData, _items, _state, _objKeysSet) = _stack.Last;
         _stack.Pop();
     }
 
