@@ -27,7 +27,8 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         _itemType = GetItemType(type);
     }
 
-    public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader, DescriptorReader nestedDescriptorReader)
+    public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader,
+        DescriptorReader nestedDescriptorReader)
         : this(typeSerializers, nestedDescriptorReader(ref reader))
     {
     }
@@ -50,7 +51,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public bool Equals(ITypeDescriptor other)
     {
-        return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
+        return Equals(other, null);
     }
 
     public override int GetHashCode()
@@ -86,10 +87,11 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         text.Append(">");
     }
 
-    public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
-        if (!(other is ListTypeDescriptor o)) return false;
-        return _itemDescriptor!.Equals(o._itemDescriptor!, stack);
+        if (ReferenceEquals(this, other)) return true;
+        if (other is not ListTypeDescriptor o) return false;
+        return _itemDescriptor!.Equals(o._itemDescriptor!, equalities);
     }
 
     public Type GetPreferredType()
@@ -99,6 +101,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             _itemType = _typeSerializers.LoadAsType(_itemDescriptor!);
             _type = typeof(ICollection<>).MakeGenericType(_itemType);
         }
+
         return _type;
     }
 
@@ -118,7 +121,8 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     static Type GetInterface(Type type) => type.GetInterface("ICollection`1") ?? type;
 
-    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
+    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
+        Action<IILGen> pushDescriptor, Type targetType)
     {
         if (targetType == typeof(object))
             targetType = GetPreferredType();
@@ -157,7 +161,9 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Brfalse(loadFinished)
                 .Ldloc(localArray)
                 .Ldloc(localIndex);
-            _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertGenerator);
+            _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType,
+                _convertGenerator);
             ilGenerator
                 .Stelem(itemType)
                 .Ldloc(localIndex)
@@ -172,10 +178,12 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         else
         {
             var isSet = targetType.InheritsOrImplements(typeof(ISet<>));
-            var listType = (isSet ? typeof(HashSetWithDescriptor<>) : typeof(ListWithDescriptor<>)).MakeGenericType(itemType);
+            var listType =
+                (isSet ? typeof(HashSetWithDescriptor<>) : typeof(ListWithDescriptor<>)).MakeGenericType(itemType);
 
             if (!targetType.IsAssignableFrom(listType))
-                throw new NotSupportedException($"List type {listType.ToSimpleName()} is not assignable to {targetType.ToSimpleName()}.");
+                throw new NotSupportedException(
+                    $"List type {listType.ToSimpleName()} is not assignable to {targetType.ToSimpleName()}.");
             var localList = ilGenerator.DeclareLocal(listType);
             var loadFinished = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
@@ -204,7 +212,9 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Sub()
                 .Stloc(localCount)
                 .Ldloc(localList);
-            _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertGenerator);
+            _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType,
+                _convertGenerator);
             ilGenerator
                 .Callvirt(listType.GetInterface("ICollection`1")!.GetMethod("Add")!)
                 .Br(next)
@@ -238,14 +248,18 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 type = _listTypeDescriptor.GetPreferredType();
             var targetInterface = GetInterface(type);
             var targetTypeArguments = targetInterface.GetGenericArguments();
-            var itemType = _listTypeDescriptor._typeSerializers.LoadAsType(_listTypeDescriptor._itemDescriptor!, targetTypeArguments[0]);
+            var itemType =
+                _listTypeDescriptor._typeSerializers.LoadAsType(_listTypeDescriptor._itemDescriptor!,
+                    targetTypeArguments[0]);
             if (_listTypeDescriptor._type == null) _listTypeDescriptor._type = type;
-            var isConcreteImplementation = type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(List<>) || type.GetGenericTypeDefinition() == typeof(HashSet<>));
+            var isConcreteImplementation = type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(List<>) ||
+                                                                  type.GetGenericTypeDefinition() == typeof(HashSet<>));
             var typeAsICollection = isConcreteImplementation ? type : typeof(ICollection<>).MakeGenericType(itemType);
             var getEnumeratorMethod = isConcreteImplementation
                 ? typeAsICollection.GetMethods()
                     .Single(
-                        m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0)
+                        m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType &&
+                             m.GetParameters().Length == 0)
                 : typeAsICollection.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
             var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
             var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
@@ -294,7 +308,8 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                         il.Box(itemType);
                     }
                 })
-                .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!)
+                .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext
+                    .StoreNewDescriptors))!)
                 .Br(next)
                 .Mark(finish)
                 .Finally()
@@ -341,14 +356,16 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         return false;
     }
 
-    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
+        Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
     public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
     {
         nestedDescriptorWriter(ref writer, _itemDescriptor!);
     }
 
-    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
+    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+        Action<IILGen> pushValue, Type valueType)
     {
         var notnull = ilGenerator.DefineLabel();
         var completeFinish = ilGenerator.DefineLabel();
@@ -376,7 +393,9 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         {
             var typeAsList = typeof(List<>).MakeGenericType(itemType);
             var getEnumeratorMethod = typeAsList.GetMethods()
-                    .Single(m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
+                .Single(m =>
+                    m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType &&
+                    m.GetParameters().Length == 0);
             var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
             var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
             var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
@@ -396,7 +415,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Call(typeAsIEnumerator.GetMethod(nameof(IEnumerator.MoveNext))!)
                 .Brfalse(finish);
             _itemDescriptor!.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
-                    il => il.Ldloca(localEnumerator).Callvirt(currentGetter!), itemType);
+                il => il.Ldloca(localEnumerator).Callvirt(currentGetter!), itemType);
             ilGenerator
                 .Br(next)
                 .Mark(finish)
@@ -410,7 +429,9 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         {
             var typeAsHashSet = typeof(HashSet<>).MakeGenericType(itemType);
             var getEnumeratorMethod = typeAsHashSet.GetMethods()
-                .Single(m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
+                .Single(m =>
+                    m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType &&
+                    m.GetParameters().Length == 0);
             var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
             var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
             var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
@@ -443,7 +464,8 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Br(completeFinish);
         }
         {
-            var getEnumeratorMethod = typeAsICollection.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
+            var getEnumeratorMethod =
+                typeAsICollection.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
             var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
             var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
             var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
@@ -460,8 +482,8 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Callvirt(() => default(IEnumerator).MoveNext())
                 .Brfalse(finish);
             _itemDescriptor!.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
-                    il => il.Ldloc(localEnumerator)
-                        .Callvirt(currentGetter!), itemType);
+                il => il.Ldloc(localEnumerator)
+                    .Callvirt(currentGetter!), itemType);
             ilGenerator
                 .Br(next)
                 .Mark(finish)
@@ -479,6 +501,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         {
             return valueType.GetElementType()!;
         }
+
         return valueType.GetGenericArguments()[0];
     }
 
@@ -511,7 +534,8 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Mark(skipFinished);
     }
 
-    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers,
+        Func<ITypeDescriptor, ITypeDescriptor> map)
     {
         var itemDesc = map(_itemDescriptor);
         if (_typeSerializers == typeSerializers && itemDesc == _itemDescriptor)

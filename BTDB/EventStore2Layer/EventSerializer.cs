@@ -44,7 +44,8 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
     bool _newTypeFound;
 
     public EventSerializer(ITypeNameMapper? typeNameMapper = null,
-        ITypeConvertorGenerator? typeConvertorGenerator = null, ISymmetricCipher? symmetricCipher = null, bool useInputDescriptors = true)
+        ITypeConvertorGenerator? typeConvertorGenerator = null, ISymmetricCipher? symmetricCipher = null,
+        bool useInputDescriptors = true)
     {
         TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
         ConvertorGenerator = typeConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
@@ -530,7 +531,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                 return info.Descriptor;
             }
 
-            if (old is ObjectTypeDescriptor || old is EnumTypeDescriptor)
+            if (old is ObjectTypeDescriptor or EnumTypeDescriptor)
             {
                 var type = TypeNameMapper.ToType(old.Name!) ?? typeof(object);
                 if (type != typeof(object))
@@ -550,9 +551,9 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
 
             ITypeDescriptor FlattenPlaceHolder(ITypeDescriptor old)
             {
-                if (old is PlaceHolderDescriptor)
+                if (old is PlaceHolderDescriptor descriptor)
                 {
-                    return ((PlaceHolderDescriptor)old).TypeDesc;
+                    return descriptor.TypeDesc;
                 }
 
                 if (visited.Contains(old)) return old;

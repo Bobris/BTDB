@@ -20,7 +20,7 @@ public class EncryptedStringDescriptor : ITypeDescriptor
         text.Append(Name);
     }
 
-    public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
         return ReferenceEquals(this, other);
     }
@@ -61,7 +61,8 @@ public class EncryptedStringDescriptor : ITypeDescriptor
         return false;
     }
 
-    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
+        Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
     public bool AnyOpNeedsCtx() => true;
 
@@ -70,7 +71,9 @@ public class EncryptedStringDescriptor : ITypeDescriptor
     {
         pushCtx(ilGenerator);
         pushReader(ilGenerator);
-        ilGenerator.Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext.LoadEncryptedString))!);
+        ilGenerator.Callvirt(
+            typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext.LoadEncryptedString))
+            !);
         if (targetType != typeof(object))
         {
             if (targetType != GetPreferredType())
@@ -85,7 +88,9 @@ public class EncryptedStringDescriptor : ITypeDescriptor
     {
         pushCtx(ilGenerator);
         pushReader(ilGenerator);
-        ilGenerator.Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext.SkipEncryptedString))!);
+        ilGenerator.Callvirt(
+            typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext.SkipEncryptedString))
+            !);
     }
 
     public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
@@ -94,7 +99,8 @@ public class EncryptedStringDescriptor : ITypeDescriptor
         pushCtx(ilGenerator);
         pushWriter(ilGenerator);
         pushValue(ilGenerator);
-        ilGenerator.Callvirt(typeof(ITypeBinarySerializerContext).GetMethod(nameof(ITypeBinarySerializerContext.StoreEncryptedString))!);
+        ilGenerator.Callvirt(
+            typeof(ITypeBinarySerializerContext).GetMethod(nameof(ITypeBinarySerializerContext.StoreEncryptedString))!);
     }
 
     public bool Equals(ITypeDescriptor other)

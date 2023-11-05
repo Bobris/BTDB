@@ -38,7 +38,7 @@ class PlaceHolderDescriptor : ITypeDescriptor
         throw new InvalidOperationException();
     }
 
-    bool ITypeDescriptor.Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    bool ITypeDescriptor.Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
         throw new InvalidOperationException();
     }
@@ -58,7 +58,8 @@ class PlaceHolderDescriptor : ITypeDescriptor
         throw new InvalidOperationException();
     }
 
-    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
+    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
+        Action<IILGen> pushDescriptor, Type targetType)
     {
         throw new InvalidOperationException();
     }
@@ -68,7 +69,8 @@ class PlaceHolderDescriptor : ITypeDescriptor
         throw new InvalidOperationException();
     }
 
-    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
+    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+        Action<IILGen> pushValue, Type valueType)
     {
         throw new InvalidOperationException();
     }
@@ -104,9 +106,11 @@ class PlaceHolderDescriptor : ITypeDescriptor
         throw new InvalidOperationException();
     }
 
-    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
+        Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
-    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers,
+        Func<ITypeDescriptor, ITypeDescriptor> map)
     {
         throw new InvalidOperationException();
     }

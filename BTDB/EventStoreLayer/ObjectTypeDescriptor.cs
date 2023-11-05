@@ -61,7 +61,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public bool Equals(ITypeDescriptor other)
     {
-        return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
+        return Equals(other, null);
     }
 
     public string Name { get; }
@@ -162,25 +162,25 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         text.Append(' ', (int)(indent * 4));
     }
 
-    public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
+        if (ReferenceEquals(this, other)) return true;
+        if (equalities != null && equalities.TryGetValue(this, out var v))
+            return ReferenceEquals(v, other);
         var o = other as ObjectTypeDescriptor;
         if (o == null) return false;
         if (Name != o.Name) return false;
-        if (stack.Contains(this)) return true;
         if (_fields.Count != o._fields.Count) return false;
-        stack.Add(this);
-        try
+        for (var i = 0; i < _fields.Count; i++)
         {
-            for (int i = 0; i < _fields.Count; i++)
-            {
-                if (_fields[i].Key != o._fields[i].Key) return false;
-                if (!_fields[i].Value.Equals(o._fields[i].Value, stack)) return false;
-            }
+            if (_fields[i].Key != o._fields[i].Key) return false;
         }
-        finally
+
+        equalities ??= new(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+        equalities[this] = other;
+        for (var i = 0; i < _fields.Count; i++)
         {
-            stack.Remove(this);
+            if (!_fields[i].Value.Equals(o._fields[i].Value, equalities)) return false;
         }
 
         return true;
@@ -223,7 +223,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .BrfalseS(labelNoCtx)
                 .Do(pushCtx)
                 .Ldloc(resultLoc)
-                .Callvirt(() => default(ITypeBinaryDeserializerContext).AddBackRef(null))
+                .Callvirt(() => default(ITypeBinaryDeserializerContext)!.AddBackRef(null))
                 .Mark(labelNoCtx);
             var idx = 0;
             foreach (var pair in _fields)
@@ -235,9 +235,9 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     il =>
                         il.Do(pushDescriptor)
                             .LdcI4(idxForCapture)
-                            .Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object),
+                            .Callvirt(() => default(ITypeDescriptor)!.NestedType(0)), typeof(object),
                     _typeSerializers.ConvertorGenerator);
-                ilGenerator.Callvirt(() => default(DynamicObject).SetFieldByIdxFast(0, null));
+                ilGenerator.Callvirt(() => default(DynamicObject)!.SetFieldByIdxFast(0, null));
                 idx++;
             }
 

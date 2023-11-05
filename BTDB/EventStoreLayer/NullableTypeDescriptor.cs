@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Text;
 using BTDB.FieldHandler;
 using BTDB.IL;
-using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
@@ -25,7 +24,8 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         _itemType = GetItemType(type);
     }
 
-    public NullableTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader, DescriptorReader nestedDescriptorReader)
+    public NullableTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader,
+        DescriptorReader nestedDescriptorReader)
         : this(typeSerializers, nestedDescriptorReader(ref reader))
     {
     }
@@ -49,7 +49,7 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public bool Equals(ITypeDescriptor other)
     {
-        return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
+        return Equals(other, null);
     }
 
     public override int GetHashCode()
@@ -85,10 +85,9 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         text.Append(">");
     }
 
-    public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
-        if (!(other is NullableTypeDescriptor o)) return false;
-        return _itemDescriptor!.Equals(o._itemDescriptor!, stack);
+        return other is NullableTypeDescriptor o && _itemDescriptor!.Equals(o._itemDescriptor!, equalities);
     }
 
     public Type GetPreferredType()
@@ -98,6 +97,7 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             _itemType = _typeSerializers.LoadAsType(_itemDescriptor!);
             _type = typeof(Nullable<>).MakeGenericType(_itemType);
         }
+
         return _type;
     }
 
@@ -114,7 +114,8 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         return !_itemDescriptor!.StoredInline || _itemDescriptor.AnyOpNeedsCtx();
     }
 
-    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
+    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
+        Action<IILGen> pushDescriptor, Type targetType)
     {
         var itemType = Nullable.GetUnderlyingType(targetType);
         if (targetType.IsValueType && itemType == null)
@@ -127,7 +128,8 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
                 .Brfalse(noValue);
             _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
-                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor)!.NestedType(0)), targetType, _convertorGenerator);
+                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor)!.NestedType(0)),
+                targetType, _convertorGenerator);
             ilGenerator
                 .Stloc(localResult)
                 .BrS(finish)
@@ -147,7 +149,8 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
                 .Brfalse(noValue);
             _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
-                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object), _convertorGenerator);
+                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)),
+                typeof(object), _convertorGenerator);
             ilGenerator
                 .Br(finish)
                 .Mark(noValue)
@@ -169,7 +172,8 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
                 .Brfalse(noValue);
             _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
-                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertorGenerator);
+                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType,
+                _convertorGenerator);
             ilGenerator
                 .Newobj(nullableType.GetConstructor(new[] { itemType })!)
                 .Stloc(localResult)
@@ -219,7 +223,8 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                         il.Box(itemType);
                     }
                 })
-                .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!)
+                .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext
+                    .StoreNewDescriptors))!)
                 .Mark(finish);
         }
     }
@@ -249,14 +254,16 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         return false;
     }
 
-    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
+        Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
     public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
     {
         nestedDescriptorWriter(ref writer, _itemDescriptor!);
     }
 
-    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
+    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+        Action<IILGen> pushValue, Type valueType)
     {
         var itemType = GetItemType(valueType);
         var localValue = ilGenerator.DeclareLocal(valueType);
@@ -297,7 +304,8 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Mark(finish);
     }
 
-    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers,
+        Func<ITypeDescriptor, ITypeDescriptor> map)
     {
         var itemDesc = map(_itemDescriptor);
         if (_typeSerializers == typeSerializers && itemDesc == _itemDescriptor)

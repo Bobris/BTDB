@@ -14,7 +14,7 @@ public static class TypeDescriptorExtensions
     {
         var sb = new StringBuilder();
         descriptor.BuildHumanReadableFullName(sb,
-            new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance), 0);
+            new(ReferenceEqualityComparer<ITypeDescriptor>.Instance), 0);
         return sb.ToString();
     }
 

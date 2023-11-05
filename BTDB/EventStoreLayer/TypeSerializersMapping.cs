@@ -16,7 +16,10 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
 {
     const int ReservedBuiltInTypes = 50;
     StructList<InfoForType?> _id2DescriptorMap;
-    readonly Dictionary<object, InfoForType> _typeOrDescriptor2Info = new Dictionary<object, InfoForType>(ReferenceEqualityComparer<object>.Instance);
+
+    readonly Dictionary<object, InfoForType> _typeOrDescriptor2Info =
+        new Dictionary<object, InfoForType>(ReferenceEqualityComparer<object>.Instance);
+
     readonly TypeSerializers _typeSerializers;
     readonly ISymmetricCipher _symmetricCipher;
 
@@ -44,6 +47,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             _typeOrDescriptor2Info[predefinedType] = infoForType;
             _id2DescriptorMap.Add(infoForType);
         }
+
         while (_id2DescriptorMap.Count < ReservedBuiltInTypes) _id2DescriptorMap.Add(null);
     }
 
@@ -82,20 +86,27 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+
             while (typeId >= _id2DescriptorMap.Count)
                 _id2DescriptorMap.Add(null);
             _id2DescriptorMap[(int)typeId] ??= new InfoForType { Id = (int)typeId, Descriptor = descriptor };
             typeId = reader.ReadVUInt32();
         }
+
         for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
         {
-            _id2DescriptorMap[i]!.Descriptor.MapNestedTypes(d => d is PlaceHolderDescriptor placeHolderDescriptor ? _id2DescriptorMap[(int)placeHolderDescriptor.TypeId]!.Descriptor : d);
+            _id2DescriptorMap[i]!.Descriptor.MapNestedTypes(d =>
+                d is PlaceHolderDescriptor placeHolderDescriptor
+                    ? _id2DescriptorMap[(int)placeHolderDescriptor.TypeId]!.Descriptor
+                    : d);
         }
+
         // This additional cycle is needed to fill names of recursive structures
         for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
         {
             _id2DescriptorMap[i]!.Descriptor.MapNestedTypes(d => d);
         }
+
         for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
         {
             var infoForType = _id2DescriptorMap[(int)i];
@@ -114,6 +125,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             if (infoForType != null)
                 return infoForType.Descriptor;
         }
+
         return new PlaceHolderDescriptor(typeId);
     }
 
@@ -143,7 +155,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             throw new InvalidOperationException();
         }
 
-        bool ITypeDescriptor.Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+        bool ITypeDescriptor.Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
         {
             throw new InvalidOperationException();
         }
@@ -163,7 +175,8 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             throw new InvalidOperationException();
         }
 
-        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
+        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
+            Action<IILGen> pushDescriptor, Type targetType)
         {
             throw new InvalidOperationException();
         }
@@ -173,7 +186,8 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             throw new InvalidOperationException();
         }
 
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+            Action<IILGen> pushValue, Type valueType)
         {
             throw new InvalidOperationException();
         }
@@ -209,9 +223,11 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             throw new InvalidOperationException();
         }
 
-        public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+        public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
+            Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
-        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers,
+            Func<ITypeDescriptor, ITypeDescriptor> map)
         {
             throw new InvalidOperationException();
         }
@@ -224,10 +240,12 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         {
             return null;
         }
+
         if (typeId == 1)
         {
             throw new InvalidDataException("Back reference cannot be first object");
         }
+
         return Load(typeId, ref reader, null);
     }
 
@@ -238,6 +256,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         {
             infoForType.Loader = _typeSerializers.GetLoader(infoForType.Descriptor);
         }
+
         return infoForType.Loader(ref reader, context, this, infoForType.Descriptor);
     }
 
@@ -273,6 +292,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                 }
             }
         }
+
         DescriptorSerializerContext ctx = null;
         if (infoForType.Id == 0)
         {
@@ -286,6 +306,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             actions.NewTypeDiscoverer = _typeSerializers.GetNewDescriptorSaver(infoForType.Descriptor, objType);
             actions.KnownNewTypeDiscoverer = true;
         }
+
         var action = actions.NewTypeDiscoverer;
         if (action != null)
         {
@@ -297,13 +318,16 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             catch (Exception e)
             {
                 throw new BTDBException(
-                    $"Failed store new descriptors for {objType.ToSimpleName()} with descriptor {infoForType.Descriptor.Describe()}", e);
+                    $"Failed store new descriptors for {objType.ToSimpleName()} with descriptor {infoForType.Descriptor.Describe()}",
+                    e);
             }
         }
+
         if (ctx is { SomeTypeStored: true })
         {
             return ctx;
         }
+
         return this;
     }
 
@@ -311,12 +335,15 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
     {
     }
 
-    class DescriptorSerializerContext : IDescriptorSerializerContext, IDescriptorSerializerLiteContext, ITypeSerializersLightMapping
+    class DescriptorSerializerContext : IDescriptorSerializerContext, IDescriptorSerializerLiteContext,
+        ITypeSerializersLightMapping
     {
         readonly TypeSerializersMapping _typeSerializersMapping;
         readonly TypeSerializers _typeSerializers;
         StructList<InfoForType> _id2InfoMap;
-        readonly Dictionary<object, InfoForType> _typeOrDescriptor2InfoMap = new Dictionary<object, InfoForType>(ReferenceEqualityComparer<object>.Instance);
+
+        readonly Dictionary<object, InfoForType> _typeOrDescriptor2InfoMap =
+            new Dictionary<object, InfoForType>(ReferenceEqualityComparer<object>.Instance);
 
         public DescriptorSerializerContext(TypeSerializersMapping typeSerializersMapping)
         {
@@ -357,6 +384,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                 typeId = infoForType.Id;
                 return true;
             }
+
             typeId = 0;
             return false;
         }
@@ -397,6 +425,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                     }
                 }
             }
+
             if (infoForType.Id == 0)
             {
                 AddDescriptor(infoForType);
@@ -408,6 +437,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                 actions.NewTypeDiscoverer = _typeSerializers.GetNewDescriptorSaver(infoForType.Descriptor, objType);
                 actions.KnownNewTypeDiscoverer = true;
             }
+
             var action = actions.NewTypeDiscoverer;
             action?.Invoke(obj, this);
             return this;
@@ -444,6 +474,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                     writer.WriteVUInt32((uint)(i + _typeSerializersMapping._id2DescriptorMap.Count));
                     TypeSerializers.StoreDescriptor(_id2InfoMap[i].Descriptor, ref writer, Descriptor2Id);
                 }
+
                 writer.WriteUInt8(0);
             }
         }
@@ -460,7 +491,8 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             else
             {
                 var objType = obj.GetType();
-                if (!_typeOrDescriptor2InfoMap.TryGetValue(objType, out infoForType) && !_typeSerializersMapping._typeOrDescriptor2Info.TryGetValue(objType, out infoForType))
+                if (!_typeOrDescriptor2InfoMap.TryGetValue(objType, out infoForType) &&
+                    !_typeSerializersMapping._typeOrDescriptor2Info.TryGetValue(objType, out infoForType))
                 {
                     var descriptor = _typeSerializers.DescriptorOf(objType);
                     if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor!, out infoForType))
@@ -473,11 +505,13 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                     }
                 }
             }
+
             if (infoForType == null)
             {
                 throw new InvalidOperationException(
                     $"Type {obj.GetType().FullName} was not registered using StoreNewDescriptors");
             }
+
             typeSerializers = _typeSerializers;
             return infoForType;
         }
@@ -502,7 +536,8 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         StoreObjectCore(typeSerializers, ref writer, obj, infoForType, this);
     }
 
-    static void StoreObjectCore(TypeSerializers typeSerializers, ref SpanWriter writer, object obj, InfoForType infoForType, ITypeSerializersLightMapping mapping)
+    static void StoreObjectCore(TypeSerializers typeSerializers, ref SpanWriter writer, object obj,
+        InfoForType infoForType, ITypeSerializersLightMapping mapping)
     {
         writer.WriteVUInt32((uint)infoForType.Id);
         var objType = obj.GetType();
@@ -516,16 +551,20 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             catch (Exception e)
             {
                 throw new BTDBException(
-                    $"Failed creating SimpleSaver for {objType.ToSimpleName()} with descriptor {infoForType.Descriptor.Describe()}", e);
+                    $"Failed creating SimpleSaver for {objType.ToSimpleName()} with descriptor {infoForType.Descriptor.Describe()}",
+                    e);
             }
+
             actions.KnownSimpleSaver = true;
         }
+
         var simpleSaver = actions.SimpleSaver;
         if (simpleSaver != null)
         {
             simpleSaver(ref writer, obj);
             return;
         }
+
         if (!actions.KnownComplexSaver)
         {
             try
@@ -535,10 +574,13 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             catch (Exception e)
             {
                 throw new BTDBException(
-                    $"Failed creating SimpleSaver for {objType.ToSimpleName()} with descriptor {infoForType.Descriptor.Describe()}", e);
+                    $"Failed creating SimpleSaver for {objType.ToSimpleName()} with descriptor {infoForType.Descriptor.Describe()}",
+                    e);
             }
+
             actions.KnownComplexSaver = true;
         }
+
         var complexSaver = actions.ComplexSaver;
         var ctx = new TypeBinarySerializerContext(mapping, obj);
         complexSaver(ref writer, ctx, obj);
@@ -547,7 +589,9 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
     class TypeBinarySerializerContext : ITypeBinarySerializerContext
     {
         readonly ITypeSerializersLightMapping _mapping;
-        readonly Dictionary<object, uint> _backRefs = new Dictionary<object, uint>(ReferenceEqualityComparer<object>.Instance);
+
+        readonly Dictionary<object, uint> _backRefs =
+            new Dictionary<object, uint>(ReferenceEqualityComparer<object>.Instance);
 
         public TypeBinarySerializerContext(ITypeSerializersLightMapping mapping, object obj)
         {
@@ -569,6 +613,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                 writer.WriteVUInt32(backRefId);
                 return;
             }
+
             _backRefs.Add(obj, (uint)_backRefs.Count);
             var infoForType = _mapping.GetInfoFromObject(obj, out var typeSerializers);
             writer.WriteVUInt32((uint)infoForType.Id);
@@ -579,17 +624,20 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                 actions.SimpleSaver = typeSerializers.GetSimpleSaver(infoForType.Descriptor, objType);
                 actions.KnownSimpleSaver = true;
             }
+
             var simpleSaver = actions.SimpleSaver;
             if (simpleSaver != null)
             {
                 simpleSaver(ref writer, obj);
                 return;
             }
+
             if (!actions.KnownComplexSaver)
             {
                 actions.ComplexSaver = typeSerializers.GetComplexSaver(infoForType.Descriptor, objType);
                 actions.KnownComplexSaver = true;
             }
+
             var complexSaver = actions.ComplexSaver;
             complexSaver(ref writer, this, obj);
         }
@@ -631,12 +679,14 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                 }
             }
         }
+
         typeSerializers = _typeSerializers;
         if (infoForType == null)
         {
             throw new InvalidOperationException(
                 $"Type {obj.GetType().FullName} was not registered using StoreNewDescriptors");
         }
+
         return infoForType;
     }
 }

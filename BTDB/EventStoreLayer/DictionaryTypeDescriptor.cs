@@ -31,12 +31,14 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         _valueType = genericArguments[1];
     }
 
-    public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader, DescriptorReader nestedDescriptorReader)
+    public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader,
+        DescriptorReader nestedDescriptorReader)
         : this(typeSerializers, nestedDescriptorReader(ref reader), nestedDescriptorReader(ref reader))
     {
     }
 
-    DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor keyDesc, ITypeDescriptor valueDesc)
+    DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor keyDesc,
+        ITypeDescriptor valueDesc)
     {
         _convertorGenerator = typeSerializers.ConvertorGenerator;
         _typeSerializers = typeSerializers;
@@ -55,7 +57,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public bool Equals(ITypeDescriptor other)
     {
-        return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
+        return Equals(other, null);
     }
 
     public string Name
@@ -87,11 +89,11 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         text.Append(">");
     }
 
-    public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
-        var o = other as DictionaryTypeDescriptor;
-        if (o == null) return false;
-        return _keyDescriptor!.Equals(o._keyDescriptor!, stack) && _valueDescriptor!.Equals(o._valueDescriptor!, stack);
+        if (other is not DictionaryTypeDescriptor o) return false;
+        return _keyDescriptor!.Equals(o._keyDescriptor!, equalities) &&
+               _valueDescriptor!.Equals(o._valueDescriptor!, equalities);
     }
 
     public Type GetPreferredType()
@@ -102,10 +104,12 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             _valueType = _typeSerializers.LoadAsType(_valueDescriptor!);
             _type = typeof(IDictionary<,>).MakeGenericType(_keyType, _valueType);
         }
+
         return _type;
     }
 
-    static Type GetInterface(Type type) => type.GetInterface("IOrderedDictionary`2") ?? type.GetInterface("IDictionary`2") ?? type;
+    static Type GetInterface(Type type) =>
+        type.GetInterface("IOrderedDictionary`2") ?? type.GetInterface("IDictionary`2") ?? type;
 
     public Type GetPreferredType(Type targetType)
     {
@@ -120,11 +124,12 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public bool AnyOpNeedsCtx()
     {
         return !_keyDescriptor!.StoredInline || !_valueDescriptor!.StoredInline
-            || _keyDescriptor.AnyOpNeedsCtx()
-            || _valueDescriptor.AnyOpNeedsCtx();
+                                             || _keyDescriptor.AnyOpNeedsCtx()
+                                             || _valueDescriptor.AnyOpNeedsCtx();
     }
 
-    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
+    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
+        Action<IILGen> pushDescriptor, Type targetType)
     {
         if (targetType == typeof(object))
             targetType = GetPreferredType();
@@ -133,7 +138,9 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         var targetTypeArguments = targetIDictionary.GetGenericArguments();
         var keyType = _typeSerializers.LoadAsType(_keyDescriptor!, targetTypeArguments[0]);
         var valueType = _typeSerializers.LoadAsType(_valueDescriptor!, targetTypeArguments[1]);
-        var dictionaryTypeGenericDefinition = targetType.InheritsOrImplements(typeof(IOrderedDictionary<,>)) ? typeof(OrderedDictionaryWithDescriptor<,>) : typeof(DictionaryWithDescriptor<,>);
+        var dictionaryTypeGenericDefinition = targetType.InheritsOrImplements(typeof(IOrderedDictionary<,>))
+            ? typeof(OrderedDictionaryWithDescriptor<,>)
+            : typeof(DictionaryWithDescriptor<,>);
         var dictionaryType = dictionaryTypeGenericDefinition.MakeGenericType(keyType, valueType);
         if (!targetType.IsAssignableFrom(dictionaryType)) throw new InvalidOperationException();
         var localDict = ilGenerator.DeclareLocal(dictionaryType);
@@ -162,8 +169,12 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Sub()
             .Stloc(localCount)
             .Ldloc(localDict);
-        _keyDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), keyType, _convertorGenerator);
-        _valueDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(1).Callvirt(() => default(ITypeDescriptor).NestedType(0)), valueType, _convertorGenerator);
+        _keyDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+            il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor)!.NestedType(0)), keyType,
+            _convertorGenerator);
+        _valueDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+            il => il.Do(pushDescriptor).LdcI4(1).Callvirt(() => default(ITypeDescriptor)!.NestedType(0)), valueType,
+            _convertorGenerator);
         ilGenerator
             .Callvirt(dictionaryType.GetMethod(nameof(IDictionary.Add))!)
             .Br(next)
@@ -204,7 +215,8 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             var getEnumeratorMethod = isDict
                 ? typeAsIDictionary.GetMethods()
                     .Single(
-                        m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0)
+                        m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType &&
+                             m.GetParameters().Length == 0)
                 : typeAsIDictionary.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
             var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
             var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
@@ -263,8 +275,10 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                             il.Box(keyType);
                         }
                     })
-                    .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
+                    .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(
+                        nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
             }
+
             if (!_owner._valueDescriptor.Sealed)
             {
                 ilGenerator
@@ -278,8 +292,10 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                             il.Box(valueType);
                         }
                     })
-                    .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
+                    .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(
+                        nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
             }
+
             ilGenerator
                 .Br(next)
                 .Mark(finish)
@@ -333,7 +349,8 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         return false;
     }
 
-    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
+        Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
     public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
     {
@@ -371,7 +388,9 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         {
             var typeAsDictionary = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
             var getEnumeratorMethod = typeAsDictionary.GetMethods()
-                    .Single(m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
+                .Single(m =>
+                    m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType &&
+                    m.GetParameters().Length == 0);
             var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
             var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
             var typeKeyValuePair = currentGetter!.ReturnType;
@@ -410,7 +429,8 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Br(completeFinish);
         }
         {
-            var getEnumeratorMethod = typeAsIDictionary.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
+            var getEnumeratorMethod =
+                typeAsIDictionary.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
             var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
             var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
             var typeKeyValuePair = currentGetter!.ReturnType;
@@ -431,8 +451,10 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Ldloc(localEnumerator)
                 .Callvirt(currentGetter)
                 .Stloc(localPair);
-            _keyDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key")!.GetGetMethod()!), keyType);
-            _valueDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value")!.GetGetMethod()!), valueType);
+            _keyDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key")!.GetGetMethod()!), keyType);
+            _valueDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value")!.GetGetMethod()!), valueType);
             ilGenerator
                 .Br(next)
                 .Mark(finish)
@@ -469,7 +491,8 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Mark(skipFinished);
     }
 
-    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers,
+        Func<ITypeDescriptor, ITypeDescriptor> map)
     {
         var keyDesc = map(_keyDescriptor);
         var valueDesc = map(_valueDescriptor);

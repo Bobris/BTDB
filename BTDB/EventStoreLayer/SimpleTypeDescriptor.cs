@@ -33,7 +33,7 @@ public class SimpleTypeDescriptor : ITypeDescriptor
         text.Append(Name);
     }
 
-    public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
         return ReferenceEquals(this, other);
     }
@@ -77,14 +77,16 @@ public class SimpleTypeDescriptor : ITypeDescriptor
         return false;
     }
 
-    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
+        Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
     public bool AnyOpNeedsCtx()
     {
         return false;
     }
 
-    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
+    public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
+        Action<IILGen> pushDescriptor, Type targetType)
     {
         pushReader(ilGenerator);
         ilGenerator.Call(_loader);
@@ -94,6 +96,7 @@ public class SimpleTypeDescriptor : ITypeDescriptor
                 throw new ArgumentOutOfRangeException(nameof(targetType));
             return;
         }
+
         if (GetPreferredType().IsValueType)
         {
             ilGenerator.Box(GetPreferredType());
@@ -110,7 +113,8 @@ public class SimpleTypeDescriptor : ITypeDescriptor
         ilGenerator.Call(_skipper);
     }
 
-    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
+    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+        Action<IILGen> pushValue, Type valueType)
     {
         pushWriter(ilGenerator);
         pushValue(ilGenerator);
@@ -127,7 +131,8 @@ public class SimpleTypeDescriptor : ITypeDescriptor
         return Name.GetHashCode();
     }
 
-    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+    public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers,
+        Func<ITypeDescriptor, ITypeDescriptor> map)
     {
         return this;
     }

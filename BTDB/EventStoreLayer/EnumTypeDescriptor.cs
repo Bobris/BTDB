@@ -6,7 +6,6 @@ using System.Text;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
-using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
@@ -88,7 +87,7 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public bool Equals(ITypeDescriptor other)
     {
-        return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
+        return Equals(other, null);
     }
 
     public string Name => _name;
@@ -123,7 +122,7 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         }
 
         AppendIndent(text, indent);
-        text.Append("}");
+        text.Append('}');
     }
 
     static void AppendIndent(StringBuilder text, uint indent)
@@ -131,9 +130,9 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         text.Append(' ', (int)(indent * 4));
     }
 
-    public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
-        if (!(other is EnumTypeDescriptor o)) return false;
+        if (other is not EnumTypeDescriptor o) return false;
         if (Name != o.Name) return false;
         if (_flags != o._flags) return false;
         if (_signed != o._signed) return false;
@@ -346,7 +345,8 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         return false;
     }
 
-    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
+        Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
     public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
     {

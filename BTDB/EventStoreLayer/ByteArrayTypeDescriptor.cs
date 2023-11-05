@@ -21,7 +21,7 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
         text.Append(Name);
     }
 
-    public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
         return ReferenceEquals(this, other);
     }
@@ -65,7 +65,8 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
         return false;
     }
 
-    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+    public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
+        Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
     public IEnumerable<Type> GetNativeTypes()
     {
@@ -87,6 +88,7 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
             ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayAsMemory))!);
             return;
         }
+
         ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArray))!);
         if (targetType == typeof(ByteBuffer))
         {

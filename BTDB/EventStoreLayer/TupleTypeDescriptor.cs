@@ -49,7 +49,7 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public bool Equals(ITypeDescriptor other)
     {
-        return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
+        return Equals(other, null);
     }
 
     public string Name => _name ??= CreateName();
@@ -106,14 +106,15 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         text.Append('>');
     }
 
-    public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+    public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
+        if (ReferenceEquals(this, other)) return true;
         var o = other as TupleTypeDescriptor;
         if (o == null) return false;
         if (_itemDescriptors.Count != o._itemDescriptors.Count) return false;
         for (var i = 0; i < _itemDescriptors.Count; i++)
         {
-            if (!_itemDescriptors[i].Equals(o._itemDescriptors[i], stack)) return false;
+            if (!_itemDescriptors[i].Equals(o._itemDescriptors[i], equalities)) return false;
         }
 
         return true;
@@ -416,10 +417,12 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     itemType = methodInfo.ReturnType;
                     ilGenerator.Callvirt(methodInfo);
                 }
+
                 if (itemType.IsValueType)
                 {
                     ilGenerator.Box(itemType);
                 }
+
                 ilGenerator.Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(
                     nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
             }
