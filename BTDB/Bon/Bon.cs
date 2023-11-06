@@ -23,7 +23,7 @@ public enum BonType
     String, // 26 - empty, 130 - VUint offset to VUint len of UTF-8 bytes and UTF-8 bytes themself
     DateTime, // 67 - (DateTime.Ticks in 8 bytes(long))
     Guid, // 68 - 16 bytes
-    Array, // 27 - empty, 131 - VUint offset to VUint len + Bons*len
+    Array, // 27 - empty, 131 - VUint offset to VUint len + Bons*len, 136 - VUint offset to VUint len + UInt64LE offsets*((len+31)/32)
     Object, // 28 - empty, 132 - VUint offset to VUint offset to VUint len + VUint offsets to strings, Bons*len
     Class, // 133 - VUint offset to VUint offset to VUint len + VUint offset to type name string + VUint offsets to strings, Bons*len
     Dictionary, // 29 - empty, 134 - VUint offset to VUint len + (Key Bon + Value Bon)*len
@@ -32,6 +32,7 @@ public enum BonType
 
 public static class Helpers
 {
+    // ReSharper disable InconsistentNaming
     public const byte CodeError = 0;
     public const byte CodeNull = 1;
     public const byte CodeUndefined = 2;
@@ -58,24 +59,26 @@ public static class Helpers
     public const byte CodeDictionaryPtr = 134;
     public const byte CodeByteArrayEmpty = 30;
     public const byte CodeByteArrayPtr = 135;
+    public const byte CodeArraySplitBy32Ptr = 136;
+    // ReSharper restore InconsistentNaming
 
     public static BonType BonTypeFromByte(byte b)
     {
         return b switch
         {
-            1 => BonType.Null,
-            2 => BonType.Undefined,
-            3 or 4 => BonType.Bool,
-            >= 5 and <= 25 or 128 or 129 => BonType.Integer,
-            64 or 65 or 66 => BonType.Float,
-            26 or 130 => BonType.String,
-            67 => BonType.DateTime,
-            68 => BonType.Guid,
-            27 or 131 => BonType.Array,
-            28 or 132 => BonType.Object,
-            133 => BonType.Class,
-            29 or 134 => BonType.Dictionary,
-            30 or 135 => BonType.ByteArray,
+            CodeNull => BonType.Null,
+            CodeUndefined => BonType.Undefined,
+            CodeFalse or CodeTrue => BonType.Bool,
+            >= Code0 and <= CodeM10 or CodeInteger or CodeMInteger => BonType.Integer,
+            CodeHalf or CodeFloat or CodeDouble => BonType.Float,
+            CodeStringEmpty or CodeStringPtr => BonType.String,
+            CodeDateTime => BonType.DateTime,
+            CodeGuid => BonType.Guid,
+            CodeArrayEmpty or CodeArrayPtr or CodeArraySplitBy32Ptr => BonType.Array,
+            CodeObjectEmpty or CodeObjectPtr => BonType.Object,
+            CodeClassPtr => BonType.Class,
+            CodeDictionaryEmpty or CodeDictionaryPtr => BonType.Dictionary,
+            CodeByteArrayEmpty or CodeByteArrayPtr => BonType.ByteArray,
             _ => BonType.Error
         };
     }
@@ -500,14 +503,39 @@ public struct BonBuilder
         if (_state != State.Array) ThrowWrongState();
         var items = _items;
         var bytes = _topData;
+        var objKeys = _objKeys;
         StackPop();
         if (items == 0)
         {
             _lastBonPos = (ulong)_topData.GetCurrentPosition();
             _topData.WriteUInt8(Helpers.CodeArrayEmpty);
         }
+        else if (items >= 32)
+        {
+            ref var rootData = ref _topData;
+            if (_stack.Count > 0)
+            {
+                rootData = ref _stack[0].Item2;
+            }
+            if (!bytes.GetSpan().IsEmpty)
+            {
+                var pos2 = rootData.GetCurrentPosition();
+                rootData.WriteBlock(bytes.GetSpan());
+                objKeys.Add((ulong)pos2);
+            }
+            var pos = rootData.GetCurrentPosition();
+            rootData.WriteVUInt32(items);
+            for (var i = 0u; i < objKeys.Count; i++)
+            {
+                rootData.WriteUInt64LE(objKeys[i]);
+            }
+            _lastBonPos = (ulong)_topData.GetCurrentPosition();
+            _topData.WriteUInt8(Helpers.CodeArraySplitBy32Ptr);
+            _topData.WriteVUInt64((ulong)pos);
+        }
         else
         {
+            Debug.Assert(objKeys.Count == 0);
             ref var rootData = ref _topData;
             if (_stack.Count > 0)
             {
@@ -701,6 +729,15 @@ public struct BonBuilder
             State.DictionaryValue => State.DictionaryKey,
             _ => _state
         };
+        if (_state == State.Array && _items % 32 == 0)
+        {
+            ref var writer = ref _stack[0].Data;
+            Debug.Assert(_stack.Count > 0);
+            var pos = writer.GetCurrentPosition();
+            writer.WriteBlock(_topData.GetSpan());
+            _topData.Reset();
+            _objKeys.Add((ulong)pos);
+        }
     }
 
     void BeforeBon()
@@ -940,7 +977,7 @@ public struct Bon
         }
     }
 
-    public bool TryGetArray(out Bon bon)
+    public bool TryGetArray(out ArrayBon bon)
     {
         var b = _reader.PeekUInt8();
         switch (b)
@@ -948,7 +985,7 @@ public struct Bon
             case Helpers.CodeArrayEmpty:
                 _reader.Skip1Byte();
                 _items--;
-                bon = new(new(), 0, 0);
+                bon = new(new(), 0, 0, false);
                 return true;
             case Helpers.CodeArrayPtr:
             {
@@ -958,12 +995,24 @@ public struct Bon
                 var pos = _reader.GetCurrentPosition();
                 _reader.SetCurrentPosition((long)ofs);
                 var items = _reader.ReadVUInt32();
-                bon = new(_reader, _reader.GetCurrentPosition(), items);
+                bon = new(_reader, _reader.GetCurrentPosition(), items, false);
+                _reader.SetCurrentPosition(pos);
+                return true;
+            }
+            case Helpers.CodeArraySplitBy32Ptr:
+            {
+                _reader.Skip1Byte();
+                _items--;
+                var ofs = _reader.ReadVUInt64();
+                var pos = _reader.GetCurrentPosition();
+                _reader.SetCurrentPosition((long)ofs);
+                var items = _reader.ReadVUInt32();
+                bon = new(_reader, _reader.GetCurrentPosition(), items, true);
                 _reader.SetCurrentPosition(pos);
                 return true;
             }
             default:
-                bon = new(new(), 0, 0);
+                bon = new(new(), 0, 0, false);
                 return false;
         }
     }
@@ -1122,15 +1171,22 @@ public struct Bon
                 writer.WriteStringValue(g.ToString("D"));
                 break;
             case BonType.Array:
+            {
                 writer.WriteStartArray();
                 TryGetArray(out var ab);
-                while (!ab.Eof)
+                var pos = 0u;
+                while (ab.TryGet(pos, out var bon))
                 {
-                    ab.DumpToJson(writer);
+                    pos += bon.Items;
+                    while (!bon.Eof)
+                    {
+                        bon.DumpToJson(writer);
+                    }
                 }
 
                 writer.WriteEndArray();
                 break;
+            }
             case BonType.Object:
                 writer.WriteStartObject();
                 TryGetObject(out var o);
@@ -1193,6 +1249,55 @@ public struct Bon
         DumpToJson(writer);
         writer.Flush();
         return Encoding.UTF8.GetString(stream.ToArray()).ReplaceLineEndings("\n");
+    }
+}
+
+public struct ArrayBon
+{
+    MemReader _reader;
+    readonly long _ofs;
+    readonly uint _items;
+    readonly bool _splitBy32;
+
+    public ArrayBon(in MemReader reader, long ofs, uint items, bool splitBy32)
+    {
+        _reader = reader;
+        _ofs = ofs;
+        _items = items;
+        _splitBy32 = splitBy32;
+    }
+
+    public uint Items => _items;
+
+    public bool TryGet(uint index, out Bon bon)
+    {
+        if (index >= _items)
+        {
+            bon = new(new(), 0, 0);
+            return false;
+        }
+
+        if (_splitBy32)
+        {
+            _reader.SetCurrentPosition(_ofs + index / 32);
+            var ofs = _reader.ReadUInt64LE();
+            bon = new(_reader, (long)ofs, Math.Min(_items - index / 32 * 32, 32));
+            var skipCount = index % 32;
+            for (var i = 0u; i < skipCount; i++)
+            {
+                bon.Skip();
+            }
+        }
+        else
+        {
+            bon = new(_reader, _reader.GetCurrentPosition(), _items);
+            for (var i = 0u; i < index; i++)
+            {
+                bon.Skip();
+            }
+        }
+
+        return true;
     }
 }
 

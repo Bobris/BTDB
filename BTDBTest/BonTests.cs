@@ -279,7 +279,7 @@ public class BonTests
         Assert.Equal(BonType.Array, bon.BonType);
         Assert.True(bon.TryGetArray(out var bonArrayItems));
         Assert.Equal(0u, bonArrayItems.Items);
-        Assert.True(bonArrayItems.Eof);
+        Assert.False(bonArrayItems.TryGet(0, out _));
         Assert.True(bon.Eof);
         Assert.Equal(0u, bon.Items);
         Assert.Equal("[]", new Bon(buffer).DumpToJson());
@@ -300,9 +300,10 @@ public class BonTests
         Assert.Equal(BonType.Array, bon.BonType);
         Assert.True(bon.TryGetArray(out var bonArrayItems));
         Assert.Equal(1u, bonArrayItems.Items);
-        Assert.True(bonArrayItems.TryGetLong(out var result));
+        Assert.True(bonArrayItems.TryGet(0, out var items));
+        Assert.True(items.TryGetLong(out var result));
         Assert.Equal(42, result);
-        Assert.True(bonArrayItems.Eof);
+        Assert.True(items.Eof);
         Assert.True(bon.Eof);
         Assert.Equal(0u, bon.Items);
         Assert.Equal("[\n  42\n]", new Bon(buffer).DumpToJson());
@@ -324,9 +325,10 @@ public class BonTests
         Assert.Equal(BonType.Array, bon.BonType);
         Assert.True(bon.TryGetArray(out var bonArrayItems));
         Assert.Equal(1u, bonArrayItems.Items);
-        Assert.True(bonArrayItems.TryGetArray(out var result));
+        Assert.True(bonArrayItems.TryGet(0, out var bonArrayItems2));
+        Assert.True(bonArrayItems2.TryGetArray(out var result));
         Assert.Equal(0u, result.Items);
-        Assert.True(bonArrayItems.Eof);
+        Assert.True(bonArrayItems2.Eof);
         Assert.True(bon.Eof);
         Assert.Equal(0u, bon.Items);
         Assert.Equal("[\n  []\n]", new Bon(buffer).DumpToJson());
@@ -476,8 +478,8 @@ public class BonTests
         Assert.True(bon.TryGetObject(out var keyedBon));
         Assert.True(keyedBon.TryGet("last", out var array));
         Assert.True(array.TryGetArray(out var items));
-        items.Skip();
-        Assert.True(items.TryGetLong(out var result));
+        Assert.True(items.TryGet(1, out var item));
+        Assert.True(item.TryGetLong(out var result));
         Assert.Equal(11, result);
     }
 }

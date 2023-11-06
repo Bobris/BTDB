@@ -35,10 +35,10 @@ public class ObjectDbTableWithSizesTest : ObjectDbTestBase
     {
         using var tr = _db.StartTransaction();
         var table = tr.GetRelation<IDocumentTable>();
-        Assert.Equal((true, 9u, 0u, 236907u),
+        Assert.Equal((true, 9u, 0u, 239666u),
             table.ShallowUpsertWithSizes(new() { TenantId = 1, Key = "First", Value = CreateSampleBonData(10000) },
                 true, true));
-        Assert.Equal((false, 9u, 236907u, 171u),
+        Assert.Equal((false, 9u, 239666u, 171u),
             table.ShallowUpsertWithSizes(new() { TenantId = 1, Key = "First", Value = CreateSampleBonData(10) },
                 true, true));
     }
@@ -58,10 +58,10 @@ public class ObjectDbTableWithSizesTest : ObjectDbTestBase
     {
         using var tr = _db.StartTransaction();
         var table = tr.GetRelation<IDocumentTable>();
-        Assert.Equal((true, 9u, 0u, 236907u),
+        Assert.Equal((true, 9u, 0u, 239666u),
             table.ShallowUpsertWithSizes(new() { TenantId = 1, Key = "First", Value = CreateSampleBonData(10000) },
                 true, false));
-        Assert.Equal((false, 9u, 236907u, 236907u),
+        Assert.Equal((false, 9u, 239666u, 239666u),
             table.ShallowUpsertWithSizes(new() { TenantId = 1, Key = "First", Value = CreateSampleBonData(10000) },
                 true, false));
     }
@@ -74,10 +74,10 @@ public class ObjectDbTableWithSizesTest : ObjectDbTestBase
         Assert.Equal((false, 0u, 0u, 0u),
             table.ShallowUpsertWithSizes(new() { TenantId = 1, Key = "First" },
                 false, false));
-        Assert.Equal((true, 9u, 0u, 236907u),
+        Assert.Equal((true, 9u, 0u, 239666u),
             table.ShallowUpsertWithSizes(new() { TenantId = 1, Key = "First", Value = CreateSampleBonData(10000) },
                 true, false));
-        Assert.Equal((false, 9u, 236907u, 236907u),
+        Assert.Equal((false, 9u, 239666u, 239666u),
             table.ShallowUpsertWithSizes(new() { TenantId = 1, Key = "First" },
                 false, false));
     }
@@ -88,13 +88,13 @@ public class ObjectDbTableWithSizesTest : ObjectDbTestBase
         using var tr = _db.StartTransaction();
         var table = tr.GetRelation<IDocumentTable>();
         CreateData(table);
-        Assert.Equal((2ul,19ul,236907ul+171ul), table.RemoveWithSizesById(Constraint<ulong>.Any, Constraint<string>.Any));
+        Assert.Equal((2ul,19ul,239666ul+171ul), table.RemoveWithSizesById(Constraint<ulong>.Any, Constraint<string>.Any));
         Assert.Equal(0, table.Count);
         CreateData(table);
-        Assert.Equal((2ul,19ul,236907ul+171ul), table.RemoveWithSizesById(Constraint.Unsigned.Exact(1ul), Constraint<string>.Any));
+        Assert.Equal((2ul,19ul,239666ul+171ul), table.RemoveWithSizesById(Constraint.Unsigned.Exact(1ul), Constraint<string>.Any));
         Assert.Equal(0, table.Count);
         CreateData(table);
-        Assert.Equal((2ul,19ul,236907ul+171ul), table.RemoveWithSizesById(Constraint.Unsigned.Exact(1ul), Constraint.String.StartsWith("Fi")));
+        Assert.Equal((2ul,19ul,239666ul+171ul), table.RemoveWithSizesById(Constraint.Unsigned.Exact(1ul), Constraint.String.StartsWith("Fi")));
         Assert.Equal(0, table.Count);
     }
 
