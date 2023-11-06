@@ -12,7 +12,7 @@ public class PositionLessStreamProxy : IPositionLessStream
     ulong _position;
     ulong _writeBufStart;
     int _writeBufUsed;
-    byte[] _writeBuf;
+    byte[]? _writeBuf;
 
     public PositionLessStreamProxy(string fileName)
     {

@@ -12,7 +12,7 @@ public interface IMemWriter
     /// Flush writing buffer and prepare another one. After calling this there must be at least 16 bytes free in buffer.
     /// </summary>
     /// <param name="memWriter">owning MemWriter</param>
-    /// <param name="spaceNeeded">if possible reserve this amount of bytes</param>
+    /// <param name="spaceNeeded">if possible reserve this amount of bytes, 0 is special value to flush buffer to storage</param>
     void Flush(ref MemWriter memWriter, uint spaceNeeded);
 
     /// <summary>

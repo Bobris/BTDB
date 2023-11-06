@@ -54,6 +54,17 @@ public struct MemWriter
         controller.Init(ref this);
     }
 
+    public void Flush()
+    {
+        if (Controller is IMemWriter controller)
+        {
+            controller.Flush(ref this, 0);
+            return;
+        }
+
+        ThrowCanBeUsedOnlyWithController();
+    }
+
     public unsafe ReadOnlySpan<byte> GetSpan()
     {
 #if DEBUG
