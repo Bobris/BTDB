@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -536,6 +537,7 @@ public static class PackUnpack
         return res;
     }
 
+    [DoesNotReturn]
     public static void ThrowEndOfStreamException()
     {
         throw new EndOfStreamException();
