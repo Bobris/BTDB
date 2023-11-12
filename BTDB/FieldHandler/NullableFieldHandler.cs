@@ -135,7 +135,6 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
         if (_type == type) return this;
         if (!IsCompatibleWith(type))
         {
-            Debug.Fail("strange");
             return this;
         }
         var wantedItemType = type.GetGenericArguments()[0];
