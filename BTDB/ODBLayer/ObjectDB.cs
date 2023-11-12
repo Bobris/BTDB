@@ -202,8 +202,8 @@ public class ObjectDB : IObjectDB
         static string NiceName(Type type1)
         {
             var niceName = type1.Name;
-            if (type1.IsInterface && niceName.StartsWith("I", StringComparison.Ordinal))
-                niceName = niceName.Substring(1);
+            if (type1.IsInterface && niceName.StartsWith('I'))
+                niceName = niceName[1..];
 
             if (!type1.IsGenericType) return niceName;
             var genericTypes = type1.GenericTypeArguments;
@@ -283,7 +283,7 @@ public class ObjectDB : IObjectDB
             var ofs = PackUnpack.LengthVUInt(id);
             if (tr.Find(key, TableVersionsPrefixLen + ofs) == FindResult.NotFound)
                 return 0;
-            var key2 = tr.GetKey().Slice((int)(TableVersionsPrefixLen + ofs));
+            var key2 = tr.GetKey()[(int)(TableVersionsPrefixLen + ofs)..];
             return checked((uint)PackUnpack.UnpackVUInt(key2));
         }
 
@@ -349,5 +349,18 @@ public class ObjectDB : IObjectDB
     internal ulong GetLastAllocatedDictId()
     {
         return (ulong)Interlocked.Read(ref _lastDictId);
+    }
+
+    internal TableInfo? GetTableInfoFromType(Type type)
+    {
+        var ti = TablesInfo.FindByType(type);
+        if (ti == null)
+        {
+            var name = Type2NameRegistry.FindNameByType(type);
+            if (name == null) return null;
+            ti = TablesInfo.LinkType2Name(type, name);
+        }
+
+        return ti;
     }
 }
