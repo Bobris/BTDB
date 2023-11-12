@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Improved
+
+Exception message for impossible state.
+
 ### Fixed
 
 Detection of NeedFreeContent was too pessimistic for some cases making some methods slower.

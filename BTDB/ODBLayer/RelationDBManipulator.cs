@@ -806,11 +806,13 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             keysToDelete.Add(key);
         }
 
+        var idx = 0;
         foreach (var key in keysToDelete)
         {
             // Exact key is correct even for HasInKeyValue because full key is used in cycle above
             if (!_kvtr.FindExactKey(key))
-                throw new BTDBException("Not found record to delete.");
+                throw new BTDBException("Not found record to delete. " + idx + "/" + keysToDelete.Count + " " +
+                                        Convert.ToHexString(key.AsSpan(0, Math.Min(100, key.Length))));
 
             var valueBytes = _kvtr.GetValue();
 
@@ -825,6 +827,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 MarkModification();
                 _kvtr.EraseCurrent(key);
             }
+
+            idx++;
         }
 
         if (beforeRemove != null)
