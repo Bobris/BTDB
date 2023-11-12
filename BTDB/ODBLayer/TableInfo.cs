@@ -311,26 +311,7 @@ public class TableInfo
         if (ClientTypeVersion != 0) return;
         EnsureKnownLastPersistedVersion();
 
-        var publicFields = _clientType!.GetFields(BindingFlags.Public | BindingFlags.Instance);
-        foreach (var field in publicFields)
-        {
-            if (field.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
-            throw new BTDBException(
-                $"Public field {_clientType.ToSimpleName()}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
-        }
-
-        var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-        var fields = new StructList<TableFieldInfo>();
-        fields.Reserve((uint)props.Length);
-        foreach (var pi in props)
-        {
-            if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
-            if (pi.GetIndexParameters().Length != 0) continue;
-            fields.Add(TableFieldInfo.Build(Name, pi, _tableInfoResolver.FieldHandlerFactory,
-                FieldHandlerOptions.None, pi.GetCustomAttribute<PrimaryKeyAttribute>()?.InKeyValue ?? false));
-        }
-
-        var tvi = new TableVersionInfo(fields.ToArray());
+        var tvi = CreateTableVersionInfoForClientType();
         if (LastPersistedVersion == 0)
         {
             TableVersions.TryAdd(1, tvi);
@@ -353,6 +334,31 @@ public class TableInfo
                 ClientTypeVersion = LastPersistedVersion + 1;
             }
         }
+    }
+
+    TableVersionInfo CreateTableVersionInfoForClientType()
+    {
+        var publicFields = _clientType!.GetFields(BindingFlags.Public | BindingFlags.Instance);
+        foreach (var field in publicFields)
+        {
+            if (field.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
+            throw new BTDBException(
+                $"Public field {_clientType.ToSimpleName()}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
+        }
+
+        var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var fields = new StructList<TableFieldInfo>();
+        fields.Reserve((uint)props.Length);
+        foreach (var pi in props)
+        {
+            if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
+            if (pi.GetIndexParameters().Length != 0) continue;
+            fields.Add(TableFieldInfo.Build(Name, pi, _tableInfoResolver.FieldHandlerFactory,
+                FieldHandlerOptions.None, pi.GetCustomAttribute<PrimaryKeyAttribute>()?.InKeyValue ?? false));
+        }
+
+        var tvi = new TableVersionInfo(fields.ToArray());
+        return tvi;
     }
 
     void EnsureKnownLastPersistedVersion()
@@ -525,8 +531,9 @@ public class TableInfo
     {
         var method = ILBuilder.Instance.NewMethod<ObjectFreeContent>($"FreeContent_{Name}_{version}");
         var ilGenerator = method.Generator;
-        var tableVersionInfo = TableVersions.GetOrAdd(version,
-            (ver, tableInfo) =>
+        var tableVersionInfo = version == 0
+            ? CreateTableVersionInfoForClientType()
+            : TableVersions.GetOrAdd(version, static (ver, tableInfo) =>
                 tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
         var needsFreeContent = NeedsFreeContent.No;
         var anyNeedsCtx = tableVersionInfo.NeedsCtx();

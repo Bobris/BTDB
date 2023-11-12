@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Detection of NeedFreeContent was too pessimistic for some cases making some methods slower.
+
 ## 31.12.3
 
 ### Fixed
