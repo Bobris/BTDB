@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.12.4
+
 ### Improved
 
 Exception message for impossible state.
