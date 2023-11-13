@@ -2760,7 +2760,11 @@ public class ObjectDbTest : IDisposable
     }
 
     class GenericType<T, T2> { }
-    class Subtype1 { }
+    class GenericType2<T> { }
+
+    interface ISubtype1 { }
+
+    class Subtype1: ISubtype1 { }
     class Subtype2 { }
 
     [Fact]
@@ -2768,5 +2772,13 @@ public class ObjectDbTest : IDisposable
     {
         var objDbName = _db.RegisterType(typeof(GenericType<GenericType<Subtype1, Subtype1>, Subtype2>));
         Assert.Equal("GenericType<GenericType<Subtype1,Subtype1>,Subtype2>", objDbName);
+    }
+
+    [Fact]
+    public void RegisterType_GivenInterfaceInGenericTypeAndClassInGenericType_ShouldReturnUniqueNamesForEachCase()
+    {
+        var objDbName1 = _db.RegisterType(typeof(GenericType2<Subtype1>));
+        var objDbName2 = _db.RegisterType(typeof(GenericType2<ISubtype1>));
+        Assert.NotEqual(objDbName2, objDbName1);
     }
 }
