@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+"I" prefixes are now removed only on first level of generic types.
+
 ## 31.12.4
 
 ### Improved
