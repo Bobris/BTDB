@@ -60,7 +60,8 @@ public class SourceGenerator : IIncrementalGenerator
                         .ToImmutableArray();
                     return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, parameters,
-                        new[] { new PropertyInfo("", returnType, null, true, false, false) }.ToImmutableArray(),
+                        new[] { new PropertyInfo("", returnType, null, true, false, false, false, null) }
+                            .ToImmutableArray(),
                         ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty);
                 }
 
@@ -166,14 +167,21 @@ public class SourceGenerator : IIncrementalGenerator
                     var propertyInfos = symbol.GetMembers()
                         .OfType<IPropertySymbol>()
                         .Where(p => p.GetAttributes().Any(a => a.AttributeClass?.Name == "DependencyAttribute") &&
-                                    (isPartial || p.SetMethod is
-                                        { DeclaredAccessibility: Accessibility.Public or Accessibility.Internal }))
-                        .Select(p => new PropertyInfo(p.Name,
-                            p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                            p.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "DependencyAttribute")
-                                ?.ConstructorArguments.FirstOrDefault().Value as string,
-                            p.Type.IsReferenceType,
-                            p.NullableAnnotation == NullableAnnotation.Annotated, p.SetMethod!.IsInitOnly))
+                                    p.SetMethod is not null)
+                        .Select(p =>
+                        {
+                            var isComplex = p.SetMethod!.DeclaredAccessibility == Accessibility.Private ||
+                                            p.SetMethod.IsInitOnly;
+                            // if Set/init method have default implementation => then it could directly set backing field
+                            var isFieldBased = isComplex && IsDefaultSetterOrInit(p.SetMethod.DeclaringSyntaxReferences);
+                            return new PropertyInfo(p.Name,
+                                p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                                p.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "DependencyAttribute")
+                                    ?.ConstructorArguments.FirstOrDefault().Value as string,
+                                p.Type.IsReferenceType,
+                                p.NullableAnnotation == NullableAnnotation.Annotated, isComplex, isFieldBased,
+                                isComplex ? isFieldBased ? $"<{p.Name}>k__BackingField" : p.SetMethod.Name : null);
+                        })
                         .ToImmutableArray();
                     var privateConstructor =
                         constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected;
@@ -187,6 +195,18 @@ public class SourceGenerator : IIncrementalGenerator
             }).Where(i => i != null);
 
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
+    }
+
+    bool IsDefaultSetterOrInit(ImmutableArray<SyntaxReference> setMethodDeclaringSyntaxReferences)
+    {
+        if (setMethodDeclaringSyntaxReferences.IsEmpty) return true;
+        if (setMethodDeclaringSyntaxReferences.Length > 1) return false;
+        var syntax = setMethodDeclaringSyntaxReferences[0].GetSyntax();
+        if (syntax is AccessorDeclarationSyntax { Body: null, ExpressionBody: null })
+        {
+            return true;
+        }
+        return false;
     }
 
     static DispatcherInfo[] DetectDispatcherInfo(INamedTypeSymbol symbol)
@@ -442,7 +462,7 @@ public class SourceGenerator : IIncrementalGenerator
         var factoryCode = new StringBuilder();
         var parametersCode = new StringBuilder();
         var propertyCode = new StringBuilder();
-        var propertyInitOnlyCode = new StringBuilder();
+        var additionalDeclarations = new StringBuilder();
         var parameterIndex = 0;
 
         foreach (var (name, type, isReference, optional, defaultValue) in generationInfo.ConstructorParameters)
@@ -486,47 +506,48 @@ public class SourceGenerator : IIncrementalGenerator
                 factoryCode.Append("\n            ");
             }
 
-            if (propertyInfo.IsInitOnly)
+            if (optional)
             {
-                if (propertyInitOnlyCode.Length > 0) propertyInitOnlyCode.Append(", ");
-                if (!optional)
-                {
-                    propertyInitOnlyCode.Append($"{name} = ");
-                    propertyInitOnlyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
-                    propertyInitOnlyCode.Append($"f{parameterIndex}(container2, ctx2))");
-                }
-                else
-                {
-                    propertyInitOnlyCode.Append($"{name} = f{parameterIndex} != null ?");
-                    propertyInitOnlyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
-                    propertyInitOnlyCode.Append($"f{parameterIndex}(container2, ctx2)) : default");
-                }
+                propertyCode.Append($"if (f{parameterIndex} != null) ");
             }
-            else
+
+            if (propertyInfo.IsComplex)
             {
-                if (!optional)
+                if (propertyInfo.IsFieldBased)
                 {
-                    propertyCode.Append($"res.{name} = ");
+                    // language=c#
+                    additionalDeclarations.Append($"""
+                            [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{propertyInfo.BackingName}")]
+                            extern static ref {propertyInfo.Type} FieldRef{propertyInfo.Name}({generationInfo.FullName} @this);
+
+                        """);
+                    propertyCode.Append($"FieldRef{name}(res) = ");
                     propertyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
                     propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
                 }
                 else
                 {
-                    propertyCode.Append($"if (f{parameterIndex}!=null) res.{name} = ");
-                    propertyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"(({type})");
-                    propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
-                }
+                    // language=c#
+                    additionalDeclarations.Append($"""
+                            [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{propertyInfo.BackingName}")]
+                            extern static void MethodSetter{propertyInfo.Name}({generationInfo.FullName} @this, {propertyInfo.Type} value);
 
-                propertyCode.Append("\n                ");
+                        """);
+                    propertyCode.Append($"MethodSetter{name}(res, ");
+                    propertyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
+                    propertyCode.Append($"f{parameterIndex}(container2, ctx2)));");
+                }
+            }
+            else
+            {
+                propertyCode.Append($"res.{name} = ");
+                propertyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
+                propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
             }
 
-            parameterIndex++;
-        }
+            propertyCode.Append("\n                ");
 
-        if (propertyInitOnlyCode.Length > 0)
-        {
-            propertyInitOnlyCode.Append(" }");
-            propertyInitOnlyCode.Insert(0, " { ");
+            parameterIndex++;
         }
 
         var declarations = new StringBuilder();
@@ -560,6 +581,8 @@ public class SourceGenerator : IIncrementalGenerator
                 """);
         }
 
+        declarations.Append(additionalDeclarations);
+
         var dispatchers = new StringBuilder();
         foreach (var (name, type, resultType, ifaceName) in generationInfo.Dispatchers)
         {
@@ -591,7 +614,7 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         {{factoryCode}}return (container2, ctx2) =>
                         {
-                            var res = {{(generationInfo.PrivateConstructor ? "Constr" : "new " + generationInfo.FullName)}}({{parametersCode}}){{propertyInitOnlyCode}};
+                            var res = {{(generationInfo.PrivateConstructor ? "Constr" : "new " + generationInfo.FullName)}}({{parametersCode}});
                             {{propertyCode}}return res;
                         };
                     });{{dispatchers}}
@@ -613,13 +636,28 @@ enum GenerationType
     Interface
 }
 
-record GenerationInfo(GenerationType GenType, string? Namespace, string Name, string FullName, bool IsPartial,
+record GenerationInfo(
+    GenerationType GenType,
+    string? Namespace,
+    string Name,
+    string FullName,
+    bool IsPartial,
     bool PrivateConstructor,
-    ImmutableArray<ParameterInfo> ConstructorParameters, ImmutableArray<PropertyInfo> Properties,
-    ImmutableArray<string> ParentDeclarations, ImmutableArray<DispatcherInfo> Dispatchers);
+    ImmutableArray<ParameterInfo> ConstructorParameters,
+    ImmutableArray<PropertyInfo> Properties,
+    ImmutableArray<string> ParentDeclarations,
+    ImmutableArray<DispatcherInfo> Dispatchers);
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
 
-record PropertyInfo(string Name, string Type, string? DependencyName, bool IsReference, bool Optional, bool IsInitOnly);
+record PropertyInfo(
+    string Name,
+    string Type,
+    string? DependencyName,
+    bool IsReference,
+    bool Optional,
+    bool IsComplex,
+    bool IsFieldBased,
+    string? BackingName);
 
 record DispatcherInfo(string Name, string? Type, string? ResultType, string IfaceName);

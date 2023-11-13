@@ -36,3 +36,18 @@ public class Klass
         Console.WriteLine("Ok");
     }
 }
+
+public interface ILogger
+{
+}
+
+[Generate]
+public class ErrorHandler
+{
+    [Dependency]
+    public ILogger? Logger
+    {
+        get => null;
+        init => Console.WriteLine(value!.ToString());
+    }
+}

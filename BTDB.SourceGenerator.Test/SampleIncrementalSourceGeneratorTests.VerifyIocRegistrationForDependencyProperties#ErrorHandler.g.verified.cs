@@ -14,7 +14,8 @@ static file class ErrorHandlerRegistration
             if (f0 == null) throw new global::System.ArgumentException("Cannot resolve ILogger Logger property of ErrorHandler");
             return (container2, ctx2) =>
             {
-                var res = new global::ErrorHandler() { Logger = Unsafe.As<global::ILogger>(f0(container2, ctx2)) };
+                var res = new global::ErrorHandler();
+                res.Logger = Unsafe.As<global::ILogger>(f0(container2, ctx2));
                 return res;
             };
         });

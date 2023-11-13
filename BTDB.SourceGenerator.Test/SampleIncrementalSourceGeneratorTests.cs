@@ -103,7 +103,7 @@ public class SampleIncrementalSourceGeneratorTests
             public class ErrorHandler
             {
                 [BTDB.IOC.Dependency]
-                public ILogger Logger { get; init; }
+                public ILogger Logger { get; set; }
             }
             """);
     }
@@ -117,6 +117,92 @@ public class SampleIncrementalSourceGeneratorTests
 
             [BTDB.Generate]
             public delegate ILogger Factory(int a, string b);
+            ");
+    }
+
+    [Fact]
+    public Task VerifyInitOnlyDependency()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler
+            {
+                [BTDB.IOC.Dependency]
+                public ILogger Logger { get; init; }
+            }
+            ");
+    }
+
+    [Fact]
+    public Task VerifyInitOnlyOptionalDependency()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler
+            {
+                [BTDB.IOC.Dependency]
+                public ILogger? Logger { get; init; }
+            }
+            ");
+    }
+
+    [Fact]
+    public Task VerifyCustomInitOnlyOptionalDependency()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler
+            {
+                [BTDB.IOC.Dependency]
+                public ILogger? Logger {
+                    get => null;
+                    init => Console.WriteLine(value!.ToString());
+                }
+            }
+            ");
+    }
+
+    [Fact]
+    public Task VerifyCustomPrivateSetterOptionalDependency()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler
+            {
+                [BTDB.IOC.Dependency]
+                public ILogger? Logger {
+                    get => null;
+                    private set => Console.WriteLine(value!.ToString());
+                }
+            }
             ");
     }
 
