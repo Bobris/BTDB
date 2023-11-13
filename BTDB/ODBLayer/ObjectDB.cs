@@ -199,19 +199,19 @@ public class ObjectDB : IObjectDB
         var name = Type2NameRegistry.FindNameByType(type);
         if (name != null) return name;
 
-        static string NiceName(Type type1)
+        static string NiceName(Type type1, bool removeIFromInterfaceName)
         {
             var niceName = type1.Name;
-            if (type1.IsInterface && niceName.StartsWith('I'))
+            if (removeIFromInterfaceName && type1.IsInterface && niceName.StartsWith('I'))
                 niceName = niceName[1..];
 
             if (!type1.IsGenericType) return niceName;
             var genericTypes = type1.GenericTypeArguments;
-            niceName = $"{niceName.Split('`')[0]}<{string.Join(",", genericTypes.Select(NiceName))}>";
+            niceName = $"{niceName.Split('`')[0]}<{string.Join(",", genericTypes.Select(t => NiceName(t, false)))}>";
             return niceName;
         }
 
-        name = NiceName(type);
+        name = NiceName(type, true);
 
         return RegisterType(type, name, manualRegistration);
     }
