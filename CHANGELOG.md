@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.12.5
+
 ### Fixed
 
 "I" prefixes are now removed only on first level of generic types.
