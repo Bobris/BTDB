@@ -1279,7 +1279,7 @@ public struct ArrayBon
 
         if (_splitBy32)
         {
-            _reader.SetCurrentPosition(_ofs + index / 32);
+            _reader.SetCurrentPosition(_ofs + index / 32 * 8);
             var ofs = _reader.ReadUInt64LE();
             bon = new(_reader, (long)ofs, Math.Min(_items - index / 32 * 32, 32));
             var skipCount = index % 32;
