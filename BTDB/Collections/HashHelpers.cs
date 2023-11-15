@@ -4,6 +4,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace BTDB.Collections;
@@ -15,9 +16,13 @@ static class HashHelpers
     internal static int PowerOf2(int v)
     {
         if ((v & (v - 1)) == 0) return v;
-        var i = 2;
-        while (i < v) i <<= 1;
-        return i;
+        v--;
+        v |= v >> 1;
+        v |= v >> 2;
+        v |= v >> 4;
+        v |= v >> 8;
+        v |= v >> 16;
+        return v + 1;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
