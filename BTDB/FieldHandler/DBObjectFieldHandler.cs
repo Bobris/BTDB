@@ -216,7 +216,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
     void UpdateNeedsFreeContent(Type type, ref NeedsFreeContent needsFreeContent)
     {
         //decides upon current version  (null for object types never stored in DB)
-        var tableInfo = ((ObjectDB)_objectDb).GetTableInfoFromType(type);
+        var tableInfo = ((ObjectDB)_objectDb).TablesInfo.FindByType(type);
         var needsContentPartial =
             tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
         Extensions.UpdateNeedsFreeContent(needsContentPartial, ref needsFreeContent);
