@@ -218,7 +218,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
         return needsFreeContent;
     }
 
-    ThreadLocal<HashSet<Type>> StackOverflowProtection { get; } = new(() => new());
+    static ThreadLocal<HashSet<Type>> StackOverflowProtection { get; } = new(() => new());
 
     void UpdateNeedsFreeContent(Type type, ref NeedsFreeContent needsFreeContent)
     {
@@ -235,6 +235,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
                     Extensions.UpdateNeedsFreeContent(NeedsFreeContent.Yes, ref needsFreeContent);
                     return;
                 }
+
                 var publicFields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
                 foreach (var field in publicFields)
                 {
@@ -263,8 +264,10 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
             {
                 StackOverflowProtection.Value.Remove(type);
             }
+
             return;
         }
+
         var needsContentPartial =
             tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
         Extensions.UpdateNeedsFreeContent(needsContentPartial, ref needsFreeContent);
