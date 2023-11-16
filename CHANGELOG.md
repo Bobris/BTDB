@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.12.6
+
 ### Fixed
 
 Last 2 versions reverted and NeedFreeContent detection is now using different approach.
