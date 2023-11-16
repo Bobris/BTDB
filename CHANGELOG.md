@@ -19,6 +19,12 @@ It does allow to use IOC in AOT builds. More features will follow.
 
 Prefixed RemoveById now correctly works with OnBeforeRemove.
 
+## 31.12.1
+
+### Fixed
+
+Fix crash in ReadStringInUtf8
+
 ## 31.12.0
 
 ### Added
