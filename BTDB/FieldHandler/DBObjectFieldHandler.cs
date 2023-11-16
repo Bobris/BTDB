@@ -1,6 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Threading;
+using BTDB.Collections;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
@@ -213,10 +218,53 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
         return needsFreeContent;
     }
 
+    ThreadLocal<HashSet<Type>> StackOverflowProtection { get; } = new(() => new());
+
     void UpdateNeedsFreeContent(Type type, ref NeedsFreeContent needsFreeContent)
     {
         //decides upon current version  (null for object types never stored in DB)
         var tableInfo = ((ObjectDB)_objectDb).TablesInfo.FindByType(type);
+        if (tableInfo == null)
+        {
+            if (StackOverflowProtection.Value!.Contains(type)) return;
+            StackOverflowProtection.Value.Add(type);
+            try
+            {
+                if (type.GetCustomAttribute(typeof(RequireContentFreeAttribute)) != null)
+                {
+                    Extensions.UpdateNeedsFreeContent(NeedsFreeContent.Yes, ref needsFreeContent);
+                    return;
+                }
+                var publicFields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
+                foreach (var field in publicFields)
+                {
+                    if (field.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
+                    throw new BTDBException(
+                        $"Public field {type.ToSimpleName()}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
+                }
+
+                var props = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                var fields = new StructList<TableFieldInfo>();
+                fields.Reserve((uint)props.Length);
+                var method = ILBuilder.Instance.NewMethod<ObjectFreeContent>($"Dummy");
+                var ilGenerator = method.Generator;
+                foreach (var pi in props)
+                {
+                    if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
+                    if (pi.GetIndexParameters().Length != 0) continue;
+                    var fieldInfo = TableFieldInfo.Build(Name, pi, _objectDb.FieldHandlerFactory,
+                        FieldHandlerOptions.None, pi.GetCustomAttribute<PrimaryKeyAttribute>()?.InKeyValue ?? false);
+                    Extensions.UpdateNeedsFreeContent(
+                        fieldInfo.Handler!.FreeContent(ilGenerator, _ => { }, _ => { }),
+                        ref needsFreeContent);
+                }
+            }
+            finally
+            {
+                StackOverflowProtection.Value.Remove(type);
+            }
+            return;
+        }
         var needsContentPartial =
             tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
         Extensions.UpdateNeedsFreeContent(needsContentPartial, ref needsFreeContent);
