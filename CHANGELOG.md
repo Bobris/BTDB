@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.12.7
+
 ### Fixed
 
 Fixed StackOverflowException in NeedFreeContent detection.
