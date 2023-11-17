@@ -13,14 +13,16 @@ namespace BTDB.Collections;
 public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TValue>> where TKey : IEquatable<TKey>
 {
     int _count;
+    readonly int _maxCapacity;
 
     // 0-based index into _entries of head of free chain: -1 means empty
     int _freeList = -1;
 
-    // 1-based index into _entries; 0 means empty
-    int[] _buckets;
     int UsageHead = -1;
     int UsageTail = -1;
+
+    // 1-based index into _entries; 0 means empty
+    int[] _buckets;
     Entry[] _entries;
 
     [DebuggerDisplay("({Key}, {Value})->{Next} P:{UsagePrev} N:{UsageNext}")]
@@ -38,13 +40,22 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
         public TValue Value;
     }
 
-    public LruCache(int capacity)
+    /// <summary>
+    /// Last Recently Used Cache with maximum capacity and gradually increasing capacity to specified maximum.
+    /// It uses GetHashCode of TKey to distribute keys into buckets.
+    /// </summary>
+    /// <param name="capacity">Must be at least 1, and it will be modified to next power of 2</param>
+    /// <param name="startingCapacity">How many buckets it will allocate at start</param>
+    public LruCache(int capacity = 64, int startingCapacity = 16)
     {
         if (capacity < 1)
             HashHelpers.ThrowCapacityArgumentOutOfRangeException();
         if (capacity < 2)
             capacity = 2;
-        capacity = HashHelpers.PowerOf2(capacity);
+        _maxCapacity = HashHelpers.PowerOf2(capacity);
+        if (startingCapacity > capacity) startingCapacity = capacity;
+        if (startingCapacity < 2) startingCapacity = 2;
+        capacity = HashHelpers.PowerOf2(startingCapacity);
         _buckets = new int[capacity];
         _entries = new Entry[capacity];
     }
@@ -52,6 +63,8 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
     public int Count => _count;
 
     public int Capacity => _entries.Length;
+
+    public int MaxCapacity => _maxCapacity;
 
     public bool TryGetValue(TKey key, out TValue value)
     {
@@ -168,6 +181,8 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
         return false;
     }
 
+    public ref TValue this[TKey key] => ref GetOrAddValueRef(key);
+
     // Not safe for concurrent _reads_ (at least, if either of them add)
     public ref TValue GetOrAddValueRef(TKey key)
     {
@@ -229,11 +244,63 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
         }
         else
         {
-            Debug.Assert(_count == entries.Length);
-            entryIndex = UsageTail;
-            // there are always at least two entries, so this is always valid
-            UsageTail = entries[UsageTail].UsagePrev;
-            entries[UsageTail].UsageNext = -1;
+            if (_count < entries.Length)
+            {
+                entryIndex = _count;
+            }
+            else if (_count < _maxCapacity)
+            {
+                entryIndex = _count;
+                IncreaseCapacity(_count * 2);
+                entries = _entries;
+                bucketIndex = hash & (_buckets.Length - 1);
+            }
+            else
+            {
+                entryIndex = UsageTail;
+                var oldhash = entries[entryIndex].Hash;
+                var oldbucketIndex = oldhash & (_buckets.Length - 1);
+                var oldentryIndex = _buckets[oldbucketIndex] - 1;
+
+                var lastIndex = -1;
+                var collisionCount = 0;
+                while (oldentryIndex != -1)
+                {
+                    ref var candidate = ref entries[oldentryIndex];
+                    if (oldentryIndex == entryIndex)
+                    {
+                        // there are always at least two entries, so this is always valid
+                        UsageTail = candidate.UsagePrev;
+                        entries[UsageTail].UsageNext = -1;
+                        if (lastIndex != -1)
+                        {
+                            // Fixup preceding element in chain to point to next (if any)
+                            entries[lastIndex].Next = candidate.Next;
+                        }
+                        else
+                        {
+                            // Fixup bucket to new head (if any)
+                            _buckets[oldbucketIndex] = candidate.Next + 1;
+                        }
+
+                        entries[entryIndex] = default;
+                        _count--;
+                        break;
+                    }
+
+                    lastIndex = oldentryIndex;
+                    oldentryIndex = candidate.Next;
+
+                    if (collisionCount == entries.Length)
+                    {
+                        // The chain of entries forms a loop; which means a concurrent update has happened.
+                        // Break out of the loop and throw, rather than looping forever.
+                        HashHelpers.ThrowInvalidOperationException_ConcurrentOperationsNotSupported();
+                    }
+
+                    collisionCount++;
+                }
+            }
         }
 
         entries[entryIndex].Hash = hash;
@@ -244,6 +311,8 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
         if (UsageHead != -1)
             entries[UsageHead].UsagePrev = entryIndex;
         UsageHead = entryIndex;
+        if (UsageTail == -1)
+            UsageTail = entryIndex;
         _buckets[bucketIndex] = entryIndex + 1;
         _count++;
         return ref entries[entryIndex].Value;
@@ -268,27 +337,6 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
 
         _buckets = newBuckets;
         _entries = entries;
-    }
-
-    public void CopyTo(KeyValuePair<TKey, TValue>[] array, int index)
-    {
-        ArgumentNullException.ThrowIfNull(array);
-        // Let the runtime validate the index
-
-        var entries = _entries;
-        var i = 0;
-        var count = _count;
-        while (count > 0)
-        {
-            var entry = entries[i];
-            if (entry.Next > -2) // part of free list?
-            {
-                count--;
-                array[index++] = new(entry.Key, entry.Value);
-            }
-
-            i++;
-        }
     }
 
     public Enumerator GetEnumerator() => new Enumerator(this); // avoid boxing

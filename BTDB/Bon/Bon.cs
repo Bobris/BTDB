@@ -332,8 +332,8 @@ public struct BonBuilder
     StructList<ulong> _objKeys = new();
     MemWriter _topData;
     uint _items = 0;
-    readonly Dictionary<string, ulong> _strCache = new();
-    readonly Dictionary<(bool IsClass, StructList<ulong> ObjKeys), ulong> _objKeysCache = new();
+    readonly LruCache<string, ulong> _strCache = new(512);
+    readonly LruCache<(bool IsClass, StructList<ulong> ObjKeys), ulong> _objKeysCache = new(64);
     HashSet<string>? _objKeysSet;
 
     public BonBuilder(MemWriter memWriter)
@@ -517,18 +517,21 @@ public struct BonBuilder
             {
                 rootData = ref _stack[0].Item2;
             }
+
             if (!bytes.GetSpan().IsEmpty)
             {
                 var pos2 = rootData.GetCurrentPosition();
                 rootData.WriteBlock(bytes.GetSpan());
                 objKeys.Add((ulong)pos2);
             }
+
             var pos = rootData.GetCurrentPosition();
             rootData.WriteVUInt32(items);
             for (var i = 0u; i < objKeys.Count; i++)
             {
                 rootData.WriteUInt64LE(objKeys[i]);
             }
+
             _lastBonPos = (ulong)_topData.GetCurrentPosition();
             _topData.WriteUInt8(Helpers.CodeArraySplitBy32Ptr);
             _topData.WriteVUInt64((ulong)pos);
@@ -605,7 +608,7 @@ public struct BonBuilder
                     rootData.WriteVUInt64(keyOfs);
                 }
 
-                _objKeysCache.Add((false, objKeys), posKeys);
+                _objKeysCache[(false, objKeys)] = posKeys;
             }
 
             var pos = rootData.GetCurrentPosition();
@@ -651,7 +654,7 @@ public struct BonBuilder
                 rootData.WriteVUInt64(keyOfs);
             }
 
-            _objKeysCache.Add((true, objKeys), posKeys);
+            _objKeysCache[(true, objKeys)] = posKeys;
         }
 
         var pos = rootData.GetCurrentPosition();
