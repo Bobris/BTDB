@@ -19,7 +19,7 @@ public class MemoryMappedMemReader : IMemReader, IDisposable
         _memoryMappedFile = MemoryMappedFile.CreateFromFile(_fileHandle, null, 0, MemoryMappedFileAccess.Read,
             HandleInheritability.None,
             false);
-        _viewAccessor = _memoryMappedFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+        _viewAccessor = _memoryMappedFile.CreateViewAccessor(0, RandomAccess.GetLength(_fileHandle), MemoryMappedFileAccess.Read);
         _viewAccessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _ptr);
     }
 
