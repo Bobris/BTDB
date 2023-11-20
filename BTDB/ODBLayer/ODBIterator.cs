@@ -629,6 +629,13 @@ public class ODBIterator
                     .First();
                 IterateHandler(ref reader, itemHandler, skipping, null);
             }
+            else
+            {
+                if (_visitor?.NeedScalarAsText() ?? false)
+                {
+                    _visitor.ScalarAsText("null");
+                }
+            }
         }
         else if (handler is OrderedEncryptedStringHandler)
         {
