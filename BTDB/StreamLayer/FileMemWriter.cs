@@ -20,8 +20,8 @@ public class FileMemWriter : IMemWriter, IDisposable
         _streamHandle = streamHandle;
         _currentPosition = 0;
     }
-    
-    public FileMemWriter(string fileName): this(File.OpenHandle(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite))
+
+    public FileMemWriter(string fileName) : this(File.OpenHandle(fileName, FileMode.Create, FileAccess.ReadWrite))
     {
     }
 
