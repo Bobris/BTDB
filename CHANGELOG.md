@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Fixed
+
+Random rare corruption of DB when using InKeyValue.
+
+### Added
+
+Contraint.Exact for Guids.
+
 ### Improved
 
 Exception message for impossible state.
@@ -14,6 +22,26 @@ Detection of NeedFreeContent was too pessimistic for some cases making some meth
 
 IOC does not use Runtime IL code generation, but SourceGenerator. Some features were lost, some features could be sill added back if there will be demand. Assembly scanning was changed most. And all resolvable classes had to be marked by `[Generate]` attribute on itself or any parent classes or interfaces.
 It does allow to use IOC in AOT builds. More features will follow.
+
+## 31.12.7
+
+### Fixed
+
+Fixed StackOverflowException in NeedFreeContent detection.
+
+## 31.12.6
+
+### Fixed
+
+Last 2 versions reverted and NeedFreeContent detection is now using different approach.
+
+## 31.12.5
+
+### Fixed
+
+"I" prefixes are now removed only on first level of generic types.
+
+## 31.12.4
 
 ### Fixed
 
