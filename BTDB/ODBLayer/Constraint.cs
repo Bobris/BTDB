@@ -227,6 +227,11 @@ public static partial class Constraint
             new ConstraintStringUpTo(value, including);
         public static readonly Constraint<string> Any = Constraint<string>.Any;
     }
+
+    public static partial class Guid
+    {
+        public static Constraint<System.Guid> Exact(System.Guid value) => new ConstraintGuidExact(value);
+    }
 }
 
 public class FirstConstraint<T>: Constraint<T>
@@ -460,6 +465,22 @@ public class ConstraintGuidAny : ConstraintAny<Guid>
     {
         reader.SkipGuid();
         return IConstraint.MatchResult.Yes;
+    }
+}
+
+public class ConstraintGuidExact : ConstraintExact<Guid>
+{
+    readonly Guid _value;
+    public ConstraintGuidExact(Guid value) => _value = value;
+
+    protected override void WriteExactValue(ref SpanWriter writer)
+    {
+        writer.WriteGuid(_value);
+    }
+
+    protected override void Skip(ref SpanReader reader)
+    {
+        reader.SkipGuid();
     }
 }
 
