@@ -480,7 +480,7 @@ public class ConstraintGuidExact : ConstraintExact<Guid>
 
     protected override void Skip(ref SpanReader reader)
     {
-        reader.ReadGuid();
+        reader.SkipGuid();
     }
 }
 
