@@ -463,6 +463,22 @@ public class ConstraintGuidAny : ConstraintAny<Guid>
     }
 }
 
+public class ConstraintGuidExact : ConstraintExact<Guid>
+{
+    readonly Guid _value;
+    public ConstraintGuidExact(Guid value) => _value = value;
+
+    protected override void WriteExactValue(ref SpanWriter writer)
+    {
+        writer.WriteGuid(_value);
+    }
+
+    protected override void Skip(ref SpanReader reader)
+    {
+        reader.ReadGuid();
+    }
+}
+
 public class ConstraintStringAny : ConstraintAny<string>
 {
     public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
