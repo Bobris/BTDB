@@ -134,14 +134,18 @@ public class InKeyValueStressTest
         while (true)
         {
             cmdId++;
+            if (cmdId % 100000 == 0)
+            {
+                Console.WriteLine(cmdId);
+            }
             switch (r.Next(1, 3))
             {
                 case 1:
                 {
                     var a = new ApiKey()
                     {
-                        CompanyId = (ulong)r.Next(20, 30),
-                        ApiKeyId = (ulong)r.Next(40, 50),
+                        CompanyId = (ulong)r.Next(20, 300),
+                        ApiKeyId = (ulong)r.Next(40, 500),
                         Name = "Test",
                         Key = "abcdefgh",
                         Description = "Test",
@@ -157,7 +161,7 @@ public class InKeyValueStressTest
                 {
                     using var tr = _odb.StartTransaction();
                     var table = tr.GetRelation<IApiKeyTable>();
-                    var a = table.FindByIdOrDefaultOnlyInKeyValues((ulong)r.Next(20, 30), (ulong)r.Next(40, 50));
+                    var a = table.FindByIdOrDefaultOnlyInKeyValues((ulong)r.Next(20, 300), (ulong)r.Next(40, 500));
                     if (a != null)
                     {
                         var sec = r.Next(10, 50);
@@ -170,10 +174,10 @@ public class InKeyValueStressTest
                 }
                 case 3:
                 {
-                    if (r.Next(100) != 50) break;
+                    if (r.Next(20) != 5) break;
                     using var tr = _odb.StartTransaction();
                     var table = tr.GetRelation<IApiKeyTable>();
-                    table.RemoveById((ulong)r.Next(20, 30));
+                    table.RemoveById((ulong)r.Next(20, 300));
                     tr.Commit();
                     break;
                 }
