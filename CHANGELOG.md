@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Fixed
+
+Random rare corruption of DB when using InKeyValue.
+
+### Added
+
+Contraint.Exact for Guids.
+
 ## 31.12.7
 
 ### Fixed
