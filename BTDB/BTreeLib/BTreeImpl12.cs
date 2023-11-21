@@ -1815,41 +1815,97 @@ public class BTreeImpl12
             // This could be optimized by overwriting the key in place if its has same length
             FreeLongKey(longKeys[stackItem._posInNode]);
             longKeys[stackItem._posInNode] = AllocateLongKey(key[prefix.Length..]);
-            return;
         }
-
-        var keyOfs = NodeUtils12.GetKeySpans(top._node, out var keyData);
-        var oldKey = GetShortKey(keyOfs, keyData, top._posInNode);
-        if (oldKey.Length == key.Length - prefix.Length)
+        else
         {
-            MakeUnique(rootNode, stack.AsSpan());
-            ref var stackItem = ref stack.Last;
-            keyOfs = NodeUtils12.GetKeySpans(stackItem._node, out keyData);
-            oldKey = GetShortKey(keyOfs, keyData, top._posInNode);
-            key[prefix.Length..].CopyTo(oldKey);
-            return;
-        }
-
-        var newNode = AllocateLeaf(header._childCount, (uint)prefix.Length,
-            (ulong)keyData.Length + (ulong)(key.Length - prefix.Length) - (ulong)oldKey.Length, out var keyPusher);
-
-        for (var i = 0; i < header._childCount; i++)
-        {
-            if (i == top._posInNode)
+            var keyOfs = NodeUtils12.GetKeySpans(top._node, out var keyData);
+            var oldKey = GetShortKey(keyOfs, keyData, top._posInNode);
+            if (oldKey.Length == key.Length - prefix.Length)
             {
-                keyPusher.AddKey(key);
+                MakeUnique(rootNode, stack.AsSpan());
+                ref var stackItem = ref stack.Last;
+                keyOfs = NodeUtils12.GetKeySpans(stackItem._node, out keyData);
+                oldKey = GetShortKey(keyOfs, keyData, top._posInNode);
+                key[prefix.Length..].CopyTo(oldKey);
             }
             else
             {
-                keyPusher.AddKey(prefix, GetShortKey(keyOfs, keyData, i));
+                var newNode = AllocateLeaf(header._childCount, (uint)prefix.Length,
+                    (ulong)keyData.Length + (ulong)(key.Length - prefix.Length) - (ulong)oldKey.Length,
+                    out var keyPusher);
+
+                for (var i = 0; i < header._childCount; i++)
+                {
+                    if (i == top._posInNode)
+                    {
+                        keyPusher.AddKey(key);
+                    }
+                    else
+                    {
+                        keyPusher.AddKey(prefix, GetShortKey(keyOfs, keyData, i));
+                    }
+                }
+
+                keyPusher.Finish();
+                var newValues = NodeUtils12.GetLeafValues(newNode);
+                var oldValues = NodeUtils12.GetLeafValues(top._node);
+                oldValues.CopyTo(newValues);
+                MakeUnique(rootNode, stack.AsSpan()[..^1]);
+                OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, newNode);
             }
         }
-        keyPusher.Finish();
-        var newValues = NodeUtils12.GetLeafValues(newNode);
-        var oldValues = NodeUtils12.GetLeafValues(top._node);
-        oldValues.CopyTo(newValues);
-        MakeUnique(rootNode, stack.AsSpan()[..^1]);
-        OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, newNode);
+
+        if (top._posInNode != 0) return;
+        var fixFirstKeyIdx = (int)stack.Count - 1;
+        while (fixFirstKeyIdx > 0)
+        {
+            fixFirstKeyIdx--;
+            ref var stackItem = ref stack[fixFirstKeyIdx];
+            if (stackItem._posInNode == 0)
+                continue;
+            header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
+            Debug.Assert(header._referenceCount == 1);
+            var totalSuffixLen =
+                (ulong)(NodeUtils12.GetTotalSuffixLenExcept(stackItem._node, stackItem._posInNode - 1,
+                    stackItem._posInNode - 1) + key.Length);
+            var newNode = AllocateBranch(header._childCount, totalSuffixLen, out var keyPusher);
+            if (header.HasLongKeys)
+            {
+                var longKeys = NodeUtils12.GetLongKeyPtrs(stackItem._node);
+                for (var i = 0; i < stackItem._posInNode - 1; i++)
+                {
+                    keyPusher.AddKey(NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                }
+
+                keyPusher.AddKey(key);
+                for (int i = stackItem._posInNode; i < header._childCount - 1; i++)
+                {
+                    keyPusher.AddKey(NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                }
+            }
+            else
+            {
+                var keyOfs = NodeUtils12.GetKeySpans(stackItem._node, out var keyData);
+                for (var i = 0; i < stackItem._posInNode - 1; i++)
+                {
+                    keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
+                }
+
+                keyPusher.AddKey(key);
+                for (int i = stackItem._posInNode; i < header._childCount - 1; i++)
+                {
+                    keyPusher.AddKey(GetShortKey(keyOfs, keyData, i));
+                }
+            }
+
+            keyPusher.Finish();
+            var newValues = NodeUtils12.GetBranchValuePtrs(newNode);
+            var oldValues = NodeUtils12.GetBranchValuePtrs(stackItem._node);
+            NodeUtils12.CopyAndReferenceBranchValues(oldValues, newValues);
+            NodeUtils12.Ptr2NodeHeader(newNode)._recursiveChildCount = header._recursiveChildCount;
+            OverwriteNodePtrInStack(rootNode, stack.AsSpan(), fixFirstKeyIdx, newNode);
+            break;
+        }
     }
 
     static Span<byte> GetShortKey(ReadOnlySpan<ushort> keyOfs, Span<byte> keyData, int idx)

@@ -1,4 +1,5 @@
-﻿//using JetBrains.Profiler.Windows.Api;
+﻿
+//using JetBrains.Profiler.Windows.Api;
 
 using System;
 using System.Threading;
@@ -46,6 +47,7 @@ static class Program
         //new NativeVsManagedBugFinder().Torture();
         //new BenchTestSpanReaderWriter().GlobalSetup();
         //BenchmarkRunner.Run<BenchTest>();
+        //new InKeyValueStressTest().Run();
         BigBonTest.Run();
     }
 }
