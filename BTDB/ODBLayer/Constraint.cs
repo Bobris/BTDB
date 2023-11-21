@@ -227,6 +227,11 @@ public static partial class Constraint
             new ConstraintStringUpTo(value, including);
         public static readonly Constraint<string> Any = Constraint<string>.Any;
     }
+
+    public static partial class Guid
+    {
+        public static Constraint<System.Guid> Exact(System.Guid value) => new ConstraintGuidExact(value);
+    }
 }
 
 public class FirstConstraint<T>: Constraint<T>
