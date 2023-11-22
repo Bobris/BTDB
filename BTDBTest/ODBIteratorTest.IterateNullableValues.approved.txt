@@ -12,6 +12,7 @@ ScalarObj 10
 ScalarStr 10
 EndField
 StartField FieldIntEmpty
+ScalarStr null
 EndField
 EndValue
 EndRelation
