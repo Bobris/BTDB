@@ -6,6 +6,7 @@
 
 `Constraint.Exact<T>(T value)` for bool, string, DateTime, (un)signed, Enum, Guid including nullable form.
 `Constraint<T>.Any` for bool, string, DateTime, (un)signed, Enum, Guid including nullable form.
+`Constraint.DateTime.Range` faster than Predicate.
 
 ## 31.13.0
 
