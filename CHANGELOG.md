@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Added
+
+`Constraint.Exact<T>(T value)` for bool, string, DateTime, (un)signed, Enum, Guid including nullable form.
+`Constraint<T>.Any` for bool, string, DateTime, (un)signed, Enum, Guid including nullable form.
+
 ## 31.13.0
 
 ### Fixed
@@ -31,22 +36,6 @@ Last 2 versions reverted and NeedFreeContent detection is now using different ap
 "I" prefixes are now removed only on first level of generic types.
 
 ## 31.12.4
-
-### Improved
-
-Exception message for impossible state.
-
-### Fixed
-
-Detection of NeedFreeContent was too pessimistic for some cases making some methods slower.
-
-## 31.12.3
-
-### Fixed
-
-Fixed EventStore upgrade from T? to T
-
-## 31.12.2
 
 ### Fixed
 

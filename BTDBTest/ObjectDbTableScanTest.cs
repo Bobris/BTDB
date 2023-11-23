@@ -873,4 +873,32 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         t.Upsert(new() { Id = g1, Name = "me" });
         Assert.Equal(g1, t.ScanById(Constraint<Guid>.Any).First().Id);
     }
+
+    public class ObjWithNullableGuid
+    {
+        [PrimaryKey(1)] public Guid? Id { get; set; }
+
+        public string? Name { get; set; }
+    }
+
+    public interface IObjectWithNullableGuidTable : IRelation<ObjWithNullableGuid>
+    {
+        IEnumerable<ObjWithNullableGuid> ScanById(Constraint<Guid?> id);
+    }
+
+    [Fact]
+    public void ConstraintNullableGuidIsSupported()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IObjectWithNullableGuidTable>();
+        var g1 = Guid.NewGuid();
+        var g2 = Guid.NewGuid();
+        t.Upsert(new() { Id = g1, Name = "me" });
+        t.Upsert(new() { Id = g2, Name = "jon" });
+        t.Upsert(new() { Id = null, Name = null });
+
+        Assert.Null(t.ScanById(Constraint<Guid?>.Any).First().Id);
+        Assert.Equal(g1, t.ScanById(Constraint.Exact<Guid?>(g1)).Single().Id);
+        Assert.Null(t.ScanById(Constraint.Exact<Guid?>(null)).Single().Id);
+    }
 }
