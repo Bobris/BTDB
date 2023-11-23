@@ -901,4 +901,35 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal(g1, t.ScanById(Constraint.Exact<Guid?>(g1)).Single().Id);
         Assert.Null(t.ScanById(Constraint.Exact<Guid?>(null)).Single().Id);
     }
+
+    public class ObjWithDateTime
+    {
+        [PrimaryKey(1)] public DateTime Time { get; set; }
+
+        public string? Name { get; set; }
+    }
+
+    public interface IObjectWithDateTimeTable : IRelation<ObjWithDateTime>
+    {
+        IEnumerable<ObjWithDateTime> ScanById(Constraint<DateTime> time);
+    }
+
+    [Fact]
+    public void ConstraintDateTimeRangeWorks()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IObjectWithDateTimeTable>();
+        var g1 = DateTime.UtcNow;
+        var g12 = g1 + TimeSpan.FromMinutes(30);
+        var g2 = g1 + TimeSpan.FromHours(1);
+        var g3 = g1 + TimeSpan.FromHours(2);
+        t.Upsert(new() { Time = g1, Name = "1" });
+        t.Upsert(new() { Time = g2, Name = "2" });
+        t.Upsert(new() { Time = g3, Name = "3" });
+
+        Assert.Equal(2, t.ScanById(Constraint.DateTime.Range(g1, g2)).Count());
+        Assert.Single(t.ScanById(Constraint.DateTime.Range(g12, g2)));
+        Assert.Single(t.ScanById(Constraint.DateTime.Range(g1, g12)));
+        Assert.Empty(t.ScanById(Constraint.DateTime.Range(g12, g2, false)));
+    }
 }
