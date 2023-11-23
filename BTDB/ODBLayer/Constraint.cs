@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Collections;
@@ -58,7 +59,8 @@ public abstract class Constraint<T> : IConstraint
         if (typeof(T) == typeof(bool))
         {
             Any = Unsafe.As<Constraint<T>>(new ConstraintBoolAny());
-        } else if (typeof(T).IsEnum)
+        }
+        else if (typeof(T).IsEnum)
         {
             if (SignedFieldHandler.IsCompatibleWith(typeof(T).GetEnumUnderlyingType()))
             {
@@ -68,7 +70,8 @@ public abstract class Constraint<T> : IConstraint
             {
                 Any = new ConstraintUnsignedAny<T>();
             }
-        } else if (typeof(T) == typeof(string))
+        }
+        else if (typeof(T) == typeof(string))
         {
             Any = Unsafe.As<Constraint<T>>(new ConstraintStringAny());
         }
@@ -88,10 +91,80 @@ public abstract class Constraint<T> : IConstraint
         {
             Any = new ConstraintUnsignedAny<T>();
         }
+        else if (Nullable.GetUnderlyingType(typeof(T)) is {} ut)
+        {
+            if (ut.IsEnum)
+            {
+                if (SignedFieldHandler.IsCompatibleWith(ut.GetEnumUnderlyingType()))
+                {
+                    Any = new ConstraintNullableAny<T>(new ConstraintSignedAny<T>());
+                }
+                else
+                {
+                    Any = new ConstraintNullableAny<T>(new ConstraintUnsignedAny<T>());
+                }
+            }
+            else if (ut == typeof(bool))
+            {
+                Any = new ConstraintNullableAny<T>(new ConstraintBoolAny());
+            }
+            else if (ut == typeof(DateTime))
+            {
+                Any = new ConstraintNullableAny<T>(new ConstraintDateTimeAny());
+            }
+            else if (ut == typeof(Guid))
+            {
+                Any = new ConstraintNullableAny<T>(new ConstraintGuidAny());
+            }
+            else if (SignedFieldHandler.IsCompatibleWith(ut))
+            {
+                Any = new ConstraintNullableAny<T>(new ConstraintSignedAny<T>());
+            }
+            else if (UnsignedFieldHandler.IsCompatibleWith(ut))
+            {
+                Any = new ConstraintNullableAny<T>(new ConstraintUnsignedAny<T>());
+            }
+            else
+            {
+                Any = new ConstraintNotImplemented<T>();
+            }
+        }
         else
         {
             Any = new ConstraintNotImplemented<T>();
         }
+    }
+}
+
+public class ConstraintNullableAny<T> : Constraint<T>
+{
+    readonly IConstraint _anyT;
+
+    public ConstraintNullableAny(IConstraint anyT)
+    {
+        Debug.Assert(anyT.IsAnyConstraint());
+        _anyT = anyT;
+    }
+
+    public override bool IsAnyConstraint() => true;
+
+    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    {
+        return _anyT.Prepare(ref buffer);
+    }
+
+    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    {
+    }
+
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    {
+        if (reader.ReadUInt8() != 0)
+        {
+            return _anyT.Match(ref reader, buffer);
+        }
+
+        return IConstraint.MatchResult.Yes;
     }
 }
 
@@ -120,6 +193,178 @@ public static partial class Constraint
         return new FirstConstraint<T>(of);
     }
 
+    public static Constraint<T> Exact<T>(T value)
+    {
+        if (typeof(T) == typeof(bool))
+            return Unsafe.As<Constraint<T>>(new ConstraintBoolExact(Unsafe.As<T, bool>(ref value)));
+        if (typeof(T) == typeof(bool?))
+        {
+            ref var val = ref Unsafe.As<T, bool?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintBoolExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintBoolAny());
+        }
+        if (typeof(T) == typeof(string))
+            return Unsafe.As<Constraint<T>>(new ConstraintStringExact(Unsafe.As<T, string>(ref value)));
+        if (typeof(T) == typeof(System.Guid))
+            return Unsafe.As<Constraint<T>>(new ConstraintGuidExact(Unsafe.As<T, System.Guid>(ref value)));
+        if (typeof(T) == typeof(System.Guid?))
+        {
+            ref var val = ref Unsafe.As<T, System.Guid?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintGuidExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintGuidAny());
+        }
+        if (typeof(T) == typeof(System.DateTime))
+            return Unsafe.As<Constraint<T>>(new ConstraintDateTimeExact(Unsafe.As<T, System.DateTime>(ref value)));
+        if (typeof(T) == typeof(System.DateTime?))
+        {
+            ref var val = ref Unsafe.As<T, System.DateTime?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintDateTimeExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintDateTimeAny());
+        }
+        if (typeof(T) == typeof(sbyte))
+            return Unsafe.As<Constraint<T>>(new ConstraintSignedExact(Unsafe.As<T, sbyte>(ref value)));
+        if (typeof(T) == typeof(sbyte?))
+        {
+            ref var val = ref Unsafe.As<T, sbyte?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintSignedExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintSignedAny<sbyte>());
+        }
+        if (typeof(T) == typeof(short))
+            return Unsafe.As<Constraint<T>>(new ConstraintSignedExact(Unsafe.As<T, short>(ref value)));
+        if (typeof(T) == typeof(short?))
+        {
+            ref var val = ref Unsafe.As<T, short?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintSignedExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintSignedAny<short>());
+        }
+        if (typeof(T) == typeof(int))
+            return Unsafe.As<Constraint<T>>(new ConstraintSignedExact(Unsafe.As<T, int>(ref value)));
+        if (typeof(T) == typeof(int?))
+        {
+            ref var val = ref Unsafe.As<T, int?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintSignedExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintSignedAny<int>());
+        }
+        if (typeof(T) == typeof(long))
+            return Unsafe.As<Constraint<T>>(new ConstraintSignedExact(Unsafe.As<T, long>(ref value)));
+        if (typeof(T) == typeof(long?))
+        {
+            ref var val = ref Unsafe.As<T, long?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintSignedExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintSignedAny<long>());
+        }
+        if (typeof(T) == typeof(byte))
+            return Unsafe.As<Constraint<T>>(new ConstraintUnsignedExact(Unsafe.As<T, byte>(ref value)));
+        if (typeof(T) == typeof(byte?))
+        {
+            ref var val = ref Unsafe.As<T, byte?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintUnsignedExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintUnsignedAny<byte>());
+        }
+        if (typeof(T) == typeof(ushort))
+            return Unsafe.As<Constraint<T>>(new ConstraintUnsignedExact(Unsafe.As<T, ushort>(ref value)));
+        if (typeof(T) == typeof(ushort?))
+        {
+            ref var val = ref Unsafe.As<T, ushort?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintUnsignedExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintUnsignedAny<ushort>());
+        }
+        if (typeof(T) == typeof(uint))
+            return Unsafe.As<Constraint<T>>(new ConstraintUnsignedExact(Unsafe.As<T, uint>(ref value)));
+        if (typeof(T) == typeof(uint?))
+        {
+            ref var val = ref Unsafe.As<T, uint?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintUnsignedExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintUnsignedAny<uint>());
+        }
+        if (typeof(T) == typeof(ulong))
+            return Unsafe.As<Constraint<T>>(new ConstraintUnsignedExact(Unsafe.As<T, ulong>(ref value)));
+        if (typeof(T) == typeof(ulong?))
+        {
+            ref var val = ref Unsafe.As<T, ulong?>(ref value);
+            if (val.HasValue) return new NullableExactValue<T>(new ConstraintUnsignedExact(val.Value));
+            return new NullableExactNull<T>(new ConstraintUnsignedAny<ulong>());
+        }
+        if (typeof(T).IsEnum)
+        {
+            var et = typeof(T).GetEnumUnderlyingType();
+            if (et == typeof(sbyte))
+                return Unsafe.As<Constraint<T>>(new ConstraintSignedExact(Unsafe.As<T, sbyte>(ref value)));
+            if (et == typeof(short))
+                return Unsafe.As<Constraint<T>>(new ConstraintSignedExact(Unsafe.As<T, short>(ref value)));
+            if (et == typeof(int))
+                return Unsafe.As<Constraint<T>>(new ConstraintSignedExact(Unsafe.As<T, int>(ref value)));
+            if (Enum.GetUnderlyingType(typeof(T)) == typeof(long))
+                return Unsafe.As<Constraint<T>>(new ConstraintSignedExact(Unsafe.As<T, long>(ref value)));
+            if (Enum.GetUnderlyingType(typeof(T)) == typeof(byte))
+                return Unsafe.As<Constraint<T>>(new ConstraintUnsignedExact(Unsafe.As<T, byte>(ref value)));
+            if (Enum.GetUnderlyingType(typeof(T)) == typeof(ushort))
+                return Unsafe.As<Constraint<T>>(new ConstraintUnsignedExact(Unsafe.As<T, ushort>(ref value)));
+            if (Enum.GetUnderlyingType(typeof(T)) == typeof(uint))
+                return Unsafe.As<Constraint<T>>(new ConstraintUnsignedExact(Unsafe.As<T, uint>(ref value)));
+            if (Enum.GetUnderlyingType(typeof(T)) == typeof(ulong))
+                return Unsafe.As<Constraint<T>>(new ConstraintUnsignedExact(Unsafe.As<T, ulong>(ref value)));
+            throw new NotSupportedException("Enum with underlying type " +
+                                            Enum.GetUnderlyingType(typeof(T)).ToSimpleName() + " is not supported");
+        }
+
+        if (Nullable.GetUnderlyingType(typeof(T)) is { IsEnum : true } ut)
+        {
+            var et = ut.GetEnumUnderlyingType();
+            if (et == typeof(sbyte))
+            {
+                ref var val = ref Unsafe.As<T, sbyte?>(ref value);
+                if (val.HasValue) return new NullableExactValue<T>(new ConstraintSignedExact(val.Value));
+                return new NullableExactNull<T>(new ConstraintSignedAny<sbyte>());
+            }
+            if (et == typeof(short))
+            {
+                ref var val = ref Unsafe.As<T, short?>(ref value);
+                if (val.HasValue) return new NullableExactValue<T>(new ConstraintSignedExact(val.Value));
+                return new NullableExactNull<T>(new ConstraintSignedAny<short>());
+            }
+            if (et == typeof(int))
+            {
+                ref var val = ref Unsafe.As<T, int?>(ref value);
+                if (val.HasValue) return new NullableExactValue<T>(new ConstraintSignedExact(val.Value));
+                return new NullableExactNull<T>(new ConstraintSignedAny<int>());
+            }
+            if (et == typeof(long))
+            {
+                ref var val = ref Unsafe.As<T, long?>(ref value);
+                if (val.HasValue) return new NullableExactValue<T>(new ConstraintSignedExact(val.Value));
+                return new NullableExactNull<T>(new ConstraintSignedAny<long>());
+            }
+            if (et == typeof(byte))
+            {
+                ref var val = ref Unsafe.As<T, byte?>(ref value);
+                if (val.HasValue) return new NullableExactValue<T>(new ConstraintUnsignedExact(val.Value));
+                return new NullableExactNull<T>(new ConstraintUnsignedAny<byte>());
+            }
+            if (et == typeof(ushort))
+            {
+                ref var val = ref Unsafe.As<T, ushort?>(ref value);
+                if (val.HasValue) return new NullableExactValue<T>(new ConstraintUnsignedExact(val.Value));
+                return new NullableExactNull<T>(new ConstraintUnsignedAny<ushort>());
+            }
+            if (et == typeof(uint))
+            {
+                ref var val = ref Unsafe.As<T, uint?>(ref value);
+                if (val.HasValue) return new NullableExactValue<T>(new ConstraintUnsignedExact(val.Value));
+                return new NullableExactNull<T>(new ConstraintUnsignedAny<uint>());
+            }
+            if (et == typeof(ulong))
+            {
+                ref var val = ref Unsafe.As<T, ulong?>(ref value);
+                if (val.HasValue) return new NullableExactValue<T>(new ConstraintUnsignedExact(val.Value));
+                return new NullableExactNull<T>(new ConstraintUnsignedAny<ulong>());
+            }
+            throw new NotSupportedException("Nullable enum with underlying type " +
+                                            et.ToSimpleName() + " is not supported");
+        }
+        throw new NotSupportedException("Exact with type " + typeof(T).ToSimpleName() + " is not supported");
+    }
+
     public static partial class Bool
     {
         public static Constraint<bool> Exact(bool value) => new ConstraintBoolExact(value);
@@ -129,34 +374,43 @@ public static partial class Constraint
     public static partial class DateTime
     {
         public static Constraint<System.DateTime> Exact(System.DateTime value) => new ConstraintDateTimeExact(value);
+
         public static Constraint<System.DateTime> Predicate(Predicate<System.DateTime> predicate) =>
             new ConstraintDateTimePredicate(predicate);
+
         public static Constraint<System.DateTime> UpTo(System.DateTime value, bool including = true) =>
             new ConstraintDateTimeUpTo(value, including);
+
         public static readonly Constraint<System.DateTime> Any = Constraint<System.DateTime>.Any;
     }
 
     public static partial class Unsigned
     {
         public static Constraint<ulong> Exact(ulong value) => new ConstraintUnsignedExact(value);
+
         public static Constraint<ulong> Predicate(Predicate<ulong> predicate) =>
             new ConstraintUnsignedPredicate(predicate);
+
         public static Constraint<ulong> UpTo(ulong value, bool including = true) =>
             new ConstraintUnsignedUpTo(value, including);
+
         public static readonly Constraint<ulong> Any = Constraint<ulong>.Any;
     }
 
     public static partial class Signed
     {
         public static Constraint<long> Exact(long value) => new ConstraintSignedExact(value);
+
         public static Constraint<long> Predicate(Predicate<long> predicate) =>
             new ConstraintSignedPredicate(predicate);
+
         public static Constraint<long> UpTo(long value, bool including = true) =>
             new ConstraintSignedUpTo(value, including);
+
         public static readonly Constraint<long> Any = Constraint<long>.Any;
     }
 
-    public static partial class Enum<T> where T: Enum
+    public static partial class Enum<T> where T : Enum
     {
         public static readonly bool IsSigned = SignedFieldHandler.IsCompatibleWith(typeof(T).GetEnumUnderlyingType());
         public static readonly Func<T, long>? ToLong;
@@ -176,7 +430,8 @@ public static partial class Constraint
                 ToLong = b.Create();
                 var b2 = ILBuilder.Instance.NewMethod<Func<long, T>>("FromLong" + typeof(T).FullName);
                 b2.Generator.Ldarg(0);
-                DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(long), typeof(T).GetEnumUnderlyingType())!(b2.Generator);
+                DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(long),
+                    typeof(T).GetEnumUnderlyingType())!(b2.Generator);
                 b2.Generator.Ret();
                 FromLong = b2.Create();
             }
@@ -190,15 +445,21 @@ public static partial class Constraint
                 ToUlong = b.Create();
                 var b2 = ILBuilder.Instance.NewMethod<Func<ulong, T>>("FromUlong" + typeof(T).FullName);
                 b2.Generator.Ldarg(0);
-                DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(ulong), typeof(T).GetEnumUnderlyingType())!(b2.Generator);
+                DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(ulong),
+                    typeof(T).GetEnumUnderlyingType())!(b2.Generator);
                 b2.Generator.Ret();
                 FromUlong = b2.Create();
             }
         }
+
         public static Constraint<T> Exact(T value) =>
             IsSigned ? new ConstraintSignedEnumExact<T>(value) : new ConstraintUnsignedEnumExact<T>(value);
+
         public static Constraint<T> Predicate(Predicate<T> predicate) =>
-            IsSigned ? new ConstraintSignedEnumPredicate<T>(predicate) : new ConstraintUnsignedEnumPredicate<T>(predicate);
+            IsSigned
+                ? new ConstraintSignedEnumPredicate<T>(predicate)
+                : new ConstraintUnsignedEnumPredicate<T>(predicate);
+
         public static readonly Constraint<T> Any = Constraint<T>.Any;
     }
 
@@ -214,7 +475,9 @@ public static partial class Constraint
             value == "" ? Any : Predicate((in ReadOnlySpan<char> v) => v.Contains(value, StringComparison.Ordinal));
 
         public static Constraint<string> ContainsCaseInsensitive(string value) =>
-            value == "" ? Any : Predicate((in ReadOnlySpan<char> v) => v.Contains(value, StringComparison.OrdinalIgnoreCase));
+            value == ""
+                ? Any
+                : Predicate((in ReadOnlySpan<char> v) => v.Contains(value, StringComparison.OrdinalIgnoreCase));
 
         public static Constraint<string> Predicate(PredicateSpanChar predicate) =>
             new ConstraintStringPredicate(predicate);
@@ -223,8 +486,10 @@ public static partial class Constraint
             new ConstraintStringPredicateSlow(predicate);
 
         public static Constraint<string> Exact(string value) => new ConstraintStringExact(value);
+
         public static Constraint<string> UpTo(string value, bool including = true) =>
             new ConstraintStringUpTo(value, including);
+
         public static readonly Constraint<string> Any = Constraint<string>.Any;
     }
 
@@ -234,7 +499,71 @@ public static partial class Constraint
     }
 }
 
-public class FirstConstraint<T>: Constraint<T>
+public class NullableExactValue<T> : Constraint<T>
+{
+    readonly IConstraint _exact;
+
+    public NullableExactValue(IConstraint exact)
+    {
+        _exact = exact;
+    }
+
+    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    {
+        _exact.Prepare(ref buffer);
+        return IConstraint.MatchType.Exact;
+    }
+
+    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    {
+        writer.WriteUInt8(1);
+        _exact.WritePrefix(ref writer, buffer);
+    }
+
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    {
+        if (reader.ReadUInt8() == 1)
+        {
+            return _exact.Match(ref reader, buffer);
+        }
+
+        return IConstraint.MatchResult.No;
+    }
+}
+
+public class NullableExactNull<T> : Constraint<T>
+{
+    readonly IConstraint _anyT;
+
+    public NullableExactNull(IConstraint anyT)
+    {
+        _anyT = anyT;
+    }
+
+    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    {
+        _anyT.Prepare(ref buffer);
+        return IConstraint.MatchType.Exact;
+    }
+
+    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    {
+        writer.WriteUInt8(0);
+    }
+
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    {
+        if (reader.ReadUInt8() == 0)
+        {
+            return IConstraint.MatchResult.Yes;
+        }
+
+        _anyT.Match(ref reader, buffer);
+        return IConstraint.MatchResult.NoAfterLast;
+    }
+}
+
+public class FirstConstraint<T> : Constraint<T>
 {
     readonly Constraint<T> _of;
 
@@ -269,7 +598,8 @@ public class ConstraintStringPredicateSlow : ConstraintNoPrefix<string>
 
     public ConstraintStringPredicateSlow(Predicate<string> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) => AsMatchResult(_predicate(reader.ReadStringOrdered()));
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+        AsMatchResult(_predicate(reader.ReadStringOrdered()));
 }
 
 public class ConstraintStringPredicate : ConstraintNoPrefix<string>
@@ -302,7 +632,8 @@ public class ConstraintUnsignedPredicate : ConstraintNoPrefix<ulong>
 
     public ConstraintUnsignedPredicate(Predicate<ulong> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) => AsMatchResult(_predicate(reader.ReadVUInt64()));
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+        AsMatchResult(_predicate(reader.ReadVUInt64()));
 }
 
 public class ConstraintSignedPredicate : ConstraintNoPrefix<long>
@@ -311,7 +642,8 @@ public class ConstraintSignedPredicate : ConstraintNoPrefix<long>
 
     public ConstraintSignedPredicate(Predicate<long> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) => AsMatchResult(_predicate(reader.ReadVInt64()));
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+        AsMatchResult(_predicate(reader.ReadVInt64()));
 }
 
 public class ConstraintDateTimePredicate : ConstraintNoPrefix<DateTime>
@@ -320,7 +652,8 @@ public class ConstraintDateTimePredicate : ConstraintNoPrefix<DateTime>
 
     public ConstraintDateTimePredicate(Predicate<DateTime> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) => AsMatchResult(_predicate(reader.ReadDateTime()));
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+        AsMatchResult(_predicate(reader.ReadDateTime()));
 }
 
 public abstract class ConstraintExact<T> : Constraint<T>
@@ -632,7 +965,7 @@ public class ConstraintDateTimeUpTo : ConstraintUpTo<DateTime>
 {
     readonly DateTime _value;
 
-    public ConstraintDateTimeUpTo(DateTime value, bool including): base(including) => _value = value;
+    public ConstraintDateTimeUpTo(DateTime value, bool including) : base(including) => _value = value;
 
     protected override void WriteUpToValue(ref SpanWriter writer)
     {
@@ -662,7 +995,7 @@ public class ConstraintBoolExact : ConstraintExact<bool>
     }
 }
 
-public class ConstraintSignedEnumExact<T> : ConstraintExact<T> where T: Enum
+public class ConstraintSignedEnumExact<T> : ConstraintExact<T> where T : Enum
 {
     readonly long _value;
 
@@ -679,7 +1012,7 @@ public class ConstraintSignedEnumExact<T> : ConstraintExact<T> where T: Enum
     }
 }
 
-public class ConstraintUnsignedEnumExact<T> : ConstraintExact<T> where T: Enum
+public class ConstraintUnsignedEnumExact<T> : ConstraintExact<T> where T : Enum
 {
     readonly ulong _value;
 
@@ -714,20 +1047,22 @@ public class ConstraintUnsignedAny<T> : ConstraintAny<T>
     }
 }
 
-public class ConstraintSignedEnumPredicate<T> : ConstraintNoPrefix<T> where T: Enum
+public class ConstraintSignedEnumPredicate<T> : ConstraintNoPrefix<T> where T : Enum
 {
     readonly Predicate<T> _predicate;
 
     public ConstraintSignedEnumPredicate(Predicate<T> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) => AsMatchResult(_predicate(Constraint.Enum<T>.FromLong!(reader.ReadVInt64())));
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+        AsMatchResult(_predicate(Constraint.Enum<T>.FromLong!(reader.ReadVInt64())));
 }
 
-public class ConstraintUnsignedEnumPredicate<T> : ConstraintNoPrefix<T> where T: Enum
+public class ConstraintUnsignedEnumPredicate<T> : ConstraintNoPrefix<T> where T : Enum
 {
     readonly Predicate<T> _predicate;
 
     public ConstraintUnsignedEnumPredicate(Predicate<T> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) => AsMatchResult(_predicate(Constraint.Enum<T>.FromUlong!(reader.ReadVUInt64())));
+    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+        AsMatchResult(_predicate(Constraint.Enum<T>.FromUlong!(reader.ReadVUInt64())));
 }

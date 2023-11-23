@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Added
+
+`Constraint.Exact<T>(T value)` for bool, string, DateTime, (un)signed, Enum, Guid including nullable form.
+`Constraint<T>.Any` for bool, string, DateTime, (un)signed, Enum, Guid including nullable form.
+
 ### Fixed
 
 Random rare corruption of DB when using InKeyValue.
