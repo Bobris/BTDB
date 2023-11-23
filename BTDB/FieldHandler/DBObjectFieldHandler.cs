@@ -222,6 +222,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
 
     void UpdateNeedsFreeContent(Type type, ref NeedsFreeContent needsFreeContent)
     {
+        if (type.IsValueType) return;
         //decides upon current version  (null for object types never stored in DB)
         var tableInfo = ((ObjectDB)_objectDb).TablesInfo.FindByType(type);
         if (tableInfo == null)

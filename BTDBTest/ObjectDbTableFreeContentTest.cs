@@ -222,10 +222,10 @@ public class ObjectDbTableFreeContentTest : IDisposable
             {
                 Id = 1,
                 EdgesList = new List<IDictionary<ulong, ulong>>
-                    {
-                        new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3},
-                        new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}
-                    }
+                {
+                    new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 },
+                    new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
+                }
             };
             links.Insert(link);
             tr.Commit();
@@ -255,10 +255,10 @@ public class ObjectDbTableFreeContentTest : IDisposable
             {
                 Id = 1,
                 EdgesList = new List<IDictionary<ulong, ulong>>
-                    {
-                        new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3},
-                        new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}
-                    }
+                {
+                    new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 },
+                    new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
+                }
             };
             links.Insert(link);
             tr.Commit();
@@ -505,7 +505,7 @@ public class ObjectDbTableFreeContentTest : IDisposable
                     new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
                     {
                         [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo>
-                        { [2] = new ConcurrentFeatureItemInfo() }
+                            { [2] = new ConcurrentFeatureItemInfo() }
                     }
             };
             lics.Insert(license);
@@ -644,7 +644,7 @@ public class ObjectDbTableFreeContentTest : IDisposable
                         new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
                         {
                             [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo>
-                            { [2] = new ConcurrentFeatureItemInfo() }
+                                { [2] = new ConcurrentFeatureItemInfo() }
                         }
                 }
             };
@@ -750,10 +750,10 @@ public class ObjectDbTableFreeContentTest : IDisposable
                 Component = new Component
                 {
                     Children = new List<Component>
-                        {
-                            new Component {Props = new Dictionary<string, string> {["a"] = "A"}},
-                            new Component {Props = new Dictionary<string, string> {["b"] = "B"}}
-                        }
+                    {
+                        new Component { Props = new Dictionary<string, string> { ["a"] = "A" } },
+                        new Component { Props = new Dictionary<string, string> { ["b"] = "B" } }
+                    }
                 }
             });
             table.RemoveById(1);
@@ -778,7 +778,7 @@ public class ObjectDbTableFreeContentTest : IDisposable
                     new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
                     {
                         [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo>
-                        { [2] = new ConcurrentFeatureItemInfo() }
+                            { [2] = new ConcurrentFeatureItemInfo() }
                     }
             };
             lics.Insert(license);
@@ -796,6 +796,38 @@ public class ObjectDbTableFreeContentTest : IDisposable
         }
 
         AssertNoLeaksInDb();
+    }
+
+    public enum SimpleEnum
+    {
+        A,
+        B
+    }
+
+    public class ComplexClass
+    {
+        public SimpleEnum Enum { get; set; }
+        public IList<SimpleEnum> ListOfEnums { get; set; }
+    }
+
+    public class RowWithComplexClass
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public IList<SimpleEnum> ListOfEnums { get; set; }
+        public IDictionary<int, SimpleEnum> Dict { get; set; }
+        public ComplexClass Klass { get; set; }
+    }
+
+    public interface IRowWithComplexClassTable : IRelation<RowWithComplexClass>
+    {
+        int RemoveById();
+    }
+
+    [Fact]
+    public void NeedFreeContentWorksOnComplexInlineClass()
+    {
+        using var tr = _db.StartTransaction();
+        tr.GetRelation<IRowWithComplexClassTable>().RemoveById();
     }
 
     public abstract class UploadDataBase
