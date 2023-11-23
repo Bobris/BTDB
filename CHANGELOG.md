@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 31.14.0
+
 ### Added
 
 `Constraint.Exact<T>(T value)` for bool, string, DateTime, (un)signed, Enum, Guid including nullable form.
