@@ -9,4 +9,5 @@ public class ClassMetadata
     public string Namespace;
     public string? PersistedName;
     public FieldMetadata[] Fields;
+    public unsafe delegate*<object> Creator;
 }
