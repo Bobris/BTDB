@@ -9,7 +9,7 @@ using Xunit;
 namespace BTDB.SourceGenerator.Tests;
 
 [UsesVerify]
-public class SampleIncrementalSourceGeneratorTests
+public class IOCTests
 {
     [ModuleInitializer]
     internal static void Init() => VerifySourceGenerators.Initialize();
