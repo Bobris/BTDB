@@ -25,6 +25,22 @@ public class MetadataTests
             """);
     }
 
+    [Fact]
+    public Task VerifyMetadataWithComplexSetter()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public string Name { get; set { Name = value.ToUpperCase() } } = "";
+                public int Age { get; set { Age = value + 1 } };
+            }
+            """);
+    }
+
     static Task VerifySourceGenerator(string sourceCode)
     {
         var generator = new SourceGenerator();

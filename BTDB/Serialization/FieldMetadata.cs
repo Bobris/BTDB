@@ -5,7 +5,6 @@ namespace BTDB.Serialization;
 public class FieldMetadata
 {
     public string Name;
-    public string? DependencyName;
     public (string? IndexName, int Order)[]? Indexes;
     public Type Type;
     public uint? ByteOffset;

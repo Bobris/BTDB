@@ -59,10 +59,12 @@ public class SourceGenerator : IIncrementalGenerator
                                 : null))
                         .ToImmutableArray();
                     return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
-                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, parameters,
+                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, false,
+                        parameters,
                         new[] { new PropertyInfo("", returnType, null, true, false, false, false, null) }
                             .ToImmutableArray(),
-                        ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty);
+                        ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty,
+                        ImmutableArray<FieldsInfo>.Empty);
                 }
 
                 if (syntaxContext.Node is InterfaceDeclarationSyntax)
@@ -75,10 +77,10 @@ public class SourceGenerator : IIncrementalGenerator
                         : containingNamespace.ToDisplayString();
                     var interfaceName = symbol.Name;
                     return new(GenerationType.Interface, namespaceName, interfaceName,
-                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false,
+                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, false,
                         ImmutableArray<ParameterInfo>.Empty,
                         ImmutableArray<PropertyInfo>.Empty, ImmutableArray<string>.Empty,
-                        dispatchers.ToImmutableArray());
+                        dispatchers.ToImmutableArray(), ImmutableArray<FieldsInfo>.Empty);
                 }
 
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
@@ -127,8 +129,14 @@ public class SourceGenerator : IIncrementalGenerator
                         : containingNamespace.ToDisplayString();
                     var className = symbol.Name;
                     var constructor = symbol.Constructors.FirstOrDefault();
+                    var hasDefaultConstructor = false;
                     foreach (var symbolConstructor in symbol.Constructors)
                     {
+                        if (symbolConstructor.Parameters.Length == 0)
+                        {
+                            hasDefaultConstructor = true;
+                        }
+
                         if (symbolConstructor.Parameters.Length > constructor?.Parameters.Length)
                         {
                             constructor = symbolConstructor;
@@ -173,7 +181,7 @@ public class SourceGenerator : IIncrementalGenerator
                             var isComplex = p.SetMethod!.DeclaredAccessibility == Accessibility.Private ||
                                             p.SetMethod.IsInitOnly;
                             // if Set/init method have default implementation => then it could directly set backing field
-                            var isFieldBased = isComplex && IsDefaultSetterOrInit(p.SetMethod.DeclaringSyntaxReferences);
+                            var isFieldBased = isComplex && IsDefaultMethodImpl(p.SetMethod.DeclaringSyntaxReferences);
                             return new PropertyInfo(p.Name,
                                 p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                                 p.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "DependencyAttribute")
@@ -183,12 +191,55 @@ public class SourceGenerator : IIncrementalGenerator
                                 isComplex ? isFieldBased ? $"<{p.Name}>k__BackingField" : p.SetMethod.Name : null);
                         })
                         .ToImmutableArray();
+                    var fields = symbol.GetMembers()
+                        .OfType<IFieldSymbol>()
+                        .Where(f =>
+                            f.DeclaredAccessibility == Accessibility.Public &&
+                            f.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
+                            f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
+                            || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
+                        .Select(f =>
+                        {
+                            return new FieldsInfo(f.Name,
+                                f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                                f.GetAttributes()
+                                    .FirstOrDefault(a => a.AttributeClass?.Name == "PersistedNameAttribute")
+                                    ?.ConstructorArguments.FirstOrDefault().Value as string,
+                                f.Type.IsReferenceType, f.Name, null, null,
+                                ImmutableArray<IndexInfo>.Empty);
+                        })
+                        .Concat(symbol.GetMembers()
+                            .OfType<IPropertySymbol>()
+                            .Where(p =>
+                                p.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
+                                p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
+                                p.SetMethod is not null && p.GetMethod is not null)
+                            .Select(p =>
+                            {
+                                var getterName = !IsDefaultMethodImpl(p.GetMethod!.DeclaringSyntaxReferences)
+                                    ? p.GetMethod.Name
+                                    : null;
+                                var setterName = !IsDefaultMethodImpl(p.SetMethod!.DeclaringSyntaxReferences)
+                                    ? p.SetMethod.Name
+                                    : null;
+                                var backingName = getterName == null || setterName == null
+                                    ? $"<{p.Name}>k__BackingField"
+                                    : null;
+                                return new FieldsInfo(p.Name,
+                                    p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                                    p.GetAttributes().FirstOrDefault(a =>
+                                            a.AttributeClass?.Name == "PersistedNameAttribute")
+                                        ?.ConstructorArguments.FirstOrDefault().Value as string,
+                                    p.Type.IsReferenceType,
+                                    backingName, getterName, setterName, ImmutableArray<IndexInfo>.Empty);
+                            })).ToImmutableArray();
                     var privateConstructor =
                         constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected;
                     return new GenerationInfo(GenerationType.Class, namespaceName, className,
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
+                        hasDefaultConstructor,
                         parameters,
-                        propertyInfos, parentDeclarations, dispatchers.ToImmutable());
+                        propertyInfos, parentDeclarations, dispatchers.ToImmutable(), fields);
                 }
 
                 return null!;
@@ -197,7 +248,7 @@ public class SourceGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
     }
 
-    bool IsDefaultSetterOrInit(ImmutableArray<SyntaxReference> setMethodDeclaringSyntaxReferences)
+    bool IsDefaultMethodImpl(ImmutableArray<SyntaxReference> setMethodDeclaringSyntaxReferences)
     {
         if (setMethodDeclaringSyntaxReferences.IsEmpty) return true;
         if (setMethodDeclaringSyntaxReferences.Length > 1) return false;
@@ -206,6 +257,7 @@ public class SourceGenerator : IIncrementalGenerator
         {
             return true;
         }
+
         return false;
     }
 
@@ -583,6 +635,99 @@ public class SourceGenerator : IIncrementalGenerator
 
         declarations.Append(additionalDeclarations);
 
+        var metadataCode = new StringBuilder();
+
+        if (!generationInfo.Fields.IsEmpty)
+        {
+            // language=c#
+            metadataCode.Append($$"""
+
+                        var metadata = new BTDB.Serialization.ClassMetadata();
+                        metadata.Name = "{{generationInfo.Name}}";
+                        metadata.Type = typeof({{generationInfo.FullName}});
+                        metadata.Namespace = "{{generationInfo.Namespace ?? ""}}";
+                        var dummy = Unsafe.As<{{generationInfo.FullName}}>(metadata);
+                        metadata.Fields = new[]
+                        {
+
+                """);
+            var fieldIndex = 0;
+            foreach (var field in generationInfo.Fields)
+            {
+                fieldIndex++;
+                // language=c#
+                metadataCode.Append($$"""
+                                new BTDB.Serialization.FieldMetadata
+                                {
+                                    Name = "{{field.Name}}",
+                                    Type = typeof({{field.Type}}),
+
+                    """);
+                if (field.BackingName != null)
+                {
+                    // language=c#
+                    declarations.Append($"""
+                            [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
+                            extern static ref {field.Type} Field{fieldIndex}({generationInfo.FullName} @this);
+
+                        """);
+                    // language=c#
+                    metadataCode.Append($$"""
+                                        ByteOffset = BTDB.Serialization.RawData.CalcOffset(dummy, ref Field{{fieldIndex}}(dummy)),
+
+                        """);
+                }
+
+                if (field is { SetterName: not null, IsReference: true })
+                {
+                    // language=c#
+                    declarations.Append($$"""
+                            [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
+                            extern static void Setter{{fieldIndex}}({{generationInfo.FullName}} @this, {{field.Type}} value);
+                            static void GenSetter{{fieldIndex}}(object @this, object value)
+                            {
+                                Setter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this), Unsafe.As<{{field.Type}}>(value));
+                            }
+
+                        """);
+                    // language=c#
+                    metadataCode.Append($$"""
+                                        PropObjSetter = &GenSetter{{fieldIndex}},
+
+                        """);
+                }
+
+                if (field is { SetterName: not null, IsReference: false })
+                {
+                    // language=c#
+                    declarations.Append($$"""
+                            [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
+                            extern static void Setter{{fieldIndex}}({{generationInfo.FullName}} @this, {{field.Type}} value);
+                            static void GenSetter{{fieldIndex}}(object @this, ref byte value)
+                            {
+                                Setter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this), Unsafe.As<byte, {{field.Type}}>(ref value));
+                            }
+
+                        """);
+                    // language=c#
+                    metadataCode.Append($$"""
+                                        PropRefSetter = &GenSetter{{fieldIndex}},
+
+                        """);
+                }
+
+                // language=c#
+                metadataCode.Append("            },\n");
+            }
+
+            // language=c#
+            metadataCode.Append($$"""
+                        };
+                        BTDB.Serialization.ReflectionMetadata.Register(metadata);
+
+                """);
+        }
+
         var dispatchers = new StringBuilder();
         foreach (var (name, type, resultType, ifaceName) in generationInfo.Dispatchers)
         {
@@ -617,7 +762,7 @@ public class SourceGenerator : IIncrementalGenerator
                             var res = {{(generationInfo.PrivateConstructor ? "Constr" : "new " + generationInfo.FullName)}}({{parametersCode}});
                             {{propertyCode}}return res;
                         };
-                    });{{dispatchers}}
+                    });{{metadataCode}}{{dispatchers}}
                 }
             {{(generationInfo.IsPartial ? new('}', generationInfo.ParentDeclarations.Length) : "}")}}
 
@@ -643,10 +788,13 @@ record GenerationInfo(
     string FullName,
     bool IsPartial,
     bool PrivateConstructor,
+    bool HasDefaultConstructor,
     ImmutableArray<ParameterInfo> ConstructorParameters,
     ImmutableArray<PropertyInfo> Properties,
     ImmutableArray<string> ParentDeclarations,
-    ImmutableArray<DispatcherInfo> Dispatchers);
+    ImmutableArray<DispatcherInfo> Dispatchers,
+    ImmutableArray<FieldsInfo> Fields
+);
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
 
@@ -659,5 +807,17 @@ record PropertyInfo(
     bool IsComplex,
     bool IsFieldBased,
     string? BackingName);
+
+record FieldsInfo(
+    string Name,
+    string Type,
+    string? StoredName,
+    bool IsReference,
+    string? BackingName,
+    string? GetterName,
+    string? SetterName,
+    ImmutableArray<IndexInfo> Indexes);
+
+record IndexInfo(string? Name, int Order);
 
 record DispatcherInfo(string Name, string? Type, string? ResultType, string IfaceName);

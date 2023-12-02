@@ -13,6 +13,16 @@ public class SandboxTest
         public int Age;
     }
 
+    static void Setter(Person person, string value)
+    {
+        person.Name = value;
+    }
+
+    static void Setter2(object @this, object value)
+    {
+        Unsafe.As<Person>(@this).Name = Unsafe.As<string>(value);
+    }
+
     [Fact]
     public unsafe void Sandbox()
     {
@@ -34,7 +44,7 @@ public class SandboxTest
             {
                 Name = "Age",
                 Type = typeof(int),
-                ByteOffset = RawData.CalcOffset(dummy, ref dummy.Age)
+                ByteOffset = RawData.CalcOffset(dummy, ref dummy.Age),
             }
         };
 
