@@ -639,6 +639,27 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (!generationInfo.Fields.IsEmpty)
         {
+            if (generationInfo.HasDefaultConstructor)
+            {
+                // language=c#
+                declarations.Append($"""
+                        [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+                        extern static {generationInfo.FullName} Creator();
+
+                    """);
+            }
+            else
+            {
+                // language=c#
+                declarations.Append($$"""
+                        static object Creator()
+                        {
+                            return RuntimeHelpers.GetUninitializedObject(typeof({{generationInfo.FullName}}));
+                        }
+
+                    """);
+            }
+
             // language=c#
             metadataCode.Append($$"""
 
@@ -646,6 +667,7 @@ public class SourceGenerator : IIncrementalGenerator
                         metadata.Name = "{{generationInfo.Name}}";
                         metadata.Type = typeof({{generationInfo.FullName}});
                         metadata.Namespace = "{{generationInfo.Namespace ?? ""}}";
+                        metadata.Creator = &Creator;
                         var dummy = Unsafe.As<{{generationInfo.FullName}}>(metadata);
                         metadata.Fields = new[]
                         {
@@ -790,7 +812,7 @@ public class SourceGenerator : IIncrementalGenerator
             using System.Runtime.CompilerServices;
             {{namespaceLine}}
             {{declarations}}    [ModuleInitializer]
-                internal static void Register4BTDB()
+                internal static unsafe void Register4BTDB()
                 {
                     BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), (container, ctx) =>
                     {

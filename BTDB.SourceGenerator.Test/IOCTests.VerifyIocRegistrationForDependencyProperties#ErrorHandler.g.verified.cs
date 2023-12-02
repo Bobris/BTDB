@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 static file class ErrorHandlerRegistration
 {
     [ModuleInitializer]
-    internal static void Register4BTDB()
+    internal static unsafe void Register4BTDB()
     {
         BTDB.IOC.IContainer.RegisterFactory(typeof(global::ErrorHandler), (container, ctx) =>
         {

@@ -23,6 +23,11 @@ public class SandboxTest
         Unsafe.As<Person>(@this).Name = Unsafe.As<string>(value);
     }
 
+    static object Creator()
+    {
+        return RuntimeHelpers.GetUninitializedObject(typeof(Person));
+    }
+
     [Fact]
     public unsafe void Sandbox()
     {
@@ -30,6 +35,7 @@ public class SandboxTest
         metadata.Name = "Person";
         metadata.Type = typeof(Person);
         metadata.Namespace = "BTDBTest.SerializationTests";
+        metadata.Creator = &Creator;
         var dummy = Unsafe.As<Person>(metadata);
         metadata.Fields = new[]
         {

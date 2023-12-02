@@ -7,6 +7,8 @@ namespace TestNamespace;
 
 static file class PersonRegistration
 {
+    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+    extern static global::TestNamespace.Person Creator();
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Name>k__BackingField")]
     extern static ref string Field1(global::TestNamespace.Person @this);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Name")]
@@ -24,7 +26,7 @@ static file class PersonRegistration
         Unsafe.As<byte, int>(ref value) = Getter2(Unsafe.As<global::TestNamespace.Person>(@this));
     }
     [ModuleInitializer]
-    internal static void Register4BTDB()
+    internal static unsafe void Register4BTDB()
     {
         BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Person), (container, ctx) =>
         {
@@ -38,6 +40,7 @@ static file class PersonRegistration
         metadata.Name = "Person";
         metadata.Type = typeof(global::TestNamespace.Person);
         metadata.Namespace = "TestNamespace";
+        metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::TestNamespace.Person>(metadata);
         metadata.Fields = new[]
         {

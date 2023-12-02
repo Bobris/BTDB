@@ -10,7 +10,7 @@ static file class ErrorHandlerRegistration
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Logger>k__BackingField")]
     extern static ref global::TestNamespace.ILogger FieldRefLogger(global::TestNamespace.ErrorHandler @this);
     [ModuleInitializer]
-    internal static void Register4BTDB()
+    internal static unsafe void Register4BTDB()
     {
         BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.ErrorHandler), (container, ctx) =>
         {

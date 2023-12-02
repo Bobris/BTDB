@@ -8,7 +8,7 @@ namespace TestNamespace;
 static file class LoggerRegistration
 {
     [ModuleInitializer]
-    internal static void Register4BTDB()
+    internal static unsafe void Register4BTDB()
     {
         BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Logger), (container, ctx) =>
         {

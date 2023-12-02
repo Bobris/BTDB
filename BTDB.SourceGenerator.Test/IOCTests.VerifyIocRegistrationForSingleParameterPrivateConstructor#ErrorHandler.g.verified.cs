@@ -8,7 +8,7 @@ static file class ErrorHandlerRegistration
     [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
     extern static global::ErrorHandler Constr(global::ILogger logger);
     [ModuleInitializer]
-    internal static void Register4BTDB()
+    internal static unsafe void Register4BTDB()
     {
         BTDB.IOC.IContainer.RegisterFactory(typeof(global::ErrorHandler), (container, ctx) =>
         {
