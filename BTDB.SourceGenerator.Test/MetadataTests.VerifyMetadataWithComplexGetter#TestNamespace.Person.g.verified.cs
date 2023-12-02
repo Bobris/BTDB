@@ -7,10 +7,22 @@ namespace TestNamespace;
 
 static file class PersonRegistration
 {
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "Age")]
-    extern static ref int Field1(global::TestNamespace.Person @this);
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Name>k__BackingField")]
-    extern static ref string Field2(global::TestNamespace.Person @this);
+    extern static ref string Field1(global::TestNamespace.Person @this);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Name")]
+    extern static string Getter1(global::TestNamespace.Person @this);
+    static object GenGetter1(object @this)
+    {
+        return Getter1(Unsafe.As<global::TestNamespace.Person>(@this));
+    }
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Age>k__BackingField")]
+    extern static ref int Field2(global::TestNamespace.Person @this);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Age")]
+    extern static int Getter2(global::TestNamespace.Person @this);
+    static void GenGetter2(object @this, ref byte value)
+    {
+        Unsafe.As<byte, int>(ref value) = Getter2(Unsafe.As<global::TestNamespace.Person>(@this));
+    }
     [ModuleInitializer]
     internal static void Register4BTDB()
     {
@@ -31,15 +43,17 @@ static file class PersonRegistration
         {
             new BTDB.Serialization.FieldMetadata
             {
-                Name = "Age",
-                Type = typeof(int),
+                Name = "Name",
+                Type = typeof(string),
                 ByteOffset = BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
+                PropObjGetter = &GenGetter1,
             },
             new BTDB.Serialization.FieldMetadata
             {
-                Name = "Name",
-                Type = typeof(string),
+                Name = "Age",
+                Type = typeof(int),
                 ByteOffset = BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
+                PropRefGetter = &GenGetter2,
             },
         };
         BTDB.Serialization.ReflectionMetadata.Register(metadata);

@@ -57,6 +57,5 @@ static file class PersonRegistration
             },
         };
         BTDB.Serialization.ReflectionMetadata.Register(metadata);
-
     }
 }

@@ -672,8 +672,46 @@ public class SourceGenerator : IIncrementalGenerator
 
                         """);
                     // language=c#
+                    metadataCode.Append($"""
+                                        ByteOffset = BTDB.Serialization.RawData.CalcOffset(dummy, ref Field{fieldIndex}(dummy)),
+
+                        """);
+                }
+
+                if (field is { GetterName: not null, IsReference: true })
+                {
+                    // language=c#
+                    declarations.Append($$"""
+                            [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
+                            extern static {{field.Type}} Getter{{fieldIndex}}({{generationInfo.FullName}} @this);
+                            static object GenGetter{{fieldIndex}}(object @this)
+                            {
+                                return Getter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this));
+                            }
+
+                        """);
+                    // language=c#
                     metadataCode.Append($$"""
-                                        ByteOffset = BTDB.Serialization.RawData.CalcOffset(dummy, ref Field{{fieldIndex}}(dummy)),
+                                        PropObjGetter = &GenGetter{{fieldIndex}},
+
+                        """);
+                }
+
+                if (field is { GetterName: not null, IsReference: false })
+                {
+                    // language=c#
+                    declarations.Append($$"""
+                            [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
+                            extern static {{field.Type}} Getter{{fieldIndex}}({{generationInfo.FullName}} @this);
+                            static void GenGetter{{fieldIndex}}(object @this, ref byte value)
+                            {
+                                Unsafe.As<byte, {{field.Type}}>(ref value) = Getter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this));
+                            }
+
+                        """);
+                    // language=c#
+                    metadataCode.Append($"""
+                                        PropRefGetter = &GenGetter{fieldIndex},
 
                         """);
                 }
@@ -691,8 +729,8 @@ public class SourceGenerator : IIncrementalGenerator
 
                         """);
                     // language=c#
-                    metadataCode.Append($$"""
-                                        PropObjSetter = &GenSetter{{fieldIndex}},
+                    metadataCode.Append($"""
+                                        PropObjSetter = &GenSetter{fieldIndex},
 
                         """);
                 }
@@ -710,8 +748,8 @@ public class SourceGenerator : IIncrementalGenerator
 
                         """);
                     // language=c#
-                    metadataCode.Append($$"""
-                                        PropRefSetter = &GenSetter{{fieldIndex}},
+                    metadataCode.Append($"""
+                                        PropRefSetter = &GenSetter{fieldIndex},
 
                         """);
                 }
@@ -724,7 +762,6 @@ public class SourceGenerator : IIncrementalGenerator
             metadataCode.Append($$"""
                         };
                         BTDB.Serialization.ReflectionMetadata.Register(metadata);
-
                 """);
         }
 
