@@ -26,6 +26,27 @@ public class MetadataTests
     }
 
     [Fact]
+    public Task VerifyImplementsInterface()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            public interface INamed
+            {
+                string Name { get; set; }
+            }
+
+            [BTDB.Generate]
+            public class Person : INamed
+            {
+                public string Name { get; set; } = "";
+                public int Age;
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyMetadataWithComplexSetter()
     {
         // language=cs
@@ -35,8 +56,20 @@ public class MetadataTests
             [BTDB.Generate]
             public class Person
             {
-                public string Name { get; set { Name = value.ToUpperCase() } } = "";
-                public int Age { get; set { Age = value + 1 } };
+                string _name = "";
+                int _age;
+
+                public string Name
+                {
+                    get => _name;
+                    set => _name = value.ToUpper();
+                }
+
+                public int Age
+                {
+                    get => _age;
+                    set => _age = value + 1;
+                }
             }
             """);
     }
@@ -51,8 +84,20 @@ public class MetadataTests
             [BTDB.Generate]
             public class Person
             {
-                public string Name { get => Name.ToUpperCase(); set; } = "";
-                public int Age { get => Age + 1; set; };
+                string _name = "";
+                int _age;
+
+                public string Name
+                {
+                    get => _name.ToUpper();
+                    set => _name = value;
+                }
+
+                public int Age
+                {
+                    get => _age + 1;
+                    set => _age = value;
+                }
             }
             """);
     }

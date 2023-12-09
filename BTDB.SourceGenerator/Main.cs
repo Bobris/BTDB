@@ -64,7 +64,7 @@ public class SourceGenerator : IIncrementalGenerator
                         new[] { new PropertyInfo("", returnType, null, true, false, false, false, null) }
                             .ToImmutableArray(),
                         ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty,
-                        ImmutableArray<FieldsInfo>.Empty);
+                        ImmutableArray<FieldsInfo>.Empty, ImmutableArray<string>.Empty);
                 }
 
                 if (syntaxContext.Node is InterfaceDeclarationSyntax)
@@ -80,7 +80,7 @@ public class SourceGenerator : IIncrementalGenerator
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, false,
                         ImmutableArray<ParameterInfo>.Empty,
                         ImmutableArray<PropertyInfo>.Empty, ImmutableArray<string>.Empty,
-                        dispatchers.ToImmutableArray(), ImmutableArray<FieldsInfo>.Empty);
+                        dispatchers.ToImmutableArray(), ImmutableArray<FieldsInfo>.Empty, ImmutableArray<string>.Empty);
                 }
 
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
@@ -109,6 +109,8 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         return null!;
                     }
+
+                    var implements = symbol.AllInterfaces.Select(s => s.ToDisplayString()).ToImmutableArray();
 
                     var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
                     foreach (var (name, type, resultType, ifaceName) in symbol.AllInterfaces.SelectMany(
@@ -225,6 +227,11 @@ public class SourceGenerator : IIncrementalGenerator
                                 var backingName = getterName == null || setterName == null
                                     ? $"<{p.Name}>k__BackingField"
                                     : null;
+                                if (getterName != null && backingName == null)
+                                {
+                                    backingName = ExtractPropertyFromGetter(p.GetMethod!.DeclaringSyntaxReferences);
+                                    if (backingName != null) getterName = null;
+                                }
                                 return new FieldsInfo(p.Name,
                                     p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                                     p.GetAttributes().FirstOrDefault(a =>
@@ -239,13 +246,27 @@ public class SourceGenerator : IIncrementalGenerator
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
                         hasDefaultConstructor,
                         parameters,
-                        propertyInfos, parentDeclarations, dispatchers.ToImmutable(), fields);
+                        propertyInfos, parentDeclarations, dispatchers.ToImmutable(), fields, implements);
                 }
 
                 return null!;
             }).Where(i => i != null);
 
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
+    }
+
+    string? ExtractPropertyFromGetter(ImmutableArray<SyntaxReference> declaringSyntaxReferences)
+    {
+        if (declaringSyntaxReferences.IsEmpty) return null;
+        if (declaringSyntaxReferences.Length > 1) return null;
+        var syntax = declaringSyntaxReferences[0].GetSyntax();
+        if (syntax is not AccessorDeclarationSyntax ads) return null;
+        if (ads.ExpressionBody is ArrowExpressionClauseSyntax aecs)
+        {
+            if (aecs.Expression is IdentifierNameSyntax ins)
+                return ins.Identifier.ValueText;
+        }
+        return null;
     }
 
     bool IsDefaultMethodImpl(ImmutableArray<SyntaxReference> setMethodDeclaringSyntaxReferences)
@@ -409,7 +430,7 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         // language=c#
-        factoryCode.Append($$"""
+        factoryCode.Append("""
             }
 
             """);
@@ -667,6 +688,7 @@ public class SourceGenerator : IIncrementalGenerator
                         metadata.Name = "{{generationInfo.Name}}";
                         metadata.Type = typeof({{generationInfo.FullName}});
                         metadata.Namespace = "{{generationInfo.Namespace ?? ""}}";
+                        metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Select(i => $"typeof({i})"))}}];
                         metadata.Creator = &Creator;
                         var dummy = Unsafe.As<{{generationInfo.FullName}}>(metadata);
                         metadata.Fields = new[]
@@ -852,7 +874,8 @@ record GenerationInfo(
     ImmutableArray<PropertyInfo> Properties,
     ImmutableArray<string> ParentDeclarations,
     ImmutableArray<DispatcherInfo> Dispatchers,
-    ImmutableArray<FieldsInfo> Fields
+    ImmutableArray<FieldsInfo> Fields,
+    ImmutableArray<string> Implements
 );
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);

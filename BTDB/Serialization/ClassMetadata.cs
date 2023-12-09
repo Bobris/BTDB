@@ -5,6 +5,7 @@ namespace BTDB.Serialization;
 public class ClassMetadata
 {
     public Type Type;
+    public Type[] Implements;
     public string Name;
     public string Namespace;
     public string? PersistedName;

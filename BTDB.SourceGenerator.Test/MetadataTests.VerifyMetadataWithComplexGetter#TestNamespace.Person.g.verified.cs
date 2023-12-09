@@ -9,21 +9,29 @@ static file class PersonRegistration
 {
     [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
     extern static global::TestNamespace.Person Creator();
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Name>k__BackingField")]
-    extern static ref string Field1(global::TestNamespace.Person @this);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Name")]
     extern static string Getter1(global::TestNamespace.Person @this);
     static object GenGetter1(object @this)
     {
         return Getter1(Unsafe.As<global::TestNamespace.Person>(@this));
     }
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Age>k__BackingField")]
-    extern static ref int Field2(global::TestNamespace.Person @this);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_Name")]
+    extern static void Setter1(global::TestNamespace.Person @this, string value);
+    static void GenSetter1(object @this, object value)
+    {
+        Setter1(Unsafe.As<global::TestNamespace.Person>(@this), Unsafe.As<string>(value));
+    }
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Age")]
     extern static int Getter2(global::TestNamespace.Person @this);
     static void GenGetter2(object @this, ref byte value)
     {
         Unsafe.As<byte, int>(ref value) = Getter2(Unsafe.As<global::TestNamespace.Person>(@this));
+    }
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_Age")]
+    extern static void Setter2(global::TestNamespace.Person @this, int value);
+    static void GenSetter2(object @this, ref byte value)
+    {
+        Setter2(Unsafe.As<global::TestNamespace.Person>(@this), Unsafe.As<byte, int>(ref value));
     }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
@@ -40,6 +48,7 @@ static file class PersonRegistration
         metadata.Name = "Person";
         metadata.Type = typeof(global::TestNamespace.Person);
         metadata.Namespace = "TestNamespace";
+        metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::TestNamespace.Person>(metadata);
         metadata.Fields = new[]
@@ -48,15 +57,15 @@ static file class PersonRegistration
             {
                 Name = "Name",
                 Type = typeof(string),
-                ByteOffset = BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
                 PropObjGetter = &GenGetter1,
+                PropObjSetter = &GenSetter1,
             },
             new BTDB.Serialization.FieldMetadata
             {
                 Name = "Age",
                 Type = typeof(int),
-                ByteOffset = BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
                 PropRefGetter = &GenGetter2,
+                PropRefSetter = &GenSetter2,
             },
         };
         BTDB.Serialization.ReflectionMetadata.Register(metadata);

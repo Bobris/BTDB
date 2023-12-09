@@ -15,6 +15,25 @@ unsafe
 }
 
 [Generate]
+public class Person
+{
+    string _name = "";
+    int _age;
+
+    public string Name
+    {
+        get => _name;
+        set => _name = value;
+    }
+
+    public int Age
+    {
+        get => _age;
+        set => _age = value + 1;
+    }
+}
+
+[Generate]
 public partial interface IAnyHandler
 {
     public static unsafe partial delegate*<IContainer, object, object?> CreateConsumeDispatcher(IContainer container);
