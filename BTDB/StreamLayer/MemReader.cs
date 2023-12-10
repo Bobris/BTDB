@@ -17,7 +17,8 @@ public struct MemReader
     public nint Current;
     public nint Start;
     public nint End;
-    public IMemReader? Controller;
+    // This is IMemReader or pinned byte[]
+    public object? Controller;
 
     // Span must be to pinned memory or stack
     public unsafe MemReader(ReadOnlySpan<byte> buf)
@@ -25,6 +26,23 @@ public struct MemReader
         Current = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(buf));
         Start = Current;
         End = Current + buf.Length;
+    }
+
+    public static MemReader CreateFromReadOnlyMemory(ReadOnlyMemory<byte> memory)
+    {
+        return new(new ReadOnlyMemoryMemReader(memory));
+    }
+
+    public static unsafe MemReader CreateFromPinnedArray(byte[] pinnedArray, int offset, int length)
+    {
+        var start = (nint)Unsafe.AsPointer(ref pinnedArray[offset]);
+        return new()
+        {
+            Current = start,
+            Start = start,
+            End = start + length,
+            Controller = pinnedArray
+        };
     }
 
     // buf is pointer to pinned memory or native memory
@@ -46,42 +64,42 @@ public struct MemReader
     public MemReader(IMemReader controller)
     {
         Controller = controller;
-        Controller.Init(ref this);
+        controller.Init(ref this);
     }
 
     void FillBuf(nuint advisePrefetchLength)
     {
-        Controller?.FillBuf(ref this, advisePrefetchLength);
+        (Controller as IMemReader)?.FillBuf(ref this, advisePrefetchLength);
         if (Current + (nint)advisePrefetchLength > End) PackUnpack.ThrowEndOfStreamException();
     }
 
     void FillBuf()
     {
-        Controller?.FillBuf(ref this, 1);
+        (Controller as IMemReader)?.FillBuf(ref this, 1);
         if (Current >= End) PackUnpack.ThrowEndOfStreamException();
     }
 
     public long GetCurrentPosition()
     {
-        return Controller?.GetCurrentPosition(this) ?? Current - Start;
+        return (Controller as IMemReader)?.GetCurrentPosition(this) ?? Current - Start;
     }
 
     public uint GetCurrentPositionWithoutController()
     {
-        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         return (uint)(Current - Start);
     }
 
     public void SetCurrentPosition(long position)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(position);
-        if (Controller != null)
+        if (Controller is IMemReader memReader)
         {
-            Controller.SetCurrentPosition(ref this, position);
+            memReader.SetCurrentPosition(ref this, position);
         }
         else
         {
-            if (position < 0 || Start + position > End) PackUnpack.ThrowEndOfStreamException();
+            if (Start + position > End) PackUnpack.ThrowEndOfStreamException();
             Current = Start + (nint)position;
         }
     }
@@ -89,7 +107,7 @@ public struct MemReader
     public bool Eof
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => (Current == End) && (Controller?.Eof(ref this) ?? true);
+        get => Current == End && ((Controller as IMemReader)?.Eof(ref this) ?? true);
     }
 
     public unsafe byte ReadUInt8()
@@ -507,7 +525,7 @@ public struct MemReader
 
     public unsafe string ReadStringInUtf8()
     {
-        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         var len = ReadVUInt64();
         if (len > int.MaxValue) throw new InvalidDataException($"Reading Utf8 String length overflowed with {len}");
         if (len == 0) return "";
@@ -616,7 +634,7 @@ public struct MemReader
     {
         if (length > End - Current)
         {
-            if (Controller != null)
+            if (Controller is IMemReader memReader)
             {
                 if (Current < End)
                 {
@@ -627,7 +645,7 @@ public struct MemReader
                     Current = End;
                 }
 
-                Controller.ReadBlock(ref this, ref buffer, length);
+                memReader.ReadBlock(ref this, ref buffer, length);
                 return;
             }
 
@@ -647,7 +665,7 @@ public struct MemReader
 
     public unsafe ReadOnlySpan<byte> ReadBlockAsSpan(uint length)
     {
-        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         if (Current + length > End) FillBuf(length);
         var res = new ReadOnlySpan<byte>((byte*)Current, (int)length);
         Current += (nint)length;
@@ -658,18 +676,18 @@ public struct MemReader
     {
         if (length > End - Current)
         {
-            if (Controller != null)
+            if (Controller is IMemReader memReader)
             {
                 length -= (uint)(End - Current);
                 Current = End;
 
                 while (length > (uint)int.MaxValue + 1)
                 {
-                    Controller.SkipBlock(ref this, (uint)int.MaxValue + 1);
+                    memReader.SkipBlock(ref this, (uint)int.MaxValue + 1);
                     length -= (uint)int.MaxValue + 1;
                 }
 
-                Controller.SkipBlock(ref this, length);
+                memReader.SkipBlock(ref this, length);
                 return;
             }
 
@@ -689,7 +707,7 @@ public struct MemReader
 
     public unsafe ReadOnlySpan<byte> ReadByteArrayAsSpan()
     {
-        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         var length = ReadVUInt32();
         if (length-- <= 1) return new();
         if (Current + length > End) FillBuf(length);
@@ -774,11 +792,20 @@ public struct MemReader
         return ReadBlockAsMemory(length);
     }
 
-    ReadOnlyMemory<byte> ReadBlockAsMemory(uint length)
+    unsafe ReadOnlyMemory<byte> ReadBlockAsMemory(uint length)
     {
-        if (Controller != null && Controller.TryReadBlockAsMemory(ref this, length, out var res))
+        if (Controller is IMemReader memReader)
         {
-            return res;
+            if (memReader.TryReadBlockAsMemory(ref this, length, out var res))
+                return res;
+        }
+        else if (Controller is byte[] pinnedArray)
+        {
+            var current = Current;
+            var newCurrent = current + (nint)length;
+            if (newCurrent > End) PackUnpack.ThrowEndOfStreamException();
+            Current = newCurrent;
+            return MemoryMarshal.CreateFromPinnedArray(pinnedArray, (int)(current - (nint)Unsafe.AsPointer(ref pinnedArray[0])), (int)length);
         }
 
         var resBuffer = GC.AllocateUninitializedArray<byte>((int)length, pinned: true);
@@ -788,7 +815,7 @@ public struct MemReader
 
     public byte[] ReadByteArrayRawTillEof()
     {
-        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         var res = GC.AllocateUninitializedArray<byte>((int)(End - Current));
         ReadBlock(res);
         return res;
@@ -796,7 +823,7 @@ public struct MemReader
 
     public ReadOnlyMemory<byte> ReadByteArrayRawTillEofAsMemory()
     {
-        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         return ReadBlockAsMemory((uint)(End - Current));
     }
 
@@ -922,13 +949,13 @@ public struct MemReader
 
     public unsafe void CopyAbsoluteToWriter(uint start, uint len, ref MemWriter writer)
     {
-        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         writer.WriteBlock(new ReadOnlySpan<byte>((void*)(Start + (nint)start), (int)len));
     }
 
     public unsafe void CopyFromPosToWriter(uint start, ref MemWriter writer)
     {
-        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         writer.WriteBlock(new ReadOnlySpan<byte>((void*)(Start + (nint)start), (int)(Current - Start - start)));
     }
 
@@ -963,7 +990,7 @@ public struct MemReader
 
     public nint GetLength()
     {
-        Debug.Assert(Controller?.ThrowIfNotSimpleReader() ?? true);
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         return End - Start;
     }
 }

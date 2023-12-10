@@ -13,6 +13,13 @@ public interface IFileCollectionFile
 
     void RandomRead(Span<byte> data, ulong position, bool doNotCache);
 
+    MemReader RandomRead(ulong position, uint size, bool doNotCache)
+    {
+        var buf = GC.AllocateUninitializedArray<byte>((int)size, pinned: true);
+        RandomRead(buf, position, doNotCache);
+        return MemReader.CreateFromPinnedArray(buf, 0, (int)size);
+    }
+
     // can use RandomRead and when will stop writing SwitchToReadOnlyMode will be called
     ISpanWriter GetAppenderWriter();
 
