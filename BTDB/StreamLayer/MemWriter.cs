@@ -293,6 +293,13 @@ public struct MemWriter
         Current += 8;
     }
 
+    public unsafe void WriteUInt64BE(ulong value)
+    {
+        if (Current + 8 > End) Resize();
+        Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsBigEndian(value));
+        Current += 8;
+    }
+
     public void WriteDateTime(DateTime value)
     {
         WriteInt64BE(value.ToBinary());
@@ -631,6 +638,14 @@ public struct MemWriter
     public void WriteDouble(double value)
     {
         WriteInt64BE(BitConverter.DoubleToInt64Bits(value));
+    }
+
+    public void WriteDoubleOrdered(double value)
+    {
+        var i = BitConverter.DoubleToUInt64Bits(value);
+        if (i < 0x8000_0000_0000_0000UL) i += 0x8000_0000_0000_0000UL;
+        else i ^= ulong.MaxValue;
+        WriteInt64BE((long)i);
     }
 
     public void WriteHalf(Half value)

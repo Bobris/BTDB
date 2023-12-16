@@ -403,6 +403,22 @@ public class MemReaderWriterTest
     }
 
     [Fact]
+    public void DoubleOrderedTest()
+    {
+        TestDoubleOrdered(0, new byte[] { 128, 0, 0, 0, 0, 0, 0, 0 });
+        TestDoubleOrdered(1, new byte[] { 191, 240, 0, 0, 0, 0, 0, 0 });
+        TestDoubleOrdered(double.MinValue, new byte[] { 0, 16, 0, 0, 0, 0, 0, 0 });
+        TestDoubleOrdered(double.MaxValue, new byte[] { 255, 239, 255, 255, 255, 255, 255, 255 });
+        TestDoubleOrdered(double.NaN, new byte[] { 0, 7, 255, 255, 255, 255, 255, 255 });
+    }
+
+    static void TestDoubleOrdered(double value, byte[] checkResult)
+    {
+        TestWriteRead((ref MemWriter w) => w.WriteDoubleOrdered(value), checkResult,
+            (ref MemReader r) => Assert.Equal(value, r.ReadDoubleOrdered()), (ref MemReader s) => s.Skip8Bytes());
+    }
+
+    [Fact]
     public void IPAddressTest()
     {
         TestIPAddress(IPAddress.Loopback, new byte[] { 0, 127, 0, 0, 1 });

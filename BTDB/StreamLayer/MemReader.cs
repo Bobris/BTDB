@@ -256,6 +256,14 @@ public struct MemReader
         return BitConverter.UInt64BitsToDouble(ReadUInt64BE());
     }
 
+    public double ReadDoubleOrdered()
+    {
+        var i = ReadUInt64BE();
+        if (i >= 0x8000_0000_0000_0000UL) i -= 0x8000_0000_0000_0000UL;
+        else i ^= ulong.MaxValue;
+        return BitConverter.UInt64BitsToDouble(i);
+    }
+
     public unsafe long ReadVInt64()
     {
         if (Current >= End) FillBuf();

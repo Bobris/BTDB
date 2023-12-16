@@ -1,8 +1,6 @@
-using System;
 using System.Collections.Generic;
 using System.Reflection;
 using BTDB.EventStoreLayer;
-using BTDB.IL;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
@@ -63,6 +61,7 @@ public static class BasicSerializersFactory
             typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!,
             typeof(SpanReader).GetMethod(nameof(SpanReader.SkipBool))!,
             typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBool))!);
+        fh.Add(new ForbidOrderableFloatsFieldHandler());
         Add(fh, des, "Single",
             typeof(SpanReader).GetMethod(nameof(SpanReader.ReadSingle))!,
             typeof(SpanReader).GetMethod(nameof(SpanReader.SkipSingle))!,
