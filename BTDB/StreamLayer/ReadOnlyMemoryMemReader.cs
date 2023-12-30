@@ -19,12 +19,12 @@ public class ReadOnlyMemoryMemReader : IMemReader, IDisposable
         _pin.Dispose();
     }
 
-    public unsafe void Init(ref MemReader memReader)
+    public unsafe void Init(ref MemReader reader)
     {
         _pin = _memory.Pin();
-        memReader.Start = (nint)_pin.Pointer;
-        memReader.Current = memReader.Start;
-        memReader.End = memReader.Start + _memory.Length;
+        reader.Start = (nint)_pin.Pointer;
+        reader.Current = reader.Start;
+        reader.End = reader.Start + _memory.Length;
     }
 
     public void FillBuf(ref MemReader memReader, nuint advisePrefetchLength)
@@ -78,5 +78,19 @@ public class ReadOnlyMemoryMemReader : IMemReader, IDisposable
         GC.SuppressFinalize(this);
         _pin.Dispose();
         _memory = default;
+    }
+
+    public void Reset(ReadOnlyMemory<byte> memory)
+    {
+        if (_memory.Length == 0)
+        {
+            GC.ReRegisterForFinalize(this);
+        }
+        else
+        {
+            _pin.Dispose();
+        }
+
+        _memory = memory;
     }
 }

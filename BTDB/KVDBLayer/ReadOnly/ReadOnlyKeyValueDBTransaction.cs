@@ -76,6 +76,7 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
                     break;
             }
         }
+
         var l = 0;
         var r = top.KeysCount;
         while (l < r)
@@ -334,7 +335,9 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
         var begin = _owner._begin;
         var suffix = GetKeySuffixSpan(begin, top, top._pos);
         var keyLen = top._prefixLen + (uint)suffix.Length;
-        var res = keyLen >= bufferLength ? MemoryMarshal.CreateSpan(ref buffer, (int)keyLen) : new byte[keyLen];
+        var res = keyLen >= bufferLength
+            ? MemoryMarshal.CreateSpan(ref buffer, (int)keyLen)
+            : GC.AllocateUninitializedArray<byte>((int)keyLen, pinned: true);
         CreateSpan(begin + top._prefixOffset, top._prefixLen).CopyTo(res);
         suffix.CopyTo(res[(int)top._prefixLen..]);
         return res;
@@ -354,7 +357,7 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
         var ofs = ReadUInt32LE(begin + top._valuePtrOffset + (uint)top._pos * 4);
         if (ofs == 0) return new();
 
-        ref var r = ref Unsafe.AsRef<byte>((begin + ofs).ToPointer());
+        ref var r = ref Unsafe.AsRef<byte>((void*)(begin + ofs));
         var l = PackUnpack.LengthVUIntByFirstByte(r);
         var valueLen = PackUnpack.UnsafeUnpackVUInt(ref r, l);
         return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref r, l), (int)valueLen);
@@ -363,6 +366,12 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
     public ReadOnlyMemory<byte> GetValueAsMemory()
     {
         return new UnmanagedMemoryManager<byte>(GetValue()).Memory;
+    }
+
+    public void GetValue(ref MemReader reader)
+    {
+        // GetValue returns Span directly to memory mapped file => it is pinned
+        reader = MemReader.CreateFromPinnedSpan(GetValue());
     }
 
     public bool IsValueCorrupted()
@@ -385,8 +394,7 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
         throw new NotSupportedException();
     }
 
-    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength,
-        out ReadOnlySpan<byte> value)
+    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref MemReader valueReader)
     {
         throw new NotSupportedException();
     }
@@ -474,12 +482,12 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
         throw new NotSupportedException();
     }
 
-    void SinkTo(uint offset)
+    unsafe void SinkTo(uint offset)
     {
         ref var item = ref _cursorStack.AddRef();
         item._offset = offset;
         var ownerBegin = _owner._begin;
-        var reader = new SpanReader(CreateSpan(ownerBegin + offset, 32)); // 32 is bigger than needed
+        var reader = new MemReader((void*)(ownerBegin + offset), 32); // 32 is bigger than needed
         var firstByte = reader.ReadUInt8();
         if (firstByte >= 128)
         {
@@ -524,11 +532,11 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
         return (uint)PackUnpack.UnsafeUnpackVUInt(ownerBegin + ofs);
     }
 
-    uint ReadRecursiveChildrenCount(in StackItem top, uint pos)
+    unsafe uint ReadRecursiveChildrenCount(in StackItem top, uint pos)
     {
         var ownerBegin = _owner._begin;
         var offset = ReadUInt32LE(ownerBegin + top._valuePtrOffset + pos * 4);
-        var reader = new SpanReader(CreateSpan(ownerBegin + offset, 32)); // 32 is bigger than needed
+        var reader = new MemReader((void*)(ownerBegin + offset), 32); // 32 is bigger than needed
         var firstByte = reader.ReadUInt8();
         if (firstByte >= 128)
         {

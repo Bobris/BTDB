@@ -49,7 +49,7 @@ public ref struct KeyValueIterateCtx
     public Span<byte> CurrentPrefix;
     public Span<byte> CurrentSuffix;
     public Span<byte> CurrentValue;
-    public SpanWriter Writer;
+    public MemWriter Writer;
     public uint PreviousCurrentCommonLength;
 
     public void CalcCommonLength()

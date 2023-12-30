@@ -7,7 +7,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer.BTree;
 
-delegate IBTreeNode BuildBranchNodeGenerator(ref SpanReader reader);
+delegate IBTreeNode BuildBranchNodeGenerator(ref MemReader reader);
 
 class BTreeBranch : IBTreeNode
 {
@@ -35,7 +35,7 @@ class BTreeBranch : IBTreeNode
         _pairCounts = newPairCounts;
     }
 
-    public BTreeBranch(long transactionId, int count, ref SpanReader reader, BuildBranchNodeGenerator generator)
+    public BTreeBranch(long transactionId, int count, ref MemReader reader, BuildBranchNodeGenerator generator)
     {
         Debug.Assert(count is > 0 and <= MaxChildren);
         _transactionId = transactionId;

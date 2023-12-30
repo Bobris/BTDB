@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -16,6 +17,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
     int _configurationId;
     Type? _type;
 
+    [SkipLocalsInit]
     public ODBSetFieldHandler(IObjectDB odb, Type type, IFieldHandlerFactory fieldHandlerFactory)
     {
         _odb = odb;
@@ -23,21 +25,26 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
         _type = type;
         _keysHandler = fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0],
             FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
-        var writer = new SpanWriter();
+        Span<byte> buf = stackalloc byte[1024];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteFieldHandler(_keysHandler);
         _configuration = writer.GetSpan().ToArray();
         CreateConfiguration();
     }
 
-    public ODBSetFieldHandler(IObjectDB odb, byte[] configuration)
+    public unsafe ODBSetFieldHandler(IObjectDB odb, byte[] configuration)
     {
         _odb = odb;
         var fieldHandlerFactory = odb.FieldHandlerFactory;
         _typeConvertGenerator = odb.TypeConvertorGenerator;
         _configuration = configuration;
-        var reader = new SpanReader(configuration);
-        _keysHandler = fieldHandlerFactory.CreateFromReader(ref reader,
-            FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
+        fixed (void* confPtr = configuration)
+        {
+            var reader = new MemReader(confPtr, configuration.Length);
+            _keysHandler = fieldHandlerFactory.CreateFromReader(ref reader,
+                FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
+        }
+
         CreateConfiguration();
     }
 
@@ -65,25 +72,25 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
 
     object CreateWriter(IFieldHandler fieldHandler, Type realType)
     {
-        //Action<T, ref SpanWriter, IWriterCtx>
+        //Action<T, ref MemWriter, IWriterCtx>
         var delegateType = typeof(WriterFun<>).MakeGenericType(realType);
         var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Writer", delegateType);
         var ilGenerator = dm.Generator;
         fieldHandler.Save(ilGenerator, il => il.Ldarg(1), il => il.Ldarg(2),
-            il => il.Ldarg(0).Do(_typeConvertGenerator.GenerateConversion(realType, fieldHandler.HandledType())!));
+            il => il.Ldarg(0).Do(_typeConvertGenerator.GenerateConversion(realType, fieldHandler.HandledType()!)!));
         ilGenerator.Ret();
         return dm.Create();
     }
 
     object CreateReader(IFieldHandler fieldHandler, Type realType)
     {
-        //Func<ref SpanReader, IReaderCtx, T>
+        //Func<ref MemReader, IReaderCtx, T>
         var delegateType = typeof(ReaderFun<>).MakeGenericType(realType);
         var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Reader", delegateType);
         var ilGenerator = dm.Generator;
         fieldHandler.Load(ilGenerator, il => il.Ldarg(0), il => il.Ldarg(1));
         ilGenerator
-            .Do(_typeConvertGenerator.GenerateConversion(fieldHandler.HandledType(), realType)!)
+            .Do(_typeConvertGenerator.GenerateConversion(fieldHandler.HandledType()!, realType)!)
             .Ret();
         return dm.Create();
     }
@@ -134,7 +141,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
             .LdcI4(_configurationId)
             .Call(() => ODBDictionaryConfiguration.Get(0))
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
             .Newobj(constructorInfo!)
             .Castclass(_type);
     }
@@ -164,7 +171,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
     {
         ilGenerator
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!);
     }
 
     public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
@@ -207,10 +214,10 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
     {
         if (compatibleWith != null && compatibleWith.GetGenericTypeDefinition() == typeof(IOrderedSet<>))
         {
-            return _type = typeof(IOrderedSet<>).MakeGenericType(_keysHandler.HandledType());
+            return _type = typeof(IOrderedSet<>).MakeGenericType(_keysHandler.HandledType()!);
         }
 
-        return _type = typeof(ISet<>).MakeGenericType(_keysHandler.HandledType());
+        return _type = typeof(ISet<>).MakeGenericType(_keysHandler.HandledType()!);
     }
 
     public IFieldHandler SpecializeSaveForType(Type type)
@@ -235,7 +242,7 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
             .Do(pushCtx)
             .Castclass(typeof(IDBReaderCtx))
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
             .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
         return NeedsFreeContent.Yes;
     }

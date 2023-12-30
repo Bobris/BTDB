@@ -18,11 +18,11 @@ using Extensions = BTDB.FieldHandler.Extensions;
 
 namespace BTDB.ODBLayer;
 
-delegate void RelationLoader(IInternalObjectDBTransaction transaction, ref SpanReader reader, object value);
+delegate void RelationLoader(IInternalObjectDBTransaction transaction, ref MemReader reader, object value);
 
-delegate object RelationLoaderFunc(IInternalObjectDBTransaction transaction, ref SpanReader reader);
+delegate object RelationLoaderFunc(IInternalObjectDBTransaction transaction, ref MemReader reader);
 
-delegate int RelationSaver(IInternalObjectDBTransaction transaction, ref SpanWriter writer, object value);
+delegate int RelationSaver(IInternalObjectDBTransaction transaction, ref MemWriter writer, object value);
 
 delegate bool RelationBeforeRemove(IInternalObjectDBTransaction transaction, IContainer container, object value);
 
@@ -56,7 +56,8 @@ public class RelationInfo
             _pkFields = _owner.ClientRelationVersionInfo.PrimaryKeyFields;
             _valueLoaders = new RelationLoader?[_owner._relationVersions.Length];
             _primaryKeysLoader = CreatePkLoader(itemType, _owner.ClientRelationVersionInfo.PrimaryKeyFields.Span,
-                $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough, out _loadAsMemory);
+                $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough,
+                out _loadAsMemory);
         }
 
         public ItemLoaderInfo(RelationInfo owner, Type itemType, ReadOnlyMemory<TableFieldInfo> pkFields)
@@ -66,29 +67,38 @@ public class RelationInfo
             _pkFields = pkFields;
             _valueLoaders = new RelationLoader?[_owner._relationVersions.Length];
             _primaryKeysLoader = CreatePkLoader(itemType, pkFields.Span,
-                $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough, out _loadAsMemory);
+                $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough,
+                out _loadAsMemory);
         }
 
-        internal object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes)
+        [SkipLocalsInit]
+        internal unsafe object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes)
         {
-            var reader = new SpanReader(keyBytes);
-            reader.SkipInt8(); // 3
-            reader.SkipVUInt64(); // RelationId
-            var obj = _primaryKeysLoader(tr, ref reader);
-            if (_primaryKeyIsEnough) return obj;
-            if (_loadAsMemory)
+            fixed (void* pKeyBytes = keyBytes)
             {
-                var valueBytes = tr.KeyValueDBTransaction.GetValue();
-                reader = new(valueBytes);
+                var reader = new MemReader(pKeyBytes, keyBytes.Length);
+                reader.Skip1Byte(); // 3
+                reader.SkipVUInt64(); // RelationId
+                var obj = _primaryKeysLoader(tr, ref reader);
+                if (_primaryKeyIsEnough) return obj;
+                if (_loadAsMemory)
+                {
+                    var valueBytes = tr.KeyValueDBTransaction.GetValueAsMemory();
+                    reader = MemReader.CreateFromReadOnlyMemory(valueBytes);
+                    var version = reader.ReadVUInt32();
+                    GetValueLoader(version)(tr, ref reader, obj);
+                    return obj;
+                }
+                else
+                {
+                    Span<byte> buf = stackalloc byte[4096];
+                    reader = MemReader.CreateFromPinnedSpan(buf);
+                    tr.KeyValueDBTransaction.GetValue(ref reader);
+                    var version = reader.ReadVUInt32();
+                    GetValueLoader(version)(tr, ref reader, obj);
+                    return obj;
+                }
             }
-            else
-            {
-                var valueBytes = tr.KeyValueDBTransaction.GetValueAsMemory();
-                reader = new(valueBytes);
-            }
-            var version = reader.ReadVUInt32();
-            GetValueLoader(version)(tr, ref reader, obj);
-            return obj;
         }
 
         internal readonly RelationLoaderFunc _primaryKeysLoader;
@@ -384,12 +394,12 @@ public class RelationInfo
 
     RelationSaver[] _secondaryKeysSavers; //secondary key idx => sk key saver
 
-    internal delegate void SecondaryKeyConvertSaver(IInternalObjectDBTransaction tr, ref SpanWriter writer,
-        ref SpanReader keyReader, ref SpanReader valueReader, object emptyValue);
+    internal delegate void SecondaryKeyConvertSaver(IInternalObjectDBTransaction tr, ref MemWriter writer,
+        ref MemReader keyReader, ref MemReader valueReader, object emptyValue);
 
     readonly ConcurrentDictionary<ulong, SecondaryKeyConvertSaver> _secondaryKeysConvertSavers = new();
 
-    public delegate void SecondaryKeyValueToPKLoader(ref SpanReader readerKey, ref SpanWriter writer);
+    public delegate void SecondaryKeyValueToPKLoader(ref MemReader readerKey, ref MemWriter writer);
 
     readonly ConcurrentDictionary<ulong, SecondaryKeyValueToPKLoader> _secondaryKeyValueToPKLoader = new();
 
@@ -444,6 +454,7 @@ public class RelationInfo
             _hasInKeyValue = true;
             break;
         }
+
         Extensions.RegisterFieldHandlers(ClientRelationVersionInfo.GetAllFields().ToArray().Select(a => a.Handler),
             tr.Owner);
         foreach (var loadType in builder.LoadTypes)
@@ -463,13 +474,7 @@ public class RelationInfo
         {
             ClientTypeVersion = LastPersistedVersion + 1;
             _relationVersions[ClientTypeVersion] = ClientRelationVersionInfo;
-            var writerKey = new SpanWriter();
-            writerKey.WriteByteArrayRaw(ObjectDB.RelationVersionsPrefix);
-            writerKey.WriteVUInt32(_id);
-            writerKey.WriteVUInt32(ClientTypeVersion);
-            var writerValue = new SpanWriter();
-            ClientRelationVersionInfo.Save(ref writerValue);
-            tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(writerKey.GetSpan(), writerValue.GetSpan());
+            WriteRelationMetadata(tr);
 
             CreateCreatorLoadersAndSavers();
             if (LastPersistedVersion > 0)
@@ -479,6 +484,20 @@ public class RelationInfo
                 UpdateSecondaryKeys(tr, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]!);
             }
         }
+    }
+
+    [SkipLocalsInit]
+    void WriteRelationMetadata(IObjectDBTransaction tr)
+    {
+        Span<byte> buffer = stackalloc byte[16];
+        var writerKey = MemWriter.CreateFromStackAllocatedSpan(buffer);
+        writerKey.WriteByteArrayRaw(ObjectDB.RelationVersionsPrefix);
+        writerKey.WriteVUInt32(_id);
+        writerKey.WriteVUInt32(ClientTypeVersion);
+        Span<byte> buffer2 = stackalloc byte[4096];
+        var writerValue = MemWriter.CreateFromStackAllocatedSpan(buffer2);
+        ClientRelationVersionInfo.Save(ref writerValue);
+        tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(writerKey.GetSpan(), writerValue.GetSpan());
     }
 
     void CheckThatPrimaryKeyHasNotChanged(IInternalObjectDBTransaction tr, string name,
@@ -521,22 +540,25 @@ public class RelationInfo
         {
             for (int i = pkFieldsUnique; i < pkFields.Length; i++)
             {
-                if (!ArePrimaryKeyFieldsCompatible(pkFields.Span[i].Handler!, prevPkFields.Span[i].Handler!)) goto NeedRebuild;
+                if (!ArePrimaryKeyFieldsCompatible(pkFields.Span[i].Handler!, prevPkFields.Span[i].Handler!))
+                    goto NeedRebuild;
             }
+
             return;
         }
+
         NeedRebuild:
 
         ItemLoaderInfos.Add(new(this, _clientType, prevPkFields));
         var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
         var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this,
-            Prefix, new SimpleModificationCounter(), (int)ItemLoaderInfos.Count-1);
+            Prefix, new SimpleModificationCounter(), (int)ItemLoaderInfos.Count - 1);
 
-        var keyWriter = new SpanWriter();
+        var keyWriter = new MemWriter();
 
         while (enumerator!.MoveNext())
         {
-            var obj = enumerator.Current;
+            var obj = enumerator.Current!;
 
             keyWriter.WriteBlock(Prefix);
             var lenOfPkWoInKeyValues = PrimaryKeysSaver(tr, ref keyWriter, obj);
@@ -544,6 +566,7 @@ public class RelationInfo
             tr.KeyValueDBTransaction.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
             keyWriter.Reset();
         }
+
         ItemLoaderInfos.RemoveAt(^1);
         return;
 
@@ -653,7 +676,8 @@ public class RelationInfo
 
     bool WrongCountInSecondaryKey(IKeyValueDBTransaction tr, long count, uint index)
     {
-        return count != tr.GetKeyValueCount(GetPrefixToSecondaryKey(index));
+        Span<byte> buf = stackalloc byte[8];
+        return count != tr.GetKeyValueCount(GetPrefixToSecondaryKey(index, buf));
     }
 
     void ClearRelationData(IInternalObjectDBTransaction tr, RelationVersionInfo info)
@@ -663,7 +687,8 @@ public class RelationInfo
             DeleteSecondaryKey(tr.KeyValueDBTransaction, prevIdx);
         }
 
-        var writer = new SpanWriter();
+        Span<byte> buf = stackalloc byte[8];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteBlock(ObjectDB.AllRelationsPKPrefix);
         writer.WriteVUInt32(Id);
 
@@ -672,12 +697,13 @@ public class RelationInfo
 
     void DeleteSecondaryKey(IKeyValueDBTransaction keyValueTr, uint index)
     {
-        keyValueTr.EraseAll(GetPrefixToSecondaryKey(index));
+        Span<byte> buf = stackalloc byte[8];
+        keyValueTr.EraseAll(GetPrefixToSecondaryKey(index, buf));
     }
 
-    ReadOnlySpan<byte> GetPrefixToSecondaryKey(uint index)
+    ReadOnlySpan<byte> GetPrefixToSecondaryKey(uint index, Span<byte> buf)
     {
-        var writer = new SpanWriter();
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteBlock(PrefixSecondary);
         writer.WriteUInt8((byte)index);
         return writer.GetSpan();
@@ -698,7 +724,7 @@ public class RelationInfo
                 $"Relation_{Name}_Upgrade_SK_{indexes[i].Value.Name}_KeySaver", false);
         }
 
-        var keyWriter = new SpanWriter();
+        var keyWriter = new MemWriter();
 
         while (enumerator!.MoveNext())
         {
@@ -722,7 +748,8 @@ public class RelationInfo
     void LoadUnresolvedVersionInfos(IKeyValueDBTransaction tr)
     {
         LastPersistedVersion = 0;
-        var writer = new SpanWriter();
+        Span<byte> buf = stackalloc byte[8];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteByteArrayRaw(ObjectDB.RelationVersionsPrefix);
         writer.WriteVUInt32(_id);
         var prefix = writer.GetSpan();
@@ -730,11 +757,12 @@ public class RelationInfo
         if (tr.FindFirstKey(prefix))
         {
             Span<byte> keyBuffer = stackalloc byte[16];
+            MemReader valueReader = new();
             do
             {
-                var valueReader = new SpanReader(tr.GetValue());
+                tr.GetValue(ref valueReader);
                 LastPersistedVersion = (uint)PackUnpack.UnpackVUInt(tr
-                    .GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length).Slice(prefix.Length));
+                    .GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length)[prefix.Length..]);
                 var relationVersionInfo = RelationVersionInfo.LoadUnresolved(ref valueReader, _name);
                 relationVersions[LastPersistedVersion] = relationVersionInfo;
             } while (tr.FindNextKey(prefix));
@@ -813,11 +841,12 @@ public class RelationInfo
                 {
                     wasInKeyValueField = true;
                     pushWriter(ilGen);
-                    ilGen.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.NoControllerGetCurrentPosition))!);
+                    ilGen.Call(typeof(MemWriter).GetMethod(nameof(MemWriter.NoControllerGetCurrentPosition))!);
                     ilGen.ConvI4();
                     pushLenOfKey(ilGen);
                 }
             }
+
             var getter = props.First(p => GetPersistentName(p) == field.Name).GetAnyGetMethod();
             var handler = field.Handler!.SpecializeSaveForType(getter!.ReturnType);
             handler.Save(ilGen, pushWriter, il => il.Ldloc(writerCtxLocal!), il =>
@@ -1029,9 +1058,9 @@ public class RelationInfo
         if (skipAllRelationsPKPrefix)
             ilGenerator
                 .Do(bufferInfo.PushReader)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipInt8))!); //ObjectDB.AllRelationsPKPrefix
+                .Call(typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!); //ObjectDB.AllRelationsPKPrefix
         ilGenerator
-            .Do(bufferInfo.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
+            .Do(bufferInfo.PushReader).Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!);
 
         var anyNeedsCtx = false;
         foreach (var fieldInfo in fields)
@@ -1066,6 +1095,7 @@ public class RelationInfo
                                         " must return void or bool.");
             hasBeforeRemove = true;
         }
+
         if (!hasBeforeRemove) return null;
         var method = ILBuilder.Instance.NewMethod<RelationBeforeRemove>(functionName);
         var ilGenerator = method.Generator;
@@ -1101,6 +1131,7 @@ public class RelationInfo
                 ilGenerator
                     .Ldloc(resultLoc);
             }
+
             ilGenerator
                 .Ldloc(clientTypeLoc);
             for (var i = 0; i < parameters.Length; i++)
@@ -1111,8 +1142,10 @@ public class RelationInfo
                     ilGenerator.Ldarg(0).Castclass(typeof(IObjectDBTransaction));
                     continue;
                 }
+
                 ilGenerator.Ldloc(paramLocs[i]);
             }
+
             ilGenerator
                 .Call(methodInfo);
             if (withBoolResult)
@@ -1151,8 +1184,9 @@ public class RelationInfo
                 ilGenerator.Ldloc(0).Callvirt(methodInfo);
             }
         }
+
         CreateSaverIl(ilGenerator, fields,
-            il => il.Ldloc(0), il => il.Ldarg(1), il => il.Ldarg(0), forPrimaryKey? (il => il.Stloc(result)):null);
+            il => il.Ldloc(0), il => il.Ldarg(1), il => il.Ldarg(0), forPrimaryKey ? (il => il.Stloc(result)) : null);
         ilGenerator.Ldloc(result);
         ilGenerator.Ret();
         return method.Create();
@@ -1395,11 +1429,11 @@ public class RelationInfo
         ilGenerator
             //skip all relations
             .Do(bi.PushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!) // ObjectDB.AllRelationsSKPrefix
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!) // ObjectDB.AllRelationsSKPrefix
             //skip relation id (it is just 32bit, but 64bit skip is faster)
-            .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!)
+            .Do(bi.PushReader).Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!)
             //skip secondary key index
-            .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!);
+            .Do(bi.PushReader).Call(typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!);
 
         var anyNeedsCtx = false;
         foreach (var fieldInfo in tableSecondaryKeyFields)
@@ -1433,7 +1467,7 @@ public class RelationInfo
         handler.Skip(ilGenerator, pushReader, null);
         ilGenerator
             .Do(pushReader) //[VR]
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader
                 .GetCurrentPositionWithoutController))!) //[posNew(uint)]
             .Ldloc(memoPos) //[posNew(uint), posOld(uint)]
             .Sub() //[readLen(uint)]
@@ -1449,7 +1483,7 @@ public class RelationInfo
             .Ldloc(memo.Pos) //[reader, pos]
             .Ldloc(memo.Length) //[reader, pos, readLen]
             .Do(pushWriter) //[reader, pos, readLen, writer]
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.CopyAbsoluteToWriter))!); //[]
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.CopyAbsoluteToWriter))!); //[]
     }
 
     public static void CopyFromPos(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal posLocal,
@@ -1459,14 +1493,14 @@ public class RelationInfo
             .Do(pushReader) //[reader]
             .Ldloc(posLocal) //[reader, pos]
             .Do(pushWriter) //[reader, pos, writer]
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.CopyFromPosToWriter))!); //[]
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.CopyFromPosToWriter))!); //[]
     }
 
     public static void MemorizeCurrentPosition(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal memoPositionLoc)
     {
         ilGenerator
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPositionWithoutController))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.GetCurrentPositionWithoutController))!)
             .Stloc(memoPositionLoc);
     }
 
@@ -1537,12 +1571,15 @@ public class RelationInfo
         tr.KeyValueDBTransaction.EraseAll(prefix);
     }
 
-    public void FindUsedObjectsToFree(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> valueBytes,
+    public unsafe void FindUsedObjectsToFree(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> valueBytes,
         IList<ulong> dictionaries)
     {
-        var valueReader = new SpanReader(valueBytes);
-        var version = valueReader.ReadVUInt32();
-        GetIDictFinder(version).Invoke(tr, ref valueReader, dictionaries);
+        fixed (void* _ = valueBytes)
+        {
+            var valueReader = MemReader.CreateFromPinnedSpan(valueBytes);
+            var version = valueReader.ReadVUInt32();
+            GetIDictFinder(version).Invoke(tr, ref valueReader, dictionaries);
+        }
     }
 
     FreeContentFun CreateIDictFinder(uint version)
@@ -1564,7 +1601,7 @@ public class RelationInfo
 
         if (needGenerateFreeFor == 0)
         {
-            return (IInternalObjectDBTransaction a, ref SpanReader b, IList<ulong> c) => { };
+            return (IInternalObjectDBTransaction _, ref MemReader _, IList<ulong> _) => { };
         }
 
         _needImplementFreeContent = true;
@@ -1625,18 +1662,22 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
         _freeDictionaries.Add(dictId);
     }
 
-    public override void FreeContentInNativeObject(ref SpanReader outsideReader)
+    [SkipLocalsInit]
+    public override void FreeContentInNativeObject(ref MemReader outsideReader)
     {
         var id = outsideReader.ReadVInt64();
         if (id == 0)
         {
         }
-        else if (id <= int.MinValue || id > 0)
+        else if (id is <= int.MinValue or > 0)
         {
-            if (!Transaction.KeyValueDBTransaction.FindExactKey(
-                    ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong)id)))
+            Span<byte> buffer10Bytes = stackalloc byte[10];
+            if (!Transaction!.KeyValueDBTransaction.FindExactKey(
+                    ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong)id, buffer10Bytes)))
                 return;
-            var reader = new SpanReader(Transaction.KeyValueDBTransaction.GetValue());
+            Span<byte> buffer = stackalloc byte[2048];
+            var reader = MemReader.CreateFromPinnedSpan(buffer);
+            Transaction.KeyValueDBTransaction.GetValue(ref reader);
             var tableId = reader.ReadVUInt32();
             var tableInfo = ((ObjectDB)Transaction.Owner).TablesInfo.FindById(tableId);
             if (tableInfo == null)
@@ -1652,7 +1693,7 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
         {
             var ido = (int)-id - 1;
             if (!AlreadyProcessedInstance(ido))
-                Transaction.FreeContentInNativeObject(ref outsideReader, this);
+                Transaction!.FreeContentInNativeObject(ref outsideReader, this);
         }
     }
 

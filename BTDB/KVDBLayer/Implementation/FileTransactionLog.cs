@@ -9,7 +9,7 @@ class FileTransactionLog : IFileInfo, IFileTransactionLog
     readonly uint _previousFileId;
     readonly long _generation;
 
-    public FileTransactionLog(ref SpanReader reader, Guid? guid)
+    public FileTransactionLog(ref MemReader reader, Guid? guid)
     {
         _guid = guid;
         _generation = reader.ReadVInt64();
@@ -35,15 +35,15 @@ class FileTransactionLog : IFileInfo, IFileTransactionLog
 
     public uint NextFileId { get; set; }
 
-    internal static void SkipHeader(ref SpanReader reader)
+    internal static void SkipHeader(ref MemReader reader)
     {
         FileCollectionWithFileInfos.SkipHeader(ref reader);
-        reader.SkipUInt8(); // type of file
+        reader.Skip1Byte(); // type of file
         reader.SkipVInt64(); // generation
         reader.SkipVInt32(); // previous file id
     }
 
-    internal void WriteHeader(ref SpanWriter writer)
+    internal void WriteHeader(ref MemWriter writer)
     {
         FileCollectionWithFileInfos.WriteHeader(ref writer, _guid);
         writer.WriteUInt8((byte)KVFileType.TransactionLog);

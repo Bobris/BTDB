@@ -70,6 +70,11 @@ public class FileMemWriter : IMemWriter, IDisposable
         _currentPosition = position;
     }
 
+    public long GetCurrentPositionWithoutWriter()
+    {
+        return _currentPosition;
+    }
+
     public void Dispose()
     {
         _streamHandle.Dispose();

@@ -29,26 +29,26 @@ public class ByteArrayFieldHandler : IFieldHandler
     public virtual void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         pushReader(ilGenerator);
-        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArray))!);
+        ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadByteArray))!);
     }
 
     public virtual void LoadByteBuffer(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         pushReader(ilGenerator);
-        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArray))!);
+        ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadByteArray))!);
         ilGenerator.Call(() => ByteBuffer.NewAsync(null));
     }
 
     public virtual void LoadReadOnlyMemory(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         pushReader(ilGenerator);
-        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayAsMemory))!);
+        ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadByteArrayAsMemory))!);
     }
 
     public virtual void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         pushReader(ilGenerator);
-        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipByteArray))!);
+        ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipByteArray))!);
     }
 
     public virtual void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx,
@@ -56,7 +56,7 @@ public class ByteArrayFieldHandler : IFieldHandler
     {
         pushWriter(ilGenerator);
         pushValue(ilGenerator);
-        ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(byte[]) })!);
+        ilGenerator.Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteArray), new[] { typeof(byte[]) })!);
     }
 
     protected virtual void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushValue)
@@ -64,7 +64,7 @@ public class ByteArrayFieldHandler : IFieldHandler
         pushWriter(ilGenerator);
         pushValue(ilGenerator);
         ilGenerator.Call(
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(ByteBuffer) })!);
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteArray), new[] { typeof(ByteBuffer) })!);
     }
 
     protected virtual void SaveReadOnlyMemory(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushValue)
@@ -72,7 +72,7 @@ public class ByteArrayFieldHandler : IFieldHandler
         pushWriter(ilGenerator);
         pushValue(ilGenerator);
         ilGenerator.Call(
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(ReadOnlyMemory<byte>) })!);
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteArray), new[] { typeof(ReadOnlyMemory<byte>) })!);
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)

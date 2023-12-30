@@ -37,8 +37,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     uint _fileIdWithTransactionLog;
     uint _fileIdWithPreviousTransactionLog;
     IFileCollectionFile? _fileWithTransactionLog;
-    ISpanWriter? _writerWithTransactionLog;
-    static readonly byte[] MagicStartOfTransaction = { (byte)'t', (byte)'R' };
+    IMemWriter? _writerWithTransactionLog;
+    MemWriter _memWriterWithTransactionLog;
+    static readonly byte[] MagicStartOfTransaction = "tR"u8.ToArray();
     public long MaxTrLogFileSize { get; set; }
 
     public IEnumerable<IKeyValueDBTransaction> Transactions()
@@ -310,9 +311,10 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     {
                         _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
                         _writerWithTransactionLog = _fileWithTransactionLog!.GetAppenderWriter();
+                        _memWriterWithTransactionLog = new(_writerWithTransactionLog);
                     }
 
-                    if (_writerWithTransactionLog.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
+                    if (_memWriterWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
                     {
                         WriteStartOfNewTransactionLogFile();
                     }
@@ -324,8 +326,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             foreach (var fileInfo in _fileCollection.FileInfos)
             {
                 var ft = fileInfo.Value.FileType;
-                if (ft == KVFileType.TransactionLog || ft == KVFileType.PureValuesWithId ||
-                    ft == KVFileType.PureValues)
+                if (ft is KVFileType.TransactionLog or KVFileType.PureValuesWithId or KVFileType.PureValues)
                 {
                     _fileCollection.GetFile(fileInfo.Key)?.AdvisePrefetch();
                 }
@@ -398,7 +399,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return CreateIndexFile(cancellation, preserveKeyIndexGeneration);
     }
 
-    ISpanWriter IKeyValueDBInternal.StartPureValuesFile(out uint fileId)
+    MemWriter IKeyValueDBInternal.StartPureValuesFile(out uint fileId)
     {
         return StartPureValuesFile(out fileId);
     }
@@ -427,7 +428,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         {
             var file = FileCollection.GetFile(fileId);
             var readerController = file!.GetExclusiveReader();
-            var reader = new SpanReader(readerController);
+            var reader = new MemReader(readerController);
             FileKeyIndex.SkipHeader(ref reader);
             var keyCount = info.KeyValueCount;
             var usedFileIds = new HashSet<uint>();
@@ -436,39 +437,35 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 for (var i = 0; i < keyCount; i++)
                 {
                     var keyLength = reader.ReadVInt32();
-                    reader.SkipBlock(keyLength);
+                    reader.SkipBlock((uint)keyLength);
                     var vFileId = reader.ReadVUInt32();
                     if (vFileId > 0) usedFileIds.Add(vFileId);
                     reader.SkipVUInt32();
                     reader.SkipVInt32();
                 }
-                reader.Sync();
             }
             else
             {
-                reader.Sync();
-                var decompressionController = _kviCompressionStrategy.StartDecompression(info.Compression, readerController);
+                var decompressedReader =
+                    _kviCompressionStrategy.StartDecompression(info.Compression, reader);
                 try
                 {
-                    reader = new(decompressionController);
                     for (var i = 0; i < keyCount; i++)
                     {
-                        reader.SkipVUInt32();
-                        var keyLengthWithoutPrefix = (int)reader.ReadVUInt32();
-                        reader.SkipBlock(keyLengthWithoutPrefix);
-                        var vFileId = reader.ReadVUInt32();
+                        decompressedReader.SkipVUInt32();
+                        var keyLengthWithoutPrefix = (int)decompressedReader.ReadVUInt32();
+                        decompressedReader.SkipBlock((uint)keyLengthWithoutPrefix);
+                        var vFileId = decompressedReader.ReadVUInt32();
                         if (vFileId > 0) usedFileIds.Add(vFileId);
-                        reader.SkipVUInt32();
-                        reader.SkipVInt32();
+                        decompressedReader.SkipVUInt32();
+                        decompressedReader.SkipVInt32();
                     }
-                    reader.Sync();
                 }
                 finally
                 {
-                    _kviCompressionStrategy.FinishDecompression(info.Compression, decompressionController);
+                    _kviCompressionStrategy.FinishDecompression(info.Compression, decompressedReader, ref reader);
                 }
             }
-            reader = new(readerController);
 
             var trlGeneration = GetGeneration(info.TrLogFileId);
             info.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
@@ -488,7 +485,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         {
             var file = FileCollection.GetFile(fileId);
             var readerController = file!.GetExclusiveReader();
-            var reader = new SpanReader(readerController);
+            var reader = new MemReader(readerController);
             FileKeyIndex.SkipHeader(ref reader);
             var keyCount = info.KeyValueCount;
             _nextRoot!.TrLogFileId = info.TrLogFileId;
@@ -505,11 +502,11 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             if (info.Compression == KeyIndexCompression.Old)
             {
                 cursor.BuildTree(keyCount, ref reader,
-                    (ref SpanReader reader2, ref ByteBuffer key, in Span<byte> trueValue) =>
+                    (ref MemReader reader2, ref ByteBuffer key, in Span<byte> trueValue) =>
                     {
                         var keyLength = reader2.ReadVInt32();
                         key = ByteBuffer.NewAsync(new byte[Math.Abs(keyLength)]);
-                        reader2.ReadBlock(key);
+                        reader2.ReadBlock(key.AsSyncSpan());
                         if (keyLength < 0)
                         {
                             _compression.DecompressKey(ref key);
@@ -560,26 +557,23 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             MemoryMarshal.Write(trueValue.Slice(8), valueSize);
                         }
                     });
-                reader.Sync();
             }
             else
             {
-                reader.Sync();
-                var decompressionController =
-                    _kviCompressionStrategy.StartDecompression(info.Compression, readerController);
+                var decompressionReader =
+                    _kviCompressionStrategy.StartDecompression(info.Compression, reader);
                 try
                 {
-                    reader = new(decompressionController);
                     var prevKey = ByteBuffer.NewEmpty();
-                    cursor.BuildTree(keyCount, ref reader,
-                        (ref SpanReader reader2, ref ByteBuffer key, in Span<byte> trueValue) =>
+                    cursor.BuildTree(keyCount, ref decompressionReader,
+                        (ref MemReader reader2, ref ByteBuffer key, in Span<byte> trueValue) =>
                         {
                             var prefixLen = (int)reader2.ReadVUInt32();
                             var keyLengthWithoutPrefix = (int)reader2.ReadVUInt32();
                             var keyLen = prefixLen + keyLengthWithoutPrefix;
                             key.Expand(keyLen);
                             Array.Copy(prevKey.Buffer!, prevKey.Offset, key.Buffer!, key.Offset, prefixLen);
-                            reader2.ReadBlock(key.Slice(prefixLen));
+                            reader2.ReadBlock(key.Slice(prefixLen).AsSyncSpan());
                             prevKey = key;
                             var vFileId = reader2.ReadVUInt32();
                             if (vFileId > 0) usedFileIds.Add(vFileId);
@@ -626,14 +620,12 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                                 MemoryMarshal.Write(trueValue.Slice(8), valueSize);
                             }
                         });
-                    reader.Sync();
                 }
                 finally
                 {
-                    _kviCompressionStrategy.FinishDecompression(info.Compression, decompressionController);
+                    _kviCompressionStrategy.FinishDecompression(info.Compression, decompressionReader, ref reader);
                 }
             }
-            reader = new(readerController);
 
             var trlGeneration = GetGeneration(info.TrLogFileId);
             info.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
@@ -647,11 +639,11 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    bool TestKviMagicEndMarker(uint fileId, ref SpanReader reader, IFileCollectionFile file)
+    bool TestKviMagicEndMarker(uint fileId, ref MemReader reader, IFileCollectionFile file)
     {
         if (reader.Eof) return true;
         if ((ulong)reader.GetCurrentPosition() + 4 == file.GetSize() &&
-            reader.ReadInt32() == EndOfIndexFileMarker) return true;
+            reader.ReadInt32BE() == EndOfIndexFileMarker) return true;
         if (_lenientOpen)
         {
             Logger?.LogWarning("End of Kvi " + fileId + " had some garbage at " + (reader.GetCurrentPosition() - 4) +
@@ -692,7 +684,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         Span<byte> trueValue = stackalloc byte[12];
         var collectionFile = FileCollection.GetFile(fileId);
         var readerController = collectionFile!.GetExclusiveReader();
-        var reader = new SpanReader(readerController);
+        var reader = new MemReader(readerController);
         try
         {
             if (logOffset == 0)
@@ -761,7 +753,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             MemoryMarshal.Write(trueValue, fileId);
                             MemoryMarshal.Write(trueValue.Slice(4), valueOfs);
                             MemoryMarshal.Write(trueValue.Slice(8), valueSize);
-                            reader.SkipBlock(valueLen);
+                            reader.SkipBlock((uint)valueLen);
                         }
 
                         cursor.Upsert(keyBuf.AsSyncReadOnlySpan(), trueValue);
@@ -784,6 +776,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
                             break;
                         }
+
                         cursor.UpdateKeySuffix(key);
                         break;
                     }
@@ -808,6 +801,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             _nextRoot = null;
                             return false;
                         }
+
                         break;
                     }
                     case KVCommandType.EraseRange:
@@ -973,9 +967,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
         if (_writerWithTransactionLog != null)
         {
-            var writer = new SpanWriter(_writerWithTransactionLog);
+            var writer = new MemWriter(_writerWithTransactionLog);
             writer.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
-            writer.Sync();
+            writer.Flush();
             _fileWithTransactionLog!.HardFlushTruncateSwitchToDisposedMode();
         }
     }
@@ -1206,7 +1200,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         try
         {
-            var writer = new SpanWriter(_writerWithTransactionLog!);
+            var writer = new MemWriter(_writerWithTransactionLog!);
             WriteUlongsDiff(ref writer, root, _lastCommitted);
             var deltaUlong = unchecked(root.CommitUlong - _lastCommitted.CommitUlong);
             if (deltaUlong != 0)
@@ -1219,24 +1213,19 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 writer.WriteUInt8((byte)KVCommandType.Commit);
             }
 
-            writer.Sync();
+            writer.Flush();
             if (DurableTransactions)
             {
                 _fileWithTransactionLog!.HardFlush();
-            }
-            else
-            {
-                _fileWithTransactionLog!.Flush();
             }
 
             UpdateTransactionLogInBTreeRoot(root);
             if (temporaryCloseTransactionLog)
             {
-                writer = new SpanWriter(_writerWithTransactionLog!);
+                writer = new MemWriter(_writerWithTransactionLog!);
                 writer.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
-                writer.Sync();
-                _fileWithTransactionLog!.Flush();
-                _fileWithTransactionLog.Truncate();
+                writer.Flush();
+                _fileWithTransactionLog!.Truncate();
             }
 
             lock (_writeLock)
@@ -1258,7 +1247,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    void WriteUlongsDiff(ref SpanWriter writer, IRootNode newArray, IRootNode oldArray)
+    void WriteUlongsDiff(ref MemWriter writer, IRootNode newArray, IRootNode oldArray)
     {
         var newCount = newArray.GetUlongCount();
         var oldCount = oldArray.GetUlongCount();
@@ -1372,10 +1361,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         writtenToTransactionLog.Dispose();
         if (!nothingWrittenToTransactionLog)
         {
-            var writer = new SpanWriter(_writerWithTransactionLog!);
+            var writer = new MemWriter(_writerWithTransactionLog!);
             writer.WriteUInt8((byte)KVCommandType.Rollback);
-            writer.Sync();
-            _fileWithTransactionLog!.Flush();
+            writer.Flush();
             lock (_writeLock)
             {
                 _writingTransaction = null;
@@ -1413,20 +1401,20 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             }
         }
 
-        var writer = new SpanWriter(_writerWithTransactionLog!);
+        var writer = new MemWriter(_writerWithTransactionLog!);
         writer.WriteUInt8((byte)KVCommandType.TransactionStart);
         writer.WriteByteArrayRaw(MagicStartOfTransaction);
-        writer.Sync();
+        writer.Flush();
     }
 
     void WriteStartOfNewTransactionLogFile()
     {
-        SpanWriter writer;
+        MemWriter writer;
         if (_writerWithTransactionLog != null)
         {
-            writer = new SpanWriter(_writerWithTransactionLog);
+            writer = new MemWriter(_writerWithTransactionLog);
             writer.WriteUInt8((byte)KVCommandType.EndOfFile);
-            writer.Sync();
+            writer.Flush();
             _fileWithTransactionLog!.HardFlushTruncateSwitchToReadOnlyMode();
             _fileIdWithPreviousTransactionLog = _fileIdWithTransactionLog;
         }
@@ -1437,9 +1425,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         var transactionLog = new FileTransactionLog(FileCollection.NextGeneration(), FileCollection.Guid,
             _fileIdWithPreviousTransactionLog);
         _writerWithTransactionLog = _fileWithTransactionLog.GetAppenderWriter();
-        writer = new SpanWriter(_writerWithTransactionLog);
+        writer = new MemWriter(_writerWithTransactionLog);
         transactionLog.WriteHeader(ref writer);
-        writer.Sync();
+        writer.Flush();
         FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
     }
 
@@ -1452,7 +1440,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             WriteStartOfNewTransactionLogFile();
         }
 
-        var writer = new SpanWriter(_writerWithTransactionLog!);
+        var writer = new MemWriter(_writerWithTransactionLog!);
         writer.WriteUInt8((byte)KVCommandType.CreateOrUpdate);
         writer.WriteVInt32(key.Length);
         writer.WriteVInt32(value.Length);
@@ -1482,7 +1470,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             trueValue.Clear();
         }
 
-        writer.Sync();
+        writer.Flush();
     }
 
     public void WriteUpdateKeySuffixCommand(in ReadOnlySpan<byte> key, uint prefixLen)
@@ -1493,12 +1481,12 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             WriteStartOfNewTransactionLogFile();
         }
 
-        var writer = new SpanWriter(_writerWithTransactionLog!);
+        var writer = new MemWriter(_writerWithTransactionLog!);
         writer.WriteUInt8((byte)KVCommandType.UpdateKeySuffix);
         writer.WriteVUInt32(prefixLen);
         writer.WriteVUInt32((uint)key.Length);
         writer.WriteBlock(key);
-        writer.Sync();
+        writer.Flush();
     }
 
     public uint CalcValueSize(uint valueFileId, uint valueOfs, int valueSize)
@@ -1511,37 +1499,6 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return (uint)Math.Abs(valueSize);
     }
 
-    public ReadOnlyMemory<byte> ReadValueAsMemory(ReadOnlySpan<byte> trueValue)
-    {
-        var valueFileId = MemoryMarshal.Read<uint>(trueValue);
-        if (valueFileId == 0)
-        {
-            var len = trueValue[4];
-            return trueValue.Slice(5, len).ToArray();
-        }
-
-        var valueSize = MemoryMarshal.Read<int>(trueValue.Slice(8));
-        if (valueSize == 0) return new ();
-        var valueOfs = MemoryMarshal.Read<uint>(trueValue.Slice(4));
-
-        var compressed = false;
-        if (valueSize < 0)
-        {
-            compressed = true;
-            valueSize = -valueSize;
-        }
-
-        Memory<byte> result = new byte[valueSize];
-        var file = FileCollection.GetFile(valueFileId);
-        if (file == null)
-            throw new BTDBException(
-                $"ReadValue({valueFileId},{valueOfs},{valueSize}) compressed: {compressed} file does not exist in {CalcStats()}");
-        file.RandomRead(result.Span, valueOfs, false);
-        if (compressed)
-            result = _compression.DecompressValue(result.Span);
-        return result;
-    }
-
     public ReadOnlySpan<byte> ReadValue(ReadOnlySpan<byte> trueValue)
     {
         var valueFileId = MemoryMarshal.Read<uint>(trueValue);
@@ -1551,27 +1508,29 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             return trueValue.Slice(5, len);
         }
 
-        return ReadValueAsMemory(trueValue).Span;
+        MemReader reader = default;
+        ReadValueIntoMemReader(trueValue, ref reader);
+        return reader.PeekSpanTillEof();
     }
 
-    public ReadOnlySpan<byte> ReadValue(ReadOnlySpan<byte> trueValue, ref byte buffer, int bufferLength)
+    public void ReadValueIntoMemReader(ReadOnlySpan<byte> trueValue, ref MemReader reader)
     {
         var valueFileId = MemoryMarshal.Read<uint>(trueValue);
         if (valueFileId == 0)
         {
             var len = trueValue[4];
             var res = trueValue.Slice(5, len);
-            if (len <= bufferLength)
-            {
-                Unsafe.CopyBlockUnaligned(ref buffer, ref MemoryMarshal.GetReference(res), len);
-                return MemoryMarshal.CreateReadOnlySpan(ref buffer, len);
-            }
-
-            return res.ToArray();
+            MemReader.InitFromSpan(ref reader, res);
+            return;
         }
 
         var valueSize = MemoryMarshal.Read<int>(trueValue[8..]);
-        if (valueSize == 0) return new ReadOnlySpan<byte>();
+        if (valueSize == 0)
+        {
+            MemReader.InitFromLen(ref reader, 0);
+            return;
+        }
+
         var valueOfs = MemoryMarshal.Read<uint>(trueValue[4..]);
 
         var compressed = false;
@@ -1581,17 +1540,16 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             valueSize = -valueSize;
         }
 
-        Span<byte> result = bufferLength < valueSize
-            ? new byte[valueSize]
-            : MemoryMarshal.CreateSpan(ref buffer, valueSize);
+        var result = MemReader.InitFromLen(ref reader, valueSize);
         var file = FileCollection.GetFile(valueFileId);
         if (file == null)
             throw new BTDBException(
                 $"ReadValue({valueFileId},{valueOfs},{valueSize}) compressed: {compressed} file does not exist in {CalcStats()}");
         file.RandomRead(result, valueOfs, false);
         if (compressed)
-            result = _compression.DecompressValue(result);
-        return result;
+        {
+            reader = MemReader.CreateFromReadOnlyMemory(_compression.DecompressValue(result));
+        }
     }
 
     public void WriteEraseOneCommand(in ReadOnlySpan<byte> key)
@@ -1601,11 +1559,11 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             WriteStartOfNewTransactionLogFile();
         }
 
-        var writer = new SpanWriter(_writerWithTransactionLog!);
+        var writer = new MemWriter(_writerWithTransactionLog!);
         writer.WriteUInt8((byte)KVCommandType.EraseOne);
         writer.WriteVInt32(key.Length);
         writer.WriteBlock(key);
-        writer.Sync();
+        writer.Flush();
     }
 
     public void WriteEraseRangeCommand(in ReadOnlySpan<byte> firstKey, in ReadOnlySpan<byte> secondKey)
@@ -1615,13 +1573,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             WriteStartOfNewTransactionLogFile();
         }
 
-        var writer = new SpanWriter(_writerWithTransactionLog!);
+        var writer = new MemWriter(_writerWithTransactionLog!);
         writer.WriteUInt8((byte)KVCommandType.EraseRange);
         writer.WriteVInt32(firstKey.Length);
         writer.WriteVInt32(secondKey.Length);
         writer.WriteBlock(firstKey);
         writer.WriteBlock(secondKey);
-        writer.Sync();
+        writer.Flush();
     }
 
     uint CreateKeyIndexFile(IRootNode root, CancellationToken cancellation, bool fullSpeed)
@@ -1629,24 +1587,23 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         var bytesPerSecondLimiter = new BytesPerSecondLimiter(fullSpeed ? 0 : CompactorWriteBytesPerSecondLimit);
         var file = FileCollection.AddFile("kvi");
         var writerController = file.GetExclusiveAppenderWriter();
-        var writer = new SpanWriter(writerController);
+        var writer = new MemWriter(writerController);
         var keyCount = root.GetCount();
         if (root.TrLogFileId != 0)
             FileCollection.ConcurentTemporaryTruncate(root.TrLogFileId, root.TrLogOffset);
-        var (compressionType, compressionController) =
-            _kviCompressionStrategy.StartCompression((ulong)keyCount, writerController);
+        var compressionType = _kviCompressionStrategy.ChooseCompression((ulong)keyCount);
         var keyIndex = new FileKeyIndex(FileCollection.NextGeneration(), FileCollection.Guid, root.TrLogFileId,
             root.TrLogOffset, keyCount, root.CommitUlong, compressionType, root.UlongsArray);
         keyIndex.WriteHeader(ref writer);
-        writer.Sync();
+        var compressionWriter = _kviCompressionStrategy.StartCompression(compressionType, writer);
         ulong originalSize;
         var usedFileIds = new HashSet<uint>();
         try
         {
-            writer = new(compressionController);
             if (keyCount > 0)
             {
-                var keyValueIterateCtx = new KeyValueIterateCtx { CancellationToken = cancellation, Writer = writer };
+                var keyValueIterateCtx = new KeyValueIterateCtx
+                    { CancellationToken = cancellation, Writer = compressionWriter };
                 root.KeyValueIterate(ref keyValueIterateCtx, (ref KeyValueIterateCtx ctx) =>
                 {
                     ref var writerReference = ref ctx.Writer;
@@ -1732,19 +1689,17 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
                     bytesPerSecondLimiter.Limit((ulong)writerReference.GetCurrentPosition());
                 });
-                writer = keyValueIterateCtx.Writer;
+                compressionWriter = keyValueIterateCtx.Writer;
             }
-            writer.Sync();
         }
         finally
         {
-            originalSize = (ulong)compressionController.GetCurrentPositionWithoutWriter();
-            _kviCompressionStrategy.FinishCompression(compressionType, compressionController);
+            originalSize = (ulong)compressionWriter.GetCurrentPosition();
+            _kviCompressionStrategy.FinishCompression(compressionType, compressionWriter, ref writer);
         }
-        file.HardFlush();
-        writer = new(writerController);
-        writer.WriteInt32(EndOfIndexFileMarker);
-        writer.Sync();
+
+        writer.WriteInt32BE(EndOfIndexFileMarker);
+        writer.Flush();
         file.HardFlushTruncateSwitchToDisposedMode();
         var trlGeneration = GetGeneration(keyIndex.TrLogFileId);
         keyIndex.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
@@ -1760,23 +1715,23 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         var info = FileCollection.FileInfoByIdx(fileId);
         if (info == null) return false;
         if (info.Generation >= dontTouchGeneration) return false;
-        return info.FileType == KVFileType.TransactionLog || info.FileType == KVFileType.PureValues;
+        return info.FileType is KVFileType.TransactionLog or KVFileType.PureValues;
     }
 
-    internal ISpanWriter StartPureValuesFile(out uint fileId)
+    internal MemWriter StartPureValuesFile(out uint fileId)
     {
         var fId = FileCollection.AddFile("pvl");
         fileId = fId.Index;
         var pureValues = new FilePureValues(FileCollection.NextGeneration(), FileCollection.Guid);
         var writerController = fId.GetExclusiveAppenderWriter();
         FileCollection.SetInfo(fId.Index, pureValues);
-        var writer = new SpanWriter(writerController);
+        var writer = new MemWriter(writerController);
         pureValues.WriteHeader(ref writer);
-        writer.Sync();
-        return writerController;
+        return writer;
     }
 
-    long ReplaceBTreeValues(CancellationToken cancellation, RefDictionary<ulong, uint> newPositionMap, uint targetFileId)
+    long ReplaceBTreeValues(CancellationToken cancellation, RefDictionary<ulong, uint> newPositionMap,
+        uint targetFileId)
     {
         byte[] restartKey = null;
         while (true)

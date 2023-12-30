@@ -85,11 +85,11 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
         pushReader(ilGenerator);
         if (targetType == typeof(ReadOnlyMemory<byte>))
         {
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayAsMemory))!);
+            ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadByteArrayAsMemory))!);
             return;
         }
 
-        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArray))!);
+        ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadByteArray))!);
         if (targetType == typeof(ByteBuffer))
         {
             ilGenerator.Call(() => ByteBuffer.NewAsync(null));
@@ -110,7 +110,7 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
     public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
     {
         pushReader(ilGenerator);
-        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipByteArray))!);
+        ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipByteArray))!);
     }
 
     public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
@@ -120,12 +120,12 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
         pushValue(ilGenerator);
         if (valueType == typeof(byte[]))
             ilGenerator.Call(
-                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(byte[]) })!);
+                typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteArray), new[] { typeof(byte[]) })!);
         else if (valueType == typeof(ByteBuffer))
-            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray),
+            ilGenerator.Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteArray),
                 new[] { valueType })!);
         else if (valueType == typeof(ReadOnlyMemory<byte>))
-            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray),
+            ilGenerator.Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteArray),
                 new[] { valueType })!);
         else throw new ArgumentOutOfRangeException(nameof(valueType));
     }

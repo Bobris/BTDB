@@ -2,7 +2,8 @@
 
 Relations provides easy way how to store "table" like data in object db.
 
-Let's first define data entity we want to store (note that it is not defined as `[StoredInline]`, but it is still stored inline). Such objects also don't have object id, they can be retrieved by primary or secondary indexes.
+Let's first define data entity we want to store (note that it is not defined as `[StoredInline]`, but it is still stored
+inline). Such objects also don't have object id, they can be retrieved by primary or secondary indexes.
 
 ```C#
     public class Person
@@ -25,7 +26,8 @@ Let's first define data entity we want to store (note that it is not defined as 
 
 How do we get `IPersonTable` interface to actually insert persons? First we need [obtain transaction](ODBDictionary.md)
 
-From transaction we get creator of relation which we should keep and use for creating relation interface for transaction every time we need it.
+From transaction we get creator of relation which we should keep and use for creating relation interface for transaction
+every time we need it.
 
 ```C#
     Func<IObjectDBTransaction, IPersonTable> creator;
@@ -61,7 +63,8 @@ But this was "old school" way easier to just always use `GetRelation<T>`:
     }
 ```
 
-It is still good to do first GetRelation for all your relations in first independent transaction. To control name of relation by `PersistedNameAttribute` on your `IRelation` interface.
+It is still good to do first GetRelation for all your relations in first independent transaction. To control name of
+relation by `PersistedNameAttribute` on your `IRelation` interface.
 
 ## Basic operations
 
@@ -85,7 +88,12 @@ will throw if does not exist
 
     (void|bool) UpdateById(primaryKey1, ..., primaryKeyN, valueField1, ..., valueFieldN)
 
-Faster update but can change only nonprimary fields (or InKeyValues) and must be simple types (no classes, IIndirect<T>, IDictionary<K,V>, IOrderedSet<T>). Value properties could be any number and in any order by they must match parameter name case insensitively. Returns true if found and updated, void variant throw when does not exists. Any suffix could be appended to function name `UpdateById`, use to disambiguate when multiple overrides would have same types of value sets. All primary keys including InKeyValue must be always specified, if no additional value fields are specified update is only in memory and does not read or writes value.
+Faster update but can change only nonprimary fields (or InKeyValues) and must be simple types (no classes, IIndirect<T>,
+IDictionary<K,V>, IOrderedSet<T>). Value properties could be any number and in any order by they must match parameter
+name case insensitively. Returns true if found and updated, void variant throw when does not exists. Any suffix could be
+appended to function name `UpdateById`, use to disambiguate when multiple overrides would have same types of value sets.
+All primary keys including InKeyValue must be always specified, if no additional value fields are specified update is
+only in memory and does not read or writes value.
 
 ### Upsert (Insert or Update)
 
@@ -97,35 +105,41 @@ Note: `Upsert` is automatically always available if you inherit from `IRelation<
 
 ### ShallowUpdate
 
-It is like `Update`, but it does not try to compare and free any nested content. It is especially faster without secondary indexes when it does not even need to read old value.
+It is like `Update`, but it does not try to compare and free any nested content. It is especially faster without
+secondary indexes when it does not even need to read old value.
 
 ### ShallowUpsert
 
-It is like `Upsert`, but it does not try to compare and free any nested content. It is especially faster without secondary indexes when it does not even need to read old value.
+It is like `Upsert`, but it does not try to compare and free any nested content. It is especially faster without
+secondary indexes when it does not even need to read old value.
 
 ### UpsertRange
 
     (long Inserted, long Updated) UpsertRange(IEnumerable<T> items)
 
-Every relation have this method it is very useful with `As<T>()` when you want quicky upgrade old relation into new one. Other than that it is pretty self explanatory.
+Every relation have this method it is very useful with `As<T>()` when you want quicky upgrade old relation into new one.
+Other than that it is pretty self explanatory.
 
 ### As
 
     IEnumerable<T> As<T>()
 
-Returns list of all rows in relation deserialized into `T` class. It should not be used often because it does not cache generated deserialization code, its purpose is upgrade scenarios (See OnCreate below).
+Returns list of all rows in relation deserialized into `T` class. It should not be used often because it does not cache
+generated deserialization code, its purpose is upgrade scenarios (See OnCreate below).
 
 ### Remove
 
     (void|bool) RemoveById(primaryKey1, ..., primaryKeyN);
     (void|bool) ShallowRemoveById(primaryKey1, ..., primaryKeyN);
 
-Returns true if removed, void variant throw when does not exists. All primary keys fields are used as parameters, for example `void RemoveById(ulong tenantId, ulong userId);`
+Returns true if removed, void variant throw when does not exists. All primary keys fields are used as parameters, for
+example `void RemoveById(ulong tenantId, ulong userId);`
 ShallowRemoveById does not free nested content (like `IDictionary<K,V>`).
 
     int RemoveById(primaryKey1 [, primaryKey2, ...]);
 
-Returns number of records removed for given primary key prefix for example `int RemoveById(ulong tenantId)` removes all users for given tenant
+Returns number of records removed for given primary key prefix for example `int RemoveById(ulong tenantId)` removes all
+users for given tenant
 
     int RemoveByIdPartial(primaryKey1 [, primaryKey2, ...] , maxCount);
 
@@ -151,7 +165,8 @@ This method is always available, because it is defined already in `IRelation`. I
 
     bool Contains(primaryKey1, ..., primaryKeyN);
 
-Returns true if exist item with given primary key. All primary keys fields are used as parameters, for example `bool Contains(ulong tenantId, ulong userId);`
+Returns true if exist item with given primary key. All primary keys fields are used as parameters, for
+example `bool Contains(ulong tenantId, ulong userId);`
 
 ### Find
 
@@ -169,13 +184,17 @@ Find all items with given primary key prefix
 
     Person FindByAgeOrDefault(uint age);
 
-Find by secondary key, it will throw if it find multiple Persons with that age. **Note**: "Age" in the name is name of secondary key index.
+Find by secondary key, it will throw if it find multiple Persons with that age. **Note**: "Age" in the name is name of
+secondary key index.
 
     IEnumerator<Person> FindByAge(uint age);
 
-Find all items with given secondary key. **Note**: for advanced range enumerating use ListBy{SecondaryIndexName}, multiple result possibility handles legal case when exists several records for one secondary index key.
+Find all items with given secondary key. **Note**: for advanced range enumerating use ListBy{SecondaryIndexName},
+multiple result possibility handles legal case when exists several records for one secondary index key.
 
-Find support returning also not item type but any subset type, but because you cannot have same name of method which differs only by return type you can append any text to make it unique. This is useful for speed up deserialization because only fields with matching names and types will be deserialized. Note: This feature is also called Variants.
+Find support returning also not item type but any subset type, but because you cannot have same name of method which
+differs only by return type you can append any text to make it unique. This is useful for speed up deserialization
+because only fields with matching names and types will be deserialized. Note: This feature is also called Variants.
 
     public class Age
     {
@@ -190,7 +209,10 @@ Find support returning also not item type but any subset type, but because you c
     IEnumerator<Person> ListById(AdvancedEnumeratorParam<uint> param);
     IEnumerable<Person> ListById();
 
-List by ascending/descending order and specified range. Parts of primary key may be used for listing. In example below you can list all rooms or just rooms for specified company by two `ListById` method. (`IOrderedDictionaryEnumerator`, `IEnumerator`, `IEnumerable` can be used as return values if used without AdvancedEnumeratorParam only `IEnumerator` or `IEnumerable` could be used and it is ascending order only.)
+List by ascending/descending order and specified range. Parts of primary key may be used for listing. In example below
+you can list all rooms or just rooms for specified company by two `ListById`
+method. (`IOrderedDictionaryEnumerator`, `IEnumerator`, `IEnumerable` can be used as return values if used without
+AdvancedEnumeratorParam only `IEnumerator` or `IEnumerable` could be used and it is ascending order only.)
 
 ```C#
     public class Room
@@ -218,13 +240,15 @@ List also support variants with subset resulting types like `Find`.
     IEnumerable<Room> ScanById(Constraint<ulong> companyId, Constraint<ulong> id);
 ```
 
-Returns rows in ascending order of primary index matching various constraints which you can define at query time like this:
+Returns rows in ascending order of primary index matching various constraints which you can define at query time like
+this:
 
 ```C#
     var oddRooms = table.ScanById(Constraint.Unsigned.Any, Constraint.Unsigned.Predicate(id => id % 2 == 1));
 ```
 
-If you don't always need to constraint all fields it is better to add additional overloads with less constraints (missing constraints are automatically "Any"):
+If you don't always need to constraint all fields it is better to add additional overloads with less constraints (
+missing constraints are automatically "Any"):
 
     IEnumerable<Room> ScanById(Constraint<ulong> companyId);
 
@@ -232,19 +256,27 @@ If you don't always need to constraint all fields it is better to add additional
 
 Scan by primary key also support variants like `ScanByIdVariantName`.
 
-`Scan` can do most of same stuff like `List`, it is little bit slower though, so prefer `List` if you can. `Scan` needs to iterate all rows in many cases, because BTDB has all indexes in memory it is not slow even for millions of items, still be careful.
+`Scan` can do most of same stuff like `List`, it is little bit slower though, so prefer `List` if you can. `Scan` needs
+to iterate all rows in many cases, because BTDB has all indexes in memory it is not slow even for millions of items,
+still be careful.
 
 ### Gather
 
     ulong GatherById(ICollection<Room> target, long skip, long take, Constraint<ulong> companyId, Constraint<ulong> id);
 
-Gather is like Scan with Count and Skip and Take. It is perfect to implement paging, when you need to calculate total number of matching rows, but also return only rows from some position (skip) and at most some count (take). First parameter can be anything inheriting from `ICollection<T>` only method which Gather calls from this interface is `Add`. It means `target` does not need to be empty, it will just add new rows. Variants does not need to append VariantName to method name, because it is defined by first parameter which you can easily overload.
+Gather is like Scan with Count and Skip and Take. It is perfect to implement paging, when you need to calculate total
+number of matching rows, but also return only rows from some position (skip) and at most some count (take). First
+parameter can be anything inheriting from `ICollection<T>` only method which Gather calls from this interface is `Add`.
+It means `target` does not need to be empty, it will just add new rows. Variants does not need to append VariantName to
+method name, because it is defined by first parameter which you can easily overload.
 
 ### Gather with sorting/ordering
 
     ulong GatherById(ICollection<Room> target, long skip, long take, Constraint<ulong> companyId, Constraint<ulong> id, IOrderer[]? orderers);
 
-All same like simple `Gather` but additionally as last parameter you can pass array of "orderers". You can order by property included in used index. Sort is also stable, that means empty or null orderers will just do simple Gather without sorting. Logical order of operations is where constraints, sort, skip, take.
+All same like simple `Gather` but additionally as last parameter you can pass array of "orderers". You can order by
+property included in used index. Sort is also stable, that means empty or null orderers will just do simple Gather
+without sorting. Logical order of operations is where constraints, sort, skip, take.
 
 ```C#
     var target = new List<Room>();
@@ -261,7 +293,8 @@ All same like simple `Gather` but additionally as last parameter you can pass ar
     Room FirstById(Constraint<ulong> companyId, Constraint<ulong> id, IOrderers[]? orderers);
     Room? FirstByIdOrDefault(Constraint<ulong> companyId, Constraint<ulong> id, IOrderers[]? orderers);
 
-It is like GatherBy only with take one. It is faster because of that does not need to sort and allocate too much. Version without OrDefault throws is not item matches.
+It is like GatherBy only with take one. It is faster because of that does not need to sort and allocate too much.
+Version without OrDefault throws is not item matches.
 First by primary key also support variants like `FirstByIdVariantName` and `FirstByIdOrDefaultVariantName`.
 
 ### Count
@@ -286,11 +319,14 @@ Enumerates all items sorted by primary key.
 
 ### IReadOnlyCollection
 
-All relations implements `IReadOnlyCollection<T>`. This can be used during debugging immediately, or directly in code - after casting or defining like this: `public interface IRoomTable : IReadOnlyCollection<Room>`.
+All relations implements `IReadOnlyCollection<T>`. This can be used during debugging immediately, or directly in code -
+after casting or defining like this: `public interface IRoomTable : IReadOnlyCollection<Room>`.
 
 ## Primary Key
 
-One or more fields can be selected as primary key. Primary key must be unique in the relation. Order of fields in primary key is marked as parameter of `PrimaryKey(i)` attribute. Methods expecting primary key as an argument are supposed to contain all fields in the same order as defined, for example in this case:
+One or more fields can be selected as primary key. Primary key must be unique in the relation. Order of fields in
+primary key is marked as parameter of `PrimaryKey(i)` attribute. Methods expecting primary key as an argument are
+supposed to contain all fields in the same order as defined, for example in this case:
 
 ```C#
     public class Person
@@ -312,7 +348,9 @@ methods will look like:
 
 ## Secondary Key
 
-Secondary keys are useful for fast access by other fields then primary key. Declared are as attribute `SecondaryKey`. Each secondary index has it's name (may be different then existing fields names). Secondary index may be compound from several fields. Each field can be part of more than one secondary key. for example:
+Secondary keys are useful for fast access by other fields then primary key. Declared are as attribute `SecondaryKey`.
+Each secondary index has it's name (may be different then existing fields names). Secondary index may be compound from
+several fields. Each field can be part of more than one secondary key. for example:
 
 ```C#
     public class Person
@@ -334,13 +372,17 @@ we have two indexes Age and Name. They are serialized in form:
     "Age": TenantId, Age, Name, Id => void
     "Name": TenantId, Name, Id => void
 
-It is always possible to insert duplicate items for secondary key (it would cause problems when adding new indexes during upgrade). That's why secondary field contains in key also all primary key fields which ensures they are unique. From this key is always possible to construct primary key. `IncludePrimaryKeyOrder` can propagate up the primary keys - typically useful for keeping together data for one tenant (kind of partitioning).
+It is always possible to insert duplicate items for secondary key (it would cause problems when adding new indexes
+during upgrade). That's why secondary field contains in key also all primary key fields which ensures they are unique.
+From this key is always possible to construct primary key. `IncludePrimaryKeyOrder` can propagate up the primary keys -
+typically useful for keeping together data for one tenant (kind of partitioning).
 
 ### List (by secondary index)
 
     IEnumerable<Person> ListByAge(AdvancedEnumeratorParam<uint> param);
 
-List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs)
+List by ascending/descending order and specified range, see `CanIterateBySecondaryKey`
+in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs)
 `ListBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)`
 
 List by secondary key also support variants like `ListByAgeVariantName`.
@@ -350,28 +392,33 @@ List by secondary key also support variants like `ListByAgeVariantName`.
     uint|int|long|ulong CountByAge(AdvancedEnumeratorParam<uint> param);
     uint|int|long|ulong CountByAge(uint age);
 
-Count records by specified range `CountBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
+Count records by specified
+range `CountBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
 
 ### Any (by secondary index)
 
     bool AnyByAge(AdvancedEnumeratorParam<uint> param);
     bool AnyByAge(uint age);
 
-Returns true if there is any item in specified range `AnyBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
+Returns true if there is any item in specified
+range `AnyBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
 
 ### Scan (by secondary index)
 
     IEnumerable<Person> ScanByAge(Constraint<ulong> tenantId, Constraint<ulong> age, Constraint<string> name, Constraint<ulong> id);
     IEnumerable<Person> ScanByName(Constraint<ulong> tenantId, Constraint<string> name);
 
-Returns rows in ascending order of secondary index matching various constraints which you can define at query time like this:
+Returns rows in ascending order of secondary index matching various constraints which you can define at query time like
+this:
 
     var ageOver30 = table.ScanByAge(Constraint.Unsigned.Any, Constraint.Unsigned.Predicate(age => age > 30), Constraint.String.Any, Constraint.Unsigned.Any);
     var namesFromTentant1StartingWithBob = table.ScanByName(Constraint.Unsigned.Exact(1), Constraint.String.StartsWith("Bob"));
 
-ScanByAge example also shows you can add constrains to primary key fields not mentioned in secondary key. Parameter order must match serialization order and parameter names must match field names case insensitively.
+ScanByAge example also shows you can add constrains to primary key fields not mentioned in secondary key. Parameter
+order must match serialization order and parameter names must match field names case insensitively.
 
-If you don't always need to constraint all fields it is better to add additional overloads with less constraints (missing constraints are automatically "Any"):
+If you don't always need to constraint all fields it is better to add additional overloads with less constraints (
+missing constraints are automatically "Any"):
 
     IEnumerable<Person> ScanByAge(Constraint<ulong> tenantId, Constraint<ulong> age);
 
@@ -392,28 +439,39 @@ It is exactly same counterpart for Scan like in primary key case. Also could be 
     Person FirstByName(Constraint<ulong> tenantId, Constraint<string> name, IOrderers[]? orderers);
     Person? FirstByNameOrDefault(Constraint<ulong> tenantId, Constraint<string> name, IOrderers[]? orderers);
 
-It is like GatherBy only with take one. It is faster because of that does not need to sort and allocate too much. Version without OrDefault throws is not item matches.
+It is like GatherBy only with take one. It is faster because of that does not need to sort and allocate too much.
+Version without OrDefault throws is not item matches.
 First by secondary key also support variants like `FirstByNameVariantName` and `FirstByNameOrDefaultVariantName`.
 
 ### Upgrade
 
-When secondary definition is changed (for example new index is defined) then it is automatically added/recalculated/removed in `InitRelation` call. You can see examples in
+When secondary definition is changed (for example new index is defined) then it is automatically
+added/recalculated/removed in `InitRelation` call. You can see examples in
 [ObjectDbTableUpgradeTest](../BTDBTest/ObjectDbTableUpgradeTest.cs)
 
 ## Free content
 
-During removing or updating of data, all IDictionaries and IOrderedSets present in removed data are automatically cleared to avoid data leaks (Also works recursively IDictionaries are freed automatically if they are nested in another IDictionary). You can see examples in
+During removing or updating of data, all IDictionaries and IOrderedSets present in removed data are automatically
+cleared to avoid data leaks (Also works recursively IDictionaries are freed automatically if they are nested in another
+IDictionary). You can see examples in
 [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs)
 
-If you have IIndirect property. You are on your own. And that's include any nested IDictionary which needs to be cleared before. So you need recursively load objects and delete them. See test named `IIndirectMustBeFreedManually` in [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs).
+If you have IIndirect property. You are on your own. And that's include any nested IDictionary which needs to be cleared
+before. So you need recursively load objects and delete them. See test named `IIndirectMustBeFreedManually`
+in [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs).
 
 ## Modification check during enumeration
 
-When you Insert, RemoveById or insert item using Upsert during enumerating relation an exception will be thrown. It is still possible to modify by Update (or Upsert for existing items) see `CheckModificationDuringEnumerate` in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs) for details. Modification of secondary indexes during enumerating by secondary indexes are not detected in this moment.
+When you Insert, RemoveById or insert item using Upsert during enumerating relation an exception will be thrown. It is
+still possible to modify by Update (or Upsert for existing items) see `CheckModificationDuringEnumerate`
+in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs) for details. Modification of secondary indexes during
+enumerating by secondary indexes are not detected in this moment.
 
 ## OnCreate
 
-When relation is created for first time, BTDB will try to resolve `IRelationOnCreate<InterfaceOfRelation>`. It can be used for upgrading data from old relations or what ever into new Relation. Very useful when you need to change primary key and not loose data. Example:
+When relation is created for first time, BTDB will try to resolve `IRelationOnCreate<InterfaceOfRelation>`. It can be
+used for upgrading data from old relations or what ever into new Relation. Very useful when you need to change primary
+key and not loose data. Example:
 
     public class Table2OnCreate : IRelationOnCreate<ITableV2>
     {
@@ -433,7 +491,8 @@ When relation is created for first time, BTDB will try to resolve `IRelationOnCr
 
 ## OnSerialize
 
-You can define any number of parameter less void returning methods which will be run before any inserting or updating object to relation.
+You can define any number of parameter less void returning methods which will be run before any inserting or updating
+object to relation.
 
 ```C#
     public class Room
@@ -453,10 +512,14 @@ You can define any number of parameter less void returning methods which will be
 ## OnBeforeRemove
 
 You can define any number of instance methods with OnBeforeRemove attribute.
-This is useful for cases you have foreign key to this relation and you need to check if it is safe to remove this object or you can implement cascade delete.
-Only result types allowed are void and bool. If bool is returned then true means that remove is prevented. If there are multiple methods then at least one of them must return true to prevent remove, but all methods are called in all cases and you should not dependent on their order of calling.
+This is useful for cases you have foreign key to this relation and you need to check if it is safe to remove this object
+or you can implement cascade delete.
+Only result types allowed are void and bool. If bool is returned then true means that remove is prevented. If there are
+multiple methods then at least one of them must return true to prevent remove, but all methods are called in all cases
+and you should not dependent on their order of calling.
 As parameters you can use IObjectDBTransaction. All other parameters must be resolvable by IContainer.
-Of course nothing is free, if you define any OnBeforeRemove method then all removes especially range removes are slower because they need to deserialize all removing items.
+Of course nothing is free, if you define any OnBeforeRemove method then all removes especially range removes are slower
+because they need to deserialize all removing items.
 
 ```C#
     public class Room
@@ -479,8 +542,10 @@ Of course nothing is free, if you define any OnBeforeRemove method then all remo
 (bool Inserted, uint KeySize, uint OldValueSize, uint NewValueSize) ShallowUpsertWithSizes(T obj, bool allowInsert, bool allowUpdate)
 ```
 
-Special method which allow to get used sizes for key and values and supporting also only insert (obj, true, false) and only update (obj, false, true) behaviors.
-If called with (obj, false, false) it could be used for getting if obj exists in relation (KeySize>0) and stored value length (OldValueSize).
+Special method which allow to get used sizes for key and values and supporting also only insert (obj, true, false) and
+only update (obj, false, true) behaviors.
+If called with (obj, false, false) it could be used for getting if obj exists in relation (KeySize>0) and stored value
+length (OldValueSize).
 
 Currently limitation is that it could be used only for relations without secondary keys.
 
@@ -525,6 +590,10 @@ Also it does not FreeContent so don't use with properties of IDictionary type (i
 ```
 
 Fields with InKeyValue are allowed only at end of primary key and they cannot be in any secondary keys.
-Primary key without InKeyValue fields must be unique. In example above it means that where cannot be two persons with same tenant and email with just different LastLogins. These InKeyValue fields could be used in Scan/GatherById for relatively fast searching without need to introduce Secondary Keys. This is very useful for implementation of expiration of relation rows. UpdateById method in example could be used for modification of LastLogin for known tenantId and email.
+Primary key without InKeyValue fields must be unique. In example above it means that where cannot be two persons with
+same tenant and email with just different LastLogins. These InKeyValue fields could be used in Scan/GatherById for
+relatively fast searching without need to introduce Secondary Keys. This is very useful for implementation of expiration
+of relation rows. UpdateById method in example could be used for modification of LastLogin for known tenantId and email.
 
-Data in database will be automaticaly upgraded when only InKeyValue fields are added/removed/modified in primary key definition.
+Data in database will be automatically upgraded when only InKeyValue fields are added/removed/modified in primary key
+definition.

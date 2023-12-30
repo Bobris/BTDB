@@ -9,10 +9,10 @@ public interface IMemWriter
     void Init(ref MemWriter memWriter);
 
     /// <summary>
-    /// Flush writing buffer and prepare another one. After calling this there must be at least 16 bytes free in buffer.
+    /// Flush writing buffer and prepare another one.
     /// </summary>
     /// <param name="memWriter">owning MemWriter</param>
-    /// <param name="spaceNeeded">if possible reserve this amount of bytes, 0 is special value to flush buffer to storage</param>
+    /// <param name="spaceNeeded">if possible reserve this amount of bytes, 0 is special value to flush buffer to storage and does not need to prepare at least 1 byte</param>
     void Flush(ref MemWriter memWriter, uint spaceNeeded);
 
     /// <summary>
@@ -36,4 +36,10 @@ public interface IMemWriter
     /// <param name="memWriter">owning MemWriter</param>
     /// <param name="position">new position to set</param>
     void SetCurrentPosition(ref MemWriter memWriter, long position);
+
+    /// <summary>
+    /// Returns current position without using MemWriter.
+    /// </summary>
+    /// <returns>byte offset from start</returns>
+    long GetCurrentPositionWithoutWriter();
 }

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 using Xunit;
 
 namespace BTDBTest;
@@ -264,6 +265,7 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
 
         public uint CompactorRamLimitInMb { get; set; }
         public long MaxTrLogFileSize { get; set; }
+
         public IEnumerable<IKeyValueDBTransaction> Transactions()
         {
             return _keyValueDB.Transactions();
@@ -391,6 +393,11 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDBTransaction.GetValueAsMemory();
         }
 
+        public void GetValue(ref MemReader reader)
+        {
+            _keyValueDBTransaction.GetValue(ref reader);
+        }
+
         public bool IsValueCorrupted()
         {
             return _keyValueDBTransaction.IsValueCorrupted();
@@ -429,9 +436,9 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return true;
         }
 
-        public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value)
+        public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref MemReader valueReader)
         {
-            if (!_keyValueDBTransaction.EraseCurrent(in exactKey, ref buffer, bufferLength, out value))
+            if (!_keyValueDBTransaction.EraseCurrent(in exactKey, ref valueReader))
                 return false;
             EraseCurrentCount++;
             return true;

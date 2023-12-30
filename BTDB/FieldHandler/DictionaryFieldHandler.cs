@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using BTDB.IL;
 using BTDB.StreamLayer;
 
@@ -15,6 +16,7 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
     readonly IFieldHandler _valuesHandler;
     Type? _type;
 
+    [SkipLocalsInit]
     public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
         ITypeConvertorGenerator typeConvertGenerator, Type type)
     {
@@ -24,21 +26,25 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
         _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
         _valuesHandler =
             _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1], FieldHandlerOptions.None);
-        var writer = new SpanWriter();
+        Span<byte> buf = stackalloc byte[1024];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteFieldHandler(_keysHandler);
         writer.WriteFieldHandler(_valuesHandler);
         Configuration = writer.GetSpan().ToArray();
     }
 
-    public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
+    public unsafe DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
         ITypeConvertorGenerator typeConvertGenerator, byte[] configuration)
     {
         _fieldHandlerFactory = fieldHandlerFactory;
         _typeConvertGenerator = typeConvertGenerator;
         Configuration = configuration;
-        var reader = new SpanReader(configuration);
-        _keysHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
-        _valuesHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
+        fixed (void* confPtr = configuration)
+        {
+            var reader = new MemReader(confPtr, configuration.Length);
+            _keysHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
+            _valuesHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
+        }
     }
 
     DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator,
@@ -98,7 +104,7 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.ReadObject))!)
             .Brfalse(loadSkipped)
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .Stloc(localCount)
             .Ldloc(localCount)
             .Newobj(typeof(Dictionary<,>).MakeGenericType(genericArguments).GetConstructor(new[] { typeof(int) })!)
@@ -144,7 +150,7 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.SkipObject))!)
             .Brfalse(finish)
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .Stloc(localCount)
             .Mark(next)
             .Ldloc(localCount)
@@ -187,7 +193,7 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Ldloc(localValue)
             .Callvirt(typeAsICollection.GetProperty("Count")!.GetGetMethod()!)
             .ConvU4()
-            .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt32))!)
+            .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt32))!)
             .Ldloc(localValue)
             .Callvirt(getEnumeratorMethod)
             .Stloc(localEnumerator)
@@ -309,7 +315,7 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.SkipObject))!)
             .Brfalse(finish)
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .Stloc(localCount)
             .Mark(next)
             .Ldloc(localCount)

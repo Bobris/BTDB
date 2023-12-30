@@ -4,8 +4,9 @@ namespace BTDB.KVDBLayer;
 
 public interface IKviCompressionStrategy
 {
-    ISpanReader StartDecompression(KeyIndexCompression compression, ISpanReader stream);
-    void FinishDecompression(KeyIndexCompression compression, ISpanReader decompressor);
-    (KeyIndexCompression, ISpanWriter) StartCompression(ulong keyCount, ISpanWriter stream);
-    void FinishCompression(KeyIndexCompression compression, ISpanWriter compressor);
+    MemReader StartDecompression(KeyIndexCompression compression, in MemReader outsideReader);
+    void FinishDecompression(KeyIndexCompression compression, in MemReader decompressor, ref MemReader outsideReader);
+    KeyIndexCompression ChooseCompression(ulong keyCount);
+    MemWriter StartCompression(KeyIndexCompression compression, in MemWriter outsideWriter);
+    void FinishCompression(KeyIndexCompression compression, in MemWriter compressor, ref MemWriter outsideWriter);
 }

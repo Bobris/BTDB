@@ -5,7 +5,7 @@ using BTDB.Buffer;
 
 namespace BTDB.StreamLayer;
 
-public class PositionLessStreamReader : ISpanReader
+public class PositionLessStreamReader : IMemReader
 {
     readonly IPositionLessStream _stream;
     readonly ulong _valueSize;
@@ -22,76 +22,96 @@ public class PositionLessStreamReader : ISpanReader
         _stream = stream;
         _valueSize = _stream.GetSize();
         _ofs = 0;
-        _buf = new byte[bufferSize];
+        _buf = GC.AllocateUninitializedArray<byte>(bufferSize, pinned: true);
         _usedOfs = 0;
         _usedLen = 0;
     }
 
-    public void Init(ref SpanReader spanReader)
+    public unsafe void Init(ref MemReader reader)
     {
         if (_usedLen == 0)
         {
             var read = _stream.Read(_buf, _ofs);
-            spanReader.Buf = _buf.AsSpan(0, read);
+            reader.Start = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_buf));
+            reader.Current = reader.Start;
+            reader.End = reader.Start + read;
             _usedOfs = 0;
             _usedLen = (uint)read;
             _ofs += (uint)read;
             return;
         }
-        spanReader.Buf = _buf.AsSpan((int)_usedOfs, (int)_usedLen);
+
+        reader.Start = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_buf));
+        reader.Current = reader.Start + (int)_usedOfs;
+        reader.End = reader.Current + (int)_usedLen;
     }
 
-    public bool FillBufAndCheckForEof(ref SpanReader spanReader)
+    public unsafe void FillBuf(ref MemReader memReader, nuint advisePrefetchLength)
     {
-        if (spanReader.Buf.Length != 0) return false;
+        var curLen = (uint)(memReader.End - memReader.Current);
+        _usedOfs += _usedLen - curLen;
+        _usedLen = curLen;
+        if (curLen != 0 || advisePrefetchLength == 0) return;
         var read = _stream.Read(_buf, _ofs);
-        spanReader.Buf = _buf.AsSpan(0, read);
+        memReader.Start = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_buf));
+        memReader.Current = memReader.Start;
+        memReader.End = memReader.Start + read;
         _usedOfs = 0;
         _usedLen = (uint)read;
         _ofs += (uint)read;
-        return spanReader.Buf.Length == 0;
+        if (read == 0) PackUnpack.ThrowEndOfStreamException();
     }
 
-    public long GetCurrentPosition(in SpanReader spanReader)
+    public long GetCurrentPosition(in MemReader spanReader)
     {
-        return (long)_ofs - spanReader.Buf.Length;
+        return (long)_ofs - (spanReader.End - spanReader.Current);
     }
 
-    public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, uint length)
+    public unsafe void ReadBlock(ref MemReader memReader, ref byte buffer, nuint length)
     {
-        if (length < _buf.Length)
+        if (length < (nuint)_buf.Length)
         {
-            if (FillBufAndCheckForEof(ref spanReader) || (uint)spanReader.Buf.Length < length) return true;
-            Unsafe.CopyBlockUnaligned(ref buffer,
-                ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int)length), length);
-            return false;
+            FillBuf(ref memReader, length);
+            if (memReader.End - memReader.Current < (nint)length) PackUnpack.ThrowEndOfStreamException();
+            Unsafe.CopyBlockUnaligned(ref buffer, ref Unsafe.AsRef<byte>((void*)memReader.Current), (uint)length);
+            memReader.Current += (int)length;
+            return;
         }
 
         var read = _stream.Read(MemoryMarshal.CreateSpan(ref buffer, (int)length), _ofs);
         _ofs += (uint)read;
-        return read < length;
+        if (read < (int)length) PackUnpack.ThrowEndOfStreamException();
     }
 
-    public bool SkipBlock(ref SpanReader spanReader, uint length)
+    public void SkipBlock(ref MemReader memReader, nuint length)
     {
         _ofs += length;
-        if (_ofs <= _valueSize) return false;
+        if (_ofs <= _valueSize)
+        {
+            memReader.Start = 0;
+            memReader.Current = 0;
+            memReader.End = 0;
+            _usedOfs = 0;
+            _usedLen = 0;
+            return;
+        }
+
         _ofs = _valueSize;
-        return true;
+        PackUnpack.ThrowEndOfStreamException();
     }
 
-    public void SetCurrentPosition(ref SpanReader spanReader, long position)
+    public void SetCurrentPosition(ref MemReader memReader, long position)
     {
-        spanReader.Buf = new ReadOnlySpan<byte>();
+        memReader.Start = 0;
+        memReader.Current = 0;
+        memReader.End = 0;
         _usedOfs = 0;
         _usedLen = 0;
         _ofs = (ulong)position;
     }
 
-    public void Sync(ref SpanReader spanReader)
+    public bool Eof(ref MemReader memReader)
     {
-        var curLen = (uint)spanReader.Buf.Length;
-        _usedOfs += _usedLen - curLen;
-        _usedLen = curLen;
+        return GetCurrentPosition(memReader) == (long)_valueSize;
     }
 }

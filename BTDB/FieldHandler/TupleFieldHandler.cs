@@ -19,6 +19,7 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
     Type? _type;
     readonly FieldHandlerOptions _options;
 
+    [SkipLocalsInit]
     public TupleFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
         ITypeConvertorGenerator typeConvertGenerator, Type type, FieldHandlerOptions options)
     {
@@ -39,7 +40,8 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
             _fieldHandlers.Add(_fieldHandlerFactory.CreateFromType(t, opts));
         }
 
-        var writer = new SpanWriter();
+        Span<byte> buf = stackalloc byte[2048];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteVUInt32(_fieldHandlers.Count);
         foreach (var f in _fieldHandlers)
         {
@@ -49,24 +51,27 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
         Configuration = writer.GetSpan().ToArray();
     }
 
-    public TupleFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
+    public unsafe TupleFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
         ITypeConvertorGenerator typeConvertGenerator, byte[] configuration, FieldHandlerOptions options)
     {
         _fieldHandlerFactory = fieldHandlerFactory;
         _typeConvertGenerator = typeConvertGenerator;
         _options = options;
         Configuration = configuration;
-        var reader = new SpanReader(configuration);
-        var count = reader.ReadVUInt32();
-        for (var i = 0; i < count; i++)
+        fixed (void* confPtr = configuration)
         {
-            var opts = _options;
-            if (i != count - 1)
+            var reader = new MemReader(confPtr, configuration.Length);
+            var count = reader.ReadVUInt32();
+            for (var i = 0; i < count; i++)
             {
-                opts &= ~FieldHandlerOptions.AtEndOfStream;
-            }
+                var opts = _options;
+                if (i != count - 1)
+                {
+                    opts &= ~FieldHandlerOptions.AtEndOfStream;
+                }
 
-            _fieldHandlers.Add(_fieldHandlerFactory.CreateFromReader(ref reader, opts));
+                _fieldHandlers.Add(_fieldHandlerFactory.CreateFromReader(ref reader, opts));
+            }
         }
     }
 
@@ -100,20 +105,20 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
 
     public static readonly Type[] TupleTypes = new[]
     {
-            typeof(Tuple<>), typeof(Tuple<,>), typeof(Tuple<,,>), typeof(Tuple<,,,>), typeof(Tuple<,,,,>),
-            typeof(Tuple<,,,,,>), typeof(Tuple<,,,,,,>)
-        };
+        typeof(Tuple<>), typeof(Tuple<,>), typeof(Tuple<,,>), typeof(Tuple<,,,>), typeof(Tuple<,,,,>),
+        typeof(Tuple<,,,,,>), typeof(Tuple<,,,,,,>)
+    };
 
     public static readonly Type[] ValueTupleTypes = new[]
     {
-            typeof(ValueTuple<>), typeof(ValueTuple<,>), typeof(ValueTuple<,,>), typeof(ValueTuple<,,,>),
-            typeof(ValueTuple<,,,,>), typeof(ValueTuple<,,,,,>), typeof(ValueTuple<,,,,,,>)
-        };
+        typeof(ValueTuple<>), typeof(ValueTuple<,>), typeof(ValueTuple<,,>), typeof(ValueTuple<,,,>),
+        typeof(ValueTuple<,,,,>), typeof(ValueTuple<,,,,,>), typeof(ValueTuple<,,,,,,>)
+    };
 
     public static readonly string[] TupleFieldName = new[]
     {
-            "Item1", "Item2", "Item3", "Item4", "Item5", "Item6", "Item7"
-        };
+        "Item1", "Item2", "Item3", "Item4", "Item5", "Item6", "Item7"
+    };
 
     public Type HandledType()
     {

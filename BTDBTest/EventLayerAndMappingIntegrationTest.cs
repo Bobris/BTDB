@@ -13,18 +13,22 @@ public class EventLayerAndMappingIntegrationTest
     internal const byte Nothing = 100;
 
     [Fact]
-    public void EventLayerCanSerializeDataThatWasDeserializedByMapping()
+    public unsafe void EventLayerCanSerializeDataThatWasDeserializedByMapping()
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         SerializeWithMapping(ref writer, new Event() { Items = new List<EventItem> { new EventItem() } });
-        var reader = new SpanReader(writer.GetSpanAndReset());
-        var deserialized = DeserializeWithMapping(ref reader);
+        var writtenSpan = writer.GetSpanAndReset();
+        fixed (void* _ = writtenSpan)
+        {
+            var reader = MemReader.CreateFromPinnedSpan(writtenSpan);
+            var deserialized = DeserializeWithMapping(ref reader);
 
-        var els = new BTDB.EventStore2Layer.EventSerializer(null, null, null, false);
-        els.Serialize(out bool metadata, deserialized);
+            var els = new BTDB.EventStore2Layer.EventSerializer(null, null, null, false);
+            els.Serialize(out bool metadata, deserialized);
+        }
     }
 
-    void SerializeWithMapping(ref SpanWriter writer, object @object)
+    void SerializeWithMapping(ref MemWriter writer, object @object)
     {
         var typeSerializer = new TypeSerializers(new SillyTypeNameMapper(),
             new TypeSerializersOptions { IgnoreIIndirect = false, SymmetricCipher = null });
@@ -46,7 +50,7 @@ public class EventLayerAndMappingIntegrationTest
         serializerContext.CommitNewDescriptors();
     }
 
-    object DeserializeWithMapping(ref SpanReader reader)
+    object DeserializeWithMapping(ref MemReader reader)
     {
         var typeSerializer = new TypeSerializers(new SillyTypeNameMapper(),
             new TypeSerializersOptions { IgnoreIIndirect = false, SymmetricCipher = null });

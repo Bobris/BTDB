@@ -5,6 +5,6 @@ namespace BTDB.EventStoreLayer;
 
 public interface ITypeSerializersId2LoaderMapping
 {
-    object Load(uint typeId, ref SpanReader reader, ITypeBinaryDeserializerContext context);
+    object Load(uint typeId, ref MemReader reader, ITypeBinaryDeserializerContext context);
     ISymmetricCipher GetSymmetricCipher();
 }

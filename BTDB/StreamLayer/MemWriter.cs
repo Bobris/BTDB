@@ -25,11 +25,21 @@ public struct MemWriter
     public object? Controller;
 
     // Span must be to pinned memory or stack
-    public unsafe MemWriter(ReadOnlySpan<byte> buf)
+    unsafe MemWriter(Span<byte> buf)
     {
         Current = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(buf));
         Start = Current;
         End = Current + buf.Length;
+    }
+
+    public static MemWriter CreateFromStackAllocatedSpan(Span<byte> buf)
+    {
+        return new MemWriter(buf);
+    }
+
+    public static MemWriter CreateFromPinnedSpan(Span<byte> buf)
+    {
+        return new MemWriter(buf);
     }
 
     // buf is pointer to pinned memory or native memory
@@ -39,6 +49,14 @@ public struct MemWriter
         Current = buf;
         Start = buf;
         End = buf + length;
+    }
+
+    public unsafe MemWriter(void* buf, int length)
+    {
+        Debug.Assert(length >= 0);
+        Current = (nint)buf;
+        Start = (nint)buf;
+        End = (nint)buf + length;
     }
 
     public MemWriter()
@@ -86,11 +104,25 @@ public struct MemWriter
     public unsafe Memory<byte> GetPersistentMemoryAndReset()
     {
         if (Controller is IMemWriter) ThrowCannotBeUsedWithController();
-        var data = new Span<byte>((void*)Start, (int)(Current - Start));
-        Current = Start;
-        var res = new Memory<byte>(GC.AllocateUninitializedArray<byte>(data.Length));
-        data.CopyTo(res.Span);
-        return res;
+        if (Controller is byte[] arr)
+        {
+            var res = MemoryMarshal.CreateFromPinnedArray(arr,
+                (int)(Start - (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(arr))),
+                (int)(Current - Start));
+            Controller = null;
+            Start = 0;
+            Current = 0;
+            End = 0;
+            return res;
+        }
+        else
+        {
+            var data = new Span<byte>((void*)Start, (int)(Current - Start));
+            Current = Start;
+            var res = new Memory<byte>(GC.AllocateUninitializedArray<byte>(data.Length));
+            data.CopyTo(res.Span);
+            return res;
+        }
     }
 
     static void ThrowCannotBeUsedWithController()
@@ -141,12 +173,13 @@ public struct MemWriter
         throw new InvalidOperationException("Need controller");
     }
 
-    unsafe void Resize(uint spaceNeeded = 16)
+    public unsafe bool Resize(uint spaceNeeded)
     {
+        if (End - Current > spaceNeeded) return false;
         if (Controller is IMemWriter controller)
         {
             controller.Flush(ref this, spaceNeeded);
-            return;
+            return End - Current < spaceNeeded;
         }
 
         var pos = Current - Start;
@@ -159,44 +192,46 @@ public struct MemWriter
         Start = newStart;
         Current = newStart + pos;
         End = newStart + size;
+        return false;
     }
 
-    void TryReserve(uint spaceNeeded)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Resize1()
     {
-        if (End - Current < spaceNeeded) Resize(spaceNeeded);
+        if (Current == End) Resize(1);
     }
 
     public unsafe void WriteByteZero()
     {
-        if (Current == End) Resize();
+        Resize1();
         Unsafe.Write<byte>((void*)Current, 0);
         Current++;
     }
 
     public unsafe void WriteBool(bool value)
     {
-        if (Current == End) Resize();
+        Resize1();
         Unsafe.Write((void*)Current, value ? (byte)1 : (byte)0);
         Current++;
     }
 
     public unsafe void WriteUInt8(byte value)
     {
-        if (Current == End) Resize();
+        Resize1();
         Unsafe.Write((void*)Current, value);
         Current++;
     }
 
     public unsafe void WriteInt8(sbyte value)
     {
-        if (Current == End) Resize();
+        Resize1();
         Unsafe.Write((void*)Current, (byte)value);
         Current++;
     }
 
     public unsafe void WriteInt8Ordered(sbyte value)
     {
-        if (Current == End) Resize();
+        Resize1();
         Unsafe.Write((void*)Current, (byte)(value + 128));
         Current++;
     }
@@ -221,81 +256,169 @@ public struct MemWriter
         WriteVUInt64(value);
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteVInt64(long value)
     {
         var len = PackUnpack.LengthVInt(value);
-        if (Current + len > End) Resize();
+        if (Resize(len))
+        {
+            Span<byte> buf = stackalloc byte[(int)len];
+            PackUnpack.UnsafePackVInt(ref MemoryMarshal.GetReference(buf), value, len);
+            WriteBlock(buf);
+            return;
+        }
+
         PackUnpack.UnsafePackVInt(ref Unsafe.AsRef<byte>((void*)Current), value, len);
         Current += (nint)len;
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteVUInt64(ulong value)
     {
         var len = PackUnpack.LengthVUInt(value);
-        if (Current + len > End) Resize();
+        if (Resize(len))
+        {
+            Span<byte> buf = stackalloc byte[(int)len];
+            PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(buf), value, len);
+            WriteBlock(buf);
+            return;
+        }
+
         PackUnpack.UnsafePackVUInt(ref Unsafe.AsRef<byte>((void*)Current), value, len);
         Current += (nint)len;
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteInt64BE(long value)
     {
-        if (Current + 8 > End) Resize();
+        if (Resize(8))
+        {
+            var buf = stackalloc byte[8];
+            Unsafe.WriteUnaligned(buf, PackUnpack.AsBigEndian((ulong)value));
+            WriteBlock(buf, 8);
+            return;
+        }
+
         Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsBigEndian((ulong)value));
         Current += 8;
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteInt64LE(long value)
     {
-        if (Current + 8 > End) Resize();
+        if (Resize(8))
+        {
+            var buf = stackalloc byte[8];
+            Unsafe.WriteUnaligned(buf, PackUnpack.AsLittleEndian((ulong)value));
+            WriteBlock(buf, 8);
+            return;
+        }
+
         Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsLittleEndian((ulong)value));
         Current += 8;
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteUInt16LE(ushort value)
     {
-        if (Current + 2 > End) Resize();
+        if (Resize(2))
+        {
+            var buf = stackalloc byte[2];
+            Unsafe.WriteUnaligned(buf, PackUnpack.AsLittleEndian(value));
+            WriteBlock(buf, 2);
+            return;
+        }
+
         Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsLittleEndian(value));
         Current += 2;
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteInt32BE(int value)
     {
-        if (Current + 4 > End) Resize();
+        if (Resize(4))
+        {
+            var buf = stackalloc byte[4];
+            Unsafe.WriteUnaligned(buf, PackUnpack.AsBigEndian((uint)value));
+            WriteBlock(buf, 4);
+            return;
+        }
+
         Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsBigEndian((uint)value));
         Current += 4;
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteInt16BE(short value)
     {
-        if (Current + 2 > End) Resize();
+        if (Resize(2))
+        {
+            var buf = stackalloc byte[2];
+            Unsafe.WriteUnaligned(buf, PackUnpack.AsBigEndian((ushort)value));
+            WriteBlock(buf, 2);
+            return;
+        }
+
         Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsBigEndian((ushort)value));
         Current += 2;
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteInt32LE(int value)
     {
-        if (Current + 4 > End) Resize();
+        if (Resize(4))
+        {
+            var buf = stackalloc byte[4];
+            Unsafe.WriteUnaligned(buf, PackUnpack.AsLittleEndian((uint)value));
+            WriteBlock(buf, 4);
+            return;
+        }
+
         Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsLittleEndian((uint)value));
         Current += 4;
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteUInt32LE(uint value)
     {
-        if (Current + 4 > End) Resize();
+        if (Resize(4))
+        {
+            var buf = stackalloc byte[4];
+            Unsafe.WriteUnaligned(buf, PackUnpack.AsLittleEndian(value));
+            WriteBlock(buf, 4);
+            return;
+        }
+
         Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsLittleEndian(value));
         Current += 4;
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteUInt64LE(ulong value)
     {
-        if (Current + 8 > End) Resize();
+        if (Resize(8))
+        {
+            var buf = stackalloc byte[8];
+            Unsafe.WriteUnaligned(buf, PackUnpack.AsLittleEndian(value));
+            WriteBlock(buf, 8);
+            return;
+        }
+
         Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsLittleEndian(value));
         Current += 8;
     }
 
+    [SkipLocalsInit]
     public unsafe void WriteUInt64BE(ulong value)
     {
-        if (Current + 8 > End) Resize();
+        if (Resize(8))
+        {
+            var buf = stackalloc byte[8];
+            Unsafe.WriteUnaligned(buf, PackUnpack.AsBigEndian(value));
+            WriteBlock(buf, 8);
+            return;
+        }
+
         Unsafe.WriteUnaligned((void*)Current, PackUnpack.AsBigEndian(value));
         Current += 8;
     }
@@ -347,7 +470,7 @@ public struct MemWriter
             return;
         }
 
-        TryReserve((uint)l + 4);
+        Resize((uint)l + 4);
 
         WriteVUInt32((uint)(l + 1));
 
@@ -416,7 +539,7 @@ public struct MemWriter
                 var c = *strPtr++;
                 if (c < 0x80)
                 {
-                    if (Current == End) Resize();
+                    Resize1();
                     Unsafe.AsRef<byte>((void*)Current) = (byte)c;
                     Current++;
                     goto goFast;
@@ -453,7 +576,7 @@ public struct MemWriter
     public unsafe void WriteStringOrderedPrefix(string value)
     {
         var l = value.Length;
-        TryReserve((uint)l + 1);
+        Resize((uint)l + 1);
 
         fixed (char* strPtrStart = value)
         {
@@ -521,7 +644,7 @@ public struct MemWriter
                 var c = *strPtr++;
                 if (c < 0x7f)
                 {
-                    if (Current == End) Resize();
+                    Resize1();
                     Unsafe.Write((void*)Current, (byte)(c + 1));
                     Current++;
                     goto goFast;
@@ -547,7 +670,7 @@ public struct MemWriter
     {
         var byteCount = Encoding.UTF8.GetByteCount(value);
         var len = PackUnpack.LengthVUInt((uint)byteCount);
-        TryReserve(len + (uint)byteCount);
+        Resize(len + (uint)byteCount);
         PackUnpack.UnsafePackVUInt(ref Unsafe.AsRef<byte>((void*)Current), (uint)byteCount, len);
         Current += (nint)len;
         if (Current + byteCount <= End)
@@ -574,7 +697,7 @@ public struct MemWriter
                 if (completed) break;
                 charsPtr += charsUsed;
                 charLen -= charsUsed;
-                Resize();
+                Resize1();
             } while (true);
         }
     }
@@ -593,7 +716,11 @@ public struct MemWriter
                 var bufLength = End - Current;
                 if (bufLength > 0)
                 {
-                    Unsafe.CopyBlockUnaligned((void*)Current, Unsafe.AsPointer(ref buffer), (uint)bufLength);
+                    fixed (byte* bufferPtr = &buffer)
+                    {
+                        Unsafe.CopyBlockUnaligned((void*)Current, bufferPtr, (uint)bufLength);
+                    }
+
                     Current = End;
                     buffer = ref Unsafe.AddByteOffset(ref buffer, bufLength);
                     length -= (uint)bufLength;
@@ -606,7 +733,11 @@ public struct MemWriter
             Resize(length); // returns always success because it is without controller
         }
 
-        Unsafe.CopyBlockUnaligned((void*)Current, Unsafe.AsPointer(ref buffer), length);
+        fixed (byte* bufferPtr = &buffer)
+        {
+            Unsafe.CopyBlockUnaligned((void*)Current, bufferPtr, length);
+        }
+
         Current += (nint)length;
     }
 
@@ -615,9 +746,35 @@ public struct MemWriter
         WriteBlock(buffer.AsSpan(offset, length));
     }
 
-    public unsafe void WriteBlock(IntPtr data, int length)
+    public unsafe void WriteBlock(nint data, int length)
     {
         WriteBlock(ref Unsafe.AsRef<byte>((void*)data), (uint)length);
+    }
+
+    public unsafe void WriteBlock(byte* data, int length)
+    {
+        if (Current + length > End)
+        {
+            if (Controller is IMemWriter controller)
+            {
+                var bufLength = End - Current;
+                if (bufLength > 0)
+                {
+                    Unsafe.CopyBlockUnaligned((void*)Current, data, (uint)bufLength);
+                    Current = End;
+                    data += bufLength;
+                    length -= (int)bufLength;
+                }
+
+                controller.WriteBlock(ref this, ref Unsafe.AsRef<byte>(data), (nuint)length);
+                return;
+            }
+
+            Resize((uint)length); // returns always success because it is without controller
+        }
+
+        Unsafe.CopyBlockUnaligned((void*)Current, data, (uint)length);
+        Current += length;
     }
 
     public void WriteBlock(byte[] data)
@@ -627,7 +784,7 @@ public struct MemWriter
 
     public unsafe void WriteGuid(Guid value)
     {
-        WriteBlock(ref Unsafe.AsRef<byte>(&value), 16);
+        WriteBlock((byte*)&value, 16);
     }
 
     public void WriteSingle(float value)
@@ -653,9 +810,11 @@ public struct MemWriter
         WriteInt16BE(Unsafe.BitCast<Half, short>(value));
     }
 
+    [SkipLocalsInit]
     public void WriteDecimal(decimal value)
     {
-        var ints = decimal.GetBits(value);
+        Span<int> ints = stackalloc int[4];
+        decimal.GetBits(value, ints);
         var header = (byte)((ints[3] >> 16) & 31);
         if (ints[3] < 0) header |= 128;
         var first = (uint)ints[0] + ((ulong)ints[1] << 32);
@@ -835,7 +994,7 @@ public struct MemWriter
         }
 
         // Reserve space at end
-        TryReserve(lenOfLen - 1);
+        Resize(lenOfLen - 1);
         Current += (int)lenOfLen - 1;
         // Make Space By Moving Memory
         System.Buffer.MemoryCopy((byte*)Start + start, (byte*)Start + start + lenOfLen - 1, len - 1, len - 1);
@@ -881,12 +1040,23 @@ public struct MemWriter
         WriteBlock(writtenBuffer);
     }
 
-    public unsafe Span<byte> BlockWriteToSpan(int length)
+    public unsafe Span<byte> BlockWriteToSpan(int length, out bool needToBeWritten)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
-        TryReserve((uint)length);
+        if (Resize((uint)length))
+        {
+            needToBeWritten = true;
+            return GC.AllocateUninitializedArray<byte>(length);
+        }
+
         var res = new Span<byte>((void*)Current, length);
         Current += length;
+        needToBeWritten = false;
         return res;
+    }
+
+    public readonly unsafe ReadOnlySpan<byte> AsReadOnlySpan(int ofs, int len)
+    {
+        return new((void*)(Start + ofs), len);
     }
 }

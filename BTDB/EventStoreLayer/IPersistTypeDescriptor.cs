@@ -4,5 +4,5 @@ namespace BTDB.EventStoreLayer;
 
 public interface IPersistTypeDescriptor
 {
-    void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter);
+    void Persist(ref MemWriter writer, DescriptorWriter nestedDescriptorWriter);
 }

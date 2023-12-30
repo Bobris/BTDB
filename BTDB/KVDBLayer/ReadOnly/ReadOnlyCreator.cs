@@ -20,7 +20,7 @@ public class ReadOnlyCreator
         _maxChildren = maxChildren;
     }
 
-    public void Run(ref SpanWriter writer)
+    public void Run(ref MemWriter writer)
     {
         WriteHeader(ref writer);
         var valueOffsets = new uint[_transaction.GetKeyValueCount()];
@@ -50,13 +50,13 @@ public class ReadOnlyCreator
         writer.WriteUInt32LE((uint)rootOffset);
     }
 
-    ulong BuildTreeNode(long keyCount, uint[] valueOffsets, ref SpanWriter writer)
+    ulong BuildTreeNode(long keyCount, uint[] valueOffsets, ref MemWriter writer)
     {
         var leafs = (keyCount + _maxChildren - 1) / _maxChildren;
         var order = 0L;
         var done = 0L;
         var keys = new byte[_maxChildren][];
-        return BuildBranchNode(leafs, ref writer, (ref SpanWriter writer) =>
+        return BuildBranchNode(leafs, ref writer, (ref MemWriter writer) =>
         {
             order++;
             var reach = keyCount * order / leafs;
@@ -98,9 +98,9 @@ public class ReadOnlyCreator
         }).Ptr;
     }
 
-    delegate (uint Ptr, uint RecursiveChildren, byte[] FirstKey) BuildBranchNodeGenerator(ref SpanWriter writer);
+    delegate (uint Ptr, uint RecursiveChildren, byte[] FirstKey) BuildBranchNodeGenerator(ref MemWriter writer);
 
-    (uint Ptr, uint RecursiveChildren, byte[] FirstKey) BuildBranchNode(long count, ref SpanWriter writer,
+    (uint Ptr, uint RecursiveChildren, byte[] FirstKey) BuildBranchNode(long count, ref MemWriter writer,
         BuildBranchNodeGenerator generator)
     {
         if (count == 1) return generator(ref writer);
@@ -109,7 +109,7 @@ public class ReadOnlyCreator
         var done = 0L;
         var nodes = new uint[_maxChildren];
         var keys = new byte[_maxChildren][];
-        return BuildBranchNode(children, ref writer, (ref SpanWriter writer) =>
+        return BuildBranchNode(children, ref writer, (ref MemWriter writer) =>
         {
             order++;
             var reach = count * order / children;
@@ -120,7 +120,7 @@ public class ReadOnlyCreator
             for (var i = 0; i < todo; i++)
             {
                 var child = generator(ref writer);
-                nodes[i] = (uint)child.Ptr;
+                nodes[i] = child.Ptr;
                 recursiveChildCount += child.RecursiveChildren;
                 keys[i] = child.FirstKey;
                 if (i > 0) totalSuffixLength += (uint)keys[i].Length;
@@ -131,7 +131,7 @@ public class ReadOnlyCreator
             if (newSuffixSize >= ushort.MaxValue) throw new BTDBException("Keys of one leaf does not fit 64kb");
             var resOffset = (ulong)writer.GetCurrentPosition();
             if (resOffset > uint.MaxValue) throw new BTDBException("B+Tree does not fit into 4GB");
-            writer.WriteUInt8((byte)(128+todo));
+            writer.WriteUInt8((byte)(128 + todo));
             writer.WriteVUInt32(recursiveChildCount);
             writer.WriteVUInt32(newPrefixSize);
             writer.WriteBlock(keys[0].AsSpan()[..(int)newPrefixSize]);
@@ -156,10 +156,10 @@ public class ReadOnlyCreator
         });
     }
 
-    void WriteHeader(ref SpanWriter writer)
+    void WriteHeader(ref MemWriter writer)
     {
         writer.WriteBlock("roBTDB"u8);
-        writer.WriteInt16(1);
+        writer.WriteInt16BE(1);
         writer.WriteVUInt32((uint)_transaction.GetKeyValueCount());
         writer.WriteVUInt64(_transaction.GetCommitUlong());
         var ulongCount = _transaction.GetUlongCount();

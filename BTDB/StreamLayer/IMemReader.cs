@@ -9,11 +9,11 @@ public interface IMemReader
     /// <summary>
     /// Fill Buf at creation of MemReader.
     /// </summary>
-    /// <param name="memReader">owning MemReader</param>
-    void Init(ref MemReader memReader);
+    /// <param name="reader">owning MemReader</param>
+    void Init(ref MemReader reader);
 
     /// <summary>
-    /// Fill Buf with advisePrefetchLength bytes of data. Post-condition is that memReader.Current+advisePrefetchLength&lt;=memReader.End.
+    /// Fill Buf with 1 byte of data, preferably advisePrefetchLength bytes of data. Post-condition is that memReader.Current&lt;memReader.End.
     /// </summary>
     /// <param name="memReader">owning MemReader</param>
     /// <param name="advisePrefetchLength">minimum size of buffer to fill (usually this parameter should be under 100 bytes)</param>

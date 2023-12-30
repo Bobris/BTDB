@@ -8,7 +8,7 @@ namespace ODbDump.TrlDump;
 
 public class TrlFileReader
 {
-    readonly ISpanReader _readerController;
+    readonly IMemReader _readerController;
     readonly ICompressionStrategy _compression;
     const int MaxValueSizeInlineInMemory = 7;
     static readonly byte[] MagicStartOfTransaction = "tR"u8.ToArray();
@@ -26,11 +26,11 @@ public class TrlFileReader
         bool afterTemporaryEnd = false;
         Span<byte> trueValue = stackalloc byte[12];
 
-        var reader = new SpanReader(_readerController);
+        var reader = new MemReader(_readerController);
         SkipUntilNextTransaction(ref reader);
         while (!reader.Eof)
         {
-            var command = (KVCommandType) reader.ReadUInt8();
+            var command = (KVCommandType)reader.ReadUInt8();
             if (command == 0 && afterTemporaryEnd)
             {
                 return;
@@ -58,13 +58,13 @@ public class TrlFileReader
                     if (valueLen <= MaxValueSizeInlineInMemory &&
                         (command & KVCommandType.SecondParamCompressed) == 0)
                     {
-                        reader.ReadBlock(ref MemoryMarshal.GetReference(trueValue), (uint) valueLen);
+                        reader.ReadBlock(ref MemoryMarshal.GetReference(trueValue), (uint)valueLen);
                     }
                     else
                     {
                         var partLen = Math.Min(12, valueLen);
-                        reader.ReadBlock(ref MemoryMarshal.GetReference(trueValue), (uint) partLen);
-                        reader.SkipBlock(valueLen - partLen);
+                        reader.ReadBlock(ref MemoryMarshal.GetReference(trueValue), (uint)partLen);
+                        reader.SkipBlock((uint)(valueLen - partLen));
                     }
 
                     ExplainCreateOrUpdate(visitor, keyBuf.AsSyncReadOnlySpan(), valueLen, trueValue);
@@ -89,6 +89,7 @@ public class TrlFileReader
                     {
                         _compression.DecompressKey(ref keyBuf);
                     }
+
                     ExplainEraseOne(visitor, keyBuf.AsSyncReadOnlySpan());
                 }
                     break;
@@ -96,8 +97,8 @@ public class TrlFileReader
                 {
                     var keyLen1 = reader.ReadVInt32();
                     var keyLen2 = reader.ReadVInt32();
-                    reader.SkipBlock(keyLen1);
-                    reader.SkipBlock(keyLen2);
+                    reader.SkipBlock((uint)keyLen1);
+                    reader.SkipBlock((uint)keyLen2);
                 }
                     break;
                 case KVCommandType.DeltaUlongs:
@@ -113,21 +114,22 @@ public class TrlFileReader
                     break;
                 case KVCommandType.CommitWithDeltaUlong:
                     var delta = reader.ReadVUInt64();
-                    _commitUlong+=delta;
+                    _commitUlong += delta;
                     visitor.OperationDetail($"delta: {delta} {_commitUlong}");
                     break;
                 case KVCommandType.EndOfFile:
-                    visitor.OperationDetail($"position: {reader.Controller!.GetCurrentPosition(reader)}");
+                    visitor.OperationDetail($"position: {reader.GetCurrentPosition()}");
                     return;
                 case KVCommandType.TemporaryEndOfFile:
                     afterTemporaryEnd = true;
                     break;
             }
+
             visitor.EndOperation();
         }
     }
 
-    void SkipUntilNextTransaction(ref SpanReader reader)
+    void SkipUntilNextTransaction(ref MemReader reader)
     {
         int depth = 0;
         while (!reader.Eof)
@@ -140,10 +142,10 @@ public class TrlFileReader
                         depth = 1;
                     break;
                 case 1:
-                    depth = b == (byte) 't' ? 2 : 0;
+                    depth = b == (byte)'t' ? 2 : 0;
                     break;
                 case 2:
-                    if (b == (byte) 'R')
+                    if (b == (byte)'R')
                         return;
                     else
                         depth = 0;
@@ -163,8 +165,7 @@ public class TrlFileReader
             case 1:
             {
                 var oid = SkipByteAndReadVUInt64(key);
-                var valueReader = new SpanReader(firstBytes);
-                var tableId = valueReader.ReadVUInt32();
+                var tableId = (uint)PackUnpack.UnpackVUInt(firstBytes);
 
                 visitor.UpsertObject(oid, tableId, key.Length, valueLength);
             }
@@ -183,10 +184,9 @@ public class TrlFileReader
                 break;
             case 4:
             {
-                var reader = new SpanReader(key);
-                reader.SkipBlock(1);
-                var relationIdx = reader.ReadVUInt64();
-                var skIdx = reader.ReadUInt8();
+                var ofs = 1;
+                var relationIdx = PackUnpack.UnpackVUInt(key, ref ofs);
+                var skIdx = key[ofs];
                 visitor.UpsertRelationSecondaryKey(relationIdx, skIdx, key.Length, valueLength);
             }
                 break;
@@ -233,20 +233,17 @@ public class TrlFileReader
                 break;
             case 4:
             {
-                var reader = new SpanReader(key);
-                reader.SkipBlock(1);
-                var relationIdx = reader.ReadVUInt64();
-                var skIdx = reader.ReadUInt8();
+                var ofs = 1;
+                var relationIdx = PackUnpack.UnpackVUInt(key, ref ofs);
+                var skIdx = key[ofs];
                 //visitor.EraseRelationSecondaryKey(relationIdx, skIdx, key.Length);
             }
                 break;
         }
     }
 
-    ulong SkipByteAndReadVUInt64(ReadOnlySpan<byte> key)
+    static ulong SkipByteAndReadVUInt64(ReadOnlySpan<byte> key)
     {
-        var reader = new SpanReader(key);
-        reader.SkipBlock(1);
-        return reader.ReadVUInt64();
+        return PackUnpack.UnpackVUInt(key[1..]);
     }
 }

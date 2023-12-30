@@ -30,7 +30,7 @@ public interface ICursor
     void UpdateKeySuffix(in ReadOnlySpan<byte> key);
     void Erase();
     long EraseTo(ICursor to);
-    void BuildTree(long keyCount, ref SpanReader reader, BuildTreeCallback generator);
+    void BuildTree(long keyCount, ref MemReader reader, BuildTreeCallback generator);
     void ValueReplacer(ref ValueReplacerCtx ctx);
 
     byte[] GetKeyAsArray()
@@ -43,4 +43,4 @@ public interface ICursor
     void TestTreeCorrectness();
 }
 
-public delegate void BuildTreeCallback(ref SpanReader reader, ref ByteBuffer key, in Span<byte> value);
+public delegate void BuildTreeCallback(ref MemReader reader, ref ByteBuffer key, in Span<byte> value);

@@ -58,7 +58,7 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Zip(enumValuesUnsignedLongs.ToArray(), (s, v) => new KeyValuePair<string, ulong>(s, v)).ToList();
     }
 
-    public EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader)
+    public EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref MemReader reader)
     {
         _typeSerializers = typeSerializers;
         _name = reader.ReadString()!;
@@ -284,12 +284,12 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         Type typeRead;
         if (_signed)
         {
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt64))!);
+            ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVInt64))!);
             typeRead = typeof(long);
         }
         else
         {
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!);
+            ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!);
             typeRead = typeof(ulong);
         }
 
@@ -348,7 +348,7 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
         Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
-    public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
+    public void Persist(ref MemWriter writer, DescriptorWriter nestedDescriptorWriter)
     {
         writer.WriteString(_name);
         writer.WriteVUInt32((_signed ? 1u : 0) + (_flags ? 2u : 0) + 4u * (uint)_pairs.Count);
@@ -371,13 +371,13 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         {
             ilGenerator
                 .ConvI8()
-                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt64))!);
+                .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVInt64))!);
         }
         else
         {
             ilGenerator
                 .ConvU8()
-                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt64))!);
+                .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt64))!);
         }
     }
 
@@ -386,11 +386,11 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         pushReader(ilGenerator);
         if (_signed)
         {
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt64))!);
+            ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipVInt64))!);
         }
         else
         {
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
+            ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!);
         }
     }
 

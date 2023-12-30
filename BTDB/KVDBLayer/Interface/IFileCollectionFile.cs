@@ -6,35 +6,23 @@ namespace BTDB.KVDBLayer;
 public interface IFileCollectionFile
 {
     uint Index { get; }
-    ISpanReader GetExclusiveReader();
+    IMemReader GetExclusiveReader();
 
     // RandomRead will be used, it is good to have this file in cache
     void AdvisePrefetch();
 
     void RandomRead(Span<byte> data, ulong position, bool doNotCache);
 
-    MemReader RandomRead(ulong position, uint size, bool doNotCache)
-    {
-        var buf = GC.AllocateUninitializedArray<byte>((int)size, pinned: true);
-        RandomRead(buf, position, doNotCache);
-        return MemReader.CreateFromPinnedArray(buf, 0, (int)size);
-    }
-
     // can use RandomRead and when will stop writing SwitchToReadOnlyMode will be called
-    ISpanWriter GetAppenderWriter();
+    IMemWriter GetAppenderWriter();
 
     // will just write and not use RandomRead, after writing will finish SwitchToDisposedMode will be called
     // this should not need to cache written data in memory, saving memory
-    ISpanWriter GetExclusiveAppenderWriter();
+    IMemWriter GetExclusiveAppenderWriter();
 
-    // called in non-durable transaction commit, kind of asynchronous Writer.FlushBuffers
-    void Flush();
-
-    // Flush() and synchronously wait for OS file buffers to flush
+    // Synchronously wait for OS file buffers to flush => forcing durability
     void HardFlush();
 
-    [Obsolete("It should be used only in append only mode")]
-    void SetSize(long size);
     void Truncate();
 
     // combination of three methods could be done asynchronously

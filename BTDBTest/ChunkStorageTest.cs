@@ -72,6 +72,7 @@ public class ChunkStorageTest : IDisposable
         {
             tr.Put(CalcHash(new byte[] { 0 }), ByteBuffer.NewAsync(new byte[] { 1 }), true);
         }
+
         using (var tr = _cs.StartTransaction())
         {
             Assert.Equal(new byte[] { 1 }, tr.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
@@ -79,16 +80,17 @@ public class ChunkStorageTest : IDisposable
     }
 
     [Fact]
-    public void ItRemebersContentAfterReopen()
+    public void ItRemembersContentAfterReopen()
     {
         using (var tr = _cs.StartTransaction())
         {
-            tr.Put(CalcHash(new byte[] { 0 }), ByteBuffer.NewAsync(new byte[] { 1 }), true);
+            tr.Put(CalcHash([0]), ByteBuffer.NewAsync([1]), true);
         }
+
         ReopenStorage();
         using (var tr = _cs.StartTransaction())
         {
-            Assert.Equal(new byte[] { 1 }, tr.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+            Assert.Equal([1], tr.Get(CalcHash([0])).Result.ToByteArray());
         }
     }
 }

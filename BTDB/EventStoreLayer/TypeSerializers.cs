@@ -13,19 +13,21 @@ using BTDB.Encrypted;
 
 namespace BTDB.EventStoreLayer;
 
-public delegate object Layer1Loader(ref SpanReader reader, ITypeBinaryDeserializerContext? ctx,
+public delegate object Layer1Loader(ref MemReader reader, ITypeBinaryDeserializerContext? ctx,
     ITypeSerializersId2LoaderMapping mapping, ITypeDescriptor descriptor);
 
-public delegate void Layer1SimpleSaver(ref SpanWriter writer, object value);
+public delegate void Layer1SimpleSaver(ref MemWriter writer, object value);
 
-public delegate void Layer1ComplexSaver(ref SpanWriter writer, ITypeBinarySerializerContext ctx, object value);
+public delegate void Layer1ComplexSaver(ref MemWriter writer, ITypeBinarySerializerContext ctx, object value);
+
 public class TypeSerializers : ITypeSerializers
 {
     ITypeNameMapper _typeNameMapper;
 
     readonly
         ConcurrentDictionary<ITypeDescriptor, Layer1Loader> _loaders =
-            new ConcurrentDictionary<ITypeDescriptor, Layer1Loader>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+            new ConcurrentDictionary<ITypeDescriptor, Layer1Loader>(ReferenceEqualityComparer<ITypeDescriptor>
+                .Instance);
 
     readonly ConcurrentDictionary<(ITypeDescriptor, Type), Action<object, IDescriptorSerializerLiteContext>>
         _newDescriptorSavers =
@@ -117,7 +119,8 @@ public class TypeSerializers : ITypeSerializers
             new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
         public BuildFromTypeCtx(TypeSerializers typeSerializers,
-            ConcurrentDictionary<Type, ITypeDescriptor> type2DescriptorMap, TypeSerializersOptions typeSerializersOptions)
+            ConcurrentDictionary<Type, ITypeDescriptor> type2DescriptorMap,
+            TypeSerializersOptions typeSerializersOptions)
         {
             _typeSerializers = typeSerializers;
             _type2DescriptorMap = type2DescriptorMap;
@@ -164,7 +167,8 @@ public class TypeSerializers : ITypeSerializers
                         goto haveDescriptor;
                     }
 
-                    result = new ObjectTypeDescriptor(_typeSerializers, type, _typeSerializersOptions.TypeDescriptorOptions);
+                    result = new ObjectTypeDescriptor(_typeSerializers, type,
+                        _typeSerializersOptions.TypeDescriptorOptions);
                 }
                 else if (type.IsArray)
                 {
@@ -181,11 +185,12 @@ public class TypeSerializers : ITypeSerializers
                 }
                 else
                 {
-                    result = new ObjectTypeDescriptor(_typeSerializers, type, _typeSerializersOptions.TypeDescriptorOptions);
+                    result = new ObjectTypeDescriptor(_typeSerializers, type,
+                        _typeSerializersOptions.TypeDescriptorOptions);
                 }
             }
 
-        haveDescriptor:
+            haveDescriptor:
             _temporaryMap[type] = result;
             if (result != null)
             {
@@ -361,7 +366,7 @@ public class TypeSerializers : ITypeSerializers
             _mapping = mapping;
         }
 
-        public object? LoadObject(ref SpanReader reader)
+        public object? LoadObject(ref MemReader reader)
         {
             var typeId = reader.ReadVUInt32();
             if (typeId == 0)
@@ -383,7 +388,7 @@ public class TypeSerializers : ITypeSerializers
             _backRefs.Add(obj);
         }
 
-        public void SkipObject(ref SpanReader reader)
+        public void SkipObject(ref MemReader reader)
         {
             var typeId = reader.ReadVUInt32();
             if (typeId == 0)
@@ -401,22 +406,28 @@ public class TypeSerializers : ITypeSerializers
             _mapping.Load(typeId, ref reader, this);
         }
 
-        public EncryptedString LoadEncryptedString(ref SpanReader reader)
+        [SkipLocalsInit]
+        public unsafe EncryptedString LoadEncryptedString(ref MemReader reader)
         {
             var cipher = _mapping.GetSymmetricCipher();
-            var enc = reader.ReadByteArray();
+            var enc = reader.ReadByteArrayAsSpan();
             var size = cipher!.CalcPlainSizeFor(enc);
-            var dec = new byte[size];
+            var dec = size < 4096
+                ? stackalloc byte[size]
+                : GC.AllocateUninitializedArray<byte>(size);
             if (!cipher.Decrypt(enc, dec))
             {
                 throw new CryptographicException();
             }
 
-            var r = new SpanReader(dec);
-            return r.ReadString();
+            fixed (void* _ = dec)
+            {
+                var r = MemReader.CreateFromPinnedSpan(dec);
+                return r.ReadString();
+            }
         }
 
-        public void SkipEncryptedString(ref SpanReader reader)
+        public void SkipEncryptedString(ref MemReader reader)
         {
             reader.SkipByteArray();
         }
@@ -474,7 +485,8 @@ public class TypeSerializers : ITypeSerializers
         return _newDescriptorSavers.GetOrAdd((descriptor, preciseType), NewDescriptorSaverFactory);
     }
 
-    static Action<object, IDescriptorSerializerLiteContext>? NewDescriptorSaverFactory((ITypeDescriptor descriptor, Type type) pair)
+    static Action<object, IDescriptorSerializerLiteContext>? NewDescriptorSaverFactory(
+        (ITypeDescriptor descriptor, Type type) pair)
     {
         var gen = pair.descriptor.BuildNewDescriptorGenerator();
         if (gen == null)
@@ -503,7 +515,8 @@ public class TypeSerializers : ITypeSerializers
         return new TypeSerializersMapping(this);
     }
 
-    public static void StoreDescriptor(ITypeDescriptor descriptor, ref SpanWriter writer, Func<ITypeDescriptor, uint> descriptor2Id)
+    public static void StoreDescriptor(ITypeDescriptor descriptor, ref MemWriter writer,
+        Func<ITypeDescriptor, uint> descriptor2Id)
     {
         switch (descriptor)
         {
@@ -529,7 +542,8 @@ public class TypeSerializers : ITypeSerializers
                 throw new ArgumentOutOfRangeException();
         }
 
-        ((IPersistTypeDescriptor)descriptor).Persist(ref writer, (ref SpanWriter w, ITypeDescriptor d) => w.WriteVUInt32(descriptor2Id(d)));
+        ((IPersistTypeDescriptor)descriptor).Persist(ref writer,
+            (ref MemWriter w, ITypeDescriptor d) => w.WriteVUInt32(descriptor2Id(d)));
     }
 
     public ITypeDescriptor MergeDescriptor(ITypeDescriptor descriptor)

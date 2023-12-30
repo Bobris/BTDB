@@ -20,7 +20,7 @@ class HashKeyIndex : IFileInfo, IHashKeyIndex
 
     public uint KeyLen => _keyLen;
 
-    public HashKeyIndex(ref SpanReader reader, Guid? guid)
+    public HashKeyIndex(ref MemReader reader, Guid? guid)
     {
         _guid = guid;
         _subId = reader.ReadVInt64();
@@ -36,16 +36,16 @@ class HashKeyIndex : IFileInfo, IHashKeyIndex
         _keyLen = keyLen;
     }
 
-    internal static void SkipHeader(ref SpanReader reader)
+    internal static void SkipHeader(ref MemReader reader)
     {
         FileCollectionWithFileInfos.SkipHeader(ref reader);
-        reader.SkipUInt8(); // type of file
+        reader.Skip1Byte(); // type of file
         reader.SkipVInt64(); // subId
         reader.SkipVInt64(); // generation
         reader.SkipVUInt32(); // keyLen
     }
 
-    internal void WriteHeader(ref SpanWriter writer)
+    internal void WriteHeader(ref MemWriter writer)
     {
         FileCollectionWithFileInfos.WriteHeader(ref writer, _guid);
         writer.WriteUInt8((byte)KVFileType.HashKeyIndex);

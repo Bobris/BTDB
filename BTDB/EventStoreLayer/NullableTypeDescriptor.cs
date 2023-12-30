@@ -24,7 +24,7 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         _itemType = GetItemType(type);
     }
 
-    public NullableTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader,
+    public NullableTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref MemReader reader,
         DescriptorReader nestedDescriptorReader)
         : this(typeSerializers, nestedDescriptorReader(ref reader))
     {
@@ -125,7 +125,7 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             var noValue = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReader)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
+                .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadBool))!)
                 .Brfalse(noValue);
             _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                 il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor)!.NestedType(0)),
@@ -146,7 +146,7 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
             ilGenerator
                 .Do(pushReader)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
+                .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadBool))!)
                 .Brfalse(noValue);
             _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                 il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)),
@@ -169,7 +169,7 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 throw new NotSupportedException();
             ilGenerator
                 .Do(pushReader)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
+                .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadBool))!)
                 .Brfalse(noValue);
             _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                 il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType,
@@ -257,7 +257,7 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
         Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
-    public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
+    public void Persist(ref MemWriter writer, DescriptorWriter nestedDescriptorWriter)
     {
         nestedDescriptorWriter(ref writer, _itemDescriptor!);
     }
@@ -278,7 +278,7 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Call(valueType.GetMethod("get_HasValue")!)
             .Dup()
             .Stloc(localHasValue)
-            .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBool))!)
+            .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteBool))!)
             .Ldloc(localHasValue)
             .Brfalse(finish);
         _itemDescriptor!.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
@@ -297,7 +297,7 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         var finish = ilGenerator.DefineLabel();
         ilGenerator
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadBool))!)
             .Brfalse(finish);
         _itemDescriptor!.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
         ilGenerator

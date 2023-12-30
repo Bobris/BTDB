@@ -23,13 +23,13 @@ public static class Extensions
         }
     }
 
-    public static void WriteFieldHandler(this ref SpanWriter writer, IFieldHandler handler)
+    public static void WriteFieldHandler(this ref MemWriter writer, IFieldHandler handler)
     {
         writer.WriteString(handler.Name);
         writer.WriteByteArray(handler.Configuration);
     }
 
-    public static IFieldHandler CreateFromReader(this IFieldHandlerFactory factory, ref SpanReader reader,
+    public static IFieldHandler CreateFromReader(this IFieldHandlerFactory factory, ref MemReader reader,
         FieldHandlerOptions options)
     {
         var handlerName = reader.ReadString();

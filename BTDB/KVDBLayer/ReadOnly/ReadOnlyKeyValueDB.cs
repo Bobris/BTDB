@@ -17,13 +17,13 @@ public class ReadOnlyKeyValueDB : IKeyValueDB
     internal readonly ulong _commitUlong;
     internal readonly ulong[] _ulongs;
 
-    public ReadOnlyKeyValueDB(nuint begin, uint totalLen)
+    public unsafe ReadOnlyKeyValueDB(nuint begin, uint totalLen)
     {
         _begin = begin;
         _totalLen = totalLen;
-        var reader = new SpanReader(BitArrayManipulation.CreateReadOnlySpan(_begin, (int)long.Min(_totalLen, int.MaxValue)));
+        var reader = new MemReader((void*)_begin, (int)long.Min(_totalLen, int.MaxValue));
         if (!reader.CheckMagic("roBTDB"u8)) throw new InvalidDataException("Wrong header magic");
-        if (reader.ReadInt16() != 1) throw new InvalidDataException("Unsupported version");
+        if (reader.ReadInt16BE() != 1) throw new InvalidDataException("Unsupported version");
         _keyValueCount = reader.ReadVUInt32();
         _commitUlong = reader.ReadVUInt64();
         var ulongCount = reader.ReadVUInt32();
@@ -32,7 +32,9 @@ public class ReadOnlyKeyValueDB : IKeyValueDB
         {
             _ulongs[i] = reader.ReadVUInt64();
         }
-        _rootNodeOffset = BinaryPrimitives.ReadUInt32LittleEndian(BitArrayManipulation.CreateReadOnlySpan(begin + totalLen - 4, 4));
+
+        _rootNodeOffset =
+            BinaryPrimitives.ReadUInt32LittleEndian(BitArrayManipulation.CreateReadOnlySpan(begin + totalLen - 4, 4));
     }
 
     public void Dispose()
@@ -80,6 +82,7 @@ public class ReadOnlyKeyValueDB : IKeyValueDB
     public IKeyValueDBLogger? Logger { get; set; }
     public uint CompactorRamLimitInMb { get; set; }
     public long MaxTrLogFileSize { get; set; }
+
     public IEnumerable<IKeyValueDBTransaction> Transactions()
     {
         yield break;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using BTDB.IL;
 using BTDB.StreamLayer;
 
@@ -13,7 +14,9 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
     readonly IFieldHandler _itemHandler;
     Type? _type;
 
-    public NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type)
+    [SkipLocalsInit]
+    public NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
+        ITypeConvertorGenerator typeConvertorGenerator, Type type)
     {
         _fieldHandlerFactory = fieldHandlerFactory;
         _typeConvertorGenerator = typeConvertorGenerator;
@@ -21,21 +24,27 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
         _itemHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
         if (_itemHandler.NeedsCtx())
             throw new NotSupportedException("Nullable complex types are not supported.");
-        var writer = new SpanWriter();
+        Span<byte> buf = stackalloc byte[512];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteFieldHandler(_itemHandler);
         Configuration = writer.GetSpan().ToArray();
     }
 
-    public NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration)
+    public unsafe NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
+        ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration)
     {
         _fieldHandlerFactory = fieldHandlerFactory;
         _typeConvertorGenerator = typeConvertorGenerator;
         Configuration = configuration;
-        var reader = new SpanReader(configuration);
-        _itemHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
+        fixed (void* confPtr = configuration)
+        {
+            var reader = new MemReader(confPtr, configuration.Length);
+            _itemHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
+        }
     }
 
-    NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type, IFieldHandler itemSpecialized)
+    NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator,
+        Type type, IFieldHandler itemSpecialized)
     {
         _fieldHandlerFactory = fieldHandlerFactory;
         _typeConvertorGenerator = typeConvertorGenerator;
@@ -80,7 +89,7 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
 
         ilGenerator
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadBool))!)
             .Brfalse(noValue);
         _itemHandler.Load(ilGenerator, pushReader, pushCtx);
         _typeConvertorGenerator.GenerateConversion(_itemHandler.HandledType(), itemType)!(ilGenerator);
@@ -100,7 +109,7 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
         var finish = ilGenerator.DefineLabel();
         ilGenerator
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadBool))!)
             .Brfalse(finish)
             .GenerateSkip(_itemHandler, pushReader, pushCtx)
             .Mark(finish);
@@ -120,13 +129,14 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
             .Call(nullableType.GetMethod("get_HasValue")!)
             .Dup()
             .Stloc(localHasValue)
-            .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBool))!)
+            .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteBool))!)
             .Ldloc(localHasValue)
             .Brfalse(finish);
         _itemHandler.Save(ilGenerator, pushWriter, pushCtx,
             il => il
                 .Ldloca(localValue).Call(_type.GetMethod("get_Value")!)
-                .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[0], _itemHandler.HandledType())!));
+                .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[0],
+                    _itemHandler.HandledType())!));
         ilGenerator.Mark(finish);
     }
 
@@ -137,22 +147,26 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
         {
             return this;
         }
+
         var wantedItemType = type.GetGenericArguments()[0];
         var wantedItemHandler = default(IFieldHandler);
         if (typeHandler is NullableFieldHandler nullableFieldHandler)
         {
             wantedItemHandler = nullableFieldHandler._itemHandler;
         }
+
         var itemSpecialized = _itemHandler.SpecializeLoadForType(wantedItemType, wantedItemHandler, logger);
         if (itemSpecialized == wantedItemHandler)
         {
             return typeHandler;
         }
+
         if (_typeConvertorGenerator.GenerateConversion(itemSpecialized.HandledType(), wantedItemType) == null)
         {
             Debug.Fail("even more strange");
             return this;
         }
+
         return new NullableFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, itemSpecialized);
     }
 
@@ -164,6 +178,7 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
             Debug.Fail("strange");
             return this;
         }
+
         var wantedItemType = type.GetGenericArguments()[0];
         var itemSpecialized = _itemHandler.SpecializeSaveForType(wantedItemType);
         if (_typeConvertorGenerator.GenerateConversion(wantedItemType, itemSpecialized.HandledType()) == null)
@@ -171,6 +186,7 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
             Debug.Fail("even more strange");
             return this;
         }
+
         return new NullableFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, itemSpecialized);
     }
 

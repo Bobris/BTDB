@@ -24,12 +24,13 @@ public class FileCollectionTests : IDisposable
         {
             var f = dc.AddFile("kvi");
             var w = f.GetAppenderWriter();
-            var writer = new SpanWriter(w);
+            var writer = new MemWriter(w);
             for (var i = 0; i < 32000; i++)
             {
                 writer.WriteInt32LE(i);
             }
-            writer.Sync();
+
+            writer.Flush();
 
             var data = new byte[4];
             for (var i = 0; i < 32000; i++)

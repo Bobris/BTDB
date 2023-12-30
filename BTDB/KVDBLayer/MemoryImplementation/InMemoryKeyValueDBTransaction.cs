@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using BTDB.Collections;
 using BTDB.KVDBLayer.BTreeMem;
+using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 
@@ -230,8 +232,14 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
 
     public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
     {
-        if (!IsValidKey()) return new ReadOnlySpan<byte>();
-        return GetCurrentKeyFromStack();
+        if (!IsValidKey()) return new();
+        var originalRes = GetCurrentKeyFromStack();
+        var len = originalRes.Length;
+        var res = len <= bufferLength
+            ? MemoryMarshal.CreateSpan(ref buffer, len)
+            : GC.AllocateUninitializedArray<byte>(len, pinned: true).AsSpan(0, len);
+        originalRes.CopyTo(res);
+        return res;
     }
 
     public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
@@ -242,16 +250,21 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
 
     public ReadOnlySpan<byte> GetValue()
     {
-        if (!IsValidKey()) return new ();
+        if (!IsValidKey()) return new();
         var nodeIdxPair = _stack[^1];
         return ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx).Span;
     }
 
     public ReadOnlyMemory<byte> GetValueAsMemory()
     {
-        if (!IsValidKey()) return new ();
+        if (!IsValidKey()) return new();
         var nodeIdxPair = _stack[^1];
         return ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
+    }
+
+    public void GetValue(ref MemReader reader)
+    {
+        MemReader.InitFromReadOnlyMemory(ref reader, GetValueAsMemory());
     }
 
     public bool IsValueCorrupted()
@@ -307,19 +320,17 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
         return true;
     }
 
-    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength,
-        out ReadOnlySpan<byte> value)
+    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref MemReader valueReader)
     {
         _cursorMovedCounter++;
         if (_btreeRoot!.FindKey(_stack, out var keyIndex, exactKey, 0) != FindResult.Exact)
         {
             InvalidateCurrentKey();
-            value = ReadOnlySpan<byte>.Empty;
             return false;
         }
 
         _keyIndex = 0; // Fake value is enough
-        value = GetClonedValue(ref buffer, bufferLength);
+        GetValue(ref valueReader);
         MakeWritable();
         InvalidateCurrentKey();
         _btreeRoot!.EraseRange(keyIndex, keyIndex);

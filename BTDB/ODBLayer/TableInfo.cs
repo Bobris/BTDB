@@ -15,13 +15,13 @@ using Extensions = BTDB.FieldHandler.Extensions;
 namespace BTDB.ODBLayer;
 
 delegate void ObjectSaver(IInternalObjectDBTransaction transaction, DBObjectMetadata? metadata,
-    ref SpanWriter writer, object value);
+    ref MemWriter writer, object value);
 
 delegate void ObjectLoader(IInternalObjectDBTransaction transaction, DBObjectMetadata metadata,
-    ref SpanReader reader, object value);
+    ref MemReader reader, object value);
 
 delegate void ObjectFreeContent(IInternalObjectDBTransaction transaction, DBObjectMetadata? metadata,
-    ref SpanReader reader, IList<ulong> dictIds);
+    ref MemReader reader, IList<ulong> dictIds);
 
 public class TableInfo
 {
@@ -563,7 +563,7 @@ public class TableInfo
     internal static byte[] BuildKeyForTableVersions(uint tableId, uint tableVersion)
     {
         Span<byte> buf = stackalloc byte[2 + 5 + 5];
-        var writer = new SpanWriter(buf);
+        var writer = MemWriter.CreateFromPinnedSpan(buf);
         writer.WriteBlock(ObjectDB.TableVersionsPrefix);
         writer.WriteVUInt32(tableId);
         writer.WriteVUInt32(tableVersion);

@@ -29,12 +29,12 @@ public class TypeSerializersTest
     [Fact]
     public void CanSerializeString()
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         var storedDescriptorCtx = _mapping.StoreNewDescriptors("Hello");
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, "Hello");
         storedDescriptorCtx.CommitNewDescriptors();
-        var reader = new SpanReader(writer.GetSpan());
+        var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         var obj = _mapping.LoadObject(ref reader);
         Assert.Equal("Hello", obj);
     }
@@ -42,12 +42,12 @@ public class TypeSerializersTest
     [Fact]
     public void CanSerializeInt()
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         var storedDescriptorCtx = _mapping.StoreNewDescriptors(12345);
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, 12345);
         storedDescriptorCtx.CommitNewDescriptors();
-        var reader = new SpanReader(writer.GetSpan());
+        var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         var obj = _mapping.LoadObject(ref reader);
         Assert.Equal(12345, obj);
     }
@@ -68,12 +68,12 @@ public class TypeSerializersTest
 
     void CanSerializeSimpleValue(object value)
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, value);
         storedDescriptorCtx.CommitNewDescriptors();
-        var reader = new SpanReader(writer.GetSpan());
+        var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         var obj = _mapping.LoadObject(ref reader);
         Assert.Equal(value, obj);
     }
@@ -99,13 +99,13 @@ public class TypeSerializersTest
     [Fact]
     public void CanSerializeSimpleDto()
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         var value = new SimpleDto { IntField = 42, StringField = "Hello" };
         var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, value);
         storedDescriptorCtx.CommitNewDescriptors();
-        var reader = new SpanReader(writer.GetSpan());
+        var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         _mapping.LoadTypeDescriptors(ref reader);
         var obj = (SimpleDto)_mapping.LoadObject(ref reader);
         Assert.Equal(value.IntField, obj.IntField);
@@ -115,13 +115,13 @@ public class TypeSerializersTest
     [Fact]
     public void CanSerializeSimpleDtoWithoutDefaultConstructor()
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         var value = new SimpleDtoWithoutDefaultConstructor("Hello") { IntField = 42 };
         var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, value);
         storedDescriptorCtx.CommitNewDescriptors();
-        var reader = new SpanReader(writer.GetSpan());
+        var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         _mapping.LoadTypeDescriptors(ref reader);
         var obj = (SimpleDtoWithoutDefaultConstructor)_mapping.LoadObject(ref reader);
         Assert.Equal(value.IntField, obj.IntField);
@@ -130,17 +130,17 @@ public class TypeSerializersTest
 
     void TestSerialization(object value)
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, value);
         storedDescriptorCtx.CommitNewDescriptors();
-        var reader = new SpanReader(writer.GetSpan());
+        var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         _mapping.LoadTypeDescriptors(ref reader);
         Assert.Equal(value, _mapping.LoadObject(ref reader));
         Assert.True(reader.Eof);
         _mapping = _ts.CreateMapping();
-        reader = new SpanReader(writer.GetSpan());
+        reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         _mapping.LoadTypeDescriptors(ref reader);
         Assert.Equal(value, _mapping.LoadObject(ref reader));
         Assert.True(reader.Eof);
@@ -331,13 +331,13 @@ public class TypeSerializersTest
 
     dynamic ConvertToDynamicThroughSerialization(object value)
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, value);
         storedDescriptorCtx.CommitNewDescriptors();
         var originalDescription = _ts.DescriptorOf(value).Describe();
-        var reader = new SpanReader(writer.GetSpan());
+        var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         var ts = new TypeSerializers();
         ts.SetTypeNameMapper(new ToDynamicMapper());
         var mapping = ts.CreateMapping();
@@ -713,12 +713,12 @@ public class TypeSerializersTest
         var value = new EObj() { O = new() { Num = 1 } };
         _ts = new TypeSerializers(new EventStoreTest.OverloadableTypeMapper(typeof(EObj), "EObj"));
         _mapping = _ts.CreateMapping();
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, value);
         storedDescriptorCtx.CommitNewDescriptors();
-        var reader = new SpanReader(writer.GetSpan());
+        var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         _ts = new TypeSerializers(new EventStoreTest.OverloadableTypeMapper(typeof(EObjV2), "EObj"),
             new() { ConvertorGenerator = new MyObjToObjChildTypeConvertorGenerator() });
         _mapping = _ts.CreateMapping();
@@ -742,14 +742,14 @@ public class TypeSerializersTest
     [Fact]
     public void CanSerializeListOfTuplesWithObjectInIt()
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         var value = new ClassWithTupleInList()
             { Items = new List<(ulong Id, InnerClass a)> { { (1, new()) } } };
         var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, value);
         storedDescriptorCtx.CommitNewDescriptors();
-        var reader = new SpanReader(writer.GetSpan());
+        var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         _mapping.LoadTypeDescriptors(ref reader);
         Assert.IsType<ClassWithTupleInList>(_mapping.LoadObject(ref reader));
     }

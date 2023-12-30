@@ -16,6 +16,7 @@ class ChunkStorageInKV : IChunkStorage
         internal uint FileId;
         internal uint FileOfs;
         internal uint ContentLengthCompressedIsLeaf;
+
         internal uint ContentLength
         {
             get { return ContentLengthCompressedIsLeaf / 4; }
@@ -27,7 +28,8 @@ class ChunkStorageInKV : IChunkStorage
             get { return (ContentLengthCompressedIsLeaf & 2) != 0; }
             set
             {
-                if (value) ContentLengthCompressedIsLeaf |= 2u; else ContentLengthCompressedIsLeaf &= ~2u;
+                if (value) ContentLengthCompressedIsLeaf |= 2u;
+                else ContentLengthCompressedIsLeaf &= ~2u;
             }
         }
 
@@ -36,7 +38,8 @@ class ChunkStorageInKV : IChunkStorage
             get { return (ContentLengthCompressedIsLeaf & 1) != 0; }
             set
             {
-                if (value) ContentLengthCompressedIsLeaf |= 1u; else ContentLengthCompressedIsLeaf &= ~1u;
+                if (value) ContentLengthCompressedIsLeaf |= 1u;
+                else ContentLengthCompressedIsLeaf &= ~1u;
             }
         }
     }
@@ -45,12 +48,15 @@ class ChunkStorageInKV : IChunkStorage
     readonly IFileCollectionWithFileInfos _fileCollection;
     readonly long _maxFileSize;
     volatile int _keyLen;
-    readonly ConcurrentDictionary<ByteStructs.Key20, StorageValue> _dict20 = new ConcurrentDictionary<ByteStructs.Key20, StorageValue>(new ByteStructs.Key20EqualityComparer());
+
+    readonly ConcurrentDictionary<ByteStructs.Key20, StorageValue> _dict20 =
+        new ConcurrentDictionary<ByteStructs.Key20, StorageValue>(new ByteStructs.Key20EqualityComparer());
+
     readonly object _pureValueFileLock = new object();
     IFileCollectionFile? _pureValueFile;
-    ISpanWriter? _pureValueFileWriter;
+    MemWriter _pureValueFileWriter;
     IFileCollectionFile? _hashIndexFile;
-    ISpanWriter? _hashIndexWriter;
+    MemWriter _hashIndexWriter;
 
     public ChunkStorageInKV(long subDBId, IFileCollectionWithFileInfos fileCollection, long maxFileSize)
     {
@@ -72,6 +78,7 @@ class ChunkStorageInKV : IChunkStorage
                 hashKeyIndexFiles.Add(new KeyValuePair<uint, long>(pair.Key, pair.Value.Generation));
             }
         }
+
         if (hashKeyIndexFiles.Count == 0)
             return;
         hashKeyIndexFiles.Sort((x, y) => x.Value < y.Value ? -1 : x.Value > y.Value ? 1 : 0);
@@ -80,8 +87,8 @@ class ChunkStorageInKV : IChunkStorage
 
     void LoadHashKeyIndex(uint hashKeyIndexFileId)
     {
-        var reader = new SpanReader(_fileCollection.GetFile(hashKeyIndexFileId).GetExclusiveReader());
-        _keyLen = (int)((IHashKeyIndex)_fileCollection.FileInfoByIdx(hashKeyIndexFileId)).KeyLen;
+        var reader = new MemReader(_fileCollection.GetFile(hashKeyIndexFileId)!.GetExclusiveReader());
+        _keyLen = (int)((IHashKeyIndex)_fileCollection.FileInfoByIdx(hashKeyIndexFileId)!).KeyLen;
         HashKeyIndex.SkipHeader(ref reader);
         var keyBuf = ByteBuffer.NewSync(new byte[_keyLen]);
         while (!reader.Eof)
@@ -90,8 +97,8 @@ class ChunkStorageInKV : IChunkStorage
             value.FileId = reader.ReadVUInt32();
             value.FileOfs = reader.ReadVUInt32();
             value.ContentLengthCompressedIsLeaf = reader.ReadVUInt32();
-            reader.ReadBlock(keyBuf);
-            _dict20.TryAdd(new ByteStructs.Key20(keyBuf), value);
+            reader.ReadBlock(keyBuf.AsSyncSpan());
+            _dict20.TryAdd(new(keyBuf), value);
         }
     }
 
@@ -104,6 +111,7 @@ class ChunkStorageInKV : IChunkStorage
             Interlocked.CompareExchange(ref _keyLen, keyLen, -1);
 #pragma warning restore 420
         }
+
         if (_keyLen != keyLen)
         {
             throw new ArgumentException("Key length is different from stored");
@@ -138,10 +146,11 @@ class ChunkStorageInKV : IChunkStorage
             var key20 = new ByteStructs.Key20(key);
             var d = _chunkStorageInKV._dict20;
             StorageValue val;
-        again:
+            again:
             if (d.TryGetValue(key20, out val))
             {
-                if (val.ContentLength != content.Length) throw new InvalidOperationException("Hash collision or error in memory");
+                if (val.ContentLength != content.Length)
+                    throw new InvalidOperationException("Hash collision or error in memory");
                 if (!isLeaf && val.Leaf)
                 {
                     var newval = val;
@@ -152,8 +161,10 @@ class ChunkStorageInKV : IChunkStorage
                         _chunkStorageInKV.StoreHashUpdate(key, newval);
                     }
                 }
+
                 return;
             }
+
             lock (_chunkStorageInKV._pureValueFileLock)
             {
                 val = _chunkStorageInKV.StoreContent(content);
@@ -162,6 +173,7 @@ class ChunkStorageInKV : IChunkStorage
                 {
                     goto again;
                 }
+
                 _chunkStorageInKV.StoreHashUpdate(key, val);
             }
         }
@@ -183,19 +195,23 @@ class ChunkStorageInKV : IChunkStorage
             {
                 tcs.SetResult(ByteBuffer.NewEmpty());
             }
+
             return tcs.Task;
         }
     }
 
     void FlushFiles()
     {
-        if (_pureValueFileWriter != null)
+        if (_pureValueFileWriter.Controller != null)
         {
-            _pureValueFile.HardFlushTruncateSwitchToDisposedMode();
+            _pureValueFileWriter.Flush();
+            _pureValueFile!.HardFlushTruncateSwitchToDisposedMode();
         }
-        if (_hashIndexWriter != null)
+
+        if (_hashIndexWriter.Controller != null)
         {
-            _hashIndexFile.HardFlushTruncateSwitchToDisposedMode();
+            _hashIndexWriter.Flush();
+            _hashIndexFile!.HardFlushTruncateSwitchToDisposedMode();
         }
     }
 
@@ -207,51 +223,49 @@ class ChunkStorageInKV : IChunkStorage
         if (_pureValueFile == null)
             StartNewPureValueFile();
         result.FileId = _pureValueFile!.Index;
-        result.FileOfs = (uint)_pureValueFileWriter!.GetCurrentPositionWithoutWriter();
-        _pureValueFileWriter.WriteBlockWithoutWriter(ref MemoryMarshal.GetReference(content.AsSyncReadOnlySpan()), (uint)content.Length);
-        _pureValueFile.Flush();
-        if (_pureValueFileWriter.GetCurrentPositionWithoutWriter() >= _maxFileSize)
+        result.FileOfs = (uint)_pureValueFileWriter!.GetCurrentPosition();
+        _pureValueFileWriter.WriteBlock(ref MemoryMarshal.GetReference(content.AsSyncReadOnlySpan()),
+            (uint)content.Length);
+        _pureValueFileWriter.Flush();
+        if (_pureValueFileWriter.GetCurrentPosition() >= _maxFileSize)
         {
             _pureValueFile.HardFlushTruncateSwitchToReadOnlyMode();
             StartNewPureValueFile();
         }
+
         return result;
     }
 
     void StartNewPureValueFile()
     {
         _pureValueFile = _fileCollection.AddFile("hpv");
-        _pureValueFileWriter = _pureValueFile.GetAppenderWriter();
+        _pureValueFileWriter = new(_pureValueFile.GetAppenderWriter());
         var fileInfo = new FilePureValuesWithId(_subDBId, _fileCollection.NextGeneration(), _fileCollection.Guid);
-        var writer = new SpanWriter(_pureValueFileWriter);
-        fileInfo.WriteHeader(ref writer);
-        writer.Sync();
-        _pureValueFile.Flush();
+        fileInfo.WriteHeader(ref _pureValueFileWriter);
+        _pureValueFileWriter.Flush();
         _fileCollection.SetInfo(_pureValueFile.Index, fileInfo);
     }
 
     void StoreHashUpdate(ByteBuffer key, StorageValue storageValue)
     {
-        if (_hashIndexWriter == null)
+        if (_hashIndexWriter.Controller == null)
         {
             StartNewHashIndexFile();
         }
-        var writer = new SpanWriter(_hashIndexWriter!);
-        writer.WriteVUInt32(storageValue.FileId);
-        writer.WriteVUInt32(storageValue.FileOfs);
-        writer.WriteVUInt32(storageValue.ContentLengthCompressedIsLeaf);
-        writer.WriteBlock(key);
-        writer.Sync();
+
+        _hashIndexWriter.WriteVUInt32(storageValue.FileId);
+        _hashIndexWriter.WriteVUInt32(storageValue.FileOfs);
+        _hashIndexWriter.WriteVUInt32(storageValue.ContentLengthCompressedIsLeaf);
+        _hashIndexWriter.WriteBlock(key);
     }
 
     void StartNewHashIndexFile()
     {
         _hashIndexFile = _fileCollection.AddFile("hid");
-        _hashIndexWriter = _hashIndexFile.GetExclusiveAppenderWriter();
-        var fileInfo = new HashKeyIndex(_subDBId, _fileCollection.NextGeneration(), _fileCollection.Guid, (uint)_keyLen);
-        var writer = new SpanWriter(_hashIndexWriter);
-        fileInfo.WriteHeader(ref writer);
-        writer.Sync();
+        _hashIndexWriter = new(_hashIndexFile.GetExclusiveAppenderWriter());
+        var fileInfo =
+            new HashKeyIndex(_subDBId, _fileCollection.NextGeneration(), _fileCollection.Guid, (uint)_keyLen);
+        fileInfo.WriteHeader(ref _hashIndexWriter);
         _fileCollection.SetInfo(_hashIndexFile.Index, fileInfo);
     }
 }

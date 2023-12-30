@@ -117,6 +117,7 @@ class Cursor12 : ICursor
             var keys = NodeUtils12.GetLongKeyPtrs(stackItem._node);
             return header._keyPrefixLength + TreeNodeUtils.ReadInt32Aligned(keys[stackItem._posInNode]);
         }
+
         var keyOffsets = NodeUtils12.GetKeySpans(stackItem._node, out var _);
         return header._keyPrefixLength + keyOffsets[stackItem._posInNode + 1] - keyOffsets[stackItem._posInNode];
     }
@@ -146,7 +147,9 @@ class Cursor12 : ICursor
             var keyPtr = keys[stackItem._posInNode];
             var lenSuffix = TreeNodeUtils.ReadInt32Aligned(keyPtr);
             var len = header._keyPrefixLength + lenSuffix;
-            var res = len <= bufferLength ? MemoryMarshal.CreateSpan(ref buffer, len) : new byte[len];
+            var res = len <= bufferLength
+                ? MemoryMarshal.CreateSpan(ref buffer, len)
+                : GC.AllocateUninitializedArray<byte>(len, pinned: true).AsSpan(0, len);
             NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(res);
             new Span<byte>((keyPtr + 4).ToPointer(), lenSuffix).CopyTo(res.Slice(header._keyPrefixLength));
             return res;
@@ -157,7 +160,9 @@ class Cursor12 : ICursor
             var ofs = keyOffsets[stackItem._posInNode];
             var lenSuffix = keyOffsets[stackItem._posInNode + 1] - ofs;
             var len = header._keyPrefixLength + lenSuffix;
-            var res = len <= bufferLength ? MemoryMarshal.CreateSpan(ref buffer, len) : new byte[len];
+            var res = len <= bufferLength
+                ? MemoryMarshal.CreateSpan(ref buffer, len)
+                : GC.AllocateUninitializedArray<byte>(len, pinned: true).AsSpan(0, len);
             NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(res);
             keySuffixes.Slice(ofs, lenSuffix).CopyTo(res.Slice(header._keyPrefixLength));
             return res;
@@ -235,7 +240,7 @@ class Cursor12 : ICursor
         _stack.Clear();
     }
 
-    public void BuildTree(long keyCount, ref SpanReader reader, BuildTreeCallback generator)
+    public void BuildTree(long keyCount, ref MemReader reader, BuildTreeCallback generator)
     {
         AssertWritable();
         Invalidate();
@@ -254,6 +259,7 @@ class Cursor12 : ICursor
             _rootNode.Impl.Dereference(_rootNode.Root);
             _rootNode.Root = newRoot;
         }
+
         _stack.Clear();
     }
 

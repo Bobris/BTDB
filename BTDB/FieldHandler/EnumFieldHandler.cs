@@ -5,6 +5,7 @@ using System.Reflection;
 using BTDB.IL;
 using BTDB.StreamLayer;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.Primitives;
 
@@ -35,6 +36,7 @@ public class EnumFieldHandler : IFieldHandler
                 var a = members[i].GetCustomAttributes<PersistedNameAttribute>().FirstOrDefault();
                 if (a != null) _names[i] = a.Name;
             }
+
             var undertype = enumType.GetEnumUnderlyingType();
             var enumValues = enumType.GetEnumValues();
             IEnumerable<ulong> enumValuesUlongs;
@@ -49,23 +51,26 @@ public class EnumFieldHandler : IFieldHandler
             _values = enumValuesUlongs.ToArray();
         }
 
-        public EnumConfiguration(byte[] configuration)
+        public unsafe EnumConfiguration(byte[] configuration)
         {
-            var reader = new SpanReader(configuration);
-            var header = reader.ReadVUInt32();
-            _signed = (header & 1) != 0;
-            _flags = (header & 2) != 0;
-            var count = header >> 2;
-            _names = new string[count];
-            _values = new ulong[count];
-            for (var i = 0; i < count; i++) Names[i] = reader.ReadString()!;
-            if (_signed)
+            fixed (void* confPtr = configuration)
             {
-                for (var i = 0; i < count; i++) Values[i] = (ulong)reader.ReadVInt64();
-            }
-            else
-            {
-                for (var i = 0; i < count; i++) Values[i] = reader.ReadVUInt64();
+                var reader = new MemReader(confPtr, configuration.Length);
+                var header = reader.ReadVUInt32();
+                _signed = (header & 1) != 0;
+                _flags = (header & 2) != 0;
+                var count = header >> 2;
+                _names = new string[count];
+                _values = new ulong[count];
+                for (var i = 0; i < count; i++) Names[i] = reader.ReadString()!;
+                if (_signed)
+                {
+                    for (var i = 0; i < count; i++) Values[i] = (ulong)reader.ReadVInt64();
+                }
+                else
+                {
+                    for (var i = 0; i < count; i++) Values[i] = reader.ReadVUInt64();
+                }
             }
         }
 
@@ -77,19 +82,23 @@ public class EnumFieldHandler : IFieldHandler
 
         public ulong[] Values => _values;
 
+        [SkipLocalsInit]
         public byte[] ToConfiguration()
         {
-            var writer = new SpanWriter();
+            Span<byte> buf = stackalloc byte[4096];
+            var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
             writer.WriteVUInt32((_signed ? 1u : 0) + (Flags ? 2u : 0) + 4u * (uint)Names.Length);
             foreach (var name in Names)
             {
                 writer.WriteString(name);
             }
+
             foreach (var value in Values)
             {
                 if (_signed) writer.WriteVInt64((long)value);
                 else writer.WriteVUInt64(value);
             }
+
             return writer.GetSpan().ToArray();
         }
 
@@ -108,6 +117,7 @@ public class EnumFieldHandler : IFieldHandler
                     literals.Add(Names[i], Values[i]);
                 }
             }
+
             return builder.NewEnum("EnumByFieldHandler", _signed ? typeof(long) : typeof(ulong), literals);
         }
 
@@ -128,8 +138,8 @@ public class EnumFieldHandler : IFieldHandler
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
             return other._flags.Equals(_flags)
-                && _names.SequenceEqual(other._names)
-                && _values.SequenceEqual(other._values);
+                   && _names.SequenceEqual(other._names)
+                   && _values.SequenceEqual(other._values);
         }
 
         public override bool Equals(object? obj)
@@ -156,12 +166,13 @@ public class EnumFieldHandler : IFieldHandler
             if (_flags != targetCfg._flags) return false;
             var targetDict =
                 targetCfg.Names.Zip(targetCfg.Values, (k, v) => new KeyValuePair<string, ulong>(k, v))
-                .ToDictionary(p => p.Key, p => p.Value);
+                    .ToDictionary(p => p.Key, p => p.Value);
             for (var i = 0; i < _names.Length; i++)
             {
                 if (!targetDict.TryGetValue(_names[i], out var targetValue)) return false;
                 if (_values[i] != targetValue) return false;
             }
+
             return true;
         }
 
@@ -208,7 +219,8 @@ public class EnumFieldHandler : IFieldHandler
     {
         if (!type.IsEnum) return false;
         var enumUnderlyingType = type.GetEnumUnderlyingType();
-        return SignedFieldHandler.IsCompatibleWith(enumUnderlyingType) || UnsignedFieldHandler.IsCompatibleWith(enumUnderlyingType);
+        return SignedFieldHandler.IsCompatibleWith(enumUnderlyingType) ||
+               UnsignedFieldHandler.IsCompatibleWith(enumUnderlyingType);
     }
 
     public Type HandledType()
@@ -227,15 +239,17 @@ public class EnumFieldHandler : IFieldHandler
         Type typeRead;
         if (_signed)
         {
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt64))!);
+            ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVInt64))!);
             typeRead = typeof(long);
         }
         else
         {
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!);
+            ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!);
             typeRead = typeof(ulong);
         }
-        DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeRead, _enumType!.GetEnumUnderlyingType())!(ilGenerator);
+
+        DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeRead, _enumType!.GetEnumUnderlyingType())!(
+            ilGenerator);
     }
 
     public void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
@@ -243,11 +257,11 @@ public class EnumFieldHandler : IFieldHandler
         pushReader(ilGenerator);
         if (_signed)
         {
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt64))!);
+            ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipVInt64))!);
         }
         else
         {
-            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
+            ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!);
         }
     }
 
@@ -259,13 +273,13 @@ public class EnumFieldHandler : IFieldHandler
         {
             ilGenerator
                 .ConvI8()
-                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt64))!);
+                .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVInt64))!);
         }
         else
         {
             ilGenerator
                 .ConvU8()
-                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt64))!);
+                .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt64))!);
         }
     }
 
@@ -277,16 +291,20 @@ public class EnumFieldHandler : IFieldHandler
         {
             type = underlyingType;
         }
+
         if (typeHandler == null && type.IsEnum)
         {
             enumTypeHandler = new EnumFieldHandler(type);
             typeHandler = enumTypeHandler;
         }
+
         if (enumTypeHandler != null && _signed == enumTypeHandler._signed)
         {
-            if (new EnumConfiguration(Configuration).IsBinaryRepresentationSubsetOf(new EnumConfiguration(enumTypeHandler.Configuration)))
+            if (new EnumConfiguration(Configuration).IsBinaryRepresentationSubsetOf(
+                    new EnumConfiguration(enumTypeHandler.Configuration)))
                 return typeHandler;
         }
+
         logger?.ReportTypeIncompatibility(_enumType, this, type, typeHandler);
         return this;
     }
@@ -317,6 +335,7 @@ public class EnumFieldHandler : IFieldHandler
             sb.Append(' ');
             sb.Append(_enumType.ToSimpleName());
         }
+
         if (ec.Flags) sb.Append("[Flags]");
         if (!ec.Signed) sb.Append("[Unsigned]");
         sb.Append('{');
@@ -327,6 +346,7 @@ public class EnumFieldHandler : IFieldHandler
             sb.Append('=');
             sb.Append(ec.Values[i]);
         }
+
         sb.Append('}');
         return sb.ToString();
     }

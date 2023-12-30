@@ -326,6 +326,18 @@ public static class PackUnpack
         return res;
     }
 
+    public static ulong UnpackVUInt(in ReadOnlySpan<byte> data, ref int ofs)
+    {
+        var first = data[ofs];
+        var len = LengthVUIntByFirstByte(first);
+        if ((uint)data.Length < (uint)ofs + len) throw new IndexOutOfRangeException();
+        // All range checks were done already before, so now do it without them for speed
+        var res = UnsafeUnpackVUInt(
+            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data), ofs), len);
+        ofs += (int)len;
+        return res;
+    }
+
     public static ulong UnpackVUInt(in ReadOnlySpan<byte> data)
     {
         var len = LengthVUIntByFirstByte(data[0]);
@@ -586,11 +598,6 @@ public static class PackUnpack
     {
         p = MemoryMarshal.CreateSpan(
             ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), delta), p.Length - delta);
-    }
-
-    public static uint SequenceEqualUpTo(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
-    {
-        return (uint)left.CommonPrefixLength(right);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

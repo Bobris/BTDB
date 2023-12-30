@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using BTDB.Collections;
+using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 
@@ -126,9 +127,15 @@ public interface IKeyValueDBTransaction : IDisposable
     ReadOnlyMemory<byte> GetValueAsMemory();
 
     /// <summary>
+    /// Fill MemReader by current Value it can reuse its internal buffer.
+    /// </summary>
+    void GetValue(ref MemReader reader);
+
+    /// <summary>
     /// Returns true if GetValue would throw exception because missing or incomplete value file or transaction file containing current value.
     /// </summary>
     bool IsValueCorrupted();
+
     /// <summary>
     /// Overwrite current value with new content.
     /// </summary>
@@ -148,11 +155,11 @@ public interface IKeyValueDBTransaction : IDisposable
 
     /// <summary>
     /// Remove key and value by exact key match. Current key will be invalidated.
-    /// Before erase read value into prepared buffer, if it is not big enough new memory will be allocated,
+    /// Before erase read value into prepared MemReader, if it is not big enough new memory will be allocated,
     /// but for sure it is safe to read it even after any DB modification.
     /// </summary>
     /// <returns>true if found and erased</returns>
-    bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value);
+    bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref MemReader valueReader);
 
     /// <summary>
     /// Remove all keys in DB.

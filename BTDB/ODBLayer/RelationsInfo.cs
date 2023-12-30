@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection.Metadata;
+using System.Runtime.CompilerServices;
 using BTDB.FieldHandler;
 using BTDB.IOC;
 using BTDB.StreamLayer;
@@ -34,6 +36,7 @@ public class RelationsInfo
         _relationInfoResolver = relationInfoResolver;
     }
 
+    [SkipLocalsInit]
     internal RelationInfo CreateByName(IInternalObjectDBTransaction tr, string name, Type interfaceType,
         RelationBuilder builder)
     {
@@ -42,18 +45,22 @@ public class RelationsInfo
         {
             id = _freeId++;
             _name2Id[name] = id;
-            var nameWriter = new SpanWriter();
+            Span<byte> buf = stackalloc byte[256];
+            var nameWriter = MemWriter.CreateFromStackAllocatedSpan(buf);
             nameWriter.WriteBlock(ObjectDB.RelationNamesPrefix);
             nameWriter.WriteString(name);
-            var idWriter = new SpanWriter();
+            Span<byte> buf2 = stackalloc byte[8];
+            var idWriter = MemWriter.CreateFromStackAllocatedSpan(buf2);
             idWriter.WriteVUInt32(id);
             tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(nameWriter.GetSpan(), idWriter.GetSpan());
         }
 
         if (Id2Relation.TryGetValue(id, out var relation))
         {
-            _relationInfoResolver.ActualOptions.ThrowBTDBException($"Relation with name '{name}' was already initialized");
+            _relationInfoResolver.ActualOptions.ThrowBTDBException(
+                $"Relation with name '{name}' was already initialized");
         }
+
         relation = new(id, name, builder, tr);
         Id2Relation[id] = relation;
         return relation;

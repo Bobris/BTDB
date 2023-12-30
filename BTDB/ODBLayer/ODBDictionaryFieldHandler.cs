@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -17,6 +18,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
     int _configurationId;
     Type? _type;
 
+    [SkipLocalsInit]
     public ODBDictionaryFieldHandler(IObjectDB odb, Type type, IFieldHandlerFactory fieldHandlerFactory)
     {
         _odb = odb;
@@ -26,23 +28,28 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
         _valuesHandler =
             fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1], FieldHandlerOptions.None);
-        var writer = new SpanWriter();
+        Span<byte> buf = stackalloc byte[2048];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteFieldHandler(_keysHandler);
         writer.WriteFieldHandler(_valuesHandler);
         _configuration = writer.GetSpan().ToArray();
         CreateConfiguration();
     }
 
-    public ODBDictionaryFieldHandler(IObjectDB odb, byte[] configuration)
+    public unsafe ODBDictionaryFieldHandler(IObjectDB odb, byte[] configuration)
     {
         _odb = odb;
         var fieldHandlerFactory = odb.FieldHandlerFactory;
         _typeConvertGenerator = odb.TypeConvertorGenerator;
         _configuration = configuration;
-        var reader = new SpanReader(configuration);
-        _keysHandler = fieldHandlerFactory.CreateFromReader(ref reader,
-            FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
-        _valuesHandler = fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
+        fixed (void* confPtr = configuration)
+        {
+            var reader = new MemReader(confPtr, configuration.Length);
+            _keysHandler = fieldHandlerFactory.CreateFromReader(ref reader,
+                FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
+            _valuesHandler = fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
+        }
+
         CreateConfiguration();
     }
 
@@ -66,7 +73,8 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
     int GetConfigurationId(Type type)
     {
         var keyAndValueTypes = type.GetGenericArguments();
-        var configurationId = ODBDictionaryConfiguration.Register(_keysHandler, keyAndValueTypes[0], _valuesHandler, keyAndValueTypes[1]);
+        var configurationId =
+            ODBDictionaryConfiguration.Register(_keysHandler, keyAndValueTypes[0], _valuesHandler, keyAndValueTypes[1]);
         var cfg = ODBDictionaryConfiguration.Get(configurationId);
         lock (cfg)
         {
@@ -93,7 +101,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
 
     object CreateReader(IFieldHandler fieldHandler, Type realType)
     {
-        //Func<ref SpanReader, IReaderCtx, T>
+        //Func<ref MemReader, IReaderCtx, T>
         var delegateType = typeof(ReaderFun<>).MakeGenericType(realType);
         var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Reader", delegateType);
         var ilGenerator = dm.Generator;
@@ -151,7 +159,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             .LdcI4(_configurationId)
             .Call(() => ODBDictionaryConfiguration.Get(0))
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
             .Newobj(constructorInfo!)
             .Castclass(_type);
     }
@@ -181,7 +189,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
     {
         ilGenerator
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!);
     }
 
     public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
@@ -264,7 +272,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
                 .Do(pushCtx)
                 .Castclass(typeof(IDBReaderCtx))
                 .Do(pushReader)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!)
+                .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
                 .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
         }
         else
@@ -277,7 +285,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
                 .Do(pushCtx)
                 .Castclass(typeof(IDBReaderCtx))
                 .Do(pushReader)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!)
+                .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
                 .Stloc(dictId)
                 .Ldloc(dictId)
                 .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul))

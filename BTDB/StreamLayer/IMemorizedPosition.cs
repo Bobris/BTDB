@@ -2,7 +2,7 @@ namespace BTDB.StreamLayer;
 
 public interface IMemorizedPosition
 {
-    void Restore(ref SpanReader reader);
+    void Restore(ref MemReader reader);
 }
 
 public class MemorizedPosition : IMemorizedPosition
@@ -14,7 +14,7 @@ public class MemorizedPosition : IMemorizedPosition
         _pos = pos;
     }
 
-    public void Restore(ref SpanReader reader)
+    public void Restore(ref MemReader reader)
     {
         reader.SetCurrentPosition(_pos);
     }

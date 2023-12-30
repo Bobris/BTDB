@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.StreamLayer;
@@ -38,10 +40,11 @@ public class InMemoryFileCollection : IFileCollection
 
         public uint Index => _index;
 
-        sealed class Reader : ISpanReader
+        sealed class Reader : IMemReader
         {
             readonly File _file;
             ulong _ofs;
+            uint _pos;
             readonly ulong _totalSize;
 
             public Reader(File file)
@@ -49,63 +52,84 @@ public class InMemoryFileCollection : IFileCollection
                 _file = file;
                 _totalSize = file.GetSize();
                 _ofs = 0;
+                _pos = 0;
             }
 
-            public void Init(ref SpanReader spanReader)
+            public unsafe void Init(ref MemReader reader)
             {
+                _ofs += _pos;
+                _pos = 0;
                 var bufOfs = (int)(_ofs % OneBufSize);
-                spanReader.Buf = _file._data[(int)(_ofs / OneBufSize)]
-                    .AsSpan(bufOfs, (int)Math.Min(_totalSize - _ofs, (ulong)(OneBufSize - bufOfs)));
-                _ofs += (uint)spanReader.Buf.Length;
+                reader.Start = (nint)Unsafe.AsPointer(ref _file._data[(int)(_ofs / OneBufSize)][0]);
+                reader.Current = reader.Start + bufOfs;
+                reader.End = reader.Current + (int)Math.Min(_totalSize - _ofs, (ulong)(OneBufSize - bufOfs));
             }
 
-            public bool FillBufAndCheckForEof(ref SpanReader spanReader)
+            public void FillBuf(ref MemReader memReader, nuint advisePrefetchLength)
             {
-                if (spanReader.Buf.Length != 0) return false;
-                Init(ref spanReader);
-                return 0 == spanReader.Buf.Length;
+                _pos = (uint)(memReader.Current - memReader.Start);
+                if (memReader.Current == memReader.End)
+                {
+                    Init(ref memReader);
+                    if (memReader.Current == memReader.End) PackUnpack.ThrowEndOfStreamException();
+                }
             }
 
-            public long GetCurrentPosition(in SpanReader spanReader)
+            public long GetCurrentPosition(in MemReader memReader)
             {
-                return (long)_ofs - spanReader.Buf.Length;
+                return (long)_ofs + (memReader.Current - memReader.Start);
             }
 
-            public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, uint length)
+            public unsafe void ReadBlock(ref MemReader memReader, ref byte buffer, nuint length)
             {
                 while (length > 0)
                 {
-                    if (FillBufAndCheckForEof(ref spanReader)) return true;
-                    var lenTillEnd = (uint)Math.Min(length, spanReader.Buf.Length);
+                    FillBuf(ref memReader, 1);
+                    var lenTillEnd = (int)Math.Min((nint)length, memReader.End - memReader.Current);
                     Unsafe.CopyBlockUnaligned(ref buffer,
-                        ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int)lenTillEnd), lenTillEnd);
-                    length -= lenTillEnd;
+                        ref Unsafe.AsRef<byte>((void*)memReader.Current), (uint)lenTillEnd);
+                    buffer = ref Unsafe.AddByteOffset(ref buffer, lenTillEnd);
+                    memReader.Current += lenTillEnd;
+                    length -= (nuint)lenTillEnd;
+                }
+            }
+
+            public void SkipBlock(ref MemReader memReader, nuint length)
+            {
+                Debug.Assert(memReader.Current == memReader.End);
+                _ofs += (uint)(memReader.Current - memReader.Start) + length;
+                _pos = 0;
+                if (_ofs <= _totalSize)
+                {
+                    memReader.Start = 0;
+                    memReader.Current = 0;
+                    memReader.End = 0;
+                    return;
                 }
 
-                return false;
-            }
-
-            public bool SkipBlock(ref SpanReader spanReader, uint length)
-            {
-                _ofs += length;
-                if (_ofs <= _totalSize) return false;
                 _ofs = _totalSize;
-                return true;
+                PackUnpack.ThrowEndOfStreamException();
             }
 
-            public void SetCurrentPosition(ref SpanReader spanReader, long position)
+            public void SetCurrentPosition(ref MemReader memReader, long position)
             {
+                ArgumentOutOfRangeException.ThrowIfNegative(position);
                 _ofs = (ulong)position;
-                spanReader.Buf = new ReadOnlySpan<byte>();
+                _pos = 0;
+                memReader.Start = 0;
+                memReader.Current = 0;
+                memReader.End = 0;
             }
 
-            public void Sync(ref SpanReader spanReader)
+            public bool Eof(ref MemReader memReader)
             {
-                _ofs -= (uint)spanReader.Buf.Length;
+                if (memReader.Current < memReader.End) return false;
+                _pos = (uint)(memReader.Current - memReader.Start);
+                return _ofs + _pos >= _totalSize;
             }
         }
 
-        public ISpanReader GetExclusiveReader()
+        public IMemReader GetExclusiveReader()
         {
             return new Reader(this);
         }
@@ -123,12 +147,12 @@ public class InMemoryFileCollection : IFileCollection
                 var bufOfs = (int)(position % OneBufSize);
                 var copy = Math.Min(data.Length, OneBufSize - bufOfs);
                 buf.AsSpan(bufOfs, copy).CopyTo(data);
-                data = data.Slice(copy);
+                data = data[copy..];
                 position += (ulong)copy;
             }
         }
 
-        sealed class Writer : ISpanWriter
+        sealed class Writer : IMemWriter
         {
             readonly File _file;
             ulong _ofs;
@@ -146,103 +170,82 @@ public class InMemoryFileCollection : IFileCollection
                 _ofs = (uint)size;
             }
 
-            public void Init(ref SpanWriter spanWriter)
+            public unsafe void Init(ref MemWriter memWriter)
             {
                 if (_ofs == (ulong)_file._data.Length * OneBufSize)
                 {
-                    var buf = new byte[OneBufSize];
+                    var buf = GC.AllocateUninitializedArray<byte>(OneBufSize, pinned: true);
                     var storage = _file._data;
                     Array.Resize(ref storage, storage.Length + 1);
                     storage[^1] = buf;
                     Volatile.Write(ref _file._data, storage);
-                    spanWriter.InitialBuffer = buf;
-                    spanWriter.Buf = spanWriter.InitialBuffer;
+                    memWriter.Start = (nint)Unsafe.AsPointer(ref buf[0]);
+                    memWriter.Current = memWriter.Start;
+                    memWriter.End = memWriter.Start + OneBufSize;
                     return;
                 }
 
-                spanWriter.InitialBuffer = _file._data[^1].AsSpan((int)(_ofs % OneBufSize));
-                spanWriter.Buf = spanWriter.InitialBuffer;
+                var ofs = (int)(_ofs % OneBufSize);
+                memWriter.Start = (nint)Unsafe.AsPointer(ref _file._data[^1][0]) + ofs;
+                memWriter.Current = memWriter.Start;
+                memWriter.End = memWriter.Start + OneBufSize - ofs;
             }
 
-            public void Sync(ref SpanWriter spanWriter)
+            public void Flush(ref MemWriter memWriter, uint spaceNeeded)
             {
-                _ofs += (ulong)(spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
+                _ofs += (ulong)(memWriter.Current - memWriter.Start);
+                Interlocked.MemoryBarrier(); // all written data will be visible before publishing new _flushedSize
+                _file._flushedSize = (long)_ofs;
+                Init(ref memWriter);
             }
 
-            public bool Flush(ref SpanWriter spanWriter)
+            public long GetCurrentPosition(in MemWriter memWriter)
             {
-                if (spanWriter.Buf.Length != 0) return false;
-                _ofs += (ulong)spanWriter.InitialBuffer.Length;
-                Init(ref spanWriter);
-                return true;
+                return (long)_ofs + (memWriter.Current - memWriter.Start);
             }
 
-            public long GetCurrentPosition(in SpanWriter spanWriter)
+            public unsafe void WriteBlock(ref MemWriter memWriter, ref byte buffer, nuint length)
             {
-                return (long)_ofs + (spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
+                while (length > 0)
+                {
+                    if (memWriter.Current == memWriter.End)
+                    {
+                        Flush(ref memWriter, 1);
+                    }
+
+                    var l = (uint)Math.Min((uint)(memWriter.End - memWriter.Current), length);
+                    Unsafe.CopyBlockUnaligned(ref Unsafe.AsRef<byte>((void*)memWriter.Current),
+                        ref buffer, l);
+                    memWriter.Current += (nint)l;
+                    buffer = ref Unsafe.AddByteOffset(ref buffer, (nint)l);
+                    length -= l;
+                }
+            }
+
+            public void SetCurrentPosition(ref MemWriter memWriter, long position)
+            {
+                throw new NotSupportedException();
             }
 
             public long GetCurrentPositionWithoutWriter()
             {
                 return (long)_ofs;
             }
-
-            public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
-            {
-                while (length > 0)
-                {
-                    if (spanWriter.Buf.Length == 0)
-                    {
-                        Flush(ref spanWriter);
-                    }
-
-                    var l = Math.Min((uint)spanWriter.Buf.Length, length);
-                    Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref spanWriter.Buf, (int)l),
-                        ref buffer, l);
-                    buffer = ref Unsafe.AddByteOffset(ref buffer, (IntPtr)l);
-                    length -= l;
-                }
-            }
-
-            public void WriteBlockWithoutWriter(ref byte buffer, uint length)
-            {
-                var writer = new SpanWriter(this);
-                writer.WriteBlock(ref buffer, length);
-                writer.Sync();
-            }
-
-            public void SetCurrentPosition(ref SpanWriter spanWriter, long position)
-            {
-                throw new NotSupportedException();
-            }
         }
 
-        public ISpanWriter GetAppenderWriter()
+        public IMemWriter GetAppenderWriter()
         {
             return _writer;
         }
 
-        public ISpanWriter GetExclusiveAppenderWriter()
+        public IMemWriter GetExclusiveAppenderWriter()
         {
             return _writer;
-        }
-
-        public void Flush()
-        {
-            _flushedSize = _writer.GetCurrentPositionWithoutWriter();
-            Interlocked.MemoryBarrier();
         }
 
         public void HardFlush()
         {
-            Flush();
-        }
-
-        public void SetSize(long size)
-        {
-            if ((ulong)size != GetSize())
-                throw new InvalidOperationException(
-                    "For in memory collection SetSize should never be set to something else than GetSize");
+            // We are only in memory, so nothing to do
         }
 
         public void Truncate()
@@ -251,12 +254,12 @@ public class InMemoryFileCollection : IFileCollection
 
         public void HardFlushTruncateSwitchToReadOnlyMode()
         {
-            Flush();
+            // We are only in memory, so nothing to do
         }
 
         public void HardFlushTruncateSwitchToDisposedMode()
         {
-            Flush();
+            // We are only in memory, so nothing to do
         }
 
         public ulong GetSize()

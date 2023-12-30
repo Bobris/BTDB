@@ -51,7 +51,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         while (_id2DescriptorMap.Count < ReservedBuiltInTypes) _id2DescriptorMap.Add(null);
     }
 
-    public void LoadTypeDescriptors(ref SpanReader reader)
+    public void LoadTypeDescriptors(ref MemReader reader)
     {
         var typeId = reader.ReadVUInt32();
         var firstTypeId = typeId;
@@ -116,7 +116,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         }
     }
 
-    ITypeDescriptor NestedDescriptorReader(ref SpanReader reader)
+    ITypeDescriptor NestedDescriptorReader(ref MemReader reader)
     {
         var typeId = reader.ReadVUInt32();
         if (typeId < _id2DescriptorMap.Count)
@@ -233,7 +233,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         }
     }
 
-    public object? LoadObject(ref SpanReader reader)
+    public object? LoadObject(ref MemReader reader)
     {
         var typeId = reader.ReadVUInt32();
         if (typeId == 0)
@@ -249,7 +249,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         return Load(typeId, ref reader, null);
     }
 
-    public object Load(uint typeId, ref SpanReader reader, ITypeBinaryDeserializerContext? context)
+    public object Load(uint typeId, ref MemReader reader, ITypeBinaryDeserializerContext? context)
     {
         var infoForType = _id2DescriptorMap[typeId];
         if (infoForType!.Loader == null)
@@ -453,7 +453,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             }
         }
 
-        public void StoreObject(ref SpanWriter writer, object? obj)
+        public void StoreObject(ref MemWriter writer, object? obj)
         {
             if (obj == null)
             {
@@ -465,7 +465,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             StoreObjectCore(_typeSerializers, ref writer, obj, infoForType, this);
         }
 
-        public void FinishNewDescriptors(ref SpanWriter writer)
+        public void FinishNewDescriptors(ref MemWriter writer)
         {
             if (SomeTypeStored)
             {
@@ -524,7 +524,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         }
     }
 
-    public void StoreObject(ref SpanWriter writer, object? obj)
+    public void StoreObject(ref MemWriter writer, object? obj)
     {
         if (obj == null)
         {
@@ -536,7 +536,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         StoreObjectCore(typeSerializers, ref writer, obj, infoForType, this);
     }
 
-    static void StoreObjectCore(TypeSerializers typeSerializers, ref SpanWriter writer, object obj,
+    static void StoreObjectCore(TypeSerializers typeSerializers, ref MemWriter writer, object obj,
         InfoForType infoForType, ITypeSerializersLightMapping mapping)
     {
         writer.WriteVUInt32((uint)infoForType.Id);
@@ -599,7 +599,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             _backRefs.Add(obj, 0);
         }
 
-        public void StoreObject(ref SpanWriter writer, object? obj)
+        public void StoreObject(ref MemWriter writer, object? obj)
         {
             if (obj == null)
             {
@@ -642,9 +642,9 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             complexSaver(ref writer, this, obj);
         }
 
-        public void StoreEncryptedString(ref SpanWriter outsideWriter, EncryptedString value)
+        public void StoreEncryptedString(ref MemWriter outsideWriter, EncryptedString value)
         {
-            var writer = new SpanWriter();
+            var writer = new MemWriter();
             writer.WriteString(value);
             var cipher = _mapping.GetSymmetricCipher();
             var plain = writer.GetSpan();
@@ -655,7 +655,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
         }
     }
 
-    public void FinishNewDescriptors(ref SpanWriter writer)
+    public void FinishNewDescriptors(ref MemWriter writer)
     {
     }
 

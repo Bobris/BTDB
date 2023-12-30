@@ -25,23 +25,23 @@ public class ReadOnlySequenceMemReader : IMemReader, IDisposable
         _pin.Dispose();
     }
 
-    public unsafe void Init(ref MemReader memReader)
+    public unsafe void Init(ref MemReader reader)
     {
         var pos = _sequence.Start;
         if (_sequence.TryGet(ref pos, out var memory, false))
         {
             _pin = memory.Pin();
-            memReader.Start = (nint)_pin.Pointer;
-            memReader.Current = memReader.Start;
-            memReader.End = memReader.Start + memory.Length;
+            reader.Start = (nint)_pin.Pointer;
+            reader.Current = reader.Start;
+            reader.End = reader.Start + memory.Length;
             return;
         }
 
         _buffer = GC.AllocateUninitializedArray<byte>(BufferSize, pinned: true);
-        memReader.Start = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_buffer));
-        memReader.Current = memReader.Start;
+        reader.Start = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_buffer));
+        reader.Current = reader.Start;
         var len = Math.Min(_sequence.FirstSpan.Length, BufferSize);
-        memReader.End = memReader.Start + len;
+        reader.End = reader.Start + len;
         _sequence.FirstSpan[..len].CopyTo(_buffer);
     }
 

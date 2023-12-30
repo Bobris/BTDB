@@ -37,7 +37,7 @@ public class FileKeyIndex : IKeyIndex
 
     public long[]? UsedFilesInOlderGenerations { get; set; }
 
-    public FileKeyIndex(ref SpanReader reader, Guid? guid, bool withCommitUlong, bool modern, bool withUlongs)
+    public FileKeyIndex(ref MemReader reader, Guid? guid, bool withCommitUlong, bool modern, bool withUlongs)
     {
         _guid = guid;
         _generation = reader.ReadVInt64();
@@ -57,7 +57,8 @@ public class FileKeyIndex : IKeyIndex
         }
     }
 
-    public FileKeyIndex(long generation, Guid? guid, uint trLogFileId, uint trLogOffset, long keyCount, ulong commitUlong, KeyIndexCompression compression, ulong[]? ulongs)
+    public FileKeyIndex(long generation, Guid? guid, uint trLogFileId, uint trLogOffset, long keyCount,
+        ulong commitUlong, KeyIndexCompression compression, ulong[]? ulongs)
     {
         _guid = guid;
         _generation = generation;
@@ -69,17 +70,18 @@ public class FileKeyIndex : IKeyIndex
         _ulongs = ulongs?.ToArray();
     }
 
-    public static void SkipHeader(ref SpanReader reader)
+    public static void SkipHeader(ref MemReader reader)
     {
         FileCollectionWithFileInfos.SkipHeader(ref reader);
         var type = (KVFileType)reader.ReadUInt8();
-        var withCommitUlong = type == KVFileType.KeyIndexWithCommitUlong || type == KVFileType.ModernKeyIndex || type == KVFileType.ModernKeyIndexWithUlongs;
+        var withCommitUlong = type is KVFileType.KeyIndexWithCommitUlong or KVFileType.ModernKeyIndex
+            or KVFileType.ModernKeyIndexWithUlongs;
         reader.SkipVInt64(); // generation
         reader.SkipVUInt32(); // trLogFileId
         reader.SkipVUInt32(); // trLogOffset
         reader.SkipVUInt64(); // keyValueCount
         if (withCommitUlong) reader.SkipVUInt64(); // commitUlong
-        if (type == KVFileType.ModernKeyIndex || type == KVFileType.ModernKeyIndexWithUlongs) reader.SkipUInt8();
+        if (type is KVFileType.ModernKeyIndex or KVFileType.ModernKeyIndexWithUlongs) reader.Skip1Byte();
         if (type == KVFileType.ModernKeyIndexWithUlongs)
         {
             var ulongCount = reader.ReadVUInt32();
@@ -87,7 +89,7 @@ public class FileKeyIndex : IKeyIndex
         }
     }
 
-    internal void WriteHeader(ref SpanWriter writer)
+    internal void WriteHeader(ref MemWriter writer)
     {
         FileCollectionWithFileInfos.WriteHeader(ref writer, _guid);
         writer.WriteUInt8((byte)KVFileType.ModernKeyIndexWithUlongs);

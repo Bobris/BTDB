@@ -12,106 +12,106 @@ public static class BasicSerializersFactory
         var fh = new List<IFieldHandler>();
         var des = new List<ITypeDescriptor>();
         AddJustOrderable(fh, "StringOrderable",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadStringOrdered))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipStringOrdered))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteStringOrdered))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadStringOrdered))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipStringOrdered))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteStringOrdered))!);
         Add(fh, des, "String",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadString))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipString))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteString))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadString))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipString))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteString))!);
         Add(fh, des, "UInt8",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadUInt8))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteUInt8))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadUInt8))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteUInt8))!);
         AddJustOrderable(fh, "Int8Orderable",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadInt8Ordered))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipInt8Ordered))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteInt8Ordered))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadInt8Ordered))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteInt8Ordered))!);
         Add(fh, des, "Int8",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadInt8))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipInt8))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteInt8))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadInt8))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteInt8))!);
         fh.Add(new SignedFieldHandler());
         fh.Add(new UnsignedFieldHandler());
         AddDescriptor(des, "VInt16",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt16))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt16))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt16))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadVInt16))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipVInt16))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVInt16))!);
         AddDescriptor(des, "VUInt16",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt16))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt16))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt16))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt16))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt16))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt16))!);
         AddDescriptor(des, "VInt32",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt32))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt32))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt32))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadVInt32))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipVInt32))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVInt32))!);
         AddDescriptor(des, "VUInt32",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt32))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt32))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt32))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt32))!);
         AddDescriptor(des, "VInt64",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt64))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt64))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt64))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadVInt64))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipVInt64))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVInt64))!);
         AddDescriptor(des, "VUInt64",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt64))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt64))!);
         Add(fh, des, "Bool",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipBool))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBool))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadBool))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteBool))!);
         fh.Add(new ForbidOrderableFloatsFieldHandler());
         Add(fh, des, "Single",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadSingle))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipSingle))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteSingle))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadSingle))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.Skip4Bytes))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteSingle))!);
         Add(fh, des, "Double",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadDouble))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipDouble))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteDouble))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadDouble))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.Skip8Bytes))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteDouble))!);
         Add(fh, des, "Decimal",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadDecimal))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipDecimal))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteDecimal))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadDecimal))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipDecimal))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteDecimal))!);
         AddJustOrderable(fh, "DateTime",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadDateTime))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipDateTime))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteDateTimeForbidUnspecifiedKind))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadDateTime))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.Skip8Bytes))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteDateTimeForbidUnspecifiedKind))!);
         Add(fh, des, "DateTime",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadDateTime))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipDateTime))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteDateTime))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadDateTime))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.Skip8Bytes))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteDateTime))!);
         Add(fh, des, "TimeSpan",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadTimeSpan))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipTimeSpan))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteTimeSpan))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadTimeSpan))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipVInt64))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteTimeSpan))!);
         Add(fh, des, "Guid",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadGuid))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipGuid))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteGuid))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadGuid))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipGuid))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteGuid))!);
         fh.Add(new ByteArrayLastFieldHandler());
         fh.Add(new ByteArrayFieldHandler());
         des.Add(new ByteArrayTypeDescriptor());
         Add(fh, des, "IPAddress",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadIPAddress))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipIPAddress))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteIPAddress))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadIPAddress))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipIPAddress))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteIPAddress))!);
         Add(fh, des, "Version",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVersion))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVersion))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVersion))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadVersion))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipVersion))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVersion))!);
         fh.Add(new OrderedEncryptedStringHandler());
         fh.Add(new EncryptedStringHandler());
         des.Add(new EncryptedStringDescriptor());
         Add(fh, des, "DateTimeOffset",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadDateTimeOffset))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipDateTimeOffset))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteDateTimeOffset))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadDateTimeOffset))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipDateTimeOffset))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteDateTimeOffset))!);
         Add(fh, des, "StringValues",
-            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadStringValues))!,
-            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipStringValues))!,
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteStringValues))!);
+            typeof(MemReader).GetMethod(nameof(MemReader.ReadStringValues))!,
+            typeof(MemReader).GetMethod(nameof(MemReader.SkipStringValues))!,
+            typeof(MemWriter).GetMethod(nameof(MemWriter.WriteStringValues))!);
         FieldHandlers = fh.ToArray();
         TypeDescriptors = des.ToArray();
     }

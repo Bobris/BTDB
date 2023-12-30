@@ -30,7 +30,7 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         _type = type;
     }
 
-    public TupleTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader,
+    public TupleTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref MemReader reader,
         DescriptorReader nestedDescriptorReader)
     {
         _typeSerializers = typeSerializers;
@@ -462,7 +462,7 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => _itemDescriptors.Select((d, i) =>
         new KeyValuePair<string, ITypeDescriptor>(TupleFieldHandler.TupleFieldName[i], d));
 
-    public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
+    public void Persist(ref MemWriter writer, DescriptorWriter nestedDescriptorWriter)
     {
         writer.WriteVUInt32(_itemDescriptors.Count);
         foreach (var descriptor in _itemDescriptors)

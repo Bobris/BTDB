@@ -31,7 +31,9 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>
         var len = PackUnpack.LengthVUInt(id);
         var prefix = new byte[ObjectDB.AllDictionariesPrefixLen + len];
         MemoryMarshal.GetReference(prefix.AsSpan()) = ObjectDB.AllDictionariesPrefixByte;
-        PackUnpack.UnsafePackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(prefix.AsSpan()), ObjectDB.AllDictionariesPrefixLen), id, len);
+        PackUnpack.UnsafePackVUInt(
+            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(prefix.AsSpan()),
+                ObjectDB.AllDictionariesPrefixLen), id, len);
         _prefix = prefix;
         _keyReader = ((ReaderFun<TKey>)config.KeyReader)!;
         _keyWriter = ((WriterFun<TKey>)config.KeyWriter)!;
@@ -50,7 +52,7 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>
         throw new InvalidOperationException("DB modified during iteration");
     }
 
-    public static void DoSave(ref SpanWriter writer, IWriterCtx ctx, IOrderedSet<TKey>? dictionary, int cfgId)
+    public static void DoSave(ref MemWriter writer, IWriterCtx ctx, IOrderedSet<TKey>? dictionary, int cfgId)
     {
         var writerCtx = (IDBWriterCtx)ctx;
         if (!(dictionary is ODBSet<TKey> goodDict))
@@ -181,7 +183,7 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>
 
     ReadOnlySpan<byte> KeyToByteArray(TKey key)
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         IWriterCtx ctx = null;
         if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
         writer.WriteBlock(_prefix);
@@ -190,20 +192,24 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>
     }
 
     [SkipLocalsInit]
-    TKey CurrentToKey()
+    unsafe TKey CurrentToKey()
     {
-        Span<byte> buffer = stackalloc byte[512];
-        var reader = new SpanReader(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length).Slice(_prefix.Length));
-        IReaderCtx ctx = null;
-        if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr);
-        return _keyReader(ref reader, ctx);
+        Span<byte> buffer = stackalloc byte[2048];
+        var keySpan = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length).Slice(_prefix.Length);
+        fixed (byte* _ = keySpan)
+        {
+            var reader = MemReader.CreateFromPinnedSpan(keySpan);
+            IReaderCtx ctx = null;
+            if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr);
+            return _keyReader(ref reader, ctx);
+        }
     }
 
     public bool Add(TKey key)
     {
         var keyBytes = KeyToByteArray(key);
         _modificationCounter++;
-        var created = _tr.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>());
+        var created = _keyValueTr!.CreateOrUpdateKeyValue(keyBytes, new());
         if (created) NotifyAdded();
         return created;
     }

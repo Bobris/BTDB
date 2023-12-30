@@ -6,9 +6,9 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
 
-public delegate ITypeDescriptor DescriptorReader(ref SpanReader reader);
+public delegate ITypeDescriptor DescriptorReader(ref MemReader reader);
 
-public delegate void DescriptorWriter(ref SpanWriter writer, ITypeDescriptor descriptor);
+public delegate void DescriptorWriter(ref MemWriter writer, ITypeDescriptor descriptor);
 
 public interface ITypeDescriptor : IEquatable<ITypeDescriptor>
 {

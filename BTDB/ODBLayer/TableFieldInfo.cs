@@ -23,16 +23,17 @@ public class UnresolvedTableFieldInfo : TableFieldInfo
         _handlerOptions = handlerOptions;
     }
 
-    internal static UnresolvedTableFieldInfo Load(ref SpanReader reader, string tableName,
+    internal static UnresolvedTableFieldInfo Load(ref MemReader reader, string tableName,
         FieldHandlerOptions handlerOptions)
     {
         var name = reader.ReadString();
         var inKeyValue = false;
-        if (name!.StartsWith("@"))
+        if (name!.StartsWith('@'))
         {
             inKeyValue = true;
             name = name[1..];
         }
+
         var handlerName = reader.ReadString();
         var configuration = reader.ReadByteArray();
         return new(name!, handlerName!, configuration, tableName, handlerOptions, inKeyValue);
@@ -61,16 +62,17 @@ public class TableFieldInfo : IEquatable<TableFieldInfo>
         InKeyValue = inKeyValue;
     }
 
-    internal static TableFieldInfo Load(ref SpanReader reader, IFieldHandlerFactory fieldHandlerFactory,
+    internal static TableFieldInfo Load(ref MemReader reader, IFieldHandlerFactory fieldHandlerFactory,
         string tableName, FieldHandlerOptions handlerOptions)
     {
         var name = reader.ReadString();
         var inKeyValue = false;
-        if (name!.StartsWith("@"))
+        if (name!.StartsWith('@'))
         {
             inKeyValue = true;
             name = name[1..];
         }
+
         var handlerName = reader.ReadString();
         var configuration = reader.ReadByteArray();
         var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName!, configuration, handlerOptions);
@@ -97,7 +99,7 @@ public class TableFieldInfo : IEquatable<TableFieldInfo>
         return new TableFieldInfo(a != null ? a.Name : pi.Name, fieldHandler, inKeyValue);
     }
 
-    internal void Save(ref SpanWriter writer)
+    internal void Save(ref MemWriter writer)
     {
         if (InKeyValue)
         {
@@ -107,6 +109,7 @@ public class TableFieldInfo : IEquatable<TableFieldInfo>
         {
             writer.WriteString(Name);
         }
+
         writer.WriteString(Handler!.Name);
         writer.WriteByteArray(Handler.Configuration);
     }

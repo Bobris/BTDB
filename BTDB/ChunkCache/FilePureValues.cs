@@ -6,7 +6,7 @@ class FilePureValues : IFileInfo
 {
     readonly long _generation;
 
-    public FilePureValues(ref SpanReader reader)
+    public FilePureValues(ref MemReader reader)
     {
         _generation = reader.ReadVInt64();
     }
@@ -20,7 +20,7 @@ class FilePureValues : IFileInfo
 
     public long Generation => _generation;
 
-    public void WriteHeader(ref SpanWriter writer)
+    public void WriteHeader(ref MemWriter writer)
     {
         writer.WriteByteArrayRaw(DiskChunkCache.MagicStartOfFile);
         writer.WriteUInt8((byte)DiskChunkFileType.PureValues);

@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using BTDB.Collections;
 using BTDB.KVDBLayer.BTree;
+using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 
@@ -240,43 +242,53 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
     public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
     {
         if (!IsValidKey()) return new ReadOnlySpan<byte>();
-        return GetCurrentKeyFromStack();
+        var originalRes = GetCurrentKeyFromStack();
+        var len = originalRes.Length;
+        var res = len <= bufferLength
+            ? MemoryMarshal.CreateSpan(ref buffer, len)
+            : GC.AllocateUninitializedArray<byte>(len, pinned: true).AsSpan(0, len);
+        originalRes.CopyTo(res);
+        return res;
     }
 
     public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
     {
-        if (!IsValidKey()) return ReadOnlySpan<byte>.Empty;
-        var nodeIdxPair = _stack[^1];
-        var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
-        try
-        {
-            return _keyValueDB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize, ref buffer,
-                bufferLength);
-        }
-        catch (BTDBException ex)
-        {
-            var oldestRoot = (IBTreeRootNode)_keyValueDB.ReferenceAndGetOldestRoot();
-            var lastCommitted = (IBTreeRootNode)_keyValueDB.ReferenceAndGetLastCommitted();
-            // no need to dereference roots because we know it is managed
-            throw new BTDBException(
-                $"GetValue failed in TrId:{_btreeRoot!.TransactionId},TRL:{_btreeRoot!.TrLogFileId},Ofs:{_btreeRoot!.TrLogOffset},ComUlong:{_btreeRoot!.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}",
-                ex);
-        }
+        if (!IsValidKey()) return new();
+        var reader = MemReader.CreateFromPinnedSpan(MemoryMarshal.CreateSpan(ref buffer, bufferLength));
+        GetValue(ref reader);
+        return reader.PeekSpanTillEof();
     }
 
     public ReadOnlySpan<byte> GetValue()
     {
-        return GetClonedValue(ref Unsafe.NullRef<byte>(), 0);
+        if (!IsValidKey()) return new();
+        var reader = new MemReader();
+        GetValue(ref reader);
+        return reader.PeekSpanTillEof();
     }
 
     public ReadOnlyMemory<byte> GetValueAsMemory()
     {
         if (!IsValidKey()) return new();
+        var reader = new MemReader();
+        GetValue(ref reader);
+        return reader.AsReadOnlyMemory();
+    }
+
+    public void GetValue(ref MemReader reader)
+    {
+        if (!IsValidKey())
+        {
+            reader.Dispose();
+            return;
+        }
+
         var nodeIdxPair = _stack[^1];
         var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
         try
         {
-            return _keyValueDB.ReadValueAsMemory(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize);
+            _keyValueDB.ReadValueIntoMemReader(ref reader, leafMember.ValueFileId, leafMember.ValueOfs,
+                leafMember.ValueSize);
         }
         catch (BTDBException ex)
         {
@@ -358,19 +370,17 @@ class KeyValueDBTransaction : IKeyValueDBTransaction
         return true;
     }
 
-    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength,
-        out ReadOnlySpan<byte> value)
+    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref MemReader valueReader)
     {
         _cursorMovedCounter++;
         if (_btreeRoot!.FindKey(_stack, out _keyIndex, exactKey, 0) != FindResult.Exact)
         {
             InvalidateCurrentKey();
-            value = ReadOnlySpan<byte>.Empty;
             return false;
         }
 
         var keyIndex = _keyIndex;
-        value = GetClonedValue(ref buffer, bufferLength);
+        GetValue(ref valueReader);
         MakeWritable();
         _keyValueDB.WriteEraseOneCommand(exactKey);
         InvalidateCurrentKey();

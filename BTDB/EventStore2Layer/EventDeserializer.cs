@@ -100,7 +100,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         return descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
     }
 
-    ITypeDescriptor NestedDescriptorReader(ref SpanReader reader)
+    ITypeDescriptor NestedDescriptorReader(ref MemReader reader)
     {
         var typeId = reader.ReadVInt32();
         if (typeId < 0 && -typeId - 1 < _id2InfoNew.Count)
@@ -122,91 +122,94 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         return new PlaceHolderDescriptor(typeId);
     }
 
-    public void ProcessMetadataLog(ByteBuffer buffer)
+    public unsafe void ProcessMetadataLog(ByteBuffer buffer)
     {
         lock (_lock)
         {
-            var reader = new SpanReader(buffer);
-            var typeId = reader.ReadVInt32();
-            while (typeId != 0)
+            fixed (void* _ = buffer.Buffer)
             {
-                var typeCategory = (TypeCategory)reader.ReadUInt8();
-                ITypeDescriptor descriptor;
-                switch (typeCategory)
+                var reader = MemReader.CreateFromPinnedSpan(buffer.AsSyncReadOnlySpan());
+                var typeId = reader.ReadVInt32();
+                while (typeId != 0)
                 {
-                    case TypeCategory.BuildIn:
-                        throw new ArgumentOutOfRangeException();
-                    case TypeCategory.Class:
-                        descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader, null);
-                        break;
-                    case TypeCategory.List:
-                        descriptor = new ListTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                        break;
-                    case TypeCategory.Dictionary:
-                        descriptor = new DictionaryTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                        break;
-                    case TypeCategory.Enum:
-                        descriptor = new EnumTypeDescriptor(this, ref reader);
-                        break;
-                    case TypeCategory.Nullable:
-                        descriptor = new NullableTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                        break;
-                    case TypeCategory.Tuple:
-                        descriptor = new TupleTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
+                    var typeCategory = (TypeCategory)reader.ReadUInt8();
+                    ITypeDescriptor descriptor;
+                    switch (typeCategory)
+                    {
+                        case TypeCategory.BuildIn:
+                            throw new ArgumentOutOfRangeException();
+                        case TypeCategory.Class:
+                            descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader, null);
+                            break;
+                        case TypeCategory.List:
+                            descriptor = new ListTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                            break;
+                        case TypeCategory.Dictionary:
+                            descriptor = new DictionaryTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                            break;
+                        case TypeCategory.Enum:
+                            descriptor = new EnumTypeDescriptor(this, ref reader);
+                            break;
+                        case TypeCategory.Nullable:
+                            descriptor = new NullableTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                            break;
+                        case TypeCategory.Tuple:
+                            descriptor = new TupleTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+
+                    while (-typeId - 1 >= _id2InfoNew.Count)
+                        _id2InfoNew.Add(null);
+                    _id2InfoNew[-typeId - 1] ??= new DeserializerTypeInfo { Id = typeId, Descriptor = descriptor };
+                    typeId = reader.ReadVInt32();
                 }
 
-                while (-typeId - 1 >= _id2InfoNew.Count)
-                    _id2InfoNew.Add(null);
-                _id2InfoNew[-typeId - 1] ??= new DeserializerTypeInfo { Id = typeId, Descriptor = descriptor };
-                typeId = reader.ReadVInt32();
-            }
-
-            for (var i = 0; i < _id2InfoNew.Count; i++)
-            {
-                _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d =>
-                    d is PlaceHolderDescriptor placeHolderDescriptor
-                        ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1]!.Descriptor
-                        : d);
-            }
-
-            // This additional cycle is needed to fill names of recursive structures
-            for (var i = 0; i < _id2InfoNew.Count; i++)
-            {
-                _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => d);
-            }
-
-            for (var i = 0; i < _id2InfoNew.Count; i++)
-            {
-                var infoForType = _id2InfoNew[i];
-                for (var j = ReservedBuildinTypes; j < _id2Info.Count; j++)
+                for (var i = 0; i < _id2InfoNew.Count; i++)
                 {
-                    if (infoForType!.Descriptor.Equals(_id2Info[j]!.Descriptor))
+                    _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d =>
+                        d is PlaceHolderDescriptor placeHolderDescriptor
+                            ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1]!.Descriptor
+                            : d);
+                }
+
+                // This additional cycle is needed to fill names of recursive structures
+                for (var i = 0; i < _id2InfoNew.Count; i++)
+                {
+                    _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => d);
+                }
+
+                for (var i = 0; i < _id2InfoNew.Count; i++)
+                {
+                    var infoForType = _id2InfoNew[i];
+                    for (var j = ReservedBuildinTypes; j < _id2Info.Count; j++)
                     {
-                        _remapToOld[infoForType.Descriptor] = _id2Info[j]!.Descriptor;
-                        _id2InfoNew[i] = _id2Info[j];
-                        infoForType = _id2InfoNew[i];
-                        break;
+                        if (infoForType!.Descriptor.Equals(_id2Info[j]!.Descriptor))
+                        {
+                            _remapToOld[infoForType.Descriptor] = _id2Info[j]!.Descriptor;
+                            _id2InfoNew[i] = _id2Info[j];
+                            infoForType = _id2InfoNew[i];
+                            break;
+                        }
+                    }
+
+                    if (infoForType!.Id < 0)
+                    {
+                        infoForType.Id = (int)_id2Info.Count;
+                        _id2Info.Add(infoForType);
+                        _typeOrDescriptor2Info[infoForType.Descriptor!] = infoForType;
                     }
                 }
 
-                if (infoForType!.Id < 0)
+                for (var i = 0; i < _id2InfoNew.Count; i++)
                 {
-                    infoForType.Id = (int)_id2Info.Count;
-                    _id2Info.Add(infoForType);
-                    _typeOrDescriptor2Info[infoForType.Descriptor!] = infoForType;
+                    _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => _remapToOld.TryGetValue(d, out var res) ? res : d);
                 }
-            }
 
-            for (var i = 0; i < _id2InfoNew.Count; i++)
-            {
-                _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => _remapToOld.TryGetValue(d, out var res) ? res : d);
+                _id2InfoNew.Clear();
+                _remapToOld.Clear();
             }
-
-            _id2InfoNew.Clear();
-            _remapToOld.Clear();
         }
     }
 
@@ -238,26 +241,29 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         return methodBuilder.Create();
     }
 
-    public bool Deserialize(out object? @object, ByteBuffer buffer)
+    public unsafe bool Deserialize(out object? @object, ByteBuffer buffer)
     {
         lock (_lock)
         {
-            var reader = new SpanReader(buffer);
-            @object = null;
-            try
+            fixed (void* _ = buffer.Buffer)
             {
-                @object = LoadObject(ref reader);
-            }
-            catch (BtdbMissingMetadataException)
-            {
-                return false;
-            }
-            finally
-            {
-                _visited.Clear();
-            }
+                var reader = MemReader.CreateFromPinnedSpan(buffer.AsSyncReadOnlySpan());
+                @object = null;
+                try
+                {
+                    @object = LoadObject(ref reader);
+                }
+                catch (BtdbMissingMetadataException)
+                {
+                    return false;
+                }
+                finally
+                {
+                    _visited.Clear();
+                }
 
-            return true;
+                return true;
+            }
         }
     }
 
@@ -265,7 +271,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
     {
     }
 
-    public object? LoadObject(ref SpanReader reader)
+    public object? LoadObject(ref MemReader reader)
     {
         var typeId = reader.ReadVUInt32();
         if (typeId == 0)
@@ -295,7 +301,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         _visited.Add(obj);
     }
 
-    public void SkipObject(ref SpanReader reader)
+    public void SkipObject(ref MemReader reader)
     {
         var typeId = reader.ReadVUInt32();
         if (typeId == 0)
@@ -321,21 +327,24 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         infoForType.Loader(ref reader, this, infoForType.Descriptor!);
     }
 
-    public EncryptedString LoadEncryptedString(ref SpanReader reader)
+    public unsafe EncryptedString LoadEncryptedString(ref MemReader reader)
     {
-        var enc = reader.ReadByteArray();
+        var enc = reader.ReadByteArrayAsSpan();
         var size = _symmetricCipher.CalcPlainSizeFor(enc);
-        var dec = new byte[size];
+        var dec = size < 4096 ? stackalloc byte[size] : new byte[size];
         if (!_symmetricCipher.Decrypt(enc, dec))
         {
             throw new CryptographicException();
         }
 
-        var r = new SpanReader(dec);
-        return r.ReadString();
+        fixed (void* _ = dec)
+        {
+            var r = MemReader.CreateFromPinnedSpan(dec);
+            return r.ReadString();
+        }
     }
 
-    public void SkipEncryptedString(ref SpanReader reader)
+    public void SkipEncryptedString(ref MemReader reader)
     {
         reader.SkipByteArray();
     }

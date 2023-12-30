@@ -12,20 +12,20 @@ public class ByteArrayLastFieldHandler : ByteArrayFieldHandler
     public override void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         pushReader(ilGenerator);
-        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayRawTillEof))!);
+        ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadByteArrayRawTillEof))!);
     }
 
     public override void LoadByteBuffer(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         pushReader(ilGenerator);
-        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayRawTillEof))!);
+        ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadByteArrayRawTillEof))!);
         ilGenerator.Call(() => ByteBuffer.NewAsync(null));
     }
 
     public override void LoadReadOnlyMemory(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         pushReader(ilGenerator);
-        ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayRawTillEofAsMemory))!);
+        ilGenerator.Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadByteArrayRawTillEofAsMemory))!);
     }
 
     public override void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
@@ -37,21 +37,22 @@ public class ByteArrayLastFieldHandler : ByteArrayFieldHandler
     {
         pushWriter(ilGenerator);
         pushValue(ilGenerator);
-        ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArrayRaw))!);
+        ilGenerator.Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteArrayRaw))!);
     }
 
     protected override void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushValue)
     {
         pushWriter(ilGenerator);
         pushValue(ilGenerator);
-        ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBlock), new[] { typeof(ByteBuffer) })!);
+        ilGenerator.Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteBlock), new[] { typeof(ByteBuffer) })!);
     }
 
     protected override void SaveReadOnlyMemory(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushValue)
     {
         pushWriter(ilGenerator);
         pushValue(ilGenerator);
-        ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBlock), new[] { typeof(ReadOnlyMemory<byte>) })!);
+        ilGenerator.Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteBlock),
+            new[] { typeof(ReadOnlyMemory<byte>) })!);
     }
 
     public override bool IsCompatibleWith(Type type, FieldHandlerOptions options)

@@ -36,7 +36,7 @@ public class ObjectDB : IObjectDB
 
     internal static readonly byte[]
         LastDictIdKey =
-            {0, 3}; //  => Last Dictionary Index - only for backward compatibility newly stored in Ulong[1]
+            { 0, 3 }; //  => Last Dictionary Index - only for backward compatibility newly stored in Ulong[1]
 
     internal static readonly byte[] RelationNamesPrefix = { 0, 4 }; // Name => Index Relation
     const int RelationNamesPrefixLen = 2;
@@ -52,8 +52,8 @@ public class ObjectDB : IObjectDB
     internal static readonly byte[]
         AllRelationsSKPrefix =
         {
-                4
-            }; // Index Relation, Secondary Key Index, Secondary Key, primary key fields not present in secondary key => {}
+            4
+        }; // Index Relation, Secondary Key Index, Secondary Key, primary key fields not present in secondary key => {}
 
     internal const byte AllObjectsPrefixByte = 1;
     internal const byte AllDictionariesPrefixByte = 2;
@@ -147,14 +147,17 @@ public class ObjectDB : IObjectDB
         }
     }
 
+    [SkipLocalsInit]
     internal static IEnumerable<KeyValuePair<uint, string>> LoadTablesEnum(IKeyValueDBTransaction tr)
     {
         tr.InvalidateCurrentKey();
+        var reader = new MemReader(); // Cannot be stackalloced because of yield return
         while (tr.FindNextKey(TableNamesPrefix))
         {
-            yield return new KeyValuePair<uint, string>(
-                (uint)PackUnpack.UnpackVUInt(tr.GetKey().Slice(TableNamesPrefixLen)),
-                new SpanReader(tr.GetValue()).ReadString());
+            tr.GetValue(ref reader);
+            yield return new(
+                (uint)PackUnpack.UnpackVUInt(tr.GetKey()[TableNamesPrefixLen..]),
+                reader.ReadString());
         }
     }
 
@@ -163,8 +166,17 @@ public class ObjectDB : IObjectDB
         tr.InvalidateCurrentKey();
         while (tr.FindNextKey(RelationNamesPrefix))
         {
-            yield return new KeyValuePair<uint, string>((uint)PackUnpack.UnpackVUInt(tr.GetValue()),
-                new SpanReader(tr.GetKey().Slice(RelationNamesPrefixLen)).ReadString());
+            unsafe string ReadName()
+            {
+                var bufName = tr.GetKey()[RelationNamesPrefixLen..];
+                fixed (void* bufPtr = &bufName[0])
+                {
+                    return new MemReader(bufPtr, bufName.Length).ReadString()!;
+                }
+            }
+
+            yield return new((uint)PackUnpack.UnpackVUInt(tr.GetValue()),
+                ReadName());
         }
     }
 
@@ -246,10 +258,10 @@ public class ObjectDB : IObjectDB
             var newRelationFactories =
                 new Dictionary<Type, Func<IObjectDBTransaction, IRelation>>(currentRelationFactories)
                 {
-                        {type, factory}
+                    { type, factory }
                 };
             if (Interlocked.CompareExchange(ref RelationFactories, newRelationFactories,
-                currentRelationFactories) == currentRelationFactories)
+                    currentRelationFactories) == currentRelationFactories)
                 return;
         }
     }
@@ -287,13 +299,17 @@ public class ObjectDB : IObjectDB
             return checked((uint)PackUnpack.UnpackVUInt(key2));
         }
 
+        [SkipLocalsInit]
         TableVersionInfo ITableInfoResolver.LoadTableVersionInfo(uint id, uint version, string tableName)
         {
             using var tr = _keyValueDB.StartReadOnlyTransaction();
             var key = TableInfo.BuildKeyForTableVersions(id, version);
             if (!tr.FindExactKey(key))
-                _objectDB.ActualOptions.ThrowBTDBException($"Missing TableVersionInfo Id: {id} Version: {version} TableName: {tableName}");
-            var reader = new SpanReader(tr.GetValue());
+                _objectDB.ActualOptions.ThrowBTDBException(
+                    $"Missing TableVersionInfo Id: {id} Version: {version} TableName: {tableName}");
+            Span<byte> buffer = stackalloc byte[4096];
+            var reader = MemReader.CreateFromPinnedSpan(buffer);
+            tr.GetValue(ref reader);
             return TableVersionInfo.Load(ref reader, _objectDB.FieldHandlerFactory, tableName);
         }
 

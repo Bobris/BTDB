@@ -17,38 +17,43 @@ public class MemReaderWriterTest
         MemReaderAction readAction, MemReaderAction? skipAction)
     {
         Span<byte> buf = stackalloc byte[1];
-        var sw = new MemWriter(buf);
+        var sw = MemWriter.CreateFromStackAllocatedSpan(buf);
         writeAction(ref sw);
         Assert.Equal(checkResult, sw.GetSpan().ToArray());
         if (checkResult.Length > 1)
         {
-            sw = new(new Span<byte>());
+            sw = new();
             writeAction(ref sw);
             Assert.Equal(checkResult, sw.GetSpanAndReset().ToArray());
             writeAction(ref sw);
             Assert.Equal(checkResult, sw.GetSpan().ToArray());
         }
 
-        MemReader sr = new(checkResult);
+        MemReader sr = MemReader.CreateFromReadOnlyMemory(checkResult);
         readAction(ref sr);
         Assert.True(sr.Eof);
+        sr.Dispose();
+
         sw = new();
         writeAction(ref sw);
         writeAction(ref sw);
         Assert.Equal(checkResult.Concat(checkResult).ToArray(), sw.GetByteBufferAndReset().ToByteArray());
-        sr = new(checkResult.Concat(checkResult).ToArray());
+        sr = MemReader.CreateFromReadOnlyMemory(checkResult.Concat(checkResult).ToArray());
         readAction(ref sr);
         readAction(ref sr);
+        sr.Dispose();
         if (skipAction != null)
         {
-            sr = new(checkResult.Concat(checkResult).ToArray());
+            sr = MemReader.CreateFromReadOnlyMemory(checkResult.Concat(checkResult).ToArray());
             skipAction(ref sr);
             readAction(ref sr);
             Assert.True(sr.Eof);
-            sr = new(checkResult.Concat(checkResult).ToArray());
+            sr.Dispose();
+            sr = MemReader.CreateFromReadOnlyMemory(checkResult.Concat(checkResult).ToArray());
             readAction(ref sr);
             skipAction(ref sr);
             Assert.True(sr.Eof);
+            sr.Dispose();
         }
     }
 
@@ -57,16 +62,16 @@ public class MemReaderWriterTest
     {
         var sw = new MemWriter();
         writeAction(ref sw);
-        MemReader sr = new(sw.GetSpan());
+        MemReader sr = MemReader.CreateFromPinnedSpan(sw.GetSpan());
         readAction(ref sr);
         Assert.True(sr.Eof);
-        sr = new(sw.GetSpan());
+        sr = MemReader.CreateFromPinnedSpan(sw.GetSpan());
         skipAction(ref sr);
         Assert.True(sr.Eof);
         sw = new();
         writeAction(ref sw);
         writeAction(ref sw);
-        sr = new(sw.GetSpan());
+        sr = MemReader.CreateFromPinnedSpan(sw.GetSpan());
         skipAction(ref sr);
         readAction(ref sr);
         Assert.True(sr.Eof);

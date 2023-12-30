@@ -11,21 +11,20 @@ namespace BTDB.KVDBLayer;
 public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
 {
     readonly IFileCollection _fileCollection;
-    readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
+    readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new();
     long _fileGeneration;
-    internal static readonly byte[] MagicStartOfFile = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'2' };
+    internal static readonly byte[] MagicStartOfFile = "BTDB2"u8.ToArray();
 
-    internal static readonly byte[] MagicStartOfFileWithGuid =
-        { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'3' };
+    internal static readonly byte[] MagicStartOfFileWithGuid = "BTDB3"u8.ToArray();
 
-    internal static void SkipHeader(ref SpanReader reader)
+    internal static void SkipHeader(ref MemReader reader)
     {
         var magic = reader.ReadByteArrayRaw(MagicStartOfFile.Length);
         var withGuid = magic.AsSpan().SequenceEqual(MagicStartOfFileWithGuid);
         if (withGuid) reader.SkipGuid();
     }
 
-    internal static void WriteHeader(ref SpanWriter writer, Guid? guid)
+    internal static void WriteHeader(ref MemWriter writer, Guid? guid)
     {
         if (guid.HasValue)
         {
@@ -52,7 +51,7 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
             try
             {
                 var readerController = file.GetExclusiveReader();
-                var reader = new SpanReader(readerController);
+                var reader = new MemReader(readerController);
                 var magic = reader.ReadByteArrayRaw(MagicStartOfFile.Length);
                 Guid? guid = null;
                 if (magic.AsSpan().SequenceEqual(MagicStartOfFileWithGuid))

@@ -16,16 +16,32 @@ public struct MemReader
 {
     public nint Current;
     public nint Start;
+
     public nint End;
+
     // This is IMemReader or pinned byte[]
     public object? Controller;
 
     // Span must be to pinned memory or stack
-    public unsafe MemReader(ReadOnlySpan<byte> buf)
+    unsafe MemReader(ReadOnlySpan<byte> buf)
     {
         Current = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(buf));
         Start = Current;
         End = Current + buf.Length;
+    }
+
+    public void Dispose()
+    {
+        if (Controller is IDisposable disposable) disposable.Dispose();
+        Start = 0;
+        Current = 0;
+        End = 0;
+        Controller = null;
+    }
+
+    public static MemReader CreateFromPinnedSpan(ReadOnlySpan<byte> buf)
+    {
+        return new(buf);
     }
 
     public static MemReader CreateFromReadOnlyMemory(ReadOnlyMemory<byte> memory)
@@ -54,6 +70,14 @@ public struct MemReader
         End = buf + length;
     }
 
+    public unsafe MemReader(void* ptr, int length)
+    {
+        Debug.Assert(length >= 0);
+        Current = (nint)ptr;
+        Start = (nint)ptr;
+        End = (nint)ptr + length;
+    }
+
     public MemReader()
     {
         Current = 0;
@@ -67,16 +91,34 @@ public struct MemReader
         controller.Init(ref this);
     }
 
-    void FillBuf(nuint advisePrefetchLength)
+    // Make sure that buffer is filled by at least length bytes or return true if needs to be BlockRead to continues buffer
+    bool FillBuf(nuint length)
     {
-        (Controller as IMemReader)?.FillBuf(ref this, advisePrefetchLength);
-        if (Current + (nint)advisePrefetchLength > End) PackUnpack.ThrowEndOfStreamException();
+        if (Current + (nint)length > End)
+        {
+            if (Controller is IMemReader memReader)
+            {
+                memReader.FillBuf(ref this, length);
+                return Current + (nint)length > End;
+            }
+
+            PackUnpack.ThrowEndOfStreamException();
+        }
+
+        return false;
     }
 
+    // Should be called only if Current == End and it will fill buffer by atleast 1 byte or throw EndOfStreamException
     void FillBuf()
     {
-        (Controller as IMemReader)?.FillBuf(ref this, 1);
-        if (Current >= End) PackUnpack.ThrowEndOfStreamException();
+        Debug.Assert(Current == End);
+        if (Controller is IMemReader memReader)
+        {
+            memReader.FillBuf(ref this, 1);
+            if (Current < End) return;
+        }
+
+        PackUnpack.ThrowEndOfStreamException();
     }
 
     public long GetCurrentPosition()
@@ -112,7 +154,7 @@ public struct MemReader
 
     public unsafe byte ReadUInt8()
     {
-        if (Current >= End) FillBuf();
+        if (Current == End) FillBuf();
         var res = *(byte*)Current;
         Current++;
         return res;
@@ -120,7 +162,7 @@ public struct MemReader
 
     public unsafe byte PeekUInt8()
     {
-        if (Current >= End) FillBuf();
+        if (Current == End) FillBuf();
         return *(byte*)Current;
     }
 
@@ -131,7 +173,7 @@ public struct MemReader
 
     public void Skip1Byte()
     {
-        if (Current >= End) FillBuf();
+        if (Current == End) FillBuf();
         Current++;
     }
 
@@ -145,17 +187,31 @@ public struct MemReader
         return (sbyte)ReadUInt8();
     }
 
+    [SkipLocalsInit]
     public unsafe ushort ReadUInt16LE()
     {
-        if (Current + 2 > End) FillBuf(2);
+        if (FillBuf(2))
+        {
+            Span<byte> buf = stackalloc byte[2];
+            ReadBlock(ref MemoryMarshal.GetReference(buf), 2);
+            return PackUnpack.AsLittleEndian(Unsafe.ReadUnaligned<ushort>(ref MemoryMarshal.GetReference(buf)));
+        }
+
         var res = PackUnpack.AsLittleEndian(Unsafe.ReadUnaligned<ushort>((void*)Current));
         Current += 2;
         return res;
     }
 
+    [SkipLocalsInit]
     public unsafe ushort ReadUInt16BE()
     {
-        if (Current + 2 > End) FillBuf(2);
+        if (FillBuf(2))
+        {
+            var buf = stackalloc byte[2];
+            ReadBlock(buf, 2);
+            return PackUnpack.AsBigEndian(Unsafe.ReadUnaligned<ushort>(buf));
+        }
+
         var res = PackUnpack.AsBigEndian(Unsafe.ReadUnaligned<ushort>((void*)Current));
         Current += 2;
         return res;
@@ -163,8 +219,7 @@ public struct MemReader
 
     public void Skip2Bytes()
     {
-        if (Current + 2 > End) FillBuf(2);
-        Current += 2;
+        SkipBlock(2);
     }
 
     public short ReadInt16LE()
@@ -182,17 +237,31 @@ public struct MemReader
         return BitConverter.UInt16BitsToHalf(ReadUInt16BE());
     }
 
+    [SkipLocalsInit]
     public unsafe uint ReadUInt32LE()
     {
-        if (Current + 4 > End) FillBuf(4);
+        if (FillBuf(4))
+        {
+            var buf = stackalloc byte[4];
+            ReadBlock(buf, 4);
+            return PackUnpack.AsLittleEndian(Unsafe.ReadUnaligned<uint>(buf));
+        }
+
         var res = PackUnpack.AsLittleEndian(Unsafe.ReadUnaligned<uint>((void*)Current));
         Current += 4;
         return res;
     }
 
+    [SkipLocalsInit]
     public unsafe uint ReadUInt32BE()
     {
-        if (Current + 4 > End) FillBuf(4);
+        if (FillBuf(4))
+        {
+            var buf = stackalloc byte[4];
+            ReadBlock(buf, 4);
+            return PackUnpack.AsBigEndian(Unsafe.ReadUnaligned<uint>(buf));
+        }
+
         var res = PackUnpack.AsBigEndian(Unsafe.ReadUnaligned<uint>((void*)Current));
         Current += 4;
         return res;
@@ -200,8 +269,7 @@ public struct MemReader
 
     public void Skip4Bytes()
     {
-        if (Current + 4 > End) FillBuf(4);
-        Current += 4;
+        SkipBlock(4);
     }
 
     public int ReadInt32LE()
@@ -219,17 +287,31 @@ public struct MemReader
         return BitConverter.UInt32BitsToSingle(ReadUInt32BE());
     }
 
+    [SkipLocalsInit]
     public unsafe ulong ReadUInt64LE()
     {
-        if (Current + 8 > End) FillBuf(8);
+        if (FillBuf(8))
+        {
+            var buf = stackalloc byte[8];
+            ReadBlock(buf, 8);
+            return PackUnpack.AsLittleEndian(Unsafe.ReadUnaligned<ulong>(buf));
+        }
+
         var res = PackUnpack.AsLittleEndian(Unsafe.ReadUnaligned<ulong>((void*)Current));
         Current += 8;
         return res;
     }
 
+    [SkipLocalsInit]
     public unsafe ulong ReadUInt64BE()
     {
-        if (Current + 8 > End) FillBuf(8);
+        if (FillBuf(8))
+        {
+            var buf = stackalloc byte[8];
+            ReadBlock(buf, 8);
+            return PackUnpack.AsBigEndian(Unsafe.ReadUnaligned<ulong>(buf));
+        }
+
         var res = PackUnpack.AsBigEndian(Unsafe.ReadUnaligned<ulong>((void*)Current));
         Current += 8;
         return res;
@@ -237,8 +319,7 @@ public struct MemReader
 
     public void Skip8Bytes()
     {
-        if (Current + 8 > End) FillBuf(8);
-        Current += 8;
+        SkipBlock(8);
     }
 
     public long ReadInt64LE()
@@ -264,11 +345,18 @@ public struct MemReader
         return BitConverter.UInt64BitsToDouble(i);
     }
 
+    [SkipLocalsInit]
     public unsafe long ReadVInt64()
     {
-        if (Current >= End) FillBuf();
+        if (Current == End) FillBuf();
         var len = PackUnpack.LengthVIntByFirstByte(*(byte*)Current);
-        if (Current + len > End) FillBuf(len);
+        if (FillBuf(len))
+        {
+            var buf = stackalloc byte[(int)len];
+            ReadBlock(buf, len);
+            return PackUnpack.UnsafeUnpackVInt(ref Unsafe.AsRef<byte>(buf), len);
+        }
+
         var res = PackUnpack.UnsafeUnpackVInt(ref Unsafe.AsRef<byte>((byte*)Current), len);
         Current += (int)len;
         return res;
@@ -276,17 +364,23 @@ public struct MemReader
 
     public unsafe void SkipVInt64()
     {
-        if (Current >= End) FillBuf();
+        if (Current == End) FillBuf();
         var len = PackUnpack.LengthVIntByFirstByte(*(byte*)Current);
-        if (Current + len > End) FillBuf(len);
-        Current += (int)len;
+        SkipBlock(len);
     }
 
+    [SkipLocalsInit]
     public unsafe ulong ReadVUInt64()
     {
-        if (Current >= End) FillBuf();
+        if (Current == End) FillBuf();
         var len = PackUnpack.LengthVUIntByFirstByte(*(byte*)Current);
-        if (Current + len > End) FillBuf(len);
+        if (FillBuf(len))
+        {
+            var buf = stackalloc byte[(int)len];
+            ReadBlock(buf, len);
+            return PackUnpack.UnsafeUnpackVUInt(ref Unsafe.AsRef<byte>(buf), len);
+        }
+
         var res = PackUnpack.UnsafeUnpackVUInt(ref Unsafe.AsRef<byte>((byte*)Current), len);
         Current += (int)len;
         return res;
@@ -294,10 +388,9 @@ public struct MemReader
 
     public unsafe void SkipVUInt64()
     {
-        if (Current >= End) FillBuf();
+        if (Current == End) FillBuf();
         var len = PackUnpack.LengthVUIntByFirstByte(*(byte*)Current);
-        if (Current + len > End) FillBuf(len);
-        Current += (int)len;
+        SkipBlock(len);
     }
 
     public short ReadVInt16()
@@ -446,8 +539,8 @@ public struct MemReader
     [SkipLocalsInit]
     public string? ReadStringOrdered()
     {
-        var len = 0u;
         Span<char> charStackBuf = stackalloc char[256];
+        var len = 0u;
         var charBuf = charStackBuf;
 
         var fastSkip = PackUnpack.ReadAndExpandSimpleCharacters(PeekTillEnd(), ref charBuf, ref len);
@@ -531,13 +624,105 @@ public struct MemReader
         }
     }
 
+    public ReadOnlySpan<char> ReadStringOrderedAsSpan(scoped ref char charStackBufRef, int charStackBufLength)
+    {
+        var len = 0u;
+        var charBuf = MemoryMarshal.CreateSpan(ref charStackBufRef, charStackBufLength);
+
+        var fastSkip = PackUnpack.ReadAndExpandSimpleCharacters(PeekTillEnd(), ref charBuf, ref len);
+        if (fastSkip.WasEnd)
+        {
+            Current += (nint)fastSkip.Count;
+            return len == 0 ? "" : new(charBuf[..(int)len]);
+        }
+
+        if (fastSkip.Count == 0)
+        {
+            var c = ReadVUInt32();
+            if (c == 0) return "";
+            c--;
+            if (c == 0x110000) return null;
+            if (charBuf.Length < len + 2)
+            {
+                var newCharBuf = (Span<char>)GC.AllocateUninitializedArray<char>(charBuf.Length * 2);
+                charBuf.CopyTo(newCharBuf);
+                charBuf = newCharBuf;
+            }
+
+            if (c > 0xffff)
+            {
+                if (c > 0x10ffff)
+                {
+                    throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
+                }
+
+                c -= 0x10000;
+                Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c >> 10) + 0xD800);
+                Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c & 0x3FF) + 0xDC00);
+            }
+            else
+            {
+                Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)c;
+            }
+        }
+        else
+        {
+            Current += (nint)fastSkip.Count;
+        }
+
+        while (true)
+        {
+            var c = ReadVUInt32();
+            if (c == 0) return charBuf[..(int)len];
+
+            if (charBuf.Length < len + 2)
+            {
+                var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
+                charBuf.CopyTo(newCharBuf);
+                charBuf = newCharBuf;
+            }
+
+            c--;
+            if (c > 0xffff)
+            {
+                if (c > 0x10ffff)
+                {
+                    throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
+                }
+
+                c -= 0x10000;
+                Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c >> 10) + 0xD800);
+                Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)((c & 0x3FF) + 0xDC00);
+            }
+            else
+            {
+                Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char)c;
+                if (c < 127)
+                {
+                    var fastSkip2 = PackUnpack.ReadAndExpandSimpleCharacters(PeekTillEnd(), ref charBuf, ref len);
+                    Current += (nint)fastSkip2.Count;
+                    if (fastSkip2.WasEnd)
+                    {
+                        return charBuf[..(int)len];
+                    }
+                }
+            }
+        }
+    }
+
+    [SkipLocalsInit]
     public unsafe string ReadStringInUtf8()
     {
-        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         var len = ReadVUInt64();
         if (len > int.MaxValue) throw new InvalidDataException($"Reading Utf8 String length overflowed with {len}");
         if (len == 0) return "";
-        if (Current + (nint)len > End) FillBuf((nuint)len);
+        if (FillBuf((nuint)len))
+        {
+            var buf = len < 2048 ? stackalloc byte[(int)len] : GC.AllocateUninitializedArray<byte>((int)len);
+            ReadBlock(buf);
+            return Encoding.UTF8.GetString(buf);
+        }
+
         var res = Encoding.UTF8.GetString((byte*)Current, (int)len);
         Current += (nint)len;
         return res;
@@ -661,8 +846,35 @@ public struct MemReader
             PackUnpack.ThrowEndOfStreamException();
         }
 
-        if (Current + (nint)length > End) FillBuf(length);
         Unsafe.CopyBlockUnaligned(ref buffer, ref Unsafe.AsRef<byte>((byte*)Current), length);
+        Current += (nint)length;
+    }
+
+    public unsafe void ReadBlock(byte* buffer, uint length)
+    {
+        if (length > End - Current)
+        {
+            if (Controller is IMemReader memReader)
+            {
+                var len = (uint)(End - Current);
+                if (len > 0)
+                {
+                    Unsafe.CopyBlockUnaligned(buffer, (byte*)Current,
+                        len);
+                    buffer += len;
+                    length -= len;
+                    Current = End;
+                }
+
+                memReader.ReadBlock(ref this, ref Unsafe.AsRef<byte>(buffer), length);
+                return;
+            }
+
+            Current = End;
+            PackUnpack.ThrowEndOfStreamException();
+        }
+
+        Unsafe.CopyBlockUnaligned(buffer, (byte*)Current, length);
         Current += (nint)length;
     }
 
@@ -673,8 +885,13 @@ public struct MemReader
 
     public unsafe ReadOnlySpan<byte> ReadBlockAsSpan(uint length)
     {
-        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
-        if (Current + length > End) FillBuf(length);
+        if (FillBuf(length))
+        {
+            var buf = GC.AllocateUninitializedArray<byte>((int)length);
+            ReadBlock(buf);
+            return buf;
+        }
+
         var res = new ReadOnlySpan<byte>((byte*)Current, (int)length);
         Current += (nint)length;
         return res;
@@ -689,10 +906,10 @@ public struct MemReader
                 length -= (uint)(End - Current);
                 Current = End;
 
-                while (length > (uint)int.MaxValue + 1)
+                while (length > 0x4000_0000)
                 {
-                    memReader.SkipBlock(ref this, (uint)int.MaxValue + 1);
-                    length -= (uint)int.MaxValue + 1;
+                    memReader.SkipBlock(ref this, 0x4000_0000);
+                    length -= 0x4000_0000;
                 }
 
                 memReader.SkipBlock(ref this, length);
@@ -715,18 +932,30 @@ public struct MemReader
 
     public unsafe ReadOnlySpan<byte> ReadByteArrayAsSpan()
     {
-        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         var length = ReadVUInt32();
         if (length-- <= 1) return new();
-        if (Current + length > End) FillBuf(length);
+        if (FillBuf(length))
+        {
+            var buf = GC.AllocateUninitializedArray<byte>((int)length);
+            ReadBlock(buf);
+            return buf;
+        }
+
         var res = new ReadOnlySpan<byte>((byte*)Current, (int)length);
         Current += (nint)length;
         return res;
     }
 
+    [SkipLocalsInit]
     public unsafe Guid ReadGuid()
     {
-        if (Current + 16 > End) FillBuf(16);
+        if (FillBuf(16))
+        {
+            var buf = stackalloc byte[16];
+            ReadBlock(buf, 16);
+            return new(new ReadOnlySpan<byte>(buf, 16));
+        }
+
         var res = new Guid(new ReadOnlySpan<byte>((byte*)Current, 16));
         Current += 16;
         return res;
@@ -813,7 +1042,8 @@ public struct MemReader
             var newCurrent = current + (nint)length;
             if (newCurrent > End) PackUnpack.ThrowEndOfStreamException();
             Current = newCurrent;
-            return MemoryMarshal.CreateFromPinnedArray(pinnedArray, (int)(current - (nint)Unsafe.AsPointer(ref pinnedArray[0])), (int)length);
+            return MemoryMarshal.CreateFromPinnedArray(pinnedArray,
+                (int)(current - (nint)Unsafe.AsPointer(ref pinnedArray[0])), (int)length);
         }
 
         var resBuffer = GC.AllocateUninitializedArray<byte>((int)length, pinned: true);
@@ -847,11 +1077,17 @@ public struct MemReader
     {
         if (End - Current < magic.Length)
         {
-            if (Controller == null) return false;
-
             try
             {
-                FillBuf((uint)magic.Length);
+                if (FillBuf((uint)magic.Length))
+                {
+                    Span<byte> buf = stackalloc byte[magic.Length];
+                    var pos = GetCurrentPosition();
+                    ReadBlock(ref MemoryMarshal.GetReference(buf), (uint)magic.Length);
+                    var res = buf.SequenceEqual(magic);
+                    if (res == false) SetCurrentPosition(pos);
+                    return res;
+                }
             }
             catch (EndOfStreamException)
             {
@@ -958,6 +1194,7 @@ public struct MemReader
     public unsafe void CopyAbsoluteToWriter(uint start, uint len, ref MemWriter writer)
     {
         Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
+        if (Start + (nint)start + (nint)len > End) throw new ArgumentOutOfRangeException(nameof(len));
         writer.WriteBlock(new ReadOnlySpan<byte>((void*)(Start + (nint)start), (int)len));
     }
 
@@ -1000,5 +1237,79 @@ public struct MemReader
     {
         Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
         return End - Start;
+    }
+
+    public static void InitFromReadOnlyMemory(ref MemReader reader, ReadOnlyMemory<byte> memory)
+    {
+        if (reader.Controller is ReadOnlyMemoryMemReader readOnlyMemoryMemReader)
+        {
+            readOnlyMemoryMemReader.Reset(memory);
+            readOnlyMemoryMemReader.Init(ref reader);
+            return;
+        }
+
+        reader.Dispose();
+        reader = CreateFromReadOnlyMemory(memory);
+    }
+
+    public static unsafe Span<byte> InitFromLen(ref MemReader reader, int size)
+    {
+        if (reader.Controller is byte[] pinnedArray)
+        {
+            if (pinnedArray.Length < size)
+            {
+                reader.Dispose();
+                pinnedArray = GC.AllocateUninitializedArray<byte>(size, pinned: true);
+                reader = CreateFromPinnedArray(pinnedArray, 0, size);
+            }
+            else
+            {
+                reader.Current = reader.Start;
+                reader.End = reader.Start + size;
+            }
+
+            return new(pinnedArray, 0, size);
+        }
+
+        if (reader.Controller == null)
+        {
+            if (reader.End - reader.Start >= size)
+            {
+                reader.Current = reader.Start;
+                reader.End = reader.Start + size;
+                return new((void*)reader.Start, size);
+            }
+        }
+
+        reader.Dispose();
+        if (size == 0) return new();
+        var resBuffer = GC.AllocateUninitializedArray<byte>(size, pinned: true);
+        reader = CreateFromPinnedArray(resBuffer, 0, size);
+        return resBuffer;
+    }
+
+    public static void InitFromSpan(ref MemReader reader, ReadOnlySpan<byte> span)
+    {
+        span.CopyTo(InitFromLen(ref reader, span.Length));
+    }
+
+    public readonly unsafe ReadOnlySpan<byte> PeekSpanTillEof()
+    {
+        return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef<byte>((void*)Current), (int)(End - Current));
+    }
+
+    public unsafe ReadOnlyMemory<byte> AsReadOnlyMemory()
+    {
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
+        var length = (int)(End - Current);
+        if (Controller is byte[] pinnedArray)
+        {
+            return MemoryMarshal.CreateFromPinnedArray(pinnedArray,
+                (int)(Current - (nint)Unsafe.AsPointer(ref pinnedArray[0])), (int)(End - Current));
+        }
+
+        var resBuffer = GC.AllocateUninitializedArray<byte>(length, pinned: true);
+        PeekSpanTillEof().CopyTo(resBuffer.AsSpan());
+        return MemoryMarshal.CreateFromPinnedArray(resBuffer, 0, length);
     }
 }

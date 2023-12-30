@@ -6,9 +6,9 @@ namespace BTDB.FieldHandler;
 public class UnsignedFieldHandler : SimpleFieldHandlerBase
 {
     public UnsignedFieldHandler() : base("Unsigned",
-        typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!,
-        typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!,
-        typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt64))!)
+        typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!,
+        typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!,
+        typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt64))!)
     {
     }
 

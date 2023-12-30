@@ -168,9 +168,9 @@ class Compactor
             {
                 _newPositionMap = new();
                 var pvlFileId = CompactOnePureValueFileIteration(ref toRemoveFileIds);
-                btreesCorrectInTransactionId = _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap, pvlFileId);
+                btreesCorrectInTransactionId =
+                    _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap, pvlFileId);
                 totalWaste = CalcTotalWaste();
-
             } while (!IsWasteSmall(totalWaste));
 
             var usedFileGens = _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
@@ -215,15 +215,16 @@ class Compactor
             var wastefulFileId =
                 FindMostWastefulFile(firstIteration
                     ? uint.MaxValue
-                    : _keyValueDB.MaxTrLogFileSize - writer.GetCurrentPositionWithoutWriter());
+                    : _keyValueDB.MaxTrLogFileSize - writer.GetCurrentPosition());
             firstIteration = false;
             if (wastefulFileId == 0) break;
-            MoveValuesContent(writer, wastefulFileId);
+            MoveValuesContent(ref writer, wastefulFileId);
             if (_fileStats.GetOrFakeValueRef(wastefulFileId).IsFreeToDelete())
                 toRemoveFileIds.Add(wastefulFileId);
             _fileStats.GetOrFakeValueRef(wastefulFileId) = new FileStat(0);
         }
 
+        writer.Flush();
         var valueFile = _keyValueDB.FileCollection.GetFile(valueFileId);
         valueFile!.HardFlushTruncateSwitchToReadOnlyMode();
         _keyValueDB.Logger?.CompactionCreatedPureValueFile(valueFileId, valueFile.GetSize(),
@@ -247,7 +248,7 @@ class Compactor
         return totalWaste < (ulong)_keyValueDB.MaxTrLogFileSize / 4;
     }
 
-    void MoveValuesContent(ISpanWriter writer, uint wastefulFileId)
+    void MoveValuesContent(ref MemWriter writerIn, uint wastefulFileId)
     {
         const uint blockSize = 256 * 1024;
         var wastefulStream = _keyValueDB.FileCollection.GetFile(wastefulFileId);
@@ -267,11 +268,13 @@ class Compactor
             readLimiter.Limit(pos);
         }
 
+        var writer = writerIn;
         _keyValueDB.IterateRoot(_root!, (valueFileId, valueOfs, valueSize) =>
         {
             if (valueFileId != wastefulFileId) return;
             var size = (uint)Math.Abs(valueSize);
-            _newPositionMap.GetOrAddValueRef(((ulong)wastefulFileId << 32) | valueOfs) = (uint)writer.GetCurrentPositionWithoutWriter();
+            _newPositionMap.GetOrAddValueRef(((ulong)wastefulFileId << 32) | valueOfs) =
+                (uint)writer.GetCurrentPosition();
             pos = valueOfs;
             while (size > 0)
             {
@@ -280,14 +283,15 @@ class Compactor
                 var blockStart = pos % blockSize;
                 var writeSize = (uint)(blockSize - blockStart);
                 if (writeSize > size) writeSize = size;
-                writer.WriteBlockWithoutWriter(
+                writer.WriteBlock(
                     ref MemoryMarshal.GetReference(wasteInMemory[blockId].AsSpan((int)blockStart, (int)writeSize)),
                     writeSize);
                 size -= writeSize;
                 pos += writeSize;
-                _writerBytesPerSecondLimiter.Limit((ulong)writer.GetCurrentPositionWithoutWriter());
+                _writerBytesPerSecondLimiter.Limit((ulong)writer.GetCurrentPosition());
             }
         });
+        writerIn = writer;
     }
 
     ulong CalcTotalWaste()

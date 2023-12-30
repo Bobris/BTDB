@@ -13,7 +13,7 @@ public interface IOrderer
 {
     Type? ExpectedInput { get; }
     string? ColumnName { get; }
-    void CopyOrderedField(scoped ReadOnlySpan<byte> key, scoped ref SpanWriter writer);
+    void CopyOrderedField(scoped ref MemReader reader, scoped ref MemWriter writer);
 }
 
 public class Orderer
@@ -22,7 +22,8 @@ public class Orderer
     {
         var propInfo = byGetter.GetPropertyInfo();
         if (propInfo.PropertyType != typeof(TBy)) throw new ArgumentException("Property getter is not returned as is");
-        if (propInfo.DeclaringType != typeof(TInput)) throw new ArgumentException("Property getter is not called on "+typeof(TInput).ToSimpleName());
+        if (propInfo.DeclaringType != typeof(TInput))
+            throw new ArgumentException("Property getter is not called on " + typeof(TInput).ToSimpleName());
         return new AscendingPropertyOrderer(null, ObjectTypeDescriptor.GetPersistentName(propInfo));
     }
 
@@ -30,7 +31,8 @@ public class Orderer
     {
         var propInfo = byGetter.GetPropertyInfo();
         if (propInfo.PropertyType != typeof(TBy)) throw new ArgumentException("Property getter is not returned as is");
-        if (propInfo.DeclaringType != typeof(TInput)) throw new ArgumentException("Property getter is not called on "+typeof(TInput).ToSimpleName());
+        if (propInfo.DeclaringType != typeof(TInput))
+            throw new ArgumentException("Property getter is not called on " + typeof(TInput).ToSimpleName());
         return new AscendingPropertyOrderer(typeof(TInput), ObjectTypeDescriptor.GetPersistentName(propInfo));
     }
 
@@ -38,9 +40,12 @@ public class Orderer
         CompareInfo compareInfo, CompareOptions compareOptions = CompareOptions.None)
     {
         var propInfo = byGetter.GetPropertyInfo();
-        if (propInfo.PropertyType != typeof(string)) throw new ArgumentException("Property getter is not returned as is");
-        if (propInfo.DeclaringType != typeof(TInput)) throw new ArgumentException("Property getter is not called on "+typeof(TInput).ToSimpleName());
-        return new AscendingLocalePropertyOrderer(typeof(TInput), ObjectTypeDescriptor.GetPersistentName(propInfo), compareInfo, compareOptions);
+        if (propInfo.PropertyType != typeof(string))
+            throw new ArgumentException("Property getter is not returned as is");
+        if (propInfo.DeclaringType != typeof(TInput))
+            throw new ArgumentException("Property getter is not called on " + typeof(TInput).ToSimpleName());
+        return new AscendingLocalePropertyOrderer(typeof(TInput), ObjectTypeDescriptor.GetPersistentName(propInfo),
+            compareInfo, compareOptions);
     }
 
     public static IOrderer Descending<TInput, TBy>(Expression<Func<TInput, TBy>> byGetter)
@@ -59,6 +64,7 @@ public class Orderer
         {
             return flipOrder.Wrapped;
         }
+
         return new FlipOrder(orderer);
     }
 }
@@ -83,14 +89,17 @@ class AscendingLocalePropertyOrderer : IOrderer
     public string? ColumnName => _propName;
 
     [SkipLocalsInit]
-    public void CopyOrderedField(scoped ReadOnlySpan<byte> key, scoped ref SpanWriter writer)
+    public void CopyOrderedField(scoped ref MemReader reader, scoped ref MemWriter writer)
     {
         Span<char> bufStr = stackalloc char[512];
-        SpanReader reader = new (key);
         var realStr = reader.ReadStringOrderedAsSpan(ref MemoryMarshal.GetReference(bufStr), bufStr.Length);
         var keyLength = _compareInfo.GetSortKeyLength(realStr, _compareOptions);
-        var keySpan = writer.BlockWriteToSpan(keyLength);
+        var keySpan = writer.BlockWriteToSpan(keyLength, out var needToBeWritten);
         _compareInfo.GetSortKey(realStr, keySpan, _compareOptions);
+        if (needToBeWritten)
+        {
+            writer.WriteBlock(keySpan);
+        }
     }
 }
 
@@ -108,9 +117,9 @@ class AscendingPropertyOrderer : IOrderer
     public Type? ExpectedInput => _ownerType;
     public string? ColumnName => _propName;
 
-    public void CopyOrderedField(scoped ReadOnlySpan<byte> key, scoped ref SpanWriter writer)
+    public void CopyOrderedField(scoped ref MemReader reader, scoped ref MemWriter writer)
     {
-        writer.WriteBlock(key);
+        writer.WriteBlock(reader.ReadBlockAsSpan((uint)reader.GetLength()));
     }
 }
 
@@ -127,10 +136,10 @@ class FlipOrder : IOrderer
 
     public IOrderer Wrapped { get; }
 
-    public void CopyOrderedField(scoped ReadOnlySpan<byte> key, scoped ref SpanWriter writer)
+    public void CopyOrderedField(scoped ref MemReader reader, scoped ref MemWriter writer)
     {
         var writeStart = writer.StartXor();
-        Wrapped.CopyOrderedField(key, ref writer);
+        Wrapped.CopyOrderedField(ref reader, ref writer);
         writer.FinishXor(writeStart);
     }
 }

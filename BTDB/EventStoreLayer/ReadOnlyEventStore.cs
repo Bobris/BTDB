@@ -25,13 +25,15 @@ public class ReadOnlyEventStore : IReadEventStore
     internal bool KnownAsFinished;
     protected WeakReference<byte[]> ReadBufferWeakReference = new WeakReference<byte[]>(null);
 
-    public ReadOnlyEventStore(IEventFileStorage file, ITypeSerializersMapping mapping, ICompressionStrategy compressionStrategy)
+    public ReadOnlyEventStore(IEventFileStorage file, ITypeSerializersMapping mapping,
+        ICompressionStrategy compressionStrategy)
     {
         File = file;
         Mapping = mapping;
         CompressionStrategy = compressionStrategy;
         EndBufferPosition = ulong.MaxValue;
-        MaxBlockSize = Math.Min(File.MaxBlockSize, 0x1000000); // For Length there is only 3 bytes so maximum could be less
+        MaxBlockSize =
+            Math.Min(File.MaxBlockSize, 0x1000000); // For Length there is only 3 bytes so maximum could be less
         if (MaxBlockSize < FirstReadAhead) throw new ArgumentException("file.MaxBlockSize is less than FirstReadAhead");
     }
 
@@ -54,7 +56,7 @@ public class ReadOnlyEventStore : IReadEventStore
 
     public void ReadToEnd(IEventStoreObserver observer)
     {
-        var overflowWriter = default(SpanWriter);
+        var overflowWriter = default(MemWriter);
         var wasFirstBlock = false;
         var bufferBlock = GetReadBuffer();
         var bufferStartPosition = NextReadPosition & SectorMask;
@@ -71,10 +73,12 @@ public class ReadOnlyEventStore : IReadEventStore
                 KnownAsFinished = true;
                 return;
             }
+
             if (bufferReadOffset == bufferFullLength)
             {
                 break;
             }
+
             if (bufferReadOffset + HeaderSize > bufferFullLength)
             {
                 for (var i = bufferReadOffset; i < bufferFullLength; i++)
@@ -85,8 +89,10 @@ public class ReadOnlyEventStore : IReadEventStore
                         return;
                     }
                 }
+
                 break;
             }
+
             var blockCheckSum = PackUnpack.UnpackUInt32LE(bufferBlock, bufferReadOffset);
             bufferReadOffset += 4;
             var blockLen = PackUnpack.UnpackUInt32LE(bufferBlock, bufferReadOffset);
@@ -95,6 +101,7 @@ public class ReadOnlyEventStore : IReadEventStore
                 bufferReadOffset -= 4;
                 break;
             }
+
             var blockType = (BlockType)(blockLen & 0xff);
             blockLen >>= 8;
             if (blockType == BlockType.LastBlock && blockLen == 0)
@@ -104,19 +111,23 @@ public class ReadOnlyEventStore : IReadEventStore
                     SetCorrupted();
                     return;
                 }
+
                 KnownAsFinished = true;
                 return;
             }
+
             if (blockLen == 0 && blockType != (BlockType.FirstBlock | BlockType.LastBlock))
             {
                 SetCorrupted();
                 return;
             }
+
             if (blockLen + HeaderSize > MaxBlockSize)
             {
                 SetCorrupted();
                 return;
             }
+
             bufferReadOffset += 4;
             var bufferLenToFill = (uint)(bufferReadOffset + (int)blockLen + FirstReadAhead) & SectorMaskUInt;
             if (bufferLenToFill > bufferBlock.Length) bufferLenToFill = (uint)bufferBlock.Length;
@@ -129,6 +140,7 @@ public class ReadOnlyEventStore : IReadEventStore
                 {
                     bufferLenToFill = (uint)(File.MaxFileSize - bufferStartPosition);
                 }
+
                 buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, (int)(bufferLenToFill - bufferFullLength));
                 if (buf.Length > 0)
                 {
@@ -136,25 +148,30 @@ public class ReadOnlyEventStore : IReadEventStore
                     {
                         currentReadAhead = currentReadAhead * 2;
                     }
+
                     bufReadLength = (int)File.Read(buf, bufferStartPosition + (ulong)bufferFullLength);
                     bufferFullLength += bufReadLength;
                 }
             }
+
             if (bufferReadOffset + (int)blockLen > bufferFullLength)
             {
                 SetCorrupted();
                 return;
             }
+
             if (Checksum.CalcFletcher32(bufferBlock, (uint)bufferReadOffset - 4, blockLen + 4) != blockCheckSum)
             {
                 SetCorrupted();
                 return;
             }
+
             var blockTypeBlock = blockType & (BlockType.FirstBlock | BlockType.MiddleBlock | BlockType.LastBlock);
             var stopReadingRequested = false;
             if (blockTypeBlock == (BlockType.FirstBlock | BlockType.LastBlock))
             {
-                stopReadingRequested = Process(blockType, bufferBlock.AsSpan(bufferReadOffset, (int)blockLen), observer);
+                stopReadingRequested =
+                    Process(blockType, bufferBlock.AsSpan(bufferReadOffset, (int)blockLen), observer);
             }
             else
             {
@@ -176,6 +193,7 @@ public class ReadOnlyEventStore : IReadEventStore
                     SetCorrupted();
                     return;
                 }
+
                 overflowWriter.WriteBlock(bufferBlock.AsSpan(bufferReadOffset, (int)blockLen));
                 if (blockTypeBlock == BlockType.LastBlock)
                 {
@@ -184,6 +202,7 @@ public class ReadOnlyEventStore : IReadEventStore
                     wasFirstBlock = false;
                 }
             }
+
             bufferReadOffset += (int)blockLen;
             if (!wasFirstBlock)
                 NextReadPosition = bufferStartPosition + (ulong)bufferReadOffset;
@@ -191,6 +210,7 @@ public class ReadOnlyEventStore : IReadEventStore
             {
                 return;
             }
+
             var nextBufferStartPosition = (bufferStartPosition + (ulong)bufferReadOffset) & SectorMask;
             var bufferMoveDistance = (int)(nextBufferStartPosition - bufferStartPosition);
             if (bufferMoveDistance <= 0) continue;
@@ -199,12 +219,14 @@ public class ReadOnlyEventStore : IReadEventStore
             bufferFullLength -= bufferMoveDistance;
             bufferReadOffset -= bufferMoveDistance;
         }
+
         if (wasFirstBlock)
         {
             // It is not corrupted here just unfinished, but definitely not appendable
             EndBufferPosition = ulong.MaxValue;
             return;
         }
+
         EndBufferLen = (uint)(bufferReadOffset - (bufferReadOffset & SectorMaskUInt));
         EndBufferPosition = bufferStartPosition + (ulong)bufferReadOffset - EndBufferLen;
         Array.Copy(bufferBlock, bufferReadOffset - EndBufferLen, EndBuffer, 0, EndBufferLen);
@@ -225,49 +247,56 @@ public class ReadOnlyEventStore : IReadEventStore
         return EndBufferPosition != ulong.MaxValue;
     }
 
-    bool Process(BlockType blockType, ReadOnlySpan<byte> block, IEventStoreObserver observer)
+    unsafe bool Process(BlockType blockType, ReadOnlySpan<byte> block, IEventStoreObserver observer)
     {
         if ((blockType & BlockType.Compressed) != 0)
         {
             CompressionStrategy.Decompress(ref block);
         }
-        var reader = new SpanReader(block);
-        if ((blockType & BlockType.HasTypeDeclaration) != 0)
+
+        fixed (void* blockPtr = &block[0])
         {
-            Mapping.LoadTypeDescriptors(ref reader);
-        }
-        var metadata = (blockType & BlockType.HasMetadata) != 0 ? Mapping.LoadObject(ref reader) : null;
-        uint eventCount;
-        if ((blockType & BlockType.HasOneEvent) != 0)
-        {
-            eventCount = 1;
-        }
-        else if ((blockType & BlockType.HasMoreEvents) != 0)
-        {
-            eventCount = reader.ReadVUInt32();
-        }
-        else
-        {
-            eventCount = 0;
-        }
-        var readEvents = observer.ObservedMetadata(metadata, eventCount);
-        if (!readEvents) return observer.ShouldStopReadingNextEvents();
-        var events = new object[eventCount];
-        var successfulEventCount = 0;
-        for (var i = 0; i < eventCount; i++)
-        {
-            var ev = Mapping.LoadObject(ref reader);
-            if (ev == null) continue;
-            events[successfulEventCount] = ev;
-            successfulEventCount++;
+            var reader = new MemReader(blockPtr, block.Length);
+            if ((blockType & BlockType.HasTypeDeclaration) != 0)
+            {
+                Mapping.LoadTypeDescriptors(ref reader);
+            }
+
+            var metadata = (blockType & BlockType.HasMetadata) != 0 ? Mapping.LoadObject(ref reader) : null;
+            uint eventCount;
+            if ((blockType & BlockType.HasOneEvent) != 0)
+            {
+                eventCount = 1;
+            }
+            else if ((blockType & BlockType.HasMoreEvents) != 0)
+            {
+                eventCount = reader.ReadVUInt32();
+            }
+            else
+            {
+                eventCount = 0;
+            }
+
+            var readEvents = observer.ObservedMetadata(metadata, eventCount);
+            if (!readEvents) return observer.ShouldStopReadingNextEvents();
+            var events = new object[eventCount];
+            var successfulEventCount = 0;
+            for (var i = 0; i < eventCount; i++)
+            {
+                var ev = Mapping.LoadObject(ref reader);
+                if (ev == null) continue;
+                events[successfulEventCount] = ev;
+                successfulEventCount++;
+            }
+
+            if (eventCount != successfulEventCount)
+            {
+                Array.Resize(ref events, successfulEventCount);
+            }
+
+            observer.ObservedEvents(events);
         }
 
-        if (eventCount != successfulEventCount)
-        {
-            Array.Resize(ref events, successfulEventCount);
-        }
-
-        observer.ObservedEvents(events);
         return observer.ShouldStopReadingNextEvents();
     }
 

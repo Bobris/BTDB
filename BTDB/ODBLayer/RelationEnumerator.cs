@@ -34,10 +34,10 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
 
     int _skipNextOn = -1;
     int _keyBytesCount;
-    StructList<byte> _buffer;
+    MemWriter _buffer;
 
     public RelationConstraintEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
-        StructList<byte> keyBytes,
+        in MemWriter keyBytes,
         IRelationModificationCounter modificationCounter, int loaderIndex, ConstraintInfo[] constraints)
     {
         _transaction = tr;
@@ -47,7 +47,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         _prevProtectionCounter = KeyValueTr.CursorMovedCounter;
 
         _buffer = keyBytes;
-        _keyBytesCount = (int)_buffer.Count;
+        _keyBytesCount = (int)_buffer.GetCurrentPosition();
 
         _modificationCounter = modificationCounter;
         _constraints = constraints;
@@ -65,11 +65,11 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     [SkipLocalsInit]
     public void GatherForSorting(ref SortNativeStorage sortNativeStorage, int[] ordererIdx, IOrderer[] orderers)
     {
-        if (!KeyValueTr.FindFirstKey(_buffer.AsSpan(0, _keyBytesCount))) return;
+        if (!KeyValueTr.FindFirstKey(_buffer.AsReadOnlySpan(0, _keyBytesCount))) return;
         var skipNextOn = -1;
         sortNativeStorage.StartKeyIndex = (ulong)KeyValueTr.GetKeyIndex();
         Span<byte> writerBuf = stackalloc byte[512];
-        var writer = new SpanWriter(writerBuf);
+        var writer = MemWriter.CreateFromStackAllocatedSpan(writerBuf);
         Span<byte> buf = stackalloc byte[512];
         var i = 0;
         writer.WriteBlock(_buffer.AsReadOnlySpan(0, _keyBytesCount));
@@ -96,11 +96,11 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
 
         if (!KeyValueTr.FindFirstKey(writer.GetSpan())) return;
         goto nextKeyTest;
-    goNextKey:
+        goNextKey:
         if (!KeyValueTr.FindNextKey(new())) return;
         nextKeyTest:
         var key = KeyValueTr.GetKey(ref MemoryMarshal.GetReference(buf), buf.Length);
-        var commonUpToOffset = PackUnpack.SequenceEqualUpTo(writer.GetSpan(), key);
+        var commonUpToOffset = (uint)writer.GetSpan().CommonPrefixLength(key);
         if (commonUpToOffset < _keyBytesCount) return;
         i = 0;
         while (i < _constraints.Length)
@@ -120,26 +120,26 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
             goto prepareGoDown;
         }
 
-    recordMatch:
+        recordMatch:
         sortNativeStorage.StartNewItem();
         {
-            var keyReader = new SpanReader(key);
             for (var j = 0; j < orderers.Length; j++)
             {
                 var k = ordererIdx[j];
                 var start = k > 0 ? (uint)_constraints[k - 1].Offset : (uint)_keyBytesCount;
                 var end = (uint)_constraints[k].Offset;
-                orderers[j].CopyOrderedField(key.Slice((int)start, (int)(end - start)), ref sortNativeStorage.Writer);
+                var keyReader = MemReader.CreateFromPinnedSpan(key.Slice((int)start, (int)(end - start)));
+                orderers[j].CopyOrderedField(ref keyReader, ref sortNativeStorage.Writer);
             }
         }
 
         sortNativeStorage.FinishNewItem((ulong)KeyValueTr.GetKeyIndex());
         writer.UpdateBuffer(key);
         goto goNextKey;
-    prepareGoDown:
+        prepareGoDown:
         for (var j = i; j < _constraints.Length; j++) _constraints[j].Offset = -1;
         var offsetPrefix = i > 0 ? _constraints[i - 1].Offset : _keyBytesCount;
-        var reader = new SpanReader(key[offsetPrefix..]);
+        var reader = MemReader.CreateFromPinnedSpan(key[offsetPrefix..]);
         if (i < skipNextOn) skipNextOn = -1;
         goDown:
         var matchResult = _constraints[i].Constraint.Match(ref reader, _buffer);
@@ -168,55 +168,55 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         switch (_constraints[i].MatchType)
         {
             case IConstraint.MatchType.NoPrefix:
-                {
-                    goto goNextFast;
-                }
+            {
+                goto goNextFast;
+            }
             case IConstraint.MatchType.Prefix:
-                {
-                    goto goNextFast;
-                }
+            {
+                goto goNextFast;
+            }
             case IConstraint.MatchType.Exact:
+            {
+                writer.Reset();
+                writer.WriteBlock(key[..(i > 0 ? _constraints[i - 1].Offset : _keyBytesCount)]);
+                do
                 {
-                    writer.Reset();
-                    writer.WriteBlock(key[..(i > 0 ? _constraints[i - 1].Offset : _keyBytesCount)]);
-                    do
+                    _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
+                    _constraints[i].Offset = (int)writer.GetCurrentPosition();
+                    i++;
+                    if (i != _constraints.Length) continue;
+                    if (writer.GetSpan().SequenceCompareTo(key) < 0)
                     {
-                        _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
-                        _constraints[i].Offset = (int)writer.GetCurrentPosition();
-                        i++;
-                        if (i != _constraints.Length) continue;
-                        if (writer.GetSpan().SequenceCompareTo(key) < 0)
-                        {
-                            i--;
-                            goto goNextFast;
-                        }
-
-                        KeyValueTr.FindExactOrNextKey(writer.GetSpan());
-                        goto nextKeyTest;
-                    } while (_constraints[i].MatchType == IConstraint.MatchType.Exact);
-
-                    if (_constraints[i].MatchType == IConstraint.MatchType.Prefix)
-                    {
-                        _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
-                        if (writer.GetSpan().SequenceCompareTo(key) < 0)
-                        {
-                            i--;
-                            goto goNextFast;
-                        }
-                    }
-                    else
-                    {
-                        if (writer.GetSpan().SequenceCompareTo(key) < 0) goto goNextFast;
+                        i--;
+                        goto goNextFast;
                     }
 
-                    if (!KeyValueTr.FindExactOrNextKey(writer.GetSpan())) goto goNextFast;
+                    KeyValueTr.FindExactOrNextKey(writer.GetSpan());
                     goto nextKeyTest;
+                } while (_constraints[i].MatchType == IConstraint.MatchType.Exact);
+
+                if (_constraints[i].MatchType == IConstraint.MatchType.Prefix)
+                {
+                    _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
+                    if (writer.GetSpan().SequenceCompareTo(key) < 0)
+                    {
+                        i--;
+                        goto goNextFast;
+                    }
                 }
+                else
+                {
+                    if (writer.GetSpan().SequenceCompareTo(key) < 0) goto goNextFast;
+                }
+
+                if (!KeyValueTr.FindExactOrNextKey(writer.GetSpan())) goto goNextFast;
+                goto nextKeyTest;
+            }
             default:
                 throw new InvalidOperationException();
         }
 
-    goNextFast:
+        goNextFast:
         if (skipNextOn != -1)
         {
             i = skipNextOn - 2;
@@ -231,19 +231,19 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
                     i--;
                     continue;
                 default:
+                {
+                    var len = _constraints[i].Offset;
+                    if (len < 0)
                     {
-                        var len = _constraints[i].Offset;
-                        if (len < 0)
-                        {
-                            i--;
-                            continue;
-                        }
-
-                        writer.Reset();
-                        writer.WriteBlock(key[..len]);
-                        if (!KeyValueTr.FindLastKey(writer.GetSpan())) throw new InvalidOperationException();
-                        goto goNextKey;
+                        i--;
+                        continue;
                     }
+
+                    writer.Reset();
+                    writer.WriteBlock(key[..len]);
+                    if (!KeyValueTr.FindLastKey(writer.GetSpan())) throw new InvalidOperationException();
+                    goto goNextKey;
+                }
             }
         }
     }
@@ -300,7 +300,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     bool FindNextKey(bool first = false)
     {
         Span<byte> writerBuf = stackalloc byte[512];
-        var writer = new SpanWriter(writerBuf);
+        var writer = MemWriter.CreateFromStackAllocatedSpan(writerBuf);
         Span<byte> buf = stackalloc byte[512];
         var i = 0;
         if (first)
@@ -331,11 +331,11 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         }
 
         writer.UpdateBuffer(KeyValueTr.GetKey(ref MemoryMarshal.GetReference(writerBuf), writerBuf.Length));
-    goNextKey:
+        goNextKey:
         if (!KeyValueTr.FindNextKey(new())) return false;
         nextKeyTest:
         var key = KeyValueTr.GetKey(ref MemoryMarshal.GetReference(buf), buf.Length);
-        var commonUpToOffset = PackUnpack.SequenceEqualUpTo(writer.GetSpan(), key);
+        var commonUpToOffset = (uint)writer.GetSpan().CommonPrefixLength(key);
         if (commonUpToOffset < _keyBytesCount) return false;
         i = 0;
         while (i < _constraints.Length)
@@ -353,7 +353,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         if (i == _constraints.Length) return true;
         for (var j = i; j < _constraints.Length; j++) _constraints[j].Offset = -1;
         var offsetPrefix = i > 0 ? _constraints[i - 1].Offset : _keyBytesCount;
-        var reader = new SpanReader(key[offsetPrefix..]);
+        var reader = MemReader.CreateFromPinnedSpan(key[offsetPrefix..]);
         if (i < _skipNextOn) _skipNextOn = -1;
         goDown:
         var matchResult = _constraints[i].Constraint.Match(ref reader, _buffer);
@@ -382,55 +382,55 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         switch (_constraints[i].MatchType)
         {
             case IConstraint.MatchType.NoPrefix:
-                {
-                    goto goNextFast;
-                }
+            {
+                goto goNextFast;
+            }
             case IConstraint.MatchType.Prefix:
-                {
-                    goto goNextFast;
-                }
+            {
+                goto goNextFast;
+            }
             case IConstraint.MatchType.Exact:
+            {
+                writer.Reset();
+                writer.WriteBlock(key[..(i > 0 ? _constraints[i - 1].Offset : _keyBytesCount)]);
+                do
                 {
-                    writer.Reset();
-                    writer.WriteBlock(key[..(i > 0 ? _constraints[i - 1].Offset : _keyBytesCount)]);
-                    do
+                    _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
+                    _constraints[i].Offset = (int)writer.GetCurrentPosition();
+                    i++;
+                    if (i != _constraints.Length) continue;
+                    if (writer.GetSpan().SequenceCompareTo(key) < 0)
                     {
-                        _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
-                        _constraints[i].Offset = (int)writer.GetCurrentPosition();
-                        i++;
-                        if (i != _constraints.Length) continue;
-                        if (writer.GetSpan().SequenceCompareTo(key) < 0)
-                        {
-                            i--;
-                            goto goNextFast;
-                        }
-
-                        if (KeyValueTr.FindExactOrNextKey(writer.GetSpan())) return true;
-                        goto nextKeyTest;
-                    } while (_constraints[i].MatchType == IConstraint.MatchType.Exact);
-
-                    if (_constraints[i].MatchType == IConstraint.MatchType.Prefix)
-                    {
-                        _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
-                        if (writer.GetSpan().SequenceCompareTo(key) < 0)
-                        {
-                            i--;
-                            goto goNextFast;
-                        }
-                    }
-                    else
-                    {
-                        if (writer.GetSpan().SequenceCompareTo(key) < 0) goto goNextFast;
+                        i--;
+                        goto goNextFast;
                     }
 
-                    if (!KeyValueTr.FindExactOrNextKey(writer.GetSpan())) goto goNextFast;
+                    if (KeyValueTr.FindExactOrNextKey(writer.GetSpan())) return true;
                     goto nextKeyTest;
+                } while (_constraints[i].MatchType == IConstraint.MatchType.Exact);
+
+                if (_constraints[i].MatchType == IConstraint.MatchType.Prefix)
+                {
+                    _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
+                    if (writer.GetSpan().SequenceCompareTo(key) < 0)
+                    {
+                        i--;
+                        goto goNextFast;
+                    }
                 }
+                else
+                {
+                    if (writer.GetSpan().SequenceCompareTo(key) < 0) goto goNextFast;
+                }
+
+                if (!KeyValueTr.FindExactOrNextKey(writer.GetSpan())) goto goNextFast;
+                goto nextKeyTest;
+            }
             default:
                 throw new InvalidOperationException();
         }
 
-    goNextFast:
+        goNextFast:
         if (_skipNextOn != -1)
         {
             i = _skipNextOn - 2;
@@ -445,19 +445,19 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
                     i--;
                     continue;
                 default:
+                {
+                    var len = _constraints[i].Offset;
+                    if (len < 0)
                     {
-                        var len = _constraints[i].Offset;
-                        if (len < 0)
-                        {
-                            i--;
-                            continue;
-                        }
-
-                        writer.Reset();
-                        writer.WriteBlock(key[..len]);
-                        if (!KeyValueTr.FindLastKey(writer.GetSpan())) throw new InvalidOperationException();
-                        goto goNextKey;
+                        i--;
+                        continue;
                     }
+
+                    writer.Reset();
+                    writer.WriteBlock(key[..len]);
+                    if (!KeyValueTr.FindLastKey(writer.GetSpan())) throw new InvalidOperationException();
+                    goto goNextKey;
+                }
             }
         }
 
@@ -476,14 +476,17 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         }
     }
 
-    public virtual T CurrentInGather
+    public virtual unsafe T CurrentInGather
     {
         [SkipLocalsInit]
         get
         {
             Span<byte> keyBuffer = stackalloc byte[512];
             var keyBytes = KeyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
-            return (T)ItemLoader.CreateInstance(_transaction, keyBytes);
+            fixed (byte* _ = &keyBytes[0])
+            {
+                return (T)ItemLoader.CreateInstance(_transaction, keyBytes);
+            }
         }
     }
 
@@ -534,7 +537,7 @@ class RelationConstraintSecondaryKeyEnumerator<T> : RelationConstraintEnumerator
     readonly IRelationDbManipulator _manipulator;
 
     public RelationConstraintSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
-        StructList<byte> keyBytes, IRelationModificationCounter modificationCounter, int loaderIndex,
+        in MemWriter keyBytes, IRelationModificationCounter modificationCounter, int loaderIndex,
         ConstraintInfo[] constraints, uint secondaryKeyIndex, IRelationDbManipulator manipulator) : base(tr,
         relationInfo, keyBytes, modificationCounter, loaderIndex, constraints)
     {
@@ -604,7 +607,8 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     }
 
     public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, byte[] keyBytes,
-        IRelationModificationCounter modificationCounter, int loaderIndex) : this(tr, keyBytes, modificationCounter, relationInfo.ItemLoaderInfos[loaderIndex])
+        IRelationModificationCounter modificationCounter, int loaderIndex) : this(tr, keyBytes, modificationCounter,
+        relationInfo.ItemLoaderInfos[loaderIndex])
     {
     }
 
@@ -1224,8 +1228,8 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
 
         _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
         Span<byte> keyBuffer = stackalloc byte[512];
-        var reader = new SpanReader(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length)
-            .Slice(KeyBytes.Length));
+        var reader = MemReader.CreateFromPinnedSpan(
+            _keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length)[KeyBytes.Length..]);
         key = KeyReader!(ref reader, null);
         return true;
     }

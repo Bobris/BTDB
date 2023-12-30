@@ -49,7 +49,7 @@ public class DBIndirect<T> : IIndirect<T> where T : class
     [NotStored]
     public object? ValueAsObject => _value;
 
-    public static void SaveImpl(ref SpanWriter writer, IWriterCtx writerCtx, object obj)
+    public static void SaveImpl(ref MemWriter writer, IWriterCtx writerCtx, object obj)
     {
         if (obj is DBIndirect<T> ind)
         {
@@ -72,7 +72,7 @@ public class DBIndirect<T> : IIndirect<T> where T : class
         writerCtx.WriteNativeObjectPreventInline(ref writer, obj);
     }
 
-    public static IIndirect<T> LoadImpl(ref SpanReader reader, IReaderCtx readerCtx)
+    public static IIndirect<T> LoadImpl(ref MemReader reader, IReaderCtx readerCtx)
     {
         var oid = reader.ReadVInt64();
         return new DBIndirect<T>(((IDBReaderCtx)readerCtx).GetTransaction(), (ulong)oid);

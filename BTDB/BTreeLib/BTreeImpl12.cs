@@ -285,7 +285,7 @@ public class BTreeImpl12
         return node;
     }
 
-    internal void BuildTree(RootNode12 rootNode, long keyCount, ref SpanReader reader, BuildTreeCallback generator)
+    internal void BuildTree(RootNode12 rootNode, long keyCount, ref MemReader reader, BuildTreeCallback generator)
     {
         Dereference(rootNode.Root);
         if (keyCount == 0)
@@ -386,14 +386,14 @@ public class BTreeImpl12
         return stackItem._node;
     }
 
-    IntPtr BuildTreeNode(long keyCount, ref SpanReader reader, BuildTreeCallback generator)
+    IntPtr BuildTreeNode(long keyCount, ref MemReader reader, BuildTreeCallback generator)
     {
         var leafs = (keyCount + MaxChildren - 1) / MaxChildren;
         var order = 0L;
         var done = 0L;
         var values = new byte[MaxChildren * 12];
         var keys = new ByteBuffer[MaxChildren];
-        return BuildBranchNode(leafs, ref reader, (ref SpanReader reader) =>
+        return BuildBranchNode(leafs, ref reader, (ref MemReader reader) =>
         {
             order++;
             var reach = keyCount * order / leafs;
@@ -420,16 +420,16 @@ public class BTreeImpl12
         });
     }
 
-    delegate IntPtr BuildBranchNodeGenerator(ref SpanReader reader);
+    delegate IntPtr BuildBranchNodeGenerator(ref MemReader reader);
 
-    IntPtr BuildBranchNode(long count, ref SpanReader reader, BuildBranchNodeGenerator generator)
+    IntPtr BuildBranchNode(long count, ref MemReader reader, BuildBranchNodeGenerator generator)
     {
         if (count == 1) return generator(ref reader);
         var children = (count + MaxChildren - 1) / MaxChildren;
         var order = 0L;
         var done = 0L;
         var nodes = new IntPtr[MaxChildren];
-        return BuildBranchNode(children, ref reader, (ref SpanReader reader) =>
+        return BuildBranchNode(children, ref reader, (ref MemReader reader) =>
         {
             order++;
             var reach = count * order / children;

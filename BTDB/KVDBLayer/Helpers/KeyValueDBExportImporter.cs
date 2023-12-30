@@ -1,9 +1,11 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using BTDB.Buffer;
+using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 
@@ -20,15 +22,9 @@ public static class KeyValueDBExportImporter
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (!stream.CanWrite) throw new ArgumentException("stream must be writeable", nameof(stream));
         var keyValueCount = transaction.GetKeyValueCount();
+        var valueReader = new MemReader();
         var tempBuf = new byte[16];
-        tempBuf[0] = (byte)'B';
-        tempBuf[1] = (byte)'T';
-        tempBuf[2] = (byte)'D';
-        tempBuf[3] = (byte)'B';
-        tempBuf[4] = (byte)'E';
-        tempBuf[5] = (byte)'X';
-        tempBuf[6] = (byte)'P';
-        tempBuf[7] = (byte)'2';
+        "BTDBEXP2"u8.CopyTo(tempBuf);
         PackUnpack.PackInt64LE(tempBuf, 8, keyValueCount);
         await stream.WriteAsync(tempBuf.AsMemory(0, 16));
         transaction.FindFirstKey(new());
@@ -38,18 +34,21 @@ public static class KeyValueDBExportImporter
             PackUnpack.PackInt32LE(tempBuf, 0, key.Length);
             await stream.WriteAsync(tempBuf.AsMemory(0, 4));
             await stream.WriteAsync(key);
-            var value = transaction.GetValueAsMemory();
+            transaction.GetValue(ref valueReader);
+            var value = valueReader.AsReadOnlyMemory();
             PackUnpack.PackInt32LE(tempBuf, 0, value.Length);
             await stream.WriteAsync(tempBuf.AsMemory(0, 4));
             await stream.WriteAsync(value);
             transaction.FindNextKey(new());
         }
+
         var ulongCount = transaction.GetUlongCount();
         if (transaction.GetCommitUlong() != 0 || ulongCount != 0)
         {
             PackUnpack.PackUInt64LE(tempBuf, 0, transaction.GetCommitUlong());
             await stream.WriteAsync(tempBuf.AsMemory(0, 8));
         }
+
         if (ulongCount != 0)
         {
             PackUnpack.PackUInt32LE(tempBuf, 0, ulongCount);
@@ -75,14 +74,7 @@ public static class KeyValueDBExportImporter
         if (!stream.CanWrite) throw new ArgumentException("stream must be writeable", nameof(stream));
         var keyValueCount = transaction.GetKeyValueCount();
         var tempBuf = new byte[16];
-        tempBuf[0] = (byte)'B';
-        tempBuf[1] = (byte)'T';
-        tempBuf[2] = (byte)'D';
-        tempBuf[3] = (byte)'B';
-        tempBuf[4] = (byte)'E';
-        tempBuf[5] = (byte)'X';
-        tempBuf[6] = (byte)'P';
-        tempBuf[7] = (byte)'2';
+        "BTDBEXP2"u8.CopyTo(tempBuf);
         PackUnpack.PackInt64LE(tempBuf, 8, keyValueCount);
         stream.Write(tempBuf, 0, 16);
         transaction.FindFirstKey(new ReadOnlySpan<byte>());
@@ -99,12 +91,14 @@ public static class KeyValueDBExportImporter
             stream.Write(value);
             transaction.FindNextKey(new ReadOnlySpan<byte>());
         }
+
         var ulongCount = transaction.GetUlongCount();
         if (transaction.GetCommitUlong() != 0 || ulongCount != 0)
         {
             PackUnpack.PackUInt64LE(tempBuf, 0, transaction.GetCommitUlong());
             stream.Write(tempBuf, 0, 8);
         }
+
         if (ulongCount != 0)
         {
             PackUnpack.PackUInt32LE(tempBuf, 0, ulongCount);
@@ -117,7 +111,7 @@ public static class KeyValueDBExportImporter
         }
     }
 
-        /// <summary>
+    /// <summary>
     /// Reads and inserts all key value pairs from stream
     /// </summary>
     /// <param name="transaction">transaction where to import all data</param>
@@ -130,10 +124,11 @@ public static class KeyValueDBExportImporter
         var tempBuf = new byte[4096];
         var tempBuf2 = new byte[4096];
         if (await stream.ReadAsync(tempBuf.AsMemory(0, 16)) != 16) throw new EndOfStreamException();
-        if (tempBuf[0] != 'B' || tempBuf[1] != 'T' || tempBuf[2] != 'D' || tempBuf[3] != 'B' || tempBuf[4] != 'E' || tempBuf[5] != 'X' || tempBuf[6] != 'P' || tempBuf[7] != '2')
+        if (!tempBuf.AsSpan()[..8].SequenceEqual("BTDBEXP2"u8))
         {
             throw new BTDBException("Invalid header (it should Start with BTDBEXP2)");
         }
+
         var keyValuePairs = PackUnpack.UnpackInt64LE(tempBuf, 8);
         if (keyValuePairs < 0) throw new BTDBException("Negative number of key value pairs");
         for (var kv = 0; kv < keyValuePairs; kv++)
@@ -150,6 +145,7 @@ public static class KeyValueDBExportImporter
             if (await stream.ReadAsync(tempBuf2.AsMemory(0, valueSize)) != valueSize) throw new EndOfStreamException();
             transaction.CreateOrUpdateKeyValue(tempBuf.AsSpan(0, keySize), tempBuf2.AsSpan(0, valueSize));
         }
+
         if (await stream.ReadAsync(tempBuf.AsMemory(0, 8)) == 8)
         {
             transaction.SetCommitUlong(PackUnpack.UnpackUInt64LE(tempBuf, 0));
@@ -178,10 +174,11 @@ public static class KeyValueDBExportImporter
         var tempBuf = new byte[4096];
         var tempBuf2 = new byte[4096];
         if (stream.Read(tempBuf, 0, 16) != 16) throw new EndOfStreamException();
-        if (tempBuf[0] != 'B' || tempBuf[1] != 'T' || tempBuf[2] != 'D' || tempBuf[3] != 'B' || tempBuf[4] != 'E' || tempBuf[5] != 'X' || tempBuf[6] != 'P' || tempBuf[7] != '2')
+        if (!tempBuf.AsSpan()[..8].SequenceEqual("BTDBEXP2"u8))
         {
             throw new BTDBException("Invalid header (it should Start with BTDBEXP2)");
         }
+
         var keyValuePairs = PackUnpack.UnpackInt64LE(tempBuf, 8);
         if (keyValuePairs < 0) throw new BTDBException("Negative number of key value pairs");
         for (var kv = 0; kv < keyValuePairs; kv++)
@@ -198,6 +195,7 @@ public static class KeyValueDBExportImporter
             if (stream.Read(tempBuf2, 0, valueSize) != valueSize) throw new EndOfStreamException();
             transaction.CreateOrUpdateKeyValue(tempBuf.AsSpan(0, keySize), tempBuf2.AsSpan(0, valueSize));
         }
+
         if (stream.Read(tempBuf, 0, 8) == 8)
         {
             transaction.SetCommitUlong(PackUnpack.UnpackUInt64LE(tempBuf, 0));

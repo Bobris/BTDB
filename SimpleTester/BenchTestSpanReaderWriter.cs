@@ -9,7 +9,8 @@ namespace SimpleTester;
 [SimpleJob(RuntimeMoniker.HostProcess, warmupCount: 1, targetCount: 1, launchCount: 1)]
 public class BenchTestSpanReaderWriter
 {
-    [Params(1,2,3,4,5,6,7,8,9,10,20,2000,2015,34567)] public int N;
+    [Params(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 2000, 2015, 34567)]
+    public int N;
 
     string _str = "";
     Memory<byte> _buf;
@@ -21,7 +22,7 @@ public class BenchTestSpanReaderWriter
         while (_str.Length < N)
             _str += "ABCDefgh1234!@#$";
         _str = _str[..N];
-        SpanWriter writer = new();
+        MemWriter writer = new();
         writer.WriteStringOrdered(_str);
         _buf = writer.GetPersistentMemoryAndReset();
     }
@@ -36,9 +37,12 @@ public class BenchTestSpanReaderWriter
     */
 
     [Benchmark]
-    public string? Faster()
+    public unsafe string? Faster()
     {
-        SpanReader reader = new(_buf);
-        return reader.ReadStringOrdered();
+        fixed (void* _ = _buf.Span)
+        {
+            var reader = MemReader.CreateFromPinnedSpan(_buf.Span);
+            return reader.ReadStringOrdered();
+        }
     }
 }

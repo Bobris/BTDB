@@ -54,6 +54,7 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
             {
                 return middle * 2 + 1;
             }
+
             if (result < 0)
             {
                 right = middle;
@@ -63,6 +64,7 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
                 left = middle + 1;
             }
         }
+
         return left * 2;
     }
 
@@ -84,10 +86,12 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
                 ctx.Node1 = leaf;
                 ctx.Update = true;
             }
+
             leaf._keyValues[index] = m;
             ctx.Stack.Add(new NodeIdxPair { Node = leaf, Idx = index });
             return;
         }
+
         index = index / 2;
         ctx.Created = true;
         ctx.KeyIndex = index;
@@ -108,9 +112,11 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
             {
                 _keyValues = newKeyValues;
             }
+
             ctx.Stack.Add(new NodeIdxPair { Node = leaf, Idx = index });
             return;
         }
+
         ctx.Split = true;
         var keyCountLeft = (_keyValues.Length + 1) / 2;
         var keyCountRight = _keyValues.Length + 1 - keyCountLeft;
@@ -132,7 +138,8 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
             Array.Copy(_keyValues, 0, leftNode._keyValues, 0, keyCountLeft);
             Array.Copy(_keyValues, keyCountLeft, rightNode._keyValues, 0, index - keyCountLeft);
             rightNode._keyValues[index - keyCountLeft] = NewMemberFromCtx(ref ctx);
-            Array.Copy(_keyValues, index, rightNode._keyValues, index - keyCountLeft + 1, keyCountLeft + keyCountRight - 1 - index);
+            Array.Copy(_keyValues, index, rightNode._keyValues, index - keyCountLeft + 1,
+                keyCountLeft + keyCountRight - 1 - index);
             ctx.Stack.Add(new NodeIdxPair { Node = rightNode, Idx = index - keyCountLeft });
             ctx.SplitInRight = true;
         }
@@ -152,6 +159,7 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
             ctx.Node = leaf;
             ctx.Update = true;
         }
+
         leaf._keyValues[index] = m;
     }
 
@@ -169,6 +177,7 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
             result = FindResult.Previous;
             idx = (int)((uint)idx / 2) - 1;
         }
+
         stack.Add(new NodeIdxPair { Node = this, Idx = idx });
         keyIndex = idx;
         return result;
@@ -218,6 +227,7 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
                 left = middle + 1;
             }
         }
+
         currentKey = _keyValues[left].Key;
         result = prefix.SequenceCompareTo(currentKey.AsSpan(0, Math.Min(currentKey.Length, prefix.Length)));
         if (result < 0) left--;
@@ -248,12 +258,14 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
     {
         var newKeyValues = new BTreeLeafMember[_keyValues.Length + firstKeyIndex - lastKeyIndex - 1];
         Array.Copy(_keyValues, 0, newKeyValues, 0, (int)firstKeyIndex);
-        Array.Copy(_keyValues, (int)lastKeyIndex + 1, newKeyValues, (int)firstKeyIndex, newKeyValues.Length - (int)firstKeyIndex);
+        Array.Copy(_keyValues, (int)lastKeyIndex + 1, newKeyValues, (int)firstKeyIndex,
+            newKeyValues.Length - (int)firstKeyIndex);
         if (TransactionId == transactionId)
         {
             _keyValues = newKeyValues;
             return this;
         }
+
         return new BTreeLeaf(transactionId, newKeyValues);
     }
 
@@ -267,6 +279,7 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
             _keyValues = newKeyValues;
             return this;
         }
+
         return new BTreeLeaf(transactionId, newKeyValues);
     }
 
@@ -287,6 +300,14 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
 
     public void SetMemberValue(int idx, in ReadOnlySpan<byte> value)
     {
-        _keyValues[idx].Value = value.ToArray();
+        if (value.Length == 0)
+        {
+            _keyValues[idx].Value = Array.Empty<byte>();
+            return;
+        }
+
+        var valueAsArray = GC.AllocateUninitializedArray<byte>(value.Length);
+        value.CopyTo(valueAsArray);
+        _keyValues[idx].Value = valueAsArray;
     }
 }

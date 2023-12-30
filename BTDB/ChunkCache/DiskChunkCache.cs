@@ -20,18 +20,25 @@ public class DiskChunkCache : IChunkCache, IDisposable
     readonly long _cacheCapacity;
     readonly int _sizeLimitOfOneValueFile;
     readonly int _maxValueFileCount;
-    readonly ConcurrentDictionary<ByteStructs.Key20, CacheValue> _cache = new ConcurrentDictionary<ByteStructs.Key20, CacheValue>(new ByteStructs.Key20EqualityComparer());
+
+    readonly ConcurrentDictionary<ByteStructs.Key20, CacheValue> _cache =
+        new ConcurrentDictionary<ByteStructs.Key20, CacheValue>(new ByteStructs.Key20EqualityComparer());
+
     readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
     uint _cacheValueFileId;
     IFileCollectionFile? _cacheValueFile;
-    ISpanWriter? _cacheValueWriter;
+    IMemWriter? _cacheValueWriter;
     long _fileGeneration;
     Task? _compactionTask;
     internal Task? CurrentCompactionTask() => _compactionTask;
     CancellationTokenSource? _compactionCts;
     readonly object _startNewValueFileLocker = new object();
 
-    internal static readonly byte[] MagicStartOfFile = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'C', (byte)'h', (byte)'u', (byte)'n', (byte)'k', (byte)'C', (byte)'a', (byte)'c', (byte)'h', (byte)'e', (byte)'1' };
+    internal static readonly byte[] MagicStartOfFile =
+    {
+        (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'C', (byte)'h', (byte)'u', (byte)'n', (byte)'k', (byte)'C',
+        (byte)'a', (byte)'c', (byte)'h', (byte)'e', (byte)'1'
+    };
 
     struct CacheValue
     {
@@ -44,7 +51,8 @@ public class DiskChunkCache : IChunkCache, IDisposable
     public DiskChunkCache(IFileCollection fileCollection, int keySize, long cacheCapacity)
     {
         if (keySize != 20) throw new NotSupportedException("Only keySize of 20 (Useful for SHA1) is supported for now");
-        if (cacheCapacity < 1000) throw new ArgumentOutOfRangeException(nameof(cacheCapacity), "Minimum for cache capacity is 1kB");
+        if (cacheCapacity < 1000)
+            throw new ArgumentOutOfRangeException(nameof(cacheCapacity), "Minimum for cache capacity is 1kB");
         _fileCollection = fileCollection;
         _keySize = keySize;
         _cacheCapacity = cacheCapacity;
@@ -59,6 +67,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
             _maxValueFileCount = 8;
             _sizeLimitOfOneValueFile = (int)(cacheCapacity / 8);
         }
+
         try
         {
             LoadContent();
@@ -73,16 +82,17 @@ public class DiskChunkCache : IChunkCache, IDisposable
         {
             _fileCollection.GetFile(collectionFile).Remove();
         }
+
         _fileInfos.Clear();
         _fileGeneration = 0;
     }
 
     void LoadContent()
     {
-        SpanReader reader;
+        MemReader reader;
         foreach (var collectionFile in _fileCollection.Enumerate())
         {
-            reader = new SpanReader(collectionFile.GetExclusiveReader());
+            reader = new MemReader(collectionFile.GetExclusiveReader());
             if (!reader.CheckMagic(MagicStartOfFile)) continue; // Don't touch files alien files
             var fileType = (DiskChunkFileType)reader.ReadUInt8();
             var fileInfo = fileType switch
@@ -94,11 +104,12 @@ public class DiskChunkCache : IChunkCache, IDisposable
             if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
             _fileInfos.TryAdd(collectionFile.Index, fileInfo);
         }
+
         var hashFilePair =
             _fileInfos.Where(f => f.Value.FileType == DiskChunkFileType.HashIndex).OrderByDescending(
                 f => f.Value.Generation).FirstOrDefault();
         if (hashFilePair.Value == null) return;
-        reader = new SpanReader(_fileCollection.GetFile(hashFilePair.Key).GetExclusiveReader());
+        reader = new MemReader(_fileCollection.GetFile(hashFilePair.Key).GetExclusiveReader());
         FileHashIndex.SkipHeader(ref reader);
         if (((FileHashIndex)hashFilePair.Value).KeySize != _keySize) return;
         var keyBuf = ByteBuffer.NewSync(new byte[_keySize]);
@@ -110,7 +121,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
             cacheValue.FileId = reader.ReadVUInt32();
             cacheValue.AccessRate = reader.ReadVUInt32();
             cacheValue.ContentLength = reader.ReadVUInt32();
-            reader.ReadBlock(keyBuf);
+            reader.ReadBlock(keyBuf.AsSyncSpan());
             _cache.TryAdd(new ByteStructs.Key20(keyBuf), cacheValue);
         }
     }
@@ -124,24 +135,26 @@ public class DiskChunkCache : IChunkCache, IDisposable
         {
             return;
         }
+
         cacheValue.AccessRate = 1;
-    again:
+        again:
         var writer = _cacheValueWriter;
         while (writer == null || writer.GetCurrentPositionWithoutWriter() + content.Length > _sizeLimitOfOneValueFile)
         {
             StartNewValueFile();
             writer = _cacheValueWriter;
         }
+
         lock (writer)
         {
             if (writer != _cacheValueWriter) goto again;
             cacheValue.FileId = _cacheValueFileId;
             cacheValue.FileOfs = (uint)writer.GetCurrentPositionWithoutWriter();
-            var trueWriter = new SpanWriter(writer);
+            var trueWriter = new MemWriter(writer);
             trueWriter.WriteBlock(content);
-            trueWriter.Sync();
-            _cacheValueFile!.Flush();
+            trueWriter.Flush();
         }
+
         cacheValue.ContentLength = (uint)content.Length;
         _cache.TryAdd(k, cacheValue);
     }
@@ -164,13 +177,14 @@ public class DiskChunkCache : IChunkCache, IDisposable
             {
                 SetNewValueFile();
             }
-            var writer = new SpanWriter(_cacheValueWriter!);
+
+            var writer = new MemWriter(_cacheValueWriter!);
             fileInfo.WriteHeader(ref writer);
-            writer.Sync();
+            writer.Flush();
             _fileInfos.TryAdd(_cacheValueFileId, fileInfo);
             _compactionCts = new CancellationTokenSource();
             _compactionTask = Task.Factory.StartNew(CompactionCore, _compactionCts!.Token,
-                                                    TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
     }
 
@@ -213,6 +227,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
             accessRateRunningTotal += accessRate;
             usage[cacheValue.FileId] = accessRateRunningTotal;
         }
+
         var usageList = new List<RateFilePair>();
         var fileIdsToRemove = new StructList<uint>();
         foreach (var fileInfo in _fileInfos)
@@ -224,8 +239,10 @@ public class DiskChunkCache : IChunkCache, IDisposable
                 fileIdsToRemove.Add(fileInfo.Key);
                 continue;
             }
+
             usageList.Add(new RateFilePair(accessRate, fileInfo.Key));
         }
+
         usageList.Sort((a, b) => a.AccessRate > b.AccessRate ? -1 : a.AccessRate < b.AccessRate ? 1 : 0);
         while (usageList.Count >= _maxValueFileCount)
         {
@@ -237,6 +254,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
             fileIdsToRemove.Add(fileId);
             usageList.RemoveAt(usageList.Count - 1);
         }
+
         FlushCurrentValueFile();
         StoreHashIndex();
         foreach (var fileId in fileIdsToRemove)
@@ -266,6 +284,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
                 frequencies.Add(itemPair.Value.AccessRate);
             }
         }
+
         var preserveRate = frequencies.OrderByDescending(r => r).Skip(frequencies.Count / 5).FirstOrDefault();
         foreach (var itemPair in _cache)
         {
@@ -275,33 +294,40 @@ public class DiskChunkCache : IChunkCache, IDisposable
                 {
                     var cacheValue = itemPair.Value;
                     var content = new byte[cacheValue.ContentLength];
-                    _fileCollection.GetFile(cacheValue.FileId).RandomRead(content.AsSpan(0, (int)cacheValue.ContentLength),
-                                                                          cacheValue.FileOfs, true);
+                    _fileCollection.GetFile(cacheValue.FileId).RandomRead(
+                        content.AsSpan(0, (int)cacheValue.ContentLength),
+                        cacheValue.FileOfs, true);
                     var writer = _cacheValueWriter;
                     if (writer == null)
                     {
                         goto remove;
                     }
+
                     lock (writer)
                     {
                         if (writer != _cacheValueWriter)
                         {
                             goto remove;
                         }
-                        if (writer.GetCurrentPositionWithoutWriter() + cacheValue.ContentLength > _sizeLimitOfOneValueFile)
+
+                        if (writer.GetCurrentPositionWithoutWriter() + cacheValue.ContentLength >
+                            _sizeLimitOfOneValueFile)
                         {
                             goto remove;
                         }
+
                         cacheValue.FileId = _cacheValueFileId;
                         cacheValue.FileOfs = (uint)writer.GetCurrentPositionWithoutWriter();
-                        var trueWriter = new SpanWriter(writer);
+                        var trueWriter = new MemWriter(writer);
                         trueWriter.WriteBlock(content);
-                        trueWriter.Sync();
+                        trueWriter.Flush();
                     }
+
                     _cache.TryUpdate(itemPair.Key, cacheValue, itemPair.Value);
                     continue;
                 }
-            remove:
+
+                remove:
                 _cache.TryRemove(itemPair.Key);
             }
         }
@@ -358,6 +384,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
         {
             // It is better to return nothing than throw exception
         }
+
         tcs.SetResult(ByteBuffer.NewEmpty());
         return tcs.Task;
     }
@@ -366,7 +393,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
     {
         var res = new StringBuilder();
         res.AppendFormat("Files {0} FileInfos {1} FileGeneration {2} Cached items {3}{4}", _fileCollection.GetCount(),
-                         _fileInfos.Count, _fileGeneration, _cache.Count, Environment.NewLine);
+            _fileInfos.Count, _fileGeneration, _cache.Count, Environment.NewLine);
         var totalSize = 0UL;
         var totalControlledSize = 0UL;
         foreach (var fileCollectionFile in _fileCollection.Enumerate())
@@ -377,17 +404,18 @@ public class DiskChunkCache : IChunkCache, IDisposable
             if (fileInfo == null)
             {
                 res.AppendFormat("{0} Size: {1} Unknown to cache{2}", fileCollectionFile.Index,
-                                 size, Environment.NewLine);
+                    size, Environment.NewLine);
             }
             else
             {
                 res.AppendFormat("{0} Size: {1} Type: {2} {3}", fileCollectionFile.Index,
-                                 size, fileInfo.FileType, Environment.NewLine);
+                    size, fileInfo.FileType, Environment.NewLine);
                 totalControlledSize += size;
             }
         }
+
         res.AppendFormat("TotalSize {0} TotalControlledSize {1} Limit {2}{3}", totalSize, totalControlledSize,
-                         _cacheCapacity, Environment.NewLine);
+            _cacheCapacity, Environment.NewLine);
         Debug.Assert(totalControlledSize <= (ulong)_cacheCapacity);
         return res.ToString();
     }
@@ -407,7 +435,7 @@ public class DiskChunkCache : IChunkCache, IDisposable
         RemoveAllHashIndexAndUnknownFiles();
         var file = _fileCollection.AddFile("chi");
         var writerController = file.GetExclusiveAppenderWriter();
-        var writer = new SpanWriter(writerController);
+        var writer = new MemWriter(writerController);
         var keyCount = _cache.Count;
         var fileInfo = new FileHashIndex(AllocNewFileGeneration(), _keySize, keyCount);
         _fileInfos.TryAdd(file.Index, fileInfo);
@@ -422,8 +450,9 @@ public class DiskChunkCache : IChunkCache, IDisposable
             writer.WriteVUInt32(cachePair.Value.ContentLength);
             writer.WriteBlock(keyBuf);
         }
+
         writer.WriteVUInt32(0); // Zero FileOfs as End of file mark
-        writer.Sync();
+        writer.Flush();
         file.HardFlushTruncateSwitchToDisposedMode();
     }
 

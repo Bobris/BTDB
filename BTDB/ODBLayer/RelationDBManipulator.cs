@@ -64,26 +64,26 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         _modificationCounter++;
     }
 
-    ReadOnlySpan<byte> ValueBytes(T obj, scoped ref SpanWriter writer)
+    ReadOnlySpan<byte> ValueBytes(T obj, scoped ref MemWriter writer)
     {
         writer.WriteVUInt32(_relationInfo.ClientTypeVersion);
         _relationInfo.ValueSaver(_transaction, ref writer, obj);
         return writer.GetPersistentSpanAndReset();
     }
 
-    ReadOnlySpan<byte> KeyBytes(T obj, scoped ref SpanWriter writer, out int lenOfPkWoInKeyValues)
+    ReadOnlySpan<byte> KeyBytes(T obj, scoped ref MemWriter writer, out int lenOfPkWoInKeyValues)
     {
         WriteRelationPKPrefix(ref writer);
         lenOfPkWoInKeyValues = _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj);
         return writer.GetPersistentSpanAndReset();
     }
 
-    public void WriteRelationPKPrefix(ref SpanWriter writer)
+    public void WriteRelationPKPrefix(ref MemWriter writer)
     {
         writer.WriteBlock(_relationInfo.Prefix);
     }
 
-    public void WriteRelationSKPrefix(ref SpanWriter writer, uint remappedSecondaryKeyIndex)
+    public void WriteRelationSKPrefix(ref MemWriter writer, uint remappedSecondaryKeyIndex)
     {
         writer.WriteBlock(_relationInfo.PrefixSecondary);
         writer.WriteUInt8((byte)remappedSecondaryKeyIndex);
@@ -96,101 +96,13 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
     readonly bool _hasSecondaryIndexes;
 
-    class SerializationCallbacks : IInternalSerializationCallbacks
-    {
-        public readonly ContinuousMemoryBlockWriter Metadata = new ContinuousMemoryBlockWriter();
-        public readonly ContinuousMemoryBlockWriter Data = new ContinuousMemoryBlockWriter();
-
-        public void MetadataCreateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-        {
-            var writer = new SpanWriter(Metadata);
-            writer.WriteByteArray(key);
-            writer.WriteByteArray(value);
-            writer.Sync();
-        }
-
-        public void CreateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-        {
-            var writer = new SpanWriter(Data);
-            if (value.IsEmpty)
-            {
-                writer.WriteUInt8((byte)SerializationCommand.CreateKey);
-                writer.WriteByteArray(key);
-            }
-            else
-            {
-                writer.WriteUInt8((byte)SerializationCommand.CreateKeyValue);
-                writer.WriteByteArray(key);
-                writer.WriteByteArray(value);
-            }
-
-            writer.Sync();
-        }
-    }
-
-    SerializationCallbacks? _serializationCallbacks;
-
-    public void SerializeInsert(ref SpanWriter writer, T obj)
-    {
-        Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
-
-        _transaction.SetSerializationCallbacks(_serializationCallbacks ??= new SerializationCallbacks());
-        writer.WriteUInt8((byte)SerializationCommand.CreateKeyValue);
-        var start = writer.StartWriteByteArray();
-        WriteRelationPKPrefix(ref writer);
-        _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj);
-        writer.FinishWriteByteArray(start);
-        start = writer.StartWriteByteArray();
-        writer.WriteVUInt32(_relationInfo.ClientTypeVersion);
-        _relationInfo.ValueSaver(_transaction, ref writer, obj);
-        writer.FinishWriteByteArray(start);
-
-        if (_hasSecondaryIndexes)
-        {
-            foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
-            {
-                writer.WriteUInt8((byte)SerializationCommand.CreateKey);
-                start = writer.StartWriteByteArray();
-                WriteRelationSKPrefix(ref writer, sk.Key);
-                var keySaver = _relationInfo.GetSecondaryKeysKeySaver(sk.Key);
-                keySaver(_transaction, ref writer, obj);
-                writer.FinishWriteByteArray(start);
-            }
-        }
-
-        _transaction.SetSerializationCallbacks(null);
-        if (_serializationCallbacks!.Metadata.GetCurrentPositionWithoutWriter() > 0 ||
-            _serializationCallbacks.Data.GetCurrentPositionWithoutWriter() > 0)
-        {
-            var toCreate = _serializationCallbacks!.Metadata.GetByteBuffer();
-            _serializationCallbacks!.Metadata.ResetAndFreeMemory();
-            _kvtr.Owner.StartWritingTransaction().AsTask().ContinueWith(task =>
-            {
-                var tr = task.Result;
-                var reader = new SpanReader(toCreate);
-                while (!reader.Eof)
-                {
-                    var key = reader.ReadByteArrayAsSpan();
-                    var value = reader.ReadByteArrayAsSpan();
-                    tr.CreateOrUpdateKeyValue(key, value);
-                }
-
-                ((ObjectDB)_transaction.Owner).CommitLastObjIdAndDictId(tr);
-                tr.Commit();
-            }, TaskContinuationOptions.ExecuteSynchronously);
-        }
-
-        writer.WriteBlock(_serializationCallbacks.Data.GetSpan());
-        _serializationCallbacks.Data.Reset();
-    }
-
     [SkipLocalsInit]
     public bool Insert(T obj)
     {
         Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
         Span<byte> buf = stackalloc byte[512];
-        var writer = new SpanWriter(buf);
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
 
         if (lenOfPkWoInKeyValues > 0)
@@ -210,7 +122,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         if (_hasSecondaryIndexes)
         {
-            writer = new SpanWriter(buf);
+            writer = MemWriter.CreateFromStackAllocatedSpan(buf);
             AddIntoSecondaryIndexes(obj, ref writer);
         }
 
@@ -219,12 +131,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
-    public bool Upsert(T obj)
+    public unsafe bool Upsert(T obj)
     {
         Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-        Span<byte> buf = stackalloc byte[512];
-        var writer = new SpanWriter(buf);
+        Span<byte> buf = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
         var valueBytes = ValueBytes(obj, ref writer);
 
@@ -242,14 +154,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         if (update)
         {
-            var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
+            var oldValueBytes = _kvtr.GetClonedValue(ref Unsafe.AsRef<byte>((void*)writer.Current),
+                (int)(writer.End - writer.Current));
 
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
             {
                 Span<byte> buf2 = stackalloc byte[512];
-                var writer2 = new SpanWriter(buf2);
+                var writer2 = MemWriter.CreateFromStackAllocatedSpan(buf2);
                 if (UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2))
                     MarkModification();
             }
@@ -261,7 +174,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         if (_hasSecondaryIndexes)
         {
-            writer = new SpanWriter(buf);
+            writer = MemWriter.CreateFromStackAllocatedSpan(buf);
             AddIntoSecondaryIndexes(obj, ref writer);
         }
 
@@ -275,8 +188,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-        Span<byte> buf = stackalloc byte[512];
-        var writer = new SpanWriter(buf);
+        Span<byte> buf = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
 
         var update = false;
@@ -349,12 +262,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
-    public bool ShallowUpsert(T obj)
+    public unsafe bool ShallowUpsert(T obj)
     {
         Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-        Span<byte> buf = stackalloc byte[512];
-        var writer = new SpanWriter(buf);
+        Span<byte> buf = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
         var valueBytes = ValueBytes(obj, ref writer);
 
@@ -376,12 +289,13 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             if (update)
             {
                 var oldValueBytes =
-                    _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
+                    _kvtr.GetClonedValue(ref Unsafe.AsRef<byte>((void*)writer.Current),
+                        (int)(writer.End - writer.Current));
 
                 _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
                 Span<byte> buf2 = stackalloc byte[512];
-                var writer2 = new SpanWriter(buf2);
+                var writer2 = MemWriter.CreateFromStackAllocatedSpan(buf2);
                 if (UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2))
                     MarkModification();
 
@@ -389,7 +303,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             }
 
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
-            writer = new SpanWriter(buf);
+            writer = MemWriter.CreateFromStackAllocatedSpan(buf);
             AddIntoSecondaryIndexes(obj, ref writer);
         }
         else
@@ -417,12 +331,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
-    public void Update(T obj)
+    public unsafe void Update(T obj)
     {
         Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-        Span<byte> buf = stackalloc byte[512];
-        var writer = new SpanWriter(buf);
+        Span<byte> buf = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
         var valueBytes = ValueBytes(obj, ref writer);
 
@@ -440,13 +354,14 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 throw new BTDBException("Not found record to update.");
         }
 
-        var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
+        var oldValueBytes = _kvtr.GetClonedValue(ref Unsafe.AsRef<byte>((void*)writer.Current),
+            (int)(writer.End - writer.Current));
         _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
         if (_hasSecondaryIndexes)
         {
             Span<byte> buf2 = stackalloc byte[512];
-            var writer2 = new SpanWriter(buf2);
+            var writer2 = MemWriter.CreateFromStackAllocatedSpan(buf2);
             if (UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2))
                 MarkModification();
         }
@@ -455,12 +370,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
-    public void ShallowUpdate(T obj)
+    public unsafe void ShallowUpdate(T obj)
     {
         Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-        Span<byte> buf = stackalloc byte[512];
-        var writer = new SpanWriter(buf);
+        Span<byte> buf = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         var keyBytes = KeyBytes(obj, ref writer, out var lenOfPkWoInKeyValues);
         var valueBytes = ValueBytes(obj, ref writer);
 
@@ -480,14 +395,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         if (_hasSecondaryIndexes)
         {
-            var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
+            var oldValueBytes = _kvtr.GetClonedValue(ref Unsafe.AsRef<byte>((void*)writer.Current),
+                (int)(writer.End - writer.Current));
 
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
             {
                 Span<byte> buf2 = stackalloc byte[512];
-                var writer2 = new SpanWriter(buf2);
+                var writer2 = MemWriter.CreateFromStackAllocatedSpan(buf2);
                 if (UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2))
                     MarkModification();
             }
@@ -514,7 +430,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
-    public bool UpdateByIdStart(ReadOnlySpan<byte> keyBytes, ref SpanWriter writer, ref ReadOnlySpan<byte> valueBytes,
+    public unsafe bool UpdateByIdStart(ReadOnlySpan<byte> keyBytes, ref MemWriter writer,
+        ref ReadOnlySpan<byte> valueBytes,
         int lenOfPkWoInKeyValues, bool throwIfNotFound)
     {
         if (lenOfPkWoInKeyValues > 0)
@@ -538,7 +455,9 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             }
         }
 
-        valueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(valueBytes), valueBytes.Length);
+        var valueReader = MemReader.CreateFromPinnedSpan(valueBytes);
+        _kvtr.GetValue(ref valueReader);
+        valueBytes = valueReader.PeekSpanTillEof();
 
         var version = (uint)PackUnpack.UnpackVUInt(valueBytes);
 
@@ -546,15 +465,16 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         if (version != currentVersion)
         {
             var itemLoader = _relationInfo.ItemLoaderInfos[0];
-
-            var reader = new SpanReader(keyBytes);
-            reader.SkipInt8(); // 3
-            reader.SkipVUInt64(); // RelationId
-            var obj = (T)itemLoader._primaryKeysLoader(_transaction, ref reader);
-            reader = new(valueBytes);
-            reader.SkipVUInt32();
-            itemLoader.GetValueLoader(version)(_transaction, ref reader, obj);
-            valueBytes = ValueBytes(obj, ref writer);
+            fixed (void* _ = keyBytes)
+            {
+                var reader = MemReader.CreateFromPinnedSpan(keyBytes);
+                reader.Skip1Byte(); // 3
+                reader.SkipVUInt64(); // RelationId
+                var obj = (T)itemLoader._primaryKeysLoader(_transaction, ref reader);
+                valueReader.SkipVUInt32();
+                itemLoader.GetValueLoader(version)(_transaction, ref valueReader, obj);
+                valueBytes = ValueBytes(obj, ref writer);
+            }
         }
 
         writer.WriteVUInt32(currentVersion);
@@ -662,13 +582,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             }
         }
 
-        if (!_kvtr.EraseCurrent(fullKeyBytes, ref MemoryMarshal.GetReference(valueBuffer), valueBuffer.Length,
-                out var value))
+        var valueReader = MemReader.CreateFromPinnedSpan(valueBuffer);
+        if (!_kvtr.EraseCurrent(fullKeyBytes, ref valueReader))
         {
             if (throwWhenNotFound)
                 throw new BTDBException("Not found record to delete.");
             return false;
         }
+
+        var value = valueReader.PeekSpanTillEof();
 
         if (_hasSecondaryIndexes)
         {
@@ -701,14 +623,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 return false;
         }
 
-        if (!_kvtr.EraseCurrent(keyBytes, ref MemoryMarshal.GetReference(valueBuffer), valueBuffer.Length,
-                out var value))
+        var valueReader = MemReader.CreateFromPinnedSpan(valueBuffer);
+        if (!_kvtr.EraseCurrent(keyBytes, ref valueReader))
         {
             if (throwWhenNotFound)
                 throw new BTDBException("Not found record to delete.");
             return false;
         }
 
+        var value = valueReader.PeekSpanTillEof();
         if (_hasSecondaryIndexes)
         {
             RemoveSecondaryIndexes(keyBytes, value);
@@ -763,14 +686,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         {
             Span<byte> valueBuffer = stackalloc byte[512];
 
-            if (!_kvtr.EraseCurrent(fullKeyBytes, ref valueBuffer.GetPinnableReference(), valueBuffer.Length,
-                    out var value))
+            var valueReader = MemReader.CreateFromPinnedSpan(valueBuffer);
+            if (!_kvtr.EraseCurrent(fullKeyBytes, ref valueReader))
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found record to delete.");
                 return false;
             }
 
+            var value = valueReader.PeekSpanTillEof();
             RemoveSecondaryIndexes(fullKeyBytes, value);
         }
         else
@@ -860,6 +784,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return (int)keysToDelete.Count - notDeleted;
     }
 
+    [SkipLocalsInit]
     public int RemoveByKeyPrefixWithoutIterate(in ReadOnlySpan<byte> keyBytesPrefix)
     {
         if (_relationInfo.NeedImplementFreeContent())
@@ -872,7 +797,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             //keyBytePrefix contains [3, Index Relation, Primary key prefix] we need
             //                       [4, Index Relation, Secondary Key Index, Primary key prefix]
             var idBytesLength = 1 + PackUnpack.LengthVUInt(_relationInfo.Id);
-            var writer = new SpanWriter();
+            Span<byte> buf = stackalloc byte[1024];
+            var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
             foreach (var secKey in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 WriteRelationSKPrefix(ref writer, secKey.Key);
@@ -1084,8 +1010,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     public TItem FirstByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
         IOrderer[]? orderers, bool hasOrDefault) where TItem : class
     {
-        StructList<byte> keyBytes = new();
-        keyBytes.AddRange(_relationInfo.Prefix);
+        MemWriter keyBytes = new();
+        keyBytes.WriteBlock(_relationInfo.Prefix);
 
         if (orderers == null || orderers.Length == 0)
         {
@@ -1128,13 +1054,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
     }
 
+    [SkipLocalsInit]
     public TItem FirstBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex,
         IOrderer[]? orderers, bool hasOrDefault) where TItem : class
     {
-        StructList<byte> keyBytes = new();
-        keyBytes.AddRange(_relationInfo.PrefixSecondary);
+        Span<byte> buf = stackalloc byte[4096];
+        var keyBytes = MemWriter.CreateFromStackAllocatedSpan(buf);
+        keyBytes.WriteBlock(_relationInfo.PrefixSecondary);
         var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
-        keyBytes.Add((byte)remappedSecondaryKeyIndex);
+        keyBytes.WriteUInt8((byte)remappedSecondaryKeyIndex);
 
         if (orderers == null || orderers.Length == 0)
         {
@@ -1242,8 +1170,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             throw new NotSupportedException("RemoveWithSizes does not support OnBeforeRemove");
         }
 
-        SpanWriter writer = new();
-        StructList<byte> helperBuffer = new();
+        MemWriter writer = new();
+        MemWriter helperBuffer = new();
         writer.WriteBlock(_relationInfo.Prefix);
         var completedPrefix = false;
         foreach (var constraint in constraints)
@@ -1296,8 +1224,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     public ulong GatherByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
         long skip, long take, IOrderer[]? orderers)
     {
-        StructList<byte> keyBytes = new();
-        keyBytes.AddRange(_relationInfo.Prefix);
+        MemWriter keyBytes = new();
+        keyBytes.WriteBlock(_relationInfo.Prefix);
         if (skip < 0)
         {
             take += skip;
@@ -1357,13 +1285,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
     }
 
+    [SkipLocalsInit]
     public ulong GatherBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
         long skip, long take, uint secondaryKeyIndex, IOrderer[]? orderers)
     {
-        StructList<byte> keyBytes = new();
-        keyBytes.AddRange(_relationInfo.PrefixSecondary);
+        Span<byte> buf = stackalloc byte[4096];
+        var keyBytes = MemWriter.CreateFromStackAllocatedSpan(buf);
+        keyBytes.WriteBlock(_relationInfo.PrefixSecondary);
         var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
-        keyBytes.Add((byte)remappedSecondaryKeyIndex);
+        keyBytes.WriteUInt8((byte)remappedSecondaryKeyIndex);
         if (skip < 0)
         {
             take += skip;
@@ -1472,8 +1402,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
     public IEnumerable<TItem> ScanByPrimaryKeyPrefix<TItem>(int loaderIndex, ConstraintInfo[] constraints)
     {
-        StructList<byte> keyBytes = new();
-        keyBytes.AddRange(_relationInfo.Prefix);
+        MemWriter keyBytes = new();
+        keyBytes.WriteBlock(_relationInfo.Prefix);
         return new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
             loaderIndex, constraints);
     }
@@ -1481,10 +1411,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     public IEnumerable<TItem> ScanBySecondaryKeyPrefix<TItem>(int loaderIndex, ConstraintInfo[] constraints,
         uint secondaryKeyIndex)
     {
-        StructList<byte> keyBytes = new();
-        keyBytes.AddRange(_relationInfo.PrefixSecondary);
+        var keyBytes = new MemWriter();
+        keyBytes.WriteBlock(_relationInfo.PrefixSecondary);
         var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
-        keyBytes.Add((byte)remappedSecondaryKeyIndex);
+        keyBytes.WriteUInt8((byte)remappedSecondaryKeyIndex);
         return new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes, this,
             loaderIndex, constraints, remappedSecondaryKeyIndex, this);
     }
@@ -1495,11 +1425,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         in ReadOnlySpan<byte> secondaryKey)
     {
         Span<byte> pkBuffer = stackalloc byte[512];
-        var pkWriter = new SpanWriter(Unsafe.AsPointer(ref MemoryMarshal.GetReference(pkBuffer)), pkBuffer.Length);
+        var pkWriter = MemWriter.CreateFromStackAllocatedSpan(pkBuffer);
         WriteRelationPKPrefix(ref pkWriter);
-        var reader = new SpanReader(secondaryKey);
-        _relationInfo.GetSKKeyValueToPKMerger(remappedSecondaryKeyIndex)
-            (ref reader, ref pkWriter);
+        fixed (void* _ = secondaryKey)
+        {
+            var reader = MemReader.CreateFromPinnedSpan(secondaryKey);
+            _relationInfo.GetSKKeyValueToPKMerger(remappedSecondaryKeyIndex)
+                (ref reader, ref pkWriter);
+        }
+
         return FindByIdOrDefaultInternal(itemLoader, pkWriter.GetSpan(), true)!;
     }
 
@@ -1533,7 +1467,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             keyBytes);
     }
 
-    ReadOnlySpan<byte> WriteSecondaryKeyKey(uint remappedSecondaryKeyIndex, T obj, ref SpanWriter writer)
+    ReadOnlySpan<byte> WriteSecondaryKeyKey(uint remappedSecondaryKeyIndex, T obj, ref MemWriter writer)
     {
         var keySaver = _relationInfo.GetSecondaryKeysKeySaver(remappedSecondaryKeyIndex);
         WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);
@@ -1541,22 +1475,27 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return writer.GetSpan();
     }
 
-    ReadOnlySpan<byte> WriteSecondaryKeyKey(uint remappedSecondaryKeyIndex, in ReadOnlySpan<byte> keyBytes,
+    unsafe ReadOnlySpan<byte> WriteSecondaryKeyKey(uint remappedSecondaryKeyIndex, in ReadOnlySpan<byte> keyBytes,
         in ReadOnlySpan<byte> valueBytes)
     {
-        var keyWriter = new SpanWriter();
+        var keyWriter = new MemWriter();
         WriteRelationSKPrefix(ref keyWriter, remappedSecondaryKeyIndex);
 
         var version = (uint)PackUnpack.UnpackVUInt(valueBytes);
 
         var keySaver = _relationInfo.GetPKValToSKMerger(version, remappedSecondaryKeyIndex);
-        var keyReader = new SpanReader(keyBytes);
-        var valueReader = new SpanReader(valueBytes);
-        keySaver(_transaction, ref keyWriter, ref keyReader, ref valueReader, _relationInfo.DefaultClientObject);
+        fixed (void* _ = keyBytes)
+        fixed (void* __ = valueBytes)
+        {
+            var keyReader = MemReader.CreateFromPinnedSpan(keyBytes);
+            var valueReader = MemReader.CreateFromPinnedSpan(valueBytes);
+            keySaver(_transaction, ref keyWriter, ref keyReader, ref valueReader, _relationInfo.DefaultClientObject);
+        }
+
         return keyWriter.GetSpan();
     }
 
-    void AddIntoSecondaryIndexes(T obj, ref SpanWriter writer)
+    void AddIntoSecondaryIndexes(T obj, ref MemWriter writer)
     {
         foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
         {
@@ -1587,7 +1526,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     bool UpdateSecondaryIndexes(T newValue, in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue,
-        ref SpanWriter writer)
+        ref MemWriter writer)
     {
         var changed = false;
         foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
@@ -1644,7 +1583,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 ref struct SortNativeStorage
 {
     internal ulong StartKeyIndex = 0;
-    internal SpanWriter Writer;
+    internal MemWriter Writer;
     internal StructList<IntPtr> Storage;
     internal StructList<IntPtr> Items;
     internal Span<byte> FreeSpace;
@@ -1679,8 +1618,8 @@ ref struct SortNativeStorage
         }
 
         if (FreeSpace.Length < 128) AllocChunk();
-        Writer = new(FreeSpace);
-        Writer.WriteInt32(0); // Space for length
+        Writer = MemWriter.CreateFromPinnedSpan(FreeSpace);
+        Writer.WriteInt32LE(0); // Space for length
     }
 
     internal unsafe void FinishNewItem(ulong keyIndex)
@@ -1708,7 +1647,7 @@ ref struct SortNativeStorage
             return;
         }
 
-        if (Writer.HeapBuffer != null) // If it didn't fit free space in last chunk
+        if (Writer.Controller != null) // If it didn't fit free space in last chunk
         {
             while (span.Length >= AllocSize) AllocSize *= 2;
             if (AllocSize > int.MaxValue) AllocSize = int.MaxValue;

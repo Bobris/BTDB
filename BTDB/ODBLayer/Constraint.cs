@@ -29,23 +29,23 @@ public interface IConstraint
     }
 
     public bool IsAnyConstraint();
-    public MatchType Prepare(ref StructList<byte> buffer);
+    public MatchType Prepare(ref MemWriter buffer);
 
     // Will be called only for Prefix and Exact MatchTypes, for Exact it have to write full part of key
-    public void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer);
+    public void WritePrefix(ref MemWriter writer, in MemWriter buffer);
 
     // return true if match was successful and in ALL CASES SKIP reader after this field
     // when MatchType is Exact this method does not need to be called at all if part of key matches written prefix
-    public MatchResult Match(ref SpanReader reader, in StructList<byte> buffer);
+    public MatchResult Match(ref MemReader reader, in MemWriter buffer);
 }
 
 public abstract class Constraint<T> : IConstraint
 {
     public virtual bool IsAnyConstraint() => false;
 
-    public abstract IConstraint.MatchType Prepare(ref StructList<byte> buffer);
-    public abstract void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer);
-    public abstract IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer);
+    public abstract IConstraint.MatchType Prepare(ref MemWriter buffer);
+    public abstract void WritePrefix(ref MemWriter writer, in MemWriter buffer);
+    public abstract IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer);
 
     public static IConstraint.MatchResult AsMatchResult(bool value)
     {
@@ -148,16 +148,16 @@ public class ConstraintNullableAny<T> : Constraint<T>
 
     public override bool IsAnyConstraint() => true;
 
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         return _anyT.Prepare(ref buffer);
     }
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
     }
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         if (reader.ReadUInt8() != 0)
         {
@@ -170,17 +170,17 @@ public class ConstraintNullableAny<T> : Constraint<T>
 
 public class ConstraintNotImplemented<T> : Constraint<T>
 {
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         throw new NotImplementedException();
     }
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
         throw new NotImplementedException();
     }
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         throw new NotImplementedException();
     }
@@ -553,16 +553,16 @@ public class ConstraintDateTimeRange : Constraint<DateTime>
         _including = including;
     }
 
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         return IConstraint.MatchType.NoPrefix;
     }
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
     }
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         var value = reader.ReadDateTime();
         if (value < _from) return IConstraint.MatchResult.No;
@@ -580,19 +580,19 @@ public class NullableExactValue<T> : Constraint<T>
         _exact = exact;
     }
 
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         _exact.Prepare(ref buffer);
         return IConstraint.MatchType.Exact;
     }
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
         writer.WriteUInt8(1);
         _exact.WritePrefix(ref writer, buffer);
     }
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         if (reader.ReadUInt8() == 1)
         {
@@ -612,18 +612,18 @@ public class NullableExactNull<T> : Constraint<T>
         _anyT = anyT;
     }
 
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         _anyT.Prepare(ref buffer);
         return IConstraint.MatchType.Exact;
     }
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
         writer.WriteUInt8(0);
     }
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         if (reader.ReadUInt8() == 0)
         {
@@ -644,19 +644,19 @@ public class FirstConstraint<T> : Constraint<T>
         _of = of;
     }
 
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         var res = _of.Prepare(ref buffer);
         if (res == IConstraint.MatchType.Exact) return IConstraint.MatchType.Prefix;
         return res;
     }
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
         _of.WritePrefix(ref writer, buffer);
     }
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         var res = _of.Match(ref reader, buffer);
         if (res == IConstraint.MatchResult.Yes) return IConstraint.MatchResult.YesSkipNext;
@@ -670,7 +670,7 @@ public class ConstraintStringPredicateSlow : ConstraintNoPrefix<string>
 
     public ConstraintStringPredicateSlow(Predicate<string> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer) =>
         AsMatchResult(_predicate(reader.ReadStringOrdered()));
 }
 
@@ -681,7 +681,7 @@ public class ConstraintStringPredicate : ConstraintNoPrefix<string>
     public ConstraintStringPredicate(PredicateSpanChar predicate) => _predicate = predicate;
 
     [SkipLocalsInit]
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         Span<char> bufStr = stackalloc char[512];
         var realStr = reader.ReadStringOrderedAsSpan(ref MemoryMarshal.GetReference(bufStr), bufStr.Length);
@@ -691,9 +691,9 @@ public class ConstraintStringPredicate : ConstraintNoPrefix<string>
 
 public abstract class ConstraintNoPrefix<T> : Constraint<T>
 {
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer) => IConstraint.MatchType.NoPrefix;
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer) => IConstraint.MatchType.NoPrefix;
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
     }
 }
@@ -704,7 +704,7 @@ public class ConstraintUnsignedPredicate : ConstraintNoPrefix<ulong>
 
     public ConstraintUnsignedPredicate(Predicate<ulong> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer) =>
         AsMatchResult(_predicate(reader.ReadVUInt64()));
 }
 
@@ -714,7 +714,7 @@ public class ConstraintSignedPredicate : ConstraintNoPrefix<long>
 
     public ConstraintSignedPredicate(Predicate<long> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer) =>
         AsMatchResult(_predicate(reader.ReadVInt64()));
 }
 
@@ -724,7 +724,7 @@ public class ConstraintDateTimePredicate : ConstraintNoPrefix<DateTime>
 
     public ConstraintDateTimePredicate(Predicate<DateTime> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer) =>
         AsMatchResult(_predicate(reader.ReadDateTime()));
 }
 
@@ -733,33 +733,29 @@ public abstract class ConstraintExact<T> : Constraint<T>
     int _ofs;
     int _len;
 
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
-        var structListWriter = new ContinuousMemoryBlockWriter(buffer);
-        _ofs = (int)buffer.Count;
-        var writer = new SpanWriter(structListWriter);
-        WriteExactValue(ref writer);
-        writer.Sync();
-        buffer = structListWriter.GetStructList();
-        _len = (int)buffer.Count - _ofs;
+        _ofs = (int)buffer.GetCurrentPosition();
+        WriteExactValue(ref buffer);
+        _len = (int)buffer.GetCurrentPosition() - _ofs;
         return IConstraint.MatchType.Exact;
     }
 
-    protected abstract void WriteExactValue(ref SpanWriter writer);
+    protected abstract void WriteExactValue(ref MemWriter writer);
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
         writer.WriteBlock(buffer.AsReadOnlySpan(_ofs, _len));
     }
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         if (reader.CheckMagic(buffer.AsReadOnlySpan(_ofs, _len))) return IConstraint.MatchResult.Yes;
         Skip(ref reader);
         return IConstraint.MatchResult.No;
     }
 
-    protected abstract void Skip(ref SpanReader reader);
+    protected abstract void Skip(ref MemReader reader);
 }
 
 public abstract class ConstraintUpTo<T> : Constraint<T>
@@ -773,27 +769,23 @@ public abstract class ConstraintUpTo<T> : Constraint<T>
         _including = including;
     }
 
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
-        var structListWriter = new ContinuousMemoryBlockWriter(buffer);
-        _ofs = (int)buffer.Count;
-        var writer = new SpanWriter(structListWriter);
-        WriteUpToValue(ref writer);
-        writer.Sync();
-        buffer = structListWriter.GetStructList();
-        _len = (int)buffer.Count - _ofs;
+        _ofs = (int)buffer.GetCurrentPosition();
+        WriteUpToValue(ref buffer);
+        _len = (int)buffer.GetCurrentPosition() - _ofs;
         return IConstraint.MatchType.NoPrefix;
     }
 
-    protected abstract void WriteUpToValue(ref SpanWriter writer);
+    protected abstract void WriteUpToValue(ref MemWriter writer);
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
     }
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
-        var readerBuf = reader.Buf;
+        var readerBuf = reader.PeekSpanTillEof();
         if (readerBuf.Length > _len) readerBuf = readerBuf.Slice(0, _len);
         var comp = readerBuf.SequenceCompareTo(buffer.AsReadOnlySpan(_ofs, _len));
         Skip(ref reader);
@@ -801,7 +793,7 @@ public abstract class ConstraintUpTo<T> : Constraint<T>
         return IConstraint.MatchResult.NoAfterLast;
     }
 
-    protected abstract void Skip(ref SpanReader reader);
+    protected abstract void Skip(ref MemReader reader);
 }
 
 public class ConstraintStringExact : ConstraintExact<string>
@@ -813,12 +805,12 @@ public class ConstraintStringExact : ConstraintExact<string>
         _value = value;
     }
 
-    protected override void WriteExactValue(ref SpanWriter writer)
+    protected override void WriteExactValue(ref MemWriter writer)
     {
         writer.WriteStringOrdered(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
         reader.SkipStringOrdered();
     }
@@ -830,12 +822,12 @@ public class ConstraintStringUpTo : ConstraintUpTo<string>
 
     public ConstraintStringUpTo(string value, bool including) : base(including) => _value = value;
 
-    protected override void WriteUpToValue(ref SpanWriter writer)
+    protected override void WriteUpToValue(ref MemWriter writer)
     {
         writer.WriteStringOrdered(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
         reader.SkipStringOrdered();
     }
@@ -845,28 +837,28 @@ public abstract class ConstraintAny<T> : Constraint<T>
 {
     public override bool IsAnyConstraint() => true;
 
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         return IConstraint.MatchType.NoPrefix;
     }
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
     }
 }
 
 public class ConstraintDateTimeAny : ConstraintAny<DateTime>
 {
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
-        reader.SkipDateTime();
+        reader.Skip8Bytes();
         return IConstraint.MatchResult.Yes;
     }
 }
 
 public class ConstraintGuidAny : ConstraintAny<Guid>
 {
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         reader.SkipGuid();
         return IConstraint.MatchResult.Yes;
@@ -878,12 +870,12 @@ public class ConstraintGuidExact : ConstraintExact<Guid>
     readonly Guid _value;
     public ConstraintGuidExact(Guid value) => _value = value;
 
-    protected override void WriteExactValue(ref SpanWriter writer)
+    protected override void WriteExactValue(ref MemWriter writer)
     {
         writer.WriteGuid(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
         reader.SkipGuid();
     }
@@ -891,7 +883,7 @@ public class ConstraintGuidExact : ConstraintExact<Guid>
 
 public class ConstraintStringAny : ConstraintAny<string>
 {
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         reader.SkipStringOrdered();
         return IConstraint.MatchResult.Yes;
@@ -900,9 +892,9 @@ public class ConstraintStringAny : ConstraintAny<string>
 
 public class ConstraintBoolAny : ConstraintAny<bool>
 {
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
-        reader.SkipBool();
+        reader.Skip1Byte();
         return IConstraint.MatchResult.Yes;
     }
 }
@@ -918,24 +910,20 @@ public class ConstraintStringStartsWith : Constraint<string>
         _value = value;
     }
 
-    public override IConstraint.MatchType Prepare(ref StructList<byte> buffer)
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
-        var structListWriter = new ContinuousMemoryBlockWriter(buffer);
-        _ofs = (int)buffer.Count;
-        var writer = new SpanWriter(structListWriter);
-        writer.WriteStringOrderedPrefix(_value);
-        writer.Sync();
-        buffer = structListWriter.GetStructList();
-        _len = (int)buffer.Count - _ofs;
+        _ofs = (int)buffer.GetCurrentPosition();
+        buffer.WriteStringOrderedPrefix(_value);
+        _len = (int)buffer.GetCurrentPosition() - _ofs;
         return IConstraint.MatchType.Prefix;
     }
 
-    public override void WritePrefix(ref SpanWriter writer, in StructList<byte> buffer)
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
         writer.WriteBlock(buffer.AsReadOnlySpan(_ofs, _len));
     }
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         if (reader.CheckMagic(buffer.AsReadOnlySpan(_ofs, _len)))
         {
@@ -954,12 +942,12 @@ public class ConstraintUnsignedExact : ConstraintExact<ulong>
 
     public ConstraintUnsignedExact(ulong value) => _value = value;
 
-    protected override void WriteExactValue(ref SpanWriter writer)
+    protected override void WriteExactValue(ref MemWriter writer)
     {
         writer.WriteVUInt64(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
         reader.SkipVUInt64();
     }
@@ -971,12 +959,12 @@ public class ConstraintUnsignedUpTo : ConstraintUpTo<ulong>
 
     public ConstraintUnsignedUpTo(ulong value, bool including) : base(including) => _value = value;
 
-    protected override void WriteUpToValue(ref SpanWriter writer)
+    protected override void WriteUpToValue(ref MemWriter writer)
     {
         writer.WriteVUInt64(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
         reader.SkipVUInt64();
     }
@@ -988,12 +976,12 @@ public class ConstraintSignedExact : ConstraintExact<long>
 
     public ConstraintSignedExact(long value) => _value = value;
 
-    protected override void WriteExactValue(ref SpanWriter writer)
+    protected override void WriteExactValue(ref MemWriter writer)
     {
         writer.WriteVInt64(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
         reader.SkipVInt64();
     }
@@ -1005,12 +993,12 @@ public class ConstraintSignedUpTo : ConstraintUpTo<long>
 
     public ConstraintSignedUpTo(long value, bool including) : base(including) => _value = value;
 
-    protected override void WriteUpToValue(ref SpanWriter writer)
+    protected override void WriteUpToValue(ref MemWriter writer)
     {
         writer.WriteVInt64(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
         reader.SkipVInt64();
     }
@@ -1022,14 +1010,14 @@ public class ConstraintDateTimeExact : ConstraintExact<DateTime>
 
     public ConstraintDateTimeExact(DateTime value) => _value = value;
 
-    protected override void WriteExactValue(ref SpanWriter writer)
+    protected override void WriteExactValue(ref MemWriter writer)
     {
         writer.WriteDateTimeForbidUnspecifiedKind(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
-        reader.SkipDateTime();
+        reader.Skip8Bytes();
     }
 }
 
@@ -1039,14 +1027,14 @@ public class ConstraintDateTimeUpTo : ConstraintUpTo<DateTime>
 
     public ConstraintDateTimeUpTo(DateTime value, bool including) : base(including) => _value = value;
 
-    protected override void WriteUpToValue(ref SpanWriter writer)
+    protected override void WriteUpToValue(ref MemWriter writer)
     {
         writer.WriteDateTimeForbidUnspecifiedKind(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
-        reader.SkipDateTime();
+        reader.Skip8Bytes();
     }
 }
 
@@ -1056,14 +1044,14 @@ public class ConstraintBoolExact : ConstraintExact<bool>
 
     public ConstraintBoolExact(bool value) => _value = value;
 
-    protected override void WriteExactValue(ref SpanWriter writer)
+    protected override void WriteExactValue(ref MemWriter writer)
     {
         writer.WriteBool(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
-        reader.SkipBool();
+        reader.Skip1Byte();
     }
 }
 
@@ -1073,12 +1061,12 @@ public class ConstraintSignedEnumExact<T> : ConstraintExact<T> where T : Enum
 
     public ConstraintSignedEnumExact(T value) => _value = Constraint.Enum<T>.ToLong!(value);
 
-    protected override void WriteExactValue(ref SpanWriter writer)
+    protected override void WriteExactValue(ref MemWriter writer)
     {
         writer.WriteVInt64(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
         reader.SkipVInt64();
     }
@@ -1090,12 +1078,12 @@ public class ConstraintUnsignedEnumExact<T> : ConstraintExact<T> where T : Enum
 
     public ConstraintUnsignedEnumExact(T value) => _value = Constraint.Enum<T>.ToUlong!(value);
 
-    protected override void WriteExactValue(ref SpanWriter writer)
+    protected override void WriteExactValue(ref MemWriter writer)
     {
         writer.WriteVUInt64(_value);
     }
 
-    protected override void Skip(ref SpanReader reader)
+    protected override void Skip(ref MemReader reader)
     {
         reader.SkipVUInt64();
     }
@@ -1103,7 +1091,7 @@ public class ConstraintUnsignedEnumExact<T> : ConstraintExact<T> where T : Enum
 
 public class ConstraintSignedAny<T> : ConstraintAny<T>
 {
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         reader.SkipVInt64();
         return IConstraint.MatchResult.Yes;
@@ -1112,7 +1100,7 @@ public class ConstraintSignedAny<T> : ConstraintAny<T>
 
 public class ConstraintUnsignedAny<T> : ConstraintAny<T>
 {
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer)
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         reader.SkipVUInt64();
         return IConstraint.MatchResult.Yes;
@@ -1125,7 +1113,7 @@ public class ConstraintSignedEnumPredicate<T> : ConstraintNoPrefix<T> where T : 
 
     public ConstraintSignedEnumPredicate(Predicate<T> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer) =>
         AsMatchResult(_predicate(Constraint.Enum<T>.FromLong!(reader.ReadVInt64())));
 }
 
@@ -1135,6 +1123,6 @@ public class ConstraintUnsignedEnumPredicate<T> : ConstraintNoPrefix<T> where T 
 
     public ConstraintUnsignedEnumPredicate(Predicate<T> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref SpanReader reader, in StructList<byte> buffer) =>
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer) =>
         AsMatchResult(_predicate(Constraint.Enum<T>.FromUlong!(reader.ReadVUInt64())));
 }

@@ -274,16 +274,18 @@ namespace ODbDump
                     if (corruptedCount == 0) Console.WriteLine("No corruption found");
                     else
                     {
-                        Console.WriteLine("Erased " + corruptedCount + " pairs because of corruption! Now removing all secondary indexes so they could be rebuild");
+                        Console.WriteLine("Erased " + corruptedCount +
+                                          " pairs because of corruption! Now removing all secondary indexes so they could be rebuild");
                         if (transaction.FindFirstKey(new byte[] { 4 }))
                         {
                             var first = transaction.GetKeyIndex();
                             transaction.FindLastKey(new byte[] { 4 });
                             var last = transaction.GetKeyIndex();
                             transaction.EraseRange(first, last);
-                            Console.WriteLine("Erased "+(last-first+1)+" pairs of secondary indexes");
+                            Console.WriteLine("Erased " + (last - first + 1) + " pairs of secondary indexes");
                         }
                     }
+
                     transaction.Commit();
                     break;
                 }
@@ -576,6 +578,7 @@ namespace ODbDump
 
                         visitor.EndOperation();
                     }
+
                     visitor.WriteStatistics();
                 }
                     break;
@@ -592,7 +595,7 @@ namespace ODbDump
             try
             {
                 var file = fcfi.GetFile(fileId);
-                var reader = new SpanReader(file.GetExclusiveReader());
+                var reader = new MemReader(file.GetExclusiveReader());
                 FileKeyIndex.SkipHeader(ref reader);
                 var keyCount = keyIndex.KeyValueCount;
                 var usedFileIds = new RefDictionary<uint, ulong>();
@@ -601,7 +604,7 @@ namespace ODbDump
                     for (var i = 0; i < keyCount; i++)
                     {
                         var keyLength = reader.ReadVInt32();
-                        reader.SkipBlock(keyLength);
+                        reader.SkipBlock((uint)keyLength);
                         var vFileId = reader.ReadVUInt32();
                         reader.SkipVUInt32();
                         var len = reader.ReadVInt32();
@@ -616,7 +619,7 @@ namespace ODbDump
                     {
                         reader.SkipVUInt32();
                         var keyLengthWithoutPrefix = (int)reader.ReadVUInt32();
-                        reader.SkipBlock(keyLengthWithoutPrefix);
+                        reader.SkipBlock((uint)keyLengthWithoutPrefix);
                         var vFileId = reader.ReadVUInt32();
                         reader.SkipVUInt32();
                         var len = reader.ReadVInt32();

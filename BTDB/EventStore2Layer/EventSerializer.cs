@@ -156,7 +156,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         return descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name!) ?? typeof(object);
     }
 
-    ITypeDescriptor NestedDescriptorReader(ref SpanReader reader)
+    ITypeDescriptor NestedDescriptorReader(ref MemReader reader)
     {
         var typeId = reader.ReadVInt32();
         if (typeId < 0 && -typeId - 1 < _id2InfoNew.Count)
@@ -178,45 +178,48 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         return new PlaceHolderDescriptor(typeId);
     }
 
-    public void ProcessMetadataLog(ByteBuffer buffer)
+    public unsafe void ProcessMetadataLog(ByteBuffer buffer)
     {
-        var reader = new SpanReader(buffer);
-        var typeId = reader.ReadVInt32();
-        while (typeId != 0)
+        fixed (void* _ = buffer.Buffer)
         {
-            var typeCategory = (TypeCategory)reader.ReadUInt8();
-            ITypeDescriptor descriptor;
-            switch (typeCategory)
+            var reader = MemReader.CreateFromPinnedSpan(buffer.AsSyncReadOnlySpan());
+            var typeId = reader.ReadVInt32();
+            while (typeId != 0)
             {
-                case TypeCategory.BuildIn:
-                    throw new ArgumentOutOfRangeException();
-                case TypeCategory.Class:
-                    descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader, null);
-                    break;
-                case TypeCategory.List:
-                    descriptor = new ListTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                    break;
-                case TypeCategory.Dictionary:
-                    descriptor = new DictionaryTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                    break;
-                case TypeCategory.Enum:
-                    descriptor = new EnumTypeDescriptor(this, ref reader);
-                    break;
-                case TypeCategory.Nullable:
-                    descriptor = new NullableTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                    break;
-                case TypeCategory.Tuple:
-                    descriptor = new TupleTypeDescriptor(this, ref reader, NestedDescriptorReader);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
+                var typeCategory = (TypeCategory)reader.ReadUInt8();
+                ITypeDescriptor descriptor;
+                switch (typeCategory)
+                {
+                    case TypeCategory.BuildIn:
+                        throw new ArgumentOutOfRangeException();
+                    case TypeCategory.Class:
+                        descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader, null);
+                        break;
+                    case TypeCategory.List:
+                        descriptor = new ListTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                        break;
+                    case TypeCategory.Dictionary:
+                        descriptor = new DictionaryTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                        break;
+                    case TypeCategory.Enum:
+                        descriptor = new EnumTypeDescriptor(this, ref reader);
+                        break;
+                    case TypeCategory.Nullable:
+                        descriptor = new NullableTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                        break;
+                    case TypeCategory.Tuple:
+                        descriptor = new TupleTypeDescriptor(this, ref reader, NestedDescriptorReader);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
 
-            while (-typeId - 1 >= _id2InfoNew.Count)
-                _id2InfoNew.Add(null);
-            if (_id2InfoNew[-typeId - 1] == null)
-                _id2InfoNew[-typeId - 1] = new SerializerTypeInfo { Id = typeId, Descriptor = descriptor };
-            typeId = reader.ReadVInt32();
+                while (-typeId - 1 >= _id2InfoNew.Count)
+                    _id2InfoNew.Add(null);
+                if (_id2InfoNew[-typeId - 1] == null)
+                    _id2InfoNew[-typeId - 1] = new SerializerTypeInfo { Id = typeId, Descriptor = descriptor };
+                typeId = reader.ReadVInt32();
+            }
         }
 
         for (var i = 0; i < _id2InfoNew.Count; i++)
@@ -265,7 +268,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
 
     public ByteBuffer Serialize(out bool hasMetaData, object? obj)
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         if (obj == null)
         {
             hasMetaData = false;
@@ -584,7 +587,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         return res;
     }
 
-    bool MergeTypesByShapeAndStoreNew(ref SpanWriter writer)
+    bool MergeTypesByShapeAndStoreNew(ref MemWriter writer)
     {
         var toStore = new StructList<SerializerTypeInfo>();
         foreach (var typeDescriptor in _typeOrDescriptor2InfoNew)
@@ -632,7 +635,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         return false;
     }
 
-    void StoreDescriptor(ITypeDescriptor descriptor, ref SpanWriter writer)
+    void StoreDescriptor(ITypeDescriptor descriptor, ref MemWriter writer)
     {
         if (descriptor is ListTypeDescriptor)
         {
@@ -663,7 +666,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
             throw new ArgumentOutOfRangeException();
         }
 
-        ((IPersistTypeDescriptor)descriptor).Persist(ref writer, (ref SpanWriter w, ITypeDescriptor d) =>
+        ((IPersistTypeDescriptor)descriptor).Persist(ref writer, (ref MemWriter w, ITypeDescriptor d) =>
         {
             if (!_typeOrDescriptor2Info.TryGetValue(d, out var result))
                 if (!_typeOrDescriptor2InfoNew.TryGetValue(d, out result))
@@ -672,7 +675,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         });
     }
 
-    public void StoreObject(ref SpanWriter writer, object? obj)
+    public void StoreObject(ref MemWriter writer, object? obj)
     {
         if (_newTypeFound) return;
         if (obj == null)
@@ -714,14 +717,18 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         saver(ref writer, this, obj);
     }
 
-    public void StoreEncryptedString(ref SpanWriter outerWriter, EncryptedString value)
+    [SkipLocalsInit]
+    public void StoreEncryptedString(ref MemWriter outerWriter, EncryptedString value)
     {
-        var writer = new SpanWriter();
+        Span<byte> buf = stackalloc byte[2048];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteString(value);
         var plain = writer.GetSpan();
         var encSize = _symmetricCipher.CalcEncryptedSizeFor(plain);
-        var enc = new byte[encSize];
+        outerWriter.WriteVUInt32((uint)encSize + 1);
+        var enc = outerWriter.BlockWriteToSpan(encSize, out var needToBeWritten);
         _symmetricCipher.Encrypt(plain, enc);
-        outerWriter.WriteByteArray(enc);
+        if (needToBeWritten)
+            outerWriter.WriteBlock(enc);
     }
 }

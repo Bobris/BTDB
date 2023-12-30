@@ -32,7 +32,8 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
         else
         {
             _typeName = (_objectDb as ObjectDB)?.RegisterType(_type, false);
-            var writer = new SpanWriter();
+            Span<byte> buf = stackalloc byte[256];
+            var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
             writer.WriteString(_typeName);
             _configuration = writer.GetSpan().ToArray();
         }
@@ -55,7 +56,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
         return ti.IsGenericType && ti.GetGenericTypeDefinition() == typeof(IIndirect<>);
     }
 
-    public DBObjectFieldHandler(IObjectDB objectDb, byte[] configuration)
+    public unsafe DBObjectFieldHandler(IObjectDB objectDb, byte[] configuration)
     {
         _objectDb = objectDb;
         _configuration = configuration;
@@ -65,7 +66,8 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
         }
         else
         {
-            _typeName = string.Intern(new SpanReader(configuration).ReadString()!);
+            fixed (void* confPtr = &configuration[0])
+                _typeName = string.Intern(new MemReader(confPtr, configuration.Length).ReadString()!);
             _indirect = false;
         }
 

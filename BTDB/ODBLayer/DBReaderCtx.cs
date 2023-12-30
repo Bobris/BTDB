@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using BTDB.Collections;
 using BTDB.Encrypted;
@@ -19,7 +20,7 @@ public class DBReaderCtx : IDBReaderCtx
         _lastIdOfObj = -1;
     }
 
-    public bool ReadObject(ref SpanReader reader, out object? @object)
+    public bool ReadObject(ref MemReader reader, out object? @object)
     {
         var id = reader.ReadVInt64();
         if (id == 0)
@@ -28,17 +29,17 @@ public class DBReaderCtx : IDBReaderCtx
             return false;
         }
 
-        if (id <= int.MinValue || id > 0)
+        if (id is <= int.MinValue or > 0)
         {
             @object = Transaction!.Get((ulong)id);
             return false;
         }
 
-        var ido = (int)(-id) - 1;
+        var ido = (int)-id - 1;
         var o = RetrieveObj(ido);
         if (o != null)
         {
-            if (!(o is IMemorizedPosition mp))
+            if (o is not IMemorizedPosition mp)
             {
                 @object = o;
                 return false;
@@ -68,15 +69,15 @@ public class DBReaderCtx : IDBReaderCtx
         _objects![_lastIdOfObj] = @object;
     }
 
-    public void ReadObjectDone(ref SpanReader reader)
+    public void ReadObjectDone(ref MemReader reader)
     {
         if (_returningStack.Count == 0) return;
-        var returnPos = _returningStack[^1];
+        var returnPos = _returningStack.Last;
         _returningStack.Pop();
         if (returnPos >= 0) reader.SetCurrentPosition(returnPos);
     }
 
-    public object? ReadNativeObject(ref SpanReader reader)
+    public object? ReadNativeObject(ref MemReader reader)
     {
         var test = ReadObject(ref reader, out var @object);
         if (test)
@@ -87,7 +88,7 @@ public class DBReaderCtx : IDBReaderCtx
         return @object;
     }
 
-    public bool SkipObject(ref SpanReader reader)
+    public bool SkipObject(ref MemReader reader)
     {
         var id = reader.ReadVInt64();
         if (id == 0)
@@ -95,12 +96,12 @@ public class DBReaderCtx : IDBReaderCtx
             return false;
         }
 
-        if (id <= int.MinValue || id > 0)
+        if (id is <= int.MinValue or > 0)
         {
             return false;
         }
 
-        var ido = (int)(-id) - 1;
+        var ido = (int)-id - 1;
         var o = RetrieveObj(ido);
         if (o != null)
         {
@@ -112,7 +113,7 @@ public class DBReaderCtx : IDBReaderCtx
         return true;
     }
 
-    public void SkipNativeObject(ref SpanReader reader)
+    public void SkipNativeObject(ref MemReader reader)
     {
         var test = SkipObject(ref reader);
         if (test)
@@ -127,42 +128,54 @@ public class DBReaderCtx : IDBReaderCtx
         return _objects[ido];
     }
 
-    public EncryptedString ReadEncryptedString(ref SpanReader reader)
+    [SkipLocalsInit]
+    public unsafe EncryptedString ReadEncryptedString(ref MemReader reader)
     {
         var cipher = Transaction!.Owner.GetSymmetricCipher();
-        var enc = reader.ReadByteArray();
+        var enc = reader.ReadByteArrayAsSpan();
         var size = cipher.CalcPlainSizeFor(enc);
-        var dec = new byte[size];
+        var dec = size < 4096
+            ? stackalloc byte[size]
+            : GC.AllocateUninitializedArray<byte>(size);
         if (!cipher.Decrypt(enc, dec))
         {
             throw new CryptographicException();
         }
 
-        var r = new SpanReader(dec.AsSpan());
-        return r.ReadString();
+        fixed (void* _ = dec)
+        {
+            var r = MemReader.CreateFromPinnedSpan(dec);
+            return r.ReadString();
+        }
     }
 
-    public void SkipEncryptedString(ref SpanReader reader)
+    public void SkipEncryptedString(ref MemReader reader)
     {
         reader.SkipByteArray();
     }
 
-    public EncryptedString ReadOrderedEncryptedString(ref SpanReader reader)
+    [SkipLocalsInit]
+    public unsafe EncryptedString ReadOrderedEncryptedString(ref MemReader reader)
     {
         var cipher = Transaction!.Owner.GetSymmetricCipher();
-        var enc = reader.ReadByteArray();
+        var enc = reader.ReadByteArrayAsSpan();
         var size = cipher.CalcOrderedPlainSizeFor(enc);
-        var dec = new byte[size];
+        var dec = size < 4096
+            ? stackalloc byte[size]
+            : GC.AllocateUninitializedArray<byte>(size);
         if (!cipher.OrderedDecrypt(enc, dec))
         {
             throw new CryptographicException();
         }
 
-        var r = new SpanReader(dec.AsSpan());
-        return r.ReadString();
+        fixed (void* _ = dec)
+        {
+            var r = MemReader.CreateFromPinnedSpan(dec);
+            return r.ReadString();
+        }
     }
 
-    public void SkipOrderedEncryptedString(ref SpanReader reader)
+    public void SkipOrderedEncryptedString(ref MemReader reader)
     {
         reader.SkipByteArray();
     }
@@ -180,7 +193,7 @@ public class DBReaderCtx : IDBReaderCtx
     {
     }
 
-    public virtual void FreeContentInNativeObject(ref SpanReader reader)
+    public virtual void FreeContentInNativeObject(ref MemReader reader)
     {
     }
 }

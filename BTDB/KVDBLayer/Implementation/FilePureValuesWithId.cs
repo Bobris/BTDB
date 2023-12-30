@@ -9,7 +9,7 @@ class FilePureValuesWithId : IFileInfo
     readonly long _subId;
     readonly long _generation;
 
-    public FilePureValuesWithId(ref SpanReader reader, Guid? guid)
+    public FilePureValuesWithId(ref MemReader reader, Guid? guid)
     {
         _guid = guid;
         _subId = reader.ReadVInt64();
@@ -31,7 +31,7 @@ class FilePureValuesWithId : IFileInfo
 
     public long SubDBId => _subId;
 
-    public void WriteHeader(ref SpanWriter writer)
+    public void WriteHeader(ref MemWriter writer)
     {
         FileCollectionWithFileInfos.WriteHeader(ref writer, _guid);
         writer.WriteUInt8((byte)KVFileType.PureValuesWithId);

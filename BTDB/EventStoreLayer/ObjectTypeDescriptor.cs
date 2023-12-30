@@ -33,7 +33,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     }
 
     public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers,
-        ref SpanReader reader,
+        ref MemReader reader,
         DescriptorReader nestedDescriptorReader,
         TypeDescriptorOptions? typeDescriptorOptions) :
         this(typeSerializers, reader.ReadString()!, false, typeDescriptorOptions)
@@ -536,7 +536,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => _fields;
 
-    public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
+    public void Persist(ref MemWriter writer, DescriptorWriter nestedDescriptorWriter)
     {
         writer.WriteString(Name);
         writer.WriteVUInt32(_fields.Count);

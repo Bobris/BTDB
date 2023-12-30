@@ -12,9 +12,11 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
 
-public delegate T ReaderFun<out T>(ref SpanReader reader, IReaderCtx? ctx);
-delegate void WriterFun<in T>(T value, ref SpanWriter writer, IWriterCtx? ctx);
-delegate void FreeContentFun(IInternalObjectDBTransaction transaction, ref SpanReader reader, IList<ulong> dictIds);
+public delegate T ReaderFun<out T>(ref MemReader reader, IReaderCtx? ctx);
+
+delegate void WriterFun<in T>(T value, ref MemWriter writer, IWriterCtx? ctx);
+
+delegate void FreeContentFun(IInternalObjectDBTransaction transaction, ref MemReader reader, IList<ulong> dictIds);
 
 public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQuerySizeDictionary<TKey>
 {
@@ -44,7 +46,9 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         var len = PackUnpack.LengthVUInt(id);
         var prefix = new byte[ObjectDB.AllDictionariesPrefixLen + len];
         MemoryMarshal.GetReference(prefix.AsSpan()) = ObjectDB.AllDictionariesPrefixByte;
-        PackUnpack.UnsafePackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(prefix.AsSpan()), ObjectDB.AllDictionariesPrefixLen), id, len);
+        PackUnpack.UnsafePackVUInt(
+            ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(prefix.AsSpan()),
+                ObjectDB.AllDictionariesPrefixLen), id, len);
         _prefix = prefix;
         _keyReader = ((ReaderFun<TKey>)config.KeyReader)!;
         _keyWriter = ((WriterFun<TKey>)config.KeyWriter)!;
@@ -65,7 +69,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         throw new InvalidOperationException("DB modified during iteration");
     }
 
-    public static void DoSave(ref SpanWriter writer, IWriterCtx ctx, IDictionary<TKey, TValue>? dictionary, int cfgId)
+    public static void DoSave(ref MemWriter writer, IWriterCtx ctx, IDictionary<TKey, TValue>? dictionary, int cfgId)
     {
         var writerCtx = (IDBWriterCtx)ctx;
         if (!(dictionary is ODBDictionary<TKey, TValue> goodDict))
@@ -115,6 +119,8 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
 
         var findIDictAction = (FreeContentFun)config.FreeContent;
 
+        Span<byte> buffer = stackalloc byte[4096];
+        var valueReader = MemReader.CreateFromPinnedSpan(buffer);
         long prevProtectionCounter = 0;
         long pos = 0;
         while (true)
@@ -136,9 +142,8 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             }
 
             prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            var valueBytes = _keyValueTr.GetValue();
-            var valueReader = new SpanReader(valueBytes);
-            findIDictAction(ctx.GetTransaction(), ref valueReader, ctx.DictIds);
+            _keyValueTr.GetValue(ref valueReader);
+            findIDictAction(ctx.GetTransaction()!, ref valueReader, ctx.DictIds);
 
             pos++;
         }
@@ -214,7 +219,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
 
     ReadOnlySpan<byte> KeyToByteArray(TKey key)
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         writer.WriteBlock(_prefix);
         IWriterCtx ctx = null;
         if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
@@ -224,14 +229,14 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
 
     ReadOnlySpan<byte> ValueToByteArray(TValue value)
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         IWriterCtx ctx = null;
         if (_valueHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
         _valueWriter(value, ref writer, ctx);
         return writer.GetSpan();
     }
 
-    ReadOnlySpan<byte> KeyToByteArray(TKey key, ref SpanWriter writer)
+    ReadOnlySpan<byte> KeyToByteArray(TKey key, ref MemWriter writer)
     {
         writer.WriteBlock(_prefix);
         IWriterCtx ctx = null;
@@ -240,7 +245,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         return writer.GetPersistentSpanAndReset();
     }
 
-    ReadOnlySpan<byte> ValueToByteArray(TValue value, ref SpanWriter writer)
+    ReadOnlySpan<byte> ValueToByteArray(TValue value, ref MemWriter writer)
     {
         IWriterCtx ctx = null;
         if (_valueHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
@@ -249,18 +254,21 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
     }
 
     [SkipLocalsInit]
-    TKey CurrentToKey()
+    unsafe TKey CurrentToKey()
     {
-        Span<byte> buffer = stackalloc byte[512];
-        var reader = new SpanReader(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length).Slice(_prefix.Length));
-        IReaderCtx ctx = null;
-        if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr);
-        return _keyReader(ref reader, ctx);
+        Span<byte> buffer = stackalloc byte[4096];
+        var keySpan = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length)[_prefix.Length..];
+        fixed (byte* keyPtr = keySpan)
+        {
+            var reader = new MemReader(keyPtr, keySpan.Length);
+            IReaderCtx ctx = null;
+            if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr);
+            return _keyReader(ref reader, ctx);
+        }
     }
 
-    TValue ByteArrayToValue(in ReadOnlySpan<byte> data)
+    TValue ByteArrayToValue(ref MemReader reader)
     {
-        var reader = new SpanReader(data);
         IReaderCtx ctx = null;
         if (_valueHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr);
         return _valueReader(ref reader, ctx);
@@ -269,8 +277,8 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
     [SkipLocalsInit]
     public bool ContainsKey(TKey key)
     {
-        Span<byte> buf = stackalloc byte[512];
-        var writer = new SpanWriter(buf);
+        Span<byte> buf = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         var keyBytes = KeyToByteArray(key, ref writer);
         return _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
     }
@@ -278,8 +286,8 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
     [SkipLocalsInit]
     public void Add(TKey key, TValue value)
     {
-        Span<byte> buf = stackalloc byte[512];
-        var writer = new SpanWriter(buf);
+        Span<byte> buf = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         var keyBytes = KeyToByteArray(key, ref writer);
         var valueBytes = ValueToByteArray(value, ref writer);
         _modificationCounter++;
@@ -288,15 +296,15 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             throw new ArgumentException("Cannot Add duplicate key to Dictionary");
         }
 
-        _tr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+        _keyValueTr!.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         NotifyAdded();
     }
 
     [SkipLocalsInit]
     public bool Remove(TKey key)
     {
-        Span<byte> buf = stackalloc byte[512];
-        var writer = new SpanWriter(buf);
+        Span<byte> buf = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         var keyBytes = KeyToByteArray(key, ref writer);
         _modificationCounter++;
         var found = _keyValueTr.EraseCurrent(keyBytes);
@@ -311,8 +319,8 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
     [SkipLocalsInit]
     public bool TryGetValue(TKey key, out TValue value)
     {
-        Span<byte> buf = stackalloc byte[512];
-        var writer = new SpanWriter(buf);
+        Span<byte> buf = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         var keyBytes = KeyToByteArray(key, ref writer);
         var found = _keyValueTr.FindExactKey(keyBytes);
         if (!found)
@@ -321,8 +329,9 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             return false;
         }
 
-        var valueBytes = _keyValueTr.GetValue();
-        value = ByteArrayToValue(valueBytes);
+        var valueReader = MemReader.CreateFromPinnedSpan(buf);
+        _keyValueTr.GetValue(ref valueReader);
+        value = ByteArrayToValue(ref valueReader);
         return true;
     }
 
@@ -331,8 +340,8 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         [SkipLocalsInit]
         get
         {
-            Span<byte> buf = stackalloc byte[512];
-            var writer = new SpanWriter(buf);
+            Span<byte> buf = stackalloc byte[4096];
+            var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
             var keyBytes = KeyToByteArray(key, ref writer);
             var found = _keyValueTr.FindExactKey(keyBytes);
             if (!found)
@@ -340,14 +349,15 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                 throw new ArgumentException("Key not found in Dictionary");
             }
 
-            var valueBytes = _keyValueTr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
-            return ByteArrayToValue(valueBytes);
+            var valueReader = MemReader.CreateFromPinnedSpan(buf);
+            _keyValueTr.GetValue(ref valueReader);
+            return ByteArrayToValue(ref valueReader);
         }
         [SkipLocalsInit]
         set
         {
-            Span<byte> buf = stackalloc byte[512];
-            var writer = new SpanWriter(buf);
+            Span<byte> buf = stackalloc byte[4096];
+            var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
             var keyBytes = KeyToByteArray(key, ref writer);
             var valueBytes = ValueToByteArray(value, ref writer);
             if (_keyValueTr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
@@ -356,6 +366,16 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                 NotifyAdded();
             }
         }
+    }
+
+    [SkipLocalsInit]
+    TValue DeserializeValue()
+    {
+        Span<byte> buf = stackalloc byte[4096];
+        var valueReader = MemReader.CreateFromPinnedSpan(buf);
+        _keyValueTr.GetValue(ref valueReader);
+        var value = ByteArrayToValue(ref valueReader);
+        return value;
     }
 
     void NotifyAdded()
@@ -501,8 +521,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                 }
 
                 prevProtectionCounter = _parent._keyValueTr.CursorMovedCounter;
-                var valueBytes = _parent._keyValueTr.GetValue();
-                var value = _parent.ByteArrayToValue(valueBytes);
+                var value = _parent.DeserializeValue();
                 yield return value;
                 pos++;
             }
@@ -583,10 +602,9 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             }
 
             prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            var valueBytes = _keyValueTr.GetValue();
             var key = CurrentToKey();
-            var value = ByteArrayToValue(valueBytes);
-            yield return new KeyValuePair<TKey, TValue>(key, value);
+            var value = DeserializeValue();
+            yield return new(key, value);
             pos++;
         }
     }
@@ -621,10 +639,9 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             }
 
             prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            var valueBytes = _keyValueTr.GetValue();
             var key = CurrentToKey();
-            var value = ByteArrayToValue(valueBytes);
-            yield return new KeyValuePair<TKey, TValue>(key, value);
+            var value = DeserializeValue();
+            yield return new(key, value);
             pos--;
         }
     }
@@ -679,10 +696,9 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             }
 
             prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            var valueBytes = _keyValueTr.GetValue();
             var key = CurrentToKey();
-            var value = ByteArrayToValue(valueBytes);
-            yield return new KeyValuePair<TKey, TValue>(key, value);
+            var value = DeserializeValue();
+            yield return new(key, value);
             pos++;
         }
     }
@@ -736,10 +752,9 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             }
 
             prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            var valueBytes = _keyValueTr.GetValue();
             var key = CurrentToKey();
-            var value = ByteArrayToValue(valueBytes);
-            yield return new KeyValuePair<TKey, TValue>(key, value);
+            var value = DeserializeValue();
+            yield return new(key, value);
             pos--;
         }
     }
@@ -939,8 +954,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                 }
 
                 _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var valueBytes = _keyValueTr.GetValue();
-                return _owner.ByteArrayToValue(valueBytes);
+                return _owner.DeserializeValue();
             }
 
             set

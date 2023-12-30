@@ -44,6 +44,7 @@ class SecondaryKeyInfo
             if (!a.Fields[i].Equals(b.Fields[i]))
                 return false;
         }
+
         return true;
     }
 }
@@ -56,10 +57,11 @@ public class RelationVersionInfo
     IDictionary<string, uint> _secondaryKeysNames;
     IDictionary<uint, SecondaryKeyInfo> _secondaryKeys;
 
-    public RelationVersionInfo(Dictionary<uint, TableFieldInfo> primaryKeyFields,  //order -> info
-                               List<Tuple<int, IList<SecondaryKeyAttribute>>> secondaryKeys,  //positive: sec key field idx, negative: pk order, attrs
-                               ReadOnlyMemory<TableFieldInfo> secondaryKeyFields,
-                               ReadOnlyMemory<TableFieldInfo> fields)
+    public RelationVersionInfo(Dictionary<uint, TableFieldInfo> primaryKeyFields, //order -> info
+        List<Tuple<int, IList<SecondaryKeyAttribute>>>
+            secondaryKeys, //positive: sec key field idx, negative: pk order, attrs
+        ReadOnlyMemory<TableFieldInfo> secondaryKeyFields,
+        ReadOnlyMemory<TableFieldInfo> fields)
     {
         PrimaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToArray();
         var firstInKeyValue = PrimaryKeyFields.Length;
@@ -83,7 +85,7 @@ public class RelationVersionInfo
     }
 
     void CreateSecondaryKeyInfo(List<Tuple<int, IList<SecondaryKeyAttribute>>> attributes,
-                                Dictionary<uint, TableFieldInfo> primaryKeyFields)
+        Dictionary<uint, TableFieldInfo> primaryKeyFields)
     {
         _secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>();
         _secondaryKeysNames = new Dictionary<string, uint>();
@@ -98,6 +100,7 @@ public class RelationVersionInfo
                     continue;
                 indexFields.Add(Tuple.Create(kv.Item1, attr));
             }
+
             var orderedAttrs = indexFields.OrderBy(a => a.Item2.Order).ToList();
             var info = new SecondaryKeyInfo
             {
@@ -113,6 +116,7 @@ public class RelationVersionInfo
                     var pi = PrimaryKeyFields.Span.IndexOf(primaryKeyFields[i]);
                     info.Fields.Add(new FieldId(true, (uint)pi));
                 }
+
                 if (attr.Item1 < 0)
                 {
                     var pkOrder = (uint)-attr.Item1;
@@ -125,6 +129,7 @@ public class RelationVersionInfo
                     info.Fields.Add(new FieldId(false, (uint)attr.Item1));
                 }
             }
+
             //fill all not present parts of primary key
             foreach (var pk in primaryKeyFields)
             {
@@ -133,6 +138,7 @@ public class RelationVersionInfo
                 if (!usedPKFields.ContainsKey(pk.Key))
                     info.Fields.Add(new FieldId(true, (uint)PrimaryKeyFields.Span.IndexOf(primaryKeyFields[pk.Key])));
             }
+
             var skIndex = SelectSecondaryKeyIndex(info);
             _secondaryKeysNames[indexName] = skIndex;
             _secondaryKeys[skIndex] = info;
@@ -148,9 +154,9 @@ public class RelationVersionInfo
     }
 
     internal RelationVersionInfo(ReadOnlyMemory<TableFieldInfo> primaryKeyFields,
-                        Dictionary<uint, SecondaryKeyInfo> secondaryKeys,
-                        ReadOnlyMemory<TableFieldInfo> secondaryKeyFields,
-                        ReadOnlyMemory<TableFieldInfo> fields)
+        Dictionary<uint, SecondaryKeyInfo> secondaryKeys,
+        ReadOnlyMemory<TableFieldInfo> secondaryKeyFields,
+        ReadOnlyMemory<TableFieldInfo> fields)
     {
         PrimaryKeyFields = primaryKeyFields;
         _secondaryKeys = secondaryKeys;
@@ -159,6 +165,7 @@ public class RelationVersionInfo
         {
             _secondaryKeysNames.Add(secondaryKeyInfo.Value.Name, secondaryKeyInfo.Key);
         }
+
         _secondaryKeyFields = secondaryKeyFields;
         Fields = fields;
     }
@@ -171,6 +178,7 @@ public class RelationVersionInfo
             {
                 if (fieldInfo.Name == name) return fieldInfo;
             }
+
             foreach (var fieldInfo in PrimaryKeyFields.Span)
             {
                 if (fieldInfo.Name == name) return fieldInfo;
@@ -225,6 +233,7 @@ public class RelationVersionInfo
                 ? PrimaryKeyFields.Span[(int)field.Index]
                 : _secondaryKeyFields.Span[(int)field.Index]);
         }
+
         return fields;
     }
 
@@ -240,18 +249,20 @@ public class RelationVersionInfo
         return index;
     }
 
-    internal void Save(ref SpanWriter writer)
+    internal void Save(ref MemWriter writer)
     {
         writer.WriteVUInt32((uint)PrimaryKeyFields.Length);
         foreach (var field in PrimaryKeyFields.Span)
         {
             field.Save(ref writer);
         }
+
         writer.WriteVUInt32((uint)_secondaryKeyFields.Length);
         foreach (var field in _secondaryKeyFields.Span)
         {
             field.Save(ref writer);
         }
+
         writer.WriteVUInt32((uint)_secondaryKeys.Count);
         foreach (var key in _secondaryKeys)
         {
@@ -275,21 +286,25 @@ public class RelationVersionInfo
         }
     }
 
-    public static RelationVersionInfo LoadUnresolved(ref SpanReader reader, string relationName)
+    public static RelationVersionInfo LoadUnresolved(ref MemReader reader, string relationName)
     {
         var pkCount = reader.ReadVUInt32();
         var primaryKeyFields = new StructList<TableFieldInfo>();
         primaryKeyFields.Reserve(pkCount);
         for (var i = 0u; i < pkCount; i++)
         {
-            primaryKeyFields.Add(UnresolvedTableFieldInfo.Load(ref reader, relationName, FieldHandlerOptions.Orderable));
+            primaryKeyFields.Add(UnresolvedTableFieldInfo.Load(ref reader, relationName,
+                FieldHandlerOptions.Orderable));
         }
+
         var skFieldCount = reader.ReadVUInt32();
         var secondaryKeyFields = new TableFieldInfo[skFieldCount];
         for (var i = 0; i < skFieldCount; i++)
         {
-            secondaryKeyFields[i] = UnresolvedTableFieldInfo.Load(ref reader, relationName, FieldHandlerOptions.Orderable);
+            secondaryKeyFields[i] =
+                UnresolvedTableFieldInfo.Load(ref reader, relationName, FieldHandlerOptions.Orderable);
         }
+
         var skCount = reader.ReadVUInt32();
         var secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>((int)skCount);
         for (var i = 0; i < skCount; i++)
@@ -306,6 +321,7 @@ public class RelationVersionInfo
                 var index = reader.ReadVUInt32();
                 info.Fields.Add(new FieldId(fromPrimary, index));
             }
+
             secondaryKeys.Add(skIndex, info);
         }
 
@@ -323,12 +339,14 @@ public class RelationVersionInfo
     {
         var resolvedPrimaryKeyFields = new TableFieldInfo[PrimaryKeyFields.Length];
         for (var i = 0; i < PrimaryKeyFields.Length; i++)
-            resolvedPrimaryKeyFields[i] = ((UnresolvedTableFieldInfo)PrimaryKeyFields.Span[i]).Resolve(fieldHandlerFactory);
+            resolvedPrimaryKeyFields[i] =
+                ((UnresolvedTableFieldInfo)PrimaryKeyFields.Span[i]).Resolve(fieldHandlerFactory);
         PrimaryKeyFields = resolvedPrimaryKeyFields;
 
         var resolvedSecondaryKeyFields = new TableFieldInfo[_secondaryKeyFields.Length];
         for (var i = 0; i < _secondaryKeyFields.Length; i++)
-            resolvedSecondaryKeyFields[i] = ((UnresolvedTableFieldInfo)_secondaryKeyFields.Span[i]).Resolve(fieldHandlerFactory);
+            resolvedSecondaryKeyFields[i] =
+                ((UnresolvedTableFieldInfo)_secondaryKeyFields.Span[i]).Resolve(fieldHandlerFactory);
         _secondaryKeyFields = resolvedSecondaryKeyFields;
 
         var resolvedFields = new TableFieldInfo[Fields.Length];
@@ -365,6 +383,7 @@ public class RelationVersionInfo
         {
             if (!TableFieldInfo.Equal(a.PrimaryKeyFields.Span[i], b.PrimaryKeyFields.Span[i])) return false;
         }
+
         //SKs
         if (a._secondaryKeys.Count != b._secondaryKeys.Count) return false;
         foreach (var key in a._secondaryKeys)
@@ -372,12 +391,14 @@ public class RelationVersionInfo
             if (!b._secondaryKeys.TryGetValue(key.Key, out var bInfo)) return false;
             if (!SecondaryKeyInfo.Equal(key.Value, bInfo)) return false;
         }
+
         //Fields
         if (a.Fields.Length != b.Fields.Length) return false;
         for (var i = 0; i < a.Fields.Length; i++)
         {
             if (!TableFieldInfo.Equal(a.Fields.Span[i], b.Fields.Span[i])) return false;
         }
+
         return true;
     }
 }

@@ -85,6 +85,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
             {
                 return middle * 2 + 1;
             }
+
             if (result < 0)
             {
                 right = middle;
@@ -94,6 +95,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
                 left = middle + 1;
             }
         }
+
         return left * 2;
     }
 
@@ -116,10 +118,12 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
                 ctx.Node1 = leaf;
                 ctx.Update = true;
             }
+
             leaf._keyValues[index] = m;
             ctx.Stack.Add(new NodeIdxPair { Node = leaf, Idx = index });
             return;
         }
+
         if ((long)_keyBytes!.Length + ctx.Key.Length > MaxTotalLen)
         {
             var currentKeyValues = new BTreeLeafMember[_keyValues.Length];
@@ -132,9 +136,11 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
                     Value = member.Value
                 };
             }
+
             new BTreeLeaf(ctx.TransactionId - 1, currentKeyValues).CreateOrUpdate(ref ctx);
             return;
         }
+
         index = index / 2;
         ctx.Created = true;
         ctx.KeyIndex = index;
@@ -168,9 +174,11 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
                 _keyValues = newKeyValues;
                 _keyBytes = newKeyBytes;
             }
+
             ctx.Stack.Add(new NodeIdxPair { Node = leaf, Idx = index });
             return;
         }
+
         ctx.Split = true;
         var keyCountLeft = (_keyValues.Length + 1) / 2;
         var keyCountRight = _keyValues.Length + 1 - keyCountLeft;
@@ -214,7 +222,8 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
             var ofs = (index == _keyValues.Length ? _keyBytes.Length : _keyValues[index].KeyOffset) - leftKeyBytesLen;
             Array.Copy(_keyBytes, leftKeyBytesLen, newKeyBytes, 0, ofs);
             newKey.CopyTo(newKeyBytes.AsSpan(ofs));
-            Array.Copy(_keyBytes, ofs + leftKeyBytesLen, newKeyBytes, ofs + newKey.Length, _keyBytes.Length - ofs - leftKeyBytesLen);
+            Array.Copy(_keyBytes, ofs + leftKeyBytesLen, newKeyBytes, ofs + newKey.Length,
+                _keyBytes.Length - ofs - leftKeyBytesLen);
             rightNode._keyBytes = newKeyBytes;
             Array.Copy(_keyValues, keyCountLeft, rightNode._keyValues, 0, index - keyCountLeft);
             rightNode._keyValues[index - keyCountLeft] = new Member
@@ -223,10 +232,12 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
                 KeyLength = (ushort)newKey.Length,
                 Value = ctx.Value.ToArray(),
             };
-            Array.Copy(_keyValues, index, rightNode._keyValues, index - keyCountLeft + 1, keyCountLeft + keyCountRight - 1 - index);
+            Array.Copy(_keyValues, index, rightNode._keyValues, index - keyCountLeft + 1,
+                keyCountLeft + keyCountRight - 1 - index);
             ctx.Stack.Add(new NodeIdxPair { Node = rightNode, Idx = index - keyCountLeft });
             ctx.SplitInRight = true;
         }
+
         RecalculateOffsets(rightNode._keyValues);
     }
 
@@ -250,6 +261,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
                     };
                     continue;
                 }
+
                 currentKeyValues[i] = new BTreeLeafMember
                 {
                     Key = _keyBytes.AsSpan(member.KeyOffset, member.KeyLength).ToArray(),
@@ -261,6 +273,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
             ctx.Update = true;
             return;
         }
+
         var leaf = this;
         if (ctx.TransactionId != TransactionId)
         {
@@ -275,7 +288,8 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         var newKeyBytes = new byte[newTotalLen];
         Array.Copy(_keyBytes, 0, newKeyBytes, 0, m.KeyOffset);
         ctx.Key.CopyTo(newKeyBytes.AsSpan(m.KeyOffset));
-        Array.Copy(_keyBytes, m.KeyOffset + m.KeyLength, newKeyBytes, m.KeyOffset + ctx.Key.Length, _keyBytes.Length - m.KeyOffset - m.KeyLength);
+        Array.Copy(_keyBytes, m.KeyOffset + m.KeyLength, newKeyBytes, m.KeyOffset + ctx.Key.Length,
+            _keyBytes.Length - m.KeyOffset - m.KeyLength);
         leaf._keyValues[index].KeyLength = (ushort)ctx.Key.Length;
         leaf._keyBytes = newKeyBytes;
         RecalculateOffsets(leaf._keyValues);
@@ -295,6 +309,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
             result = FindResult.Previous;
             idx = (int)((uint)idx / 2) - 1;
         }
+
         stack.Add(new NodeIdxPair { Node = this, Idx = idx });
         keyIndex = idx;
         return result;
@@ -340,6 +355,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
                 left = middle + 1;
             }
         }
+
         currentKeyOfs = keyValues[left].KeyOffset;
         currentKeyLen = keyValues[left].KeyLength;
         result = prefix.SequenceCompareTo(keyBytes.AsSpan(currentKeyOfs, Math.Min(currentKeyLen, prefix.Length)));
@@ -370,11 +386,14 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
     public IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex)
     {
         var newKeyValues = new Member[_keyValues.Length + firstKeyIndex - lastKeyIndex - 1];
-        var newKeyBytes = new byte[_keyBytes!.Length + _keyValues[firstKeyIndex].KeyOffset - _keyValues[lastKeyIndex].KeyOffset - _keyValues[lastKeyIndex].KeyLength];
+        var newKeyBytes = new byte[_keyBytes!.Length + _keyValues[firstKeyIndex].KeyOffset -
+                                   _keyValues[lastKeyIndex].KeyOffset - _keyValues[lastKeyIndex].KeyLength];
         Array.Copy(_keyValues, 0, newKeyValues, 0, (int)firstKeyIndex);
-        Array.Copy(_keyValues, (int)lastKeyIndex + 1, newKeyValues, (int)firstKeyIndex, newKeyValues.Length - (int)firstKeyIndex);
+        Array.Copy(_keyValues, (int)lastKeyIndex + 1, newKeyValues, (int)firstKeyIndex,
+            newKeyValues.Length - (int)firstKeyIndex);
         Array.Copy(_keyBytes, 0, newKeyBytes, 0, _keyValues[firstKeyIndex].KeyOffset);
-        Array.Copy(_keyBytes, _keyValues[lastKeyIndex].KeyOffset + _keyValues[lastKeyIndex].KeyLength, newKeyBytes, _keyValues[firstKeyIndex].KeyOffset, newKeyBytes.Length - _keyValues[firstKeyIndex].KeyOffset);
+        Array.Copy(_keyBytes, _keyValues[lastKeyIndex].KeyOffset + _keyValues[lastKeyIndex].KeyLength, newKeyBytes,
+            _keyValues[firstKeyIndex].KeyOffset, newKeyBytes.Length - _keyValues[firstKeyIndex].KeyOffset);
         RecalculateOffsets(newKeyValues);
         if (TransactionId == transactionId)
         {
@@ -382,6 +401,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
             _keyBytes = newKeyBytes;
             return this;
         }
+
         return new BTreeLeafComp(transactionId, newKeyBytes, newKeyValues);
     }
 
@@ -392,7 +412,8 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         Array.Copy(_keyValues, 0, newKeyValues, 0, (int)keyIndex);
         Array.Copy(_keyValues, (int)keyIndex + 1, newKeyValues, (int)keyIndex, newKeyValues.Length - (int)keyIndex);
         Array.Copy(_keyBytes, 0, newKeyBytes, 0, _keyValues[keyIndex].KeyOffset);
-        Array.Copy(_keyBytes, _keyValues[keyIndex].KeyOffset + _keyValues[keyIndex].KeyLength, newKeyBytes, _keyValues[keyIndex].KeyOffset, newKeyBytes.Length - _keyValues[keyIndex].KeyOffset);
+        Array.Copy(_keyBytes, _keyValues[keyIndex].KeyOffset + _keyValues[keyIndex].KeyLength, newKeyBytes,
+            _keyValues[keyIndex].KeyOffset, newKeyBytes.Length - _keyValues[keyIndex].KeyOffset);
         RecalculateOffsets(newKeyValues);
         if (TransactionId == transactionId)
         {
@@ -400,6 +421,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
             _keyBytes = newKeyBytes;
             return this;
         }
+
         return new BTreeLeafComp(transactionId, newKeyBytes, newKeyValues);
     }
 
@@ -430,6 +452,14 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
 
     public void SetMemberValue(int idx, in ReadOnlySpan<byte> value)
     {
-        _keyValues[idx].Value = value.ToArray();
+        if (value.Length == 0)
+        {
+            _keyValues[idx].Value = Array.Empty<byte>();
+            return;
+        }
+
+        var valueAsArray = GC.AllocateUninitializedArray<byte>(value.Length);
+        value.CopyTo(valueAsArray);
+        _keyValues[idx].Value = valueAsArray;
     }
 }

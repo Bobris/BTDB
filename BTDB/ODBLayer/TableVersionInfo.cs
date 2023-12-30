@@ -30,7 +30,7 @@ public class TableVersionInfo
         }
     }
 
-    internal void Save(ref SpanWriter writer)
+    internal void Save(ref MemWriter writer)
     {
         var f = _tableFields;
         writer.WriteVUInt32((uint)f.Length);
@@ -40,7 +40,8 @@ public class TableVersionInfo
         }
     }
 
-    internal static TableVersionInfo Load(ref SpanReader reader, IFieldHandlerFactory fieldHandlerFactory, string tableName)
+    internal static TableVersionInfo Load(ref MemReader reader, IFieldHandlerFactory fieldHandlerFactory,
+        string tableName)
     {
         var fieldCount = reader.ReadVUInt32();
         var fieldInfos = new TableFieldInfo[fieldCount];
@@ -48,6 +49,7 @@ public class TableVersionInfo
         {
             fieldInfos[i] = TableFieldInfo.Load(ref reader, fieldHandlerFactory, tableName, FieldHandlerOptions.None);
         }
+
         return new TableVersionInfo(fieldInfos);
     }
 
@@ -58,6 +60,7 @@ public class TableVersionInfo
         {
             if (!TableFieldInfo.Equal(a[i], b[i])) return false;
         }
+
         return true;
     }
 

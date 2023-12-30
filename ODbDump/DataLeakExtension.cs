@@ -27,9 +27,7 @@ namespace ODbDump
                 {
                     try
                     {
-                        var r = new SpanReader(unseenKey.Key);
-                        r.SkipUInt8();
-                        var oid = r.ReadVUInt64();
+                        var oid = PackUnpack.UnpackVUInt(unseenKey.Key[1..]);
                         leakedObjects.Add(oid);
                     }
                     catch (Exception ex)
@@ -83,9 +81,7 @@ namespace ODbDump
                     var isDict = unseenKey.Key[0] == 2;
                     var isObject = unseenKey.Key[0] == 1;
 
-                    var r = new SpanReader(unseenKey.Key);
-                    r.SkipUInt8();
-                    var oid = r.ReadVUInt64();
+                    var oid = PackUnpack.UnpackVUInt(unseenKey.Key[1..]);
 
                     if (isDict)
                     {
@@ -144,6 +140,7 @@ namespace ODbDump
                         value = value.Slice(0, 20);
                     sb.Append(Convert.ToHexString(value));
                 }
+
                 sb.Append('"');
                 sb.Append(", \n");
             }

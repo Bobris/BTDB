@@ -16,7 +16,7 @@ class FileHashIndex : IFileInfo
 
     internal long KeyValueCount => _keyValueCount;
 
-    public FileHashIndex(ref SpanReader reader)
+    public FileHashIndex(ref MemReader reader)
     {
         _generation = reader.ReadVInt64();
         _keySize = (int)reader.ReadVUInt32();
@@ -30,15 +30,15 @@ class FileHashIndex : IFileInfo
         _keyValueCount = keyCount;
     }
 
-    internal static void SkipHeader(ref SpanReader reader)
+    internal static void SkipHeader(ref MemReader reader)
     {
-        reader.SkipBlock(DiskChunkCache.MagicStartOfFile.Length + 1); // magic + type of file
+        reader.SkipBlock((uint)DiskChunkCache.MagicStartOfFile.Length + 1); // magic + type of file
         reader.SkipVInt64(); // generation
         reader.SkipVUInt32(); // keySize
         reader.SkipVUInt64(); // keyValueCount
     }
 
-    internal void WriteHeader(ref SpanWriter writer)
+    internal void WriteHeader(ref MemWriter writer)
     {
         writer.WriteByteArrayRaw(DiskChunkCache.MagicStartOfFile);
         writer.WriteUInt8((byte)DiskChunkFileType.HashIndex);

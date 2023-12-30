@@ -26,14 +26,14 @@ public class RelationBuilder
     public readonly IRelationInfoResolver RelationInfoResolver;
     public IILDynamicMethodWithThis DelegateCreator { get; }
 
-    static readonly MethodInfo SpanWriterGetSpanMethodInfo =
-        typeof(SpanWriter).GetMethod(nameof(SpanWriter.GetSpan))!;
+    static readonly MethodInfo MemWriterGetSpanMethodInfo =
+        typeof(MemWriter).GetMethod(nameof(MemWriter.GetSpan))!;
 
-    static readonly MethodInfo SpanWriterGetPersistentSpanAndResetMethodInfo =
-        typeof(SpanWriter).GetMethod(nameof(SpanWriter.GetPersistentSpanAndReset))!;
+    static readonly MethodInfo MemWriterGetPersistentSpanAndResetMethodInfo =
+        typeof(MemWriter).GetMethod(nameof(MemWriter.GetPersistentSpanAndReset))!;
 
-    static readonly MethodInfo SpanWriterNoControllerGetCurrentPosition =
-        typeof(SpanWriter).GetMethod(nameof(SpanWriter.NoControllerGetCurrentPosition))!;
+    static readonly MethodInfo MemWriterNoControllerGetCurrentPosition =
+        typeof(MemWriter).GetMethod(nameof(MemWriter.NoControllerGetCurrentPosition))!;
 
     static Dictionary<(Type, string?), RelationBuilder> _relationBuilderCache = new();
     static readonly object RelationBuilderCacheLock = new();
@@ -349,7 +349,7 @@ public class RelationBuilder
         reqMethod.Generator
             .Ldarg(0) //manipulator
             .Do(pushWriter)
-            .Call(SpanWriterGetSpanMethodInfo)
+            .Call(MemWriterGetSpanMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan)
             .Callvirt(_relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.Contains))!);
@@ -495,7 +495,7 @@ public class RelationBuilder
         var localSpan = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
         reqMethod.Generator
             .Do(pushWriter)
-            .Call(SpanWriterGetSpanMethodInfo)
+            .Call(MemWriterGetSpanMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan);
         if (isPrefixBased)
@@ -611,7 +611,7 @@ public class RelationBuilder
         il
             .Ldarg(0) //manipulator
             .Do(pushWriter)
-            .Call(SpanWriterGetSpanMethodInfo)
+            .Call(MemWriterGetSpanMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan)
             .Ldarg((ushort)methodParameters.Length)
@@ -1112,7 +1112,7 @@ public class RelationBuilder
             var keyBytesLocal = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             reqMethod.Generator
                 .Do(pushWriter)
-                .Call(SpanWriterGetPersistentSpanAndResetMethodInfo)
+                .Call(MemWriterGetPersistentSpanAndResetMethodInfo)
                 .Stloc(keyBytesLocal)
                 .Ldarg(0)
                 .Ldloc(keyBytesLocal)
@@ -1130,9 +1130,10 @@ public class RelationBuilder
             var updateByIdStartMethod =
                 _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.UpdateByIdStart));
             var keyBytesLocal = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
+            var pinnedValueSpanLocal = reqMethod.Generator.DeclareLocal(typeof(byte).MakeByRefType(), "pinned", true);
             reqMethod.Generator
                 .Do(pushWriter)
-                .Call(SpanWriterGetPersistentSpanAndResetMethodInfo)
+                .Call(MemWriterGetPersistentSpanAndResetMethodInfo)
                 .Stloc(keyBytesLocal)
                 .Ldarg(0)
                 .Ldloc(keyBytesLocal)
@@ -1158,15 +1159,18 @@ public class RelationBuilder
             var updateParams = parameters.AsSpan(pkFields.Length);
             // valueSpan contains oldValue
             // writer contains latest version id
-            var readerLocal = reqMethod.Generator.DeclareLocal(typeof(SpanReader));
+            var readerLocal = reqMethod.Generator.DeclareLocal(typeof(MemReader));
             var memoPosLocal = reqMethod.Generator.DeclareLocal(typeof(uint));
             IILLocal? ctxReaderLoc = null;
             reqMethod.Generator
+                .Ldloca(valueSpan)
+                .Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.GetPinnableReference))!)
+                .Stloc(pinnedValueSpanLocal)
                 .Ldloc(valueSpan)
-                .Newobj(typeof(SpanReader).GetConstructor(new[] { typeof(ReadOnlySpan<byte>) })!)
+                .Call(typeof(MemReader).GetMethod(nameof(MemReader.CreateFromPinnedSpan))!)
                 .Stloc(readerLocal)
                 .Ldloca(readerLocal)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
+                .Call(typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!);
             var valueFields = ClientRelationVersionInfo.Fields.Span;
 
             var copyMode = false;
@@ -1279,7 +1283,7 @@ public class RelationBuilder
                 .Ldloc(keyBytesLocal)
                 .Ldloc(valueSpan)
                 .Do(pushWriter)
-                .Call(SpanWriterGetPersistentSpanAndResetMethodInfo)
+                .Call(MemWriterGetPersistentSpanAndResetMethodInfo)
                 .Call(updateByIdFinishMethod!);
             if (returningBoolVariant)
                 reqMethod.Generator.LdcI4(1);
@@ -1639,7 +1643,7 @@ public class RelationBuilder
         ilGenerator
             .Ldarg(0) //manipulator
             .Do(pushWriter)
-            .Call(SpanWriterGetSpanMethodInfo)
+            .Call(MemWriterGetSpanMethodInfo)
             .Stloc(spanLocal)
             .Ldloca(spanLocal);
 
@@ -1694,7 +1698,7 @@ public class RelationBuilder
             .Ldarg(0) //manipulator
             .Ldloc(localRemapped)
             .Do(pushWriter)
-            .Call(SpanWriterGetSpanMethodInfo)
+            .Call(MemWriterGetSpanMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan);
 
@@ -1769,7 +1773,7 @@ public class RelationBuilder
             {
                 ilGenerator
                     .Do(pushWriter)
-                    .Call(SpanWriterNoControllerGetCurrentPosition)
+                    .Call(MemWriterNoControllerGetCurrentPosition)
                     .ConvI4()
                     .Stloc(lenOfPkWoInKeyValuesLocal);
                 lenOfPkWoInKeyValuesLocal = null;
@@ -1818,7 +1822,7 @@ public class RelationBuilder
         var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
         ilGenerator
             .Do(pushWriter)
-            .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.GetCurrentPosition))!)
+            .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.GetCurrentPosition))!)
             .ConvI4()
             .Ldarg(advEnumParamOrder)
             .Ldfld(advEnumParamType.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!)
@@ -1830,7 +1834,7 @@ public class RelationBuilder
         ilGenerator
             .Mark(ignoreLabel)
             .Do(pushWriter)
-            .Call(SpanWriterGetPersistentSpanAndResetMethodInfo)
+            .Call(MemWriterGetPersistentSpanAndResetMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan);
     }
@@ -1858,7 +1862,7 @@ public class RelationBuilder
         ilGenerator
             .Mark(ignoreLabel)
             .Do(pushWriter)
-            .Call(SpanWriterGetSpanMethodInfo)
+            .Call(MemWriterGetSpanMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan);
     }
@@ -1874,7 +1878,7 @@ public class RelationBuilder
         var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
         ilGenerator
             .Do(pushWriter)
-            .Call(SpanWriterGetSpanMethodInfo)
+            .Call(MemWriterGetSpanMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan);
         return localRemapped;
@@ -1907,7 +1911,7 @@ public class RelationBuilder
     static (Action<IILGen>, Func<IILLocal>) WriterPushers(IILGen ilGenerator)
     {
         var bufPtrLoc = ilGenerator.DeclareLocal(typeof(byte*));
-        var writerLoc = ilGenerator.DeclareLocal(typeof(SpanWriter));
+        var writerLoc = ilGenerator.DeclareLocal(typeof(MemWriter));
 
         ilGenerator
             .Localloc(512)
@@ -1915,7 +1919,7 @@ public class RelationBuilder
             .Ldloca(writerLoc)
             .Ldloc(bufPtrLoc)
             .LdcI4(512)
-            .Call(typeof(SpanWriter).GetConstructor(new[] { typeof(void*), typeof(int) })!);
+            .Call(typeof(MemWriter).GetConstructor(new[] { typeof(void*), typeof(int) })!);
 
         void PushWriter(IILGen il) => il.Ldloca(writerLoc);
 
@@ -1947,7 +1951,7 @@ public class RelationBuilder
         var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
         ilGenerator
             .Do(pushWriter)
-            .Call(SpanWriterGetSpanMethodInfo)
+            .Call(MemWriterGetSpanMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan);
     }

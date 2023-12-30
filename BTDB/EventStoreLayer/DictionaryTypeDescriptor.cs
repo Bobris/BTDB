@@ -31,7 +31,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         _valueType = genericArguments[1];
     }
 
-    public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader,
+    public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref MemReader reader,
         DescriptorReader nestedDescriptorReader)
         : this(typeSerializers, nestedDescriptorReader(ref reader), nestedDescriptorReader(ref reader))
     {
@@ -150,7 +150,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Ldnull()
             .Stloc(localDict)
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .ConvI4()
             .Dup()
             .LdcI4(1)
@@ -352,7 +352,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
         Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
-    public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
+    public void Persist(ref MemWriter writer, DescriptorWriter nestedDescriptorWriter)
     {
         nestedDescriptorWriter(ref writer, _keyDescriptor!);
         nestedDescriptorWriter(ref writer, _valueDescriptor!);
@@ -376,7 +376,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Ldloc(localDict)
             .Brtrue(notnull)
             .Do(pushWriter)
-            .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteZero))!)
+            .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteZero))!)
             .Br(completeFinish)
             .Mark(notnull)
             .Do(pushWriter)
@@ -384,7 +384,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Callvirt(typeAsICollection!.GetProperty(nameof(ICollection.Count))!.GetGetMethod()!)
             .LdcI4(1)
             .Add()
-            .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt32))!);
+            .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt32))!);
         {
             var typeAsDictionary = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
             var getEnumeratorMethod = typeAsDictionary.GetMethods()
@@ -473,7 +473,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         var next = ilGenerator.DefineLabel();
         ilGenerator
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .Stloc(localCount)
             .Ldloc(localCount)
             .Brfalse(skipFinished)

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using BTDB.IL;
 using BTDB.StreamLayer;
 
@@ -15,28 +16,36 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
     Type? _type;
     readonly bool _isSet;
 
-    public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, Type type)
+    [SkipLocalsInit]
+    public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator,
+        Type type)
     {
         _fieldHandlerFactory = fieldHandlerFactory;
         _typeConvertGenerator = typeConvertGenerator;
         _type = type;
         _isSet = type.InheritsOrImplements(typeof(ISet<>));
         _itemsHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
-        var writer = new SpanWriter();
+        Span<byte> buf = stackalloc byte[1024];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
         writer.WriteFieldHandler(_itemsHandler);
         Configuration = writer.GetSpan().ToArray();
     }
 
-    public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, byte[] configuration)
+    public unsafe ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
+        ITypeConvertorGenerator typeConvertGenerator, byte[] configuration)
     {
         _fieldHandlerFactory = fieldHandlerFactory;
         _typeConvertGenerator = typeConvertGenerator;
         Configuration = configuration;
-        var reader = new SpanReader(configuration);
-        _itemsHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
+        fixed (void* confPtr = configuration)
+        {
+            var reader = new MemReader(confPtr, configuration.Length);
+            _itemsHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
+        }
     }
 
-    ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, Type type, IFieldHandler itemSpecialized)
+    ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, Type type,
+        IFieldHandler itemSpecialized)
     {
         _fieldHandlerFactory = fieldHandlerFactory;
         _typeConvertGenerator = typeConvertGenerator;
@@ -93,10 +102,11 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.ReadObject))!)
             .Brfalse(loadSkipped)
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .Stloc(localCount)
             .Ldloc(localCount)
-            .Newobj((_isSet ? typeof(HashSet<>) : typeof(List<>)).MakeGenericType(itemType).GetConstructor(new[] { typeof(int) })!)
+            .Newobj((_isSet ? typeof(HashSet<>) : typeof(List<>)).MakeGenericType(itemType)
+                .GetConstructor(new[] { typeof(int) })!)
             .Stloc(localResult)
             .Do(pushCtx)
             .Ldloc(localResult)
@@ -138,7 +148,7 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.SkipObject))!)
             .Brfalse(finish)
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .Stloc(localCount)
             .Mark(next)
             .Ldloc(localCount)
@@ -177,7 +187,7 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             .Ldloc(localValue)
             .Callvirt(typeAsICollection!.GetProperty("Count")!.GetGetMethod()!)
             .ConvU4()
-            .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt32))!)
+            .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt32))!)
             .Ldloc(localValue)
             .Callvirt(getEnumeratorMethod)
             .Stloc(localEnumerator)
@@ -189,7 +199,8 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
         _itemsHandler.Save(ilGenerator, pushWriter, pushCtx, il => il
             .Ldloc(localEnumerator)
             .Callvirt(typeAsIEnumerator.GetProperty("Current")!.GetGetMethod()!)
-            .Do(_typeConvertGenerator.GenerateConversion(_type.GetGenericArguments()[0], _itemsHandler.HandledType())!));
+            .Do(_typeConvertGenerator.GenerateConversion(_type.GetGenericArguments()[0],
+                _itemsHandler.HandledType())!));
         ilGenerator
             .Br(next)
             .Mark(finish)
@@ -208,22 +219,26 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             logger?.ReportTypeIncompatibility(_type, this, type, typeHandler);
             return this;
         }
+
         var wantedItemType = type.GetGenericArguments()[0];
         var wantedItemHandler = default(IFieldHandler);
         if (typeHandler is ListFieldHandler listFieldHandler)
         {
             wantedItemHandler = listFieldHandler._itemsHandler;
         }
+
         var itemSpecialized = _itemsHandler.SpecializeLoadForType(wantedItemType, wantedItemHandler, logger);
         if (itemSpecialized == wantedItemHandler)
         {
             return typeHandler;
         }
+
         if (_typeConvertGenerator.GenerateConversion(itemSpecialized.HandledType(), wantedItemType) == null)
         {
             logger?.ReportTypeIncompatibility(itemSpecialized.HandledType(), itemSpecialized, wantedItemType, null);
             return this;
         }
+
         return new ListFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, itemSpecialized);
     }
 
@@ -235,6 +250,7 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             Debug.Fail("strange");
             return this;
         }
+
         var wantedItemType = type.GetGenericArguments()[0];
         var itemSpecialized = _itemsHandler.SpecializeSaveForType(wantedItemType);
         if (_typeConvertGenerator.GenerateConversion(wantedItemType, itemSpecialized.HandledType()) == null)
@@ -242,6 +258,7 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             Debug.Fail("even more strange");
             return this;
         }
+
         return new ListFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, itemSpecialized);
     }
 
@@ -262,7 +279,7 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.SkipObject))!)
             .Brfalse(finish)
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .Stloc(localCount)
             .Mark(next)
             .Ldloc(localCount)

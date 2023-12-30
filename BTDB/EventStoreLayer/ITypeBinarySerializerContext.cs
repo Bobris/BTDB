@@ -5,6 +5,6 @@ namespace BTDB.EventStoreLayer;
 
 public interface ITypeBinarySerializerContext
 {
-    void StoreObject(ref SpanWriter writer, object obj);
-    void StoreEncryptedString(ref SpanWriter writer, EncryptedString value);
+    void StoreObject(ref MemWriter writer, object obj);
+    void StoreEncryptedString(ref MemWriter writer, EncryptedString value);
 }

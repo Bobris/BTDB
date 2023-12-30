@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace BTDB.StreamLayer;
 
-public class PositionLessStreamWriter : ISpanWriter, IDisposable
+public class PositionLessStreamWriter : IMemWriter, IDisposable
 {
     readonly IPositionLessStream _stream;
     readonly Action _onDispose;
@@ -12,7 +12,6 @@ public class PositionLessStreamWriter : ISpanWriter, IDisposable
     int _pos;
     const int BufLength = 8 * 1024;
     readonly byte[] _buf;
-
 
     public PositionLessStreamWriter(IPositionLessStream stream, bool atEnd = false)
         : this(stream, null, atEnd)
@@ -23,7 +22,7 @@ public class PositionLessStreamWriter : ISpanWriter, IDisposable
     {
         _stream = stream;
         _onDispose = onDispose ?? DisposeStream;
-        _buf = new byte[BufLength];
+        _buf = GC.AllocateUninitializedArray<byte>(BufLength, pinned: true);
         _pos = 0;
         if (atEnd)
         {
@@ -54,61 +53,45 @@ public class PositionLessStreamWriter : ISpanWriter, IDisposable
         _onDispose();
     }
 
-    public void Init(ref SpanWriter spanWriter)
+    public unsafe void Init(ref MemWriter memWriter)
     {
-        spanWriter.Buf = _buf.AsSpan(_pos);
-        spanWriter.HeapBuffer = _buf;
+        memWriter.Start = (nint)Unsafe.AsPointer(ref _buf[0]) + _pos;
+        memWriter.Current = memWriter.Start;
+        memWriter.End = memWriter.Start + BufLength - _pos;
     }
 
-    public void Sync(ref SpanWriter spanWriter)
+    public unsafe void Flush(ref MemWriter memWriter, uint spaceNeeded)
     {
-        _pos = BufLength - spanWriter.Buf.Length;
-    }
-
-    public bool Flush(ref SpanWriter spanWriter)
-    {
-        _pos = BufLength - spanWriter.Buf.Length;
+        _pos = BufLength - (int)(memWriter.End - memWriter.Current);
+        if (spaceNeeded != 0 && _pos + 1024 < BufLength) return;
         FlushBuffer();
-        spanWriter.Buf = _buf;
-        return true;
+        memWriter.Start = (nint)Unsafe.AsPointer(ref _buf[0]);
+        memWriter.Current = memWriter.Start;
+        memWriter.End = memWriter.Start + BufLength;
     }
 
-    public long GetCurrentPosition(in SpanWriter spanWriter)
+    public long GetCurrentPosition(in MemWriter memWriter)
     {
-        return (long)_ofs + BufLength - spanWriter.Buf.Length;
+        return (long)_ofs + BufLength - (int)(memWriter.End - memWriter.Current);
+    }
+
+    public void WriteBlock(ref MemWriter memWriter, ref byte buffer, nuint length)
+    {
+        Flush(ref memWriter, 0);
+        _stream.Write(MemoryMarshal.CreateReadOnlySpan(ref buffer, (int)length), _ofs);
+        _ofs += length;
+    }
+
+    public void SetCurrentPosition(ref MemWriter memWriter, long position)
+    {
+        Flush(ref memWriter, 0);
+        if (_pos != 0) FlushBuffer();
+        _ofs = (ulong)position;
+        Init(ref memWriter);
     }
 
     public long GetCurrentPositionWithoutWriter()
     {
         return (long)_ofs + _pos;
-    }
-
-    public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
-    {
-        _stream.Write(MemoryMarshal.CreateReadOnlySpan(ref buffer, (int)length), _ofs);
-        _ofs += length;
-    }
-
-    public void WriteBlockWithoutWriter(ref byte buffer, uint length)
-    {
-        if (length <= (uint)(BufLength - _pos))
-        {
-            Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(_buf.AsSpan(_pos, (int)length)), ref buffer,
-                length);
-            _pos += (int)length;
-        }
-        else
-        {
-            var writer = new SpanWriter(this);
-            writer.WriteBlock(ref buffer, length);
-            writer.Sync();
-        }
-    }
-
-    public void SetCurrentPosition(ref SpanWriter spanWriter, long position)
-    {
-        if (_pos != 0) FlushBuffer();
-        _ofs = (ulong)position;
-        spanWriter.Buf = _buf;
     }
 }

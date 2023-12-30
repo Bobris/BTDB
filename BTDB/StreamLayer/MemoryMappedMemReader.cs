@@ -19,7 +19,8 @@ public class MemoryMappedMemReader : IMemReader, IDisposable
         _memoryMappedFile = MemoryMappedFile.CreateFromFile(_fileHandle, null, 0, MemoryMappedFileAccess.Read,
             HandleInheritability.None,
             false);
-        _viewAccessor = _memoryMappedFile.CreateViewAccessor(0, RandomAccess.GetLength(_fileHandle), MemoryMappedFileAccess.Read);
+        _viewAccessor =
+            _memoryMappedFile.CreateViewAccessor(0, RandomAccess.GetLength(_fileHandle), MemoryMappedFileAccess.Read);
         _viewAccessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _ptr);
     }
 
@@ -28,11 +29,11 @@ public class MemoryMappedMemReader : IMemReader, IDisposable
         Dispose();
     }
 
-    public unsafe void Init(ref MemReader memReader)
+    public unsafe void Init(ref MemReader reader)
     {
-        memReader.Start = (nint)_ptr;
-        memReader.End = memReader.Start + (nint)_viewAccessor.Capacity;
-        memReader.Current = memReader.Start;
+        reader.Start = (nint)_ptr;
+        reader.End = reader.Start + (nint)_viewAccessor.Capacity;
+        reader.Current = reader.Start;
     }
 
     public void FillBuf(ref MemReader memReader, nuint advisePrefetchLength)

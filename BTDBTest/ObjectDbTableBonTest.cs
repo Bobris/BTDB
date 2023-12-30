@@ -61,7 +61,7 @@ public class ObjectDbTableBonTest : ObjectDbTestBase
 
     static long ExtractKeyValue(ReadOnlyMemory<byte> buffer)
     {
-        var reader = new SpanReader(buffer);
+        var reader = MemReader.CreateFromReadOnlyMemory(buffer);
         var key = reader.ReadStringInUtf8();
         var bon = new Bon(new ReadOnlyMemoryMemReader(reader.ReadByteArrayAsMemory()));
         // From here it is just sample
@@ -87,7 +87,7 @@ public class ObjectDbTableBonTest : ObjectDbTestBase
 
     static ReadOnlyMemory<byte> WriteDocumentToBlock1(Document document)
     {
-        var writer = new SpanWriter();
+        var writer = new MemWriter();
         writer.WriteUInt32LE(0); // Leave space for length
         writer.WriteStringInUtf8(document.Key);
         writer.WriteByteArrayLength(document.Value);

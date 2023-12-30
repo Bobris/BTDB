@@ -34,6 +34,7 @@ class BTreeRoot : IBTreeRootNode
             ctx.Created = true;
             return;
         }
+
         ctx.Depth = 0;
         _rootNode.CreateOrUpdate(ref ctx);
         if (ctx.Split)
@@ -45,6 +46,7 @@ class BTreeRoot : IBTreeRootNode
         {
             _rootNode = ctx.Node1;
         }
+
         if (ctx.Created)
         {
             _keyValueCount++;
@@ -60,6 +62,7 @@ class BTreeRoot : IBTreeRootNode
             ctx.Result = UpdateKeySuffixResult.NotFound;
             return;
         }
+
         if (FindNextKey(ctx.Stack))
         {
             if (KeyStartsWithPrefix(ctx.Key[..(int)ctx.PrefixLen], GetKeyFromStack(ctx.Stack)))
@@ -67,13 +70,16 @@ class BTreeRoot : IBTreeRootNode
                 ctx.Result = UpdateKeySuffixResult.NotUniquePrefix;
                 return;
             }
+
             FindPreviousKey(ctx.Stack);
         }
+
         if (ctx.Key.SequenceEqual(GetKeyFromStack(ctx.Stack)))
         {
             ctx.Result = UpdateKeySuffixResult.NothingToDo;
             return;
         }
+
         ctx.Depth = 0;
         _rootNode.UpdateKeySuffix(ref ctx);
         if (ctx.Update)
@@ -95,6 +101,7 @@ class BTreeRoot : IBTreeRootNode
             keyIndex = -1;
             return FindResult.NotFound;
         }
+
         var result = _rootNode.FindKey(stack, out keyIndex, key);
         if (result == FindResult.Previous)
         {
@@ -116,11 +123,13 @@ class BTreeRoot : IBTreeRootNode
                     }
                 }
             }
+
             if (!KeyStartsWithPrefix(key[..(int)prefixLen], GetKeyFromStack(stack)))
             {
                 return FindResult.NotFound;
             }
         }
+
         return result;
     }
 
@@ -218,6 +227,7 @@ class BTreeRoot : IBTreeRootNode
             newulongs = new ulong[_ulongs.Length];
             Array.Copy(_ulongs, newulongs, newulongs.Length);
         }
+
         return newulongs;
     }
 
@@ -257,6 +267,7 @@ class BTreeRoot : IBTreeRootNode
             _keyValueCount = 0;
             return;
         }
+
         _keyValueCount--;
         _rootNode = _rootNode!.EraseOne(TransactionId, keyIndex);
     }
@@ -271,6 +282,7 @@ class BTreeRoot : IBTreeRootNode
             _keyValueCount = 0;
             return;
         }
+
         _keyValueCount -= lastKeyIndex - firstKeyIndex + 1;
         _rootNode = _rootNode!.EraseRange(TransactionId, firstKeyIndex, lastKeyIndex);
     }
@@ -288,8 +300,10 @@ class BTreeRoot : IBTreeRootNode
                 pair.Node.FillStackByLeftMost(stack, pair.Idx + 1);
                 return true;
             }
+
             idx--;
         }
+
         return false;
     }
 
@@ -306,12 +320,14 @@ class BTreeRoot : IBTreeRootNode
                 pair.Node.FillStackByRightMost(stack, pair.Idx - 1);
                 return true;
             }
+
             idx--;
         }
+
         return false;
     }
 
-    public void BuildTree(long keyCount, ref SpanReader reader, BuildTreeCallback memberGenerator)
+    public void BuildTree(long keyCount, ref MemReader reader, BuildTreeCallback memberGenerator)
     {
         _keyValueCount = keyCount;
         if (keyCount == 0)
@@ -319,6 +335,7 @@ class BTreeRoot : IBTreeRootNode
             _rootNode = null;
             return;
         }
+
         _rootNode = BuildTreeNode(keyCount, ref reader, memberGenerator);
     }
 
@@ -339,12 +356,12 @@ class BTreeRoot : IBTreeRootNode
         _rootNode = _rootNode.ReplaceValues(ctx);
     }
 
-    IBTreeNode BuildTreeNode(long keyCount, ref SpanReader outsideReader, BuildTreeCallback memberGenerator)
+    IBTreeNode BuildTreeNode(long keyCount, ref MemReader outsideReader, BuildTreeCallback memberGenerator)
     {
         var leafs = (keyCount + BTreeLeafComp.MaxMembers - 1) / BTreeLeafComp.MaxMembers;
         var order = 0L;
         var done = 0L;
-        return BuildBranchNode(leafs, ref outsideReader, (ref SpanReader reader) =>
+        return BuildBranchNode(leafs, ref outsideReader, (ref MemReader reader) =>
         {
             order++;
             var reach = keyCount * order / leafs;
@@ -357,21 +374,23 @@ class BTreeRoot : IBTreeRootNode
                 keyValues[i] = memberGenerator(ref reader);
                 totalKeyLen += keyValues[i].Key.Length;
             }
+
             if (totalKeyLen > BTreeLeafComp.MaxTotalLen)
             {
                 return new BTreeLeaf(_transactionId, keyValues);
             }
+
             return new BTreeLeafComp(_transactionId, keyValues);
         });
     }
 
-    IBTreeNode BuildBranchNode(long count, ref SpanReader reader, BuildBranchNodeGenerator generator)
+    IBTreeNode BuildBranchNode(long count, ref MemReader reader, BuildBranchNodeGenerator generator)
     {
         if (count == 1) return generator(ref reader);
         var children = (count + BTreeBranch.MaxChildren - 1) / BTreeBranch.MaxChildren;
         var order = 0L;
         var done = 0L;
-        return BuildBranchNode(children, ref reader, (ref SpanReader reader2) =>
+        return BuildBranchNode(children, ref reader, (ref MemReader reader2) =>
         {
             order++;
             var reach = count * order / children;

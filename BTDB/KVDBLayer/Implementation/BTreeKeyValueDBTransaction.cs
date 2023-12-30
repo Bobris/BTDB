@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.BTreeLib;
 using BTDB.Collections;
+using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 
@@ -102,20 +103,20 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         switch (result)
         {
             case FindResult.Previous when !_cursor.KeyHasPrefix(key[..(int)prefixLen]):
+            {
+                if (!_cursor.MoveNext())
                 {
-                    if (!_cursor.MoveNext())
-                    {
-                        return FindResult.NotFound;
-                    }
-
-                    if (_cursor.KeyHasPrefix(key[..(int)prefixLen]))
-                    {
-                        return FindResult.Next;
-                    }
-
-                    InvalidateCurrentKey();
                     return FindResult.NotFound;
                 }
+
+                if (_cursor.KeyHasPrefix(key[..(int)prefixLen]))
+                {
+                    return FindResult.Next;
+                }
+
+                InvalidateCurrentKey();
+                return FindResult.NotFound;
+            }
             case FindResult.Next when !_cursor.KeyHasPrefix(key[..(int)prefixLen]):
                 // FindResult.Previous is preferred that's why it has to be NotFound when next does not match prefix
                 InvalidateCurrentKey();
@@ -149,6 +150,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
                 return UpdateKeySuffixResult.NotUniquePrefix;
             }
         }
+
         _cursor.MovePrevious();
 
         _keyIndex = -1;
@@ -156,6 +158,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         {
             return UpdateKeySuffixResult.NothingToDo;
         }
+
         _cursor.UpdateKeySuffix(key);
         _keyValueDB.WriteUpdateKeySuffixCommand(key, prefixLen);
         return UpdateKeySuffixResult.Updated;
@@ -257,27 +260,9 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
     public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
     {
         if (!IsValidKey()) return new();
-        var trueValue = _cursor.GetValue();
-        try
-        {
-            return _keyValueDB.ReadValue(trueValue, ref buffer, bufferLength);
-        }
-        catch (BTDBException ex)
-        {
-            var oldestRoot = (IRootNode)_keyValueDB.ReferenceAndGetOldestRoot();
-            var lastCommitted = (IRootNode)_keyValueDB.ReferenceAndGetLastCommitted();
-            try
-            {
-                throw new BTDBException(
-                    $"GetValue failed in TrId:{BTreeRoot!.TransactionId},TRL:{BTreeRoot.TrLogFileId},Ofs:{BTreeRoot.TrLogOffset},ComUlong:{BTreeRoot.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}",
-                    ex);
-            }
-            finally
-            {
-                _keyValueDB.DereferenceRootNodeInternal(oldestRoot);
-                _keyValueDB.DereferenceRootNodeInternal(lastCommitted);
-            }
-        }
+        var reader = MemReader.CreateFromPinnedSpan(MemoryMarshal.CreateSpan(ref buffer, bufferLength));
+        GetValue(ref reader);
+        return reader.PeekSpanTillEof();
     }
 
     public ReadOnlySpan<byte> GetValue()
@@ -309,10 +294,23 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
     public ReadOnlyMemory<byte> GetValueAsMemory()
     {
         if (!IsValidKey()) return new();
+        var reader = new MemReader();
+        GetValue(ref reader);
+        return reader.AsReadOnlyMemory();
+    }
+
+    public void GetValue(ref MemReader reader)
+    {
+        if (!IsValidKey())
+        {
+            reader.Dispose();
+            return;
+        }
+
         var trueValue = _cursor.GetValue();
         try
         {
-            return _keyValueDB.ReadValueAsMemory(trueValue);
+            _keyValueDB.ReadValueIntoMemReader(trueValue, ref reader);
         }
         catch (BTDBException ex)
         {
@@ -385,17 +383,15 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         return true;
     }
 
-    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength,
-        out ReadOnlySpan<byte> value)
+    public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref MemReader valueReader)
     {
         if (_cursor.Find(exactKey) != FindResult.Exact)
         {
             InvalidateCurrentKey();
-            value = ReadOnlySpan<byte>.Empty;
             return false;
         }
 
-        value = GetClonedValue(ref buffer, bufferLength);
+        GetValue(ref valueReader);
         MakeWritable();
         _keyValueDB.WriteEraseOneCommand(exactKey);
         _cursor.Erase();

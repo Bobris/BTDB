@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text;
 using BTDB.FieldHandler;
 using BTDB.IL;
-using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
@@ -27,7 +26,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         _itemType = GetItemType(type);
     }
 
-    public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader,
+    public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref MemReader reader,
         DescriptorReader nestedDescriptorReader)
         : this(typeSerializers, nestedDescriptorReader(ref reader))
     {
@@ -142,7 +141,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .LdcI4(0)
                 .Stloc(localIndex)
                 .Do(pushReader)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+                .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
                 .ConvI4()
                 .Dup()
                 .Stloc(localCount)
@@ -191,7 +190,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Ldnull()
                 .Stloc(localList)
                 .Do(pushReader)
-                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+                .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
                 .ConvI4()
                 .Dup()
                 .Stloc(localCount)
@@ -359,7 +358,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields =>
         Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
-    public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
+    public void Persist(ref MemWriter writer, DescriptorWriter nestedDescriptorWriter)
     {
         nestedDescriptorWriter(ref writer, _itemDescriptor!);
     }
@@ -381,7 +380,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Ldloc(localCollection)
             .Brtrue(notnull)
             .Do(pushWriter)
-            .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteZero))!)
+            .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteZero))!)
             .Br(completeFinish)
             .Mark(notnull)
             .Do(pushWriter)
@@ -389,7 +388,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Callvirt(typeAsICollection!.GetProperty(nameof(ICollection.Count))!.GetGetMethod()!)
             .LdcI4(1)
             .Add()
-            .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt32))!);
+            .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt32))!);
         {
             var typeAsList = typeof(List<>).MakeGenericType(itemType);
             var getEnumeratorMethod = typeAsList.GetMethods()
@@ -512,7 +511,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         var next = ilGenerator.DefineLabel();
         ilGenerator
             .Do(pushReader)
-            .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
+            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
             .ConvI4()
             .Dup()
             .Stloc(localCount)
