@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -34,8 +33,8 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
     uint _fileIdWithTransactionLog;
     uint _fileIdWithPreviousTransactionLog;
     IFileCollectionFile? _fileWithTransactionLog;
-    IMemWriter? _writerWithTransactionLog;
-    static readonly byte[] MagicStartOfTransaction = "tR"u8.ToArray();
+    MemWriter _writerWithTransactionLog;
+    static readonly byte[] MagicStartOfTransaction = "\u0003tR"u8.ToArray();
     readonly ICompressionStrategy _compression;
     readonly IKviCompressionStrategy _kviCompressionStrategy;
     readonly ICompactorScheduler? _compactorScheduler;
@@ -252,13 +251,13 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
             if (_fileIdWithTransactionLog != 0)
             {
-                if (_writerWithTransactionLog == null)
+                if (_writerWithTransactionLog.Controller == null)
                 {
                     _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
-                    _writerWithTransactionLog = _fileWithTransactionLog!.GetAppenderWriter();
+                    _writerWithTransactionLog = new(_fileWithTransactionLog!.GetAppenderWriter());
                 }
 
-                if (_writerWithTransactionLog.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
+                if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
                 {
                     WriteStartOfNewTransactionLogFile();
                 }
@@ -711,7 +710,7 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             return false;
                         }
 
-                        if (!reader.CheckMagic(MagicStartOfTransaction))
+                        if (!reader.CheckMagic(MagicStartOfTransaction[1..]))
                             return false;
                         _nextRoot = _lastCommited.NewTransactionRoot();
                         break;
@@ -836,11 +835,10 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
             }
         }
 
-        if (_writerWithTransactionLog != null)
+        if (_writerWithTransactionLog.Controller != null)
         {
-            var writer = new MemWriter(_writerWithTransactionLog);
-            writer.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
-            writer.Flush();
+            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
+            _writerWithTransactionLog.Flush();
             _fileWithTransactionLog!.HardFlushTruncateSwitchToDisposedMode();
         }
     }
@@ -993,20 +991,19 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     internal void CommitWritingTransaction(IBTreeRootNode btreeRoot, bool temporaryCloseTransactionLog)
     {
-        var writer = new MemWriter(_writerWithTransactionLog!);
-        WriteUlongsDiff(ref writer, btreeRoot.UlongsArray, _lastCommited.UlongsArray);
+        WriteUlongsDiff(ref _writerWithTransactionLog, btreeRoot.UlongsArray, _lastCommited.UlongsArray);
         var deltaUlong = unchecked(btreeRoot.CommitUlong - _lastCommited.CommitUlong);
         if (deltaUlong != 0)
         {
-            writer.WriteUInt8((byte)KVCommandType.CommitWithDeltaUlong);
-            writer.WriteVUInt64(deltaUlong);
+            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.CommitWithDeltaUlong);
+            _writerWithTransactionLog.WriteVUInt64(deltaUlong);
         }
         else
         {
-            writer.WriteUInt8((byte)KVCommandType.Commit);
+            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Commit);
         }
 
-        writer.Flush();
+        _writerWithTransactionLog.Flush();
         if (DurableTransactions)
         {
             _fileWithTransactionLog!.HardFlush();
@@ -1015,10 +1012,9 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         UpdateTransactionLogInBTreeRoot(btreeRoot);
         if (temporaryCloseTransactionLog)
         {
-            writer = new MemWriter(_writerWithTransactionLog!);
-            writer.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
-            writer.Flush();
-            _fileWithTransactionLog.Truncate();
+            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
+            _writerWithTransactionLog.Flush();
+            _fileWithTransactionLog!.Truncate();
         }
 
         lock (_writeLock)
@@ -1058,9 +1054,9 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
 
         btreeRoot.TrLogFileId = _fileIdWithTransactionLog;
-        if (_writerWithTransactionLog != null)
+        if (_writerWithTransactionLog.Controller != null)
         {
-            btreeRoot.TrLogOffset = (uint)_writerWithTransactionLog.GetCurrentPositionWithoutWriter();
+            btreeRoot.TrLogOffset = (uint)_writerWithTransactionLog.GetCurrentPosition();
         }
         else
         {
@@ -1090,9 +1086,7 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         if (!nothingWrittenToTransactionLog)
         {
-            var writer = new MemWriter(_writerWithTransactionLog!);
-            writer.WriteUInt8((byte)KVCommandType.Rollback);
-            writer.Flush();
+            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Rollback);
             var newRoot = _lastCommited.CloneRoot();
             UpdateTransactionLogInBTreeRoot(newRoot);
             lock (_writeLock)
@@ -1120,32 +1114,28 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
         else
         {
-            if (_writerWithTransactionLog == null)
+            if (_writerWithTransactionLog.Controller == null)
             {
                 _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
-                _writerWithTransactionLog = _fileWithTransactionLog!.GetAppenderWriter();
+                _writerWithTransactionLog = new(_fileWithTransactionLog!.GetAppenderWriter());
             }
 
-            if (_writerWithTransactionLog.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
+            if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
         }
 
-        var writer = new MemWriter(_writerWithTransactionLog!);
-        writer.WriteUInt8((byte)KVCommandType.TransactionStart);
-        writer.WriteByteArrayRaw(MagicStartOfTransaction);
-        writer.Flush();
+        // KVCommandType.TransactionStart is included in MagicStartOfTransaction
+        _writerWithTransactionLog.WriteByteArrayRaw(MagicStartOfTransaction);
     }
 
     void WriteStartOfNewTransactionLogFile()
     {
-        MemWriter writer;
-        if (_writerWithTransactionLog != null)
+        if (_writerWithTransactionLog.Controller != null)
         {
-            writer = new MemWriter(_writerWithTransactionLog);
-            writer.WriteUInt8((byte)KVCommandType.EndOfFile);
-            writer.Flush();
+            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.EndOfFile);
+            _writerWithTransactionLog.Flush();
             _fileWithTransactionLog!.HardFlushTruncateSwitchToReadOnlyMode();
             _fileIdWithPreviousTransactionLog = _fileIdWithTransactionLog;
         }
@@ -1155,10 +1145,9 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         _fileIdWithTransactionLog = _fileWithTransactionLog.Index;
         var transactionLog = new FileTransactionLog(FileCollection.NextGeneration(), FileCollection.Guid,
             _fileIdWithPreviousTransactionLog);
-        _writerWithTransactionLog = _fileWithTransactionLog.GetAppenderWriter();
-        writer = new MemWriter(_writerWithTransactionLog);
-        transactionLog.WriteHeader(ref writer);
-        writer.Flush();
+        _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
+        transactionLog.WriteHeader(ref _writerWithTransactionLog);
+        _writerWithTransactionLog.Flush();
         FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
     }
 
@@ -1168,17 +1157,16 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         valueSize = value.Length;
 
-        var trlPos = _writerWithTransactionLog!.GetCurrentPositionWithoutWriter();
+        var trlPos = _writerWithTransactionLog!.GetCurrentPosition();
         if (trlPos > 256 && trlPos + key.Length + 16 + value.Length > MaxTrLogFileSize)
         {
             WriteStartOfNewTransactionLogFile();
         }
 
-        var writer = new MemWriter(_writerWithTransactionLog!);
-        writer.WriteUInt8((byte)KVCommandType.CreateOrUpdate);
-        writer.WriteVInt32(key.Length);
-        writer.WriteVInt32(value.Length);
-        writer.WriteBlock(key);
+        _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.CreateOrUpdate);
+        _writerWithTransactionLog.WriteVInt32(key.Length);
+        _writerWithTransactionLog.WriteVInt32(value.Length);
+        _writerWithTransactionLog.WriteBlock(key);
         if (valueSize != 0)
         {
             if (valueSize is > 0 and <= MaxValueSizeInlineInMemory)
@@ -1189,34 +1177,30 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
             else
             {
                 valueFileId = _fileIdWithTransactionLog;
-                valueOfs = (uint)writer.GetCurrentPosition();
+                valueOfs = (uint)_writerWithTransactionLog.GetCurrentPosition();
             }
 
-            writer.WriteBlock(value);
+            _writerWithTransactionLog.WriteBlock(value);
         }
         else
         {
             valueFileId = 0;
             valueOfs = 0;
         }
-
-        writer.Flush();
     }
 
     public void WriteUpdateKeySuffixCommand(in ReadOnlySpan<byte> key, uint prefixLen)
     {
-        var trlPos = _writerWithTransactionLog!.GetCurrentPositionWithoutWriter();
+        var trlPos = _writerWithTransactionLog!.GetCurrentPosition();
         if (trlPos > 256 && trlPos + key.Length + 16 > MaxTrLogFileSize)
         {
             WriteStartOfNewTransactionLogFile();
         }
 
-        var writer = new MemWriter(_writerWithTransactionLog!);
-        writer.WriteUInt8((byte)KVCommandType.UpdateKeySuffix);
-        writer.WriteVUInt32(prefixLen);
-        writer.WriteVUInt32((uint)key.Length);
-        writer.WriteBlock(key);
-        writer.Flush();
+        _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.UpdateKeySuffix);
+        _writerWithTransactionLog.WriteVUInt32(prefixLen);
+        _writerWithTransactionLog.WriteVUInt32((uint)key.Length);
+        _writerWithTransactionLog.WriteBlock(key);
     }
 
     public static uint CalcValueSize(uint valueFileId, uint valueOfs, int valueSize)
@@ -1293,32 +1277,28 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     public void WriteEraseOneCommand(in ReadOnlySpan<byte> key)
     {
-        if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
+        if (_writerWithTransactionLog!.GetCurrentPosition() > MaxTrLogFileSize)
         {
             WriteStartOfNewTransactionLogFile();
         }
 
-        var writer = new MemWriter(_writerWithTransactionLog!);
-        writer.WriteUInt8((byte)KVCommandType.EraseOne);
-        writer.WriteVInt32(key.Length);
-        writer.WriteBlock(key);
-        writer.Flush();
+        _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.EraseOne);
+        _writerWithTransactionLog.WriteVInt32(key.Length);
+        _writerWithTransactionLog.WriteBlock(key);
     }
 
     public void WriteEraseRangeCommand(in ReadOnlySpan<byte> firstKey, in ReadOnlySpan<byte> secondKey)
     {
-        if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
+        if (_writerWithTransactionLog!.GetCurrentPosition() > MaxTrLogFileSize)
         {
             WriteStartOfNewTransactionLogFile();
         }
 
-        var writer = new MemWriter(_writerWithTransactionLog!);
-        writer.WriteUInt8((byte)KVCommandType.EraseRange);
-        writer.WriteVInt32(firstKey.Length);
-        writer.WriteVInt32(secondKey.Length);
-        writer.WriteBlock(firstKey);
-        writer.WriteBlock(secondKey);
-        writer.Flush();
+        _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.EraseRange);
+        _writerWithTransactionLog.WriteVInt32(firstKey.Length);
+        _writerWithTransactionLog.WriteVInt32(secondKey.Length);
+        _writerWithTransactionLog.WriteBlock(firstKey);
+        _writerWithTransactionLog.WriteBlock(secondKey);
     }
 
     uint CreateKeyIndexFile(IBTreeRootNode root, CancellationToken cancellation, bool fullSpeed)
