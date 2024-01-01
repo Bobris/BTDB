@@ -29,6 +29,7 @@ static class Program
                 return 1;
             }
         }
+
         Console.WriteLine("Project root directory: " + projDir);
         var logLines = await File.ReadAllLinesAsync(projDir + "/CHANGELOG.md");
         var topVersion = logLines.FirstOrDefault(s => s.StartsWith("## "));
@@ -38,11 +39,13 @@ static class Program
             Console.WriteLine("CHANGELOG.md has less than 5 lines");
             return 1;
         }
+
         if (topVersion != "## [unreleased]")
         {
             Console.WriteLine("Top version should be ## [unreleased]");
             return 1;
         }
+
         if (lastVersion == null)
         {
             Console.WriteLine("Cannot find previous version");
@@ -57,9 +60,11 @@ static class Program
         {
             Console.WriteLine("DANGER! THERE ARE " + workDirChangesCount + " CHANGES IN WORK DIR!");
         }
+
         var topVersionLine = Array.IndexOf(logLines, topVersion);
         var lastVersionNumber = new System.Version(lastVersion[3..]);
-        var patchVersionNumber = new System.Version(lastVersionNumber.Major, lastVersionNumber.Minor, lastVersionNumber.Build + 1);
+        var patchVersionNumber =
+            new System.Version(lastVersionNumber.Major, lastVersionNumber.Minor, lastVersionNumber.Build + 1);
         var minorVersionNumber = new System.Version(lastVersionNumber.Major, lastVersionNumber.Minor + 1, 0);
         var majorVersionNumber = new System.Version(lastVersionNumber.Major + 1, 0, 0);
         Console.WriteLine("Press 1 for Major " + majorVersionNumber.ToString(3));
@@ -72,6 +77,7 @@ static class Program
             Console.WriteLine("Not pressed 1, 2 or 3. Exiting.");
             return 1;
         }
+
         if (choice == '1')
             lastVersionNumber = majorVersionNumber;
         if (choice == '2')
@@ -82,7 +88,8 @@ static class Program
         Console.WriteLine("Building version " + newVersion);
         await UpdateCsProj(projDir, newVersion);
         var outputLogLines = logLines.ToList();
-        var releaseLogLines = logLines.Skip(topVersionLine + 1).SkipWhile(string.IsNullOrWhiteSpace).TakeWhile(s => !s.StartsWith("## ")).ToList();
+        var releaseLogLines = logLines.Skip(topVersionLine + 1).SkipWhile(string.IsNullOrWhiteSpace)
+            .TakeWhile(s => !s.StartsWith("## ")).ToList();
         while (releaseLogLines.Count > 0 && string.IsNullOrWhiteSpace(releaseLogLines[^1]))
             releaseLogLines.RemoveAt(releaseLogLines.Count - 1);
         outputLogLines.Insert(topVersionLine + 1, "## " + newVersion);
@@ -93,7 +100,8 @@ static class Program
             Directory.Delete(projDir + "/BTDB.SourceGenerator/bin/Release", true);
         if (Directory.Exists(projDir + "/ODbDump/bin/Release"))
             Directory.Delete(projDir + "/ODbDump/bin/Release", true);
-        var fileNameOfNugetToken = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/.nuget/token.txt";
+        var fileNameOfNugetToken =
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/.nuget/token.txt";
         string nugetToken;
         try
         {
@@ -104,13 +112,15 @@ static class Program
             Console.WriteLine("Cannot read nuget token from " + fileNameOfNugetToken);
             return 1;
         }
+
         Build(projDir, newVersion, nugetToken);
         BuildSourceGenerator(projDir, newVersion, nugetToken);
         BuildODbDump(projDir);
 
         var client = new GitHubClient(new ProductHeaderValue("BTDB-releaser"));
         client.SetRequestTimeout(TimeSpan.FromMinutes(15));
-        var fileNameOfGithubToken = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/.github/token.txt";
+        var fileNameOfGithubToken =
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/.github/token.txt";
         string githubToken;
         try
         {
@@ -121,6 +131,7 @@ static class Program
             Console.WriteLine("Cannot read github token from " + fileNameOfGithubToken);
             return 1;
         }
+
         client.Credentials = new(githubToken);
         var btdbRepo = (await client.Repository.GetAllForUser("bobris")).First(r => r.Name == "BTDB");
         Console.WriteLine("BTDB repo id: " + btdbRepo.Id);
@@ -173,19 +184,23 @@ static class Program
         await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
     }
 
-    static async Task<ReleaseAsset> UploadWithRetry(string projDir, GitHubClient client, Release release2, string fileName)
+    static async Task<ReleaseAsset> UploadWithRetry(string projDir, GitHubClient client, Release release2,
+        string fileName)
     {
         for (var i = 0; i < 5; i++)
         {
             try
             {
-                return await client.Repository.Release.UploadAsset(release2, new ReleaseAssetUpload(fileName, "application/zip", File.OpenRead(projDir + fileName), TimeSpan.FromMinutes(14)));
+                return await client.Repository.Release.UploadAsset(release2,
+                    new ReleaseAssetUpload(fileName, "application/zip", File.OpenRead(projDir + fileName),
+                        TimeSpan.FromMinutes(14)));
             }
             catch (Exception)
             {
                 Console.WriteLine("Upload Asset " + fileName + " failed " + i);
             }
         }
+
         throw new OperationCanceledException("Upload Asset " + fileName + " failed");
     }
 
@@ -208,8 +223,10 @@ static class Program
             Directory.CreateDirectory(Path.GetDirectoryName(releaseSources + "/" + relfn)!);
             File.Copy(fn, releaseSources + "/" + relfn);
         }
-        System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources, projDir + "/BTDB/bin/Release/BTDB.zip", System.IO.Compression.CompressionLevel.Optimal, false);
-        start = new("dotnet", "nuget push BTDB." + newVersion + ".nupkg -s https://nuget.org -k "+nugetToken)
+
+        System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources, projDir + "/BTDB/bin/Release/BTDB.zip",
+            System.IO.Compression.CompressionLevel.Optimal, false);
+        start = new("dotnet", "nuget push BTDB." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
         {
             UseShellExecute = true,
             WorkingDirectory = projDir + "/BTDB/bin/Release"
@@ -227,7 +244,8 @@ static class Program
         };
         var process = Process.Start(start);
         process!.WaitForExit();
-        start = new("dotnet", "nuget push BTDB.SourceGenerator." + newVersion + ".nupkg -s https://nuget.org -k "+nugetToken)
+        start = new("dotnet",
+            "nuget push BTDB.SourceGenerator." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
         {
             UseShellExecute = true,
             WorkingDirectory = projDir + "/BTDB.SourceGenerator/bin/Release"
@@ -245,7 +263,9 @@ static class Program
         };
         var process = Process.Start(start);
         process!.WaitForExit();
-        var source = projDir + "/ODbDump/bin/Release/net7.0/publish";
-        System.IO.Compression.ZipFile.CreateFromDirectory(source, projDir + "/ODbDump/bin/Release/ODbDump.zip", System.IO.Compression.CompressionLevel.Optimal, false);
+        var source = projDir + "/ODbDump/bin/Release/net8.0/publish";
+        System.IO.Compression.ZipFile.CreateFromDirectory(source,
+            projDir + "/ODbDump/bin/Release/ODbDump.zip",
+            System.IO.Compression.CompressionLevel.Optimal, false);
     }
 }
