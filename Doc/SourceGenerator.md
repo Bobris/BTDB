@@ -34,7 +34,7 @@ public class MyService : IMyService
 }
 ```
 
-All injectable properties must be marked by `[Dependency]` attribute. If property is initonly then it is always set even when it is optional.
+All injectable properties must be marked by `[Dependency]` attribute.
 
 ```csharp
 internal class MyService : IMyService
@@ -57,3 +57,18 @@ public delegate IMyService Factory(int a);
 
 If you want to make Func<...> resolvable just declare new delegate with same signature and mark it by `[Generate]` attribute.
 It means that previous example also allows to use `Func<int, IMyService>`.
+
+### Additional automatically resolved types
+
+```csharp
+Func<T>
+Func<P1,T> // where P1 must be reference type
+Func<IContainer,T>
+Tuple<T1>
+Tuple<T1,T2>
+Tuple<T1,T2,T3>
+IEnumerable<T>
+Lazy<T>
+T[]
+
+```
