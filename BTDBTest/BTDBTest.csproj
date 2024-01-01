@@ -1,30 +1,30 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
-    <LangVersion>latest</LangVersion>
-    <NoWarn>1701;1702;1720</NoWarn>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <Nullable>annotations</Nullable>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Assent" Version="2.2.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.6.3" />
-    <PackageReference Include="System.Reactive" Version="6.0.0" />
-    <PackageReference Include="System.Reactive.Core" Version="6.0.0" />
-    <PackageReference Include="System.Reactive.Interfaces" Version="6.0.0" />
-    <PackageReference Include="xunit" Version="2.5.0" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="coverlet.msbuild" Version="6.0.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../BTDB/BTDB.csproj" />
-      <ProjectReference Include="../BTDB.SourceGenerator/BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+        <LangVersion>latest</LangVersion>
+        <NoWarn>1701;1702;1720</NoWarn>
+        <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+        <Nullable>annotations</Nullable>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Assent" Version="2.3.2"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0"/>
+        <PackageReference Include="System.Reactive" Version="6.0.0"/>
+        <PackageReference Include="System.Reactive.Core" Version="6.0.0"/>
+        <PackageReference Include="System.Reactive.Interfaces" Version="6.0.0"/>
+        <PackageReference Include="xunit" Version="2.6.4"/>
+        <PackageReference Include="xunit.runner.visualstudio" Version="2.5.6">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="coverlet.msbuild" Version="6.0.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../BTDB/BTDB.csproj"/>
+        <ProjectReference Include="../BTDB.SourceGenerator/BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+    </ItemGroup>
 </Project>

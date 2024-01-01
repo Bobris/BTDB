@@ -167,19 +167,13 @@ public class LightingDbTimeTests : IDbTimeTests
 
             foreach (var data in exceptedData)
             {
-                var key = cursor.MoveTo(data.Key);
-                if (!key) throw new Exception("Key not found");
+                var key = cursor.Set(data.Key);
+                if (key != MDBResultCode.Success) throw new Exception("Key not found");
 
-                var value = cursor.GetCurrent().Value;
+                var value = cursor.GetCurrent().value;
 
-                if (value.Length != data.Value.Length) throw new Exception("value length different");
-
-                for (var j = 0; j < value.Length; j++)
-                {
-                    if (value[j] != data.Value[j]) throw new Exception("value different");
-                }
+                if (!value.AsSpan().SequenceEqual(data.Value)) throw new Exception("value different");
             }
-
         }
 
         stopwatch.Stop();

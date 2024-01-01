@@ -9,7 +9,7 @@ using BTDB.Buffer;
 namespace SimpleTester;
 
 [DisassemblyDiagnoser(printSource: true, maxDepth: 3)]
-[SimpleJob(RuntimeMoniker.Net70, warmupCount: 1, targetCount: 1, launchCount: 1)]
+[SimpleJob(RuntimeMoniker.Net80, warmupCount: 1, launchCount: 1)]
 public class BenchTest
 {
     [Params(0, 30, 1024 * 1024)] public int N;

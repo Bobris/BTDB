@@ -6,7 +6,7 @@ using BTDB.StreamLayer;
 namespace SimpleTester;
 
 [DisassemblyDiagnoser(printSource: true, maxDepth: 2)]
-[SimpleJob(RuntimeMoniker.HostProcess, warmupCount: 1, targetCount: 1, launchCount: 1)]
+[SimpleJob(RuntimeMoniker.HostProcess, warmupCount: 1, launchCount: 1)]
 public class BenchTestSpanReaderWriter
 {
     [Params(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 2000, 2015, 34567)]
