@@ -66,10 +66,19 @@ public struct MemWriter
         End = 0;
     }
 
-    public MemWriter(IMemWriter controller)
+    public MemWriter(IMemWriter? controller)
     {
         Controller = controller;
-        controller.Init(ref this);
+        if (controller == null)
+        {
+            Current = 0;
+            Start = 0;
+            End = 0;
+        }
+        else
+        {
+            controller.Init(ref this);
+        }
     }
 
     public void Flush()

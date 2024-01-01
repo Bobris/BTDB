@@ -197,11 +197,6 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
             {
                 throw new NotSupportedException();
             }
-
-            public long GetCurrentPositionWithoutWriter()
-            {
-                return (long)Ofs;
-            }
         }
 
         public IMemReader GetExclusiveReader()
@@ -217,17 +212,8 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
         {
             lock (_lock)
             {
-                if (data.Length > 0 && position < _writer.Ofs)
-                {
-                    MapContent();
-                    var read = data.Length;
-                    if (_writer.Ofs - position < (ulong)read) read = (int)(_writer.Ofs - position);
-                    new Span<byte>(_pointer + position, read).CopyTo(data);
-                    data = data[read..];
-                }
-
-                if (data.Length == 0) return;
-                throw new EndOfStreamException();
+                MapContent();
+                new Span<byte>(_pointer + position, data.Length).CopyTo(data);
             }
         }
 
@@ -268,7 +254,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
         {
             lock (_lock)
             {
-                return (ulong)_writer.GetCurrentPositionWithoutWriter();
+                return _writer.Ofs;
             }
         }
 
@@ -280,7 +266,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
             {
                 oldFiles = _owner._files;
                 if (!oldFiles!.TryGetValue(_index, out _)) return;
-                newFiles = new Dictionary<uint, File>(oldFiles);
+                newFiles = new(oldFiles);
                 newFiles.Remove(_index);
             } while (Interlocked.CompareExchange(ref _owner._files, newFiles, oldFiles) != oldFiles);
 

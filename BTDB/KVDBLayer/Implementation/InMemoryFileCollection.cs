@@ -172,6 +172,26 @@ public class InMemoryFileCollection : IFileCollection
 
             public unsafe void Init(ref MemWriter memWriter)
             {
+                var ofs = _ofs;
+                if (ofs == (ulong)_file._data.Length * OneBufSize)
+                {
+                    memWriter.Start = 0;
+                    memWriter.Current = 0;
+                    memWriter.End = 0;
+                    return;
+                }
+
+                var ofsbuf = (int)(ofs % OneBufSize);
+                memWriter.Start = (nint)Unsafe.AsPointer(ref _file._data[^1][0]) + ofsbuf;
+                memWriter.Current = memWriter.Start;
+                memWriter.End = memWriter.Start + OneBufSize - ofsbuf;
+            }
+
+            public unsafe void Flush(ref MemWriter memWriter, uint spaceNeeded)
+            {
+                _ofs += (ulong)(memWriter.Current - memWriter.Start);
+                Interlocked.MemoryBarrier(); // all written data will be visible before publishing new _flushedSize
+                _file._flushedSize = (long)_ofs;
                 if (_ofs == (ulong)_file._data.Length * OneBufSize)
                 {
                     var buf = GC.AllocateUninitializedArray<byte>(OneBufSize, pinned: true);
@@ -189,14 +209,6 @@ public class InMemoryFileCollection : IFileCollection
                 memWriter.Start = (nint)Unsafe.AsPointer(ref _file._data[^1][0]) + ofs;
                 memWriter.Current = memWriter.Start;
                 memWriter.End = memWriter.Start + OneBufSize - ofs;
-            }
-
-            public void Flush(ref MemWriter memWriter, uint spaceNeeded)
-            {
-                _ofs += (ulong)(memWriter.Current - memWriter.Start);
-                Interlocked.MemoryBarrier(); // all written data will be visible before publishing new _flushedSize
-                _file._flushedSize = (long)_ofs;
-                Init(ref memWriter);
             }
 
             public long GetCurrentPosition(in MemWriter memWriter)
@@ -225,11 +237,6 @@ public class InMemoryFileCollection : IFileCollection
             public void SetCurrentPosition(ref MemWriter memWriter, long position)
             {
                 throw new NotSupportedException();
-            }
-
-            public long GetCurrentPositionWithoutWriter()
-            {
-                return (long)_ofs;
             }
         }
 

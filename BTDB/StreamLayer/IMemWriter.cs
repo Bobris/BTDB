@@ -36,10 +36,4 @@ public interface IMemWriter
     /// <param name="memWriter">owning MemWriter</param>
     /// <param name="position">new position to set</param>
     void SetCurrentPosition(ref MemWriter memWriter, long position);
-
-    /// <summary>
-    /// Returns current position without using MemWriter.
-    /// </summary>
-    /// <returns>byte offset from start</returns>
-    long GetCurrentPositionWithoutWriter();
 }

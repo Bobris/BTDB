@@ -105,9 +105,4 @@ public class BrotliCompressMemWriter : IMemWriter
     {
         throw new NotSupportedException();
     }
-
-    public long GetCurrentPositionWithoutWriter()
-    {
-        return _totalPos;
-    }
 }

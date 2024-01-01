@@ -228,11 +228,6 @@ public class OnDiskFileCollection : IFileCollection
             {
                 throw new NotSupportedException();
             }
-
-            public long GetCurrentPositionWithoutWriter()
-            {
-                return (long)Ofs;
-            }
         }
 
         public IMemReader GetExclusiveReader()
@@ -259,8 +254,6 @@ public class OnDiskFileCollection : IFileCollection
                 }
 
                 if (data.Length == 0) return;
-                if ((ulong)_writer.GetCurrentPositionWithoutWriter() < position + (ulong)data.Length)
-                    throw new EndOfStreamException();
                 _writer.GetBuffer().AsSpan((int)(position - _writer.Ofs), data.Length).CopyTo(data);
             }
         }
@@ -298,7 +291,7 @@ public class OnDiskFileCollection : IFileCollection
         {
             using (_readerWriterLock.ReadLock())
             {
-                return (ulong)_writer.GetCurrentPositionWithoutWriter();
+                return _writer.Ofs;
             }
         }
 

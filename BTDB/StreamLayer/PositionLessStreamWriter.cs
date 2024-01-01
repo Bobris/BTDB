@@ -89,9 +89,4 @@ public class PositionLessStreamWriter : IMemWriter, IDisposable
         _ofs = (ulong)position;
         Init(ref memWriter);
     }
-
-    public long GetCurrentPositionWithoutWriter()
-    {
-        return (long)_ofs + _pos;
-    }
 }

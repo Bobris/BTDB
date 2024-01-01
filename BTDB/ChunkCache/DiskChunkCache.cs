@@ -139,18 +139,20 @@ public class DiskChunkCache : IChunkCache, IDisposable
         cacheValue.AccessRate = 1;
         again:
         var writer = _cacheValueWriter;
-        while (writer == null || writer.GetCurrentPositionWithoutWriter() + content.Length > _sizeLimitOfOneValueFile)
+        var trueWriter = new MemWriter(writer);
+        while (writer == null || trueWriter.GetCurrentPosition() + content.Length > _sizeLimitOfOneValueFile)
         {
             StartNewValueFile();
             writer = _cacheValueWriter;
+            trueWriter = new(writer);
         }
 
         lock (writer)
         {
             if (writer != _cacheValueWriter) goto again;
+            trueWriter = new(writer);
             cacheValue.FileId = _cacheValueFileId;
-            cacheValue.FileOfs = (uint)writer.GetCurrentPositionWithoutWriter();
-            var trueWriter = new MemWriter(writer);
+            cacheValue.FileOfs = (uint)trueWriter.GetCurrentPosition();
             trueWriter.WriteBlock(content);
             trueWriter.Flush();
         }
@@ -310,15 +312,15 @@ public class DiskChunkCache : IChunkCache, IDisposable
                             goto remove;
                         }
 
-                        if (writer.GetCurrentPositionWithoutWriter() + cacheValue.ContentLength >
+                        var trueWriter = new MemWriter(writer);
+                        if (trueWriter.GetCurrentPosition() + cacheValue.ContentLength >
                             _sizeLimitOfOneValueFile)
                         {
                             goto remove;
                         }
 
                         cacheValue.FileId = _cacheValueFileId;
-                        cacheValue.FileOfs = (uint)writer.GetCurrentPositionWithoutWriter();
-                        var trueWriter = new MemWriter(writer);
+                        cacheValue.FileOfs = (uint)trueWriter.GetCurrentPosition();
                         trueWriter.WriteBlock(content);
                         trueWriter.Flush();
                     }
