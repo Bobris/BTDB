@@ -11,7 +11,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Collections;
-using Microsoft.Extensions.Primitives;
 using ODbDump.TrlDump;
 
 namespace ODbDump

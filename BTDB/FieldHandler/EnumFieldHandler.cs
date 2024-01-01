@@ -7,8 +7,6 @@ using BTDB.StreamLayer;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Microsoft.Extensions.Primitives;
-
 namespace BTDB.FieldHandler;
 
 public class EnumFieldHandler : IFieldHandler
