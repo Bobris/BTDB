@@ -101,7 +101,7 @@ static class Program
         if (Directory.Exists(projDir + "/ODbDump/bin/Release"))
             Directory.Delete(projDir + "/ODbDump/bin/Release", true);
         var fileNameOfNugetToken =
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/.nuget/token.txt";
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "/.nuget/token.txt";
         string nugetToken;
         try
         {
@@ -120,7 +120,7 @@ static class Program
         var client = new GitHubClient(new ProductHeaderValue("BTDB-releaser"));
         client.SetRequestTimeout(TimeSpan.FromMinutes(15));
         var fileNameOfGithubToken =
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/.github/token.txt";
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "/.github/token.txt";
         string githubToken;
         try
         {
