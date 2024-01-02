@@ -207,6 +207,7 @@ public struct MemWriter
         var arr = GC.AllocateUninitializedArray<byte>((int)size, pinned: true);
         var newStart = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(arr));
         Unsafe.CopyBlockUnaligned((void*)newStart, (void*)Start, (uint)pos);
+        GC.KeepAlive(Controller);
         Controller = arr;
         Start = newStart;
         Current = newStart + pos;
