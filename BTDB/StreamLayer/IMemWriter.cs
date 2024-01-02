@@ -23,7 +23,7 @@ public interface IMemWriter
     long GetCurrentPosition(in MemWriter memWriter);
 
     /// <summary>
-    /// Writes data from buffer. Called only in case when free space till end of buffer is not enough.
+    /// Writes data from buffer. Called only in case when free space till end of buffer is zero. Usually it needs to start by flushing buffer.
     /// </summary>
     /// <param name="memWriter">owning MemWriter</param>
     /// <param name="buffer">reference to first byte of buffer to write with length bytes</param>

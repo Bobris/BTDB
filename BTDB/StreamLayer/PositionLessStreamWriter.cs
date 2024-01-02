@@ -64,7 +64,7 @@ public class PositionLessStreamWriter : IMemWriter, IDisposable
     {
         _pos = BufLength - (int)(memWriter.End - memWriter.Current);
         if (spaceNeeded != 0 && _pos + 1024 < BufLength) return;
-        FlushBuffer();
+        if (_pos != 0) FlushBuffer();
         memWriter.Start = (nint)Unsafe.AsPointer(ref _buf[0]);
         memWriter.Current = memWriter.Start;
         memWriter.End = memWriter.Start + BufLength;
@@ -85,8 +85,6 @@ public class PositionLessStreamWriter : IMemWriter, IDisposable
     public void SetCurrentPosition(ref MemWriter memWriter, long position)
     {
         Flush(ref memWriter, 0);
-        if (_pos != 0) FlushBuffer();
         _ofs = (ulong)position;
-        Init(ref memWriter);
     }
 }

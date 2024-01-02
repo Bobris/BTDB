@@ -216,6 +216,7 @@ public class OnDiskFileCollection : IFileCollection
 
             public void WriteBlock(ref MemWriter memWriter, ref byte buffer, nuint length)
             {
+                Flush(ref memWriter, 0);
                 RandomAccess.Write(_file._handle, MemoryMarshal.CreateReadOnlySpan(ref buffer, (int)length),
                     (long)Ofs);
                 using (_file._readerWriterLock.WriteLock())
