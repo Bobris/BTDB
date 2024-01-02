@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.IL;
@@ -68,14 +67,14 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         writer.WriteVUInt32(_relationInfo.ClientTypeVersion);
         _relationInfo.ValueSaver(_transaction, ref writer, obj);
-        return writer.GetPersistentSpanAndReset();
+        return writer.GetScopedSpanAndReset();
     }
 
     ReadOnlySpan<byte> KeyBytes(T obj, scoped ref MemWriter writer, out int lenOfPkWoInKeyValues)
     {
         WriteRelationPKPrefix(ref writer);
         lenOfPkWoInKeyValues = _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj);
-        return writer.GetPersistentSpanAndReset();
+        return writer.GetScopedSpanAndReset();
     }
 
     public void WriteRelationPKPrefix(ref MemWriter writer)
@@ -1039,7 +1038,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             try
             {
                 enumerator.GatherForSorting(ref sns, ordererIdxs, orderers);
-                if (sns.First.IsEmpty)
+                if (sns.First.Start == 0)
                 {
                     ThrowIfNotHasOrDefault(hasOrDefault);
                     return null!;
@@ -1093,7 +1092,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             try
             {
                 enumerator.GatherForSorting(ref sns, ordererIdxs, orderers);
-                if (sns.First.IsEmpty)
+                if (sns.First.Start == 0)
                 {
                     ThrowIfNotHasOrDefault(hasOrDefault);
                     return null!;
@@ -1587,7 +1586,7 @@ ref struct SortNativeStorage
     internal StructList<IntPtr> Storage;
     internal StructList<IntPtr> Items;
     internal Span<byte> FreeSpace;
-    internal ReadOnlySpan<byte> First;
+    internal MemReader First;
     internal uint AllocSize;
     internal bool OnlyFirst;
 
@@ -1628,25 +1627,22 @@ ref struct SortNativeStorage
         Writer.WriteVUInt64(keyIndex - StartKeyIndex);
         var lenOfKeyIndex = Writer.GetCurrentPosition() - endOfData;
         Writer.WriteUInt8((byte)lenOfKeyIndex);
-        var span = Writer.GetSpan();
         if (OnlyFirst)
         {
-            if (First.IsEmpty)
+            if (First.Start == 0)
             {
-                First = Writer.GetPersistentSpanAndReset();
+                MemReader.InitFromSpan(ref First, Writer.GetSpan());
             }
-            else if (First.SequenceCompareTo(Writer.GetSpan()) > 0)
+            else if (First.PeekSpanTillEof().SequenceCompareTo(Writer.GetSpan()) > 0)
             {
-                First = Writer.GetPersistentSpanAndReset();
-            }
-            else
-            {
-                Writer.Reset();
+                MemReader.InitFromSpan(ref First, Writer.GetSpan());
             }
 
+            Writer.Reset();
             return;
         }
 
+        var span = Writer.GetSpan();
         if (Writer.Controller != null) // If it didn't fit free space in last chunk
         {
             while (span.Length >= AllocSize) AllocSize *= 2;
@@ -1677,8 +1673,8 @@ ref struct SortNativeStorage
 
     public unsafe ulong GetFirstKeyIndex()
     {
-        var ptr = Unsafe.AsPointer(ref MemoryMarshal.GetReference(First));
-        var len = First.Length;
+        var ptr = First.Start;
+        var len = First.End - ptr;
         var lenDelta = Unsafe.Read<byte>((byte*)ptr + len - 1);
         var delta = PackUnpack.UnsafeUnpackVUInt(ref Unsafe.AsRef<byte>((byte*)ptr + len - 1 - lenDelta), lenDelta);
         return StartKeyIndex + delta;

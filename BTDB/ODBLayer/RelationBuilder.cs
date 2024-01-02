@@ -29,8 +29,8 @@ public class RelationBuilder
     static readonly MethodInfo MemWriterGetSpanMethodInfo =
         typeof(MemWriter).GetMethod(nameof(MemWriter.GetSpan))!;
 
-    static readonly MethodInfo MemWriterGetPersistentSpanAndResetMethodInfo =
-        typeof(MemWriter).GetMethod(nameof(MemWriter.GetPersistentSpanAndReset))!;
+    static readonly MethodInfo MemWriterGetScopedSpanAndResetMethodInfo =
+        typeof(MemWriter).GetMethod(nameof(MemWriter.GetScopedSpanAndReset))!;
 
     static readonly MethodInfo MemWriterNoControllerGetCurrentPosition =
         typeof(MemWriter).GetMethod(nameof(MemWriter.NoControllerGetCurrentPosition))!;
@@ -1112,7 +1112,7 @@ public class RelationBuilder
             var keyBytesLocal = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             reqMethod.Generator
                 .Do(pushWriter)
-                .Call(MemWriterGetPersistentSpanAndResetMethodInfo)
+                .Call(MemWriterGetSpanMethodInfo)
                 .Stloc(keyBytesLocal)
                 .Ldarg(0)
                 .Ldloc(keyBytesLocal)
@@ -1133,7 +1133,7 @@ public class RelationBuilder
             var pinnedValueSpanLocal = reqMethod.Generator.DeclareLocal(typeof(byte).MakeByRefType(), "pinned", true);
             reqMethod.Generator
                 .Do(pushWriter)
-                .Call(MemWriterGetPersistentSpanAndResetMethodInfo)
+                .Call(MemWriterGetScopedSpanAndResetMethodInfo)
                 .Stloc(keyBytesLocal)
                 .Ldarg(0)
                 .Ldloc(keyBytesLocal)
@@ -1283,7 +1283,7 @@ public class RelationBuilder
                 .Ldloc(keyBytesLocal)
                 .Ldloc(valueSpan)
                 .Do(pushWriter)
-                .Call(MemWriterGetPersistentSpanAndResetMethodInfo)
+                .Call(MemWriterGetSpanMethodInfo)
                 .Call(updateByIdFinishMethod!);
             if (returningBoolVariant)
                 reqMethod.Generator.LdcI4(1);
@@ -1834,7 +1834,7 @@ public class RelationBuilder
         ilGenerator
             .Mark(ignoreLabel)
             .Do(pushWriter)
-            .Call(MemWriterGetPersistentSpanAndResetMethodInfo)
+            .Call(MemWriterGetScopedSpanAndResetMethodInfo)
             .Stloc(localSpan)
             .Ldloca(localSpan);
     }

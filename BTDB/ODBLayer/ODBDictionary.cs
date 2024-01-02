@@ -242,7 +242,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         IWriterCtx ctx = null;
         if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
         _keyWriter(key, ref writer, ctx);
-        return writer.GetPersistentSpanAndReset();
+        return writer.GetScopedSpanAndReset();
     }
 
     ReadOnlySpan<byte> ValueToByteArray(TValue value, ref MemWriter writer)
@@ -250,7 +250,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         IWriterCtx ctx = null;
         if (_valueHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
         _valueWriter(value, ref writer, ctx);
-        return writer.GetPersistentSpanAndReset();
+        return writer.GetScopedSpanAndReset();
     }
 
     [SkipLocalsInit]

@@ -100,6 +100,16 @@ public struct MemWriter
         return new((void*)Start, (int)(Current - Start));
     }
 
+    public unsafe ReadOnlySpan<byte> GetScopedSpanAndReset()
+    {
+#if DEBUG
+        if (Controller is IMemWriter) ThrowCannotBeUsedWithController();
+#endif
+        ReadOnlySpan<byte> res = new((void*)Start, (int)(Current - Start));
+        Start = Current;
+        return res;
+    }
+
     public unsafe ReadOnlySpan<byte> GetPersistentSpanAndReset()
     {
         if (Controller is IMemWriter) ThrowCannotBeUsedWithController();
