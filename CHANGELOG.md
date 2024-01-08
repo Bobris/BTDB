@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.0.3
+
 ### Fixed
 
 Source Generator nuget package is now correctly published.
