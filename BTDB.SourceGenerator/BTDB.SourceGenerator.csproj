@@ -7,7 +7,9 @@
 
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <IsRoslynComponent>true</IsRoslynComponent>
-
+        <IncludeBuildOutput>false</IncludeBuildOutput> <!-- Do not include the generator as a lib dependency -->
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+        
         <RootNamespace>BTDB.SourceGenerator</RootNamespace>
         <PackageId>BTDB.SourceGenerator</PackageId>
         <Version>32.0.2</Version>
@@ -16,18 +18,18 @@
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
         <Description>SourceGenerator for BTDB features to not need runtime code generation</Description>
-        <PackageTags>BTDB IOC</PackageTags>
+        <PackageTags>BTDB IOC;Source Generator</PackageTags>
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
         <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
     </PropertyGroup>
 
     <ItemGroup>
+        <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0"/>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.8.0"/>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.8.0" PrivateAssets="all"/>
     </ItemGroup>
 </Project>

@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Source Generator nuget package is now correctly published.
+
 ## 32.0.2
 
 ## 32.0.1
