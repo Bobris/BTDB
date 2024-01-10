@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using BTDB;
@@ -1538,4 +1539,30 @@ public partial class IocTests
         Assert.NotNull(root.Authenticator.Database.Logger);
         Assert.Same(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
     }
+
+    [Fact]
+    public void MoreComplexManualFactoryRegistrationShowcase()
+    {
+        var builder = new ContainerBuilder();
+        builder.AutoRegisterTypes()
+            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.StartsWith("Database")).AsImplementedInterfaces();
+        builder.RegisterFactory<Database>((container, ctx) =>
+        {
+            var f0 = container.CreateFactory(ctx, typeof(IErrorHandler), "handler");
+            if (f0 == null) throw new ArgumentException("Cannot resolve BTDBTest.IOCDomain.IErrorHandler handler parameter of BTDBTest.IOCDomain.Database");
+            var f1 = container.CreateFactory(ctx, typeof(ILogger), "logger");
+            if (f1 == null) throw new ArgumentException("Cannot resolve BTDBTest.IOCDomain.ILogger logger parameter of BTDBTest.IOCDomain.Database");
+            return (container2, ctx2) =>
+            {
+                var res = new Database(Unsafe.As<IErrorHandler>(f0(container2, ctx2)), Unsafe.As<ILogger>(f1(container2, ctx2)));
+                return res;
+            };
+        }).AsImplementedInterfaces();
+        var container = builder.Build();
+        var root = container.Resolve<IWebService>();
+        Assert.NotNull(root);
+        Assert.NotNull(root.Authenticator.Database.Logger);
+        Assert.NotSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+    }
+
 }
