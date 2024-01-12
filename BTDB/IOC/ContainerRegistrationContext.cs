@@ -9,12 +9,14 @@ class ContainerRegistrationContext
 {
     readonly Dictionary<KeyAndType, CReg> _registrations;
 
-    internal ContainerRegistrationContext(Dictionary<KeyAndType, CReg> registrations)
+    internal ContainerRegistrationContext(Dictionary<KeyAndType, CReg> registrations, bool allowReflectionFallback)
     {
         _registrations = registrations;
+        AllowReflectionFallback = allowReflectionFallback;
     }
 
     internal uint SingletonCount { get; private set; }
+    internal bool AllowReflectionFallback { get; private set; }
 
     public void AddCReg(IEnumerable<KeyAndType> asTypes, bool preserveExistingDefaults, bool uniqueRegistration,
         CReg registration)

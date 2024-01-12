@@ -18,7 +18,9 @@ public class ContainerImpl : IContainer
 
     internal ContainerImpl(ReadOnlySpan<IRegistration> registrations, ContainerVerification containerVerification)
     {
-        var context = new ContainerRegistrationContext(Registrations);
+        var context = new ContainerRegistrationContext(Registrations,
+            !containerVerification.HasFlag(ContainerVerification.AllTypesAreGenerated));
+
         foreach (var registration in registrations)
         {
             ((IContanerRegistration)registration).Register(context);

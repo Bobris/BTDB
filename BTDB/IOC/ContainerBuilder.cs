@@ -8,6 +8,7 @@ namespace BTDB.IOC;
 public enum ContainerVerification
 {
     SingletonsUsingOnlySingletons = 1,
+    AllTypesAreGenerated = 2,
     None = 0,
     All = int.MaxValue
 }
@@ -112,7 +113,7 @@ public class ContainerBuilder
 
     public IContainer Build()
     {
-        return new ContainerImpl(_registrations.AsReadOnlySpan(), ContainerVerification.None);
+        return new ContainerImpl(_registrations.AsReadOnlySpan(), ContainerVerification.AllTypesAreGenerated);
     }
 
     public IContainer BuildAndVerify(ContainerVerification options = ContainerVerification.All)

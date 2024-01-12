@@ -43,14 +43,22 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
     {
         if (!IContainer.FactoryRegistry.TryGetValue(_implementationType.TypeHandle.Value, out var factory))
         {
-            try
+            if (context.AllowReflectionFallback)
             {
-                factory = BuildFactory(_implementationType);
-                IContainer.RegisterFactory(_implementationType, factory);
+                try
+                {
+                    factory = BuildFactory(_implementationType);
+                    IContainer.RegisterFactory(_implementationType, factory);
+                }
+                catch (Exception e)
+                {
+                    throw new BTDBException($"Cannot create factory for {_implementationType.ToSimpleName()}", e);
+                }
             }
-            catch (Exception e)
+            else
             {
-                throw new BTDBException($"Cannot create factory for {_implementationType.ToSimpleName()}", e);
+                throw new BTDBException(
+                    $"Factory for {_implementationType.ToSimpleName()} is not registered. Add [Generate] attribute to sourcecode generate it.");
             }
         }
 
@@ -67,8 +75,14 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
         var ci = implementationType
             .GetConstructors(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)
             .OrderByDescending(c => c.GetParameters().Length).First();
-        var invoker = ConstructorInvoker.Create(ci);
-        var parameters = ci.GetParameters();
+        return BuildFactory(implementationType, ci);
+    }
+
+    internal static Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx, object>> BuildFactory(
+        Type implementationType, ConstructorInfo constructorInfo)
+    {
+        var invoker = ConstructorInvoker.Create(constructorInfo);
+        var parameters = constructorInfo.GetParameters();
         var dependencies = new StructList<(string, Type, MethodInvoker)>();
         foreach (var propertyInfo in implementationType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {

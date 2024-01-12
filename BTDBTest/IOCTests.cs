@@ -798,7 +798,7 @@ public partial class IocTests
     {
         var builder = new ContainerBuilder();
         builder.RegisterType<PrivateLogger>().As<ILogger>().SingleInstance();
-        var c = builder.Build();
+        var c = builder.BuildAndVerify(ContainerVerification.None);
         Assert.IsType<PrivateLogger>(c.Resolve<ILogger>());
     }
 
@@ -1492,7 +1492,7 @@ public partial class IocTests
         builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
             .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps"))
             .AsImplementedInterfaces();
-        var container = builder.Build();
+        var container = builder.BuildAndVerify(ContainerVerification.None);
         var root = container.Resolve<IWebService>();
         Assert.NotNull(root);
         Assert.NotNull(root.Authenticator.Database.Logger);
@@ -1505,7 +1505,7 @@ public partial class IocTests
         var builder = new ContainerBuilder();
         builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
             .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces();
-        var container = builder.Build();
+        var container = builder.BuildAndVerify(ContainerVerification.None);
         var root = container.Resolve<IWebService>();
         Assert.NotNull(root);
         Assert.NotNull(root.Authenticator.Database.Logger);
@@ -1519,7 +1519,7 @@ public partial class IocTests
         builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
             .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps"))
             .AsImplementedInterfaces().SingleInstance();
-        var container = builder.Build();
+        var container = builder.BuildAndVerify(ContainerVerification.None);
         var root = container.Resolve<IWebService>();
         Assert.NotNull(root);
         Assert.NotNull(root.Authenticator.Database.Logger);
@@ -1533,7 +1533,7 @@ public partial class IocTests
         builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
             .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces()
             .SingleInstance();
-        var container = builder.Build();
+        var container = builder.BuildAndVerify(ContainerVerification.None);
         var root = container.Resolve<IWebService>();
         Assert.NotNull(root);
         Assert.NotNull(root.Authenticator.Database.Logger);
@@ -1545,16 +1545,24 @@ public partial class IocTests
     {
         var builder = new ContainerBuilder();
         builder.AutoRegisterTypes()
-            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.StartsWith("Database")).AsImplementedInterfaces();
+            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.StartsWith("Database"))
+            .AsImplementedInterfaces();
+        var callCounter = 0;
         builder.RegisterFactory<Database>((container, ctx) =>
         {
+            callCounter++;
             var f0 = container.CreateFactory(ctx, typeof(IErrorHandler), "handler");
-            if (f0 == null) throw new ArgumentException("Cannot resolve BTDBTest.IOCDomain.IErrorHandler handler parameter of BTDBTest.IOCDomain.Database");
+            if (f0 == null)
+                throw new ArgumentException(
+                    "Cannot resolve BTDBTest.IOCDomain.IErrorHandler handler parameter of BTDBTest.IOCDomain.Database");
             var f1 = container.CreateFactory(ctx, typeof(ILogger), "logger");
-            if (f1 == null) throw new ArgumentException("Cannot resolve BTDBTest.IOCDomain.ILogger logger parameter of BTDBTest.IOCDomain.Database");
+            if (f1 == null)
+                throw new ArgumentException(
+                    "Cannot resolve BTDBTest.IOCDomain.ILogger logger parameter of BTDBTest.IOCDomain.Database");
             return (container2, ctx2) =>
             {
-                var res = new Database(Unsafe.As<IErrorHandler>(f0(container2, ctx2)), Unsafe.As<ILogger>(f1(container2, ctx2)));
+                var res = new Database(Unsafe.As<IErrorHandler>(f0(container2, ctx2)),
+                    Unsafe.As<ILogger>(f1(container2, ctx2)));
                 return res;
             };
         }).AsImplementedInterfaces();
@@ -1563,6 +1571,28 @@ public partial class IocTests
         Assert.NotNull(root);
         Assert.NotNull(root.Authenticator.Database.Logger);
         Assert.NotSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+        Assert.Equal(2, callCounter);
+        var rootFactory = container.Resolve<Func<IWebService>>();
+        Assert.Equal(4, callCounter);
+        rootFactory();
+        root = rootFactory();
+        Assert.NotNull(root.Authenticator.Database.Logger);
+        Assert.Equal(4, callCounter);
     }
 
+    [Fact]
+    public void RegisterByConstructorParameters()
+    {
+        var builder = new ContainerBuilder();
+        builder.AutoRegisterTypes()
+            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.StartsWith("Database"))
+            .AsImplementedInterfaces();
+        builder.RegisterTypeWithConstructorParameters<Database>(typeof(IErrorHandler), typeof(ILogger))
+            .AsImplementedInterfaces();
+        var container = builder.Build();
+        var root = container.Resolve<IWebService>();
+        Assert.NotNull(root);
+        Assert.NotNull(root.Authenticator.Database.Logger);
+        Assert.NotSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+    }
 }
