@@ -73,7 +73,7 @@ class EvStructure
     public static EvStructure Deserialize(ref Bon root)
     {
         root.TryGetClass(out var structureBon, out var structureClassName);
-        if (structureClassName != "Structure") throw new InvalidDataException("Invalid structure class");
+        if (!structureClassName.SequenceEqual("Structure"u8)) throw new InvalidDataException("Invalid structure class");
         var structure = new EvStructure();
         if (!structureBon.TryGet("Type", out var typeBon)) throw new InvalidDataException("Missing Type");
         if (!typeBon.TryGetString(out var typeStr)) throw new InvalidDataException("Type is not string");
@@ -122,7 +122,7 @@ public static class BigBonTest
         var reader = new MemReader(fileReader);
         if (!reader.CheckMagic("EVDS\0\0\0\x1"u8)) throw new Exception("Invalid magic");
         var bon = new Bon(reader);
-        if (!bon.TryGetClass(out var root, out var rootClassName) || rootClassName != "EvolveData")
+        if (!bon.TryGetClass(out var root, out var rootClassName) || !rootClassName.SequenceEqual("EvolveData"u8))
             throw new Exception("Invalid root class");
         if (!root.TryGet("Structure", out var structureBon)) throw new Exception("Missing Structure");
         var structure = EvStructure.Deserialize(ref structureBon);

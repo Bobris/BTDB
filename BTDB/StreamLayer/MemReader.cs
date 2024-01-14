@@ -126,10 +126,10 @@ public struct MemReader
         return (Controller as IMemReader)?.GetCurrentPosition(this) ?? Current - Start;
     }
 
-    public uint GetCurrentPositionWithoutController()
+    public ulong GetCurrentPositionWithoutController()
     {
         Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
-        return (uint)(Current - Start);
+        return (ulong)(Current - Start);
     }
 
     public void SetCurrentPosition(long position)
@@ -144,6 +144,13 @@ public struct MemReader
             if (Start + position > End) PackUnpack.ThrowEndOfStreamException();
             Current = Start + (nint)position;
         }
+    }
+
+    public void SetCurrentPositionWithoutController(ulong position)
+    {
+        Debug.Assert((Controller as IMemReader)?.ThrowIfNotSimpleReader() ?? true);
+        if (position > (nuint)(End - Start)) PackUnpack.ThrowEndOfStreamException();
+        Current = Start + (nint)position;
     }
 
     public bool Eof

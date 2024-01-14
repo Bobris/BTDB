@@ -496,7 +496,7 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
             item._directChildren = (byte)(firstByte - 128);
             item._recursiveChildren = reader.ReadVUInt32();
             item._prefixLen = reader.ReadVUInt32();
-            item._prefixOffset = offset + reader.GetCurrentPositionWithoutController();
+            item._prefixOffset = offset + (uint)reader.GetCurrentPositionWithoutController();
             item._firstKeyOffset = (uint)(item._prefixOffset + item._prefixLen +
                 2 * item._directChildren - 2);
             item._valuePtrOffset = item._firstKeyOffset +
@@ -509,7 +509,7 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
             item._directChildren = firstByte;
             item._recursiveChildren = firstByte;
             item._prefixLen = reader.ReadVUInt32();
-            item._prefixOffset = offset + reader.GetCurrentPositionWithoutController();
+            item._prefixOffset = offset + (uint)reader.GetCurrentPositionWithoutController();
             item._firstKeyOffset = (uint)(item._prefixOffset + item._prefixLen +
                                           2 * item._directChildren);
             item._valuePtrOffset = item._firstKeyOffset +

@@ -83,7 +83,7 @@ public static class Helpers
         };
     }
 
-    public static void Write(ref MemWriter data, double value)
+    public static void Write(scoped ref MemWriter data, double value)
     {
         var f = (float)value;
         if (f == value)
@@ -107,15 +107,15 @@ public static class Helpers
         }
     }
 
-    public static nint CalcStartOffsetOfBon(ref MemReader reader)
+    public static ulong CalcStartOffsetOfBon(scoped ref MemReader reader)
     {
         var len = reader.GetLength();
-        reader.SetCurrentPosition(len - 1);
+        reader.SetCurrentPositionWithoutController((ulong)(len - 1));
         var b = reader.ReadUInt8();
-        return len - b - 1;
+        return (ulong)len - b - 1;
     }
 
-    public static void SkipItemOfBon(ref MemReader reader)
+    public static void SkipItemOfBon(scoped ref MemReader reader)
     {
         var b = reader.ReadUInt8();
         switch (b)
@@ -140,7 +140,7 @@ public static class Helpers
         }
     }
 
-    public static bool TryGetDouble(ref MemReader reader, out double value)
+    public static bool TryGetDouble(scoped ref MemReader reader, out double value)
     {
         var b = reader.PeekUInt8();
         switch (b)
@@ -187,7 +187,7 @@ public static class Helpers
         return false;
     }
 
-    public static bool TryGetDateTime(ref MemReader reader, out DateTime value)
+    public static bool TryGetDateTime(scoped ref MemReader reader, out DateTime value)
     {
         var b = reader.PeekUInt8();
         switch (b)
@@ -204,7 +204,7 @@ public static class Helpers
         return false;
     }
 
-    public static bool TryGetGuid(ref MemReader reader, out Guid value)
+    public static bool TryGetGuid(scoped ref MemReader reader, out Guid value)
     {
         var b = reader.PeekUInt8();
         switch (b)
@@ -221,7 +221,7 @@ public static class Helpers
         return false;
     }
 
-    public static bool TryGetString(ref MemReader reader, out string value)
+    public static bool TryGetString(scoped ref MemReader reader, out string value)
     {
         var b = reader.PeekUInt8();
         switch (b)
@@ -236,12 +236,39 @@ public static class Helpers
             {
                 reader.Skip1Byte();
                 var strOfs = reader.ReadVUInt64();
-                value = ReadUtf8WithVUintLen(ref reader, strOfs);
+                value = ReadUtf8WithVUintLen(reader, strOfs);
                 return true;
             }
         }
 
         value = "";
+        return false;
+    }
+
+    public static bool TryGetStringBytes(scoped ref MemReader reader, out ReadOnlySpan<byte> value)
+    {
+        var b = reader.PeekUInt8();
+        switch (b)
+        {
+            case CodeStringEmpty:
+            {
+                reader.Skip1Byte();
+                value = new();
+                return true;
+            }
+            case CodeStringPtr:
+            {
+                reader.Skip1Byte();
+                var strOfs = reader.ReadVUInt64();
+                var reader2 = reader;
+                reader2.SetCurrentPositionWithoutController(strOfs);
+                var len = reader2.ReadVUInt32();
+                value = reader2.ReadBlockAsSpan(len);
+                return true;
+            }
+        }
+
+        value = new();
         return false;
     }
 
@@ -297,12 +324,11 @@ public static class Helpers
         return false;
     }
 
-    public static string ReadUtf8WithVUintLen(ref MemReader reader, ulong ofs)
+    public static string ReadUtf8WithVUintLen(in MemReader reader, ulong ofs)
     {
-        var pos = reader.GetCurrentPosition();
-        reader.SetCurrentPosition((long)ofs);
-        var res = reader.ReadStringInUtf8();
-        reader.SetCurrentPosition(pos);
+        var reader2 = reader;
+        reader2.SetCurrentPositionWithoutController(ofs);
+        var res = reader2.ReadStringInUtf8();
         return res;
     }
 }
@@ -336,7 +362,7 @@ public struct BonBuilder
     readonly LruCache<(bool IsClass, StructList<ulong> ObjKeys), ulong> _objKeysCache = new(64);
     HashSet<string>? _objKeysSet;
 
-    public BonBuilder(MemWriter memWriter)
+    public BonBuilder(in MemWriter memWriter)
     {
         _topData = memWriter;
     }
@@ -363,6 +389,13 @@ public struct BonBuilder
     }
 
     public void Write(string? value)
+    {
+        BeforeBon();
+        BasicWriteString(ref _topData, out _lastBonPos, value);
+        AfterBon();
+    }
+
+    public void WriteUtf8(ReadOnlySpan<byte> value)
     {
         BeforeBon();
         BasicWriteString(ref _topData, out _lastBonPos, value);
@@ -561,7 +594,7 @@ public struct BonBuilder
         BeforeBon();
         StackPush();
         _state = State.ObjectKey;
-        _objKeysSet = new();
+        _objKeysSet = null;
     }
 
     public void WriteKey(string name)
@@ -572,10 +605,18 @@ public struct BonBuilder
     public bool TryWriteKey(string name)
     {
         if (_state is not State.ObjectKey and not State.ClassKey) ThrowWrongState();
+        _objKeysSet ??= [];
         if (!_objKeysSet!.Add(name)) return false;
         _objKeys.Add(WriteDedupString(name));
         _state = _state == State.ObjectKey ? State.ObjectValue : State.ClassValue;
         return true;
+    }
+
+    public void WriteKey(ReadOnlySpan<byte> name)
+    {
+        if (_state is not State.ObjectKey and not State.ClassKey) ThrowWrongState();
+        _objKeys.Add(WriteDedupString(name));
+        _state = _state == State.ObjectKey ? State.ObjectValue : State.ClassValue;
     }
 
     public void FinishObject()
@@ -628,7 +669,16 @@ public struct BonBuilder
         StackPush();
         _state = State.ClassKey;
         _objKeys.Add(WriteDedupString(name));
-        _objKeysSet = new();
+        _objKeysSet = null;
+    }
+
+    public void StartClass(ReadOnlySpan<byte> name)
+    {
+        BeforeBon();
+        StackPush();
+        _state = State.ClassKey;
+        _objKeys.Add(WriteDedupString(name));
+        _objKeysSet = null;
     }
 
     public void FinishClass()
@@ -773,6 +823,22 @@ public struct BonBuilder
         }
     }
 
+    void BasicWriteString(ref MemWriter data, out ulong bonPos, ReadOnlySpan<byte> value)
+    {
+        if (value.Length == 0)
+        {
+            bonPos = (ulong)data.GetCurrentPosition();
+            data.WriteUInt8(Helpers.CodeStringEmpty);
+        }
+        else
+        {
+            var ofs = WriteDedupString(value);
+            bonPos = (ulong)data.GetCurrentPosition();
+            data.WriteUInt8(Helpers.CodeStringPtr);
+            data.WriteVUInt64(ofs);
+        }
+    }
+
     void ThrowWrongState()
     {
         throw new InvalidOperationException("State " + _state + " is not valid for this operation");
@@ -794,6 +860,20 @@ public struct BonBuilder
         pos = (ulong)writer.GetCurrentPosition();
         writer.WriteStringInUtf8(value);
         _strCache[value] = pos;
+        return pos;
+    }
+
+    ulong WriteDedupString(ReadOnlySpan<byte> value)
+    {
+        ref var writer = ref _topData;
+        if (_stack.Count > 0)
+        {
+            writer = ref _stack[0].Data;
+        }
+
+        var pos = (ulong)writer.GetCurrentPosition();
+        writer.WriteVUInt32((uint)value.Length);
+        writer.WriteBlock(value);
         return pos;
     }
 
@@ -836,23 +916,23 @@ public struct Bon
     public Bon(IMemReader reader)
     {
         _reader = new(reader);
-        _reader.SetCurrentPosition(Helpers.CalcStartOffsetOfBon(ref _reader));
+        _reader.SetCurrentPositionWithoutController(Helpers.CalcStartOffsetOfBon(ref _reader));
         _items = 1;
     }
 
     public Bon(in MemReader reader)
     {
         _reader = reader;
-        _reader.SetCurrentPosition(Helpers.CalcStartOffsetOfBon(ref _reader));
+        _reader.SetCurrentPositionWithoutController(Helpers.CalcStartOffsetOfBon(ref _reader));
         _items = 1;
     }
 
     public uint Items => _items;
 
-    public Bon(in MemReader reader, long ofs, uint items)
+    public Bon(in MemReader reader, ulong ofs, uint items)
     {
         _reader = reader;
-        _reader.SetCurrentPosition(ofs);
+        _reader.SetCurrentPositionWithoutController(ofs);
         _items = items;
     }
 
@@ -908,6 +988,11 @@ public struct Bon
     public bool TryGetString(out string value)
     {
         return ItemConsumed(Helpers.TryGetString(ref _reader, out value));
+    }
+
+    public bool TryGetStringBytes(out ReadOnlySpan<byte> value)
+    {
+        return ItemConsumed(Helpers.TryGetStringBytes(ref _reader, out value));
     }
 
     public bool TryGetBool(out bool value)
@@ -967,11 +1052,10 @@ public struct Bon
                 _reader.Skip1Byte();
                 _items--;
                 var ofs = _reader.ReadVUInt64();
-                var pos = _reader.GetCurrentPosition();
-                _reader.SetCurrentPosition((long)ofs);
-                var len = _reader.ReadVUInt32();
-                value = _reader.ReadBlockAsSpan(len);
-                _reader.SetCurrentPosition(pos);
+                var reader2 = _reader;
+                reader2.SetCurrentPositionWithoutController(ofs);
+                var len = reader2.ReadVUInt32();
+                value = reader2.ReadBlockAsSpan(len);
                 return true;
             }
             default:
@@ -995,11 +1079,10 @@ public struct Bon
                 _reader.Skip1Byte();
                 _items--;
                 var ofs = _reader.ReadVUInt64();
-                var pos = _reader.GetCurrentPosition();
-                _reader.SetCurrentPosition((long)ofs);
-                var items = _reader.ReadVUInt32();
-                bon = new(_reader, _reader.GetCurrentPosition(), items, false);
-                _reader.SetCurrentPosition(pos);
+                var reader2 = _reader;
+                reader2.SetCurrentPositionWithoutController(ofs);
+                var items = reader2.ReadVUInt32();
+                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, false);
                 return true;
             }
             case Helpers.CodeArraySplitBy32Ptr:
@@ -1007,11 +1090,10 @@ public struct Bon
                 _reader.Skip1Byte();
                 _items--;
                 var ofs = _reader.ReadVUInt64();
-                var pos = _reader.GetCurrentPosition();
-                _reader.SetCurrentPosition((long)ofs);
-                var items = _reader.ReadVUInt32();
-                bon = new(_reader, _reader.GetCurrentPosition(), items, true);
-                _reader.SetCurrentPosition(pos);
+                var reader2 = _reader;
+                reader2.SetCurrentPositionWithoutController(ofs);
+                var items = reader2.ReadVUInt32();
+                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, true);
                 return true;
             }
             default:
@@ -1035,14 +1117,13 @@ public struct Bon
                 _reader.Skip1Byte();
                 _items--;
                 var ofs = _reader.ReadVUInt64();
-                var pos = _reader.GetCurrentPosition();
-                _reader.SetCurrentPosition((long)ofs);
-                var ofsKeys = _reader.ReadVUInt64();
-                ofs = (ulong)_reader.GetCurrentPosition();
-                _reader.SetCurrentPosition((long)ofsKeys);
-                var items = _reader.ReadVUInt32();
-                bon = new(_reader, (long)ofs, _reader.GetCurrentPosition(), items);
-                _reader.SetCurrentPosition(pos);
+                var reader2 = _reader;
+                reader2.SetCurrentPositionWithoutController(ofs);
+                var ofsKeys = reader2.ReadVUInt64();
+                ofs = reader2.GetCurrentPositionWithoutController();
+                reader2.SetCurrentPositionWithoutController(ofsKeys);
+                var items = reader2.ReadVUInt32();
+                bon = new(_reader, ofs, reader2.GetCurrentPositionWithoutController(), items);
                 return true;
             }
             default:
@@ -1051,7 +1132,7 @@ public struct Bon
         }
     }
 
-    public bool TryGetClass(out KeyedBon bon, out string name)
+    public bool TryGetClass(out KeyedBon bon, out ReadOnlySpan<byte> name)
     {
         var b = _reader.PeekUInt8();
         switch (b)
@@ -1061,21 +1142,23 @@ public struct Bon
                 _reader.Skip1Byte();
                 _items--;
                 var ofs = _reader.ReadVUInt64();
-                var pos = _reader.GetCurrentPosition();
-                _reader.SetCurrentPosition((long)ofs);
-                var ofsKeys = _reader.ReadVUInt64();
-                ofs = (ulong)_reader.GetCurrentPosition();
-                _reader.SetCurrentPosition((long)ofsKeys);
-                var items = _reader.ReadVUInt32();
-                var nameOfs = _reader.ReadVUInt64();
-                name = Helpers.ReadUtf8WithVUintLen(ref _reader, nameOfs);
-                bon = new(_reader, (long)ofs, _reader.GetCurrentPosition(), items);
-                _reader.SetCurrentPosition(pos);
+                var reader2 = _reader;
+                reader2.SetCurrentPositionWithoutController(ofs);
+                var ofsKeys = reader2.ReadVUInt64();
+                ofs = reader2.GetCurrentPositionWithoutController();
+                reader2.SetCurrentPositionWithoutController(ofsKeys);
+                var items = reader2.ReadVUInt32();
+                var nameOfs = reader2.ReadVUInt64();
+                var reader3 = reader2;
+                reader3.SetCurrentPositionWithoutController(nameOfs);
+                var len = reader3.ReadVUInt32();
+                name = reader3.ReadBlockAsSpan(len);
+                bon = new(_reader, ofs, reader2.GetCurrentPositionWithoutController(), items);
                 return true;
             }
             default:
                 bon = new(new(), 0, 0, 0);
-                name = "";
+                name = new();
                 return false;
         }
     }
@@ -1095,11 +1178,10 @@ public struct Bon
                 _reader.Skip1Byte();
                 _items--;
                 var ofs = _reader.ReadVUInt64();
-                var pos = _reader.GetCurrentPosition();
-                _reader.SetCurrentPosition((long)ofs);
-                var items = _reader.ReadVUInt32();
-                bon = new(_reader, _reader.GetCurrentPosition(), items * 2);
-                _reader.SetCurrentPosition(pos);
+                var reader2 = _reader;
+                reader2.SetCurrentPositionWithoutController(ofs);
+                var items = reader2.ReadVUInt32();
+                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items * 2);
                 return true;
             }
             default:
@@ -1258,11 +1340,11 @@ public struct Bon
 public struct ArrayBon
 {
     MemReader _reader;
-    readonly long _ofs;
+    readonly ulong _ofs;
     readonly uint _items;
     readonly bool _splitBy32;
 
-    public ArrayBon(in MemReader reader, long ofs, uint items, bool splitBy32)
+    public ArrayBon(in MemReader reader, ulong ofs, uint items, bool splitBy32)
     {
         _reader = reader;
         _ofs = ofs;
@@ -1282,9 +1364,9 @@ public struct ArrayBon
 
         if (_splitBy32)
         {
-            _reader.SetCurrentPosition(_ofs + index / 32 * 8);
+            _reader.SetCurrentPositionWithoutController(_ofs + index / 32 * 8);
             var ofs = _reader.ReadUInt64LE();
-            bon = new(_reader, (long)ofs, Math.Min(_items - index / 32 * 32, 32));
+            bon = new(_reader, ofs, Math.Min(_items - index / 32 * 32, 32));
             var skipCount = index % 32;
             for (var i = 0u; i < skipCount; i++)
             {
@@ -1293,7 +1375,7 @@ public struct ArrayBon
         }
         else
         {
-            bon = new(_reader, _reader.GetCurrentPosition(), _items);
+            bon = new(_reader, _ofs, _items);
             for (var i = 0u; i < index; i++)
             {
                 bon.Skip();
@@ -1307,20 +1389,19 @@ public struct ArrayBon
 public struct KeyedBon
 {
     MemReader _reader;
-    readonly long _ofs;
-    readonly long _ofsKeys;
-    long _keysOfsIter;
+    readonly ulong _ofs;
+    readonly ulong _ofsKeys;
     readonly uint _items;
     uint _keysItemsIter;
 
-    public KeyedBon(in MemReader reader, long ofs, long ofsKeys, uint items)
+    public KeyedBon(in MemReader reader, ulong ofs, ulong ofsKeys, uint items)
     {
         _reader = reader;
         _ofs = ofs;
         _ofsKeys = ofsKeys;
         _items = items;
-        _keysOfsIter = ofsKeys;
         _keysItemsIter = items;
+        _reader.SetCurrentPositionWithoutController(ofsKeys);
     }
 
     public uint Items => _items;
@@ -1332,33 +1413,43 @@ public struct KeyedBon
 
     public void Reset()
     {
-        _keysOfsIter = _ofsKeys;
         _keysItemsIter = _items;
+        _reader.SetCurrentPositionWithoutController(_ofsKeys);
     }
 
     public string? NextKey()
     {
         if (_keysItemsIter == 0) return null;
-        _reader.SetCurrentPosition(_keysOfsIter);
         var ofs = _reader.ReadVUInt64();
         _keysItemsIter--;
-        _keysOfsIter = _reader.GetCurrentPosition();
-        return Helpers.ReadUtf8WithVUintLen(ref _reader, ofs);
+        var reader = _reader;
+        reader.SetCurrentPositionWithoutController(ofs);
+        return reader.ReadStringInUtf8();
+    }
+
+    public ReadOnlySpan<byte> NextKeyUtf8()
+    {
+        if (_keysItemsIter == 0) return new();
+        var ofs = _reader.ReadVUInt64();
+        _keysItemsIter--;
+        var reader = _reader;
+        reader.SetCurrentPositionWithoutController(ofs);
+        var len = reader.ReadVUInt32();
+        return reader.ReadBlockAsSpan(len);
     }
 
     public bool TryGet(string key, out Bon bon)
     {
         var l = Encoding.UTF8.GetByteCount(key);
-        var ofs = _ofsKeys;
+        _reader.SetCurrentPositionWithoutController(_ofsKeys);
         var keyBuf = l > 256 ? GC.AllocateUninitializedArray<byte>(l) : stackalloc byte[l];
         var first = true;
         for (var i = 0; i < _items; i++)
         {
-            _reader.SetCurrentPosition(ofs);
             var kOfs = _reader.ReadVUInt64();
-            ofs = _reader.GetCurrentPosition();
-            _reader.SetCurrentPosition((long)kOfs);
-            var kLen = _reader.ReadVUInt32();
+            var reader = _reader;
+            reader.SetCurrentPositionWithoutController(kOfs);
+            var kLen = reader.ReadVUInt32();
             if (kLen != l) continue;
             if (first)
             {
@@ -1366,7 +1457,7 @@ public struct KeyedBon
                 first = false;
             }
 
-            if (!_reader.ReadBlockAsSpan((uint)l).SequenceEqual(keyBuf)) continue;
+            if (!reader.ReadBlockAsSpan((uint)l).SequenceEqual(keyBuf)) continue;
             bon = new(_reader, _ofs, (uint)i + 1);
             while (i-- > 0)
             {

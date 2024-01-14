@@ -1468,7 +1468,8 @@ public class RelationInfo
         ilGenerator
             .Do(pushReader) //[VR]
             .Call(typeof(MemReader).GetMethod(nameof(MemReader
-                .GetCurrentPositionWithoutController))!) //[posNew(uint)]
+                .GetCurrentPositionWithoutController))!) //[posNew(ulong)]
+            .ConvU4() //[posNew(uint)]
             .Ldloc(memoPos) //[posNew(uint), posOld(uint)]
             .Sub() //[readLen(uint)]
             .Stloc(memoLen); //[]
@@ -1501,6 +1502,7 @@ public class RelationInfo
         ilGenerator
             .Do(pushReader)
             .Call(typeof(MemReader).GetMethod(nameof(MemReader.GetCurrentPositionWithoutController))!)
+            .ConvU4()
             .Stloc(memoPositionLoc);
     }
 
