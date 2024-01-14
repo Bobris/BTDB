@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.1.0
+
 ### Added
 
 IOC RegisterTypeWithConstructorParameters which uses reflection to use different constructor than with most parameters.
