@@ -6,6 +6,7 @@
 
 IOC RegisterTypeWithConstructorParameters which uses reflection to use different constructor than with most parameters.
 IOC Also by default does not fallback to Reflection.
+Bon has Span based api and is faster.
 
 ## 32.0.3
 
