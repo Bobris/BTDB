@@ -21,10 +21,10 @@ public static class EmitHelpers
     {
         LambdaExpression lambda = property;
         var memberExpression = lambda.Body is UnaryExpression expression
-            ? (MemberExpression) expression.Operand
-            : (MemberExpression) lambda.Body;
+            ? (MemberExpression)expression.Operand
+            : (MemberExpression)lambda.Body;
 
-        return (PropertyInfo) memberExpression.Member;
+        return (PropertyInfo)memberExpression.Member;
     }
 
     public static T CreateDelegate<T>(this MethodInfo mi) where T : class
@@ -158,6 +158,8 @@ public static class EmitHelpers
         if (type == typeof(void)) return "void";
         if (type == typeof(object)) return "object";
         if (type == typeof(decimal)) return "decimal";
+        if (type == typeof(nint)) return "nint";
+        if (type == typeof(nuint)) return "nuint";
         if (string.IsNullOrEmpty(type.Namespace)) return type.Name;
         return type.Namespace + "." + type.Name;
     }
@@ -307,8 +309,8 @@ public static class EmitHelpers
     {
 #if DEBUG
         if (!enclosingType
-            .GetProperties(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public |
-                           BindingFlags.NonPublic | BindingFlags.DeclaredOnly).Contains(property))
+                .GetProperties(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public |
+                               BindingFlags.NonPublic | BindingFlags.DeclaredOnly).Contains(property))
             throw new ArgumentException("enclosingType must be the type which defines property");
 #endif
         var nullable = property.CustomAttributes

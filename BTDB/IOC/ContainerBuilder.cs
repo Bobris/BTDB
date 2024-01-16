@@ -9,8 +9,9 @@ public enum ContainerVerification
 {
     SingletonsUsingOnlySingletons = 1,
     AllTypesAreGenerated = 2,
+    ReportNotGeneratedTypes = 4,
     None = 0,
-    All = int.MaxValue
+    All = int.MaxValue - ReportNotGeneratedTypes
 }
 
 [Flags]

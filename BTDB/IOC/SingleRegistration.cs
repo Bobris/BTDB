@@ -43,6 +43,12 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
     {
         if (!IContainer.FactoryRegistry.TryGetValue(_implementationType.TypeHandle.Value, out var factory))
         {
+            if (context.ReportNotGeneratedTypes)
+            {
+                Console.WriteLine(_implementationType.ToSimpleName());
+                return;
+            }
+
             if (context.AllowReflectionFallback)
             {
                 try

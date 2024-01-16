@@ -9,11 +9,15 @@ class ContainerRegistrationContext
 {
     readonly Dictionary<KeyAndType, CReg> _registrations;
 
-    internal ContainerRegistrationContext(Dictionary<KeyAndType, CReg> registrations, bool allowReflectionFallback)
+    internal ContainerRegistrationContext(Dictionary<KeyAndType, CReg> registrations, bool allowReflectionFallback,
+        bool reportNotGeneratedTypes)
     {
         _registrations = registrations;
         AllowReflectionFallback = allowReflectionFallback;
+        ReportNotGeneratedTypes = reportNotGeneratedTypes;
     }
+
+    internal bool ReportNotGeneratedTypes { get; private set; }
 
     internal uint SingletonCount { get; private set; }
     internal bool AllowReflectionFallback { get; private set; }
