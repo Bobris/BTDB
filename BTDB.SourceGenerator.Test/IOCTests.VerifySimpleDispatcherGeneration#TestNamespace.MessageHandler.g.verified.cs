@@ -10,7 +10,7 @@ static file class MessageHandlerRegistration
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
-        BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.MessageHandler), (container, ctx) =>
+        global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.MessageHandler), (container, ctx) =>
         {
             return (container2, ctx2) =>
             {
@@ -18,7 +18,7 @@ static file class MessageHandlerRegistration
                 return res;
             };
         });
-        global::TestNamespace.IDispatcher.ConsumeHandlers.GetOrAddValueRef(typeof(global::TestNamespace.Message).TypeHandle.Value).ExecuteFactory = (BTDB.IOC.IContainer c) => {
+        global::TestNamespace.IDispatcher.ConsumeHandlers.GetOrAddValueRef(typeof(global::TestNamespace.Message).TypeHandle.Value).ExecuteFactory = (global::BTDB.IOC.IContainer c) => {
            var nestedFactory = c.CreateFactory(typeof(global::TestNamespace.MessageHandler));
            return (container, message) =>
            {

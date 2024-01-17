@@ -12,7 +12,7 @@ static file class ErrorHandlerRegistration
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
-        BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.ErrorHandler), (container, ctx) =>
+        global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.ErrorHandler), (container, ctx) =>
         {
             var f0 = container.CreateFactory(ctx, typeof(global::TestNamespace.ILogger), "Logger");
             return (container2, ctx2) =>

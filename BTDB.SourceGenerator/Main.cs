@@ -232,6 +232,7 @@ public class SourceGenerator : IIncrementalGenerator
                                     backingName = ExtractPropertyFromGetter(p.GetMethod!.DeclaringSyntaxReferences);
                                     if (backingName != null) getterName = null;
                                 }
+
                                 return new FieldsInfo(p.Name,
                                     p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                                     p.GetAttributes().FirstOrDefault(a =>
@@ -266,6 +267,7 @@ public class SourceGenerator : IIncrementalGenerator
             if (aecs.Expression is IdentifierNameSyntax ins)
                 return ins.Identifier.ValueText;
         }
+
         return null;
     }
 
@@ -406,15 +408,15 @@ public class SourceGenerator : IIncrementalGenerator
             // language=c#
             factoryCode.Append($$"""
 
-                    public static readonly BTDB.Collections.RefDictionary<nint, BTDB.IOC.DispatcherItem> {{name}}Handlers = new();
+                    public static readonly global::BTDB.Collections.RefDictionary<nint, global::BTDB.IOC.DispatcherItem> {{name}}Handlers = new();
 
-                    public static unsafe partial delegate*<BTDB.IOC.IContainer, {{type}}, {{resultType}}?> Create{{name}}Dispatcher(BTDB.IOC.IContainer container)
+                    public static unsafe partial delegate*<global::BTDB.IOC.IContainer, {{type}}, {{resultType}}?> Create{{name}}Dispatcher(global::BTDB.IOC.IContainer container)
                     {
                         foreach(var idx in {{name}}Handlers.Index)
                         {
                             {{name}}Handlers.ValueRef(idx).Execute = {{name}}Handlers.ValueRef(idx).ExecuteFactory(container);
                         }
-                        static {{resultType}}? Consume(BTDB.IOC.IContainer container, {{type}} message)
+                        static {{resultType}}? Consume(global::BTDB.IOC.IContainer container, {{type}} message)
                         {
                             if ({{name}}Handlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
                             {
@@ -483,9 +485,9 @@ public class SourceGenerator : IIncrementalGenerator
                 [ModuleInitializer]
                 internal static void Register4BTDB()
                 {
-                    BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), Factory);
-                    BTDB.IOC.IContainer.RegisterFactory(typeof(Func<{{funcParams}}{{resultingType}}>), Factory);
-                    static Func<BTDB.IOC.IContainer,BTDB.IOC.IResolvingCtx?,object> Factory(BTDB.IOC.IContainer container, BTDB.IOC.ICreateFactoryCtx ctx)
+                    global::BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), Factory);
+                    global::BTDB.IOC.IContainer.RegisterFactory(typeof(Func<{{funcParams}}{{resultingType}}>), Factory);
+                    static Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object> Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
                     {
                         var hasResolvingCtx = ctx.HasResolvingCtx();
                         {{factoryCode1}}var nestedFactory = container.CreateFactory(ctx, typeof({{resultingType}}), null);
@@ -684,7 +686,7 @@ public class SourceGenerator : IIncrementalGenerator
             // language=c#
             metadataCode.Append($$"""
 
-                        var metadata = new BTDB.Serialization.ClassMetadata();
+                        var metadata = new global::BTDB.Serialization.ClassMetadata();
                         metadata.Name = "{{generationInfo.Name}}";
                         metadata.Type = typeof({{generationInfo.FullName}});
                         metadata.Namespace = "{{generationInfo.Namespace ?? ""}}";
@@ -701,7 +703,7 @@ public class SourceGenerator : IIncrementalGenerator
                 fieldIndex++;
                 // language=c#
                 metadataCode.Append($$"""
-                                new BTDB.Serialization.FieldMetadata
+                                new global::BTDB.Serialization.FieldMetadata
                                 {
                                     Name = "{{field.Name}}",
                                     Type = typeof({{field.Type}}),
@@ -717,7 +719,7 @@ public class SourceGenerator : IIncrementalGenerator
                         """);
                     // language=c#
                     metadataCode.Append($"""
-                                        ByteOffset = BTDB.Serialization.RawData.CalcOffset(dummy, ref Field{fieldIndex}(dummy)),
+                                        ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field{fieldIndex}(dummy)),
 
                         """);
                 }
@@ -805,7 +807,7 @@ public class SourceGenerator : IIncrementalGenerator
             // language=c#
             metadataCode.Append($$"""
                         };
-                        BTDB.Serialization.ReflectionMetadata.Register(metadata);
+                        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
                 """);
         }
 
@@ -815,7 +817,7 @@ public class SourceGenerator : IIncrementalGenerator
             // language=c#
             dispatchers.Append($$"""
 
-                        {{ifaceName}}.{{name}}Handlers.GetOrAddValueRef(typeof({{type}}).TypeHandle.Value).ExecuteFactory = (BTDB.IOC.IContainer c) => {
+                        {{ifaceName}}.{{name}}Handlers.GetOrAddValueRef(typeof({{type}}).TypeHandle.Value).ExecuteFactory = (global::BTDB.IOC.IContainer c) => {
                            var nestedFactory = c.CreateFactory(typeof({{generationInfo.FullName}}));
                            return (container, message) =>
                            {
@@ -836,7 +838,7 @@ public class SourceGenerator : IIncrementalGenerator
             {{declarations}}    [ModuleInitializer]
                 internal static unsafe void Register4BTDB()
                 {
-                    BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), (container, ctx) =>
+                    global::BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), (container, ctx) =>
                     {
                         {{factoryCode}}return (container2, ctx2) =>
                         {

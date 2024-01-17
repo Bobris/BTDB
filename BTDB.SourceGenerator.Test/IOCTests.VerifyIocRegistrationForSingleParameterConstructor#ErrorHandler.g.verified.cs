@@ -8,7 +8,7 @@ static file class ErrorHandlerRegistration
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
-        BTDB.IOC.IContainer.RegisterFactory(typeof(global::ErrorHandler), (container, ctx) =>
+        global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::ErrorHandler), (container, ctx) =>
         {
             var f0 = container.CreateFactory(ctx, typeof(global::ILogger), "logger");
             if (f0 == null) throw new global::System.ArgumentException("Cannot resolve ILogger logger parameter of ErrorHandler");

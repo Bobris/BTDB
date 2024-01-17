@@ -8,15 +8,15 @@ namespace TestNamespace;
 
 public partial interface IDispatcher
 {
-    public static readonly BTDB.Collections.RefDictionary<nint, BTDB.IOC.DispatcherItem> ConsumeHandlers = new();
+    public static readonly global::BTDB.Collections.RefDictionary<nint, global::BTDB.IOC.DispatcherItem> ConsumeHandlers = new();
 
-    public static unsafe partial delegate*<BTDB.IOC.IContainer, object, object?> CreateConsumeDispatcher(BTDB.IOC.IContainer container)
+    public static unsafe partial delegate*<global::BTDB.IOC.IContainer, object, object?> CreateConsumeDispatcher(global::BTDB.IOC.IContainer container)
     {
         foreach(var idx in ConsumeHandlers.Index)
         {
             ConsumeHandlers.ValueRef(idx).Execute = ConsumeHandlers.ValueRef(idx).ExecuteFactory(container);
         }
-        static object? Consume(BTDB.IOC.IContainer container, object message)
+        static object? Consume(global::BTDB.IOC.IContainer container, object message)
         {
             if (ConsumeHandlers.TryGetValue(message.GetType().TypeHandle.Value, out var handler))
             {

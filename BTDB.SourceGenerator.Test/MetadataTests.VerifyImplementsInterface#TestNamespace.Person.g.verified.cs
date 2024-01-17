@@ -16,7 +16,7 @@ static file class PersonRegistration
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
-        BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Person), (container, ctx) =>
+        global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Person), (container, ctx) =>
         {
             return (container2, ctx2) =>
             {
@@ -24,7 +24,7 @@ static file class PersonRegistration
                 return res;
             };
         });
-        var metadata = new BTDB.Serialization.ClassMetadata();
+        var metadata = new global::BTDB.Serialization.ClassMetadata();
         metadata.Name = "Person";
         metadata.Type = typeof(global::TestNamespace.Person);
         metadata.Namespace = "TestNamespace";
@@ -33,19 +33,19 @@ static file class PersonRegistration
         var dummy = Unsafe.As<global::TestNamespace.Person>(metadata);
         metadata.Fields = new[]
         {
-            new BTDB.Serialization.FieldMetadata
+            new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "Age",
                 Type = typeof(int),
-                ByteOffset = BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
+                ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
             },
-            new BTDB.Serialization.FieldMetadata
+            new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "Name",
                 Type = typeof(string),
-                ByteOffset = BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
+                ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
             },
         };
-        BTDB.Serialization.ReflectionMetadata.Register(metadata);
+        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }
