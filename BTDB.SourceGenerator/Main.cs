@@ -53,9 +53,7 @@ public class SourceGenerator : IIncrementalGenerator
                             p.Type.IsReferenceType,
                             p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
                             p.HasExplicitDefaultValue
-                                ? p.ExplicitDefaultValue != null
-                                    ? ExtractDefaultValue(p.DeclaringSyntaxReferences[0], p.Type)
-                                    : null
+                                ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue, new(p.Type))
                                 : null))
                         .ToImmutableArray();
                     return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
@@ -150,9 +148,8 @@ public class SourceGenerator : IIncrementalGenerator
                                              p.Type.IsReferenceType,
                                              p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
                                              p.HasExplicitDefaultValue
-                                                 ? p.ExplicitDefaultValue != null
-                                                     ? ExtractDefaultValue(p.DeclaringSyntaxReferences[0], p.Type)
-                                                     : null
+                                                 ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue,
+                                                     new(p.Type))
                                                  : null))
                                          .ToImmutableArray() ??
                                      ImmutableArray<ParameterInfo>.Empty;
@@ -346,20 +343,6 @@ public class SourceGenerator : IIncrementalGenerator
     {
         return type.Name == "IContainer" && type.ContainingNamespace?.ToDisplayString() == "BTDB.IOC" &&
                type.NullableAnnotation != NullableAnnotation.Annotated;
-    }
-
-    static string? ExtractDefaultValue(SyntaxReference syntaxReference, ITypeSymbol typeSymbol)
-    {
-        var p = (ParameterSyntax)syntaxReference.GetSyntax();
-        var s = p.Default?.Value.ToString();
-        if (s == null) return null;
-        if (s.StartsWith(typeSymbol.Name + "."))
-        {
-            return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) +
-                   s.Substring(typeSymbol.Name.Length);
-        }
-
-        return $"({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}){s}";
     }
 
     static void GenerateCode(SourceProductionContext context,

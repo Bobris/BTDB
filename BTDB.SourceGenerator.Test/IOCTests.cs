@@ -62,6 +62,23 @@ public class IOCTests
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForSingleParameterConstructorWithDefaultValue()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            [BTDB.Generate]
+            public class ErrorHandler : IErrorHandler
+            {
+                const long DefaultBufferSize = 1024L * 1024 * 1024 * 1024;
+
+                public ErrorHandler(long bufferSize = DefaultBufferSize)
+                {
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForSingleParameterPrivateConstructor()
     {
         // language=cs
