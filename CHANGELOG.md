@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+SourceGenerator: one more place where global:: is needed. And it must ignore static fields and properties.
+
 ## 32.3.0
 
 ### Added
