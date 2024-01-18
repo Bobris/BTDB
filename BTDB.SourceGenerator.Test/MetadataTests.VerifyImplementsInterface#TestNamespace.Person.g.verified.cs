@@ -28,7 +28,7 @@ static file class PersonRegistration
         metadata.Name = "Person";
         metadata.Type = typeof(global::TestNamespace.Person);
         metadata.Namespace = "TestNamespace";
-        metadata.Implements = [typeof(TestNamespace.INamed)];
+        metadata.Implements = [typeof(global::TestNamespace.INamed)];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::TestNamespace.Person>(metadata);
         metadata.Fields = new[]

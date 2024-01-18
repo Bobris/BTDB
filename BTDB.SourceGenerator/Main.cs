@@ -62,7 +62,7 @@ public class SourceGenerator : IIncrementalGenerator
                         new[] { new PropertyInfo("", returnType, null, true, false, false, false, null) }
                             .ToImmutableArray(),
                         ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty,
-                        ImmutableArray<FieldsInfo>.Empty, ImmutableArray<string>.Empty);
+                        ImmutableArray<FieldsInfo>.Empty, ImmutableArray<TypeRef>.Empty);
                 }
 
                 if (syntaxContext.Node is InterfaceDeclarationSyntax)
@@ -78,7 +78,8 @@ public class SourceGenerator : IIncrementalGenerator
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, false,
                         ImmutableArray<ParameterInfo>.Empty,
                         ImmutableArray<PropertyInfo>.Empty, ImmutableArray<string>.Empty,
-                        dispatchers.ToImmutableArray(), ImmutableArray<FieldsInfo>.Empty, ImmutableArray<string>.Empty);
+                        dispatchers.ToImmutableArray(), ImmutableArray<FieldsInfo>.Empty,
+                        ImmutableArray<TypeRef>.Empty);
                 }
 
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
@@ -113,7 +114,7 @@ public class SourceGenerator : IIncrementalGenerator
                         return null!;
                     }
 
-                    var implements = symbol.AllInterfaces.Select(s => s.ToDisplayString()).ToImmutableArray();
+                    var implements = symbol.AllInterfaces.Select(s => new TypeRef(s)).ToImmutableArray();
 
                     var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
                     foreach (var (name, type, resultType, ifaceName) in symbol.AllInterfaces.SelectMany(
@@ -678,7 +679,7 @@ public class SourceGenerator : IIncrementalGenerator
                         metadata.Name = "{{generationInfo.Name}}";
                         metadata.Type = typeof({{generationInfo.FullName}});
                         metadata.Namespace = "{{generationInfo.Namespace ?? ""}}";
-                        metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Select(i => $"typeof({i})"))}}];
+                        metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Select(i => $"typeof({i.FullyQualifiedName})"))}}];
                         metadata.Creator = &Creator;
                         var dummy = Unsafe.As<{{generationInfo.FullName}}>(metadata);
                         metadata.Fields = new[]
@@ -865,7 +866,7 @@ record GenerationInfo(
     ImmutableArray<string> ParentDeclarations,
     ImmutableArray<DispatcherInfo> Dispatchers,
     ImmutableArray<FieldsInfo> Fields,
-    ImmutableArray<string> Implements
+    ImmutableArray<TypeRef> Implements
 );
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
