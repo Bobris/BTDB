@@ -79,6 +79,21 @@ public class IOCTests
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForGenericClassDoesNotDoAnything()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            [BTDB.Generate]
+            public class ErrorHandler<T> : IErrorHandler
+            {
+                public ErrorHandler()
+                {
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForSingleParameterPrivateConstructor()
     {
         // language=cs

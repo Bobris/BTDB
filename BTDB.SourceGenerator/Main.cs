@@ -108,6 +108,11 @@ public class SourceGenerator : IIncrementalGenerator
                         return null!;
                     }
 
+                    if (symbol.IsGenericType)
+                    {
+                        return null!;
+                    }
+
                     var implements = symbol.AllInterfaces.Select(s => s.ToDisplayString()).ToImmutableArray();
 
                     var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
