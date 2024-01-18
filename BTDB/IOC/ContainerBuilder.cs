@@ -41,6 +41,16 @@ public class ContainerBuilder
         return registration;
     }
 
+    /// Like RegisterType but with explicitly allowed fallback to reflection if type is not generated
+    public IRegistration<IAsLiveScopeTrait> RegisterTypeWithFallback(Type type)
+    {
+        var registration = new SingleRegistration(type, true);
+        _registrations.Add(registration);
+        if (_builderBehaviour.HasFlag(ContainerBuilderBehaviour.UniqueRegistrations))
+            registration.UniqueRegistration(true);
+        return registration;
+    }
+
     public IRegistration<IAsTrait> RegisterInstance(object instance)
     {
         var instanceType = instance.GetType();

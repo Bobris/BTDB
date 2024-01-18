@@ -9,6 +9,11 @@ public static class BuilderExtensions
         return builder.RegisterType(typeof(T));
     }
 
+    public static IRegistration<IAsLiveScopeTrait> RegisterTypeWithFallback<T>(this ContainerBuilder builder)
+    {
+        return builder.RegisterTypeWithFallback(typeof(T));
+    }
+
     public static IRegistration<IAsLiveScopeTrait> RegisterTypeWithConstructorParameters<T>(
         this ContainerBuilder builder, params Type[] constructorParameters) where T : class
     {

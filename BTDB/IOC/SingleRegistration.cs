@@ -13,6 +13,7 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
     readonly Type _implementationType;
 
     Lifetime _lifetime = Lifetime.AlwaysNew;
+    readonly bool _withFallback;
 
     public void SingleInstance()
     {
@@ -21,9 +22,10 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
 
     public Lifetime Lifetime => _lifetime;
 
-    public SingleRegistration(Type implementationType)
+    public SingleRegistration(Type implementationType, bool withFallback = false)
     {
         _implementationType = implementationType;
+        _withFallback = withFallback;
     }
 
     internal SingleRegistration(Type implementationType, IAsTraitImpl asTrait, Lifetime lifetime)
@@ -49,7 +51,7 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
                 return;
             }
 
-            if (context.AllowReflectionFallback)
+            if (context.AllowReflectionFallback || _withFallback)
             {
                 try
                 {
