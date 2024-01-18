@@ -179,6 +179,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                     var propertyInfos = symbol.GetMembers()
                         .OfType<IPropertySymbol>()
+                        .Where(p => !p.IsStatic)
                         .Where(p => p.GetAttributes().Any(a => a.AttributeClass?.Name == "DependencyAttribute") &&
                                     p.SetMethod is not null)
                         .Select(p =>
@@ -198,6 +199,7 @@ public class SourceGenerator : IIncrementalGenerator
                         .ToImmutableArray();
                     var fields = symbol.GetMembers()
                         .OfType<IFieldSymbol>()
+                        .Where(f => !f.IsStatic)
                         .Where(f =>
                             f.DeclaredAccessibility == Accessibility.Public &&
                             f.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
@@ -215,6 +217,7 @@ public class SourceGenerator : IIncrementalGenerator
                         })
                         .Concat(symbol.GetMembers()
                             .OfType<IPropertySymbol>()
+                            .Where(p => !p.IsStatic)
                             .Where(p =>
                                 p.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
                                 p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&

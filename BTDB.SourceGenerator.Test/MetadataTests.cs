@@ -40,6 +40,7 @@ public class MetadataTests
             [BTDB.Generate]
             public class Person : INamed
             {
+                public static int MustBeIgnored;
                 public string Name { get; set; } = "";
                 public int Age;
             }
