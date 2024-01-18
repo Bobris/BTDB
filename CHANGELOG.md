@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.3.0
+
 ### Added
 
 New ContainerBuilder method `RegisterTypeWithFallback` which allows to register type with fallback to invokers if type is not generated (useful for generic types for now).
