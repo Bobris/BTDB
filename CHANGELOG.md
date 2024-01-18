@@ -2,6 +2,15 @@
 
 ## [unreleased]
 
+### Added
+
+New ContainerBuilder method `RegisterTypeWithFallback` which allows to register type with fallback to invokers if type is not generated (useful for generic types for now).
+
+### Fixed
+
+IOC Default parameters for constructors are now correctly generated.
+Skip generic classes in generation.
+
 ## 32.2.0
 
 ## 32.1.0
