@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Multiple partial classes in IOC. Generated one class from BTDB, so it could be used in IOC.
+
 ## 32.3.1
 
 ### Fixed
