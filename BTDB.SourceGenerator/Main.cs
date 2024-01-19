@@ -357,8 +357,10 @@ public class SourceGenerator : IIncrementalGenerator
     static void GenerateCode(SourceProductionContext context,
         ImmutableArray<GenerationInfo> generationInfos)
     {
+        var dedupe = new HashSet<string>();
         foreach (var generationInfo in generationInfos)
         {
+            if (!dedupe.Add(generationInfo.FullName)) continue;
             if (generationInfo.GenType == GenerationType.Delegate)
             {
                 GenerateDelegateFactory(context, generationInfo);

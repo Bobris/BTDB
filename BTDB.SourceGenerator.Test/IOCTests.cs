@@ -33,6 +33,32 @@ public class IOCTests
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForPartialClassWithMultipleDeclarations()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public interface ILogger
+            {
+            }
+
+            public partial class Logger: ILogger
+            {
+                [BTDB.IOC.Dependency]
+                public int A { get; set; }
+            }
+
+            public partial class Logger: ILogger
+            {
+                [BTDB.IOC.Dependency]
+                public int B { get; set; }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForSingleParameterConstructor()
     {
         // language=cs
