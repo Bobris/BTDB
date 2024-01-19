@@ -5,6 +5,7 @@ using System.Text;
 
 namespace BTDB.EventStoreLayer;
 
+[Generate]
 public class FullNameTypeMapper : ITypeNameMapper
 {
     public string ToName(Type type)
@@ -132,6 +133,7 @@ public class FullNameTypeMapper : ITypeNameMapper
             if (t != null)
                 return t;
         }
+
         return null;
     }
 }
