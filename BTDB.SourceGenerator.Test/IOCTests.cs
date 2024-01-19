@@ -88,6 +88,52 @@ public class IOCTests
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForAbstractClassIsSkipped()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public interface ILogger
+            {
+            }
+
+            public interface IBetterLogger: ILogger
+            {
+            }
+
+            public abstract class AbstractLogger: IBetterLogger
+            {
+                protected AbstractLogger(int a)
+                {
+                }
+
+                public abstract void Log(string message);
+            }
+
+            public interface IErrorHandler
+            {
+                IBetterLogger Logger { get; }
+            }
+
+            public class Logger: AbstractLogger, IErrorHandler
+            {
+                public Logger(int a, int b): base(a)
+                {
+                }
+
+                public override void Log(string message)
+                {
+                    Console.WriteLine(message);
+                }
+
+                public IBetterLogger Logger => this;
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForSingleParameterConstructorWithDefaultValue()
     {
         // language=cs
