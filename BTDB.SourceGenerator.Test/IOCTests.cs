@@ -402,6 +402,56 @@ public class IOCTests
             ");
     }
 
+    [Fact]
+    public Task VerifyGenerateForCouldBeUsedForChoosingDifferentConstructor()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            [BTDB.GenerateFor(typeof(Logger), ConstructorParameters = [typeof(int)])]
+            public class Logger: ILogger
+            {
+                public Logger(int a)
+                {
+                }
+
+                public Logger(int a, int b)
+                {
+                }
+            }
+            ");
+    }
+
+    [Fact]
+    public Task ShowErrorWhenNotUsingModernCsharpForConstructorParameters()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            [BTDB.GenerateFor(typeof(Logger), ConstructorParameters = new [] {typeof(int)})]
+            public class Logger: ILogger
+            {
+                public Logger(int a)
+                {
+                }
+
+                public Logger(int a, int b)
+                {
+                }
+            }
+            ");
+    }
+
     static Task VerifySourceGenerator(string sourceCode)
     {
         var generator = new SourceGenerator();

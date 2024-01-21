@@ -1,0 +1,14 @@
+﻿{
+  Diagnostics: [
+    {
+      Id: BTDB0001,
+      Title: Must use CollectionExpression syntax for ConstructorParameters,
+      Severity: Error,
+      WarningLevel: 0,
+      Location: : (7,70)-(7,90),
+      MessageFormat: Must use CollectionExpression syntax for ConstructorParameters,
+      Message: Must use CollectionExpression syntax for ConstructorParameters,
+      Category: BTDB
+    }
+  ]
+}

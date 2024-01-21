@@ -51,7 +51,29 @@ public class SourceGenerator : IIncrementalGenerator
                         return null!;
                     if (semanticModel.GetSymbolInfo(typeParam.Type).Symbol is not INamedTypeSymbol symb)
                         return null!;
-                    return GenerationInfoForClass(symb, null, false);
+                    var constructorParametersExpression = attributeSyntax.ArgumentList!.Arguments
+                        .FirstOrDefault(a => a.NameEquals?.Name?.Identifier.ValueText == "ConstructorParameters")
+                        ?.Expression;
+                    INamedTypeSymbol[]? constructorParameters = null;
+                    if (constructorParametersExpression is not null)
+                    {
+                        if (constructorParametersExpression is not CollectionExpressionSyntax aces)
+                        {
+                            return new GenerationInfo(GenerationType.Error, null, "BTDB0001",
+                                "Must use CollectionExpression syntax for ConstructorParameters", false, false,
+                                false, ImmutableArray<ParameterInfo>.Empty, ImmutableArray<PropertyInfo>.Empty,
+                                ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty,
+                                ImmutableArray<FieldsInfo>.Empty, ImmutableArray<TypeRef>.Empty,
+                                constructorParametersExpression.GetLocation());
+                        }
+
+                        constructorParameters = aces.Elements
+                            .Select(e => semanticModel.GetSymbolInfo(e).Symbol)
+                            .OfType<INamedTypeSymbol>()
+                            .ToArray();
+                    }
+
+                    return GenerationInfoForClass(symb, null, false, constructorParameters);
                 }
 
                 // Symbols allow us to get the compile-time information.
@@ -93,7 +115,7 @@ public class SourceGenerator : IIncrementalGenerator
                         new[] { new PropertyInfo("", returnType, null, true, false, false, false, null) }
                             .ToImmutableArray(),
                         ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty,
-                        ImmutableArray<FieldsInfo>.Empty, ImmutableArray<TypeRef>.Empty);
+                        ImmutableArray<FieldsInfo>.Empty, ImmutableArray<TypeRef>.Empty, null);
                 }
 
                 if (syntaxContext.Node is InterfaceDeclarationSyntax)
@@ -110,7 +132,7 @@ public class SourceGenerator : IIncrementalGenerator
                         ImmutableArray<ParameterInfo>.Empty,
                         ImmutableArray<PropertyInfo>.Empty, ImmutableArray<string>.Empty,
                         dispatchers.ToImmutableArray(), ImmutableArray<FieldsInfo>.Empty,
-                        ImmutableArray<TypeRef>.Empty);
+                        ImmutableArray<TypeRef>.Empty, null);
                 }
 
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
@@ -141,7 +163,7 @@ public class SourceGenerator : IIncrementalGenerator
                     var isPartial = classDeclarationSyntax.Modifiers
                         .Any(m => m.ValueText == "partial");
 
-                    return GenerationInfoForClass(symbol, classDeclarationSyntax, isPartial);
+                    return GenerationInfoForClass(symbol, classDeclarationSyntax, isPartial, null);
                 }
 
                 return null!;
@@ -151,7 +173,7 @@ public class SourceGenerator : IIncrementalGenerator
     }
 
     GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol, ClassDeclarationSyntax? classDeclarationSyntax,
-        bool isPartial)
+        bool isPartial, INamedTypeSymbol[]? constructorParameters)
     {
         if (symbol.DeclaredAccessibility == Accessibility.Private)
         {
@@ -192,16 +214,41 @@ public class SourceGenerator : IIncrementalGenerator
         var hasDefaultConstructor = false;
         foreach (var symbolConstructor in symbol.Constructors)
         {
-            if (symbolConstructor.Parameters.Length == 0)
+            if (constructorParameters != null)
             {
-                hasDefaultConstructor = true;
-            }
+                if (symbolConstructor.Parameters.Length == constructorParameters.Length)
+                {
+                    var allMatch = true;
+                    for (var i = 0; i < symbolConstructor.Parameters.Length; i++)
+                    {
+                        if (SymbolEqualityComparer.Default.Equals(symbolConstructor.Parameters[i].Type,
+                                constructorParameters[i])) continue;
+                        allMatch = false;
+                        break;
+                    }
 
-            if (symbolConstructor.Parameters.Length > constructor?.Parameters.Length)
+                    if (allMatch)
+                    {
+                        constructor = symbolConstructor;
+                        break;
+                    }
+                }
+            }
+            else
             {
-                constructor = symbolConstructor;
+                if (symbolConstructor.Parameters.Length == 0)
+                {
+                    hasDefaultConstructor = true;
+                }
+
+                if (symbolConstructor.Parameters.Length > constructor?.Parameters.Length)
+                {
+                    constructor = symbolConstructor;
+                }
             }
         }
+
+        if (constructorParameters != null && constructor == null) return null;
 
         var parameters = constructor?.Parameters.Select(p => new ParameterInfo(p.Name,
                                  p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
@@ -307,7 +354,7 @@ public class SourceGenerator : IIncrementalGenerator
             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
             hasDefaultConstructor,
             parameters,
-            propertyInfos, parentDeclarations, dispatchers.ToImmutable(), fields, implements);
+            propertyInfos, parentDeclarations, dispatchers.ToImmutable(), fields, implements, null);
     }
 
     string? ExtractPropertyFromGetter(ImmutableArray<SyntaxReference> declaringSyntaxReferences)
@@ -408,6 +455,15 @@ public class SourceGenerator : IIncrementalGenerator
         var dedupe = new HashSet<string>();
         foreach (var generationInfo in generationInfos)
         {
+            if (generationInfo.GenType == GenerationType.Error)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    new DiagnosticDescriptor(generationInfo.Name, generationInfo.FullName, generationInfo.FullName,
+                        "BTDB",
+                        DiagnosticSeverity.Error, true), generationInfo.Location));
+                continue;
+            }
+
             if (!dedupe.Add(generationInfo.FullName)) continue;
             if (generationInfo.GenType == GenerationType.Delegate)
             {
@@ -903,7 +959,8 @@ enum GenerationType
 {
     Class,
     Delegate,
-    Interface
+    Interface,
+    Error
 }
 
 record GenerationInfo(
@@ -919,7 +976,8 @@ record GenerationInfo(
     ImmutableArray<string> ParentDeclarations,
     ImmutableArray<DispatcherInfo> Dispatchers,
     ImmutableArray<FieldsInfo> Fields,
-    ImmutableArray<TypeRef> Implements
+    ImmutableArray<TypeRef> Implements,
+    Location? Location
 );
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
