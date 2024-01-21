@@ -44,7 +44,8 @@ internal class MyService : IMyService
 }
 ```
 
-If property name is different from named registration You can define named resolve of property by using `[Dependency("name")]` attribute.
+If property name is different from named registration You can define named resolve of property by
+using `[Dependency("name")]` attribute.
 
 ### Delegates and Func<...>
 
@@ -55,8 +56,49 @@ If you want to make resolvable some delegate mark its declaration by `[Generate]
 public delegate IMyService Factory(int a);
 ```
 
-If you want to make Func<...> resolvable just declare new delegate with same signature and mark it by `[Generate]` attribute.
+If you want to make Func<...> resolvable just declare new delegate with same signature and mark it by `[Generate]`
+attribute.
 It means that previous example also allows to use `Func<int, IMyService>`.
+
+### How to generate for specific generic type instance
+
+```csharp
+[GenerateFor(typeof(MyService<int>))]
+internal class MyService<T> : IMyService
+{
+}
+```
+
+### How to generate for class not under your control
+
+```csharp
+[assembly: GenerateFor(typeof(ForeignType))]
+```
+
+### How to use constructor with not most parameters
+
+```csharp
+[GenerateFor(typeof(MyService), ConstructorParameters = [typeof(int)])]
+internal class MyService : IMyService
+{
+    internal MyService(int a)
+    {
+    }
+
+    internal MyService(int a, string b)
+    {
+    }
+}
+```
+
+Note: using this attribute has higher priority over [Generate] attribute on type or its ancestors. It is not checked,
+but type of service should be identical.
+
+Of course type itself does not need to by under your control. So you can use it on assembly level too.
+
+```csharp
+[assembly: GenerateFor(typeof(MyService), ConstructorParameters = [typeof(int)])]
+```
 
 ### Additional automatically resolved types
 
