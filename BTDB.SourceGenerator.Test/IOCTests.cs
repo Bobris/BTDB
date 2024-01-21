@@ -381,6 +381,27 @@ public class IOCTests
             ");
     }
 
+    [Fact]
+    public Task VerifyGenerateForCouldBeUsedForGenericClasses()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            [BTDB.GenerateFor(typeof(Logger<int>))]
+            public class Logger<T>: ILogger
+            {
+                public Logger(T a)
+                {
+                }
+            }
+            ");
+    }
+
     static Task VerifySourceGenerator(string sourceCode)
     {
         var generator = new SourceGenerator();

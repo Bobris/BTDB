@@ -28,9 +28,6 @@ public class SourceGenerator : IIncrementalGenerator
 
                 if (syntaxContext.Node is AttributeSyntax attributeSyntax)
                 {
-                    var attributeListSyntax = attributeSyntax.Parent as AttributeListSyntax;
-                    if (attributeListSyntax?.Target?.Identifier.ValueText is not ("assembly" or "module"))
-                        return null!;
                     var symbolInfo = semanticModel.GetSymbolInfo(attributeSyntax);
                     IMethodSymbol? ms = null;
                     if (symbolInfo.CandidateReason == CandidateReason.NotAnAttributeType &&
