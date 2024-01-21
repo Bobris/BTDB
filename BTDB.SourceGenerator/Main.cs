@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
 
 namespace BTDB.SourceGenerator;
@@ -14,14 +15,47 @@ public class SourceGenerator : IIncrementalGenerator
 {
     const string Namespace = "BTDB";
     const string AttributeName = "GenerateAttribute";
+    const string GenerateForName = "GenerateForAttribute";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var gen = context.SyntaxProvider.CreateSyntaxProvider(
-            (node, _) => node is ClassDeclarationSyntax or InterfaceDeclarationSyntax or DelegateDeclarationSyntax,
+            (node, _) => node is ClassDeclarationSyntax or InterfaceDeclarationSyntax or DelegateDeclarationSyntax
+                or AttributeSyntax,
             (syntaxContext, _) =>
             {
                 var semanticModel = syntaxContext.SemanticModel;
+
+                if (syntaxContext.Node is AttributeSyntax attributeSyntax)
+                {
+                    var attributeListSyntax = attributeSyntax.Parent as AttributeListSyntax;
+                    if (attributeListSyntax?.Target?.Identifier.ValueText is not ("assembly" or "module"))
+                        return null!;
+                    var symbolInfo = semanticModel.GetSymbolInfo(attributeSyntax);
+                    IMethodSymbol? ms = null;
+                    if (symbolInfo.CandidateReason == CandidateReason.NotAnAttributeType &&
+                        symbolInfo.CandidateSymbols.FirstOrDefault() is IMethodSymbol ms1)
+                    {
+                        ms = ms1;
+                    }
+                    else if (symbolInfo.Symbol is IMethodSymbol ms2)
+                    {
+                        ms = ms2;
+                    }
+
+                    if (ms == null) return null!;
+                    if (ms.ContainingType.Name != GenerateForName)
+                        return null!;
+                    if (ms.ContainingNamespace.Name != Namespace)
+                        return null!;
+                    var typeParam =
+                        attributeSyntax.ArgumentList!.Arguments.FirstOrDefault()?.Expression as TypeOfExpressionSyntax;
+                    if (typeParam == null)
+                        return null!;
+                    if (semanticModel.GetSymbolInfo(typeParam.Type).Symbol is not INamedTypeSymbol symb)
+                        return null!;
+                    return GenerationInfoForClass(symb, null, false);
+                }
 
                 // Symbols allow us to get the compile-time information.
                 if (semanticModel.GetDeclaredSymbol(syntaxContext.Node) is not INamedTypeSymbol symbol)
@@ -84,8 +118,16 @@ public class SourceGenerator : IIncrementalGenerator
 
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
                 {
-                    var isPartial = classDeclarationSyntax.Modifiers
-                        .Any(m => m.ValueText == "partial");
+                    if (symbol.IsGenericType)
+                    {
+                        return null;
+                    }
+
+                    // If it has GenerateForAttribute then it has priority over GenerateAttribute
+                    if (symbol.GetAttributes().Any(a =>
+                            a.AttributeClass is { Name: GenerateForName } attr &&
+                            attr.ContainingNamespace?.ToDisplayString() == Namespace))
+                        return null;
                     if (!symbol.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: AttributeName } attr &&
                             attr.ContainingNamespace?.ToDisplayString() == Namespace)
@@ -96,170 +138,179 @@ public class SourceGenerator : IIncrementalGenerator
                             a.AttributeClass is { Name: AttributeName } attr &&
                             attr.ContainingNamespace?.ToDisplayString() == Namespace) ?? false))
                     {
-                        return null!;
+                        return null;
                     }
 
-                    if (symbol.DeclaredAccessibility == Accessibility.Private)
-                    {
-                        return null!;
-                    }
+                    var isPartial = classDeclarationSyntax.Modifiers
+                        .Any(m => m.ValueText == "partial");
 
-                    if (symbol.IsAbstract)
-                    {
-                        return null!;
-                    }
-
-                    if (symbol.IsGenericType)
-                    {
-                        return null!;
-                    }
-
-                    var implements = symbol.AllInterfaces.Select(s => new TypeRef(s)).ToImmutableArray();
-
-                    var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
-                    foreach (var (name, type, resultType, ifaceName) in symbol.AllInterfaces.SelectMany(
-                                 DetectDispatcherInfo))
-                    {
-                        var m = symbol.GetMembers().OfType<IMethodSymbol>().FirstOrDefault(m =>
-                            m.Name == name && m.Parameters.Length == 1);
-                        if (m == null) continue;
-                        dispatchers.Add(new(name,
-                            m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                            m.ReturnType.SpecialType == SpecialType.System_Void ? null : m.ReturnType.ToDisplayString(),
-                            ifaceName));
-                    }
-
-                    var containingNamespace = symbol.ContainingNamespace;
-                    var namespaceName = containingNamespace.IsGlobalNamespace
-                        ? null
-                        : containingNamespace.ToDisplayString();
-                    var className = symbol.Name;
-                    var constructor = symbol.Constructors.FirstOrDefault();
-                    var hasDefaultConstructor = false;
-                    foreach (var symbolConstructor in symbol.Constructors)
-                    {
-                        if (symbolConstructor.Parameters.Length == 0)
-                        {
-                            hasDefaultConstructor = true;
-                        }
-
-                        if (symbolConstructor.Parameters.Length > constructor?.Parameters.Length)
-                        {
-                            constructor = symbolConstructor;
-                        }
-                    }
-
-                    var parameters = constructor?.Parameters.Select(p => new ParameterInfo(p.Name,
-                                             p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                             p.Type.IsReferenceType,
-                                             p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
-                                             p.HasExplicitDefaultValue
-                                                 ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue,
-                                                     new(p.Type))
-                                                 : null))
-                                         .ToImmutableArray() ??
-                                     ImmutableArray<ParameterInfo>.Empty;
-
-                    var parentDeclarations = ImmutableArray<string>.Empty;
-                    if (isPartial)
-                    {
-                        parentDeclarations = classDeclarationSyntax.AncestorsAndSelf().OfType<TypeDeclarationSyntax>()
-                            .Select(c =>
-                            {
-                                if (c.Modifiers.All(m => m.ValueText != "partial") ||
-                                    c.Modifiers.Any(m => m.ValueText == "file"))
-                                {
-                                    isPartial = false;
-                                    return "";
-                                }
-
-                                return c.Modifiers + " " + c.Keyword.ValueText + " " + c.Identifier.ValueText;
-                            }).ToImmutableArray();
-                    }
-
-                    var propertyInfos = symbol.GetMembers()
-                        .OfType<IPropertySymbol>()
-                        .Where(p => !p.IsStatic)
-                        .Where(p => p.GetAttributes().Any(a => a.AttributeClass?.Name == "DependencyAttribute") &&
-                                    p.SetMethod is not null)
-                        .Select(p =>
-                        {
-                            var isComplex = p.SetMethod!.DeclaredAccessibility == Accessibility.Private ||
-                                            p.SetMethod.IsInitOnly;
-                            // if Set/init method have default implementation => then it could directly set backing field
-                            var isFieldBased = isComplex && IsDefaultMethodImpl(p.SetMethod.DeclaringSyntaxReferences);
-                            return new PropertyInfo(p.Name,
-                                p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                p.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "DependencyAttribute")
-                                    ?.ConstructorArguments.FirstOrDefault().Value as string,
-                                p.Type.IsReferenceType,
-                                p.NullableAnnotation == NullableAnnotation.Annotated, isComplex, isFieldBased,
-                                isComplex ? isFieldBased ? $"<{p.Name}>k__BackingField" : p.SetMethod.Name : null);
-                        })
-                        .ToImmutableArray();
-                    var fields = symbol.GetMembers()
-                        .OfType<IFieldSymbol>()
-                        .Where(f => !f.IsStatic)
-                        .Where(f =>
-                            f.DeclaredAccessibility == Accessibility.Public &&
-                            f.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
-                            f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
-                            || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
-                        .Select(f =>
-                        {
-                            return new FieldsInfo(f.Name,
-                                f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                f.GetAttributes()
-                                    .FirstOrDefault(a => a.AttributeClass?.Name == "PersistedNameAttribute")
-                                    ?.ConstructorArguments.FirstOrDefault().Value as string,
-                                f.Type.IsReferenceType, f.Name, null, null,
-                                ImmutableArray<IndexInfo>.Empty);
-                        })
-                        .Concat(symbol.GetMembers()
-                            .OfType<IPropertySymbol>()
-                            .Where(p => !p.IsStatic)
-                            .Where(p =>
-                                p.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
-                                p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
-                                p.SetMethod is not null && p.GetMethod is not null)
-                            .Select(p =>
-                            {
-                                var getterName = !IsDefaultMethodImpl(p.GetMethod!.DeclaringSyntaxReferences)
-                                    ? p.GetMethod.Name
-                                    : null;
-                                var setterName = !IsDefaultMethodImpl(p.SetMethod!.DeclaringSyntaxReferences)
-                                    ? p.SetMethod.Name
-                                    : null;
-                                var backingName = getterName == null || setterName == null
-                                    ? $"<{p.Name}>k__BackingField"
-                                    : null;
-                                if (getterName != null && backingName == null)
-                                {
-                                    backingName = ExtractPropertyFromGetter(p.GetMethod!.DeclaringSyntaxReferences);
-                                    if (backingName != null) getterName = null;
-                                }
-
-                                return new FieldsInfo(p.Name,
-                                    p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                    p.GetAttributes().FirstOrDefault(a =>
-                                            a.AttributeClass?.Name == "PersistedNameAttribute")
-                                        ?.ConstructorArguments.FirstOrDefault().Value as string,
-                                    p.Type.IsReferenceType,
-                                    backingName, getterName, setterName, ImmutableArray<IndexInfo>.Empty);
-                            })).ToImmutableArray();
-                    var privateConstructor =
-                        constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected;
-                    return new GenerationInfo(GenerationType.Class, namespaceName, className,
-                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
-                        hasDefaultConstructor,
-                        parameters,
-                        propertyInfos, parentDeclarations, dispatchers.ToImmutable(), fields, implements);
+                    return GenerationInfoForClass(symbol, classDeclarationSyntax, isPartial);
                 }
 
                 return null!;
             }).Where(i => i != null);
 
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
+    }
+
+    GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol, ClassDeclarationSyntax? classDeclarationSyntax,
+        bool isPartial)
+    {
+        if (symbol.DeclaredAccessibility == Accessibility.Private)
+        {
+            return null;
+        }
+
+        if (symbol.IsAbstract)
+        {
+            return null;
+        }
+
+        if (symbol.IsUnboundGenericType)
+        {
+            return null;
+        }
+
+        var implements = symbol.AllInterfaces.Select(s => new TypeRef(s)).ToImmutableArray();
+
+        var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
+        foreach (var (name, type, resultType, ifaceName) in symbol.AllInterfaces.SelectMany(
+                     DetectDispatcherInfo))
+        {
+            var m = symbol.GetMembers().OfType<IMethodSymbol>().FirstOrDefault(m =>
+                m.Name == name && m.Parameters.Length == 1);
+            if (m == null) continue;
+            dispatchers.Add(new(name,
+                m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                m.ReturnType.SpecialType == SpecialType.System_Void ? null : m.ReturnType.ToDisplayString(),
+                ifaceName));
+        }
+
+        var containingNamespace = symbol.ContainingNamespace;
+        var namespaceName = containingNamespace.IsGlobalNamespace
+            ? null
+            : containingNamespace.ToDisplayString();
+        var className = symbol.Name;
+        var constructor = symbol.Constructors.FirstOrDefault();
+        var hasDefaultConstructor = false;
+        foreach (var symbolConstructor in symbol.Constructors)
+        {
+            if (symbolConstructor.Parameters.Length == 0)
+            {
+                hasDefaultConstructor = true;
+            }
+
+            if (symbolConstructor.Parameters.Length > constructor?.Parameters.Length)
+            {
+                constructor = symbolConstructor;
+            }
+        }
+
+        var parameters = constructor?.Parameters.Select(p => new ParameterInfo(p.Name,
+                                 p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                                 p.Type.IsReferenceType,
+                                 p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
+                                 p.HasExplicitDefaultValue
+                                     ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue,
+                                         new(p.Type))
+                                     : null))
+                             .ToImmutableArray() ??
+                         ImmutableArray<ParameterInfo>.Empty;
+
+        var parentDeclarations = ImmutableArray<string>.Empty;
+        if (isPartial)
+        {
+            parentDeclarations = classDeclarationSyntax!.AncestorsAndSelf().OfType<TypeDeclarationSyntax>()
+                .Select(c =>
+                {
+                    if (c.Modifiers.All(m => m.ValueText != "partial") ||
+                        c.Modifiers.Any(m => m.ValueText == "file"))
+                    {
+                        isPartial = false;
+                        return "";
+                    }
+
+                    return c.Modifiers + " " + c.Keyword.ValueText + " " + c.Identifier.ValueText;
+                }).ToImmutableArray();
+        }
+
+        var propertyInfos = symbol.GetMembers()
+            .OfType<IPropertySymbol>()
+            .Where(p => !p.IsStatic)
+            .Where(p => p.GetAttributes().Any(a => a.AttributeClass?.Name == "DependencyAttribute") &&
+                        p.SetMethod is not null)
+            .Select(p =>
+            {
+                var isComplex = p.SetMethod!.DeclaredAccessibility == Accessibility.Private ||
+                                p.SetMethod.IsInitOnly;
+                // if Set/init method have default implementation => then it could directly set backing field
+                var isFieldBased = isComplex && IsDefaultMethodImpl(p.SetMethod.DeclaringSyntaxReferences);
+                return new PropertyInfo(p.Name,
+                    p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    p.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "DependencyAttribute")
+                        ?.ConstructorArguments.FirstOrDefault().Value as string,
+                    p.Type.IsReferenceType,
+                    p.NullableAnnotation == NullableAnnotation.Annotated, isComplex, isFieldBased,
+                    isComplex ? isFieldBased ? $"<{p.Name}>k__BackingField" : p.SetMethod.Name : null);
+            })
+            .ToImmutableArray();
+        var fields = symbol.GetMembers()
+            .OfType<IFieldSymbol>()
+            .Where(f => !f.IsStatic)
+            .Where(f =>
+                f.DeclaredAccessibility == Accessibility.Public &&
+                f.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
+                f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
+                || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
+            .Select(f =>
+            {
+                return new FieldsInfo(f.Name,
+                    f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    f.GetAttributes()
+                        .FirstOrDefault(a => a.AttributeClass?.Name == "PersistedNameAttribute")
+                        ?.ConstructorArguments.FirstOrDefault().Value as string,
+                    f.Type.IsReferenceType, f.Name, null, null,
+                    ImmutableArray<IndexInfo>.Empty);
+            })
+            .Concat(symbol.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(p => !p.IsStatic)
+                .Where(p =>
+                    p.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
+                    p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
+                    p.SetMethod is not null && p.GetMethod is not null)
+                .Select(p =>
+                {
+                    var getterName = !IsDefaultMethodImpl(p.GetMethod!.DeclaringSyntaxReferences)
+                        ? p.GetMethod.Name
+                        : null;
+                    var setterName = !IsDefaultMethodImpl(p.SetMethod!.DeclaringSyntaxReferences)
+                        ? p.SetMethod.Name
+                        : null;
+                    var backingName = getterName == null || setterName == null
+                        ? $"<{p.Name}>k__BackingField"
+                        : null;
+                    if (getterName != null && backingName == null)
+                    {
+                        backingName = ExtractPropertyFromGetter(p.GetMethod!.DeclaringSyntaxReferences);
+                        if (backingName != null) getterName = null;
+                    }
+
+                    return new FieldsInfo(p.Name,
+                        p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        p.GetAttributes().FirstOrDefault(a =>
+                                a.AttributeClass?.Name == "PersistedNameAttribute")
+                            ?.ConstructorArguments.FirstOrDefault().Value as string,
+                        p.Type.IsReferenceType,
+                        backingName, getterName, setterName, ImmutableArray<IndexInfo>.Empty);
+                })).ToImmutableArray();
+        var privateConstructor =
+            constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected;
+        return new GenerationInfo(GenerationType.Class, namespaceName, className,
+            symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
+            hasDefaultConstructor,
+            parameters,
+            propertyInfos, parentDeclarations, dispatchers.ToImmutable(), fields, implements);
     }
 
     string? ExtractPropertyFromGetter(ImmutableArray<SyntaxReference> declaringSyntaxReferences)

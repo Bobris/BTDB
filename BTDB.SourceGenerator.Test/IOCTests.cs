@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
@@ -339,6 +340,47 @@ public class IOCTests
             ");
     }
 
+    [Fact]
+    public Task VerifyGenerateForOnAssembly()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            [assembly: BTDB.GenerateFor(typeof(TestNamespace.Logger))]
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            public class Logger: ILogger
+            {
+            }
+            ");
+    }
+
+    [Fact]
+    public Task VerifyGenerateForDisablesGenerating()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public interface ILogger
+            {
+            }
+
+            [BTDB.GenerateFor(typeof(TestNamespace.Logger2))]
+            public class Logger: ILogger
+            {
+            }
+
+            public class Logger2: ILogger
+            {
+            }
+            ");
+    }
+
     static Task VerifySourceGenerator(string sourceCode)
     {
         var generator = new SourceGenerator();
@@ -348,6 +390,7 @@ public class IOCTests
             new[]
             {
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Attribute).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(GenerateAttribute).Assembly.Location)
             });
         var runResult = driver.RunGenerators(compilation);
