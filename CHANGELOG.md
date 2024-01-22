@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Optimized
+
+Detection of `FreeContent` is now much faster for "object" type.
+
 ## 31.14.0
 
 ### Added
