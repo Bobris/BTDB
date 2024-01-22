@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
 
 namespace BTDB.SourceGenerator;
@@ -61,9 +60,9 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             return new GenerationInfo(GenerationType.Error, null, "BTDB0001",
                                 "Must use CollectionExpression syntax for ConstructorParameters", false, false,
-                                false, ImmutableArray<ParameterInfo>.Empty, ImmutableArray<PropertyInfo>.Empty,
-                                ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty,
-                                ImmutableArray<FieldsInfo>.Empty, ImmutableArray<TypeRef>.Empty,
+                                false, EquatableArray<ParameterInfo>.Empty, EquatableArray<PropertyInfo>.Empty,
+                                EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
+                                EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty,
                                 constructorParametersExpression.GetLocation());
                         }
 
@@ -108,14 +107,12 @@ public class SourceGenerator : IIncrementalGenerator
                             p.HasExplicitDefaultValue
                                 ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue, new(p.Type))
                                 : null))
-                        .ToImmutableArray();
+                        .ToArray();
                     return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, false,
-                        parameters,
-                        new[] { new PropertyInfo("", returnType, null, true, false, false, false, null) }
-                            .ToImmutableArray(),
-                        ImmutableArray<string>.Empty, ImmutableArray<DispatcherInfo>.Empty,
-                        ImmutableArray<FieldsInfo>.Empty, ImmutableArray<TypeRef>.Empty, null);
+                        parameters, [new PropertyInfo("", returnType, null, true, false, false, false, null)],
+                        EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
+                        EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty, null);
                 }
 
                 if (syntaxContext.Node is InterfaceDeclarationSyntax)
@@ -129,10 +126,10 @@ public class SourceGenerator : IIncrementalGenerator
                     var interfaceName = symbol.Name;
                     return new(GenerationType.Interface, namespaceName, interfaceName,
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, false,
-                        ImmutableArray<ParameterInfo>.Empty,
-                        ImmutableArray<PropertyInfo>.Empty, ImmutableArray<string>.Empty,
-                        dispatchers.ToImmutableArray(), ImmutableArray<FieldsInfo>.Empty,
-                        ImmutableArray<TypeRef>.Empty, null);
+                        EquatableArray<ParameterInfo>.Empty,
+                        EquatableArray<PropertyInfo>.Empty, EquatableArray<string>.Empty,
+                        dispatchers.ToArray(), EquatableArray<FieldsInfo>.Empty,
+                        EquatableArray<TypeRef>.Empty, null);
                 }
 
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
@@ -190,7 +187,7 @@ public class SourceGenerator : IIncrementalGenerator
             return null;
         }
 
-        var implements = symbol.AllInterfaces.Select(s => new TypeRef(s)).ToImmutableArray();
+        var implements = symbol.AllInterfaces.Select(s => new TypeRef(s)).ToArray();
 
         var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
         foreach (var (name, type, resultType, ifaceName) in symbol.AllInterfaces.SelectMany(
@@ -258,10 +255,10 @@ public class SourceGenerator : IIncrementalGenerator
                                      ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue,
                                          new(p.Type))
                                      : null))
-                             .ToImmutableArray() ??
-                         ImmutableArray<ParameterInfo>.Empty;
+                             .ToArray() ??
+                         Array.Empty<ParameterInfo>();
 
-        var parentDeclarations = ImmutableArray<string>.Empty;
+        var parentDeclarations = EquatableArray<string>.Empty;
         if (isPartial)
         {
             parentDeclarations = classDeclarationSyntax!.AncestorsAndSelf().OfType<TypeDeclarationSyntax>()
@@ -275,7 +272,7 @@ public class SourceGenerator : IIncrementalGenerator
                     }
 
                     return c.Modifiers + " " + c.Keyword.ValueText + " " + c.Identifier.ValueText;
-                }).ToImmutableArray();
+                }).ToArray();
         }
 
         var propertyInfos = symbol.GetMembers()
@@ -297,7 +294,7 @@ public class SourceGenerator : IIncrementalGenerator
                     p.NullableAnnotation == NullableAnnotation.Annotated, isComplex, isFieldBased,
                     isComplex ? isFieldBased ? $"<{p.Name}>k__BackingField" : p.SetMethod.Name : null);
             })
-            .ToImmutableArray();
+            .ToArray();
         var fields = symbol.GetMembers()
             .OfType<IFieldSymbol>()
             .Where(f => !f.IsStatic)
@@ -314,7 +311,7 @@ public class SourceGenerator : IIncrementalGenerator
                         .FirstOrDefault(a => a.AttributeClass?.Name == "PersistedNameAttribute")
                         ?.ConstructorArguments.FirstOrDefault().Value as string,
                     f.Type.IsReferenceType, f.Name, null, null,
-                    ImmutableArray<IndexInfo>.Empty);
+                    EquatableArray<IndexInfo>.Empty);
             })
             .Concat(symbol.GetMembers()
                 .OfType<IPropertySymbol>()
@@ -346,15 +343,15 @@ public class SourceGenerator : IIncrementalGenerator
                                 a.AttributeClass?.Name == "PersistedNameAttribute")
                             ?.ConstructorArguments.FirstOrDefault().Value as string,
                         p.Type.IsReferenceType,
-                        backingName, getterName, setterName, ImmutableArray<IndexInfo>.Empty);
-                })).ToImmutableArray();
+                        backingName, getterName, setterName, EquatableArray<IndexInfo>.Empty);
+                })).ToArray();
         var privateConstructor =
             constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected;
         return new GenerationInfo(GenerationType.Class, namespaceName, className,
             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
             hasDefaultConstructor,
             parameters,
-            propertyInfos, parentDeclarations, dispatchers.ToImmutable(), fields, implements, null);
+            propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, null);
     }
 
     string? ExtractPropertyFromGetter(ImmutableArray<SyntaxReference> declaringSyntaxReferences)
@@ -363,7 +360,7 @@ public class SourceGenerator : IIncrementalGenerator
         if (declaringSyntaxReferences.Length > 1) return null;
         var syntax = declaringSyntaxReferences[0].GetSyntax();
         if (syntax is not AccessorDeclarationSyntax ads) return null;
-        if (ads.ExpressionBody is ArrowExpressionClauseSyntax aecs)
+        if (ads.ExpressionBody is { } aecs)
         {
             if (aecs.Expression is IdentifierNameSyntax ins)
                 return ins.Identifier.ValueText;
@@ -758,7 +755,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         var metadataCode = new StringBuilder();
 
-        if (!generationInfo.Fields.IsEmpty)
+        if (generationInfo.Fields.Count != 0)
         {
             if (generationInfo.HasDefaultConstructor)
             {
@@ -945,7 +942,7 @@ public class SourceGenerator : IIncrementalGenerator
                         };
                     });{{metadataCode}}{{dispatchers}}
                 }
-            {{(generationInfo.IsPartial ? new('}', generationInfo.ParentDeclarations.Length) : "}")}}
+            {{(generationInfo.IsPartial ? new('}', generationInfo.ParentDeclarations.Count) : "}")}}
 
             """;
 
@@ -971,12 +968,12 @@ record GenerationInfo(
     bool IsPartial,
     bool PrivateConstructor,
     bool HasDefaultConstructor,
-    ImmutableArray<ParameterInfo> ConstructorParameters,
-    ImmutableArray<PropertyInfo> Properties,
-    ImmutableArray<string> ParentDeclarations,
-    ImmutableArray<DispatcherInfo> Dispatchers,
-    ImmutableArray<FieldsInfo> Fields,
-    ImmutableArray<TypeRef> Implements,
+    EquatableArray<ParameterInfo> ConstructorParameters,
+    EquatableArray<PropertyInfo> Properties,
+    EquatableArray<string> ParentDeclarations,
+    EquatableArray<DispatcherInfo> Dispatchers,
+    EquatableArray<FieldsInfo> Fields,
+    EquatableArray<TypeRef> Implements,
     Location? Location
 );
 
@@ -1000,7 +997,7 @@ record FieldsInfo(
     string? BackingName,
     string? GetterName,
     string? SetterName,
-    ImmutableArray<IndexInfo> Indexes);
+    EquatableArray<IndexInfo> Indexes);
 
 record IndexInfo(string? Name, int Order);
 

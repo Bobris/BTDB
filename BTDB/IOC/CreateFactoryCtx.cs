@@ -12,7 +12,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
     internal int Enumerate = -1;
 
     readonly Dictionary<(Type, string?), int> _paramTypeToIndex = new();
-    readonly Dictionary<(Type type, int Enumerate, ImmutableArray<(CReg, int)>), Func<IContainer, IResolvingCtx, object>> _lazyFactories = new();
+    readonly Dictionary<(Type type, int Enumerate, EquatableArray<(CReg, int)>), Func<IContainer, IResolvingCtx, object>> _lazyFactories = new();
     StructList<(CReg, int)> _enumeratingIndexes;
     StructList<CReg> _resolvingStack;
     StructList<int> _enumeratingStack;
@@ -65,13 +65,13 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
     public bool GetLazyFactory(Type type, out Func<IContainer, IResolvingCtx?, object?>? factory)
     {
         if ((_enumeratingIndexes.Count > 0 || Enumerate >= 0) &&
-            _lazyFactories.TryGetValue((type, Enumerate, _enumeratingIndexes.ToImmutableArray()), out factory))
+            _lazyFactories.TryGetValue((type, Enumerate, new(_enumeratingIndexes.ToArray())), out factory))
             return true;
         // To make it easier Lazy factory could match global/root factory
         // In theory it should match also all parent enumerating scopes, not just root
         foreach (var ((type1, enumerate, immutableArray), value) in _lazyFactories)
         {
-            if (type1 == type && enumerate == -1 && immutableArray.IsEmpty)
+            if (type1 == type && enumerate == -1 && immutableArray.Count == 0)
             {
                 factory = value;
                 return true;
@@ -84,7 +84,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
 
     public void RegisterLazyFactory(Type type, Func<IContainer, IResolvingCtx?, object?> factory)
     {
-        _lazyFactories.Add((type, Enumerate, _enumeratingIndexes.ToImmutableArray()), factory);
+        _lazyFactories.Add((type, Enumerate, new(_enumeratingIndexes.ToArray())), factory);
     }
 
     public void PushResolving(CReg cReg)
