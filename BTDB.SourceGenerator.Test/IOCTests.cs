@@ -1,9 +1,5 @@
-using System;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using VerifyTests;
 using VerifyXunit;
 using Xunit;
@@ -11,7 +7,7 @@ using Xunit;
 namespace BTDB.SourceGenerator.Tests;
 
 [UsesVerify]
-public class IOCTests
+public class IOCTests : GeneratorTestsBase
 {
     [ModuleInitializer]
     internal static void Init() => VerifySourceGenerators.Initialize();
@@ -451,33 +447,5 @@ public class IOCTests
                 }
             }
             ");
-    }
-
-    static Task VerifySourceGenerator(string sourceCode)
-    {
-        var generator = new SourceGenerator();
-        var driver = CSharpGeneratorDriver.Create([generator.AsSourceGenerator()],
-            driverOptions: new GeneratorDriverOptions(default, trackIncrementalGeneratorSteps: true));
-        var compilation = CSharpCompilation.Create("test",
-            new[] { CSharpSyntaxTree.ParseText(sourceCode) },
-            new[]
-            {
-                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(Attribute).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(GenerateAttribute).Assembly.Location)
-            });
-        var runResult = driver.RunGenerators(compilation);
-        // Update the compilation and rerun the generator
-        compilation = compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText("// dummy"));
-
-        var driver2 = driver.RunGenerators(compilation);
-
-        // Assert the driver doesn't recompute the output
-        var result = driver2.GetRunResult().Results.Single();
-        var allOutputs = result.TrackedOutputSteps.SelectMany(outputStep => outputStep.Value)
-            .SelectMany(output => output.Outputs);
-        Assert.Collection(allOutputs, output => Assert.Equal(IncrementalStepRunReason.Cached, output.Reason));
-
-        return Verifier.Verify(runResult);
     }
 }

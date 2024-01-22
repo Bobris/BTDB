@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -7,7 +8,7 @@ using Xunit;
 namespace BTDB.SourceGenerator.Tests;
 
 [UsesVerify]
-public class MetadataTests
+public class MetadataTests : GeneratorTestsBase
 {
     [Fact]
     public Task VerifyBasicMetadata()
@@ -101,20 +102,5 @@ public class MetadataTests
                 }
             }
             """);
-    }
-
-    static Task VerifySourceGenerator(string sourceCode)
-    {
-        var generator = new SourceGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        var compilation = CSharpCompilation.Create("test",
-            new[] { CSharpSyntaxTree.ParseText(sourceCode) },
-            new[]
-            {
-                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(GenerateAttribute).Assembly.Location)
-            });
-        var runResult = driver.RunGenerators(compilation);
-        return Verifier.Verify(runResult);
     }
 }
