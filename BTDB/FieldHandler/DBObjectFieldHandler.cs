@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -203,14 +204,21 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
     {
         var needsFreeContent = NeedsFreeContent.No;
         var type = HandledType();
-        foreach (var st in _objectDb.GetPolymorphicTypes(type))
+        if (type == typeof(object))
         {
-            UpdateNeedsFreeContent(st, ref needsFreeContent);
+            needsFreeContent = NeedsFreeContent.Yes;
         }
+        else
+        {
+            foreach (var st in _objectDb.GetPolymorphicTypes(type))
+            {
+                UpdateNeedsFreeContent(st, ref needsFreeContent);
+                if (needsFreeContent == NeedsFreeContent.Yes) break;
+            }
 
-        if (!type.IsInterface && !type.IsAbstract)
-            UpdateNeedsFreeContent(type, ref needsFreeContent);
-
+            if (!type.IsInterface && !type.IsAbstract)
+                UpdateNeedsFreeContent(type, ref needsFreeContent);
+        }
         ilGenerator
             .Do(pushCtx)
             .Do(pushReader)
