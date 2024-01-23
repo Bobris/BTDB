@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using BTDB.Collections;
 
 namespace BTDB.IOC;
@@ -11,7 +12,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
     internal bool VerifySingletons;
     internal int Enumerate = -1;
 
-    readonly Dictionary<(Type, string?), int> _paramTypeToIndex = new();
+    Dictionary<(Type, string?), int> _paramTypeToIndex = new();
     readonly Dictionary<(Type type, int Enumerate, EquatableArray<(CReg, int)>), Func<IContainer, IResolvingCtx, object>> _lazyFactories = new();
     StructList<(CReg, int)> _enumeratingIndexes;
     StructList<CReg> _resolvingStack;
@@ -159,5 +160,17 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         while (_enumeratingIndexes.Count > Enumerate)
             _enumeratingIndexes.Pop();
         Enumerate = enumerableBackup;
+    }
+
+    public readonly record struct CtxRestorer(CreateFactoryCtx Ctx, Dictionary<(Type, string?), int> ParamTypeToIndex) : IDisposable
+    {
+        public void Dispose()
+        {
+            Ctx._paramTypeToIndex = ParamTypeToIndex;
+        }
+    }
+    public CtxRestorer ResolvingCtxRestorer()
+    {
+        return new(this, _paramTypeToIndex.ToDictionary());
     }
 }

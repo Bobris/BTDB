@@ -138,6 +138,7 @@ public class ContainerImpl : IContainer
                     if (genericArguments[0].IsValueType)
                         throw new NotSupportedException(
                             "Func<,> with value type argument is not supported, if you define identical delegate type with [Generate], it will be supported.");
+                    using var resolvingCtxRestorer = ctxImpl.ResolvingCtxRestorer();
                     var hasResolvingCtx = ctxImpl.HasResolvingCtx();
                     var p1Idx = ctxImpl.AddInstanceToCtx(genericArguments[0]);
                     var nestedFactory = CreateFactory(ctx, nestedType, key);

@@ -15,6 +15,7 @@ static file class FactoryRegistration
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(Func<int,string,ILogger>), Factory);
         static Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object> Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
         {
+            using var resolvingCtxRestorer = ctx.ResolvingCtxRestorer();
             var hasResolvingCtx = ctx.HasResolvingCtx();
             var p0Idx = ctx.AddInstanceToCtx(typeof(int), "a");
             var p1Idx = ctx.AddInstanceToCtx(typeof(string), "b");

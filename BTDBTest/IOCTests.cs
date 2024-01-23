@@ -1613,4 +1613,26 @@ public partial class IocTests
         var obj = container.Resolve<NonGeneratedWithLazyDependency>();
         Assert.NotNull(obj);
     }
+
+    [Generate]
+    public class KlassWithFuncDependency
+    {
+        public KlassWithFuncDependency(Func<ILogger, IErrorHandler> errorHandler, ILogger logger)
+        {
+            errorHandler(logger);
+        }
+    }
+
+
+    [Fact]
+    public void ComplexFuncDependency()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<KlassWithFuncDependency>();
+        builder.RegisterType<Logger>().As<ILogger>();
+        builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
+        var container = builder.Build();
+        var obj = container.Resolve<KlassWithFuncDependency>();
+        Assert.NotNull(obj);
+    }
 }

@@ -584,6 +584,7 @@ public class SourceGenerator : IIncrementalGenerator
                     global::BTDB.IOC.IContainer.RegisterFactory(typeof(Func<{{funcParams}}{{resultingType}}>), Factory);
                     static Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object> Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
                     {
+                        using var resolvingCtxRestorer = ctx.ResolvingCtxRestorer();
                         var hasResolvingCtx = ctx.HasResolvingCtx();
                         {{factoryCode1}}var nestedFactory = container.CreateFactory(ctx, typeof({{resultingType}}), null);
                         if (nestedFactory == null) return null;
