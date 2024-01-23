@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+IOC: Lazy has now correct type (not just always Lazy<object>)
+
 ## 32.4.1
 
 ## 32.4.0
