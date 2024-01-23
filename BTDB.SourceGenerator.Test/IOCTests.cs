@@ -356,6 +356,15 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyGenerateForOnAssemblyFromDifferentAssembly()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            [assembly: BTDB.GenerateFor(typeof(BTDB.GenerateForAttribute))]
+            ");
+    }
+
+    [Fact]
     public Task VerifyGenerateForDisablesGenerating()
     {
         // language=cs

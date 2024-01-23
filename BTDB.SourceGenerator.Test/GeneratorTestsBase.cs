@@ -20,9 +20,8 @@ public class GeneratorTestsBase
             new[]
             {
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(Attribute).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(GenerateAttribute).Assembly.Location)
-            });
+            }, new(OutputKind.ConsoleApplication, allowUnsafe: true));
         var runResult = driver.RunGenerators(compilation);
         // Update the compilation and rerun the generator
         compilation = compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText("// dummy"));
