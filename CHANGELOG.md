@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.4.3
+
 ### Fixed
 
 IOC: Func and delegates didn't worked in some cases.
