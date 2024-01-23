@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+IOC: Func and delegates didn't worked in some cases.
+
 ## 32.4.2
 
 ### Fixed
