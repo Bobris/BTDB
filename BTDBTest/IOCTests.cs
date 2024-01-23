@@ -996,7 +996,6 @@ public partial class IocTests
         }
     }
 
-
     [Fact]
     public void DependenciesInEnumerablesWorks()
     {
@@ -1594,5 +1593,24 @@ public partial class IocTests
         Assert.NotNull(root);
         Assert.NotNull(root.Authenticator.Database.Logger);
         Assert.NotSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+    }
+
+    public class NonGeneratedWithLazyDependency
+    {
+        public NonGeneratedWithLazyDependency(Lazy<ILogger> logger)
+        {
+            Assert.IsType<Lazy<ILogger>>(logger);
+        }
+    }
+
+    [Fact]
+    public void NonGeneratedClassWithLazyDependency()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterTypeWithFallback<NonGeneratedWithLazyDependency>();
+        builder.RegisterType<Logger>().As<ILogger>();
+        var container = builder.Build();
+        var obj = container.Resolve<NonGeneratedWithLazyDependency>();
+        Assert.NotNull(obj);
     }
 }

@@ -7,6 +7,7 @@ using System.Threading;
 using BTDB.Collections;
 using BTDB.IL;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 
 namespace BTDB.IOC;
 
@@ -231,7 +232,9 @@ public class ContainerImpl : IContainer
                 lazyFactory = (c, r) =>
                 {
                     // ReSharper disable once AccessToModifiedClosure - solving chicken egg problem
-                    return new Lazy<object>(() => nestedFactory!(c, r));
+                    var res = new Lazy<object>(() => nestedFactory!(c, r));
+                    RawData.SetMethodTable(res, type);
+                    return res;
                 };
                 ctxImpl.RegisterLazyFactory(nestedType, lazyFactory);
                 var backupResolvingStack = ctxImpl.BackupResolvingStack();

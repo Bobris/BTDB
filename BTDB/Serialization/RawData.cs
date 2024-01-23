@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 
 namespace BTDB.Serialization;
@@ -23,5 +24,11 @@ public sealed class RawData
     public static uint CalcOffset<T>(object @object, ref T field)
     {
         return (uint)Unsafe.ByteOffset(ref Ref(@object), ref Unsafe.As<T, byte>(ref field));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SetMethodTable(object @object, Type type)
+    {
+        Unsafe.As<byte,nint>(ref Ref(@object)) = type.TypeHandle.Value;
     }
 }
