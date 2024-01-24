@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -269,41 +270,16 @@ public class ContainerImpl : IContainer
         {
             if (cReg.Lifetime == Lifetime.Singleton && cReg.SingletonId != uint.MaxValue)
             {
-                ctxImpl.SingletonDeepness++;
-                try
+                var singletonInstance = Volatile.Read(ref Singletons[cReg.SingletonId]);
+                // If Singleton is just being created return waiting factory
+                if (singletonInstance is SingletonLocker)
                 {
-                    var f = cReg.Factory(this, ctx);
-                    var sid = cReg.SingletonId;
-                    return (container, resolvingCtx) =>
+                    return (container, _) =>
                     {
-                        ref var singleton = ref ((ContainerImpl)container).Singletons[sid];
+                        ref var singleton = ref ((ContainerImpl)container).Singletons[cReg.SingletonId];
                         var instance = Volatile.Read(ref singleton);
-                        if (instance != null)
-                        {
-                            if (instance.GetType() == typeof(SingletonLocker))
-                            {
-                                lock (instance)
-                                {
-                                }
-
-                                return Volatile.Read(ref singleton);
-                            }
-
-                            return instance;
-                        }
-
-                        var mySingletonLocker = new SingletonLocker();
-                        Monitor.Enter(mySingletonLocker);
-                        instance = Interlocked.CompareExchange(ref singleton, mySingletonLocker, null);
-                        if (instance == null)
-                        {
-                            instance = f(container, resolvingCtx);
-                            Volatile.Write(ref singleton, instance);
-                            Monitor.Exit(mySingletonLocker);
-                            return instance;
-                        }
-
-                        if (instance!.GetType() == typeof(SingletonLocker))
+                        Debug.Assert(instance != null);
+                        if (instance.GetType() == typeof(SingletonLocker))
                         {
                             lock (instance)
                             {
@@ -315,10 +291,74 @@ public class ContainerImpl : IContainer
                         return instance;
                     };
                 }
-                finally
+                // If Singleton is already created, return it
+                else if (singletonInstance != null)
                 {
-                    ctxImpl.SingletonDeepness--;
+                    return (_, _) => singletonInstance;
                 }
+
+                var singletonFactoryCache = Volatile.Read(ref cReg.SingletonFactoryCache);
+                if (singletonFactoryCache != null) return singletonFactoryCache;
+
+                Func<IContainer, IResolvingCtx, object> f;
+                {
+                    using var resolvingCtxRestorer = ctxImpl.ResolvingCtxRestorer();
+                    using var enumerableRestorer = ctxImpl.EnumerableRestorer();
+                    ctxImpl.SingletonDeepness++;
+                    try
+                    {
+                        f = cReg.Factory(this, ctx);
+                    }
+                    finally
+                    {
+                        ctxImpl.SingletonDeepness--;
+                    }
+                }
+                var ff = (IContainer container, IResolvingCtx resolvingCtx) =>
+                {
+                    ref var singleton = ref ((ContainerImpl)container).Singletons[cReg.SingletonId];
+                    var instance = Volatile.Read(ref singleton);
+                    if (instance != null)
+                    {
+                        if (instance.GetType() == typeof(SingletonLocker))
+                        {
+                            lock (instance)
+                            {
+                            }
+
+                            return Volatile.Read(ref singleton);
+                        }
+
+                        return instance;
+                    }
+
+                    var mySingletonLocker = new SingletonLocker();
+                    Monitor.Enter(mySingletonLocker);
+                    instance = Interlocked.CompareExchange(ref singleton, mySingletonLocker, null);
+                    if (instance == null)
+                    {
+                        instance = f(container, resolvingCtx);
+                        Volatile.Write(ref singleton, instance);
+                        Monitor.Exit(mySingletonLocker);
+                        // Free memory for factory because next time it will be just simple getter
+                        cReg.SingletonFactoryCache = null;
+                        return instance;
+                    }
+
+                    if (instance!.GetType() == typeof(SingletonLocker))
+                    {
+                        lock (instance)
+                        {
+                        }
+
+                        return Volatile.Read(ref singleton);
+                    }
+
+                    return instance;
+                };
+                // If factory is already set by different thread, use it and throw away mine
+                ff = Interlocked.CompareExchange(ref cReg.SingletonFactoryCache, ff, null) ?? ff;
+                return ff;
             }
 
             if (ctxImpl.VerifySingletons && ctxImpl.SingletonDeepness > 0 && cReg.SingletonId != uint.MaxValue)

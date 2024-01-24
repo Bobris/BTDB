@@ -180,4 +180,25 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
     {
         return new CtxRestorer(this, _paramTypeToIndex.ToDictionary());
     }
+
+    public readonly record struct CtxEnumerableRestorer(
+        CreateFactoryCtx Ctx,
+        StructList<(CReg, int)> EnumeratingIndexes,
+        int Enumerate)
+        : IDisposable
+    {
+        public void Dispose()
+        {
+            Ctx._enumeratingIndexes = EnumeratingIndexes;
+            Ctx.Enumerate = Enumerate;
+        }
+    }
+
+    public CtxEnumerableRestorer EnumerableRestorer()
+    {
+        var res = new CtxEnumerableRestorer(this, _enumeratingIndexes, Enumerate);
+        _enumeratingIndexes = new();
+        Enumerate = -1;
+        return res;
+    }
 }
