@@ -13,7 +13,10 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
     internal int Enumerate = -1;
 
     Dictionary<(Type, string?), int> _paramTypeToIndex = new();
-    readonly Dictionary<(Type type, int Enumerate, EquatableArray<(CReg, int)>), Func<IContainer, IResolvingCtx, object>> _lazyFactories = new();
+
+    readonly Dictionary<(Type type, int Enumerate, EquatableArray<(CReg, int)>),
+        Func<IContainer, IResolvingCtx, object>> _lazyFactories = new();
+
     StructList<(CReg, int)> _enumeratingIndexes;
     StructList<CReg> _resolvingStack;
     StructList<int> _enumeratingStack;
@@ -53,6 +56,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
 
             return onlyOne;
         }
+
         foreach (var ((item1, _), value) in _paramTypeToIndex)
         {
             if (item1 != paramType) continue;
@@ -152,6 +156,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
             _enumeratingIndexes[i] = (cReg, 0);
             i--;
         }
+
         return false;
     }
 
@@ -162,15 +167,17 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         Enumerate = enumerableBackup;
     }
 
-    public readonly record struct CtxRestorer(CreateFactoryCtx Ctx, Dictionary<(Type, string?), int> ParamTypeToIndex) : IDisposable
+    public readonly record struct CtxRestorer(CreateFactoryCtx Ctx, Dictionary<(Type, string?), int> ParamTypeToIndex)
+        : IDisposable
     {
         public void Dispose()
         {
             Ctx._paramTypeToIndex = ParamTypeToIndex;
         }
     }
-    public CtxRestorer ResolvingCtxRestorer()
+
+    public IDisposable ResolvingCtxRestorer()
     {
-        return new(this, _paramTypeToIndex.ToDictionary());
+        return new CtxRestorer(this, _paramTypeToIndex.ToDictionary());
     }
 }

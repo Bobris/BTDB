@@ -37,6 +37,7 @@ public interface ICreateFactoryCtx
     int GetParamSize();
     bool HasResolvingCtx();
     int AddInstanceToCtx(Type paramType, string? name = null);
+    IDisposable ResolvingCtxRestorer();
 }
 
 public struct DispatcherItem
