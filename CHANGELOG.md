@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+IOC and Singletons are now much faster and correct in complex cases.
+
 ## 32.4.3
 
 ### Fixed
