@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+IOC: Obsolete is ignored. Required fields not make it not compilable. Protected classes are skipped in generation.
+
 ## 32.4.5
 
 ## 32.4.4
