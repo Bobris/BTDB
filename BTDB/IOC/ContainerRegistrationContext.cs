@@ -52,6 +52,7 @@ class ContainerRegistrationContext
         if (currentReg.Multi.Count > 0)
         {
             currentReg.Add(registration, preserveExistingDefaults);
+            return;
         }
 
         var multi = new CReg
