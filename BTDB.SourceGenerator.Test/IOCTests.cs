@@ -31,6 +31,25 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForSimpleParametersLessClassThatIsObsolete()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+             namespace TestNamespace;
+
+             [BTDB.Generate]
+             public interface ILogger
+             {
+             }
+
+             [System.Obsolete]
+             public class Logger: ILogger
+             {
+             }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForPartialClassWithMultipleDeclarations()
     {
         // language=cs
