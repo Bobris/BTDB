@@ -985,7 +985,7 @@ record GenerationInfo(
     string Name,
     string FullName,
     bool IsPartial,
-    bool PrivateConstructor,
+    bool PrivateConstructor, // or has required fields
     bool HasDefaultConstructor,
     EquatableArray<ParameterInfo> ConstructorParameters,
     EquatableArray<PropertyInfo> Properties,
