@@ -187,18 +187,18 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
-             [BTDB.Generate]
-             public interface IHandler
-             {
-             }
+            [BTDB.Generate]
+            public interface IHandler
+            {
+            }
 
-             public class ErrorHandler
-             {
-                 protected class NestedErrorHandler : IHandler
-                 {
-                 }
-             }
-             """);
+            public class ErrorHandler
+            {
+                protected class NestedErrorHandler : IHandler
+                {
+                }
+            }
+            """);
     }
 
     [Fact]
@@ -296,6 +296,21 @@ public class IOCTests : GeneratorTestsBase
             {
                 [BTDB.IOC.Dependency]
                 public ILogger? Logger { get; init; }
+            }
+            ");
+    }
+
+    [Fact]
+    public Task VerifyClassWithRequiredProperty()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class ErrorHandler
+            {
+                public required int Prop { get; set; }
             }
             ");
     }

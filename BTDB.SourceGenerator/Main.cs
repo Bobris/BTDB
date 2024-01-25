@@ -350,8 +350,20 @@ public class SourceGenerator : IIncrementalGenerator
                         p.Type.IsReferenceType,
                         backingName, getterName, setterName, EquatableArray<IndexInfo>.Empty);
                 })).ToArray();
+
         var privateConstructor =
-            constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected;
+            constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected || symbol
+                .GetMembers()
+                .OfType<IFieldSymbol>()
+                .Where(f => !f.IsStatic)
+                .Any(f =>
+                    f.IsRequired)
+            ||
+            symbol.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(p => !p.IsStatic)
+                .Any(p =>
+                    p.IsRequired);
         return new GenerationInfo(GenerationType.Class, namespaceName, className,
             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
             hasDefaultConstructor,
