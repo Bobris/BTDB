@@ -2,7 +2,9 @@ using System;
 
 namespace BTDB;
 
-[AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Module | AttributeTargets.Class, AllowMultiple = true)]
+[AttributeUsage(
+    AttributeTargets.Assembly | AttributeTargets.Module | AttributeTargets.Class | AttributeTargets.Interface,
+    AllowMultiple = true)]
 public class GenerateForAttribute : Attribute
 {
     public GenerateForAttribute(Type type)

@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Allow to use `[GenerateFor(...)]` on interfaces.
+
 ## 32.4.6
 
 ### Fixed
