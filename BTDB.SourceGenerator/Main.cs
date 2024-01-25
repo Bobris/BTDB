@@ -139,6 +139,11 @@ public class SourceGenerator : IIncrementalGenerator
                         return null;
                     }
 
+                    if (symbol.DeclaredAccessibility == Accessibility.Protected)
+                    {
+                        return null;
+                    }
+
                     // If it has GenerateForAttribute then it has priority over GenerateAttribute
                     if (symbol.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: GenerateForName } attr &&

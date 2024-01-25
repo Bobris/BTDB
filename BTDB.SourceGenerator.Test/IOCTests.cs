@@ -164,6 +164,25 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForProtectedClassDoesNotDoAnything()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+             [BTDB.Generate]
+             public interface IHandler
+             {
+             }
+
+             public class ErrorHandler
+             {
+                 protected class NestedErrorHandler : IHandler
+                 {
+                 }
+             }
+             """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForSingleParameterPrivateConstructor()
     {
         // language=cs
