@@ -12,8 +12,18 @@ static file class GenerateForAttributeRegistration
     {
         return RuntimeHelpers.GetUninitializedObject(typeof(global::BTDB.GenerateForAttribute));
     }
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ConstructorParameters>k__BackingField")]
-    extern static ref global::System.Type[] Field1(global::BTDB.GenerateForAttribute @this);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ConstructorParameters")]
+    extern static global::System.Type[] Getter1(global::BTDB.GenerateForAttribute @this);
+    static object GenGetter1(object @this)
+    {
+        return Getter1(Unsafe.As<global::BTDB.GenerateForAttribute>(@this));
+    }
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_ConstructorParameters")]
+    extern static void Setter1(global::BTDB.GenerateForAttribute @this, global::System.Type[] value);
+    static void GenSetter1(object @this, object value)
+    {
+        Setter1(Unsafe.As<global::BTDB.GenerateForAttribute>(@this), Unsafe.As<global::System.Type[]>(value));
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -40,7 +50,8 @@ static file class GenerateForAttributeRegistration
             {
                 Name = "ConstructorParameters",
                 Type = typeof(global::System.Type[]),
-                ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
+                PropObjGetter = &GenGetter1,
+                PropObjSetter = &GenSetter1,
             },
         };
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);

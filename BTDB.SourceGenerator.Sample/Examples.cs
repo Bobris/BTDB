@@ -1,6 +1,7 @@
 using System;
 using BTDB;
 using BTDB.IOC;
+using Microsoft.AspNetCore.Http;
 
 var builder = new ContainerBuilder();
 //builder.RegisterType<Klass>();
@@ -11,6 +12,11 @@ unsafe
 {
     var h = IAnyHandler.CreateConsumeDispatcher(container);
     h(container, "Hello");
+}
+
+[GenerateFor(typeof(HttpContextAccessor))]
+interface xxx
+{
 }
 
 [Generate]

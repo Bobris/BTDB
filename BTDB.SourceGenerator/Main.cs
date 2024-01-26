@@ -388,7 +388,7 @@ public class SourceGenerator : IIncrementalGenerator
 
     bool IsDefaultMethodImpl(ImmutableArray<SyntaxReference> setMethodDeclaringSyntaxReferences)
     {
-        if (setMethodDeclaringSyntaxReferences.IsEmpty) return true;
+        if (setMethodDeclaringSyntaxReferences.IsEmpty) return false;
         if (setMethodDeclaringSyntaxReferences.Length > 1) return false;
         var syntax = setMethodDeclaringSyntaxReferences[0].GetSyntax();
         if (syntax is AccessorDeclarationSyntax { Body: null, ExpressionBody: null })
