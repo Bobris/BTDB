@@ -15,11 +15,11 @@ public interface IContainer
     Func<IContainer, IResolvingCtx?, object?> CreateFactory(Type type);
 
     internal static readonly
-        Dictionary<nint, Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>>>
+        Dictionary<nint, Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>?>>
         FactoryRegistry = new();
 
     public static void RegisterFactory(Type type,
-        Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>> factory)
+        Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>?> factory)
     {
         FactoryRegistry[type.TypeHandle.Value] = factory;
     }
