@@ -120,7 +120,12 @@ public class ContainerImpl : IContainer
                 var nestedFactory = CreateFactory(ctx, nestedType, key);
                 if (nestedFactory == null) return null;
 
-                return (c, r) => () => nestedFactory(c, r);
+                return (c, r) =>
+                {
+                    var res = () => nestedFactory(c, r);
+                    RawData.SetMethodTable(res, type);
+                    return res;
+                };
             }
 
             if (genericTypeDefinition == typeof(Func<,>))
@@ -132,7 +137,12 @@ public class ContainerImpl : IContainer
                     var nestedFactory = CreateFactory(ctx, nestedType, key);
                     if (nestedFactory == null) return null;
 
-                    return (_, r) => (IContainer c) => nestedFactory(c, r);
+                    return (_, r) =>
+                    {
+                        var res = (IContainer c) => nestedFactory(c, r);
+                        RawData.SetMethodTable(res, type);
+                        return res;
+                    };
                 }
                 else
                 {
@@ -146,27 +156,37 @@ public class ContainerImpl : IContainer
                     if (nestedFactory == null) return null;
                     if (hasResolvingCtx)
                     {
-                        return (c, r) => (object p1) =>
+                        return (c, r) =>
                         {
-                            var p1Backup = r.Exchange(p1Idx, p1);
-                            try
+                            var res = (object p1) =>
                             {
-                                return nestedFactory(c, r);
-                            }
-                            finally
-                            {
-                                r.Set(p1Idx, p1Backup);
-                            }
+                                var p1Backup = r.Exchange(p1Idx, p1);
+                                try
+                                {
+                                    return nestedFactory(c, r);
+                                }
+                                finally
+                                {
+                                    r.Set(p1Idx, p1Backup);
+                                }
+                            };
+                            RawData.SetMethodTable(res, type);
+                            return res;
                         };
                     }
                     else
                     {
                         var paramSize = ctxImpl.GetParamSize();
-                        return (c, _) => (object p1) =>
+                        return (c, _) =>
                         {
-                            var r = new ResolvingCtx(paramSize);
-                            r.Set(p1Idx, p1);
-                            return nestedFactory(c, r);
+                            var res = (object p1) =>
+                            {
+                                var r = new ResolvingCtx(paramSize);
+                                r.Set(p1Idx, p1);
+                                return nestedFactory(c, r);
+                            };
+                            RawData.SetMethodTable(res, type);
+                            return res;
                         };
                     }
                 }
@@ -179,7 +199,12 @@ public class ContainerImpl : IContainer
                 var nestedFactory = CreateFactory(ctx, nestedType, key);
                 if (nestedFactory == null) return null;
 
-                return (c, r) => Tuple.Create(nestedFactory(c, r));
+                return (c, r) =>
+                {
+                    var res = Tuple.Create(nestedFactory(c, r));
+                    RawData.SetMethodTable(res, type);
+                    return res;
+                };
             }
 
             if (genericTypeDefinition == typeof(Tuple<,>))
@@ -194,7 +219,12 @@ public class ContainerImpl : IContainer
                 var nestedFactory2 = CreateFactory(ctx, nestedType2, key);
                 if (nestedFactory2 == null) return null;
 
-                return (c, r) => Tuple.Create(nestedFactory1(c, r), nestedFactory2(c, r));
+                return (c, r) =>
+                {
+                    var res = Tuple.Create(nestedFactory1(c, r), nestedFactory2(c, r));
+                    RawData.SetMethodTable(res, type);
+                    return res;
+                };
             }
 
             if (genericTypeDefinition == typeof(Tuple<,,>))
@@ -213,7 +243,12 @@ public class ContainerImpl : IContainer
                 var nestedFactory3 = CreateFactory(ctx, nestedType3, key);
                 if (nestedFactory3 == null) return null;
 
-                return (c, r) => Tuple.Create(nestedFactory1(c, r), nestedFactory2(c, r), nestedFactory3(c, r));
+                return (c, r) =>
+                {
+                    var res = Tuple.Create(nestedFactory1(c, r), nestedFactory2(c, r), nestedFactory3(c, r));
+                    RawData.SetMethodTable(res, type);
+                    return res;
+                };
             }
 
             if (genericTypeDefinition == typeof(IEnumerable<>))
