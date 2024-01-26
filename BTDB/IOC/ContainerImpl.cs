@@ -462,7 +462,7 @@ public sealed class ResolvingCtx : IResolvingCtx
         return old;
     }
 
-    internal ResolvingCtx(int paramSize)
+    public ResolvingCtx(int paramSize)
     {
         _params = new object[paramSize];
     }

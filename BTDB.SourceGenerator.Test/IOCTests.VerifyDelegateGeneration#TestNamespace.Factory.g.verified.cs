@@ -13,7 +13,7 @@ static file class FactoryRegistration
     {
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Factory), Factory);
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(Func<int,string,ILogger>), Factory);
-        static Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object> Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
+        static Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object>? Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
         {
             using var resolvingCtxRestorer = ctx.ResolvingCtxRestorer();
             var hasResolvingCtx = ctx.HasResolvingCtx();
@@ -25,16 +25,16 @@ static file class FactoryRegistration
             {
                 return (c, r) => (int p0, string p1) =>
                 {
-                    var p0Backup = r.Exchange(p0Idx, p0);
-                    var p1Backup = r.Exchange(p1Idx, p1);
+                    var p0Backup = r!.Exchange(p0Idx, p0);
+                    var p1Backup = r!.Exchange(p1Idx, p1);
                     try
                     {
                         return nestedFactory(c, r);
                     }
                     finally
                     {
-                        r.Set(p0Idx, p0Backup);
-                        r.Set(p1Idx, p1Backup);
+                        r!.Set(p0Idx, p0Backup);
+                        r!.Set(p1Idx, p1Backup);
                     }
                 };
             }

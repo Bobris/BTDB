@@ -578,8 +578,8 @@ public class SourceGenerator : IIncrementalGenerator
             factoryCode1.Append(
                 $"var p{parameterIndex}Idx = ctx.AddInstanceToCtx(typeof({type}), \"{name}\");\n            ");
             factoryCode2.Append(
-                $"var p{parameterIndex}Backup = r.Exchange(p{parameterIndex}Idx, p{parameterIndex});\n                    ");
-            factoryCode3.Append($"    r.Set(p{parameterIndex}Idx, p{parameterIndex}Backup);\n                    ");
+                $"var p{parameterIndex}Backup = r!.Exchange(p{parameterIndex}Idx, p{parameterIndex});\n                    ");
+            factoryCode3.Append($"    r!.Set(p{parameterIndex}Idx, p{parameterIndex}Backup);\n                    ");
             factoryCode4.Append($"r.Set(p{parameterIndex}Idx, p{parameterIndex});\n                    ");
             parameterIndex++;
         }
@@ -599,7 +599,7 @@ public class SourceGenerator : IIncrementalGenerator
                 {
                     global::BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), Factory);
                     global::BTDB.IOC.IContainer.RegisterFactory(typeof(Func<{{funcParams}}{{resultingType}}>), Factory);
-                    static Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object> Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
+                    static Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object>? Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
                     {
                         using var resolvingCtxRestorer = ctx.ResolvingCtxRestorer();
                         var hasResolvingCtx = ctx.HasResolvingCtx();
