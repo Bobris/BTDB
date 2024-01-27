@@ -12,7 +12,7 @@
         
         <RootNamespace>BTDB.SourceGenerator</RootNamespace>
         <PackageId>BTDB.SourceGenerator</PackageId>
-        <Version>32.4.12</Version>
+        <Version>32.4.13</Version>
         <Authors>Boris Letocha</Authors>
         <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
