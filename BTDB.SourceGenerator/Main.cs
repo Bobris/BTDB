@@ -72,7 +72,7 @@ public class SourceGenerator : IIncrementalGenerator
                             .ToArray();
                     }
 
-                    return GenerationInfoForClass(symb, null, false, constructorParameters);
+                    return GenerationInfoForClass(symb, null, false, constructorParameters, semanticModel);
                 }
 
                 // Symbols allow us to get the compile-time information.
@@ -165,7 +165,7 @@ public class SourceGenerator : IIncrementalGenerator
                     var isPartial = classDeclarationSyntax.Modifiers
                         .Any(m => m.ValueText == "partial");
 
-                    return GenerationInfoForClass(symbol, classDeclarationSyntax, isPartial, null);
+                    return GenerationInfoForClass(symbol, classDeclarationSyntax, isPartial, null, semanticModel);
                 }
 
                 return null!;
@@ -175,7 +175,7 @@ public class SourceGenerator : IIncrementalGenerator
     }
 
     GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol, ClassDeclarationSyntax? classDeclarationSyntax,
-        bool isPartial, INamedTypeSymbol[]? constructorParameters)
+        bool isPartial, INamedTypeSymbol[]? constructorParameters, SemanticModel model)
     {
         if (symbol.DeclaredAccessibility == Accessibility.Private)
         {
@@ -338,7 +338,7 @@ public class SourceGenerator : IIncrementalGenerator
                         : null;
                     if (getterName != null && backingName == null)
                     {
-                        backingName = ExtractPropertyFromGetter(p.GetMethod!.DeclaringSyntaxReferences);
+                        backingName = ExtractPropertyFromGetter(p.GetMethod!.DeclaringSyntaxReferences, model);
                         if (backingName != null) getterName = null;
                     }
 
@@ -371,7 +371,7 @@ public class SourceGenerator : IIncrementalGenerator
             propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, null);
     }
 
-    string? ExtractPropertyFromGetter(ImmutableArray<SyntaxReference> declaringSyntaxReferences)
+    string? ExtractPropertyFromGetter(ImmutableArray<SyntaxReference> declaringSyntaxReferences, SemanticModel model)
     {
         if (declaringSyntaxReferences.IsEmpty) return null;
         if (declaringSyntaxReferences.Length > 1) return null;
@@ -379,8 +379,10 @@ public class SourceGenerator : IIncrementalGenerator
         if (syntax is not AccessorDeclarationSyntax ads) return null;
         if (ads.ExpressionBody is { } aecs)
         {
-            if (aecs.Expression is IdentifierNameSyntax ins)
+            if (aecs.Expression is IdentifierNameSyntax ins && model.GetSymbolInfo(ins) is { Symbol: IFieldSymbol })
+            {
                 return ins.Identifier.ValueText;
+            }
         }
 
         return null;

@@ -103,4 +103,24 @@ public class MetadataTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyMetadataWithComplexGetterSetterWhichLooksSimple()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public int Number { get; set; }
+                public int Age
+                {
+                    get => Number;
+                    set => Number = value;
+                }
+            }
+            """);
+    }
 }
