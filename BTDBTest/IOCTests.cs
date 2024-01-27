@@ -1619,10 +1619,9 @@ public partial class IocTests
     {
         public KlassWithFuncDependency(Func<ILogger, IErrorHandler> errorHandler, ILogger logger)
         {
-            errorHandler(logger);
+            Assert.NotNull(errorHandler(logger).Logger);
         }
     }
-
 
     [Fact]
     public void ComplexFuncDependency()
@@ -1634,5 +1633,17 @@ public partial class IocTests
         var container = builder.Build();
         var obj = container.Resolve<KlassWithFuncDependency>();
         Assert.NotNull(obj);
+    }
+
+    [Fact]
+    public void ComplexFuncDependency2()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<KlassWithFuncDependency>();
+        builder.RegisterType<Logger>().As<ILogger>();
+        builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
+        var container = builder.Build();
+        var obj = container.Resolve<Func<IDatabase, KlassWithFuncDependency>>();
+        obj(null);
     }
 }

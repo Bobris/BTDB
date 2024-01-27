@@ -11,6 +11,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
     internal uint SingletonDeepness;
     internal bool VerifySingletons;
     internal int Enumerate = -1;
+    internal int MaxParams = 0;
 
     Dictionary<(Type, string?), int> _paramTypeToIndex = new();
 
@@ -23,12 +24,12 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
 
     public int GetParamSize()
     {
-        return _paramTypeToIndex.Count;
+        return MaxParams;
     }
 
     public bool HasResolvingCtx()
     {
-        return GetParamSize() > 0;
+        return _paramTypeToIndex.Count > 0;
     }
 
     public int AddInstanceToCtx(Type paramType, string? name = null)
@@ -36,6 +37,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         if (_paramTypeToIndex.TryGetValue((paramType, name), out var idx)) return idx;
         idx = _paramTypeToIndex.Count;
         _paramTypeToIndex.Add((paramType, name), idx);
+        MaxParams = Math.Max(MaxParams, idx + 1);
         return idx;
     }
 
@@ -173,6 +175,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         public void Dispose()
         {
             Ctx._paramTypeToIndex = ParamTypeToIndex;
+            if (ParamTypeToIndex.Count == 0) Ctx.MaxParams = 0;
         }
     }
 
