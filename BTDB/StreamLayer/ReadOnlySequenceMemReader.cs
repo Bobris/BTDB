@@ -1,7 +1,6 @@
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using BTDB.Buffer;
 
 namespace BTDB.StreamLayer;
@@ -11,8 +10,6 @@ public class ReadOnlySequenceMemReader : IMemReader, IDisposable
     ReadOnlySequence<byte> _sequence;
     long _pos;
     MemoryHandle _pin;
-    byte[]? _buffer;
-    const int BufferSize = 4096;
 
     public ReadOnlySequenceMemReader(ReadOnlySequence<byte> sequence)
     {
@@ -37,49 +34,31 @@ public class ReadOnlySequenceMemReader : IMemReader, IDisposable
             return;
         }
 
-        _buffer = GC.AllocateUninitializedArray<byte>(BufferSize, pinned: true);
-        reader.Start = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_buffer));
-        reader.Current = reader.Start;
-        var len = Math.Min(_sequence.FirstSpan.Length, BufferSize);
-        reader.End = reader.Start + len;
-        _sequence.FirstSpan[..len].CopyTo(_buffer);
+        reader.Start = 0;
+        reader.Current = 0;
+        reader.End = 0;
     }
 
     public unsafe void FillBuf(ref MemReader memReader, nuint advisePrefetchLength)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(advisePrefetchLength, (nuint)BufferSize);
         var alreadyRead = memReader.Current - memReader.Start;
         _pos += alreadyRead;
         _sequence = _sequence.Slice(alreadyRead);
-        if (_sequence.IsEmpty) PackUnpack.ThrowEndOfStreamException();
-        var memory = _sequence.First;
-        _pin.Dispose();
-        if ((nuint)memory.Length >= advisePrefetchLength)
+        if (_sequence.IsEmpty)
         {
-            _pin = memory.Pin();
-            memReader.Start = (nint)_pin.Pointer;
-            memReader.Current = memReader.Start;
-            memReader.End = memReader.Start + memory.Length;
+            if (advisePrefetchLength > 0)
+                PackUnpack.ThrowEndOfStreamException();
+            memReader.Start = 0;
+            memReader.Current = 0;
+            memReader.End = 0;
             return;
         }
-
-        if (_buffer == null) _buffer = GC.AllocateUninitializedArray<byte>(BufferSize, pinned: true);
-        memReader.Start = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_buffer));
+        var memory = _sequence.First;
+        _pin.Dispose();
+        _pin = memory.Pin();
+        memReader.Start = (nint)_pin.Pointer;
         memReader.Current = memReader.Start;
-        var len = Math.Min(_sequence.FirstSpan.Length, BufferSize);
-        memReader.End = memReader.Start + len;
-        _sequence.FirstSpan[..len].CopyTo(_buffer);
-        var read = len;
-        var seq = _sequence;
-        while ((nuint)read < advisePrefetchLength)
-        {
-            seq = seq.Slice(len);
-            if (seq.IsEmpty) PackUnpack.ThrowEndOfStreamException();
-            len = Math.Min(seq.FirstSpan.Length, BufferSize - read);
-            memReader.End += len;
-            _sequence.FirstSpan[..len].CopyTo(_buffer[read..]);
-            read += len;
-        }
+        memReader.End = memReader.Start + memory.Length;
     }
 
     public long GetCurrentPosition(in MemReader memReader)
