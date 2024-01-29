@@ -968,7 +968,7 @@ public class SourceGenerator : IIncrementalGenerator
             """;
 
         context.AddSource(
-            $"{(generationInfo.Namespace == null ? "" : generationInfo.Namespace + ".") + generationInfo.Name}.g.cs",
+            $"{generationInfo.FullName.Replace("global::","").Replace("<","[").Replace(">","]")}.g.cs",
             SourceText.From(code, Encoding.UTF8));
     }
 }

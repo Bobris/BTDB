@@ -462,6 +462,28 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyGenerateForCouldBeUsedForGenericClassesWithMultipleVariants()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            [BTDB.GenerateFor(typeof(Logger<int>))]
+            [BTDB.GenerateFor(typeof(Logger<string>))]
+            public class Logger<T>: ILogger
+            {
+                public Logger(T a)
+                {
+                }
+            }
+            ");
+    }
+
+    [Fact]
     public Task VerifyGenerateForCouldBeUsedForChoosingDifferentConstructor()
     {
         // language=cs

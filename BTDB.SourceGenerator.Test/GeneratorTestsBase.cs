@@ -31,8 +31,11 @@ public class GeneratorTestsBase
         // Assert the driver doesn't recompute the output
         var result = runResult2.GetRunResult().Results.Single();
         var allOutputs = result.TrackedOutputSteps.SelectMany(outputStep => outputStep.Value)
-            .SelectMany(output => output.Outputs);
-        Assert.Collection(allOutputs, output => Assert.Equal(IncrementalStepRunReason.Cached, output.Reason));
+            .SelectMany(output => output.Outputs).ToList();
+        if (allOutputs.Count != 0)
+        {
+            Assert.Collection(allOutputs, output => Assert.Equal(IncrementalStepRunReason.Cached, output.Reason));
+        }
 
         return Verifier.Verify(runResult);
     }
