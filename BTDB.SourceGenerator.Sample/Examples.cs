@@ -20,6 +20,17 @@ interface xxx
 }
 
 [Generate]
+public class DynamicEventWrapper
+{
+    public dynamic DynamicEvent { get; set; }
+
+    public DynamicEventWrapper(dynamic dynamicEvent)
+    {
+        DynamicEvent = dynamicEvent;
+    }
+}
+
+[Generate]
 public class Person
 {
     string _name = "";

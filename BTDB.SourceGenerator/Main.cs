@@ -574,11 +574,12 @@ public class SourceGenerator : IIncrementalGenerator
 
         foreach (var (name, type, _, _, _) in generationInfo.ConstructorParameters)
         {
+            var normalizeType = NormalizeType(type);
             if (parameterIndex > 0) parametersCode.Append(", ");
-            parametersCode.Append($"{type} p{parameterIndex}");
-            funcParams.Append($"{type},");
+            parametersCode.Append($"{normalizeType} p{parameterIndex}");
+            funcParams.Append($"{normalizeType},");
             factoryCode1.Append(
-                $"var p{parameterIndex}Idx = ctx.AddInstanceToCtx(typeof({type}), \"{name}\");\n            ");
+                $"var p{parameterIndex}Idx = ctx.AddInstanceToCtx(typeof({normalizeType}), \"{name}\");\n            ");
             factoryCode2.Append(
                 $"var p{parameterIndex}Backup = r!.Exchange(p{parameterIndex}Idx, p{parameterIndex});\n                    ");
             factoryCode3.Append($"    r!.Set(p{parameterIndex}Idx, p{parameterIndex}Backup);\n                    ");
@@ -657,23 +658,25 @@ public class SourceGenerator : IIncrementalGenerator
 
         foreach (var (name, type, isReference, optional, defaultValue) in generationInfo.ConstructorParameters)
         {
+            var normalizeType = NormalizeType(type);
             if (parameterIndex > 0) parametersCode.Append(", ");
-            factoryCode.Append($"var f{parameterIndex} = container.CreateFactory(ctx, typeof({type}), \"{name}\");");
+            factoryCode.Append(
+                $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizeType}), \"{name}\");");
             factoryCode.Append("\n            ");
             if (!optional)
             {
                 factoryCode.Append(
-                    $"if (f{parameterIndex} == null) throw new global::System.ArgumentException(\"Cannot resolve {type.Replace("global::", "")} {name} parameter of {generationInfo.FullName.Replace("global::", "")}\");");
+                    $"if (f{parameterIndex} == null) throw new global::System.ArgumentException(\"Cannot resolve {normalizeType.Replace("global::", "")} {name} parameter of {generationInfo.FullName.Replace("global::", "")}\");");
                 factoryCode.Append("\n            ");
-                parametersCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
+                parametersCode.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"({normalizeType})(");
                 parametersCode.Append($"f{parameterIndex}(container2, ctx2))");
             }
             else
             {
                 parametersCode.Append($"f{parameterIndex} != null ? ");
-                parametersCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"(({type})");
+                parametersCode.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"(({normalizeType})");
                 parametersCode.Append($"f{parameterIndex}(container2, ctx2)) : " +
-                                      (defaultValue ?? $"default({type})"));
+                                      (defaultValue ?? $"default({normalizeType})"));
             }
 
             parameterIndex++;
@@ -682,17 +685,17 @@ public class SourceGenerator : IIncrementalGenerator
         foreach (var propertyInfo in generationInfo.Properties)
         {
             var name = propertyInfo.Name;
-            var type = propertyInfo.Type;
+            var normalizedType = NormalizeType(propertyInfo.Type);
             var dependencyName = propertyInfo.DependencyName ?? name;
             var isReference = propertyInfo.IsReference;
             var optional = propertyInfo.Optional;
             factoryCode.Append(
-                $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({type}), \"{dependencyName}\");");
+                $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizedType}), \"{dependencyName}\");");
             factoryCode.Append("\n            ");
             if (!optional)
             {
                 factoryCode.Append(
-                    $"if (f{parameterIndex} == null) throw new global::System.ArgumentException(\"Cannot resolve {type.Replace("global::", "")} {name} property of {generationInfo.FullName.Replace("global::", "")}\");");
+                    $"if (f{parameterIndex} == null) throw new global::System.ArgumentException(\"Cannot resolve {normalizedType.Replace("global::", "")} {name} property of {generationInfo.FullName.Replace("global::", "")}\");");
                 factoryCode.Append("\n            ");
             }
 
@@ -712,7 +715,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                         """);
                     propertyCode.Append($"FieldRef{name}(res) = ");
-                    propertyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
+                    propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
                     propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
                 }
                 else
@@ -720,18 +723,18 @@ public class SourceGenerator : IIncrementalGenerator
                     // language=c#
                     additionalDeclarations.Append($"""
                             [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{propertyInfo.BackingName}")]
-                            extern static void MethodSetter{propertyInfo.Name}({generationInfo.FullName} @this, {propertyInfo.Type} value);
+                            extern static void MethodSetter{name}({generationInfo.FullName} @this, {normalizedType} value);
 
                         """);
                     propertyCode.Append($"MethodSetter{name}(res, ");
-                    propertyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
+                    propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
                     propertyCode.Append($"f{parameterIndex}(container2, ctx2)));");
                 }
             }
             else
             {
                 propertyCode.Append($"res.{name} = ");
-                propertyCode.Append(isReference ? $"Unsafe.As<{type}>(" : $"({type})(");
+                propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
                 propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
             }
 
@@ -815,13 +818,14 @@ public class SourceGenerator : IIncrementalGenerator
             var fieldIndex = 0;
             foreach (var field in generationInfo.Fields)
             {
+                var normalizedType = NormalizeType(field.Type);
                 fieldIndex++;
                 // language=c#
                 metadataCode.Append($$"""
                                 new global::BTDB.Serialization.FieldMetadata
                                 {
                                     Name = "{{field.Name}}",
-                                    Type = typeof({{field.Type}}),
+                                    Type = typeof({{normalizedType}}),
 
                     """);
                 if (field.BackingName != null)
@@ -829,7 +833,7 @@ public class SourceGenerator : IIncrementalGenerator
                     // language=c#
                     declarations.Append($"""
                             [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
-                            extern static ref {field.Type} Field{fieldIndex}({generationInfo.FullName} @this);
+                            extern static ref {normalizedType} Field{fieldIndex}({generationInfo.FullName} @this);
 
                         """);
                     // language=c#
@@ -844,7 +848,7 @@ public class SourceGenerator : IIncrementalGenerator
                     // language=c#
                     declarations.Append($$"""
                             [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
-                            extern static {{field.Type}} Getter{{fieldIndex}}({{generationInfo.FullName}} @this);
+                            extern static {{normalizedType}} Getter{{fieldIndex}}({{generationInfo.FullName}} @this);
                             static object GenGetter{{fieldIndex}}(object @this)
                             {
                                 return Getter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this));
@@ -863,10 +867,10 @@ public class SourceGenerator : IIncrementalGenerator
                     // language=c#
                     declarations.Append($$"""
                             [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
-                            extern static {{field.Type}} Getter{{fieldIndex}}({{generationInfo.FullName}} @this);
+                            extern static {{normalizedType}} Getter{{fieldIndex}}({{generationInfo.FullName}} @this);
                             static void GenGetter{{fieldIndex}}(object @this, ref byte value)
                             {
-                                Unsafe.As<byte, {{field.Type}}>(ref value) = Getter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this));
+                                Unsafe.As<byte, {{normalizedType}}>(ref value) = Getter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this));
                             }
 
                         """);
@@ -882,10 +886,10 @@ public class SourceGenerator : IIncrementalGenerator
                     // language=c#
                     declarations.Append($$"""
                             [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
-                            extern static void Setter{{fieldIndex}}({{generationInfo.FullName}} @this, {{field.Type}} value);
+                            extern static void Setter{{fieldIndex}}({{generationInfo.FullName}} @this, {{normalizedType}} value);
                             static void GenSetter{{fieldIndex}}(object @this, object value)
                             {
-                                Setter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this), Unsafe.As<{{field.Type}}>(value));
+                                Setter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this), Unsafe.As<{{normalizedType}}>(value));
                             }
 
                         """);
@@ -901,10 +905,10 @@ public class SourceGenerator : IIncrementalGenerator
                     // language=c#
                     declarations.Append($$"""
                             [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
-                            extern static void Setter{{fieldIndex}}({{generationInfo.FullName}} @this, {{field.Type}} value);
+                            extern static void Setter{{fieldIndex}}({{generationInfo.FullName}} @this, {{normalizedType}} value);
                             static void GenSetter{{fieldIndex}}(object @this, ref byte value)
                             {
-                                Setter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this), Unsafe.As<byte, {{field.Type}}>(ref value));
+                                Setter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this), Unsafe.As<byte, {{normalizedType}}>(ref value));
                             }
 
                         """);
@@ -968,8 +972,14 @@ public class SourceGenerator : IIncrementalGenerator
             """;
 
         context.AddSource(
-            $"{generationInfo.FullName.Replace("global::","").Replace("<","[").Replace(">","]")}.g.cs",
+            $"{generationInfo.FullName.Replace("global::", "").Replace("<", "[").Replace(">", "]")}.g.cs",
             SourceText.From(code, Encoding.UTF8));
+    }
+
+    static string NormalizeType(string type)
+    {
+        if (type == "dynamic") return "object";
+        return type;
     }
 }
 

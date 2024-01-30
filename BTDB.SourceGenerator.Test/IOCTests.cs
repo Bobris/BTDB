@@ -532,4 +532,22 @@ public class IOCTests : GeneratorTestsBase
             }
             ");
     }
+
+    [Fact]
+    public Task VerifyDynamicDoesNotBreakMe()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            [BTDB.Generate]
+            public class DynamicEventWrapper
+            {
+                public dynamic DynamicEvent { get; set; }
+
+                public DynamicEventWrapper(dynamic dynamicEvent)
+                {
+                    DynamicEvent = dynamicEvent;
+                }
+            }
+            ");
+    }
 }
