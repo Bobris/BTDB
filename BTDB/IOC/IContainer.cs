@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 
 namespace BTDB.IOC;
@@ -15,7 +16,7 @@ public interface IContainer
     Func<IContainer, IResolvingCtx?, object?> CreateFactory(Type type);
 
     internal static readonly
-        Dictionary<nint, Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>?>>
+        ConcurrentDictionary<nint, Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx?, object>?>>
         FactoryRegistry = new();
 
     public static void RegisterFactory(Type type,
