@@ -808,7 +808,7 @@ public class SourceGenerator : IIncrementalGenerator
                         metadata.Name = "{{generationInfo.Name}}";
                         metadata.Type = typeof({{generationInfo.FullName}});
                         metadata.Namespace = "{{generationInfo.Namespace ?? ""}}";
-                        metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Select(i => $"typeof({i.FullyQualifiedName})"))}}];
+                        metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Where(i=>i.FullyQualifiedName.StartsWith("global::", StringComparison.Ordinal)).Select(i => $"typeof({i.FullyQualifiedName})"))}}];
                         metadata.Creator = &Creator;
                         var dummy = Unsafe.As<{{generationInfo.FullName}}>(metadata);
                         metadata.Fields = new[]
