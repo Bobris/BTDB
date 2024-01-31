@@ -316,6 +316,25 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyClassWithRequiredPropertyInBaseClass()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            public class BaseClass
+            {
+                public required int Prop { get; set; }
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler : BaseClass
+            {
+            }
+            ");
+    }
+
+    [Fact]
     public Task VerifyCustomInitOnlyOptionalDependency()
     {
         // language=cs

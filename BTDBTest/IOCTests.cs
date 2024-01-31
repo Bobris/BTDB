@@ -426,7 +426,7 @@ public partial class IocTests
     {
         var builder = new ContainerBuilder();
         builder.AutoRegisterTypes()
-            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps"))
+            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps") && t.Name != "Logger")
             .AsImplementedInterfaces();
         var container = builder.Build();
         var root = container.Resolve<IWebService>();
@@ -440,7 +440,8 @@ public partial class IocTests
     {
         var builder = new ContainerBuilder();
         builder.AutoRegisterTypes()
-            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces();
+            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database" && t.Name != "Logger")
+            .AsImplementedInterfaces();
         var container = builder.Build();
         var root = container.Resolve<IWebService>();
         Assert.NotNull(root);
@@ -453,7 +454,7 @@ public partial class IocTests
     {
         var builder = new ContainerBuilder();
         builder.AutoRegisterTypes()
-            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps"))
+            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps") && t.Name != "Logger")
             .AsImplementedInterfaces().SingleInstance();
         var container = builder.Build();
         var root = container.Resolve<IWebService>();
@@ -467,7 +468,8 @@ public partial class IocTests
     {
         var builder = new ContainerBuilder();
         builder.AutoRegisterTypes()
-            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces()
+            .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database" && t.Name != "Logger")
+            .AsImplementedInterfaces()
             .SingleInstance();
         var container = builder.Build();
         var root = container.Resolve<IWebService>();

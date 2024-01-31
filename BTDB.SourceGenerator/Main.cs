@@ -352,14 +352,14 @@ public class SourceGenerator : IIncrementalGenerator
                 })).ToArray();
 
         var privateConstructor =
-            constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected || symbol
-                .GetMembers()
+            constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected ||
+            GetAllMembersIncludingBase(symbol)
                 .OfType<IFieldSymbol>()
                 .Where(f => !f.IsStatic)
                 .Any(f =>
                     f.IsRequired)
             ||
-            symbol.GetMembers()
+            GetAllMembersIncludingBase(symbol)
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic)
                 .Any(p =>
@@ -369,6 +369,20 @@ public class SourceGenerator : IIncrementalGenerator
             hasDefaultConstructor,
             parameters,
             propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, null);
+    }
+
+    IEnumerable<ISymbol> GetAllMembersIncludingBase(INamedTypeSymbol symbol)
+    {
+        var members = new List<ISymbol>();
+        var currentSymbol = symbol;
+
+        while (currentSymbol != null)
+        {
+            members.AddRange(currentSymbol.GetMembers());
+            currentSymbol = currentSymbol.BaseType;
+        }
+
+        return members;
     }
 
     string? ExtractPropertyFromGetter(ImmutableArray<SyntaxReference> declaringSyntaxReferences, SemanticModel model)
@@ -808,7 +822,7 @@ public class SourceGenerator : IIncrementalGenerator
                         metadata.Name = "{{generationInfo.Name}}";
                         metadata.Type = typeof({{generationInfo.FullName}});
                         metadata.Namespace = "{{generationInfo.Namespace ?? ""}}";
-                        metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Where(i=>i.FullyQualifiedName.StartsWith("global::", StringComparison.Ordinal)).Select(i => $"typeof({i.FullyQualifiedName})"))}}];
+                        metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Where(i => i.FullyQualifiedName.StartsWith("global::", StringComparison.Ordinal)).Select(i => $"typeof({i.FullyQualifiedName})"))}}];
                         metadata.Creator = &Creator;
                         var dummy = Unsafe.As<{{generationInfo.FullName}}>(metadata);
                         metadata.Fields = new[]
