@@ -335,20 +335,8 @@ public class ContainerImpl : IContainer
                 var singletonFactoryCache = Volatile.Read(ref cReg.SingletonFactoryCache);
                 if (singletonFactoryCache != null) return singletonFactoryCache;
 
-                Func<IContainer, IResolvingCtx, object> f;
-                {
-                    using var resolvingCtxRestorer = ctxImpl.ResolvingCtxRestorer();
-                    using var enumerableRestorer = ctxImpl.EnumerableRestorer();
-                    ctxImpl.SingletonDeepness++;
-                    try
-                    {
-                        f = cReg.Factory(this, ctx);
-                    }
-                    finally
-                    {
-                        ctxImpl.SingletonDeepness--;
-                    }
-                }
+                Func<IContainer, IResolvingCtx, object>? f = null;
+
                 var ff = (IContainer container, IResolvingCtx resolvingCtx) =>
                 {
                     ref var singleton = ref ((ContainerImpl)container).Singletons[cReg.SingletonId];
@@ -372,7 +360,13 @@ public class ContainerImpl : IContainer
                     instance = Interlocked.CompareExchange(ref singleton, mySingletonLocker, null);
                     if (instance == null)
                     {
-                        instance = f(container, resolvingCtx);
+                        Func<IContainer, IResolvingCtx, object>? f1;
+                        // ReSharper disable once AccessToModifiedClosure - solving chicken egg problem
+                        while ((f1 = Volatile.Read(ref f))==null)
+                        {
+                            Thread.Yield();
+                        }
+                        instance = f1(container, resolvingCtx);
                         Volatile.Write(ref singleton, instance);
                         Monitor.Exit(mySingletonLocker);
                         // Free memory for factory because next time it will be just simple getter
@@ -392,8 +386,21 @@ public class ContainerImpl : IContainer
                     return instance;
                 };
                 // If factory is already set by different thread, use it and throw away mine
-                ff = Interlocked.CompareExchange(ref cReg.SingletonFactoryCache, ff, null) ?? ff;
-                return ff;
+                if (Interlocked.CompareExchange(ref cReg.SingletonFactoryCache, ff, null)==null)
+                {
+                    using var resolvingCtxRestorer = ctxImpl.ResolvingCtxRestorer();
+                    using var enumerableRestorer = ctxImpl.EnumerableRestorer();
+                    ctxImpl.SingletonDeepness++;
+                    try
+                    {
+                        f = cReg.Factory(this, ctx);
+                    }
+                    finally
+                    {
+                        ctxImpl.SingletonDeepness--;
+                    }
+                }
+                return cReg.SingletonFactoryCache;
             }
 
             if (ctxImpl.VerifySingletons && ctxImpl.SingletonDeepness > 0 && cReg.SingletonId != uint.MaxValue)
