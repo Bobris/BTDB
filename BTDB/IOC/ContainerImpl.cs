@@ -432,6 +432,7 @@ public class ContainerImpl : IContainer
         var nestedFactory = CreateFactory(ctx, nestedType, key);
         if (nestedFactory == null)
         {
+            ctxImpl.FinishEnumerate(enumerableBackup);
             return (_, _) => Array.CreateInstance(nestedType, 0);
         }
 
