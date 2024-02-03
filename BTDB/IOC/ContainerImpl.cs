@@ -275,8 +275,14 @@ public class ContainerImpl : IContainer
                 };
                 ctxImpl.RegisterLazyFactory(nestedType, lazyFactory);
                 var backupResolvingStack = ctxImpl.BackupResolvingStack();
-                nestedFactory = CreateFactory(ctx, nestedType, key);
-                ctxImpl.RestoreResolvingStack(backupResolvingStack);
+                try
+                {
+                    nestedFactory = CreateFactory(ctx, nestedType, key);
+                }
+                finally
+                {
+                    ctxImpl.RestoreResolvingStack(backupResolvingStack);
+                }
                 if (nestedFactory == null) return null;
                 return lazyFactory;
             }
