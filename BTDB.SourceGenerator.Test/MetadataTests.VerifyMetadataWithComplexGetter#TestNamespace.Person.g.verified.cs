@@ -12,15 +12,15 @@ static file class PersonRegistration
     extern static global::TestNamespace.Person Creator();
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Name")]
     extern static string Getter1(global::TestNamespace.Person @this);
-    static object GenGetter1(object @this)
+    static void GenGetter1(object @this, ref byte value)
     {
-        return Getter1(Unsafe.As<global::TestNamespace.Person>(@this));
+        Unsafe.As<byte, string>(ref value) = Getter1(Unsafe.As<global::TestNamespace.Person>(@this));
     }
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_Name")]
     extern static void Setter1(global::TestNamespace.Person @this, string value);
-    static void GenSetter1(object @this, object value)
+    static void GenSetter1(object @this, ref byte value)
     {
-        Setter1(Unsafe.As<global::TestNamespace.Person>(@this), Unsafe.As<string>(value));
+        Setter1(Unsafe.As<global::TestNamespace.Person>(@this), Unsafe.As<byte, string>(ref value));
     }
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Age")]
     extern static int Getter2(global::TestNamespace.Person @this);
@@ -58,8 +58,8 @@ static file class PersonRegistration
             {
                 Name = "Name",
                 Type = typeof(string),
-                PropObjGetter = &GenGetter1,
-                PropObjSetter = &GenSetter1,
+                PropRefGetter = &GenGetter1,
+                PropRefSetter = &GenSetter1,
             },
             new global::BTDB.Serialization.FieldMetadata
             {

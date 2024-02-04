@@ -857,26 +857,7 @@ public class SourceGenerator : IIncrementalGenerator
                         """);
                 }
 
-                if (field is { GetterName: not null, IsReference: true })
-                {
-                    // language=c#
-                    declarations.Append($$"""
-                            [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
-                            extern static {{normalizedType}} Getter{{fieldIndex}}({{generationInfo.FullName}} @this);
-                            static object GenGetter{{fieldIndex}}(object @this)
-                            {
-                                return Getter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this));
-                            }
-
-                        """);
-                    // language=c#
-                    metadataCode.Append($$"""
-                                        PropObjGetter = &GenGetter{{fieldIndex}},
-
-                        """);
-                }
-
-                if (field is { GetterName: not null, IsReference: false })
+                if (field is { GetterName: not null})
                 {
                     // language=c#
                     declarations.Append($$"""
@@ -895,26 +876,7 @@ public class SourceGenerator : IIncrementalGenerator
                         """);
                 }
 
-                if (field is { SetterName: not null, IsReference: true })
-                {
-                    // language=c#
-                    declarations.Append($$"""
-                            [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
-                            extern static void Setter{{fieldIndex}}({{generationInfo.FullName}} @this, {{normalizedType}} value);
-                            static void GenSetter{{fieldIndex}}(object @this, object value)
-                            {
-                                Setter{{fieldIndex}}(Unsafe.As<{{generationInfo.FullName}}>(@this), Unsafe.As<{{normalizedType}}>(value));
-                            }
-
-                        """);
-                    // language=c#
-                    metadataCode.Append($"""
-                                        PropObjSetter = &GenSetter{fieldIndex},
-
-                        """);
-                }
-
-                if (field is { SetterName: not null, IsReference: false })
+                if (field is { SetterName: not null })
                 {
                     // language=c#
                     declarations.Append($$"""

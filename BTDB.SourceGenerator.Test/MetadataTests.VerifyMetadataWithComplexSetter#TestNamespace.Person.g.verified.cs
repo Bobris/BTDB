@@ -14,9 +14,9 @@ static file class PersonRegistration
     extern static ref string Field1(global::TestNamespace.Person @this);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_Name")]
     extern static void Setter1(global::TestNamespace.Person @this, string value);
-    static void GenSetter1(object @this, object value)
+    static void GenSetter1(object @this, ref byte value)
     {
-        Setter1(Unsafe.As<global::TestNamespace.Person>(@this), Unsafe.As<string>(value));
+        Setter1(Unsafe.As<global::TestNamespace.Person>(@this), Unsafe.As<byte, string>(ref value));
     }
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_age")]
     extern static ref int Field2(global::TestNamespace.Person @this);
@@ -51,7 +51,7 @@ static file class PersonRegistration
                 Name = "Name",
                 Type = typeof(string),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
-                PropObjSetter = &GenSetter1,
+                PropRefSetter = &GenSetter1,
             },
             new global::BTDB.Serialization.FieldMetadata
             {

@@ -14,15 +14,15 @@ static file class GenerateForAttributeRegistration
     }
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ConstructorParameters")]
     extern static global::System.Type[] Getter1(global::BTDB.GenerateForAttribute @this);
-    static object GenGetter1(object @this)
+    static void GenGetter1(object @this, ref byte value)
     {
-        return Getter1(Unsafe.As<global::BTDB.GenerateForAttribute>(@this));
+        Unsafe.As<byte, global::System.Type[]>(ref value) = Getter1(Unsafe.As<global::BTDB.GenerateForAttribute>(@this));
     }
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_ConstructorParameters")]
     extern static void Setter1(global::BTDB.GenerateForAttribute @this, global::System.Type[] value);
-    static void GenSetter1(object @this, object value)
+    static void GenSetter1(object @this, ref byte value)
     {
-        Setter1(Unsafe.As<global::BTDB.GenerateForAttribute>(@this), Unsafe.As<global::System.Type[]>(value));
+        Setter1(Unsafe.As<global::BTDB.GenerateForAttribute>(@this), Unsafe.As<byte, global::System.Type[]>(ref value));
     }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
@@ -50,8 +50,8 @@ static file class GenerateForAttributeRegistration
             {
                 Name = "ConstructorParameters",
                 Type = typeof(global::System.Type[]),
-                PropObjGetter = &GenGetter1,
-                PropObjSetter = &GenSetter1,
+                PropRefGetter = &GenGetter1,
+                PropRefSetter = &GenSetter1,
             },
         };
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);

@@ -43,8 +43,8 @@ public class SandboxTest
             {
                 Name = "Name",
                 Type = typeof(string),
-                PropObjGetter = &GetName,
-                PropObjSetter = &SetName
+                PropRefGetter = &GetName,
+                PropRefSetter = &SetName
             },
             new FieldMetadata
             {
@@ -56,14 +56,14 @@ public class SandboxTest
 
         Assert.Equal(2 * Unsafe.SizeOf<object>(), (int)metadata.Fields[1].ByteOffset.GetValueOrDefault());
 
-        static object GetName(object obj)
+        static void GetName(object obj, ref byte value)
         {
-            return Unsafe.As<Person>(obj).Name;
+            Unsafe.As<byte, string>(ref value) = Unsafe.As<Person>(obj).Name;
         }
 
-        static void SetName(object obj, object value)
+        static void SetName(object obj, ref byte value)
         {
-            Unsafe.As<Person>(obj).Name = Unsafe.As<string>(value);
+            Unsafe.As<Person>(obj).Name = Unsafe.As<byte, string>(ref value);
         }
     }
 }
