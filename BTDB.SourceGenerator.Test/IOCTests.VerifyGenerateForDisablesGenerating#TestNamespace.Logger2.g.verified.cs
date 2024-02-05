@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace TestNamespace;
 
+[CompilerGenerated]
 static file class Logger2Registration
 {
     [ModuleInitializer]

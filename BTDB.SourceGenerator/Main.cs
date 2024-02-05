@@ -609,6 +609,7 @@ public class SourceGenerator : IIncrementalGenerator
             using System;
             using System.Runtime.CompilerServices;
             {{namespaceLine}}
+            [CompilerGenerated]
             static file class {{generationInfo.Name}}Registration
             {
                 [ModuleInitializer]
@@ -768,6 +769,7 @@ public class SourceGenerator : IIncrementalGenerator
         }
         else
         {
+            declarations.Append("[CompilerGenerated]\n");
             declarations.Append($"static file class {generationInfo.Name}Registration\n{{\n");
         }
 
@@ -857,7 +859,7 @@ public class SourceGenerator : IIncrementalGenerator
                         """);
                 }
 
-                if (field is { GetterName: not null})
+                if (field is { GetterName: not null })
                 {
                     // language=c#
                     declarations.Append($$"""

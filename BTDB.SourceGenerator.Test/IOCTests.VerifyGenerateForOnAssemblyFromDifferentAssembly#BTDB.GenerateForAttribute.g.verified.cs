@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace BTDB;
 
+[CompilerGenerated]
 static file class GenerateForAttributeRegistration
 {
     static object Creator()

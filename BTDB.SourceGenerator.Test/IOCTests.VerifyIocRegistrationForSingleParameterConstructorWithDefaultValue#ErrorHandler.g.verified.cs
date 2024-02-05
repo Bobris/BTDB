@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
+[CompilerGenerated]
 static file class ErrorHandlerRegistration
 {
     [ModuleInitializer]
