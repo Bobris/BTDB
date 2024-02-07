@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.4.19
+
 ### Fixed
 
 IOC ResolveOptionalKeyed should not fallback to keyless registration.
