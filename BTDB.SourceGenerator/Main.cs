@@ -20,7 +20,7 @@ public class SourceGenerator : IIncrementalGenerator
     {
         var gen = context.SyntaxProvider.CreateSyntaxProvider(
             (node, _) => node is ClassDeclarationSyntax or InterfaceDeclarationSyntax or DelegateDeclarationSyntax
-                or AttributeSyntax,
+                or RecordDeclarationSyntax or AttributeSyntax,
             (syntaxContext, _) =>
             {
                 var semanticModel = syntaxContext.SemanticModel;
@@ -67,7 +67,14 @@ public class SourceGenerator : IIncrementalGenerator
                         }
 
                         constructorParameters = aces.Elements
-                            .Select(e => semanticModel.GetSymbolInfo(e).Symbol)
+                            .Select(e =>
+                            {
+                                var expressionSyntax = (e as ExpressionElementSyntax)?.Expression;
+                                var typeSyntax = (expressionSyntax as TypeOfExpressionSyntax)?.Type;
+                                if (typeSyntax == null) return null;
+                                var info = semanticModel.GetSymbolInfo(typeSyntax);
+                                return info.Symbol;
+                            })
                             .OfType<INamedTypeSymbol>()
                             .ToArray();
                     }
@@ -168,13 +175,49 @@ public class SourceGenerator : IIncrementalGenerator
                     return GenerationInfoForClass(symbol, classDeclarationSyntax, isPartial, null, semanticModel);
                 }
 
+                if (syntaxContext.Node is RecordDeclarationSyntax recordDeclarationSyntax)
+                {
+                    if (symbol.IsGenericType)
+                    {
+                        return null;
+                    }
+
+                    if (symbol.DeclaredAccessibility == Accessibility.Protected)
+                    {
+                        return null;
+                    }
+
+                    // If it has GenerateForAttribute then it has priority over GenerateAttribute
+                    if (symbol.GetAttributes().Any(a =>
+                            a.AttributeClass is { Name: GenerateForName } attr &&
+                            attr.ContainingNamespace?.ToDisplayString() == Namespace))
+                        return null;
+                    if (!symbol.GetAttributes().Any(a =>
+                            a.AttributeClass is { Name: AttributeName } attr &&
+                            attr.ContainingNamespace?.ToDisplayString() == Namespace)
+                        && !symbol.AllInterfaces.Any(interfaceSymbol => interfaceSymbol.GetAttributes().Any(a =>
+                            a.AttributeClass is { Name: AttributeName } attr &&
+                            attr.ContainingNamespace?.ToDisplayString() == Namespace))
+                        && !(symbol.BaseType?.GetAttributes().Any(a =>
+                            a.AttributeClass is { Name: AttributeName } attr &&
+                            attr.ContainingNamespace?.ToDisplayString() == Namespace) ?? false))
+                    {
+                        return null;
+                    }
+
+                    var isPartial = recordDeclarationSyntax.Modifiers
+                        .Any(m => m.ValueText == "partial");
+
+                    return GenerationInfoForClass(symbol, recordDeclarationSyntax, isPartial, null, semanticModel);
+                }
+
                 return null!;
             }).Where(i => i != null);
 
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
     }
 
-    GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol, ClassDeclarationSyntax? classDeclarationSyntax,
+    GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol, TypeDeclarationSyntax? classDeclarationSyntax,
         bool isPartial, INamedTypeSymbol[]? constructorParameters, SemanticModel model)
     {
         if (symbol.DeclaredAccessibility == Accessibility.Private)
@@ -212,10 +255,12 @@ public class SourceGenerator : IIncrementalGenerator
             ? null
             : containingNamespace.ToDisplayString();
         var className = symbol.Name;
-        var constructor = symbol.Constructors.FirstOrDefault();
+        IMethodSymbol? constructor = null;
         var hasDefaultConstructor = false;
         foreach (var symbolConstructor in symbol.Constructors)
         {
+            if (symbolConstructor.Parameters.Any(p => SymbolEqualityComparer.Default.Equals(p.Type, symbol)))
+                continue;
             if (constructorParameters != null)
             {
                 if (symbolConstructor.Parameters.Length == constructorParameters.Length)
@@ -243,7 +288,7 @@ public class SourceGenerator : IIncrementalGenerator
                     hasDefaultConstructor = true;
                 }
 
-                if (symbolConstructor.Parameters.Length > constructor?.Parameters.Length)
+                if (symbolConstructor.Parameters.Length > (constructor?.Parameters.Length ?? 0))
                 {
                     constructor = symbolConstructor;
                 }

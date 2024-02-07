@@ -1657,4 +1657,43 @@ public partial class IocTests
         var container = builder.Build();
         Assert.Null(container.ResolveOptionalKeyed<ILogger>(false));
     }
+
+    internal sealed record RecordSealed
+    {
+        public string Name { get; init; } = "name";
+    }
+
+    [Fact]
+    public void ResolveRecordSealed()
+    {
+        var expected = new RecordSealed();
+
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterTypeWithFallback(typeof(RecordSealed));
+        var container = containerBuilder.Build();
+
+        var actual = container.Resolve(typeof(RecordSealed));
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Generate]
+    internal sealed record RecordSealedGenerated
+    {
+        public string Name { get; init; } = "name";
+    }
+
+    [Fact]
+    public void ResolveRecordSealedGenerated()
+    {
+        var expected = new RecordSealedGenerated();
+
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterType(typeof(RecordSealedGenerated));
+        var container = containerBuilder.Build();
+
+        var actual = container.Resolve(typeof(RecordSealedGenerated));
+
+        Assert.Equal(expected, actual);
+    }
 }

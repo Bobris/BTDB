@@ -82,6 +82,7 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
     {
         var ci = implementationType
             .GetConstructors(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)
+            .Where(ci => ci.GetParameters().All(p => p.ParameterType != implementationType))
             .OrderByDescending(c => c.GetParameters().Length).First();
         return BuildFactory(implementationType, ci);
     }

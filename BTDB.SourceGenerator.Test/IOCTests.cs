@@ -381,6 +381,21 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyGeneratedRecordsWorks()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            internal sealed record RecordSealedGenerated
+            {
+                public string Name { get; init; } = ""name"";
+            }
+            ");
+    }
+
+    [Fact]
     public Task VerifySimpleDispatcherGeneration()
     {
         // language=cs
@@ -506,7 +521,7 @@ public class IOCTests : GeneratorTestsBase
     public Task VerifyGenerateForCouldBeUsedForChoosingDifferentConstructor()
     {
         // language=cs
-        return VerifySourceGenerator(@"
+        return VerifySourceGenerator("""
             namespace TestNamespace;
 
             public interface ILogger
@@ -524,7 +539,7 @@ public class IOCTests : GeneratorTestsBase
                 {
                 }
             }
-            ");
+            """);
     }
 
     [Fact]
