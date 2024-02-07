@@ -1079,4 +1079,17 @@ public struct MemWriter
     {
         return new((void*)(Start + ofs), len);
     }
+
+    public void WritePointer(nint value)
+    {
+        if (Unsafe.SizeOf<nint>() == 4)
+        {
+            WriteInt32LE((int)value);
+        }
+        else
+        {
+            Debug.Assert(Unsafe.SizeOf<nint>() == 8);
+            WriteInt64LE(value);
+        }
+    }
 }

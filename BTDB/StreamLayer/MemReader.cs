@@ -1319,4 +1319,16 @@ public struct MemReader
         PeekSpanTillEof().CopyTo(resBuffer.AsSpan());
         return MemoryMarshal.CreateFromPinnedArray(resBuffer, 0, length);
     }
+
+    public nint ReadPointer()
+    {
+        if (Unsafe.SizeOf<nint>() == 4)
+        {
+            return ReadInt32LE();
+        }
+        else
+        {
+            return (nint)ReadInt64LE();
+        }
+    }
 }

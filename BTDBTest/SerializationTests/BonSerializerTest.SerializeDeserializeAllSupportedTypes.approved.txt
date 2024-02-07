@@ -1,0 +1,5 @@
+{
+  "__type__": "BTDBTest.SerializationTests.AllSupportedTypes",
+  "Str": "Hello",
+  "Int32": 42
+}

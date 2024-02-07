@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using BTDB.Serialization;
 using Xunit;
 
@@ -37,8 +36,8 @@ public class SandboxTest
         metadata.Namespace = "BTDBTest.SerializationTests";
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<Person>(metadata);
-        metadata.Fields = new[]
-        {
+        metadata.Fields =
+        [
             new FieldMetadata
             {
                 Name = "Name",
@@ -52,7 +51,7 @@ public class SandboxTest
                 Type = typeof(int),
                 ByteOffset = RawData.CalcOffset(dummy, ref dummy.Age),
             }
-        };
+        ];
 
         Assert.Equal(2 * Unsafe.SizeOf<object>(), (int)metadata.Fields[1].ByteOffset.GetValueOrDefault());
 
