@@ -1648,4 +1648,13 @@ public partial class IocTests
         var obj = container.Resolve<Func<IDatabase, KlassWithFuncDependency>>();
         obj(null);
     }
+
+    [Fact]
+    public void ResolveOptionalKeyedShouldNotFallbackToDefault()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<Logger>().AsImplementedInterfaces();
+        var container = builder.Build();
+        Assert.Null(container.ResolveOptionalKeyed<ILogger>(false));
+    }
 }

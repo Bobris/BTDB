@@ -64,7 +64,7 @@ public class ContainerImpl : IContainer
 
     public object ResolveKeyed(object? key, Type type)
     {
-        var factory = CreateFactory(new CreateFactoryCtx(), type, key);
+        var factory = CreateFactory(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key);
         if (factory == null) ThrowNotResolvable(key, type);
         return factory(this, null);
     }
@@ -79,9 +79,9 @@ public class ContainerImpl : IContainer
         return ResolveOptionalKeyed(name, type);
     }
 
-    public object? ResolveOptionalKeyed(object key, Type type)
+    public object? ResolveOptionalKeyed(object? key, Type type)
     {
-        var factory = CreateFactory(new CreateFactoryCtx(), type, key);
+        var factory = CreateFactory(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key);
         return factory?.Invoke(this, null);
     }
 
@@ -95,10 +95,11 @@ public class ContainerImpl : IContainer
 
         if (Registrations.TryGetValue(new(key, type), out var cReg))
         {
+            ctxImpl.ForbidKeylessFallback = false;
             goto haveFactory;
         }
 
-        if (Registrations.TryGetValue(new(null, type), out cReg))
+        if (!ctxImpl.ForbidKeylessFallback && Registrations.TryGetValue(new(null, type), out cReg))
         {
             goto haveFactory;
         }
@@ -283,6 +284,7 @@ public class ContainerImpl : IContainer
                 {
                     ctxImpl.RestoreResolvingStack(backupResolvingStack);
                 }
+
                 if (nestedFactory == null) return null;
                 return lazyFactory;
             }
@@ -368,10 +370,11 @@ public class ContainerImpl : IContainer
                     {
                         Func<IContainer, IResolvingCtx, object>? f1;
                         // ReSharper disable once AccessToModifiedClosure - solving chicken egg problem
-                        while ((f1 = Volatile.Read(ref f))==null)
+                        while ((f1 = Volatile.Read(ref f)) == null)
                         {
                             Thread.Yield();
                         }
+
                         instance = f1(container, resolvingCtx);
                         Volatile.Write(ref singleton, instance);
                         Monitor.Exit(mySingletonLocker);
@@ -392,7 +395,7 @@ public class ContainerImpl : IContainer
                     return instance;
                 };
                 // If factory is already set by different thread, use it and throw away mine
-                if (Interlocked.CompareExchange(ref cReg.SingletonFactoryCache, ff, null)==null)
+                if (Interlocked.CompareExchange(ref cReg.SingletonFactoryCache, ff, null) == null)
                 {
                     using var resolvingCtxRestorer = ctxImpl.ResolvingCtxRestorer();
                     using var enumerableRestorer = ctxImpl.EnumerableRestorer();
@@ -406,6 +409,7 @@ public class ContainerImpl : IContainer
                         ctxImpl.SingletonDeepness--;
                     }
                 }
+
                 return cReg.SingletonFactoryCache;
             }
 

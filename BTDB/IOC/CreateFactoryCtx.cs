@@ -21,6 +21,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
     StructList<(CReg, int)> _enumeratingIndexes;
     StructList<CReg> _resolvingStack;
     StructList<int> _enumeratingStack;
+    public bool ForbidKeylessFallback { get; set; }
 
     public int GetParamSize()
     {
