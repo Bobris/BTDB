@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+IOC skipping copy constructor.
+SourceGenerator: support for [Generate] on records.
+
 ## 32.4.19
 
 ### Fixed
