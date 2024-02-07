@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+IOC ResolveOptionalKeyed should not fallback to keyless registration.
+
 ## 32.4.18
 
 ## 32.4.17
