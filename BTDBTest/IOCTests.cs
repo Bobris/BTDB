@@ -1638,6 +1638,18 @@ public partial class IocTests
     }
 
     [Fact]
+    public void SingletonCouldDependedOnTransientThoughtFuncDependency()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<KlassWithFuncDependency>().SingleInstance();
+        builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
+        builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
+        var container = builder.BuildAndVerify();
+        var obj = container.Resolve<KlassWithFuncDependency>();
+        Assert.NotNull(obj);
+    }
+
+    [Fact]
     public void ComplexFuncDependency2()
     {
         var builder = new ContainerBuilder();

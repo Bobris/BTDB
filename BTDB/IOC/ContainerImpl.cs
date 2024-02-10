@@ -106,6 +106,7 @@ public class ContainerImpl : IContainer
 
         if (type.IsDelegate())
         {
+            if (ctxImpl.VerifySingletons) return (_, _) => null;
             if (IContainer.FactoryRegistry.TryGetValue(type.TypeHandle.Value, out var factory))
             {
                 return factory(this, ctx);
@@ -117,6 +118,7 @@ public class ContainerImpl : IContainer
             var genericTypeDefinition = type.GetGenericTypeDefinition();
             if (genericTypeDefinition == typeof(Func<>))
             {
+                if (ctxImpl.VerifySingletons) return (_, _) => null;
                 var nestedType = type.GetGenericArguments()[0];
                 var nestedFactory = CreateFactory(ctx, nestedType, key);
                 if (nestedFactory == null) return null;
@@ -131,6 +133,7 @@ public class ContainerImpl : IContainer
 
             if (genericTypeDefinition == typeof(Func<,>))
             {
+                if (ctxImpl.VerifySingletons) return (_, _) => null;
                 var genericArguments = type.GetGenericArguments();
                 var nestedType = genericArguments[1];
                 if (genericArguments[0] == typeof(IContainer))
@@ -313,6 +316,7 @@ public class ContainerImpl : IContainer
         {
             if (cReg.Lifetime == Lifetime.Singleton && cReg.SingletonId != uint.MaxValue)
             {
+                if (ctxImpl.VerifySingletons) return (_, _) => null;
                 var singletonInstance = Volatile.Read(ref Singletons[cReg.SingletonId]);
                 // If Singleton is just being created return waiting factory
                 if (singletonInstance is SingletonLocker)
