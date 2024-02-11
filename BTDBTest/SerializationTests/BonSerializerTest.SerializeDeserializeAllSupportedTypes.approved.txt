@@ -1,5 +1,18 @@
 {
   "__type__": "BTDBTest.SerializationTests.AllSupportedTypes",
   "Str": "Hello",
-  "Int32": 42
+  "Bool": true,
+  "Int8": 42,
+  "Int16": 1234,
+  "Int32": 12345678,
+  "Int64": 9223372036854775807,
+  "UInt8": 42,
+  "UInt16": 1234,
+  "UInt32": 12345678,
+  "UInt64": 18446744073709551615,
+  "DateTime": "2024-02-11T14:04:30.0000000",
+  "Guid": "9e251065-0873-49bc-8fd9-266cc9aa39d3",
+  "Float16": 3.140625,
+  "Float32": 3.140000104904175,
+  "Float64": 3.141592653589793
 }
