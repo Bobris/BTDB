@@ -14,5 +14,24 @@
   "Guid": "9e251065-0873-49bc-8fd9-266cc9aa39d3",
   "Float16": 3.140625,
   "Float32": 3.140000104904175,
-  "Float64": 3.141592653589793
+  "Float64": 3.141592653589793,
+  "Self": {
+    "__type__": "BTDBTest.SerializationTests.AllSupportedTypes",
+    "Str": null,
+    "Bool": false,
+    "Int8": 0,
+    "Int16": 0,
+    "Int32": 0,
+    "Int64": 0,
+    "UInt8": 0,
+    "UInt16": 0,
+    "UInt32": 0,
+    "UInt64": 0,
+    "DateTime": "0001-01-01T00:00:00.0000000",
+    "Guid": "00000000-0000-0000-0000-000000000000",
+    "Float16": 0,
+    "Float32": 0,
+    "Float64": 0,
+    "Self": null
+  }
 }
