@@ -155,8 +155,11 @@ public class BonSerializerFactory
                         ctx.Builder.FinishClass();
                         break;
                     case BonSerializerCmd.WriteKey:
-                        ctx.Builder.WriteKey(reader.ReadStringInUtf8());
+                    {
+                        var len = reader.ReadVUInt32();
+                        ctx.Builder.WriteKey(reader.ReadBlockAsSpan(len));
                         break;
+                    }
                     case BonSerializerCmd.CallGetterAndWriteString:
                     {
                         var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
