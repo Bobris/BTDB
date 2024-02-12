@@ -10,11 +10,18 @@ public class DBOptions
     public DBOptions()
     {
         AutoRegisterType = true;
+        AutoRegisterRelations = true;
     }
 
     public DBOptions WithoutAutoRegistration()
     {
         AutoRegisterType = false;
+        return this;
+    }
+
+    public DBOptions WithoutAutoRegistrationOfRelations()
+    {
+        AutoRegisterRelations = false;
         return this;
     }
 
@@ -54,6 +61,7 @@ public class DBOptions
         return this;
     }
 
+    public bool AutoRegisterRelations { get; private set; }
     public bool AutoRegisterType { get; private set; }
     public IType2NameRegistry? CustomType2NameRegistry { get; private set; }
     public bool SelfHealing { get; private set; }

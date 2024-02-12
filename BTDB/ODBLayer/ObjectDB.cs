@@ -81,6 +81,7 @@ public class ObjectDB : IObjectDB
     internal IType2NameRegistry Type2NameRegistry => _type2Name;
 
     public bool AutoRegisterTypes { get; set; }
+    public bool AutoRegisterRelations { get; set; }
 
     public DBOptions ActualOptions { get; private set; }
 
@@ -101,6 +102,7 @@ public class ObjectDB : IObjectDB
         _type2Name = options.CustomType2NameRegistry ?? new Type2NameRegistry();
         _polymorphicTypesRegistry = new PolymorphicTypesRegistry();
         AutoRegisterTypes = options.AutoRegisterType;
+        AllowAutoRegistrationOfRelations = options.AutoRegisterRelations;
         ActualOptions = options;
         SymmetricCipher = options.SymmetricCipher ?? new InvalidSymmetricCipher();
         FieldHandlerLogger = options.FieldHandlerLogger;
