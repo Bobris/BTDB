@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+IOC Transient in Singleton verification works correctly for Func dependencies.
+
 ## 32.4.20
 
 ### Fixed
