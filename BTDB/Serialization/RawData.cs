@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace BTDB.Serialization;
 
@@ -29,6 +30,21 @@ public sealed class RawData
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SetMethodTable(object @object, Type type)
     {
-        Unsafe.As<byte,nint>(ref Ref(@object)) = type.TypeHandle.Value;
+        Unsafe.As<byte, nint>(ref Ref(@object)) = type.TypeHandle.Value;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    public struct MethodTable
+    {
+        [FieldOffset(0)] public ushort ComponentSize;
+
+        [FieldOffset(0)] public uint Flags;
+
+        [FieldOffset(4)] public uint BaseSize;
+    }
+
+    public static unsafe ref MethodTable MethodTableRef(object @object)
+    {
+        return ref *(MethodTable *)Unsafe.As<byte, nint>(ref Ref(@object));
     }
 }
