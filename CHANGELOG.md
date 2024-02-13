@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.4.22
+
 ### Fixed
 
 Fixed false positive report in ReportTypeIncompatibility.
