@@ -190,6 +190,9 @@ public class RelationInfo
                         loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod));
                         continue;
                     }
+
+                    _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
+                        specializedSrcHandler, fieldType, null);
                 }
 
                 loadInstructions.Add((srcFieldInfo.Handler!, null, null));
@@ -312,6 +315,9 @@ public class RelationInfo
                             (specializedSrcHandler, converterGenerator, setterMethod, false, fieldType));
                         continue;
                     }
+
+                    _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
+                        specializedSrcHandler, fieldType, null);
                 }
 
                 loadInstructions.Add((srcFieldInfo.Handler!, null, null, false, null));

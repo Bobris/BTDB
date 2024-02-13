@@ -216,7 +216,6 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
         if (_type == type) return this;
         if (!IsCompatibleWith(type))
         {
-            logger?.ReportTypeIncompatibility(_type, this, type, typeHandler);
             return this;
         }
 
@@ -235,7 +234,6 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
 
         if (_typeConvertGenerator.GenerateConversion(itemSpecialized.HandledType(), wantedItemType) == null)
         {
-            logger?.ReportTypeIncompatibility(itemSpecialized.HandledType(), itemSpecialized, wantedItemType, null);
             return this;
         }
 

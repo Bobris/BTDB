@@ -7,6 +7,7 @@ using BTDB.StreamLayer;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+
 namespace BTDB.FieldHandler;
 
 public class EnumFieldHandler : IFieldHandler
@@ -116,7 +117,26 @@ public class EnumFieldHandler : IFieldHandler
                 }
             }
 
-            return builder.NewEnum("EnumByFieldHandler", _signed ? typeof(long) : typeof(ulong), literals);
+            var sb = new StringBuilder();
+            sb.Append("Enum");
+            if (Flags) sb.Append('F');
+            if (!Signed) sb.Append('U');
+            sb.Append('[');
+            for (var i = 0; i < Names.Length; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append(Names[i]);
+                sb.Append('_');
+                sb.Append(Values[i]);
+                if (sb.Length > 200)
+                {
+                    sb.Append("...");
+                    break;
+                }
+            }
+
+            sb.Append(']');
+            return builder.NewEnum(sb.ToString(), _signed ? typeof(long) : typeof(ulong), literals);
         }
 
         public static bool operator ==(EnumConfiguration? left, EnumConfiguration? right)
@@ -303,7 +323,6 @@ public class EnumFieldHandler : IFieldHandler
                 return typeHandler;
         }
 
-        logger?.ReportTypeIncompatibility(_enumType, this, type, typeHandler);
         return this;
     }
 

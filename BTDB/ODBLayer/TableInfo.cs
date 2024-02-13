@@ -78,6 +78,7 @@ public class TableInfo
     }
 
     bool _freeContentRequired;
+
     internal TableVersionInfo? ClientTableVersionInfo
     {
         get
@@ -430,9 +431,13 @@ public class TableInfo
                         ilGenerator.Ldloc(0);
                         specializedSrcHandler.Load(ilGenerator, il => il.Ldarg(2), readerOrCtx);
                     }
+
                     ilGenerator.Call(fieldInfo);
                     continue;
                 }
+
+                _tableInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
+                    srcFieldInfo.Handler, fieldType, destFieldInfo.Handler);
             }
 
             srcFieldInfo.Handler.Skip(ilGenerator, il => il.Ldarg(2), readerOrCtx);
@@ -482,7 +487,7 @@ public class TableInfo
                 $"Skipper_{Name}_{version}");
         var ilGenerator = method.Generator;
         var tableVersionInfo = TableVersions.GetOrAdd(version, static (ver, tableInfo) =>
-                tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
+            tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
         var anyNeedsCtx = tableVersionInfo.NeedsCtx();
         IILLocal? ctxLocal = null;
         if (anyNeedsCtx)

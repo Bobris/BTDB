@@ -227,7 +227,6 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
         if (_type == type) return this;
         if (!IsCompatibleWith(type))
         {
-            logger?.ReportTypeIncompatibility(_type, this, type, typeHandler);
             return this;
         }
 
@@ -259,8 +258,6 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
                 var specialized = sourceHandler.SpecializeLoadForType(wantedTypes[i], wantedHandlers[i], logger);
                 if (_typeConvertGenerator.GenerateConversion(specialized.HandledType()!, wantedTypes[i]) == null)
                 {
-                    logger?.ReportTypeIncompatibility(specialized.HandledType(), specialized, wantedTypes[i],
-                        wantedHandlers[i]);
                     return this;
                 }
 

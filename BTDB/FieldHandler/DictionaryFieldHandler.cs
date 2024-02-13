@@ -229,7 +229,6 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
         if (_type == type) return this;
         if (!IsCompatibleWith(type))
         {
-            logger?.ReportTypeIncompatibility(_type, this, type, typeHandler);
             return this;
         }
 
@@ -246,16 +245,12 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
         var keySpecialized = _keysHandler.SpecializeLoadForType(wantedKeyType, wantedKeyHandler, logger);
         if (_typeConvertGenerator.GenerateConversion(keySpecialized.HandledType(), wantedKeyType) == null)
         {
-            logger?.ReportTypeIncompatibility(keySpecialized.HandledType(), keySpecialized, wantedKeyType,
-                wantedKeyHandler);
             return this;
         }
 
         var valueSpecialized = _valuesHandler.SpecializeLoadForType(wantedValueType, wantedValueHandler, logger);
         if (_typeConvertGenerator.GenerateConversion(valueSpecialized.HandledType(), wantedValueType) == null)
         {
-            logger?.ReportTypeIncompatibility(valueSpecialized.HandledType(), valueSpecialized, wantedValueType,
-                wantedValueHandler);
             return this;
         }
 

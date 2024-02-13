@@ -16,7 +16,7 @@ using Xunit;
 
 namespace BTDBTest;
 
-public class ObjectDbTest : IDisposable
+public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 {
     IKeyValueDB _lowDb;
     IObjectDB _db;
@@ -97,13 +97,14 @@ public class ObjectDbTest : IDisposable
 
     void OpenDb()
     {
+        ReportedTypeIncompatibilities.Clear();
         _db = new ObjectDB();
         _db.Open(_lowDb, false,
             new DBOptions().WithSymmetricCipher(new AesGcmSymmetricCipher(new byte[]
             {
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-                    27, 28, 29, 30, 31
-            })));
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+                27, 28, 29, 30, 31
+            })).WithFieldHandlerLogger(this));
     }
 
     [Fact]
@@ -1070,7 +1071,7 @@ public class ObjectDbTest : IDisposable
             var root = tr.Singleton<ComplexDictionary>();
             Assert.NotNull(root.String2Person);
             root.String2Person = new Dictionary<string, Person>
-                    {{"Boris", new Person {Name = "Boris", Age = 35}}, {"null", null}};
+                { { "Boris", new Person { Name = "Boris", Age = 35 } }, { "null", null } };
             tr.Commit();
         }
 
@@ -1113,7 +1114,7 @@ public class ObjectDbTest : IDisposable
         {
             var root = tr.Singleton<ComplexDictionary>();
             root.String2Person = new Dictionary<string, Person>
-                    {{"Boris", new Person {Name = "Boris", Age = 35}}, {"null", null}};
+                { { "Boris", new Person { Name = "Boris", Age = 35 } }, { "null", null } };
             tr.Commit();
         }
 
@@ -1178,6 +1179,11 @@ public class ObjectDbTest : IDisposable
         public TestEnum E { get; set; }
     }
 
+    public class CTestNullableEnum
+    {
+        public TestEnum? E { get; set; }
+    }
+
     public class CTestEnumUlong
     {
         public TestEnumUlong E { get; set; }
@@ -1214,6 +1220,36 @@ public class ObjectDbTest : IDisposable
             tr.Delete(e);
             tr.Commit();
         }
+    }
+
+    [Fact]
+    public void EnumUpgradeToNullableEnum()
+    {
+        TestEnum2TestNullableEnum(TestEnum.Item1);
+        TestEnum2TestNullableEnum(TestEnum.Item2);
+    }
+
+    void TestEnum2TestNullableEnum(TestEnum from)
+    {
+        ReopenDb();
+        var testEnumObjDbName = _db.RegisterType(typeof(CTestEnum));
+        using (var tr = _db.StartTransaction())
+        {
+            tr.Store(new CTestEnum { E = from });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        _db.RegisterType(typeof(CTestNullableEnum), testEnumObjDbName);
+        using (var tr = _db.StartTransaction())
+        {
+            var e = tr.Enumerate<CTestNullableEnum>().First();
+            Assert.Equal(from, e.E!.Value);
+            tr.Delete(e);
+            tr.Commit();
+        }
+
+        Assert.Empty(ReportedTypeIncompatibilities);
     }
 
     [Fact]
@@ -2759,14 +2795,31 @@ public class ObjectDbTest : IDisposable
         }
     }
 
-    class GenericType<T, T2> { }
-    class Subtype1 { }
-    class Subtype2 { }
+    class GenericType<T, T2>
+    {
+    }
+
+    class Subtype1
+    {
+    }
+
+    class Subtype2
+    {
+    }
 
     [Fact]
     public void RegisterGenericTypeUseAlsoGenericTypesNames()
     {
         var objDbName = _db.RegisterType(typeof(GenericType<GenericType<Subtype1, Subtype1>, Subtype2>));
         Assert.Equal("GenericType<GenericType<Subtype1,Subtype1>,Subtype2>", objDbName);
+    }
+
+    List<(Type? sourceType, IFieldHandler source, Type targetType, IFieldHandler? target)>
+        ReportedTypeIncompatibilities = new();
+
+    public void ReportTypeIncompatibility(Type? sourceType, IFieldHandler source, Type targetType,
+        IFieldHandler? target)
+    {
+        ReportedTypeIncompatibilities.Add((sourceType, source, targetType, target));
     }
 }
