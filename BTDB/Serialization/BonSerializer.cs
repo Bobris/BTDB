@@ -1,8 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using BTDB.Bon;
+using BTDB.IL;
 using BTDB.StreamLayer;
 
 namespace BTDB.Serialization;
@@ -62,7 +66,10 @@ enum BonSerializerCmd : byte
     GetByOffsetAndWriteObject,
     GetCustomAndWriteObject,
     InitArray,
-    NextArray
+    NextArray,
+    InitList,
+    InitHashSet,
+    NextHashSet
 }
 
 public ref struct BonSerializerCtx
@@ -237,6 +244,27 @@ public class BonSerializerFactory
             var elementType = _type.GetElementType()!;
             WriteCmdByType(null, elementType);
             _memWriter.WriteUInt8((byte)BonSerializerCmd.NextArray);
+            return;
+        }
+
+        if (_type.SpecializationOf(typeof(List<>)) is { } listType)
+        {
+            _memWriter.WriteUInt8((byte)BonSerializerCmd.InitList);
+            var elementType = listType.GetGenericArguments()[0];
+            WriteCmdByType(null, elementType);
+            _memWriter.WriteUInt8((byte)BonSerializerCmd.NextArray);
+            return;
+        }
+
+        if (_type.SpecializationOf(typeof(HashSet<>)) is { } hashSetType)
+        {
+            _memWriter.WriteUInt8((byte)BonSerializerCmd.InitHashSet);
+            var elementType = hashSetType.GetGenericArguments()[0];
+            var layout = RawData.GetHashSetEntriesLayout(elementType);
+            _memWriter.WriteVUInt32(layout.Offset);
+            WriteCmdByType(null, elementType);
+            _memWriter.WriteUInt8((byte)BonSerializerCmd.NextHashSet);
+            return;
         }
 
         var classMetadata = ReflectionMetadata.FindByType(_type);
@@ -245,6 +273,8 @@ public class BonSerializerFactory
             AddClass(classMetadata);
             return;
         }
+
+        throw new NotSupportedException("BonSerialization of " + _type.ToSimpleName() + " is not supported.");
     }
 
     public unsafe BonSerialize Build()
@@ -259,6 +289,7 @@ public class BonSerializerFactory
             object? tempObject2 = null;
             uint offset = 0;
             uint offsetDelta = 0;
+            uint offsetOffset = 0;
             uint offsetFinal = 0;
             uint offsetLabel = 0;
             UInt128 tempBytes = default;
@@ -590,7 +621,7 @@ public class BonSerializerFactory
                     {
                         tempObject2 = Unsafe.As<byte, object>(ref value);
                         var count = Unsafe.As<byte, int>(ref RawData.Ref(tempObject2, (uint)Unsafe.SizeOf<nint>()));
-                        ref var mt = ref RawData.MethodTableRef(tempObject2);
+                        ref readonly var mt = ref RawData.MethodTableRef(tempObject2);
                         offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
                         offsetDelta = mt.ComponentSize;
                         offsetFinal = offset + offsetDelta * (uint)count;
@@ -604,6 +635,69 @@ public class BonSerializerFactory
                         if (offset < offsetFinal)
                         {
                             reader.SetCurrentPositionWithoutController(offsetLabel);
+                        }
+                        else
+                        {
+                            ctx.Builder.FinishArray();
+                            return;
+                        }
+
+                        break;
+                    }
+                    case BonSerializerCmd.InitList:
+                    {
+                        tempObject2 = Unsafe.As<byte, object>(ref value);
+                        var count = Unsafe.As<ICollection>(tempObject2).Count;
+                        tempObject2 = RawData.ListItems(Unsafe.As<List<object>>(tempObject2));
+                        ref readonly var mt = ref RawData.MethodTableRef(tempObject2);
+                        offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                        offsetDelta = mt.ComponentSize;
+                        offsetFinal = offset + offsetDelta * (uint)count;
+                        offsetLabel = (uint)reader.GetCurrentPositionWithoutController();
+                        ctx.Builder.StartArray();
+                        break;
+                    }
+                    case BonSerializerCmd.InitHashSet:
+                    {
+                        tempObject2 = Unsafe.As<byte, object>(ref value);
+                        var count = Unsafe.As<byte, int>(ref RawData.Ref(tempObject2,
+                            RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                        tempObject2 = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(tempObject2));
+                        offsetOffset = reader.ReadVUInt32();
+                        ref readonly var mt = ref RawData.MethodTableRef(tempObject2);
+                        offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                        offsetDelta = mt.ComponentSize;
+                        offsetFinal = offset + offsetDelta * (uint)count;
+                        offsetLabel = (uint)reader.GetCurrentPositionWithoutController();
+                        ctx.Builder.StartArray();
+                        while (offset < offsetFinal)
+                        {
+                            if (Unsafe.As<byte, int>(ref RawData.Ref(tempObject2, offset + 4)) >= -1) break;
+                            offset += offsetDelta;
+                        }
+
+                        if (offset >= offsetFinal)
+                        {
+                            ctx.Builder.FinishArray();
+                            return;
+                        }
+
+                        offset += offsetOffset;
+                        break;
+                    }
+                    case BonSerializerCmd.NextHashSet:
+                    {
+                        offset += offsetDelta - offsetOffset;
+                        while (offset < offsetFinal)
+                        {
+                            if (Unsafe.As<byte, int>(ref RawData.Ref(tempObject2, offset + 4)) >= -1) break;
+                            offset += offsetDelta;
+                        }
+
+                        if (offset < offsetFinal)
+                        {
+                            reader.SetCurrentPositionWithoutController(offsetLabel);
+                            offset += offsetOffset;
                         }
                         else
                         {

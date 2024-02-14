@@ -33,10 +33,21 @@
     "Float32": 0,
     "Float64": 0,
     "Self": null,
-    "DoubleArray": null
+    "DoubleArray": null,
+    "IntList": null,
+    "UShortSet": null
   },
   "DoubleArray": [
     2.718281828459045,
     3.141592653589793
+  ],
+  "IntList": [
+    1,
+    20,
+    300
+  ],
+  "UShortSet": [
+    666,
+    12345
   ]
 }
