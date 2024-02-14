@@ -3,6 +3,7 @@ using System.Buffers;
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 
 namespace BTDB.StreamLayer;
@@ -53,6 +54,8 @@ public class BrotliDecompressMemReader : IMemReader
             {
                 throw new InvalidDataException("Brotli premature eof");
             }
+
+            _source.PeekUInt8();
 
             var status =
                 _decoder.Decompress(
@@ -116,9 +119,18 @@ public class BrotliDecompressMemReader : IMemReader
         return (long)_ofs - _usedLen + _usedOfs;
     }
 
-    public void ReadBlock(ref MemReader memReader, ref byte buffer, nuint length)
+    public unsafe void ReadBlock(ref MemReader memReader, ref byte buffer, nuint length)
     {
-        throw new NotImplementedException();
+        while (length > 0)
+        {
+            FillBuf(ref memReader, 0);
+            var canRead = (int)Math.Min(memReader.End - memReader.Current, (nint)length);
+            if (canRead == 0) PackUnpack.ThrowEndOfStreamException();
+            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef<byte>((void*)memReader.Current), canRead)
+                .CopyTo(MemoryMarshal.CreateSpan(ref buffer, canRead));
+            memReader.Current += canRead;
+            length -= (uint)canRead;
+        }
     }
 
     public void SkipBlock(ref MemReader memReader, nuint length)
