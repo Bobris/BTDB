@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.4.23
+
 ### Fixed
 
 Critical bug in Brotli decompression MemReader.
