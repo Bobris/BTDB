@@ -79,6 +79,16 @@ public sealed class RawData
         return (Align(8, sa.Align), sa.Size);
     }
 
+    public static (uint OffsetKey, uint OffsetValue, uint Size) GetDictionaryEntriesLayout(Type keyType, Type valueType)
+    {
+        var saKey = GetSizeAndAlign(keyType);
+        var saValue = GetSizeAndAlign(valueType);
+        var sa = Combine((8, 4), saKey, saValue);
+        var offsetKey = Align(8, sa.Align);
+        var offsetValue = Align(offsetKey + saKey.Size, saValue.Align);
+        return (offsetKey, offsetValue, sa.Size);
+    }
+
     public static uint CombineAlign(uint align1, uint align2)
     {
         return align1 > align2 ? align1 : align2;
@@ -125,6 +135,26 @@ public sealed class RawData
         {
             var arguments = vt3Type.GetGenericArguments();
             return Combine(GetSizeAndAlign(arguments[0]), GetSizeAndAlign(arguments[1]), GetSizeAndAlign(arguments[2]));
+        }
+
+        if (type == typeof(long) || type == typeof(ulong) || type == typeof(double))
+        {
+            return (8, 8);
+        }
+
+        if (type == typeof(int) || type == typeof(uint) || type == typeof(float))
+        {
+            return (4, 4);
+        }
+
+        if (type == typeof(short) || type == typeof(ushort) || type == typeof(char) || type == typeof(Half))
+        {
+            return (2, 2);
+        }
+
+        if (type == typeof(byte) || type == typeof(sbyte) || type == typeof(bool))
+        {
+            return (1, 1);
         }
 
         var size = MethodTableOf(type).BaseSize;

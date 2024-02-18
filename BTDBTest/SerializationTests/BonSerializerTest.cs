@@ -32,6 +32,7 @@ public class BonSerializerTest
         public double[]? DoubleArray;
         public List<int>? IntList;
         public HashSet<ushort>? UShortSet;
+        public Dictionary<long, int>? LongIntDict;
     }
 
     [Fact]
@@ -44,7 +45,8 @@ public class BonSerializerTest
             DateTime = new(2024, 2, 11, 14, 4, 30),
             Guid = Guid.Parse("9e251065-0873-49bc-8fd9-266cc9aa39d3"), Float16 = (Half)3.14, Float32 = 3.14f,
             Float64 = Math.PI,
-            Self = new(), DoubleArray = [Math.E, Math.PI], IntList = [1, 20, 300], UShortSet = [666, 12345]
+            Self = new(), DoubleArray = [Math.E, Math.PI], IntList = [1, 20, 300], UShortSet = [666, 12345],
+            LongIntDict = new() { { 1111, 2 }, { 3333, 4 } }
         };
         var builder = new BonBuilder();
         BonSerializerFactory.Serialize(ref builder, obj);
