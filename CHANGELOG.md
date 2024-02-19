@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.4.24
+
 ### Improved
 
 Better exceptions in some cases.
