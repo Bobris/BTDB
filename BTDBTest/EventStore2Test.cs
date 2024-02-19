@@ -282,7 +282,7 @@ public class EventStore2Test
     {
         var serializer = new EventSerializer();
         var obj = new ObjectWithIList2
-        { Items = new List<ObjectDbTest.Person> { new ObjectDbTest.Person { Name = "A", Age = 1 } } };
+            { Items = new List<ObjectDbTest.Person> { new ObjectDbTest.Person { Name = "A", Age = 1 } } };
         var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
         Assert.Equal(99, meta.Length);
         serializer.ProcessMetadataLog(meta);
@@ -305,7 +305,7 @@ public class EventStore2Test
     {
         var serializer = new EventSerializer();
         var obj = new ObjectWithIList2
-        { Items = new ObjectDbTest.Person[] { new ObjectDbTest.Person { Name = "A", Age = 1 } } };
+            { Items = new ObjectDbTest.Person[] { new ObjectDbTest.Person { Name = "A", Age = 1 } } };
         var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
         Assert.Equal(99, meta.Length);
         serializer.ProcessMetadataLog(meta);
@@ -333,7 +333,7 @@ public class EventStore2Test
         var serializer = new EventSerializer();
         var objE = new ObjectWithIList2 { Items = null };
         var obj = new ObjectWithIList2
-        { Items = new ObjectDbTest.Person[] { new ObjectDbTest.Manager { Name = "A", Age = 1 } } };
+            { Items = new ObjectDbTest.Person[] { new ObjectDbTest.Manager { Name = "A", Age = 1 } } };
         var meta = serializer.Serialize(out var hasMetadata, objE).ToAsyncSafe();
         serializer.ProcessMetadataLog(meta);
         var data = serializer.Serialize(out hasMetadata, objE);
@@ -864,9 +864,12 @@ public class EventStore2Test
         {
             EventId = 1,
             Prop = new Dictionary<ulong, Dictionary<string, ComplexObject>>
+            {
                 {
-                    {1, new Dictionary<string, ComplexObject> {{"a", new ComplexObjectEx {Obj = new ComplexObject()}}}}
-                },
+                    1,
+                    new Dictionary<string, ComplexObject> { { "a", new ComplexObjectEx { Obj = new ComplexObject() } } }
+                }
+            },
             PropList = new List<List<ComplexObject>> { new List<ComplexObject> { new ComplexObjectEx() } }
         };
         var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
@@ -891,8 +894,8 @@ public class EventStore2Test
     {
         var cipher = new AesGcmSymmetricCipher(new byte[]
         {
-                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-                28, 29, 30, 31
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+            28, 29, 30, 31
         });
         var serializer = new EventSerializer(null, null, cipher);
         var obj = new EventWithEncryptedString
@@ -1025,12 +1028,12 @@ public class EventStore2Test
     {
         var serializer = new EventSerializer();
         var obj = new Dictionary<ulong, IList<ulong>>
-            {
-                {1, null},
-                {2, new List<ulong> {21, 22}},
-                {3, null},
-                {4, new List<ulong> {41, 42}}
-            };
+        {
+            { 1, null },
+            { 2, new List<ulong> { 21, 22 } },
+            { 3, null },
+            { 4, new List<ulong> { 41, 42 } }
+        };
         var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
         serializer.ProcessMetadataLog(meta);
         var data = serializer.Serialize(out _, obj);
@@ -1048,12 +1051,12 @@ public class EventStore2Test
     {
         var serializer = new EventSerializer();
         var obj = new Dictionary<ulong, ulong[]>
-            {
-                {1, null},
-                {2, new ulong[] {21, 22}},
-                {3, null},
-                {4, new ulong[] {41, 42}}
-            };
+        {
+            { 1, null },
+            { 2, new ulong[] { 21, 22 } },
+            { 3, null },
+            { 4, new ulong[] { 41, 42 } }
+        };
         var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
         serializer.ProcessMetadataLog(meta);
         var data = serializer.Serialize(out _, obj);
@@ -1276,13 +1279,13 @@ public class EventStore2Test
 
     class TestClassWithBaseClass : TestBaseClass
     {
-        [NotStored]
-        public string TestData => Data;
+        [NotStored] public string TestData => Data;
     }
 
     class TestBaseClass
     {
         public string Data { get; private set; }
+
         public TestBaseClass()
         {
             Data = "TestData";
@@ -1335,4 +1338,83 @@ public class EventStore2Test
         Assert.Equal(42, valueV2.O.Child);
     }
 
+    public interface IContent
+    {
+        public ulong ContentId { get; set; }
+    }
+
+    public class Content : IContent, IEquatable<Content>
+    {
+        public ulong ContentId { get; set; }
+        public string Name { get; set; }
+
+        public bool Equals(Content? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return ContentId == other.ContentId && Name == other.Name;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((Content)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(ContentId, Name);
+        }
+    }
+
+    public class ClassWithIEnumerable : IEquatable<ClassWithIEnumerable>
+    {
+        public IEnumerable<IContent> Items { get; set; }
+
+        public bool Equals(ClassWithIEnumerable? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Items.SequenceEqual(other.Items);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((ClassWithIEnumerable)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return 1;
+        }
+    }
+
+    [Fact]
+    public void DeserializesClassWithIEnumerable()
+    {
+        var serializer = new EventSerializer();
+        var obj = new ClassWithIEnumerable
+        {
+            Items = new[] { new Content { ContentId = 1, Name = "A" }, new Content { ContentId = 2, Name = "B" } }
+        };
+        var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
+        serializer.ProcessMetadataLog(meta);
+        var data = serializer.Serialize(out hasMetadata, obj);
+
+        var deserializer = new EventDeserializer();
+        Assert.False(deserializer.Deserialize(out var obj2, data));
+        deserializer.ProcessMetadataLog(meta);
+        Assert.True(deserializer.Deserialize(out obj2, data));
+        Assert.Equal(obj, obj2);
+
+        deserializer = new EventDeserializer();
+        deserializer.ProcessMetadataLog(meta);
+        Assert.True(deserializer.Deserialize(out obj2, data));
+        Assert.Equal(obj, obj2);
+    }
 }

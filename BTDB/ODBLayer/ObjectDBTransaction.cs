@@ -106,6 +106,11 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         return _keyValueTr!.CreateOrUpdateKeyValue(key, value);
     }
 
+    public void ThrowIfDisposed()
+    {
+        if (_keyValueTr == null) throw new BTDBException("Transaction already disposed");
+    }
+
     public void WriteInlineObject(ref MemWriter writer, object @object, IWriterCtx writerCtx)
     {
         var ti = GetTableInfoFromType(@object.GetType());

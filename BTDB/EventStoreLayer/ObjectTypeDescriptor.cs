@@ -12,6 +12,7 @@ using BTDB.IL;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using BTDB.FieldHandler;
+using BTDB.KVDBLayer;
 
 namespace BTDB.EventStoreLayer;
 
@@ -284,12 +285,20 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     continue;
                 }
 
+                var setter = prop.GetAnySetMethod();
+                if (setter == null)
+                {
+                    throw new BTDBException("Property " + pair.Key + "(" + prop.Name + ") of type " +
+                                            targetType.ToSimpleName() +
+                                            " does not have setter");
+                }
+
                 ilGenerator.Ldloc(resultLoc);
                 pair.Value.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                     il => il.Do(pushDescriptor).LdcI4(idxForCapture)
                         .Callvirt(() => default(ITypeDescriptor).NestedType(0)),
                     prop.PropertyType, _typeSerializers.ConvertorGenerator);
-                ilGenerator.Callvirt(prop.GetAnySetMethod()!);
+                ilGenerator.Callvirt(setter);
             }
 
             ilGenerator.Ldloc(resultLoc);

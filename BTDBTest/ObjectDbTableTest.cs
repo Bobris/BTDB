@@ -2824,6 +2824,17 @@ namespace BTDBTest
             Assert.Equal("Boris", table.First().Name);
         }
 
+        [Fact]
+        public void DisposingTransactionDuringEnumerationThrowsNiceException()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IPersonWoConstructorTable>();
+            table.Upsert(new(1) { Name = "Boris" });
+            var enumerator = table.GetEnumerator();
+            tr.Commit();
+            Assert.Throws<BTDBException>(() => enumerator.MoveNext());
+        }
+
         public class RowWithOrderedSet
         {
             [PrimaryKey(1)] public ulong TenantId { get; set; }

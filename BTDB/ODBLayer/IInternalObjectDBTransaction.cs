@@ -12,4 +12,5 @@ public interface IInternalObjectDBTransaction : IObjectDBTransaction
     ulong StoreIfNotInlined(object @object, bool autoRegister, bool forceInline);
     void FreeContentInNativeObject(ref MemReader reader, IReaderCtx readerCtx);
     bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
+    void ThrowIfDisposed();
 }

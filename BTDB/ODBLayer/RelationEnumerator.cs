@@ -274,6 +274,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
 
     public bool MoveNext()
     {
+        _transaction.ThrowIfDisposed();
         bool ret;
         if (_seekNeeded)
         {
@@ -630,6 +631,7 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
 
     public bool MoveNext()
     {
+        _transaction.ThrowIfDisposed();
         if (_seekNeeded)
         {
             _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
@@ -891,6 +893,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, IEnumerable<T>
 
     public bool MoveNext()
     {
+        _tr.ThrowIfDisposed();
         if (!_seekNeeded)
             _pos++;
         if (_pos >= _count)
