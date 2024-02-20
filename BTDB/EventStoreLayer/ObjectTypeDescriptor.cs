@@ -276,29 +276,37 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             var props = targetType.GetProperties(_propertyBindingFlags);
             for (var idx = 0; idx < _fields.Count; idx++)
             {
-                var idxForCapture = idx;
-                var pair = _fields[idx];
-                var prop = props.FirstOrDefault(p => GetPersistentName(p) == pair.Key);
-                if (prop == null || !_typeSerializers.IsSafeToLoad(prop.PropertyType))
+                try
                 {
-                    pair.Value.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
-                    continue;
-                }
+                    var idxForCapture = idx;
+                    var pair = _fields[idx];
+                    var prop = props.FirstOrDefault(p => GetPersistentName(p) == pair.Key);
+                    if (prop == null || !_typeSerializers.IsSafeToLoad(prop.PropertyType))
+                    {
+                        pair.Value.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
+                        continue;
+                    }
 
-                var setter = prop.GetAnySetMethod();
-                if (setter == null)
+                    var setter = prop.GetAnySetMethod();
+                    if (setter == null)
+                    {
+                        throw new BTDBException("Property " + pair.Key + "(" + prop.Name + ") of type " +
+                                                targetType.ToSimpleName() +
+                                                " does not have setter");
+                    }
+
+                    ilGenerator.Ldloc(resultLoc);
+                    pair.Value.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                        il => il.Do(pushDescriptor).LdcI4(idxForCapture)
+                            .Callvirt(() => default(ITypeDescriptor).NestedType(0)),
+                        prop.PropertyType, _typeSerializers.ConvertorGenerator);
+                    ilGenerator.Callvirt(setter);
+                }
+                catch (NullReferenceException e)
                 {
-                    throw new BTDBException("Property " + pair.Key + "(" + prop.Name + ") of type " +
-                                            targetType.ToSimpleName() +
-                                            " does not have setter");
+                    throw new BTDBException(
+                        "NRE on property " + _fields[idx].Key + " on type " + targetType.ToSimpleName(), e);
                 }
-
-                ilGenerator.Ldloc(resultLoc);
-                pair.Value.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
-                    il => il.Do(pushDescriptor).LdcI4(idxForCapture)
-                        .Callvirt(() => default(ITypeDescriptor).NestedType(0)),
-                    prop.PropertyType, _typeSerializers.ConvertorGenerator);
-                ilGenerator.Callvirt(setter);
             }
 
             ilGenerator.Ldloc(resultLoc);
