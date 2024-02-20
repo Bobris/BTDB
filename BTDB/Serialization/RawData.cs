@@ -39,10 +39,54 @@ public sealed class RawData
     public struct MethodTable
     {
         [FieldOffset(0)] public ushort ComponentSize;
-
         [FieldOffset(0)] public uint Flags;
-
         [FieldOffset(4)] public uint BaseSize;
+        [FieldOffset(14)] public ushort InterfaceCount;
+        [FieldOffset(16)] public unsafe MethodTable* ParentMethodTable;
+        [FieldOffset(48)] public unsafe void* ElementType;
+        [FieldOffset(56)] public unsafe MethodTable** InterfaceMap;
+
+        public bool HasComponentSize => (this.Flags & 2147483648U) > 0U;
+
+        public bool ContainsGCPointers => (this.Flags & 16777216U) > 0U;
+
+        public bool NonTrivialInterfaceCast => (this.Flags & 1080819712U) > 0U;
+
+        public bool HasTypeEquivalence => (this.Flags & 33554432U) > 0U;
+
+        public bool HasDefaultConstructor => ((int)this.Flags & -2147483136) == 512;
+
+        public bool IsMultiDimensionalArray
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => BaseSize > 3 * 8;
+        }
+
+        public int MultiDimensionalArrayRank
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => (int)((BaseSize - 3 * 8) / 8U);
+        }
+
+        public bool IsValueType => ((int)Flags & 786432) == 262144;
+
+        public bool IsNullable => ((int)Flags & 983040) == 327680;
+
+        public bool HasInstantiation
+        {
+            get => ((int)this.Flags & int.MinValue) == 0 && (this.Flags & 48U) > 0U;
+        }
+
+        public bool IsGenericTypeDefinition => ((int)this.Flags & -2147483600) == 48;
+
+        public bool IsConstructedGenericType
+        {
+            get
+            {
+                uint num = this.Flags & 2147483696U;
+                return num is 16U or 32U;
+            }
+        }
     }
 
     public static unsafe ref readonly MethodTable MethodTableRef(object @object)

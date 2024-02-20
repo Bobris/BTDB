@@ -2,786 +2,403 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Text;
 using BTDB.Bon;
 using BTDB.IL;
-using BTDB.StreamLayer;
 
 namespace BTDB.Serialization;
 
-enum BonSerializerCmd : byte
+public delegate void Serialize(ref SerializerCtx ctx, ref byte value);
+
+public interface ISerializerFactory
 {
-    Return = 0,
-    StartClass,
-    FinishClass,
-    WriteKey,
-    CallGetterAndWriteString,
-    GetByOffsetAndWriteString,
-    GetCustomAndWriteString,
-    CallGetterAndWriteInt8,
-    GetByOffsetAndWriteInt8,
-    GetCustomAndWriteInt8,
-    CallGetterAndWriteInt16,
-    GetByOffsetAndWriteInt16,
-    GetCustomAndWriteInt16,
-    CallGetterAndWriteInt32,
-    GetByOffsetAndWriteInt32,
-    GetCustomAndWriteInt32,
-    CallGetterAndWriteInt64,
-    GetByOffsetAndWriteInt64,
-    GetCustomAndWriteInt64,
-    CallGetterAndWriteUInt8,
-    GetByOffsetAndWriteUInt8,
-    GetCustomAndWriteUInt8,
-    CallGetterAndWriteUInt16,
-    GetByOffsetAndWriteUInt16,
-    GetCustomAndWriteUInt16,
-    CallGetterAndWriteUInt32,
-    GetByOffsetAndWriteUInt32,
-    GetCustomAndWriteUInt32,
-    CallGetterAndWriteUInt64,
-    GetByOffsetAndWriteUInt64,
-    GetCustomAndWriteUInt64,
-    CallGetterAndWriteFloat16,
-    GetByOffsetAndWriteFloat16,
-    GetCustomAndWriteFloat16,
-    CallGetterAndWriteFloat32,
-    GetByOffsetAndWriteFloat32,
-    GetCustomAndWriteFloat32,
-    CallGetterAndWriteFloat64,
-    GetByOffsetAndWriteFloat64,
-    GetCustomAndWriteFloat64,
-    CallGetterAndWriteBool,
-    GetByOffsetAndWriteBool,
-    GetCustomAndWriteBool,
-    CallGetterAndWriteDateTime,
-    GetByOffsetAndWriteDateTime,
-    GetCustomAndWriteDateTime,
-    CallGetterAndWriteGuid,
-    GetByOffsetAndWriteGuid,
-    GetCustomAndWriteGuid,
-    CallGetterAndWriteObject,
-    GetByOffsetAndWriteObject,
-    GetCustomAndWriteObject,
-    InitArray,
-    NextArray,
-    InitList,
-    InitHashSet,
-    NextHashSet,
-    InitDictionary,
-    NextDictionary,
-    AddOffset
+    void SerializeObject(ref SerializerCtx ctx, ref byte value);
+    Serialize CreateSerializerForType(Type type);
+}
+
+public ref struct SerializerCtx
+{
+    public ISerializerFactory Factory;
 }
 
 public ref struct BonSerializerCtx
 {
+    public ISerializerFactory Factory;
     public ref BonBuilder Builder;
 }
 
-public delegate void BonSerialize(ref BonSerializerCtx ctx, ref byte value);
-
-public class BonSerializerFactory
+public class BonSerializerFactory : ISerializerFactory
 {
-    readonly Type _type;
-    MemWriter _memWriter;
+    readonly ConcurrentDictionary<nint, Serialize> _cache = new();
 
-    static readonly ConcurrentDictionary<nint, BonSerialize> Cache = new();
-
-    public static void Serialize(ref BonBuilder builder, object? value)
+    public void SerializeObject(ref SerializerCtx ctx, ref byte value)
     {
-        if (value == null)
+        var obj = Unsafe.As<byte, object>(ref value);
+        if (obj == null)
         {
-            builder.WriteNull();
+            AsCtx(ref ctx).Builder.WriteNull();
             return;
         }
 
-        var type = value.GetType();
-        var serializer = Create(type);
-        var ctx = new BonSerializerCtx { Builder = ref builder };
-        serializer(ref ctx, ref Unsafe.As<object, byte>(ref value));
+        var typePtr = obj.GetType().TypeHandle.Value;
+        _cache.TryGetValue(typePtr, out var serializer);
+        if (serializer == null)
+        {
+            serializer = CreateSerializerForType(obj.GetType());
+            _cache.TryAdd(typePtr, serializer);
+            _cache.TryGetValue(typePtr, out serializer);
+        }
+
+        serializer!(ref ctx, ref value);
     }
 
-    public static BonSerialize Create(Type type)
+    static unsafe ref BonSerializerCtx AsCtx(ref SerializerCtx ctx)
     {
-        if (Cache.TryGetValue(type.TypeHandle.Value, out var res))
-            return res;
-        var factory = new BonSerializerFactory(type);
-        factory.Generate();
-        res = factory.Build();
-        Cache.TryAdd(type.TypeHandle.Value, res);
-        Cache.TryGetValue(type.TypeHandle.Value, out res);
-        return res!;
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+        fixed (void* ptr = &ctx)
+        {
+            return ref *(BonSerializerCtx*)ptr;
+        }
+#pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
     }
 
-    public BonSerializerFactory(Type type)
+    static unsafe ref SerializerCtx AsCtx(ref BonSerializerCtx ctx)
     {
-        _type = type;
-        _memWriter = new();
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+        fixed (void* ptr = &ctx)
+        {
+            return ref *(SerializerCtx*)ptr;
+        }
+#pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
     }
 
-    public void AddField(FieldMetadata field)
+    public Serialize CreateCachedSerializerForType(Type type)
     {
-        _memWriter.WriteUInt8((byte)BonSerializerCmd.WriteKey);
-        _memWriter.WriteStringInUtf8(field.Name);
-        var type = field.Type;
-        WriteCmdByType(field, type);
+        if (!type.IsValueType)
+        {
+            return (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Factory.SerializeObject(ref ctx, ref value);
+            };
+        }
+
+        var typePtr = type.TypeHandle.Value;
+        _cache.TryGetValue(typePtr, out var serializer);
+        if (serializer == null)
+        {
+            serializer = CreateSerializerForType(type);
+            _cache.TryAdd(typePtr, serializer);
+            _cache.TryGetValue(typePtr, out serializer);
+        }
+
+        return serializer!;
     }
 
-    void WriteCmdByType(FieldMetadata? field, Type type)
+    public unsafe Serialize CreateSerializerForType(Type type)
     {
         if (type == typeof(string))
         {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteString);
-        }
-        else if (type == typeof(bool))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteBool);
-        }
-        else if (type == typeof(DateTime))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteDateTime);
-        }
-        else if (type == typeof(Guid))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteGuid);
-        }
-        else if (type == typeof(sbyte))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteInt8);
-        }
-        else if (type == typeof(short))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteInt16);
-        }
-        else if (type == typeof(int))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteInt32);
-        }
-        else if (type == typeof(long))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteInt64);
-        }
-        else if (type == typeof(byte))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteUInt8);
-        }
-        else if (type == typeof(ushort) || type == typeof(char))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteUInt16);
-        }
-        else if (type == typeof(uint))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteUInt32);
-        }
-        else if (type == typeof(ulong))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteUInt64);
-        }
-        else if (type == typeof(Half))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteFloat16);
-        }
-        else if (type == typeof(float))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteFloat32);
-        }
-        else if (type == typeof(double))
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteFloat64);
-        }
-        else if (type.IsEnum)
-        {
-            WriteCmdByType(field, Enum.GetUnderlyingType(type));
-        }
-        else if (!type.IsValueType)
-        {
-            AddFieldWithCmds(field, BonSerializerCmd.CallGetterAndWriteObject);
-        }
-        else
-        {
-            throw new InvalidOperationException("Unsupported type " + type);
-        }
-    }
-
-    unsafe void AddFieldWithCmds(FieldMetadata? field, BonSerializerCmd callGetter)
-    {
-        if (field == null)
-        {
-            _memWriter.WriteUInt8((byte)(callGetter + 2));
-        }
-        else if (field.PropRefGetter != null)
-        {
-            _memWriter.WriteUInt8((byte)callGetter);
-            _memWriter.WritePointer((nint)field.PropRefGetter);
-        }
-        else
-        {
-            _memWriter.WriteUInt8((byte)(callGetter + 1));
-            _memWriter.WriteVUInt32(field.ByteOffset!.Value);
-        }
-    }
-
-    public void AddClass(ClassMetadata classMetadata)
-    {
-        var persistName = classMetadata.PersistedName ?? (string.IsNullOrEmpty(classMetadata.Namespace)
-            ? classMetadata.Name
-            : classMetadata.Namespace + "." + classMetadata.Name);
-        _memWriter.WriteUInt8((byte)BonSerializerCmd.StartClass);
-        _memWriter.WriteStringInUtf8(persistName);
-        foreach (var fieldMetadata in classMetadata.Fields)
-        {
-            AddField(fieldMetadata);
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, string>(ref value));
+            };
         }
 
-        _memWriter.WriteUInt8((byte)BonSerializerCmd.FinishClass);
-    }
-
-    public void Generate()
-    {
-        if (_type.IsArray)
+        if (type == typeof(bool))
         {
-            if (!_type.IsSZArray) throw new InvalidOperationException("Only SZArray is supported");
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.InitArray);
-            var elementType = _type.GetElementType()!;
-            WriteCmdByType(null, elementType);
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.NextArray);
-            return;
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, bool>(ref value));
+            };
         }
 
-        if (_type.SpecializationOf(typeof(List<>)) is { } listType)
+        if (type == typeof(DateTime))
         {
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.InitList);
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, DateTime>(ref value));
+            };
+        }
+
+        if (type == typeof(Guid))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, Guid>(ref value));
+            };
+        }
+
+        if (type == typeof(sbyte))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, sbyte>(ref value));
+            };
+        }
+
+        if (type == typeof(short))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, short>(ref value));
+            };
+        }
+
+        if (type == typeof(int))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, int>(ref value));
+            };
+        }
+
+        if (type == typeof(long))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, long>(ref value));
+            };
+        }
+
+        if (type == typeof(byte))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, byte>(ref value));
+            };
+        }
+
+        if (type == typeof(ushort) || type == typeof(char))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, ushort>(ref value));
+            };
+        }
+
+        if (type == typeof(uint))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, uint>(ref value));
+            };
+        }
+
+        if (type == typeof(ulong))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, ulong>(ref value));
+            };
+        }
+
+        if (type == typeof(Half))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write((double)Unsafe.As<byte, Half>(ref value));
+            };
+        }
+
+        if (type == typeof(float))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, float>(ref value));
+            };
+        }
+
+        if (type == typeof(double))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, double>(ref value));
+            };
+        }
+
+        if (type.IsEnum)
+        {
+            return CreateSerializerForType(Enum.GetUnderlyingType(type));
+        }
+
+        if (type.IsArray)
+        {
+            if (!type.IsSZArray) throw new InvalidOperationException("Only SZArray is supported");
+            var elementType = type.GetElementType()!;
+            var elementTypeSerializer = CreateCachedSerializerForType(elementType);
+            return (ref SerializerCtx ctx, ref byte value) =>
+            {
+                var obj = Unsafe.As<byte, object>(ref value);
+                var count = Unsafe.As<byte, int>(ref RawData.Ref(obj, (uint)Unsafe.SizeOf<nint>()));
+                ref readonly var mt = ref RawData.MethodTableRef(obj);
+                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var offsetDelta = mt.ComponentSize;
+                AsCtx(ref ctx).Builder.StartArray();
+                for (var i = 0; i < count; i++, offset += offsetDelta)
+                {
+                    elementTypeSerializer(ref ctx, ref RawData.Ref(obj, offset));
+                }
+
+                AsCtx(ref ctx).Builder.FinishArray();
+            };
+        }
+
+        if (type.SpecializationOf(typeof(List<>)) is { } listType)
+        {
             var elementType = listType.GetGenericArguments()[0];
-            WriteCmdByType(null, elementType);
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.NextArray);
-            return;
+            var elementTypeSerializer = CreateCachedSerializerForType(elementType);
+            return (ref SerializerCtx ctx, ref byte value) =>
+            {
+                var obj = Unsafe.As<byte, object>(ref value);
+                var count = Unsafe.As<ICollection>(obj).Count;
+                obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
+                ref readonly var mt = ref RawData.MethodTableRef(obj);
+                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var offsetDelta = mt.ComponentSize;
+                AsCtx(ref ctx).Builder.StartArray();
+                for (var i = 0; i < count; i++, offset += offsetDelta)
+                {
+                    elementTypeSerializer(ref ctx, ref RawData.Ref(obj, offset));
+                }
+
+                AsCtx(ref ctx).Builder.FinishArray();
+            };
         }
 
-        if (_type.SpecializationOf(typeof(HashSet<>)) is { } hashSetType)
+        if (type.SpecializationOf(typeof(HashSet<>)) is { } hashSetType)
         {
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.InitHashSet);
             var elementType = hashSetType.GetGenericArguments()[0];
+            var elementTypeSerializer = CreateCachedSerializerForType(elementType);
             var layout = RawData.GetHashSetEntriesLayout(elementType);
-            _memWriter.WriteVUInt32(layout.Offset);
-            WriteCmdByType(null, elementType);
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.NextHashSet);
-            return;
+            return (ref SerializerCtx ctx, ref byte value) =>
+            {
+                var obj = Unsafe.As<byte, object>(ref value);
+                var count = Unsafe.As<byte, int>(ref RawData.Ref(obj,
+                    RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                ref readonly var mt = ref RawData.MethodTableRef(obj);
+                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var offsetDelta = mt.ComponentSize;
+                Debug.Assert(offsetDelta == layout.Size);
+                AsCtx(ref ctx).Builder.StartArray();
+                for (var i = 0; i < count; i++, offset += offsetDelta)
+                {
+                    if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + 4)) < -1)
+                    {
+                        continue;
+                    }
+
+                    elementTypeSerializer(ref ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                }
+
+                AsCtx(ref ctx).Builder.FinishArray();
+            };
         }
 
-        if (_type.SpecializationOf(typeof(Dictionary<,>)) is { } dictionaryType)
+        if (type.SpecializationOf(typeof(Dictionary<,>)) is { } dictionaryType)
         {
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.InitDictionary);
             var keyType = dictionaryType.GetGenericArguments()[0];
             var valueType = dictionaryType.GetGenericArguments()[1];
+            var keyTypeSerializer = CreateCachedSerializerForType(keyType);
+            var valueTypeSerializer = CreateCachedSerializerForType(valueType);
             var layout = RawData.GetDictionaryEntriesLayout(keyType, valueType);
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.AddOffset);
-            _memWriter.WriteVUInt32(layout.OffsetKey);
-            WriteCmdByType(null, keyType);
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.AddOffset);
-            _memWriter.WriteVUInt32(layout.OffsetValue - layout.OffsetKey);
-            WriteCmdByType(null, valueType);
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.AddOffset);
-            _memWriter.WriteVUInt32(layout.Size - layout.OffsetValue);
-            _memWriter.WriteUInt8((byte)BonSerializerCmd.NextDictionary);
-            return;
+            return (ref SerializerCtx ctx, ref byte value) =>
+            {
+                var obj = Unsafe.As<byte, object>(ref value);
+                var count = Unsafe.As<byte, int>(ref RawData.Ref(obj,
+                    RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                ref readonly var mt = ref RawData.MethodTableRef(obj);
+                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var offsetDelta = mt.ComponentSize;
+                AsCtx(ref ctx).Builder.StartDictionary();
+                for (var i = 0; i < count; i++, offset += offsetDelta)
+                {
+                    if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + 4)) < -1)
+                    {
+                        continue;
+                    }
+
+                    keyTypeSerializer(ref ctx, ref RawData.Ref(obj, offset + layout.OffsetKey));
+                    valueTypeSerializer(ref ctx, ref RawData.Ref(obj, offset + layout.OffsetValue));
+                }
+
+                AsCtx(ref ctx).Builder.FinishDictionary();
+            };
         }
 
-        var classMetadata = ReflectionMetadata.FindByType(_type);
+        var classMetadata = ReflectionMetadata.FindByType(type);
         if (classMetadata != null)
         {
-            AddClass(classMetadata);
-            return;
-        }
-
-        throw new NotSupportedException("BonSerialization of " + _type.ToSimpleName() + " is not supported.");
-    }
-
-    public unsafe BonSerialize Build()
-    {
-        _memWriter.WriteUInt8((byte)BonSerializerCmd.Return);
-        var memory = _memWriter.GetPersistentMemoryAndReset();
-        return (ref BonSerializerCtx ctx, ref byte value) =>
-        {
-            using var memoryHandle = memory.Pin();
-            var reader = new MemReader(memoryHandle.Pointer, memory.Length);
-            object? tempObject = null;
-            object? tempObject2 = null;
-            uint offset = 0;
-            uint offsetDelta = 0;
-            uint offsetOffset = 0;
-            uint offsetFinal = 0;
-            uint offsetLabel = 0;
-            UInt128 tempBytes = default;
-            while (true)
+            var persistName = classMetadata.PersistedName ?? (string.IsNullOrEmpty(classMetadata.Namespace)
+                ? classMetadata.Name
+                : classMetadata.Namespace + "." + classMetadata.Name);
+            var persistNameUtf8 = Encoding.UTF8.GetBytes(persistName);
+            var fieldSerializers = new Serialize[classMetadata.Fields.Length];
+            for (var i = 0; i < classMetadata.Fields.Length; i++)
             {
-                var cmd = (BonSerializerCmd)reader.ReadUInt8();
-                switch (cmd)
+                var field = classMetadata.Fields[i];
+                var nameUtf8 = Encoding.UTF8.GetBytes(field.Name);
+                var serializer = CreateCachedSerializerForType(field.Type);
+                if (field.PropRefGetter != null)
                 {
-                    case BonSerializerCmd.Return:
-                        return;
-                    case BonSerializerCmd.StartClass:
-                        ctx.Builder.StartClass(reader.ReadStringInUtf8());
-                        break;
-                    case BonSerializerCmd.FinishClass:
-                        ctx.Builder.FinishClass();
-                        break;
-                    case BonSerializerCmd.WriteKey:
+                    var getter = field.PropRefGetter;
+                    if (field.Type.IsValueType)
                     {
-                        var len = reader.ReadVUInt32();
-                        ctx.Builder.WriteKey(reader.ReadBlockAsSpan(len));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteString:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<object, byte>(ref tempObject));
-                        ctx.Builder.Write(Unsafe.As<object, string>(ref tempObject));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteString:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, string>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteString:
-                    {
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, string>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteObject:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<object, byte>(ref tempObject));
-                        Serialize(ref ctx.Builder, tempObject);
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteObject:
-                    {
-                        offset = reader.ReadVUInt32();
-                        Serialize(ref ctx.Builder,
-                            Unsafe.As<byte, object>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteObject:
-                    {
-                        Serialize(ref ctx.Builder, Unsafe.As<byte, object>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteBool:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, bool>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteBool:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, bool>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteBool:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, bool>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteDateTime:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, DateTime>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteDateTime:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, DateTime>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteDateTime:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, DateTime>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteGuid:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, Guid>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteGuid:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, Guid>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteGuid:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, Guid>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteInt8:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, sbyte>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteInt8:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, sbyte>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteInt8:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, sbyte>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteInt16:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, short>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteInt16:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, short>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteInt16:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, short>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteInt32:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, int>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteInt32:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, int>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteInt32:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, int>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteInt64:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, long>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteInt64:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, long>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteInt64:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, long>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteUInt8:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, byte>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteUInt8:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, byte>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteUInt8:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, byte>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteUInt16:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, ushort>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteUInt16:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, ushort>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteUInt16:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, ushort>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteUInt32:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, uint>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteUInt32:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, uint>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteUInt32:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, uint>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteUInt64:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, ulong>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteUInt64:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, ulong>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteUInt64:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, ulong>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteFloat16:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write((double)Unsafe.As<UInt128, Half>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteFloat16:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write((double)
-                            Unsafe.As<byte, Half>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteFloat16:
-                    {
-                        ctx.Builder.Write((double)Unsafe.As<byte, Half>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteFloat32:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, float>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteFloat32:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, float>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteFloat32:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, float>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.CallGetterAndWriteFloat64:
-                    {
-                        var getter = (delegate*<object, ref byte, void>)reader.ReadPointer();
-                        getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref tempBytes));
-                        ctx.Builder.Write(Unsafe.As<UInt128, double>(ref tempBytes));
-                        break;
-                    }
-                    case BonSerializerCmd.GetByOffsetAndWriteFloat64:
-                    {
-                        offset = reader.ReadVUInt32();
-                        ctx.Builder.Write(
-                            Unsafe.As<byte, double>(ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.GetCustomAndWriteFloat64:
-                    {
-                        ctx.Builder.Write(Unsafe.As<byte, double>(ref RawData.Ref(tempObject2, offset)));
-                        break;
-                    }
-                    case BonSerializerCmd.InitArray:
-                    {
-                        tempObject2 = Unsafe.As<byte, object>(ref value);
-                        var count = Unsafe.As<byte, int>(ref RawData.Ref(tempObject2, (uint)Unsafe.SizeOf<nint>()));
-                        ref readonly var mt = ref RawData.MethodTableRef(tempObject2);
-                        offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                        offsetDelta = mt.ComponentSize;
-                        offsetFinal = offset + offsetDelta * (uint)count;
-                        offsetLabel = (uint)reader.GetCurrentPositionWithoutController();
-                        ctx.Builder.StartArray();
-                        break;
-                    }
-                    case BonSerializerCmd.NextArray:
-                    {
-                        offset += offsetDelta;
-                        if (offset < offsetFinal)
+                        if ((*(RawData.MethodTable*)field.Type.TypeHandle.Value).ContainsGCPointers)
+                            throw new InvalidOperationException("Value type with GC pointers is not supported.");
+                        fieldSerializers[i] = (ref SerializerCtx ctx, ref byte value) =>
                         {
-                            reader.SetCurrentPositionWithoutController(offsetLabel);
-                        }
-                        else
-                        {
-                            ctx.Builder.FinishArray();
-                            return;
-                        }
-
-                        break;
+                            AsCtx(ref ctx).Builder.WriteKey(nameUtf8);
+                            UInt128 temp = default;
+                            getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref temp));
+                            serializer(ref ctx, ref Unsafe.As<UInt128, byte>(ref temp));
+                        };
                     }
-                    case BonSerializerCmd.InitList:
+                    else
                     {
-                        tempObject2 = Unsafe.As<byte, object>(ref value);
-                        var count = Unsafe.As<ICollection>(tempObject2).Count;
-                        tempObject2 = RawData.ListItems(Unsafe.As<List<object>>(tempObject2));
-                        ref readonly var mt = ref RawData.MethodTableRef(tempObject2);
-                        offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                        offsetDelta = mt.ComponentSize;
-                        offsetFinal = offset + offsetDelta * (uint)count;
-                        offsetLabel = (uint)reader.GetCurrentPositionWithoutController();
-                        ctx.Builder.StartArray();
-                        break;
+                        fieldSerializers[i] = (ref SerializerCtx ctx, ref byte value) =>
+                        {
+                            AsCtx(ref ctx).Builder.WriteKey(nameUtf8);
+                            object? tempObject = null;
+                            getter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<object, byte>(ref tempObject));
+                            serializer(ref ctx, ref Unsafe.As<object, byte>(ref tempObject));
+                        };
                     }
-                    case BonSerializerCmd.InitHashSet:
+                }
+                else
+                {
+                    var offset = field.ByteOffset!.Value;
+                    fieldSerializers[i] = (ref SerializerCtx ctx, ref byte value) =>
                     {
-                        tempObject2 = Unsafe.As<byte, object>(ref value);
-                        var count = Unsafe.As<byte, int>(ref RawData.Ref(tempObject2,
-                            RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8)));
-                        tempObject2 = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(tempObject2));
-                        offsetOffset = reader.ReadVUInt32();
-                        ref readonly var mt = ref RawData.MethodTableRef(tempObject2);
-                        offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                        offsetDelta = mt.ComponentSize;
-                        offsetFinal = offset + offsetDelta * (uint)count;
-                        offsetLabel = (uint)reader.GetCurrentPositionWithoutController();
-                        ctx.Builder.StartArray();
-                        while (offset < offsetFinal)
-                        {
-                            if (Unsafe.As<byte, int>(ref RawData.Ref(tempObject2, offset + 4)) >= -1) break;
-                            offset += offsetDelta;
-                        }
-
-                        if (offset >= offsetFinal)
-                        {
-                            ctx.Builder.FinishArray();
-                            return;
-                        }
-
-                        offset += offsetOffset;
-                        break;
-                    }
-                    case BonSerializerCmd.NextHashSet:
-                    {
-                        offset += offsetDelta - offsetOffset;
-                        while (offset < offsetFinal)
-                        {
-                            if (Unsafe.As<byte, int>(ref RawData.Ref(tempObject2, offset + 4)) >= -1) break;
-                            offset += offsetDelta;
-                        }
-
-                        if (offset < offsetFinal)
-                        {
-                            reader.SetCurrentPositionWithoutController(offsetLabel);
-                            offset += offsetOffset;
-                        }
-                        else
-                        {
-                            ctx.Builder.FinishArray();
-                            return;
-                        }
-
-                        break;
-                    }
-                    case BonSerializerCmd.AddOffset:
-                        offset += reader.ReadVUInt32();
-                        break;
-                    case BonSerializerCmd.InitDictionary:
-                    {
-                        tempObject2 = Unsafe.As<byte, object>(ref value);
-                        var count = Unsafe.As<byte, int>(ref RawData.Ref(tempObject2,
-                            RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
-                        tempObject2 = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(tempObject2));
-                        ref readonly var mt = ref RawData.MethodTableRef(tempObject2);
-                        offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                        offsetDelta = mt.ComponentSize;
-                        offsetFinal = offset + offsetDelta * (uint)count;
-                        offsetLabel = (uint)reader.GetCurrentPositionWithoutController();
-                        ctx.Builder.StartDictionary();
-                        while (offset < offsetFinal)
-                        {
-                            if (Unsafe.As<byte, int>(ref RawData.Ref(tempObject2, offset + 4)) >= -1) break;
-                            offset += offsetDelta;
-                        }
-
-                        if (offset >= offsetFinal)
-                        {
-                            ctx.Builder.FinishDictionary();
-                            return;
-                        }
-
-                        break;
-                    }
-                    case BonSerializerCmd.NextDictionary:
-                    {
-                        while (offset < offsetFinal)
-                        {
-                            if (Unsafe.As<byte, int>(ref RawData.Ref(tempObject2, offset + 4)) >= -1) break;
-                            offset += offsetDelta;
-                        }
-
-                        if (offset < offsetFinal)
-                        {
-                            reader.SetCurrentPositionWithoutController(offsetLabel);
-                        }
-                        else
-                        {
-                            ctx.Builder.FinishDictionary();
-                            return;
-                        }
-
-                        break;
-                    }
-                    default:
-                        throw new InvalidDataException("Unknown command in BonSerializer " + (byte)cmd + " at " +
-                                                       (reader.GetCurrentPosition() - 1));
+                        AsCtx(ref ctx).Builder.WriteKey(nameUtf8);
+                        serializer(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
+                    };
                 }
             }
-        };
+
+            return (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Builder.StartClass(persistNameUtf8);
+                for (var i = 0; i < fieldSerializers.Length; i++)
+                {
+                    fieldSerializers[i](ref ctx, ref value);
+                }
+
+                AsCtx(ref ctx).Builder.FinishClass();
+            };
+        }
+
+        throw new NotSupportedException("BonSerialization of " + type.ToSimpleName() + " is not supported.");
+    }
+
+    public static BonSerializerFactory Instance { get; } = new();
+
+    public static void Serialize(ref BonBuilder builder, object? value)
+    {
+        var ctx = new BonSerializerCtx { Factory = Instance, Builder = ref builder };
+        Instance.SerializeObject(ref AsCtx(ref ctx), ref Unsafe.As<object, byte>(ref value));
     }
 }
