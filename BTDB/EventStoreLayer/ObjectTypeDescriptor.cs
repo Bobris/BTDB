@@ -105,9 +105,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public bool FinishBuildFromType(ITypeDescriptorFactory factory)
     {
         var props = _type!.GetProperties(_propertyBindingFlags);
-#if DEBUG
         CheckObjectTypeIsGoodDto(_type, _propertyBindingFlags);
-#endif
         foreach (var propertyInfo in props)
         {
             if (propertyInfo.GetIndexParameters().Length != 0) continue;

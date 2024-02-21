@@ -1417,4 +1417,17 @@ public class EventStore2Test
         Assert.True(deserializer.Deserialize(out obj2, data));
         Assert.Equal(obj, obj2);
     }
+
+    [Fact]
+    public void SerializingIEnumerableFromLinqSelectThrows()
+    {
+        var serializer = new EventSerializer();
+        var obj = new ClassWithIEnumerable
+        {
+            Items = new[] { new Content { ContentId = 1, Name = "A" }, new Content { ContentId = 2, Name = "B" } }
+                .Select(c => c)
+        };
+
+        Assert.Throws<InvalidOperationException>(() => serializer.Serialize(out var hasMetadata, obj));
+    }
 }
