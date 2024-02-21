@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+## 32.4.26
+
+### Improved
+
+Check type validity for serialization also in release build.
+
 ## 32.4.25
 
 ### Improved (another attempt)
