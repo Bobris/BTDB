@@ -217,4 +217,20 @@ public sealed class RawData
         var align = CombineAlign(CombineAlign(f1.Align, f2.Align), f3.Align);
         return (Align(Align(Align(f1.Size, f2.Align) + f2.Size, f3.Align) + f3.Size, align), align);
     }
+
+    public static (uint Item1, uint Item2) GetOffsets(Type t1, Type t2)
+    {
+        var sa1 = GetSizeAndAlign(t1);
+        var sa2 = GetSizeAndAlign(t2);
+        if (!t2.IsValueType && t1.IsValueType || sa2.Align > sa1.Align)
+        {
+            // T2, T1
+            return (Align(sa2.Size, sa1.Align), 0);
+        }
+        else
+        {
+            // T1, T2
+            return (0, Align(sa1.Size, sa2.Align));
+        }
+    }
 }

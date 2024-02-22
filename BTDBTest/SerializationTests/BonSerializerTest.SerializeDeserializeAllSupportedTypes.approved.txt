@@ -16,6 +16,21 @@
   "Float32": 3.140000104904175,
   "Float64": 3.141592653589793,
   "NullableFloat64": 3.141592653589793,
+  "ValueTupleIntLong": {
+    "__type__": "Tuple",
+    "Item1": 42,
+    "Item2": 4242424242
+  },
+  "ValueTupleLongString": {
+    "__type__": "Tuple",
+    "Item1": 424242424242,
+    "Item2": "B"
+  },
+  "ValueTupleUintUint": {
+    "__type__": "Tuple",
+    "Item1": 1,
+    "Item2": 2
+  },
   "Self": {
     "__type__": "BTDBTest.SerializationTests.AllSupportedTypes",
     "Str": null,
@@ -34,6 +49,21 @@
     "Float32": 0,
     "Float64": 0,
     "NullableFloat64": null,
+    "ValueTupleIntLong": {
+      "__type__": "Tuple",
+      "Item1": 0,
+      "Item2": 0
+    },
+    "ValueTupleLongString": {
+      "__type__": "Tuple",
+      "Item1": 0,
+      "Item2": null
+    },
+    "ValueTupleUintUint": {
+      "__type__": "Tuple",
+      "Item1": 0,
+      "Item2": 0
+    },
     "Self": null,
     "DoubleArray": null,
     "IntList": null,
