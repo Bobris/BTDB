@@ -223,6 +223,23 @@ public class BonSerializerFactory : ISerializerFactory
             return CreateSerializerForType(Enum.GetUnderlyingType(type));
         }
 
+        if (Nullable.GetUnderlyingType(type) is { } nullableType)
+        {
+            var offset = RawData.Align(1, RawData.GetSizeAndAlign(nullableType).Align);
+            var serializer = CreateCachedSerializerForType(nullableType);
+            return (ref SerializerCtx ctx, ref byte value) =>
+            {
+                if (value != 0)
+                {
+                    serializer(ref ctx, ref Unsafe.AddByteOffset(ref value, offset));
+                }
+                else
+                {
+                    AsCtx(ref ctx).Builder.WriteNull();
+                }
+            };
+        }
+
         if (type.IsArray)
         {
             if (!type.IsSZArray) throw new InvalidOperationException("Only SZArray is supported");
