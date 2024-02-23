@@ -32,6 +32,7 @@ public class BonSerializerTest
         public (int A, long B) ValueTupleIntLong;
         public (long A, string B) ValueTupleLongString;
         public (uint A, uint B) ValueTupleUintUint;
+        public Tuple<long, string> TupleLongString;
         public AllSupportedTypes? Self;
         public double[]? DoubleArray;
         public List<int>? IntList;
@@ -50,6 +51,7 @@ public class BonSerializerTest
             Guid = Guid.Parse("9e251065-0873-49bc-8fd9-266cc9aa39d3"), Float16 = (Half)3.14, Float32 = 3.14f,
             Float64 = Math.PI, NullableFloat64 = Math.PI, ValueTupleIntLong = (42, 4242424242),
             ValueTupleLongString = (424242424242, "B"), ValueTupleUintUint = (1, 2),
+            TupleLongString = new Tuple<long, string>(123456, "BB"),
             Self = new(), DoubleArray = [Math.E, Math.PI], IntList = [1, 20, 300], UShortSet = [666, 12345],
             LongIntDict = new() { { 1111, 2 }, { 3333, 4 } }
         };

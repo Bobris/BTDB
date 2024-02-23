@@ -31,6 +31,11 @@
     "Item1": 1,
     "Item2": 2
   },
+  "TupleLongString": {
+    "__type__": "Tuple",
+    "Item1": 123456,
+    "Item2": "BB"
+  },
   "Self": {
     "__type__": "BTDBTest.SerializationTests.AllSupportedTypes",
     "Str": null,
@@ -64,6 +69,7 @@
       "Item1": 0,
       "Item2": 0
     },
+    "TupleLongString": null,
     "Self": null,
     "DoubleArray": null,
     "IntList": null,

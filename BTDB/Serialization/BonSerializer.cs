@@ -258,6 +258,25 @@ public class BonSerializerFactory : ISerializerFactory
             };
         }
 
+        if (type.SpecializationOf(typeof(Tuple<,>)) is { } tuple2)
+        {
+            var typeParams = tuple2.GetGenericArguments();
+            var offsets = RawData.GetOffsets(typeParams[0], typeParams[1]);
+            offsets = (offsets.Item1 + (uint)Unsafe.SizeOf<nint>(), offsets.Item2 + (uint)Unsafe.SizeOf<nint>());
+            var serializer0 = CreateCachedSerializerForType(typeParams[0]);
+            var serializer1 = CreateCachedSerializerForType(typeParams[1]);
+            return (ref SerializerCtx ctx, ref byte value) =>
+            {
+                ref var builder = ref AsCtx(ref ctx).Builder;
+                builder.StartClass("Tuple"u8);
+                builder.WriteKey("Item1"u8);
+                serializer0(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offsets.Item1));
+                builder.WriteKey("Item2"u8);
+                serializer1(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offsets.Item2));
+                builder.FinishClass();
+            };
+        }
+
         if (type.IsArray)
         {
             if (!type.IsSZArray) throw new InvalidOperationException("Only SZArray is supported");
