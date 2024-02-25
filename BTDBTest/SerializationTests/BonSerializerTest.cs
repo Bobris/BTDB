@@ -60,4 +60,14 @@ public class BonSerializerTest
         var bon = new Bon(builder.FinishAsMemory());
         this.Assent(bon.DumpToJson());
     }
+
+    [Fact]
+    public void SerializeDeserializeBoxedValue()
+    {
+        var obj = (object)(42u, 424242424242L);
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, obj);
+        var bon = new Bon(builder.FinishAsMemory());
+        this.Assent(bon.DumpToJson());
+    }
 }

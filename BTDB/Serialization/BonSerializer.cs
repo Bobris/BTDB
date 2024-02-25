@@ -42,16 +42,24 @@ public class BonSerializerFactory : ISerializerFactory
             return;
         }
 
-        var typePtr = obj.GetType().TypeHandle.Value;
+        var type = obj.GetType();
+        var typePtr = type.TypeHandle.Value;
         _cache.TryGetValue(typePtr, out var serializer);
         if (serializer == null)
         {
-            serializer = CreateSerializerForType(obj.GetType());
+            serializer = CreateSerializerForType(type);
             _cache.TryAdd(typePtr, serializer);
             _cache.TryGetValue(typePtr, out serializer);
         }
 
-        serializer!(ref ctx, ref value);
+        if (type.IsValueType)
+        {
+            serializer!(ref ctx, ref RawData.Ref(obj, (uint)Unsafe.SizeOf<nint>()));
+        }
+        else
+        {
+            serializer!(ref ctx, ref value);
+        }
     }
 
     static unsafe ref BonSerializerCtx AsCtx(ref SerializerCtx ctx)
