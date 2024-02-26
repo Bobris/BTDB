@@ -10,6 +10,7 @@
         <Version>32.4.28</Version>
         <Authors>Boris Letocha, Lubos Karasek</Authors>
         <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
         <Description>Key Value Database, Wrapped Dynamic IL generation with debugging + extensions, IOC Container, Object Database, RPC Library, Snappy Compression, Event Storage</Description>
