@@ -14,11 +14,6 @@ unsafe
     h(container, "Hello");
 }
 
-[GenerateFor(typeof(HttpContextAccessor))]
-interface xxx
-{
-}
-
 [Generate]
 public class DynamicEventWrapper
 {

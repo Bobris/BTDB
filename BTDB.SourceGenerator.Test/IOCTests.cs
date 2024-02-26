@@ -231,6 +231,21 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForParameterlessPrivateConstructor()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            [BTDB.Generate]
+            public class Logger
+            {
+                private Logger()
+                {
+                }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIocRegistrationForDependencyProperties()
     {
         // language=cs

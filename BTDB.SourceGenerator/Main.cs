@@ -286,6 +286,7 @@ public class SourceGenerator : IIncrementalGenerator
                 if (symbolConstructor.Parameters.Length == 0)
                 {
                     hasDefaultConstructor = true;
+                    constructor ??= symbolConstructor;
                 }
 
                 if (symbolConstructor.Parameters.Length > (constructor?.Parameters.Length ?? 0))
