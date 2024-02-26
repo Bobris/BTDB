@@ -22,3 +22,4 @@ TestResults
 .idea
 launchSettings.json
 /SimpleTester/BenchmarkDotNet.Artifacts
+/artifacts

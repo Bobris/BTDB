@@ -94,12 +94,8 @@ static class Program
             releaseLogLines.RemoveAt(releaseLogLines.Count - 1);
         outputLogLines.Insert(topVersionLine + 1, "## " + newVersion);
         outputLogLines.Insert(topVersionLine + 1, "");
-        if (Directory.Exists(projDir + "/BTDB/bin/Release"))
-            Directory.Delete(projDir + "/BTDB/bin/Release", true);
-        if (Directory.Exists(projDir + "/BTDB.SourceGenerator/bin/Release"))
-            Directory.Delete(projDir + "/BTDB.SourceGenerator/bin/Release", true);
-        if (Directory.Exists(projDir + "/ODbDump/bin/Release"))
-            Directory.Delete(projDir + "/ODbDump/bin/Release", true);
+        if (Directory.Exists(projDir + "/artifacts"))
+            Directory.Delete(projDir + "/artifacts", true);
         var fileNameOfNugetToken =
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "/.nuget/token.txt";
         string nugetToken;
@@ -157,10 +153,10 @@ static class Program
         var release2 = await client.Repository.Release.Create(btdbRepo.Id, release);
         Console.WriteLine("release url:");
         Console.WriteLine(release2.HtmlUrl);
-        var uploadAsset = await UploadWithRetry(projDir + "/BTDB/bin/Release/", client, release2, "BTDB.zip");
+        var uploadAsset = await UploadWithRetry(projDir + "/artifacts/bin/BTDB/Release/", client, release2, "BTDB.zip");
         Console.WriteLine("BTDB url:");
         Console.WriteLine(uploadAsset.BrowserDownloadUrl);
-        uploadAsset = await UploadWithRetry(projDir + "/ODbDump/bin/Release/", client, release2, "ODbDump.zip");
+        uploadAsset = await UploadWithRetry(projDir + "/artifacts/bin/ODbDump/Release/", client, release2, "ODbDump.zip");
         Console.WriteLine("ODbDump url:");
         Console.WriteLine(uploadAsset.BrowserDownloadUrl);
         Console.WriteLine("Press Enter for finish");
@@ -214,7 +210,7 @@ static class Program
         var process = Process.Start(start);
         process!.WaitForExit();
         var source = projDir + "/BTDB";
-        var releaseSources = projDir + "/BTDB/bin/Release/Sources";
+        var releaseSources = projDir + "/artifacts/bin/BTDB/Release/Sources";
         foreach (var fn in Directory.GetFiles(source, "*.*", SearchOption.AllDirectories).ToList())
         {
             var relfn = fn.Substring(source.Length + 1);
@@ -224,12 +220,12 @@ static class Program
             File.Copy(fn, releaseSources + "/" + relfn);
         }
 
-        System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources, projDir + "/BTDB/bin/Release/BTDB.zip",
+        System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources, projDir + "/artifacts/bin/BTDB/Release/BTDB.zip",
             System.IO.Compression.CompressionLevel.Optimal, false);
         start = new("dotnet", "nuget push BTDB." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
         {
             UseShellExecute = true,
-            WorkingDirectory = projDir + "/BTDB/bin/Release"
+            WorkingDirectory = projDir + "/artifacts/bin/BTDB/Release"
         };
         process = Process.Start(start);
         process!.WaitForExit();
@@ -248,7 +244,7 @@ static class Program
             "nuget push BTDB.SourceGenerator." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
         {
             UseShellExecute = true,
-            WorkingDirectory = projDir + "/BTDB.SourceGenerator/bin/Release"
+            WorkingDirectory = projDir + "/artifacts/bin/BTDB.SourceGenerator/Release"
         };
         process = Process.Start(start);
         process!.WaitForExit();
@@ -263,9 +259,9 @@ static class Program
         };
         var process = Process.Start(start);
         process!.WaitForExit();
-        var source = projDir + "/ODbDump/bin/Release/net8.0/publish";
+        var source = projDir + "/artifacts/publish/ODbDump/Release";
         System.IO.Compression.ZipFile.CreateFromDirectory(source,
-            projDir + "/ODbDump/bin/Release/ODbDump.zip",
+            projDir + "/artifacts/bin/ODbDump/Release/ODbDump.zip",
             System.IO.Compression.CompressionLevel.Optimal, false);
     }
 }
