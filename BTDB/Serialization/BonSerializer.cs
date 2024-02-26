@@ -12,13 +12,22 @@ namespace BTDB.Serialization;
 
 public delegate void Serialize(ref SerializerCtx ctx, ref byte value);
 
+public delegate void Deserialize(ref DeserializerCtx ctx, ref byte value);
+
 public interface ISerializerFactory
 {
-    void SerializeObject(ref SerializerCtx ctx, ref byte value);
+    void SerializeObject(ref SerializerCtx ctx, object? value);
     Serialize CreateSerializerForType(Type type);
+    object? DeserializeObject(ref DeserializerCtx ctx);
+    Deserialize CreateDeserializerForType(Type type);
 }
 
 public ref struct SerializerCtx
+{
+    public ISerializerFactory Factory;
+}
+
+public ref struct DeserializerCtx
 {
     public ISerializerFactory Factory;
 }
@@ -29,13 +38,19 @@ public ref struct BonSerializerCtx
     public ref BonBuilder Builder;
 }
 
+public ref struct BonDeserializerCtx
+{
+    public ISerializerFactory Factory;
+    public ref Bon.Bon Bon;
+    public ref KeyedBon KeyedBon;
+}
+
 public class BonSerializerFactory : ISerializerFactory
 {
     readonly ConcurrentDictionary<nint, Serialize> _cache = new();
 
-    public void SerializeObject(ref SerializerCtx ctx, ref byte value)
+    public void SerializeObject(ref SerializerCtx ctx, object? obj)
     {
-        var obj = Unsafe.As<byte, object>(ref value);
         if (obj == null)
         {
             AsCtx(ref ctx).Builder.WriteNull();
@@ -58,7 +73,7 @@ public class BonSerializerFactory : ISerializerFactory
         }
         else
         {
-            serializer!(ref ctx, ref value);
+            serializer!(ref ctx, ref Unsafe.As<object, byte>(ref obj));
         }
     }
 
@@ -82,13 +97,33 @@ public class BonSerializerFactory : ISerializerFactory
 #pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
     }
 
+    static unsafe ref BonDeserializerCtx AsCtx(ref DeserializerCtx ctx)
+    {
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+        fixed (void* ptr = &ctx)
+        {
+            return ref *(BonDeserializerCtx*)ptr;
+        }
+#pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+    }
+
+    static unsafe ref DeserializerCtx AsCtx(ref BonDeserializerCtx ctx)
+    {
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+        fixed (void* ptr = &ctx)
+        {
+            return ref *(DeserializerCtx*)ptr;
+        }
+#pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+    }
+
     public Serialize CreateCachedSerializerForType(Type type)
     {
         if (!type.IsValueType)
         {
             return (ref SerializerCtx ctx, ref byte value) =>
             {
-                AsCtx(ref ctx).Factory.SerializeObject(ref ctx, ref value);
+                AsCtx(ref ctx).Factory.SerializeObject(ref ctx, Unsafe.As<byte, object>(ref value));
             };
         }
 
@@ -456,11 +491,27 @@ public class BonSerializerFactory : ISerializerFactory
         throw new NotSupportedException("BonSerialization of " + type.ToSimpleName() + " is not supported.");
     }
 
+    public object? DeserializeObject(ref DeserializerCtx ctx)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Deserialize CreateDeserializerForType(Type type)
+    {
+        throw new NotImplementedException();
+    }
+
     public static BonSerializerFactory Instance { get; } = new();
 
     public static void Serialize(ref BonBuilder builder, object? value)
     {
         var ctx = new BonSerializerCtx { Factory = Instance, Builder = ref builder };
-        Instance.SerializeObject(ref AsCtx(ref ctx), ref Unsafe.As<object, byte>(ref value));
+        Instance.SerializeObject(ref AsCtx(ref ctx), value);
+    }
+
+    public static object? Deserialize(ref Bon.Bon bon)
+    {
+        var ctx = new BonDeserializerCtx { Factory = Instance, Bon = ref bon };
+        return Instance.DeserializeObject(ref AsCtx(ref ctx));
     }
 }
