@@ -210,7 +210,7 @@ static class Program
         var process = Process.Start(start);
         process!.WaitForExit();
         var source = projDir + "/BTDB";
-        var releaseSources = projDir + "/artifacts/bin/BTDB/Release/Sources";
+        var releaseSources = projDir + "/artifacts/bin/BTDB/release/Sources";
         foreach (var fn in Directory.GetFiles(source, "*.*", SearchOption.AllDirectories).ToList())
         {
             var relfn = fn.Substring(source.Length + 1);
@@ -220,12 +220,12 @@ static class Program
             File.Copy(fn, releaseSources + "/" + relfn);
         }
 
-        System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources, projDir + "/artifacts/bin/BTDB/Release/BTDB.zip",
+        System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources, projDir + "/artifacts/bin/BTDB/release/BTDB.zip",
             System.IO.Compression.CompressionLevel.Optimal, false);
         start = new("dotnet", "nuget push BTDB." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
         {
             UseShellExecute = true,
-            WorkingDirectory = projDir + "/artifacts/bin/BTDB/Release"
+            WorkingDirectory = projDir + "/artifacts/package/release"
         };
         process = Process.Start(start);
         process!.WaitForExit();
@@ -244,7 +244,7 @@ static class Program
             "nuget push BTDB.SourceGenerator." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
         {
             UseShellExecute = true,
-            WorkingDirectory = projDir + "/artifacts/bin/BTDB.SourceGenerator/Release"
+            WorkingDirectory = projDir + "/artifacts/package/release"
         };
         process = Process.Start(start);
         process!.WaitForExit();
