@@ -21,6 +21,7 @@
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
         <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
+        <NoWarn>$(NoWarn);NU5128</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
