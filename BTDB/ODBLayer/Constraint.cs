@@ -527,6 +527,7 @@ public static partial class Constraint
             new ConstraintStringPredicateSlow(predicate);
 
         public static Constraint<string> Exact(string value) => new ConstraintStringExact(value);
+        public static Constraint<string> ExactCaseInsensitive(string value) => Predicate((in ReadOnlySpan<char> v) => v.Equals(value, StringComparison.OrdinalIgnoreCase));
 
         public static Constraint<string> UpTo(string value, bool including = true) =>
             new ConstraintStringUpTo(value, including);
