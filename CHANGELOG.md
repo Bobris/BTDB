@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.5.0
+
 ### Added
 
 Constraint String ExactCaseInsensitive.
