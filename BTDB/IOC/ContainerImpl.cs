@@ -258,7 +258,7 @@ public class ContainerImpl : IContainer
             if (genericTypeDefinition == typeof(IEnumerable<>))
             {
                 var nestedType = type.GetGenericArguments()[0];
-                return CreateArrayFactory(ctx, key, ctxImpl, nestedType);
+                return CreateArrayFactory(ctx, key, ctxImpl, nestedType, ctxImpl.ForbidKeylessFallback);
             }
 
             if (genericTypeDefinition == typeof(Lazy<>))
@@ -301,7 +301,7 @@ public class ContainerImpl : IContainer
         if (type.IsSZArray)
         {
             var nestedType = type.GetElementType()!;
-            return CreateArrayFactory(ctx, key, ctxImpl, nestedType);
+            return CreateArrayFactory(ctx, key, ctxImpl, nestedType, ctxImpl.ForbidKeylessFallback);
         }
 
         return null;
@@ -438,7 +438,7 @@ public class ContainerImpl : IContainer
     }
 
     Func<IContainer, IResolvingCtx?, object?>? CreateArrayFactory(ICreateFactoryCtx ctx, object? key,
-        CreateFactoryCtx ctxImpl, Type nestedType)
+        CreateFactoryCtx ctxImpl, Type nestedType, bool forbidKeylessFallback)
     {
         if (nestedType.IsValueType)
             throw new NotSupportedException("IEnumerable<> or Array<> with value type argument is not supported.");
@@ -447,6 +447,7 @@ public class ContainerImpl : IContainer
         if (nestedFactory == null)
         {
             ctxImpl.FinishEnumerate(enumerableBackup);
+            if (forbidKeylessFallback) return null;
             return (_, _) => Array.CreateInstance(nestedType, 0);
         }
 

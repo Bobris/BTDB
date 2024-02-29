@@ -1670,6 +1670,17 @@ public partial class IocTests
         Assert.Null(container.ResolveOptionalKeyed<ILogger>(false));
     }
 
+    [Fact]
+    public void ResolveOptionalKeyedIEnumerableShouldReturnNullForNothingRegistered()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<Logger>().AsImplementedInterfaces();
+        var container = builder.Build();
+        Assert.NotNull(container.Resolve<IEnumerable<ILogger>>());
+        Assert.NotNull(container.ResolveOptional<IEnumerable<ILogger>>());
+        Assert.Null(container.ResolveOptionalKeyed<IEnumerable<ILogger>>(false));
+    }
+
     internal sealed record RecordSealed
     {
         public string Name { get; init; } = "name";
