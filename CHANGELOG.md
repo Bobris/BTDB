@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Constraint String ExactCaseInsensitive.
+
 ### Fixed
 
 Restore some IOC behavior from 31.x: ResolveOptionalKeyedIEnumerableShouldReturnNullForNothingRegistered
