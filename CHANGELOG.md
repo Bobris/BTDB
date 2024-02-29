@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Restore some IOC behavior from 31.x: ResolveOptionalKeyedIEnumerableShouldReturnNullForNothingRegistered
+
 ## 32.4.29
 
 ## 32.4.28
