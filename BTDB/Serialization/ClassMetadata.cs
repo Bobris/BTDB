@@ -11,4 +11,7 @@ public class ClassMetadata
     public string? PersistedName;
     public FieldMetadata[] Fields;
     public unsafe delegate*<object> Creator;
+
+    public string TruePersistedName =>
+        PersistedName ?? (string.IsNullOrEmpty(Namespace) ? Name : Namespace + "." + Name);
 }
