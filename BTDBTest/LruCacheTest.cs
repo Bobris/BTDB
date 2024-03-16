@@ -40,6 +40,10 @@ public class LruCacheTest
         Assert.Equal(22, value);
         Assert.True(cache.TryGetValue(3, out value));
         Assert.Equal(33, value);
+        cache.Clear();
+        Assert.Empty(cache);
+        cache[1] = 11;
+        Assert.Single(cache);
     }
 
     [Fact]

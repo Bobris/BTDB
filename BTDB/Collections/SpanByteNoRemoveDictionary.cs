@@ -200,7 +200,7 @@ public class SpanByteNoRemoveDictionary<TValue> : IReadOnlyCollection<KeyValuePa
 
         key.CopyTo(_bytes.AsSpan(_bytesUsed));
         _bytesUsed += key.Length;
-        entries[entryIndex].next = _buckets[bucketIndex] - 1;
+        entry.next = _buckets[bucketIndex] - 1;
         _buckets[bucketIndex] = entryIndex + 1;
         _count++;
         return ref entries[entryIndex].value;

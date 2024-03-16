@@ -2,15 +2,15 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace BTDB.Collections;
 
-[DebuggerTypeProxy(typeof(LruCacheDebugView<,>))]
+[DebuggerTypeProxy(typeof(SpanByteLruCacheDebugView<>))]
 [DebuggerDisplay("Count = {Count}, Capacity = {Capacity}")]
-public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TValue>> where TKey : IEquatable<TKey>
+public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[], TValue>>
 {
     int _count;
     readonly int _maxCapacity;
@@ -25,6 +25,11 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
     int[] _buckets;
     Entry[] _entries;
 
+    int _usedBytes = 0;
+    int _freeBytes = 0;
+
+    byte[] _bytes = Array.Empty<byte>();
+
     [DebuggerDisplay("({Key}, {Value})->{Next} P:{UsagePrev} N:{UsageNext}")]
     struct Entry
     {
@@ -36,7 +41,8 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
         public int Next;
         public int UsagePrev;
         public int UsageNext;
-        public TKey Key;
+        public int Offset;
+        public int Length;
         public TValue Value;
     }
 
@@ -46,7 +52,7 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
     /// </summary>
     /// <param name="capacity">Must be at least 1, and it will be modified to next power of 2</param>
     /// <param name="startingCapacity">How many buckets it will allocate at start</param>
-    public LruCache(int capacity = 64, int startingCapacity = 16)
+    public SpanByteLruCache(int capacity = 64, int startingCapacity = 16)
     {
         if (capacity < 1)
             HashHelpers.ThrowCapacityArgumentOutOfRangeException();
@@ -66,17 +72,32 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
 
     public int MaxCapacity => _maxCapacity;
 
-    public bool TryGetValue(TKey key, out TValue value)
+    static int CalcHash(in ReadOnlySpan<byte> key)
     {
-        if (key == null) HashHelpers.ThrowKeyArgumentNullException();
+        var hashCode = new HashCode();
+        hashCode.AddBytes(key);
+        return hashCode.ToHashCode();
+    }
+
+    bool Equal(in ReadOnlySpan<byte> key, int hash, in Entry entry)
+    {
+        if (hash != entry.Hash)
+            return false;
+        if (key.Length != entry.Length)
+            return false;
+        return _bytes.AsSpan(entry.Offset, entry.Length).SequenceEqual(key);
+    }
+
+    public bool TryGetValue(in ReadOnlySpan<byte> key, out TValue value)
+    {
+        var hash = CalcHash(key);
         var entries = _entries;
         var collisionCount = 0;
-        var hash = key.GetHashCode();
         for (var i = _buckets[hash & (_buckets.Length - 1)] - 1;
              (uint)i < (uint)entries.Length;
              i = entries[i].Next)
         {
-            if (key.Equals(entries[i].Key))
+            if (Equal(key, hash, entries[i]))
             {
                 value = entries[i].Value;
                 if (UsageHead != i)
@@ -115,11 +136,10 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
         return false;
     }
 
-    public bool Remove(TKey key)
+    public bool Remove(in ReadOnlySpan<byte> key)
     {
-        if (key == null) HashHelpers.ThrowKeyArgumentNullException();
         var entries = _entries;
-        var hash = key.GetHashCode();
+        var hash = CalcHash(key);
         var bucketIndex = hash & (_buckets.Length - 1);
         var entryIndex = _buckets[bucketIndex] - 1;
 
@@ -128,8 +148,9 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
         while (entryIndex != -1)
         {
             ref var candidate = ref entries[entryIndex];
-            if (candidate.Key.Equals(key))
+            if (Equal(key, hash, candidate))
             {
+                _freeBytes += candidate.Length;
                 if (UsageHead == entryIndex)
                 {
                     UsageHead = candidate.UsageNext;
@@ -181,31 +202,20 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
         return false;
     }
 
-    public void Clear()
-    {
-        Array.Clear(_buckets);
-        Array.Clear(_entries, 0, _count);
-        _count = 0;
-        _freeList = -1;
-        UsageHead = -1;
-        UsageTail = -1;
-    }
-
-    public ref TValue this[TKey key] => ref GetOrAddValueRef(key, out _);
+    public ref TValue this[in ReadOnlySpan<byte> key] => ref GetOrAddValueRef(key, out _);
 
     // Not safe for concurrent _reads_ (at least, if either of them add)
-    public ref TValue GetOrAddValueRef(TKey key, out bool added)
+    public ref TValue GetOrAddValueRef(in ReadOnlySpan<byte> key, out bool added)
     {
-        if (key == null) HashHelpers.ThrowKeyArgumentNullException();
         var entries = _entries;
         var collisionCount = 0;
-        var hash = key.GetHashCode();
+        var hash = CalcHash(key);
         var bucketIndex = hash & (_buckets.Length - 1);
         for (var i = _buckets[bucketIndex] - 1;
              (uint)i < (uint)entries.Length;
              i = entries[i].Next)
         {
-            if (key.Equals(entries[i].Key))
+            if (Equal(key, hash, entries[i]))
             {
                 if (UsageHead != i)
                 {
@@ -244,8 +254,20 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
         return ref AddKey(key, bucketIndex, hash);
     }
 
+    public void Clear()
+    {
+        Array.Clear(_buckets);
+        Array.Clear(_entries, 0, _count);
+        _count = 0;
+        _freeList = -1;
+        UsageHead = -1;
+        UsageTail = -1;
+        _usedBytes = 0;
+        _freeBytes = 0;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    ref TValue AddKey(TKey key, int bucketIndex, int hash)
+    ref TValue AddKey(in ReadOnlySpan<byte> key, int bucketIndex, int hash)
     {
         var entries = _entries;
         int entryIndex;
@@ -315,11 +337,45 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
             }
         }
 
-        entries[entryIndex].Hash = hash;
-        entries[entryIndex].Key = key;
-        entries[entryIndex].Next = _buckets[bucketIndex] - 1;
-        entries[entryIndex].UsagePrev = -1;
-        entries[entryIndex].UsageNext = UsageHead;
+        ref var entry = ref entries[entryIndex];
+        entry.Hash = hash;
+        entry.Length = key.Length;
+        entry.Offset = _usedBytes;
+        if (_bytes.Length < _usedBytes + key.Length)
+        {
+            if (_freeBytes >= _usedBytes >> 1 && _usedBytes - _freeBytes + key.Length <= _bytes.Length)
+            {
+                // compact
+                entry.Next = -2;
+                _usedBytes = 0;
+                _freeBytes = 0;
+                var newBytes = new byte[_bytes.Length];
+                for (var i = 0; i < _count; i++)
+                {
+                    ref var e = ref entries[i];
+                    if (e.Next < -1)
+                        continue;
+
+                    Array.Copy(_bytes, e.Offset, newBytes, _usedBytes, e.Length);
+                    e.Offset = _usedBytes;
+                    _usedBytes += e.Length;
+                }
+
+                _bytes = newBytes;
+            }
+            else
+            {
+                Array.Resize(ref _bytes,
+                    Math.Min(Array.MaxLength, Math.Max(_bytes.Length * 2, _usedBytes + key.Length)));
+            }
+        }
+
+        key.CopyTo(_bytes.AsSpan(_usedBytes));
+        _usedBytes += key.Length;
+
+        entry.Next = _buckets[bucketIndex] - 1;
+        entry.UsagePrev = -1;
+        entry.UsageNext = UsageHead;
         if (UsageHead != -1)
             entries[UsageHead].UsagePrev = entryIndex;
         UsageHead = entryIndex;
@@ -327,7 +383,7 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
             UsageTail = entryIndex;
         _buckets[bucketIndex] = entryIndex + 1;
         _count++;
-        return ref entries[entryIndex].Value;
+        return ref entry.Value;
     }
 
     public void IncreaseCapacity(int newCapacity)
@@ -353,19 +409,19 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
 
     public Enumerator GetEnumerator() => new Enumerator(this); // avoid boxing
 
-    IEnumerator<KeyValuePair<TKey, TValue>> IEnumerable<KeyValuePair<TKey, TValue>>.GetEnumerator() =>
+    IEnumerator<KeyValuePair<byte[], TValue>> IEnumerable<KeyValuePair<byte[], TValue>>.GetEnumerator() =>
         new Enumerator(this);
 
     IEnumerator IEnumerable.GetEnumerator() => new Enumerator(this);
 
-    public struct Enumerator : IEnumerator<KeyValuePair<TKey, TValue>>
+    public struct Enumerator : IEnumerator<KeyValuePair<byte[], TValue>>
     {
-        readonly LruCache<TKey, TValue> _dictionary;
+        readonly SpanByteLruCache<TValue> _dictionary;
         int _index;
         int _count;
-        KeyValuePair<TKey, TValue> _current;
+        KeyValuePair<byte[], TValue> _current;
 
-        internal Enumerator(LruCache<TKey, TValue> dictionary)
+        internal Enumerator(SpanByteLruCache<TValue> dictionary)
         {
             _dictionary = dictionary;
             _index = 0;
@@ -386,13 +442,14 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
             while (_dictionary._entries[_index].Next < -1)
                 _index++;
 
+            ref var entry = ref _dictionary._entries[_index++];
             _current = new(
-                _dictionary._entries[_index].Key,
-                _dictionary._entries[_index++].Value);
+                _dictionary._bytes.AsSpan(entry.Offset, entry.Length).ToArray(),
+                entry.Value);
             return true;
         }
 
-        public KeyValuePair<TKey, TValue> Current => _current;
+        public KeyValuePair<byte[], TValue> Current => _current;
 
         object IEnumerator.Current => _current;
 
@@ -408,9 +465,9 @@ public class LruCache<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TVa
     }
 }
 
-sealed class LruCacheDebugView<K, V>(LruCache<K, V> lruCache)
-    where K : IEquatable<K>
+sealed class SpanByteLruCacheDebugView<V>(SpanByteLruCache<V> lruCache)
 {
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-    public KeyValuePair<K, V>[] Items => lruCache.ToArray();
+    public KeyValuePair<string, V>[] Items =>
+        lruCache.Select(v => new KeyValuePair<string, V>(Encoding.UTF8.GetString(v.Key), v.Value)).ToArray();
 }

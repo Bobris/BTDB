@@ -358,8 +358,9 @@ public struct BonBuilder
     StructList<ulong> _objKeys = new();
     MemWriter _topData;
     uint _items = 0;
-    readonly LruCache<string, ulong> _strCache = new(512);
-    readonly LruCache<(bool IsClass, StructList<ulong> ObjKeys), ulong> _objKeysCache = new(64);
+    LruCache<string, ulong>? _strCache = null;
+    SpanByteLruCache<ulong>? _u8Cache = null;
+    LruCache<(bool IsClass, StructList<ulong> ObjKeys), ulong>? _objKeysCache = null;
     HashSet<string>? _objKeysSet;
 
     public BonBuilder(in MemWriter memWriter)
@@ -640,7 +641,9 @@ public struct BonBuilder
                 rootData = ref _stack[0].Item2;
             }
 
-            if (!_objKeysCache.TryGetValue((false, objKeys), out var posKeys))
+            _objKeysCache ??= new();
+            ref var posKeys = ref _objKeysCache.GetOrAddValueRef((false, objKeys), out var added);
+            if (added)
             {
                 posKeys = (ulong)rootData.GetCurrentPosition();
                 rootData.WriteVUInt32(items);
@@ -648,8 +651,6 @@ public struct BonBuilder
                 {
                     rootData.WriteVUInt64(keyOfs);
                 }
-
-                _objKeysCache[(false, objKeys)] = posKeys;
             }
 
             var pos = rootData.GetCurrentPosition();
@@ -695,7 +696,9 @@ public struct BonBuilder
             rootData = ref _stack[0].Item2;
         }
 
-        if (!_objKeysCache.TryGetValue((true, objKeys), out var posKeys))
+        _objKeysCache ??= new();
+        ref var posKeys = ref _objKeysCache.GetOrAddValueRef((true, objKeys), out var added);
+        if (added)
         {
             posKeys = (ulong)rootData.GetCurrentPosition();
             rootData.WriteVUInt32(items);
@@ -703,8 +706,6 @@ public struct BonBuilder
             {
                 rootData.WriteVUInt64(keyOfs);
             }
-
-            _objKeysCache[(true, objKeys)] = posKeys;
         }
 
         var pos = rootData.GetCurrentPosition();
@@ -846,7 +847,9 @@ public struct BonBuilder
 
     ulong WriteDedupString(string value)
     {
-        if (_strCache.TryGetValue(value, out var pos))
+        _strCache ??= new(512);
+        ref var pos = ref _strCache.GetOrAddValueRef(value, out var added);
+        if (!added)
         {
             return pos;
         }
@@ -859,21 +862,28 @@ public struct BonBuilder
 
         pos = (ulong)writer.GetCurrentPosition();
         writer.WriteStringInUtf8(value);
-        _strCache[value] = pos;
         return pos;
     }
 
     ulong WriteDedupString(ReadOnlySpan<byte> value)
     {
+        _u8Cache ??= new(512);
+        ref var pos = ref _u8Cache.GetOrAddValueRef(value, out var added);
+        if (!added)
+        {
+            return pos;
+        }
+
         ref var writer = ref _topData;
         if (_stack.Count > 0)
         {
             writer = ref _stack[0].Data;
         }
 
-        var pos = (ulong)writer.GetCurrentPosition();
+        pos = (ulong)writer.GetCurrentPosition();
         writer.WriteVUInt32((uint)value.Length);
         writer.WriteBlock(value);
+        _u8Cache[value] = pos;
         return pos;
     }
 
