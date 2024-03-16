@@ -317,7 +317,8 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
                             _buckets[oldbucketIndex] = candidate.Next + 1;
                         }
 
-                        entries[entryIndex] = default;
+                        _freeBytes += candidate.Length;
+                        candidate = default;
                         _count--;
                         break;
                     }
@@ -338,9 +339,6 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
         }
 
         ref var entry = ref entries[entryIndex];
-        entry.Hash = hash;
-        entry.Length = key.Length;
-        entry.Offset = _usedBytes;
         if (_bytes.Length < _usedBytes + key.Length)
         {
             if (_freeBytes >= _usedBytes >> 1 && _usedBytes - _freeBytes + key.Length <= _bytes.Length)
@@ -350,7 +348,7 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
                 _usedBytes = 0;
                 _freeBytes = 0;
                 var newBytes = new byte[_bytes.Length];
-                for (var i = 0; i < _count; i++)
+                for (var i = 0; i <= _count; i++)
                 {
                     ref var e = ref entries[i];
                     if (e.Next < -1)
@@ -370,9 +368,11 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
             }
         }
 
+        entry.Hash = hash;
+        entry.Length = key.Length;
+        entry.Offset = _usedBytes;
         key.CopyTo(_bytes.AsSpan(_usedBytes));
         _usedBytes += key.Length;
-
         entry.Next = _buckets[bucketIndex] - 1;
         entry.UsagePrev = -1;
         entry.UsageNext = UsageHead;
