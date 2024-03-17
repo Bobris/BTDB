@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Text;
 using BTDB.Collections;
 using Xunit;
@@ -111,5 +113,57 @@ public class SpanByteLruCacheTest
             Assert.Equal(-2, value);
             cache[Encoding.UTF8.GetBytes(i.ToString())] = i;
         }
+    }
+
+    [Fact]
+    void RandomWalkTest()
+    {
+        var cache = new SpanByteLruCache<int>(32);
+        var cache2 = new LruCache<string, int>(32);
+        var random = new Random(1);
+        for (var i = 0; i < 10000; i++)
+        {
+            if (random.Next(100000) == 0)
+            {
+                cache.Clear();
+                cache2.Clear();
+            }
+            else
+            {
+                var key = RandomString(random);
+                var key8 = Encoding.UTF8.GetBytes(key);
+                if (random.Next(3) == 0)
+                {
+                    var removed = cache.Remove(key8);
+                    var removed2 = cache2.Remove(key);
+                    Assert.Equal(removed, removed2);
+                }
+                else
+                {
+                    var value = random.Next();
+                    cache[key8] = value;
+                    cache2[key] = value;
+                }
+            }
+
+            Assert.Equal(cache2.Count, cache.Count);
+            foreach (var pair in cache2.Zip(cache))
+            {
+                Assert.Equal(pair.First.Key, Encoding.UTF8.GetString(pair.Second.Key));
+                Assert.Equal(pair.First.Value, pair.Second.Value);
+            }
+        }
+    }
+
+    static string RandomString(Random random)
+    {
+        var length = random.Next(1, 500);
+        var result = new StringBuilder(length);
+        for (var i = 0; i < length; i++)
+        {
+            result.Append((char)random.Next('a', 'z' + 1));
+        }
+
+        return result.ToString();
     }
 }
