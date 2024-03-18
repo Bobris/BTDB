@@ -13,7 +13,7 @@ namespace BTDB.Serialization;
 
 public delegate void Serialize(ref SerializerCtx ctx, ref byte value);
 
-public delegate void Deserialize(ref DeserializerCtx ctx, ref byte value);
+public delegate bool Deserialize(ref DeserializerCtx ctx, ref byte value);
 
 public interface ISerializerFactory
 {
@@ -502,6 +502,7 @@ public class BonSerializerFactory : ISerializerFactory
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
                 Unsafe.As<byte, object>(ref value) = AsCtx(ref ctx).Factory.DeserializeObject(ref ctx);
+                return true;
             };
         }
 
@@ -549,7 +550,7 @@ public class BonSerializerFactory : ISerializerFactory
             }
             case BonType.Tuple:
             {
-                AsCtx(ref ctx).Bon.TryGetArray(out var arrayBon);
+                AsCtx(ref ctx).Bon.TryGetTuple(out var arrayBon);
                 arrayBon.TryGet(0, out var itemBon);
                 var count = arrayBon.Items;
                 if (count == 2)
@@ -650,7 +651,11 @@ public class BonSerializerFactory : ISerializerFactory
             return deserializer!;
         }
 
-        return (ref DeserializerCtx ctx, ref byte value) => { AsCtx(ref ctx).Bon.Skip(); };
+        return (ref DeserializerCtx ctx, ref byte _) =>
+        {
+            AsCtx(ref ctx).Bon.Skip();
+            return false;
+        };
     }
 
     public Deserialize CreateDeserializerForType(Type type)
@@ -659,8 +664,16 @@ public class BonSerializerFactory : ISerializerFactory
         {
             return static (ref DeserializerCtx ctx, ref byte value) =>
             {
-                if (!AsCtx(ref ctx).Bon.TryGetString(out Unsafe.As<byte, string>(ref value)))
+                if (AsCtx(ref ctx).Bon.TryGetString(out var v))
+                {
+                    Unsafe.As<byte, string>(ref value) = v;
+                    return true;
+                }
+                else
+                {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
+                }
             };
         }
 
@@ -671,10 +684,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetULong(out var v))
                 {
                     value = (byte)v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -686,10 +701,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetLong(out var v))
                 {
                     Unsafe.As<byte, sbyte>(ref value) = (sbyte)v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -701,10 +718,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetULong(out var v))
                 {
                     Unsafe.As<byte, ushort>(ref value) = (ushort)v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -716,10 +735,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetLong(out var v))
                 {
                     Unsafe.As<byte, short>(ref value) = (short)v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -731,10 +752,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetULong(out var v))
                 {
                     Unsafe.As<byte, uint>(ref value) = (uint)v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -746,10 +769,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetLong(out var v))
                 {
                     Unsafe.As<byte, int>(ref value) = (int)v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -761,10 +786,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetULong(out var v))
                 {
                     Unsafe.As<byte, ulong>(ref value) = v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -776,10 +803,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetLong(out var v))
                 {
                     Unsafe.As<byte, long>(ref value) = v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -791,10 +820,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetDouble(out var v))
                 {
                     Unsafe.As<byte, float>(ref value) = (float)v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -806,10 +837,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetDouble(out var v))
                 {
                     Unsafe.As<byte, double>(ref value) = v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -821,10 +854,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetBool(out var v))
                 {
                     Unsafe.As<byte, bool>(ref value) = v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -836,10 +871,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetDateTime(out var v))
                 {
                     Unsafe.As<byte, DateTime>(ref value) = v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -851,10 +888,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetGuid(out var v))
                 {
                     Unsafe.As<byte, Guid>(ref value) = v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }
@@ -866,10 +905,12 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetDouble(out var v))
                 {
                     Unsafe.As<byte, Half>(ref value) = (Half)v;
+                    return true;
                 }
                 else
                 {
                     AsCtx(ref ctx).Bon.Skip();
+                    return false;
                 }
             };
         }

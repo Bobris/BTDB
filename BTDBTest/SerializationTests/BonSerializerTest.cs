@@ -69,5 +69,11 @@ public class BonSerializerTest
         BonSerializerFactory.Serialize(ref builder, obj);
         var bon = new Bon(builder.FinishAsMemory());
         this.Assent(bon.DumpToJson());
+        bon = new Bon(builder.FinishAsMemory());
+        var deserialized = BonSerializerFactory.Deserialize(ref bon);
+        Assert.IsType<Tuple<object, object>>(deserialized);
+        var (a, b) = (Tuple<object, object>)deserialized;
+        Assert.Equal(42u, (ulong)a);
+        Assert.Equal(424242424242L, (long)(ulong)b);
     }
 }
