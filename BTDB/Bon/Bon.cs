@@ -28,6 +28,7 @@ public enum BonType
     Class, // 133 - VUint offset to VUint offset to VUint len + VUint offset to type name string + VUint offsets to strings, Bons*len
     Dictionary, // 29 - empty, 134 - VUint offset to VUint len + (Key Bon + Value Bon)*len
     ByteArray, // 30 - empty, 135 - VUint offset to VUint len + bytes
+    Tuple, // 137 - VUint offset to VUint len + Bons*len (same as Array)
 }
 
 public static class Helpers
@@ -60,6 +61,7 @@ public static class Helpers
     public const byte CodeByteArrayEmpty = 30;
     public const byte CodeByteArrayPtr = 135;
     public const byte CodeArraySplitBy32Ptr = 136;
+    public const byte CodeTuplePtr = 137;
     // ReSharper restore InconsistentNaming
 
     public static BonType BonTypeFromByte(byte b)
@@ -79,6 +81,7 @@ public static class Helpers
             CodeClassPtr => BonType.Class,
             CodeDictionaryEmpty or CodeDictionaryPtr => BonType.Dictionary,
             CodeByteArrayEmpty or CodeByteArrayPtr => BonType.ByteArray,
+            CodeTuplePtr => BonType.Tuple,
             _ => BonType.Error
         };
     }
@@ -347,6 +350,7 @@ public struct BonBuilder
         ClassValue,
         DictionaryKey,
         DictionaryValue,
+        Tuple
     };
 
     State _state = State.Empty;
@@ -590,6 +594,37 @@ public struct BonBuilder
         AfterBon();
     }
 
+    public void StartTuple()
+    {
+        BeforeBon();
+        StackPush();
+        _state = State.Tuple;
+    }
+
+    public void FinishTuple()
+    {
+        if (_state != State.Tuple) ThrowWrongState();
+        var items = _items;
+        var bytes = _topData;
+        var objKeys = _objKeys;
+        StackPop();
+        Debug.Assert(objKeys.Count == 0);
+        ref var rootData = ref _topData;
+        if (_stack.Count > 0)
+        {
+            rootData = ref _stack[0].Item2;
+        }
+
+        var pos = rootData.GetCurrentPosition();
+        rootData.WriteVUInt32(items);
+        rootData.WriteBlock(bytes.GetSpan());
+        _lastBonPos = (ulong)_topData.GetCurrentPosition();
+        _topData.WriteUInt8(Helpers.CodeTuplePtr);
+        _topData.WriteVUInt64((ulong)pos);
+
+        AfterBon();
+    }
+
     public void StartObject()
     {
         BeforeBon();
@@ -796,7 +831,8 @@ public struct BonBuilder
 
     void BeforeBon()
     {
-        if (_state is not (State.Empty or State.Array or State.ObjectValue or State.ClassValue or State.DictionaryKey
+        if (_state is not (State.Empty or State.Array or State.Tuple or State.ObjectValue or State.ClassValue
+            or State.DictionaryKey
             or State.DictionaryValue))
         {
             ThrowWrongState();
@@ -1112,6 +1148,28 @@ public struct Bon
         }
     }
 
+    public bool TryGetTuple(out ArrayBon bon)
+    {
+        var b = _reader.PeekUInt8();
+        switch (b)
+        {
+            case Helpers.CodeTuplePtr:
+            {
+                _reader.Skip1Byte();
+                _items--;
+                var ofs = _reader.ReadVUInt64();
+                var reader2 = _reader;
+                reader2.SetCurrentPositionWithoutController(ofs);
+                var items = reader2.ReadVUInt32();
+                bon = new(_reader, reader2.GetCurrentPositionWithoutController(), items, false);
+                return true;
+            }
+            default:
+                bon = new(new(), 0, 0, false);
+                return false;
+        }
+    }
+
     public bool TryGetObject(out KeyedBon bon)
     {
         var b = _reader.PeekUInt8();
@@ -1273,6 +1331,21 @@ public struct Bon
                 while (ab.TryGet(pos, out var bon))
                 {
                     pos += bon.Items;
+                    while (!bon.Eof)
+                    {
+                        bon.DumpToJson(writer);
+                    }
+                }
+
+                writer.WriteEndArray();
+                break;
+            }
+            case BonType.Tuple:
+            {
+                writer.WriteStartArray();
+                TryGetTuple(out var ab);
+                if (ab.TryGet(0, out var bon))
+                {
                     while (!bon.Eof)
                     {
                         bon.DumpToJson(writer);

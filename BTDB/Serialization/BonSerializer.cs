@@ -302,12 +302,10 @@ public class BonSerializerFactory : ISerializerFactory
             return (ref SerializerCtx ctx, ref byte value) =>
             {
                 ref var builder = ref AsCtx(ref ctx).Builder;
-                builder.StartClass("Tuple"u8);
-                builder.WriteKey("Item1"u8);
+                builder.StartTuple();
                 serializer0(ref ctx, ref Unsafe.AddByteOffset(ref value, offsets.Item1));
-                builder.WriteKey("Item2"u8);
                 serializer1(ref ctx, ref Unsafe.AddByteOffset(ref value, offsets.Item2));
-                builder.FinishClass();
+                builder.FinishTuple();
             };
         }
 
@@ -321,12 +319,10 @@ public class BonSerializerFactory : ISerializerFactory
             return (ref SerializerCtx ctx, ref byte value) =>
             {
                 ref var builder = ref AsCtx(ref ctx).Builder;
-                builder.StartClass("Tuple"u8);
-                builder.WriteKey("Item1"u8);
+                builder.StartTuple();
                 serializer0(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offsets.Item1));
-                builder.WriteKey("Item2"u8);
                 serializer1(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offsets.Item2));
-                builder.FinishClass();
+                builder.FinishTuple();
             };
         }
 
@@ -531,26 +527,11 @@ public class BonSerializerFactory : ISerializerFactory
             case BonType.Class:
             {
                 AsCtx(ref ctx).Bon.TryGetClass(out AsCtx(ref ctx).KeyedBon, out var name);
-                if (name.SequenceEqual("Tuple"u8))
-                {
-                    var valuesBon = AsCtx(ref ctx).KeyedBon.Values();
-                    var res = new object?[valuesBon.Items];
-                    BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref valuesBon };
-                    for (var idx = 0u; idx < valuesBon.Items; idx++)
-                    {
-                        res[idx] = AsCtx(ref ctx).Factory.DeserializeObject(ref AsCtx(ref subCtx));
-                    }
-
-                    return res;
-                }
-                else
-                {
-                    var deserializer =
-                        ((BonSerializerFactory)AsCtx(ref ctx).Factory).CreateCachedDeserializerForName(name);
-                    object? res = null;
-                    deserializer(ref ctx, ref Unsafe.As<object, byte>(ref res));
-                    return res;
-                }
+                var deserializer =
+                    ((BonSerializerFactory)AsCtx(ref ctx).Factory).CreateCachedDeserializerForName(name);
+                object? res = null;
+                deserializer(ref ctx, ref Unsafe.As<object, byte>(ref res));
+                return res;
             }
             case BonType.Array:
             {
@@ -565,6 +546,22 @@ public class BonSerializerFactory : ISerializerFactory
                 }
 
                 return res;
+            }
+            case BonType.Tuple:
+            {
+                AsCtx(ref ctx).Bon.TryGetArray(out var arrayBon);
+                arrayBon.TryGet(0, out var itemBon);
+                var count = arrayBon.Items;
+                if (count == 2)
+                {
+                    BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
+                    var i0 = AsCtx(ref ctx).Factory.DeserializeObject(ref AsCtx(ref subCtx));
+                    var i1 = AsCtx(ref ctx).Factory.DeserializeObject(ref AsCtx(ref subCtx));
+                    var res = new Tuple<object?, object?>(i0, i1);
+                    return res;
+                }
+
+                throw new NotSupportedException("Tuple with " + count + " items is not supported.");
             }
             case BonType.Dictionary:
             {
