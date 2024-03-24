@@ -58,7 +58,14 @@ public class BonSerializerTest
         var builder = new BonBuilder();
         BonSerializerFactory.Serialize(ref builder, obj);
         var bon = new Bon(builder.FinishAsMemory());
-        this.Assent(bon.DumpToJson());
+        var str = bon.DumpToJson();
+        this.Assent(str);
+        bon = new Bon(builder.FinishAsMemory());
+        var deserialized = BonSerializerFactory.Deserialize(ref bon);
+        builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, deserialized);
+        bon = new Bon(builder.FinishAsMemory());
+        Assert.Equal(str, bon.DumpToJson());
     }
 
     [Fact]

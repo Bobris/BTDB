@@ -6,7 +6,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using BTDB.Bon;
+using BTDB.Collections;
 using BTDB.IL;
 
 namespace BTDB.Serialization;
@@ -43,7 +45,6 @@ public ref struct BonDeserializerCtx
 {
     public ISerializerFactory Factory;
     public ref Bon.Bon Bon;
-    public ref KeyedBon KeyedBon;
 }
 
 public class BonSerializerFactory : ISerializerFactory
@@ -75,10 +76,18 @@ public class BonSerializerFactory : ISerializerFactory
         }
         else
         {
+            _cache.TryGetValue(typeof(object).TypeHandle.Value, out var objSerializer);
+            while (serializer == objSerializer)
+            {
+                Thread.Yield();
+                _cache.TryGetValue(typePtr, out serializer);
+            }
+
             serializer!(ref ctx, ref Unsafe.As<object, byte>(ref obj));
         }
     }
 
+    [DebuggerStepThrough]
     static unsafe ref BonSerializerCtx AsCtx(ref SerializerCtx ctx)
     {
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
@@ -89,6 +98,7 @@ public class BonSerializerFactory : ISerializerFactory
 #pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
     }
 
+    [DebuggerStepThrough]
     static unsafe ref SerializerCtx AsCtx(ref BonSerializerCtx ctx)
     {
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
@@ -99,6 +109,7 @@ public class BonSerializerFactory : ISerializerFactory
 #pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
     }
 
+    [DebuggerStepThrough]
     static unsafe ref BonDeserializerCtx AsCtx(ref DeserializerCtx ctx)
     {
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
@@ -109,6 +120,7 @@ public class BonSerializerFactory : ISerializerFactory
 #pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
     }
 
+    [DebuggerStepThrough]
     static unsafe ref DeserializerCtx AsCtx(ref BonDeserializerCtx ctx)
     {
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
@@ -121,21 +133,25 @@ public class BonSerializerFactory : ISerializerFactory
 
     public Serialize CreateCachedSerializerForType(Type type)
     {
-        if (!type.IsValueType && type != typeof(byte[]) && type != typeof(string))
-        {
-            return (ref SerializerCtx ctx, ref byte value) =>
-            {
-                AsCtx(ref ctx).Factory.SerializeObject(ref ctx, Unsafe.As<byte, object>(ref value));
-            };
-        }
-
         var typePtr = type.TypeHandle.Value;
         _cache.TryGetValue(typePtr, out var serializer);
         if (serializer == null)
         {
-            serializer = CreateSerializerForType(type);
-            _cache.TryAdd(typePtr, serializer);
-            _cache.TryGetValue(typePtr, out serializer);
+            if (type == typeof(object) || type.IsInterface || type == typeof(string) || type == typeof(byte[]) ||
+                type.IsValueType)
+            {
+                serializer = CreateSerializerForType(type);
+                _cache.TryAdd(typePtr, serializer);
+                _cache.TryGetValue(typePtr, out serializer);
+            }
+            else
+            {
+                var objSerializer = CreateCachedSerializerForType(typeof(object));
+                _cache.TryAdd(typePtr, objSerializer);
+                serializer = CreateSerializerForType(type);
+                _cache.TryUpdate(typePtr, serializer, objSerializer);
+                _cache.TryGetValue(typePtr, out serializer);
+            }
         }
 
         return serializer!;
@@ -143,6 +159,14 @@ public class BonSerializerFactory : ISerializerFactory
 
     public unsafe Serialize CreateSerializerForType(Type type)
     {
+        if (type == typeof(object) || type.IsInterface)
+        {
+            return (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Factory.SerializeObject(ref ctx, Unsafe.As<byte, object>(ref value));
+            };
+        }
+
         if (type == typeof(string))
         {
             return static (ref SerializerCtx ctx, ref byte value) =>
@@ -318,6 +342,12 @@ public class BonSerializerFactory : ISerializerFactory
             var serializer1 = CreateCachedSerializerForType(typeParams[1]);
             return (ref SerializerCtx ctx, ref byte value) =>
             {
+                if (Unsafe.As<byte, object>(ref value) == null)
+                {
+                    AsCtx(ref ctx).Builder.WriteNull();
+                    return;
+                }
+
                 ref var builder = ref AsCtx(ref ctx).Builder;
                 builder.StartTuple();
                 serializer0(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offsets.Item1));
@@ -334,6 +364,12 @@ public class BonSerializerFactory : ISerializerFactory
             return (ref SerializerCtx ctx, ref byte value) =>
             {
                 var obj = Unsafe.As<byte, object>(ref value);
+                if (obj == null)
+                {
+                    AsCtx(ref ctx).Builder.WriteNull();
+                    return;
+                }
+
                 var count = Unsafe.As<byte, int>(ref RawData.Ref(obj, (uint)Unsafe.SizeOf<nint>()));
                 ref readonly var mt = ref RawData.MethodTableRef(obj);
                 var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
@@ -355,6 +391,12 @@ public class BonSerializerFactory : ISerializerFactory
             return (ref SerializerCtx ctx, ref byte value) =>
             {
                 var obj = Unsafe.As<byte, object>(ref value);
+                if (obj == null)
+                {
+                    AsCtx(ref ctx).Builder.WriteNull();
+                    return;
+                }
+
                 var count = Unsafe.As<ICollection>(obj).Count;
                 obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
                 ref readonly var mt = ref RawData.MethodTableRef(obj);
@@ -378,6 +420,12 @@ public class BonSerializerFactory : ISerializerFactory
             return (ref SerializerCtx ctx, ref byte value) =>
             {
                 var obj = Unsafe.As<byte, object>(ref value);
+                if (obj == null)
+                {
+                    AsCtx(ref ctx).Builder.WriteNull();
+                    return;
+                }
+
                 var count = Unsafe.As<byte, int>(ref RawData.Ref(obj,
                     RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8)));
                 obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
@@ -410,6 +458,12 @@ public class BonSerializerFactory : ISerializerFactory
             return (ref SerializerCtx ctx, ref byte value) =>
             {
                 var obj = Unsafe.As<byte, object>(ref value);
+                if (obj == null)
+                {
+                    AsCtx(ref ctx).Builder.WriteNull();
+                    return;
+                }
+
                 var count = Unsafe.As<byte, int>(ref RawData.Ref(obj,
                     RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
                 obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
@@ -482,6 +536,12 @@ public class BonSerializerFactory : ISerializerFactory
 
             return (ref SerializerCtx ctx, ref byte value) =>
             {
+                if (Unsafe.As<byte, object>(ref value) == null)
+                {
+                    AsCtx(ref ctx).Builder.WriteNull();
+                    return;
+                }
+
                 AsCtx(ref ctx).Builder.StartClass(persistNameUtf8);
                 for (var i = 0; i < fieldSerializers.Length; i++)
                 {
@@ -497,15 +557,6 @@ public class BonSerializerFactory : ISerializerFactory
 
     public Deserialize CreateCachedDeserializerForType(Type type)
     {
-        if (!type.IsValueType && type != typeof(byte[]) && type != typeof(string))
-        {
-            return (ref DeserializerCtx ctx, ref byte value) =>
-            {
-                Unsafe.As<byte, object>(ref value) = AsCtx(ref ctx).Factory.DeserializeObject(ref ctx);
-                return true;
-            };
-        }
-
         var typePtr = type.TypeHandle.Value;
         _cache2.TryGetValue(typePtr, out var deserializer);
         if (deserializer == null)
@@ -527,7 +578,7 @@ public class BonSerializerFactory : ISerializerFactory
                 return null;
             case BonType.Class:
             {
-                AsCtx(ref ctx).Bon.TryGetClass(out AsCtx(ref ctx).KeyedBon, out var name);
+                AsCtx(ref ctx).Bon.TryGetClass(out _, out var name);
                 var deserializer =
                     ((BonSerializerFactory)AsCtx(ref ctx).Factory).CreateCachedDeserializerForName(name);
                 object? res = null;
@@ -643,9 +694,33 @@ public class BonSerializerFactory : ISerializerFactory
             _cache2.TryGetValue(typePtr, out var deserializer);
             if (deserializer == null)
             {
-                deserializer = CreateDeserializerForType(type);
-                _cache2.TryAdd(typePtr, deserializer);
-                _cache2.TryGetValue(typePtr, out deserializer);
+                if (type == typeof(object) || type.IsInterface || type == typeof(string) || type == typeof(byte[]) ||
+                    type.IsValueType)
+                {
+                    deserializer = CreateDeserializerForType(type);
+                    _cache2.TryAdd(typePtr, deserializer);
+                    _cache2.TryGetValue(typePtr, out deserializer);
+                }
+                else
+                {
+                    Deserialize objDeserializer = (ref DeserializerCtx ctx, ref byte value) =>
+                    {
+                        var res = AsCtx(ref ctx).Factory.DeserializeObject(ref ctx);
+                        if (res == null || type.IsInstanceOfType(res))
+                        {
+                            Unsafe.As<byte, object>(ref value) = res;
+                        }
+                        else
+                        {
+                            Unsafe.As<byte, object>(ref value) = null;
+                        }
+
+                        return true;
+                    };
+                    _cache2.TryAdd(typePtr, objDeserializer);
+                    deserializer = CreateDeserializerForType(type);
+                    _cache2.TryUpdate(typePtr, deserializer, objDeserializer);
+                }
             }
 
             return deserializer!;
@@ -658,8 +733,35 @@ public class BonSerializerFactory : ISerializerFactory
         };
     }
 
-    public Deserialize CreateDeserializerForType(Type type)
+    public unsafe Deserialize CreateDeserializerForType(Type type)
     {
+        if (type == typeof(object))
+        {
+            return (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                Unsafe.As<byte, object>(ref value) = AsCtx(ref ctx).Factory.DeserializeObject(ref ctx);
+                return true;
+            };
+        }
+
+        if (type.IsInterface)
+        {
+            return (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                var res = AsCtx(ref ctx).Factory.DeserializeObject(ref ctx);
+                if (res == null || type.IsInstanceOfType(res))
+                {
+                    Unsafe.As<byte, object>(ref value) = res;
+                }
+                else
+                {
+                    Unsafe.As<byte, object>(ref value) = null;
+                }
+
+                return true;
+            };
+        }
+
         if (type == typeof(string))
         {
             return static (ref DeserializerCtx ctx, ref byte value) =>
@@ -667,6 +769,23 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetString(out var v))
                 {
                     Unsafe.As<byte, string>(ref value) = v;
+                    return true;
+                }
+                else
+                {
+                    AsCtx(ref ctx).Bon.Skip();
+                    return false;
+                }
+            };
+        }
+
+        if (type == typeof(byte[]))
+        {
+            return static (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                if (AsCtx(ref ctx).Bon.TryGetByteArray(out var v))
+                {
+                    Unsafe.As<byte, byte[]>(ref value) = v.ToArray();
                     return true;
                 }
                 else
@@ -920,7 +1039,243 @@ public class BonSerializerFactory : ISerializerFactory
             return CreateDeserializerForType(Enum.GetUnderlyingType(type));
         }
 
-        throw new NotImplementedException();
+        if (Nullable.GetUnderlyingType(type) is { } nullableType)
+        {
+            var offset = RawData.Align(1, RawData.GetSizeAndAlign(nullableType).Align);
+            var deserializer = CreateCachedDeserializerForType(nullableType);
+            return (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                if (AsCtx(ref ctx).Bon.TryGetNull())
+                {
+                    value = 0;
+                    return true;
+                }
+
+                if (deserializer(ref ctx, ref Unsafe.AddByteOffset(ref value, offset)))
+                {
+                    value = 1;
+                    return true;
+                }
+
+                return false;
+            };
+        }
+
+        if (type.SpecializationOf(typeof(ValueTuple<,>)) is { } valueTuple2)
+        {
+            var typeParams = valueTuple2.GetGenericArguments();
+            var offsets = RawData.GetOffsets(typeParams[0], typeParams[1]);
+            var deserializer0 = CreateCachedDeserializerForType(typeParams[0]);
+            var deserializer1 = CreateCachedDeserializerForType(typeParams[1]);
+            return (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                if (AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon) && tupleBon.Items >= 2)
+                {
+                    tupleBon.TryGet(0, out var itemBon);
+                    BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
+                    if (deserializer0(ref AsCtx(ref subCtx), ref Unsafe.AddByteOffset(ref value, offsets.Item1)))
+                    {
+                        tupleBon.TryGet(1, out itemBon);
+                        if (deserializer1(ref AsCtx(ref subCtx), ref Unsafe.AddByteOffset(ref value, offsets.Item2)))
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            };
+        }
+
+        if (type.SpecializationOf(typeof(Tuple<,>)) is { } tuple2)
+        {
+            var typeParams = tuple2.GetGenericArguments();
+            var offsets = RawData.GetOffsets(typeParams[0], typeParams[1]);
+            offsets = (offsets.Item1 + (uint)Unsafe.SizeOf<nint>(), offsets.Item2 + (uint)Unsafe.SizeOf<nint>());
+            var deserializer0 = CreateCachedDeserializerForType(typeParams[0]);
+            var deserializer1 = CreateCachedDeserializerForType(typeParams[1]);
+            return (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                if (AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon) && tupleBon.Items >= 2)
+                {
+                    var res = RuntimeHelpers.GetUninitializedObject(type);
+                    tupleBon.TryGet(0, out var itemBon);
+                    BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
+                    if (deserializer0(ref AsCtx(ref subCtx), ref RawData.Ref(res, offsets.Item1)))
+                    {
+                        tupleBon.TryGet(1, out itemBon);
+                        if (deserializer1(ref AsCtx(ref subCtx), ref RawData.Ref(res, offsets.Item2)))
+                        {
+                            Unsafe.As<byte, object>(ref value) = res;
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            };
+        }
+
+        if (type.IsArray)
+        {
+            if (!type.IsSZArray) throw new InvalidOperationException("Only SZArray is supported");
+            var elementType = type.GetElementType()!;
+            var elementTypeDeserializer = CreateCachedDeserializerForType(elementType);
+            ref readonly var mt = ref RawData.MethodTableOf(type);
+            var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+            var offsetDelta = mt.ComponentSize;
+            return (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                if (AsCtx(ref ctx).Bon.TryGetNull())
+                {
+                    Unsafe.As<byte, object>(ref value) = null;
+                    return true;
+                }
+
+                if (AsCtx(ref ctx).Bon.TryGetArray(out var arrayBon))
+                {
+                    var count = arrayBon.Items;
+                    var res = Array.CreateInstance(elementType, count);
+                    var o = offset;
+                    for (var idx = 0u; idx < count; idx++)
+                    {
+                        arrayBon.TryGet(idx, out var itemBon);
+                        BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
+                        elementTypeDeserializer(ref AsCtx(ref subCtx), ref RawData.Ref(res, o));
+                        o += offsetDelta;
+                    }
+
+                    Unsafe.As<byte, object>(ref value) = res;
+                    return true;
+                }
+
+                return false;
+            };
+        }
+
+        if (type.SpecializationOf(typeof(List<>)) is { } listType)
+        {
+            var elementType = listType.GetGenericArguments()[0];
+            var elementTypeDeserializer = CreateCachedDeserializerForType(elementType);
+            return (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                if (AsCtx(ref ctx).Bon.TryGetNull())
+                {
+                    Unsafe.As<byte, object>(ref value) = null;
+                    return true;
+                }
+
+                if (AsCtx(ref ctx).Bon.TryGetArray(out var arrayBon))
+                {
+                    var count = arrayBon.Items;
+
+                    //Unsafe.As<byte, object>(ref value) = res;
+                    return true;
+                }
+
+                return false;
+            };
+        }
+
+
+        var classMetadata = ReflectionMetadata.FindByType(type);
+        if (classMetadata != null)
+        {
+            var persistName = classMetadata.TruePersistedName;
+            var persistNameUtf8 = Encoding.UTF8.GetBytes(persistName);
+            var fieldDeserializers = new Deserialize[classMetadata.Fields.Length];
+            var name2Idx = new SpanByteNoRemoveDictionary<uint>();
+            for (var i = 0; i < classMetadata.Fields.Length; i++)
+            {
+                var field = classMetadata.Fields[i];
+                var nameUtf8 = Encoding.UTF8.GetBytes(field.Name);
+                name2Idx[nameUtf8] = (uint)i;
+                var deserializer = CreateCachedDeserializerForType(field.Type);
+                if (field.PropRefSetter != null)
+                {
+                    var setter = field.PropRefSetter;
+                    if (field.Type.IsValueType)
+                    {
+                        if ((*(RawData.MethodTable*)field.Type.TypeHandle.Value).ContainsGCPointers)
+                            throw new InvalidOperationException("Value type with GC pointers is not supported.");
+                        fieldDeserializers[i] = (ref DeserializerCtx ctx, ref byte value) =>
+                        {
+                            UInt128 temp = default;
+                            if (deserializer(ref ctx, ref Unsafe.As<UInt128, byte>(ref temp)))
+                            {
+                                setter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<UInt128, byte>(ref temp));
+                                return true;
+                            }
+                            else
+                            {
+                                AsCtx(ref ctx).Bon.Skip();
+                                return false;
+                            }
+                        };
+                    }
+                    else
+                    {
+                        fieldDeserializers[i] = (ref DeserializerCtx ctx, ref byte value) =>
+                        {
+                            object? tempObject = null;
+                            if (deserializer(ref ctx, ref Unsafe.As<object, byte>(ref tempObject)))
+                            {
+                                setter(Unsafe.As<byte, object>(ref value), ref Unsafe.As<object, byte>(ref tempObject));
+                                return true;
+                            }
+                            else
+                            {
+                                AsCtx(ref ctx).Bon.Skip();
+                                return false;
+                            }
+                        };
+                    }
+                }
+                else
+                {
+                    var offset = field.ByteOffset!.Value;
+                    fieldDeserializers[i] = (ref DeserializerCtx ctx, ref byte value) =>
+                    {
+                        if (deserializer(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)))
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            AsCtx(ref ctx).Bon.Skip();
+                            return false;
+                        }
+                    };
+                }
+            }
+
+            return (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                if (!AsCtx(ref ctx).Bon.TryGetClass(out var keyedBon, out var name) ||
+                    name.Length != persistNameUtf8.Length || !name.SequenceEqual(persistNameUtf8))
+                {
+                    AsCtx(ref ctx).Bon.Skip();
+                    return false;
+                }
+
+                var res = classMetadata.Creator();
+                var valuesBon = keyedBon.Values();
+                BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref valuesBon };
+                while (!valuesBon.Eof)
+                {
+                    if (!name2Idx.TryGetValue(keyedBon.NextKeyUtf8(), out var idx) ||
+                        !fieldDeserializers[idx](ref AsCtx(ref subCtx), ref value))
+                    {
+                        AsCtx(ref ctx).Bon.Skip();
+                    }
+                }
+
+                Unsafe.As<byte, object>(ref value) = res;
+                return true;
+            };
+        }
+
+        throw new NotSupportedException("BonDeserialization of " + type.ToSimpleName() + " is not supported.");
     }
 
     public static BonSerializerFactory Instance { get; } = new();
