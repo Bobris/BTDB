@@ -578,7 +578,7 @@ public class BonSerializerFactory : ISerializerFactory
                 return null;
             case BonType.Class:
             {
-                AsCtx(ref ctx).Bon.TryGetClass(out _, out var name);
+                AsCtx(ref ctx).Bon.PeekClass(out var name);
                 var deserializer =
                     ((BonSerializerFactory)AsCtx(ref ctx).Factory).CreateCachedDeserializerForName(name);
                 object? res = null;
@@ -1153,10 +1153,14 @@ public class BonSerializerFactory : ISerializerFactory
             };
         }
 
-        if (type.SpecializationOf(typeof(List<>)) is { } listType)
+        if (type.SpecializationOf(typeof(List<>)) is { } listType &&
+            ReflectionMetadata.FindCollectionByType(listType) is { } listMetadata)
         {
-            var elementType = listType.GetGenericArguments()[0];
+            var elementType = listMetadata.ElementKeyType;
             var elementTypeDeserializer = CreateCachedDeserializerForType(elementType);
+            var elementTypeIsValueType = elementType.IsValueType;
+            if (elementTypeIsValueType && (*(RawData.MethodTable*)elementType.TypeHandle.Value).ContainsGCPointers)
+                throw new InvalidOperationException("Value type with GC pointers is not supported.");
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
                 if (AsCtx(ref ctx).Bon.TryGetNull())
@@ -1168,8 +1172,26 @@ public class BonSerializerFactory : ISerializerFactory
                 if (AsCtx(ref ctx).Bon.TryGetArray(out var arrayBon))
                 {
                     var count = arrayBon.Items;
+                    var res = listMetadata.Creator(count);
+                    for (var i = 0u; i < count; i++)
+                    {
+                        arrayBon.TryGet(i, out var itemBon);
+                        BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
+                        if (elementTypeIsValueType)
+                        {
+                            UInt128 temp = default;
+                            elementTypeDeserializer(ref AsCtx(ref subCtx), ref Unsafe.As<UInt128, byte>(ref temp));
+                            listMetadata.Adder(res, ref Unsafe.As<UInt128, byte>(ref temp));
+                        }
+                        else
+                        {
+                            object? tempObject = null;
+                            elementTypeDeserializer(ref AsCtx(ref subCtx), ref Unsafe.As<object, byte>(ref tempObject));
+                            listMetadata.Adder(res, ref Unsafe.As<object, byte>(ref tempObject));
+                        }
+                    }
 
-                    //Unsafe.As<byte, object>(ref value) = res;
+                    Unsafe.As<byte, object>(ref value) = res;
                     return true;
                 }
 
@@ -1177,6 +1199,134 @@ public class BonSerializerFactory : ISerializerFactory
             };
         }
 
+        if (type.SpecializationOf(typeof(HashSet<>)) is { } hashType &&
+            ReflectionMetadata.FindCollectionByType(hashType) is { } hashMetadata)
+        {
+            var elementType = hashMetadata.ElementKeyType;
+            var elementTypeDeserializer = CreateCachedDeserializerForType(elementType);
+            var elementTypeIsValueType = elementType.IsValueType;
+            if (elementTypeIsValueType && (*(RawData.MethodTable*)elementType.TypeHandle.Value).ContainsGCPointers)
+                throw new InvalidOperationException("Value type with GC pointers is not supported.");
+            return (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                if (AsCtx(ref ctx).Bon.TryGetNull())
+                {
+                    Unsafe.As<byte, object>(ref value) = null;
+                    return true;
+                }
+
+                if (AsCtx(ref ctx).Bon.TryGetArray(out var arrayBon))
+                {
+                    var count = arrayBon.Items;
+                    var res = hashMetadata.Creator(count);
+                    for (var i = 0u; i < count; i++)
+                    {
+                        arrayBon.TryGet(i, out var itemBon);
+                        BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
+                        if (elementTypeIsValueType)
+                        {
+                            UInt128 temp = default;
+                            elementTypeDeserializer(ref AsCtx(ref subCtx), ref Unsafe.As<UInt128, byte>(ref temp));
+                            hashMetadata.Adder(res, ref Unsafe.As<UInt128, byte>(ref temp));
+                        }
+                        else
+                        {
+                            object? tempObject = null;
+                            elementTypeDeserializer(ref AsCtx(ref subCtx), ref Unsafe.As<object, byte>(ref tempObject));
+                            hashMetadata.Adder(res, ref Unsafe.As<object, byte>(ref tempObject));
+                        }
+                    }
+
+                    Unsafe.As<byte, object>(ref value) = res;
+                    return true;
+                }
+
+                return false;
+            };
+        }
+
+        if (type.SpecializationOf(typeof(Dictionary<,>)) is { } dictType &&
+            ReflectionMetadata.FindCollectionByType(dictType) is { } dictMetadata)
+        {
+            var keyType = dictMetadata.ElementKeyType;
+            var valueType = dictMetadata.ElementValueType;
+            var keyTypeDeserializer = CreateCachedDeserializerForType(keyType);
+            var valueTypeDeserializer = CreateCachedDeserializerForType(valueType!);
+            var keyTypeIsValueType = keyType.IsValueType;
+            if (keyTypeIsValueType && (*(RawData.MethodTable*)keyType.TypeHandle.Value).ContainsGCPointers)
+                throw new InvalidOperationException("Value type with GC pointers is not supported.");
+            var valueTypeIsValueType = valueType!.IsValueType;
+            if (valueTypeIsValueType && (*(RawData.MethodTable*)valueType.TypeHandle.Value).ContainsGCPointers)
+                throw new InvalidOperationException("Value type with GC pointers is not supported.");
+            return (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                if (AsCtx(ref ctx).Bon.TryGetNull())
+                {
+                    Unsafe.As<byte, object>(ref value) = null;
+                    return true;
+                }
+
+                if (AsCtx(ref ctx).Bon.TryGetDictionary(out var dictBon))
+                {
+                    var res = dictMetadata.Creator(dictBon.Items / 2);
+                    BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref dictBon };
+                    while (dictBon.Items > 0)
+                    {
+                        if (keyTypeIsValueType)
+                        {
+                            if (valueTypeIsValueType)
+                            {
+                                UInt128 keyTemp = default;
+                                UInt128 valueTemp = default;
+                                keyTypeDeserializer(ref AsCtx(ref subCtx), ref Unsafe.As<UInt128, byte>(ref keyTemp));
+                                valueTypeDeserializer(ref AsCtx(ref subCtx),
+                                    ref Unsafe.As<UInt128, byte>(ref valueTemp));
+                                dictMetadata.AdderKeyValue(res, ref Unsafe.As<UInt128, byte>(ref keyTemp),
+                                    ref Unsafe.As<UInt128, byte>(ref valueTemp));
+                            }
+                            else
+                            {
+                                UInt128 keyTemp = default;
+                                object? valueTemp = null;
+                                keyTypeDeserializer(ref AsCtx(ref subCtx), ref Unsafe.As<UInt128, byte>(ref keyTemp));
+                                valueTypeDeserializer(ref AsCtx(ref subCtx),
+                                    ref Unsafe.As<object, byte>(ref valueTemp));
+                                dictMetadata.AdderKeyValue(res, ref Unsafe.As<UInt128, byte>(ref keyTemp),
+                                    ref Unsafe.As<object, byte>(ref valueTemp));
+                            }
+                        }
+                        else
+                        {
+                            if (valueTypeIsValueType)
+                            {
+                                object? keyTemp = null;
+                                UInt128 valueTemp = default;
+                                keyTypeDeserializer(ref AsCtx(ref subCtx), ref Unsafe.As<object, byte>(ref keyTemp));
+                                valueTypeDeserializer(ref AsCtx(ref subCtx),
+                                    ref Unsafe.As<UInt128, byte>(ref valueTemp));
+                                dictMetadata.AdderKeyValue(res, ref Unsafe.As<object, byte>(ref keyTemp),
+                                    ref Unsafe.As<UInt128, byte>(ref valueTemp));
+                            }
+                            else
+                            {
+                                object? keyTemp = null;
+                                object? valueTemp = null;
+                                keyTypeDeserializer(ref AsCtx(ref subCtx), ref Unsafe.As<object, byte>(ref keyTemp));
+                                valueTypeDeserializer(ref AsCtx(ref subCtx),
+                                    ref Unsafe.As<object, byte>(ref valueTemp));
+                                dictMetadata.AdderKeyValue(res, ref Unsafe.As<object, byte>(ref keyTemp),
+                                    ref Unsafe.As<object, byte>(ref valueTemp));
+                            }
+                        }
+                    }
+
+                    Unsafe.As<byte, object>(ref value) = res;
+                    return true;
+                }
+
+                return false;
+            };
+        }
 
         var classMetadata = ReflectionMetadata.FindByType(type);
         if (classMetadata != null)
@@ -1264,9 +1414,9 @@ public class BonSerializerFactory : ISerializerFactory
                 while (!valuesBon.Eof)
                 {
                     if (!name2Idx.TryGetValue(keyedBon.NextKeyUtf8(), out var idx) ||
-                        !fieldDeserializers[idx](ref AsCtx(ref subCtx), ref value))
+                        !fieldDeserializers[idx](ref AsCtx(ref subCtx), ref Unsafe.As<object, byte>(ref res)))
                     {
-                        AsCtx(ref ctx).Bon.Skip();
+                        valuesBon.Skip();
                     }
                 }
 

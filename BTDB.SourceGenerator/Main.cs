@@ -63,6 +63,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 false, EquatableArray<ParameterInfo>.Empty, EquatableArray<PropertyInfo>.Empty,
                                 EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
                                 EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty,
+                                EquatableArray<CollectionInfo>.Empty,
                                 constructorParametersExpression.GetLocation());
                         }
 
@@ -119,7 +120,8 @@ public class SourceGenerator : IIncrementalGenerator
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, false,
                         parameters, [new PropertyInfo("", returnType, null, true, false, false, false, null)],
                         EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
-                        EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty, null);
+                        EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty,
+                        EquatableArray<CollectionInfo>.Empty, null);
                 }
 
                 if (syntaxContext.Node is InterfaceDeclarationSyntax)
@@ -136,7 +138,7 @@ public class SourceGenerator : IIncrementalGenerator
                         EquatableArray<ParameterInfo>.Empty,
                         EquatableArray<PropertyInfo>.Empty, EquatableArray<string>.Empty,
                         dispatchers.ToArray(), EquatableArray<FieldsInfo>.Empty,
-                        EquatableArray<TypeRef>.Empty, null);
+                        EquatableArray<TypeRef>.Empty, EquatableArray<CollectionInfo>.Empty, null);
                 }
 
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
@@ -397,6 +399,27 @@ public class SourceGenerator : IIncrementalGenerator
                         backingName, getterName, setterName, EquatableArray<IndexInfo>.Empty);
                 })).ToArray();
 
+        var fieldTypes = symbol.GetMembers()
+            .OfType<IFieldSymbol>()
+            .Where(f => !f.IsStatic)
+            .Where(f =>
+                f.DeclaredAccessibility == Accessibility.Public &&
+                f.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
+                f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
+                || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
+            .Select(f => f.Type)
+            .Concat(symbol.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(p => !p.IsStatic)
+                .Where(p =>
+                    p.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
+                    p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
+                    p.SetMethod is not null && p.GetMethod is not null)
+                .Select(p => p.Type));
+
+        var collections = new HashSet<CollectionInfo>();
+        GatherCollections(model, fieldTypes, collections);
+
         var privateConstructor =
             constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected ||
             GetAllMembersIncludingBase(symbol)
@@ -414,7 +437,51 @@ public class SourceGenerator : IIncrementalGenerator
             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
             hasDefaultConstructor,
             parameters,
-            propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, null);
+            propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, collections.ToArray(), null);
+    }
+
+    void GatherCollections(SemanticModel model, IEnumerable<ITypeSymbol> types, HashSet<CollectionInfo> collections)
+    {
+        foreach (var type in types)
+        {
+            GatherCollection(model, type, collections);
+        }
+    }
+
+    void GatherCollection(SemanticModel model, ITypeSymbol type, HashSet<CollectionInfo> collections)
+    {
+        if (type.TypeKind != TypeKind.Class) return;
+        if (type is INamedTypeSymbol namedTypeSymbol)
+        {
+            if (namedTypeSymbol.IsGenericType)
+            {
+                foreach (var typeArgument in namedTypeSymbol.TypeArguments)
+                {
+                    GatherCollection(model, typeArgument, collections);
+                }
+            }
+
+            var fullName = namedTypeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (fullName.StartsWith("global::System.Collections.Generic.HashSet<")
+                || fullName.StartsWith("global::System.Collections.Generic.List<"))
+            {
+                var elementType = namedTypeSymbol.TypeArguments[0];
+                var collectionInfo = new CollectionInfo(fullName,
+                    elementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    elementType.IsReferenceType, null, null);
+                collections.Add(collectionInfo);
+            }
+            else if (fullName.StartsWith("global::System.Collections.Generic.Dictionary<"))
+            {
+                var keyType = namedTypeSymbol.TypeArguments[0];
+                var valueType = namedTypeSymbol.TypeArguments[1];
+                var collectionInfo = new CollectionInfo(fullName,
+                    keyType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    keyType.IsReferenceType, valueType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    valueType.IsReferenceType);
+                collections.Add(collectionInfo);
+            }
+        }
     }
 
     IEnumerable<ISymbol> GetAllMembersIncludingBase(INamedTypeSymbol symbol)
@@ -529,6 +596,7 @@ public class SourceGenerator : IIncrementalGenerator
         ImmutableArray<GenerationInfo> generationInfos)
     {
         var dedupe = new HashSet<string>();
+        var collections = new HashSet<CollectionInfo>();
         foreach (var generationInfo in generationInfos)
         {
             if (generationInfo.GenType == GenerationType.Error)
@@ -551,9 +619,100 @@ public class SourceGenerator : IIncrementalGenerator
             }
             else
             {
+                foreach (var collectionInfo in generationInfo.CollectionInfos.AsSpan())
+                {
+                    collections.Add(collectionInfo);
+                }
+
                 GenerateClassFactory(context, generationInfo);
             }
         }
+
+        if (collections.Count > 0) GenerateCollectionRegistrations(context, collections);
+    }
+
+    static void GenerateCollectionRegistrations(SourceProductionContext context, HashSet<CollectionInfo> collections)
+    {
+        var factoryCode = new StringBuilder();
+        // language=c#
+        factoryCode.Append($$"""
+            // <auto-generated/>
+            #nullable enable
+            using System;
+            using System.Runtime.CompilerServices;
+            [CompilerGenerated]
+            static file class CollectionRegistrations
+            {
+                [ModuleInitializer]
+                internal static void Register4BTDB()
+                {
+            """);
+
+        var idx = 0;
+        foreach (var collection in collections)
+        {
+            idx++;
+            if (collection.ValueType != null)
+            {
+                factoryCode.Append($$"""
+
+                            BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
+                            {
+                                Type = typeof({{collection.FullName}}),
+                                ElementKeyType = typeof({{collection.KeyType}}),
+                                ElementValueType = typeof({{collection.ValueType}}),
+                                Creator = &Create{{idx}},
+                                AdderKeyValue = &Add{{idx}}
+                            });
+
+                            static object Create{{idx}}(uint capacity)
+                            {
+                                return new {{collection.FullName}}((int)capacity);
+                            }
+
+                            static void Add{{idx}}(object c, ref byte key, ref byte value)
+                            {
+                                Unsafe.As<{{collection.FullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref key), Unsafe.As<byte, {{collection.ValueType}}>(ref value));
+                            }
+
+                    """);
+            }
+            else
+            {
+                // language=c#
+                factoryCode.Append($$"""
+
+                            BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
+                            {
+                                Type = typeof({{collection.FullName}}),
+                                ElementKeyType = typeof({{collection.KeyType}}),
+                                Creator = &Create{{idx}},
+                                Adder = &Add{{idx}}
+                            });
+
+                            static object Create{{idx}}(uint capacity)
+                            {
+                                return new {{collection.FullName}}((int)capacity);
+                            }
+
+                            static void Add{{idx}}(object c, ref byte value)
+                            {
+                                Unsafe.As<{{collection.FullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref value));
+                            }
+
+                    """);
+            }
+        }
+
+        // language=c#
+        factoryCode.Append("""
+                }
+            }
+
+            """);
+        context.AddSource(
+            $"CollectionRegistrations.g.cs",
+            SourceText.From(factoryCode.ToString(), Encoding.UTF8));
     }
 
     static void GenerateInterfaceFactory(SourceProductionContext context, GenerationInfo generationInfo)
@@ -1029,8 +1188,11 @@ record GenerationInfo(
     EquatableArray<DispatcherInfo> Dispatchers,
     EquatableArray<FieldsInfo> Fields,
     EquatableArray<TypeRef> Implements,
+    EquatableArray<CollectionInfo> CollectionInfos,
     Location? Location
 );
+
+record CollectionInfo(string FullName, string KeyType, bool KeyIsReference, string? ValueType, bool? ValueIsReference);
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
 

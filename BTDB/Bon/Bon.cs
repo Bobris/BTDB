@@ -1231,6 +1231,33 @@ public struct Bon
         }
     }
 
+    public bool PeekClass(out ReadOnlySpan<byte> name)
+    {
+        var b = _reader.PeekUInt8();
+        switch (b)
+        {
+            case Helpers.CodeClassPtr:
+            {
+                var reader = _reader;
+                reader.Skip1Byte();
+                var ofs = reader.ReadVUInt64();
+                var reader2 = reader;
+                reader2.SetCurrentPositionWithoutController(ofs);
+                var ofsKeys = reader2.ReadVUInt64();
+                reader2.SetCurrentPositionWithoutController(ofsKeys);
+                reader2.SkipVUInt32();
+                var nameOfs = reader2.ReadVUInt64();
+                reader2.SetCurrentPositionWithoutController(nameOfs);
+                var len = reader2.ReadVUInt32();
+                name = reader2.ReadBlockAsSpan(len);
+                return true;
+            }
+            default:
+                name = new();
+                return false;
+        }
+    }
+
     public bool TryGetDictionary(out Bon bon)
     {
         var b = _reader.PeekUInt8();

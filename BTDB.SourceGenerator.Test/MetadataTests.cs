@@ -1,7 +1,5 @@
-using System.Linq;
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using VerifyXunit;
 using Xunit;
 
@@ -22,6 +20,57 @@ public class MetadataTests : GeneratorTestsBase
             {
                 public string Name { get; set; } = "";
                 public int Age;
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyCollectionMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public string Name { get; set; } = "";
+                public List<Person> Friends { get; set; } = new();
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyDictCollectionMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public string Name { get; set; } = "";
+                public Dictionary<int,string> Id2Name { get; set; } = new();
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyNestedCollectionMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public string Name { get; set; } = "";
+                public Dictionary<int,List<string>> Id2Names { get; set; } = new();
             }
             """);
     }

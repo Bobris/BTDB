@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using BTDB;
 using BTDB.IOC;
+using BTDB.Serialization;
 using Microsoft.AspNetCore.Http;
 
 var builder = new ContainerBuilder();
@@ -12,6 +15,28 @@ unsafe
 {
     var h = IAnyHandler.CreateConsumeDispatcher(container);
     h(container, "Hello");
+}
+
+unsafe
+{
+    ReflectionMetadata.RegisterCollection(new()
+    {
+        Type = typeof(Dictionary<int, string>),
+        ElementKeyType = typeof(int),
+        ElementValueType = typeof(string),
+        Creator = &Create1,
+        AdderKeyValue = &Add1
+    });
+}
+
+static object Create1(uint capacity)
+{
+    return new Dictionary<int, string>((int)capacity);
+}
+
+static void Add1(object c, ref byte key, ref byte value)
+{
+    Unsafe.As<Dictionary<int, string>>(c).Add(Unsafe.As<byte, int>(ref key), Unsafe.As<byte, string>(ref value));
 }
 
 [Generate]
@@ -74,7 +99,7 @@ public interface ILogger
 [Generate]
 public class ErrorHandler
 {
-    [Dependency]
+    [BTDB.IOC.Dependency]
     public ILogger? Logger
     {
         get => null;
