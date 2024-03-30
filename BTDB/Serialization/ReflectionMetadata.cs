@@ -1,31 +1,27 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Text;
 using System.Threading;
 using BTDB.Collections;
 using BTDB.KVDBLayer;
-using BTDB.ODBLayer;
 
 namespace BTDB.Serialization;
 
 public static class ReflectionMetadata
 {
-    static readonly Dictionary<Type, ClassMetadata> _typeToMetadata = new(ReferenceEqualityComparer<Type>.Instance);
+    static readonly Dictionary<nint, ClassMetadata> _typeToMetadata = new();
     static readonly SpanByteNoRemoveDictionary<ClassMetadata> _nameToMetadata = new();
 
-    static readonly Dictionary<Type, CollectionMetadata> _collectionToMetadata =
-        new(ReferenceEqualityComparer<Type>.Instance);
+    static readonly Dictionary<nint, CollectionMetadata> _collectionToMetadata = new();
 
-    static readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim();
+    static readonly ReaderWriterLockSlim _lock = new();
 
     public static ClassMetadata? FindByType(Type type)
     {
+        var handle = type.TypeHandle.Value;
         using (_lock.ReadLock())
         {
-            if (_typeToMetadata.TryGetValue(type, out var metadata))
-                return metadata;
-            return null;
+            return _typeToMetadata.GetValueOrDefault(handle);
         }
     }
 
@@ -41,7 +37,10 @@ public static class ReflectionMetadata
     {
         using (_lock.ReadLock())
         {
-            return _typeToMetadata.Values;
+            foreach (var (_, value) in _typeToMetadata)
+            {
+                yield return value;
+            }
         }
     }
 
@@ -49,16 +48,17 @@ public static class ReflectionMetadata
     {
         using (_lock.WriteLock())
         {
-            if (_typeToMetadata.TryAdd(metadata.Type, metadata))
+            if (_typeToMetadata.TryAdd(metadata.Type.TypeHandle.Value, metadata))
                 _nameToMetadata.GetOrAddValueRef(Encoding.UTF8.GetBytes(metadata.TruePersistedName)) = metadata;
         }
     }
 
     public static CollectionMetadata? FindCollectionByType(Type type)
     {
+        var handle = type.TypeHandle.Value;
         using (_lock.ReadLock())
         {
-            return _collectionToMetadata.GetValueOrDefault(type);
+            return _collectionToMetadata.GetValueOrDefault(handle);
         }
     }
 
@@ -66,7 +66,7 @@ public static class ReflectionMetadata
     {
         using (_lock.WriteLock())
         {
-            _collectionToMetadata.TryAdd(metadata.Type, metadata);
+            _collectionToMetadata.TryAdd(metadata.Type.TypeHandle.Value, metadata);
         }
     }
 }
