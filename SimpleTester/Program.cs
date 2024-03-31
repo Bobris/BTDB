@@ -1,5 +1,4 @@
-﻿
-//using JetBrains.Profiler.Windows.Api;
+﻿//using JetBrains.Profiler.Windows.Api;
 
 using System;
 using System.Threading;
@@ -48,6 +47,7 @@ static class Program
         //new BenchTestSpanReaderWriter().GlobalSetup();
         //BenchmarkRunner.Run<BenchTest>();
         //new InKeyValueStressTest().Run();
-        BigBonTest.Run();
+        //BigBonTest.Run();
+        BenchmarkRunner.Run<BenchLockTest>();
     }
 }
