@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using BTDB.Locks;
 
 namespace BTDB.Collections;
 
@@ -32,8 +33,10 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
     static readonly Entry[] InitialEntries = new Entry[1];
 
     int _count;
+
     // 0-based index into _entries of head of free chain: -1 means empty
     int _freeList = -1;
+
     // 1-based index into _entries; 0 means empty
     int[] _buckets;
     Entry[] _entries;
@@ -44,7 +47,9 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
     struct Entry
     {
         public TKey key;
+
         public TValue value;
+
         // 0-based index of next entry in chain: -1 means end of chain
         // also encodes whether this entry _itself_ is part of the free list by changing sign and subtracting 3,
         // so -2 means end of free list, -3 means index 0 but on free list, -4 means index 1 but on free list, etc.
@@ -78,7 +83,8 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var entries = _entries;
         var collisionCount = 0;
         for (var i = _buckets[key.GetHashCode() & (_buckets.Length - 1)] - 1;
-                (uint)i < (uint)entries.Length; i = entries[i].next)
+             (uint)i < (uint)entries.Length;
+             i = entries[i].next)
         {
             if (key.Equals(entries[i].key))
                 return true;
@@ -88,6 +94,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
                 // Break out of the loop and throw, rather than looping forever.
                 HashHelpers.ThrowInvalidOperationException_ConcurrentOperationsNotSupported();
             }
+
             collisionCount++;
         }
 
@@ -100,24 +107,74 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var entries = _entries;
         var collisionCount = 0;
         for (var i = _buckets[key.GetHashCode() & (_buckets.Length - 1)] - 1;
-                (uint)i < (uint)entries.Length; i = entries[i].next)
+             (uint)i < (uint)entries.Length;
+             i = entries[i].next)
         {
             if (key.Equals(entries[i].key))
             {
                 value = entries[i].value;
                 return true;
             }
+
             if (collisionCount == entries.Length)
             {
                 // The chain of entries forms a loop; which means a concurrent update has happened.
                 // Break out of the loop and throw, rather than looping forever.
                 HashHelpers.ThrowInvalidOperationException_ConcurrentOperationsNotSupported();
             }
+
             collisionCount++;
         }
 
         value = default;
         return false;
+    }
+
+    public bool TryGetValueSeqLock(TKey key, out TValue value, ref SeqLock seqLock)
+    {
+        if (key == null) HashHelpers.ThrowKeyArgumentNullException();
+        var hash = key.GetHashCode();
+        var seqCounter = seqLock.StartRead();
+        retry:
+        try
+        {
+            var entries = _entries;
+            var collisionCount = 0;
+            for (var i = _buckets[hash & (_buckets.Length - 1)] - 1;
+                 (uint)i < (uint)entries.Length;
+                 i = entries[i].next)
+            {
+                if (key.Equals(entries[i].key))
+                {
+                    value = entries[i].value;
+                    if (seqLock.RetryRead(ref seqCounter)) goto retry;
+                    return true;
+                }
+
+                if (collisionCount == entries.Length)
+                {
+                    if (seqLock.RetryRead(ref seqCounter)) goto retry;
+                    // The chain of entries forms a loop; which means a concurrent update has happened.
+                    // Break out of the loop and throw, rather than looping forever.
+                    HashHelpers.ThrowInvalidOperationException_ConcurrentOperationsNotSupported();
+                }
+                else if ((collisionCount & 0xF) == 4)
+                {
+                    if (seqLock.RetryRead(ref seqCounter)) goto retry;
+                }
+
+                collisionCount++;
+            }
+
+            if (seqLock.RetryRead(ref seqCounter)) goto retry;
+            value = default;
+            return false;
+        }
+        catch
+        {
+            if (seqLock.RetryRead(ref seqCounter)) goto retry;
+            throw;
+        }
     }
 
     public bool Remove(TKey key)
@@ -135,11 +192,13 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
             if (candidate.key.Equals(key))
             {
                 if (lastIndex != -1)
-                {   // Fixup preceding element in chain to point to next (if any)
+                {
+                    // Fixup preceding element in chain to point to next (if any)
                     entries[lastIndex].next = candidate.next;
                 }
                 else
-                {   // Fixup bucket to new head (if any)
+                {
+                    // Fixup bucket to new head (if any)
                     _buckets[bucketIndex] = candidate.next + 1;
                 }
 
@@ -151,6 +210,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
                 _count--;
                 return true;
             }
+
             lastIndex = entryIndex;
             entryIndex = candidate.next;
 
@@ -160,6 +220,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
                 // Break out of the loop and throw, rather than looping forever.
                 HashHelpers.ThrowInvalidOperationException_ConcurrentOperationsNotSupported();
             }
+
             collisionCount++;
         }
 
@@ -174,7 +235,8 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var collisionCount = 0;
         var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
         for (var i = _buckets[bucketIndex] - 1;
-                (uint)i < (uint)entries.Length; i = entries[i].next)
+             (uint)i < (uint)entries.Length;
+             i = entries[i].next)
         {
             if (key.Equals(entries[i].key))
                 return ref entries[i].value;
@@ -184,6 +246,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
                 // Break out of the loop and throw, rather than looping forever.
                 HashHelpers.ThrowInvalidOperationException_ConcurrentOperationsNotSupported();
             }
+
             collisionCount++;
         }
 
@@ -197,19 +260,22 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var collisionCount = 0;
         var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
         for (var i = _buckets[bucketIndex] - 1;
-                (uint)i < (uint)entries.Length; i = entries[i].next)
+             (uint)i < (uint)entries.Length;
+             i = entries[i].next)
         {
             if (key.Equals(entries[i].key))
             {
                 found = true;
                 return ref entries[i].value;
             }
+
             if (collisionCount == entries.Length)
             {
                 // The chain of entries forms a loop; which means a concurrent update has happened.
                 // Break out of the loop and throw, rather than looping forever.
                 HashHelpers.ThrowInvalidOperationException_ConcurrentOperationsNotSupported();
             }
+
             collisionCount++;
         }
 
@@ -225,7 +291,8 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var collisionCount = 0;
         var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
         for (var i = _buckets[bucketIndex] - 1;
-                (uint)i < (uint)entries.Length; i = entries[i].next)
+             (uint)i < (uint)entries.Length;
+             i = entries[i].next)
         {
             if (key.Equals(entries[i].key))
                 return ref entries[i].value;
@@ -235,10 +302,37 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
                 // Break out of the loop and throw, rather than looping forever.
                 HashHelpers.ThrowInvalidOperationException_ConcurrentOperationsNotSupported();
             }
+
             collisionCount++;
         }
 
         return ref AddKey(key, bucketIndex);
+    }
+
+    public bool TryAdd(TKey key, in TValue value)
+    {
+        if (key == null) HashHelpers.ThrowKeyArgumentNullException();
+        var entries = _entries;
+        var collisionCount = 0;
+        var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
+        for (var i = _buckets[bucketIndex] - 1;
+             (uint)i < (uint)entries.Length;
+             i = entries[i].next)
+        {
+            if (key.Equals(entries[i].key))
+                return false;
+            if (collisionCount == entries.Length)
+            {
+                // The chain of entries forms a loop; which means a concurrent update has happened.
+                // Break out of the loop and throw, rather than looping forever.
+                HashHelpers.ThrowInvalidOperationException_ConcurrentOperationsNotSupported();
+            }
+
+            collisionCount++;
+        }
+
+        AddKey(key, bucketIndex) = value;
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -259,6 +353,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
                 bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
                 // entry indexes were not changed by Resize
             }
+
             entryIndex = _count;
         }
 
@@ -312,13 +407,16 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
                     entry.key,
                     entry.value);
             }
+
             i++;
         }
     }
 
     public Enumerator GetEnumerator() => new Enumerator(this); // avoid boxing
+
     IEnumerator<KeyValuePair<TKey, TValue>> IEnumerable<KeyValuePair<TKey, TValue>>.GetEnumerator() =>
         new Enumerator(this);
+
     IEnumerator IEnumerable.GetEnumerator() => new Enumerator(this);
 
     public struct Enumerator : IEnumerator<KeyValuePair<TKey, TValue>>
@@ -365,7 +463,9 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
             _count = _dictionary._count;
         }
 
-        public void Dispose() { }
+        public void Dispose()
+        {
+        }
     }
 
 
@@ -386,7 +486,10 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         return ref _entries[(int)index].value;
     }
 
-    public IndexEnumerator Index { get => new IndexEnumerator(this); }
+    public IndexEnumerator Index
+    {
+        get => new IndexEnumerator(this);
+    }
 
     public struct IndexEnumerator : IEnumerable<uint>
     {
@@ -444,9 +547,10 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
                 _count = _dictionary._count;
             }
 
-            public void Dispose() { }
+            public void Dispose()
+            {
+            }
         }
-
     }
 }
 
@@ -462,9 +566,6 @@ sealed class RefDictionaryDebugView<K, V> where K : IEquatable<K>
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
     public KeyValuePair<K, V>[] Items
     {
-        get
-        {
-            return _dictionary.ToArray();
-        }
+        get { return _dictionary.ToArray(); }
     }
 }

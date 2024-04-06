@@ -1,72 +1,82 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using BTDB.Collections;
 using BTDB.KVDBLayer;
+using BTDB.Locks;
 
 namespace BTDB.Serialization;
 
 public static class ReflectionMetadata
 {
-    static readonly Dictionary<nint, ClassMetadata> _typeToMetadata = new();
+    static readonly RefDictionary<nint, ClassMetadata> _typeToMetadata = new();
     static readonly SpanByteNoRemoveDictionary<ClassMetadata> _nameToMetadata = new();
 
-    static readonly Dictionary<nint, CollectionMetadata> _collectionToMetadata = new();
+    static readonly RefDictionary<nint, CollectionMetadata> _collectionToMetadata = new();
 
-    static readonly ReaderWriterLockSlim _lock = new();
+    static SeqLock _lock;
 
     public static ClassMetadata? FindByType(Type type)
     {
         var handle = type.TypeHandle.Value;
-        using (_lock.ReadLock())
-        {
-            return _typeToMetadata.GetValueOrDefault(handle);
-        }
+        return _typeToMetadata.TryGetValueSeqLock(handle, out var metadata, ref _lock) ? metadata : null;
     }
 
     public static ClassMetadata? FindByName(ReadOnlySpan<byte> name)
     {
-        using (_lock.ReadLock())
-        {
-            return _nameToMetadata.TryGetValue(name, out var metadata) ? metadata : null;
-        }
+        return _nameToMetadata.TryGetValueSeqLock(name, out var metadata, ref _lock) ? metadata : null;
     }
 
-    public static IEnumerable<ClassMetadata> All()
+
+    /// Mostly for debugging purposes, returns all registered metadata. Slow because it needs to lock for writing.
+    public static IList<ClassMetadata> All()
     {
-        using (_lock.ReadLock())
+        _lock.StartWrite();
+        try
         {
-            foreach (var (_, value) in _typeToMetadata)
-            {
-                yield return value;
-            }
+            return _typeToMetadata.Select(v => v.Value).ToList();
+        }
+        finally
+        {
+            _lock.EndWrite();
         }
     }
 
     public static void Register(ClassMetadata metadata)
     {
-        using (_lock.WriteLock())
+        _lock.StartWrite();
+        try
         {
             if (_typeToMetadata.TryAdd(metadata.Type.TypeHandle.Value, metadata))
+            {
                 _nameToMetadata.GetOrAddValueRef(Encoding.UTF8.GetBytes(metadata.TruePersistedName)) = metadata;
+            }
+        }
+        finally
+        {
+            _lock.EndWrite();
         }
     }
 
     public static CollectionMetadata? FindCollectionByType(Type type)
     {
         var handle = type.TypeHandle.Value;
-        using (_lock.ReadLock())
-        {
-            return _collectionToMetadata.GetValueOrDefault(handle);
-        }
+        if (_collectionToMetadata.TryGetValueSeqLock(handle, out var metadata, ref _lock)) return metadata;
+        return null;
     }
 
     public static void RegisterCollection(CollectionMetadata metadata)
     {
-        using (_lock.WriteLock())
+        _lock.StartWrite();
+        try
         {
             _collectionToMetadata.TryAdd(metadata.Type.TypeHandle.Value, metadata);
+        }
+        finally
+        {
+            _lock.EndWrite();
         }
     }
 }

@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using BTDB.Locks;
 
 namespace BTDB.Collections;
 
@@ -139,6 +140,53 @@ public class SpanByteNoRemoveDictionary<TValue> : IReadOnlyCollection<KeyValuePa
 
         value = default;
         return false;
+    }
+
+
+    public bool TryGetValueSeqLock(in ReadOnlySpan<byte> key, out TValue value, ref SeqLock seqLock)
+    {
+        var hash = CalcHash(key);
+        var seqCounter = seqLock.StartRead();
+        retry:
+        try
+        {
+            var entries = _entries;
+            var collisionCount = 0;
+            for (var i = _buckets[hash & (_buckets.Length - 1)] - 1;
+                 (uint)i < (uint)entries.Length;
+                 i = entries[i].next)
+            {
+                if (Equal(key, hash, entries[i]))
+                {
+                    value = entries[i].value;
+                    if (seqLock.RetryRead(ref seqCounter)) goto retry;
+                    return true;
+                }
+
+                if (collisionCount == entries.Length)
+                {
+                    if (seqLock.RetryRead(ref seqCounter)) goto retry;
+                    // The chain of entries forms a loop; which means a concurrent update has happened.
+                    // Break out of the loop and throw, rather than looping forever.
+                    HashHelpers.ThrowInvalidOperationException_ConcurrentOperationsNotSupported();
+                }
+                else if ((collisionCount & 0xF) == 4)
+                {
+                    if (seqLock.RetryRead(ref seqCounter)) goto retry;
+                }
+
+                collisionCount++;
+            }
+
+            if (seqLock.RetryRead(ref seqCounter)) goto retry;
+            value = default;
+            return false;
+        }
+        catch
+        {
+            if (seqLock.RetryRead(ref seqCounter)) goto retry;
+            throw;
+        }
     }
 
     // Not safe for concurrent _reads_ (at least, if either of them add)
