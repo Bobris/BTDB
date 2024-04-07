@@ -450,7 +450,7 @@ public class SourceGenerator : IIncrementalGenerator
 
     void GatherCollection(SemanticModel model, ITypeSymbol type, HashSet<CollectionInfo> collections)
     {
-        if (type.TypeKind != TypeKind.Class) return;
+        if (type.TypeKind != TypeKind.Class && type.TypeKind != TypeKind.Interface) return;
         if (type is INamedTypeSymbol namedTypeSymbol)
         {
             if (namedTypeSymbol.IsGenericType)
@@ -462,24 +462,63 @@ public class SourceGenerator : IIncrementalGenerator
             }
 
             var fullName = namedTypeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            if (fullName.StartsWith("global::System.Collections.Generic.HashSet<")
-                || fullName.StartsWith("global::System.Collections.Generic.List<"))
+            ReadOnlySpan<string> collectionToInstance =
+            [
+                "global::System.Collections.Generic.List<", "global::System.Collections.Generic.List<",
+                "global::System.Collections.Generic.IList<", "global::System.Collections.Generic.List<",
+                "global::System.Collections.Generic.IReadOnlyList<", "global::System.Collections.Generic.List<",
+                "global::System.Collections.Generic.HashSet<", "global::System.Collections.Generic.HashSet<",
+                "global::System.Collections.Generic.ISet<", "global::System.Collections.Generic.HashSet<",
+                "global::System.Collections.Generic.IReadOnlySet<", "global::System.Collections.Generic.HashSet<",
+                "global::System.Collections.Generic.IEnumerable<", "global::System.Collections.Generic.List<",
+            ];
+            string? instance = null;
+            for (var i = 0; i < collectionToInstance.Length; i += 2)
+            {
+                if (fullName.StartsWith(collectionToInstance[i], StringComparison.Ordinal))
+                {
+                    instance = collectionToInstance[i + 1] + fullName.Substring(collectionToInstance[i].Length);
+                    break;
+                }
+            }
+
+            if (instance != null)
             {
                 var elementType = namedTypeSymbol.TypeArguments[0];
-                var collectionInfo = new CollectionInfo(fullName,
+                var collectionInfo = new CollectionInfo(fullName, instance,
                     elementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                     elementType.IsReferenceType, null, null);
                 collections.Add(collectionInfo);
             }
-            else if (fullName.StartsWith("global::System.Collections.Generic.Dictionary<"))
+            else
             {
-                var keyType = namedTypeSymbol.TypeArguments[0];
-                var valueType = namedTypeSymbol.TypeArguments[1];
-                var collectionInfo = new CollectionInfo(fullName,
-                    keyType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    keyType.IsReferenceType, valueType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    valueType.IsReferenceType);
-                collections.Add(collectionInfo);
+                ReadOnlySpan<string> collectionToInstance2 =
+                [
+                    "global::System.Collections.Generic.Dictionary<", "global::System.Collections.Generic.Dictionary<",
+                    "global::System.Collections.Generic.IDictionary<", "global::System.Collections.Generic.Dictionary<",
+                    "global::System.Collections.Generic.IReadOnlyDictionary<",
+                    "global::System.Collections.Generic.Dictionary<",
+                ];
+                instance = null;
+                for (var i = 0; i < collectionToInstance2.Length; i += 2)
+                {
+                    if (fullName.StartsWith(collectionToInstance2[i], StringComparison.Ordinal))
+                    {
+                        instance = collectionToInstance2[i + 1] + fullName.Substring(collectionToInstance2[i].Length);
+                        break;
+                    }
+                }
+
+                if (instance != null)
+                {
+                    var keyType = namedTypeSymbol.TypeArguments[0];
+                    var valueType = namedTypeSymbol.TypeArguments[1];
+                    var collectionInfo = new CollectionInfo(fullName, instance,
+                        keyType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        keyType.IsReferenceType, valueType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        valueType.IsReferenceType);
+                    collections.Add(collectionInfo);
+                }
             }
         }
     }
@@ -667,12 +706,12 @@ public class SourceGenerator : IIncrementalGenerator
 
                             static object Create{{idx}}(uint capacity)
                             {
-                                return new {{collection.FullName}}((int)capacity);
+                                return new {{collection.InstantiableFullName}}((int)capacity);
                             }
 
                             static void Add{{idx}}(object c, ref byte key, ref byte value)
                             {
-                                Unsafe.As<{{collection.FullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref key), Unsafe.As<byte, {{collection.ValueType}}>(ref value));
+                                Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref key), Unsafe.As<byte, {{collection.ValueType}}>(ref value));
                             }
 
                     """);
@@ -692,12 +731,12 @@ public class SourceGenerator : IIncrementalGenerator
 
                             static object Create{{idx}}(uint capacity)
                             {
-                                return new {{collection.FullName}}((int)capacity);
+                                return new {{collection.InstantiableFullName}}((int)capacity);
                             }
 
                             static void Add{{idx}}(object c, ref byte value)
                             {
-                                Unsafe.As<{{collection.FullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref value));
+                                Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref value));
                             }
 
                     """);
@@ -1192,7 +1231,13 @@ record GenerationInfo(
     Location? Location
 );
 
-record CollectionInfo(string FullName, string KeyType, bool KeyIsReference, string? ValueType, bool? ValueIsReference);
+record CollectionInfo(
+    string FullName,
+    string InstantiableFullName,
+    string KeyType,
+    bool KeyIsReference,
+    string? ValueType,
+    bool? ValueIsReference);
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
 
