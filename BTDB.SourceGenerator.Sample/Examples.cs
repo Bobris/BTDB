@@ -6,37 +6,67 @@ using BTDB.IOC;
 using BTDB.Serialization;
 using Microsoft.AspNetCore.Http;
 
-var builder = new ContainerBuilder();
+unsafe
+{
+    var builder = new ContainerBuilder();
 //builder.RegisterType<Klass>();
-builder.AutoRegisterTypes().AsSelf();
-var container = builder.Build();
-container.Resolve<Klass>();
-unsafe
-{
-    var h = IAnyHandler.CreateConsumeDispatcher(container);
-    h(container, "Hello");
-}
-
-unsafe
-{
-    ReflectionMetadata.RegisterCollection(new()
+    builder.AutoRegisterTypes().AsSelf();
+    var container = builder.Build();
+    container.Resolve<Klass>();
+    unsafe
     {
-        Type = typeof(Dictionary<int, string>),
-        ElementKeyType = typeof(int),
-        ElementValueType = typeof(string),
-        Creator = &Create1,
-        AdderKeyValue = &Add1
-    });
+        var h = IAnyHandler.CreateConsumeDispatcher(container);
+        h(container, "Hello");
+    }
+
+    unsafe
+    {
+        ReflectionMetadata.RegisterCollection(new()
+        {
+            Type = typeof(Dictionary<int, string>),
+            ElementKeyType = typeof(int),
+            ElementValueType = typeof(string),
+            Creator = &Create1,
+            AdderKeyValue = &Add1
+        });
+    }
+
+    MyCtx myCtx = default;
+    AllocateValueType(ref Unsafe.As<MyCtx, byte>(ref myCtx), ref myCtx.Ptr, &WorkWithAllocatedValueType);
+
+    static object Create1(uint capacity)
+    {
+        return new Dictionary<int, string>((int)capacity);
+    }
+
+    static void Add1(object c, ref byte key, ref byte value)
+    {
+        Unsafe.As<Dictionary<int, string>>(c).Add(Unsafe.As<byte, int>(ref key), Unsafe.As<byte, string>(ref value));
+    }
+
+    static void AllocateValueType(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
+    {
+        (int, string) value;
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+        ptr = (nint)(&value);
+#pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+        chain(ref ctx);
+        ptr = 0;
+    }
+
+    static void WorkWithAllocatedValueType(ref byte ctx)
+    {
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+        ref var value = ref *((int, string)*)Unsafe.As<byte, MyCtx>(ref ctx).Ptr;
+#pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+        value = (42, "Hello");
+        Console.WriteLine(value);
+    }
 }
 
-static object Create1(uint capacity)
+public struct MyCtx
 {
-    return new Dictionary<int, string>((int)capacity);
-}
-
-static void Add1(object c, ref byte key, ref byte value)
-{
-    Unsafe.As<Dictionary<int, string>>(c).Add(Unsafe.As<byte, int>(ref key), Unsafe.As<byte, string>(ref value));
+    public nint Ptr;
 }
 
 [Generate]
