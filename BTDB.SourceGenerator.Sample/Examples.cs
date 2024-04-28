@@ -29,6 +29,7 @@ unsafe
             Creator = &Create1,
             AdderKeyValue = &Add1
         });
+        ReflectionMetadata.RegisterStackAllocator(typeof((int, string)), &AllocateValueType);
     }
 
     MyCtx myCtx = default;

@@ -63,7 +63,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 false, EquatableArray<ParameterInfo>.Empty, EquatableArray<PropertyInfo>.Empty,
                                 EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
                                 EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty,
-                                EquatableArray<CollectionInfo>.Empty,
+                                EquatableArray<CollectionInfo>.Empty, EquatableArray<GenerationInfo>.Empty,
                                 constructorParametersExpression.GetLocation());
                         }
 
@@ -80,7 +80,8 @@ public class SourceGenerator : IIncrementalGenerator
                             .ToArray();
                     }
 
-                    return GenerationInfoForClass(symb, null, false, constructorParameters, semanticModel);
+                    return GenerationInfoForClass(symb, null, false, constructorParameters, semanticModel,
+                        new HashSet<CollectionInfo>(), new HashSet<GenerationInfo>());
                 }
 
                 // Symbols allow us to get the compile-time information.
@@ -121,7 +122,7 @@ public class SourceGenerator : IIncrementalGenerator
                         parameters, [new PropertyInfo("", returnType, null, true, false, false, false, null)],
                         EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
                         EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty,
-                        EquatableArray<CollectionInfo>.Empty, null);
+                        EquatableArray<CollectionInfo>.Empty, EquatableArray<GenerationInfo>.Empty, null);
                 }
 
                 if (syntaxContext.Node is InterfaceDeclarationSyntax)
@@ -138,7 +139,8 @@ public class SourceGenerator : IIncrementalGenerator
                         EquatableArray<ParameterInfo>.Empty,
                         EquatableArray<PropertyInfo>.Empty, EquatableArray<string>.Empty,
                         dispatchers.ToArray(), EquatableArray<FieldsInfo>.Empty,
-                        EquatableArray<TypeRef>.Empty, EquatableArray<CollectionInfo>.Empty, null);
+                        EquatableArray<TypeRef>.Empty, EquatableArray<CollectionInfo>.Empty,
+                        EquatableArray<GenerationInfo>.Empty, null);
                 }
 
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
@@ -174,7 +176,8 @@ public class SourceGenerator : IIncrementalGenerator
                     var isPartial = classDeclarationSyntax.Modifiers
                         .Any(m => m.ValueText == "partial");
 
-                    return GenerationInfoForClass(symbol, classDeclarationSyntax, isPartial, null, semanticModel);
+                    return GenerationInfoForClass(symbol, classDeclarationSyntax, isPartial, null, semanticModel,
+                        new HashSet<CollectionInfo>(), new HashSet<GenerationInfo>());
                 }
 
                 if (syntaxContext.Node is RecordDeclarationSyntax recordDeclarationSyntax)
@@ -210,17 +213,20 @@ public class SourceGenerator : IIncrementalGenerator
                     var isPartial = recordDeclarationSyntax.Modifiers
                         .Any(m => m.ValueText == "partial");
 
-                    return GenerationInfoForClass(symbol, recordDeclarationSyntax, isPartial, null, semanticModel);
+                    return GenerationInfoForClass(symbol, recordDeclarationSyntax, isPartial, null, semanticModel,
+                        new HashSet<CollectionInfo>(), new HashSet<GenerationInfo>());
                 }
 
                 return null!;
             }).Where(i => i != null);
-
+        gen = gen.SelectMany((g, _) => g!.Nested.IsEmpty ? Enumerable.Repeat(g, 1) : [g, ..g.Nested])!;
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
     }
 
-    GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol, TypeDeclarationSyntax? classDeclarationSyntax,
-        bool isPartial, INamedTypeSymbol[]? constructorParameters, SemanticModel model)
+    static GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol,
+        TypeDeclarationSyntax? classDeclarationSyntax,
+        bool isPartial, INamedTypeSymbol[]? constructorParameters, SemanticModel model,
+        HashSet<CollectionInfo> collections, HashSet<GenerationInfo> nested, HashSet<string>? processed = null)
     {
         if (symbol.DeclaredAccessibility == Accessibility.Private)
         {
@@ -235,6 +241,19 @@ public class SourceGenerator : IIncrementalGenerator
         if (symbol.IsUnboundGenericType)
         {
             return null;
+        }
+
+        if (processed == null)
+        {
+            processed = new HashSet<string>();
+            processed.Add(symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+        }
+        else
+        {
+            if (!processed.Add(symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))
+            {
+                return null;
+            }
         }
 
         var implements = symbol.AllInterfaces.Select(s => new TypeRef(s)).ToArray();
@@ -417,8 +436,7 @@ public class SourceGenerator : IIncrementalGenerator
                     p.SetMethod is not null && p.GetMethod is not null)
                 .Select(p => p.Type));
 
-        var collections = new HashSet<CollectionInfo>();
-        GatherCollections(model, fieldTypes, collections);
+        GatherCollections(model, fieldTypes, collections, nested, processed);
 
         var privateConstructor =
             constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected ||
@@ -437,18 +455,22 @@ public class SourceGenerator : IIncrementalGenerator
             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
             hasDefaultConstructor,
             parameters,
-            propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, collections.ToArray(), null);
+            propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, collections.ToArray(),
+            nested.ToArray(), null);
     }
 
-    void GatherCollections(SemanticModel model, IEnumerable<ITypeSymbol> types, HashSet<CollectionInfo> collections)
+    static void GatherCollections(SemanticModel model, IEnumerable<ITypeSymbol> types,
+        HashSet<CollectionInfo> collections,
+        HashSet<GenerationInfo> nested, HashSet<string> processed)
     {
         foreach (var type in types)
         {
-            GatherCollection(model, type, collections);
+            GatherCollection(model, type, collections, nested, processed);
         }
     }
 
-    void GatherCollection(SemanticModel model, ITypeSymbol type, HashSet<CollectionInfo> collections)
+    static void GatherCollection(SemanticModel model, ITypeSymbol type, HashSet<CollectionInfo> collections,
+        HashSet<GenerationInfo> nested, HashSet<string> processed)
     {
         if (type.TypeKind != TypeKind.Class && type.TypeKind != TypeKind.Interface) return;
         if (type is INamedTypeSymbol namedTypeSymbol)
@@ -457,7 +479,7 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 foreach (var typeArgument in namedTypeSymbol.TypeArguments)
                 {
-                    GatherCollection(model, typeArgument, collections);
+                    GatherCollection(model, typeArgument, collections, nested, processed);
                 }
             }
 
@@ -488,7 +510,8 @@ public class SourceGenerator : IIncrementalGenerator
                 var collectionInfo = new CollectionInfo(fullName, instance,
                     elementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                     elementType.IsReferenceType, null, null);
-                collections.Add(collectionInfo);
+                if (collections.Add(collectionInfo))
+                    GatherType(elementType, nested, model, collections, processed);
             }
             else
             {
@@ -517,13 +540,41 @@ public class SourceGenerator : IIncrementalGenerator
                         keyType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                         keyType.IsReferenceType, valueType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                         valueType.IsReferenceType);
-                    collections.Add(collectionInfo);
+                    if (collections.Add(collectionInfo))
+                    {
+                        GatherType(keyType, nested, model, collections, processed);
+                        GatherType(valueType, nested, model, collections, processed);
+                    }
+                }
+                else
+                {
+                    GatherType(namedTypeSymbol, nested, model, collections, processed);
                 }
             }
         }
     }
 
-    IEnumerable<ISymbol> GetAllMembersIncludingBase(INamedTypeSymbol symbol)
+    static void GatherType(ITypeSymbol typeSymbol, HashSet<GenerationInfo> nested, SemanticModel model,
+        HashSet<CollectionInfo> collections, HashSet<string> processed)
+    {
+        if (typeSymbol.IsValueType)
+        {
+            var gi = new GenerationInfo(GenerationType.Struct, typeSymbol.ContainingNamespace.ToString(),
+                typeSymbol.Name, typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false,
+                true, EquatableArray<ParameterInfo>.Empty, EquatableArray<PropertyInfo>.Empty,
+                EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty, EquatableArray<FieldsInfo>.Empty,
+                EquatableArray<TypeRef>.Empty, EquatableArray<CollectionInfo>.Empty,
+                EquatableArray<GenerationInfo>.Empty, null);
+            nested.Add(gi);
+        }
+        else if (typeSymbol.IsReferenceType)
+        {
+            GenerationInfoForClass((INamedTypeSymbol)typeSymbol, null, false, null, model,
+                collections, nested, processed);
+        }
+    }
+
+    static IEnumerable<ISymbol> GetAllMembersIncludingBase(INamedTypeSymbol symbol)
     {
         var members = new List<ISymbol>();
         var currentSymbol = symbol;
@@ -537,7 +588,8 @@ public class SourceGenerator : IIncrementalGenerator
         return members;
     }
 
-    string? ExtractPropertyFromGetter(ImmutableArray<SyntaxReference> declaringSyntaxReferences, SemanticModel model)
+    static string? ExtractPropertyFromGetter(ImmutableArray<SyntaxReference> declaringSyntaxReferences,
+        SemanticModel model)
     {
         if (declaringSyntaxReferences.IsEmpty) return null;
         if (declaringSyntaxReferences.Length > 1) return null;
@@ -554,7 +606,7 @@ public class SourceGenerator : IIncrementalGenerator
         return null;
     }
 
-    bool IsDefaultMethodImpl(ImmutableArray<SyntaxReference> setMethodDeclaringSyntaxReferences)
+    static bool IsDefaultMethodImpl(ImmutableArray<SyntaxReference> setMethodDeclaringSyntaxReferences)
     {
         if (setMethodDeclaringSyntaxReferences.IsEmpty) return false;
         if (setMethodDeclaringSyntaxReferences.Length > 1) return false;
@@ -636,6 +688,7 @@ public class SourceGenerator : IIncrementalGenerator
     {
         var dedupe = new HashSet<string>();
         var collections = new HashSet<CollectionInfo>();
+        var structs = new HashSet<GenerationInfo>();
         foreach (var generationInfo in generationInfos)
         {
             if (generationInfo.GenType == GenerationType.Error)
@@ -656,7 +709,7 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 GenerateInterfaceFactory(context, generationInfo);
             }
-            else
+            else if (generationInfo.GenType == GenerationType.Class)
             {
                 foreach (var collectionInfo in generationInfo.CollectionInfos.AsSpan())
                 {
@@ -665,9 +718,61 @@ public class SourceGenerator : IIncrementalGenerator
 
                 GenerateClassFactory(context, generationInfo);
             }
+            else if (generationInfo.GenType == GenerationType.Struct)
+            {
+                structs.Add(generationInfo);
+            }
         }
 
         if (collections.Count > 0) GenerateCollectionRegistrations(context, collections);
+        if (structs.Count > 0) GenerateStructStackAllocations(context, structs);
+    }
+
+    static void GenerateStructStackAllocations(SourceProductionContext context, HashSet<GenerationInfo> structs)
+    {
+        var factoryCode = new StringBuilder();
+        // language=c#
+        factoryCode.Append($$"""
+            // <auto-generated/>
+            #nullable enable
+            #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+            using System;
+            using System.Runtime.CompilerServices;
+            [CompilerGenerated]
+            static file class StackAllocationRegistrations
+            {
+                [ModuleInitializer]
+                internal static unsafe void Register4BTDB()
+                {
+            """);
+
+        var idx = 0;
+        foreach (var @struct in structs)
+        {
+            idx++;
+            factoryCode.Append($$"""
+
+                        BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof({{@struct.FullName}}), &Allocate{{idx}});
+                        static void Allocate{{idx}}(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
+                            {
+                                {{@struct.FullName}} value;
+                                ptr = (nint)(&value);
+                                chain(ref ctx);
+                                ptr = 0;
+                            }
+
+                """);
+        }
+
+        // language=c#
+        factoryCode.Append("""
+                }
+            }
+
+            """);
+        context.AddSource(
+            $"StackAllocationRegistrations.g.cs",
+            SourceText.From(factoryCode.ToString(), Encoding.UTF8));
     }
 
     static void GenerateCollectionRegistrations(SourceProductionContext context, HashSet<CollectionInfo> collections)
@@ -1210,6 +1315,7 @@ enum GenerationType
     Class,
     Delegate,
     Interface,
+    Struct,
     Error
 }
 
@@ -1228,8 +1334,25 @@ record GenerationInfo(
     EquatableArray<FieldsInfo> Fields,
     EquatableArray<TypeRef> Implements,
     EquatableArray<CollectionInfo> CollectionInfos,
+    EquatableArray<GenerationInfo> Nested,
     Location? Location
-);
+)
+{
+    public virtual bool Equals(GenerationInfo? other)
+    {
+        if (ReferenceEquals(this, other)) return true;
+        if (other is null) return false;
+        return GenType == other.GenType &&
+               Namespace == other.Namespace &&
+               Name == other.Name &&
+               FullName == other.FullName;
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(GenType, Namespace, Name, FullName);
+    }
+}
 
 record CollectionInfo(
     string FullName,
@@ -1237,7 +1360,20 @@ record CollectionInfo(
     string KeyType,
     bool KeyIsReference,
     string? ValueType,
-    bool? ValueIsReference);
+    bool? ValueIsReference)
+{
+    public virtual bool Equals(CollectionInfo? other)
+    {
+        if (ReferenceEquals(this, other)) return true;
+        if (other is null) return false;
+        return FullName == other.FullName;
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(FullName);
+    }
+}
 
 record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
 
