@@ -567,9 +567,9 @@ public class SourceGenerator : IIncrementalGenerator
                 EquatableArray<GenerationInfo>.Empty, null);
             nested.Add(gi);
         }
-        else if (typeSymbol.IsReferenceType)
+        else if (typeSymbol.IsReferenceType && typeSymbol is INamedTypeSymbol namedTypeSymbol)
         {
-            GenerationInfoForClass((INamedTypeSymbol)typeSymbol, null, false, null, model,
+            GenerationInfoForClass(namedTypeSymbol, null, false, null, model,
                 collections, nested, processed);
         }
     }

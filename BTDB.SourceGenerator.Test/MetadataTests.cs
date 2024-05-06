@@ -97,6 +97,24 @@ public class MetadataTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyArraysFromCollections()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public string Name { get; set; } = "";
+                public IDictionary<int,string[]> Id2Names { get; set; }
+                public ISet<string[]> NameSet2 { get; set; }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyStructFromCollections()
     {
         // language=cs
