@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.7.0
+
 ### Updated
 
 for .Net SDK 8.0.300
