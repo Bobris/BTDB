@@ -2,7 +2,11 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -247,6 +251,58 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
 
         ulong GatherById(List<ThreeUlongs> target, long skip, long take, Constraint<ulong> n1,
             Constraint<ulong> n2, IOrderer[] orderers);
+
+        [SkipLocalsInit]
+        ReadOnlyMemory<(ulong N1, ulong Count)> CountN1Groups()
+        {
+            StructList<(ulong N1, ulong Count)> result = new();
+            /* this is just for demonstration what this method does
+            foreach (var (key, count) in this
+                .GroupBy(v => v.N1)
+                .Select(g => (g.Key, (ulong)g.Count())))
+            {
+                result.Add((key, count));
+            }
+            */
+            // ReSharper disable once SuspiciousTypeConversion.Global
+            Span<byte> keyBuffer = stackalloc byte[1024];
+            var prefix = ((IRelationDbManipulator)this).RelationInfo.Prefix;
+            var objectDBTransaction = ((IRelationDbManipulator)this).Transaction;
+            var transaction = objectDBTransaction.KeyValueDBTransaction;
+            if (transaction.FindFirstKey(prefix))
+            {
+                do
+                {
+                    var firstIndex = transaction.GetKeyIndex();
+                    var key = transaction.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
+                    var ofs = prefix.Length;
+                    var n1 = PackUnpack.UnpackVUInt(key, ref ofs); // this will throw if primary key data are corrupted
+                    transaction.FindLastKey(key[..ofs]); // this always succeeds
+                    var lastIndex = transaction.GetKeyIndex();
+                    var count = (ulong)(lastIndex - firstIndex + 1);
+                    result.Add((n1, count));
+                } while (transaction.FindNextKey(prefix));
+            }
+            return result;
+        }
+    }
+
+    [Fact]
+    public void CountN1GroupsWorks()
+    {
+        FillThreeUlongsData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreeUlongsTable>();
+        var groups = t.CountN1Groups();
+        Assert.Equal(5, groups.Length);
+        var idx = 1;
+        foreach (var valueTuple in groups.ToArray())
+        {
+            Assert.Equal((ulong)idx, valueTuple.N1);
+            Assert.Equal(25ul,valueTuple.Count);
+            idx++;
+        }
     }
 
     [Fact]
