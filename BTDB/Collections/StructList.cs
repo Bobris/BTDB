@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace BTDB.Collections;
@@ -246,7 +247,7 @@ public struct StructList<T> : IEnumerable<T>, IEquatable<StructList<T>>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [DebuggerStepThrough]
-    public static implicit operator ReadOnlySpan<T>(in StructList<T> value) => value.AsReadOnlySpan();
+    public static implicit operator ReadOnlySpan<T>(scoped in StructList<T> value) => value.AsReadOnlySpan();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [DebuggerStepThrough]
