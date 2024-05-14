@@ -433,7 +433,7 @@ public class RelationInfo
 
     internal readonly List<ulong> FreeContentOldDict = new();
     internal readonly List<ulong> FreeContentNewDict = new();
-    internal byte[] Prefix;
+    public byte[] Prefix;
     internal byte[] PrefixSecondary;
 
     bool? _needImplementFreeContent;
