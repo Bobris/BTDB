@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Default Conversion Generator was not thread safe.
+
 ## 32.7.0
 
 ### Updated

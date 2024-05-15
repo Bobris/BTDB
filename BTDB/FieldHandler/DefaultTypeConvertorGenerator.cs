@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -11,9 +12,9 @@ namespace BTDB.FieldHandler;
 
 public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
 {
-    readonly Dictionary<Tuple<Type, Type>, Action<IILGen>> _conversions = new Dictionary<Tuple<Type, Type>, Action<IILGen>>();
+    readonly ConcurrentDictionary<(Type, Type), Action<IILGen>> _conversions = new();
 
-    public static ITypeConvertorGenerator Instance = new DefaultTypeConvertorGenerator();
+    public static readonly ITypeConvertorGenerator Instance = new DefaultTypeConvertorGenerator();
 
     public DefaultTypeConvertorGenerator()
     {
@@ -43,7 +44,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
             if (parameterInfos.Length != 1) continue;
             var fromType = parameterInfos[0].ParameterType;
             var closuredMethodInfo = m;
-            _conversions[Tuple.Create(fromType, m.ReturnType)] = ilg => ilg.Call(closuredMethodInfo);
+            _conversions[(fromType, m.ReturnType)] = ilg => ilg.Call(closuredMethodInfo);
         }
     }
 
@@ -51,13 +52,13 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
     {
         foreach (var from in fromList)
         {
-            _conversions[Tuple.Create(from, to)] = generator;
+            _conversions[(from, to)] = generator;
         }
     }
 
     public virtual Action<IILGen>? GenerateConversion(Type from, Type to)
     {
-        if (from == to) return ilg => { };
+        if (from == to) return _ => { };
         if (!from.IsValueType && to == typeof(object))
         {
             return i => i.Castclass(to);
@@ -66,8 +67,8 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
         {
             return i => i.Isinst(to);
         }
-        Action<IILGen> generator;
-        if (_conversions.TryGetValue(new(from, to), out generator))
+
+        if (_conversions.TryGetValue((from, to), out var generator))
         {
             return generator;
         }
@@ -75,7 +76,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
         if (Nullable.GetUnderlyingType(to) == from)
         {
             var res = GenerateToNullableConversion(from, to);
-            _conversions.Add(new(from, to), res);
+            _conversions.TryAdd((from, to), res);
             return res;
         }
         if (Nullable.GetUnderlyingType(to) is { } underTo && GenerateConversion(from, underTo) is { } conv)
@@ -85,13 +86,13 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
                 conv.Invoke(il);
                 GenerateConversion(underTo, to)!(il);
             };
-            _conversions.Add(new(from, to), res);
+            _conversions.TryAdd((from, to), res);
             return res;
         }
         if (Nullable.GetUnderlyingType(from) == to)
         {
             var res = GenerateFromNullableConversion(from);
-            _conversions.Add(new(from, to), res);
+            _conversions.TryAdd((from, to), res);
             return res;
         }
         if (Nullable.GetUnderlyingType(from) is { } underFrom && GenerateConversion(underFrom, to) is { } conv2)
@@ -101,7 +102,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
                 GenerateConversion(from, underFrom)!(il);
                 conv2.Invoke(il);
             };
-            _conversions.Add(new(from, to), res);
+            _conversions.TryAdd((from, to), res);
             return res;
         }
         var toIList = to.SpecializationOf(typeof(IList<>));
@@ -160,9 +161,9 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
         var fromIDict = from.IsGenericType && from.GetGenericTypeDefinition() == typeof(IDictionary<,>);
         if (fromIDict && toDict)
         {
-            var fromKV = from.GetGenericArguments();
-            var toKV = to.GetGenericArguments();
-            if (GenerateConversion(fromKV[0], toKV[0]) is { } keyConversion && GenerateConversion(fromKV[1], toKV[1]) is
+            var fromKv = from.GetGenericArguments();
+            var toKv = to.GetGenericArguments();
+            if (GenerateConversion(fromKv[0], toKv[0]) is { } keyConversion && GenerateConversion(fromKv[1], toKv[1]) is
                     { } valueConversion)
             {
                 return ilGenerator =>
@@ -172,8 +173,8 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
                     var next = ilGenerator.DefineLabel();
                     var localValue = ilGenerator.DeclareLocal(from);
                     var localTo = ilGenerator.DeclareLocal(to);
-                    var localToKey = ilGenerator.DeclareLocal(toKV[0]);
-                    var localToValue = ilGenerator.DeclareLocal(toKV[1]);
+                    var localToKey = ilGenerator.DeclareLocal(toKv[0]);
+                    var localToValue = ilGenerator.DeclareLocal(toKv[1]);
                     var typeAsICollection = from.GetInterface("ICollection`1");
                     var typeAsIEnumerable = from.GetInterface("IEnumerable`1");
                     var getEnumeratorMethod = typeAsIEnumerable!.GetMethod("GetEnumerator");
@@ -207,7 +208,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
                         .Ldloc(localTo)
                         .Ldloc(localToKey)
                         .Ldloc(localToValue)
-                        .Callvirt(to.GetMethod("Add", BindingFlags.Public | BindingFlags.Instance, toKV)!)
+                        .Callvirt(to.GetMethod("Add", BindingFlags.Public | BindingFlags.Instance, toKv)!)
                         .Br(next)
                         .Mark(finish)
                         .Finally()
@@ -243,7 +244,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
         };
     }
 
-    Action<IILGen> GenerateEnum2EnumConversion(Type from, Type to)
+    Action<IILGen>? GenerateEnum2EnumConversion(Type from, Type to)
     {
         var fromcfg = new EnumFieldHandler.EnumConfiguration(from);
         var tocfg = new EnumFieldHandler.EnumConfiguration(to);
