@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.7.1
+
 ### Fixed
 
 Default Conversion Generator was not thread safe.
