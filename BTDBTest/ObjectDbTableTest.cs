@@ -3,14 +3,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
-using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IOC;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
-using BTDB.StreamLayer;
 using BTDBTest;
 using Xunit;
 using Xunit.Abstractions;
@@ -3051,6 +3049,38 @@ namespace BTDBTest
             var table = tr.GetRelation<IProcessingPipelineV2Table>();
             table.Upsert(new ProcessingPipelineV2 { CompanyId = 1, Id = 1, VersionNumber = 1 });
             Assert.Equal(1, table.RemoveById(1, 1));
+        }
+
+        public class Category
+        {
+            [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+            [PrimaryKey(2)] public ulong Id { get; set; }
+
+            public required string Name { get; set; }
+
+            [SecondaryKey("LowerCaseName", IncludePrimaryKeyOrder = 1)]
+            public string LowerCaseName => Name.ToLowerInvariant();
+        }
+
+        public interface ICategoryTable : IRelation<Category>
+        {
+            IEnumerable<Category> FindByLowerCaseName(ulong tenantId, string lowerCaseName);
+            bool RemoveById(ulong tenantId, ulong id);
+        }
+
+        [Fact]
+        void SecondaryIndexWithLowercasedStringWorks()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<ICategoryTable>();
+            table.Upsert(new Category { TenantId = 1, Id = 1, Name = "Hello" });
+            table.Upsert(new Category { TenantId = 1, Id = 2, Name = "World" });
+            Assert.Single(table.FindByLowerCaseName(1, "hello"));
+            Assert.Single(table.FindByLowerCaseName(1, "world"));
+            Assert.Empty(table.FindByLowerCaseName(1, "bad"));
+            Assert.True(table.RemoveById(1, 1));
+            Assert.Empty(table.FindByLowerCaseName(1, "hello"));
         }
     }
 }

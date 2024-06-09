@@ -14,8 +14,8 @@ public class UnresolvedTableFieldInfo : TableFieldInfo
     readonly FieldHandlerOptions _handlerOptions;
 
     UnresolvedTableFieldInfo(string name, string handlerName, byte[]? configuration,
-        string tableName, FieldHandlerOptions handlerOptions, bool inKeyValue)
-        : base(name, null, inKeyValue)
+        string tableName, FieldHandlerOptions handlerOptions, bool inKeyValue, bool computed)
+        : base(name, null, inKeyValue, computed)
     {
         _handlerName = handlerName;
         _configuration = configuration;
@@ -34,9 +34,16 @@ public class UnresolvedTableFieldInfo : TableFieldInfo
             name = name[1..];
         }
 
+        var computed = false;
+        if (name!.StartsWith('#'))
+        {
+            computed = true;
+            name = name[1..];
+        }
+
         var handlerName = reader.ReadString();
         var configuration = reader.ReadByteArray();
-        return new(name!, handlerName!, configuration, tableName, handlerOptions, inKeyValue);
+        return new(name!, handlerName!, configuration, tableName, handlerOptions, inKeyValue, computed);
     }
 
     internal TableFieldInfo Resolve(IFieldHandlerFactory fieldHandlerFactory)
@@ -45,7 +52,7 @@ public class UnresolvedTableFieldInfo : TableFieldInfo
         if (fieldHandler == null)
             throw new BTDBException(
                 $"FieldHandlerFactory did not created handler {_handlerName} in {_tableName}.{Name}");
-        return Create(Name, fieldHandler, InKeyValue);
+        return Create(Name, fieldHandler, InKeyValue, Computed);
     }
 }
 
@@ -54,12 +61,14 @@ public class TableFieldInfo : IEquatable<TableFieldInfo>
     public readonly string Name;
     public readonly IFieldHandler? Handler;
     public readonly bool InKeyValue;
+    public readonly bool Computed;
 
-    protected TableFieldInfo(string name, IFieldHandler? handler, bool inKeyValue)
+    protected TableFieldInfo(string name, IFieldHandler? handler, bool inKeyValue, bool computed)
     {
         Name = name;
         Handler = handler;
         InKeyValue = inKeyValue;
+        Computed = computed;
     }
 
     internal static TableFieldInfo Load(ref MemReader reader, IFieldHandlerFactory fieldHandlerFactory,
@@ -73,18 +82,25 @@ public class TableFieldInfo : IEquatable<TableFieldInfo>
             name = name[1..];
         }
 
+        var computed = false;
+        if (name!.StartsWith('#'))
+        {
+            computed = true;
+            name = name[1..];
+        }
+
         var handlerName = reader.ReadString();
         var configuration = reader.ReadByteArray();
         var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName!, configuration, handlerOptions);
         if (fieldHandler == null)
             throw new BTDBException(
                 $"FieldHandlerFactory did not created handler {handlerName} in {tableName}.{name}");
-        return new TableFieldInfo(name!, fieldHandler, inKeyValue);
+        return new(name!, fieldHandler, inKeyValue, computed);
     }
 
-    internal static TableFieldInfo Create(string name, IFieldHandler handler, bool inKeyValue)
+    internal static TableFieldInfo Create(string name, IFieldHandler handler, bool inKeyValue, bool computed)
     {
-        return new TableFieldInfo(name, handler, inKeyValue);
+        return new(name, handler, inKeyValue, computed);
     }
 
     public static TableFieldInfo Build(string tableName, PropertyInfo pi, IFieldHandlerFactory fieldHandlerFactory,
@@ -96,12 +112,16 @@ public class TableFieldInfo : IEquatable<TableFieldInfo>
                 "FieldHandlerFactory did not build property {0} of type {2} in {1}", pi.Name, tableName,
                 pi.PropertyType.FullName));
         var a = pi.GetCustomAttribute<PersistedNameAttribute>();
-        return new TableFieldInfo(a != null ? a.Name : pi.Name, fieldHandler, inKeyValue);
+        return new(a != null ? a.Name : pi.Name, fieldHandler, inKeyValue, !pi.CanWrite);
     }
 
     internal void Save(ref MemWriter writer)
     {
-        if (InKeyValue)
+        if (Computed)
+        {
+            writer.WriteString("#" + Name);
+        }
+        else if (InKeyValue)
         {
             writer.WriteString("@" + Name);
         }
@@ -118,6 +138,7 @@ public class TableFieldInfo : IEquatable<TableFieldInfo>
     {
         if (a.Name != b.Name) return false;
         if (a.InKeyValue != b.InKeyValue) return false;
+        if (a.Computed != b.Computed) return false;
         var ha = a.Handler;
         var hb = b.Handler;
         if (ha == hb) return true;

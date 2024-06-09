@@ -1423,8 +1423,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         uint remappedSecondaryKeyIndex,
         in ReadOnlySpan<byte> secondaryKey)
     {
-        Span<byte> pkBuffer = stackalloc byte[512];
-        var pkWriter = MemWriter.CreateFromStackAllocatedSpan(pkBuffer);
+        var pkWriter = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         WriteRelationPKPrefix(ref pkWriter);
         fixed (void* _ = secondaryKey)
         {
@@ -1504,53 +1503,117 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
     }
 
+    [SkipLocalsInit]
     bool UpdateSecondaryIndexes(in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue,
         in ReadOnlySpan<byte> newValue)
     {
         var changed = false;
-        foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+        if (_relationInfo.ClientRelationVersionInfo.HasComputedField)
         {
-            var newKeyBytes = WriteSecondaryKeyKey(key, oldKey, newValue);
-            var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
-            if (oldKeyBytes.SequenceEqual(newKeyBytes))
-                continue;
-            //remove old index
-            EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
-            //insert new value
-            _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
-            changed = true;
+            var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+            var writerOld = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+            var objOld = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, oldKey, oldValue);
+            var objNew = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, oldKey, newValue);
+
+            foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+            {
+                writer.Reset();
+                writerOld.Reset();
+                var newKeyBytes = WriteSecondaryKeyKey(key, Unsafe.As<T>(objNew), ref writer);
+                var oldKeyBytes = WriteSecondaryKeyKey(key, Unsafe.As<T>(objOld), ref writerOld);
+                if (oldKeyBytes.SequenceEqual(newKeyBytes))
+                    continue;
+                //remove old index
+                EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
+                //insert new value
+                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
+                changed = true;
+            }
+        }
+        else
+        {
+            foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+            {
+                var newKeyBytes = WriteSecondaryKeyKey(key, oldKey, newValue);
+                var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
+                if (oldKeyBytes.SequenceEqual(newKeyBytes))
+                    continue;
+                //remove old index
+                EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
+                //insert new value
+                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
+                changed = true;
+            }
         }
 
         return changed;
     }
 
+    [SkipLocalsInit]
     bool UpdateSecondaryIndexes(T newValue, in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue,
         ref MemWriter writer)
     {
         var changed = false;
-        foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+        if (_relationInfo.ClientRelationVersionInfo.HasComputedField)
         {
-            writer.Reset();
-            var newKeyBytes = WriteSecondaryKeyKey(key, newValue, ref writer);
-            var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
-            if (oldKeyBytes.SequenceEqual(newKeyBytes))
-                continue;
-            //remove old index
-            EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
-            //insert new value
-            _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
-            changed = true;
+            var writerOld = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+            var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, oldKey, oldValue);
+            foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+            {
+                writer.Reset();
+                writerOld.Reset();
+                var newKeyBytes = WriteSecondaryKeyKey(key, newValue, ref writer);
+                var oldKeyBytes = WriteSecondaryKeyKey(key, Unsafe.As<T>(obj), ref writerOld);
+                if (oldKeyBytes.SequenceEqual(newKeyBytes))
+                    continue;
+                //remove old index
+                EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
+                //insert new value
+                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
+                changed = true;
+            }
+        }
+        else
+        {
+            foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+            {
+                writer.Reset();
+                var newKeyBytes = WriteSecondaryKeyKey(key, newValue, ref writer);
+                var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
+                if (oldKeyBytes.SequenceEqual(newKeyBytes))
+                    continue;
+                //remove old index
+                EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
+                //insert new value
+                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
+                changed = true;
+            }
         }
 
         return changed;
     }
 
+    [SkipLocalsInit]
     void RemoveSecondaryIndexes(in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue)
     {
-        foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+        if (_relationInfo.ClientRelationVersionInfo.HasComputedField)
         {
-            var keyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
-            EraseOldSecondaryKey(oldKey, keyBytes, key);
+            var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+            var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, oldKey, oldValue);
+            foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+            {
+                writer.Reset();
+                var keyBytes = WriteSecondaryKeyKey(key, Unsafe.As<T>(obj), ref writer);
+                EraseOldSecondaryKey(oldKey, keyBytes, key);
+            }
+        }
+        else
+        {
+            foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+            {
+                var keyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
+                EraseOldSecondaryKey(oldKey, keyBytes, key);
+            }
         }
     }
 

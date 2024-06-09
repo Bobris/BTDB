@@ -101,6 +101,26 @@ public class RelationInfo
             }
         }
 
+        internal unsafe object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes,
+            in ReadOnlySpan<byte> valueBytes)
+        {
+            fixed (void* pKeyBytes = keyBytes)
+            {
+                var reader = new MemReader(pKeyBytes, keyBytes.Length);
+                reader.Skip1Byte(); // 3
+                reader.SkipVUInt64(); // RelationId
+                var obj = _primaryKeysLoader(tr, ref reader);
+                if (_primaryKeyIsEnough) return obj;
+                fixed (void* _ = valueBytes)
+                {
+                    reader = MemReader.CreateFromPinnedSpan(valueBytes);
+                    var version = reader.ReadVUInt32();
+                    GetValueLoader(version)(tr, ref reader, obj);
+                    return obj;
+                }
+            }
+        }
+
         internal readonly RelationLoaderFunc _primaryKeysLoader;
         internal readonly bool _primaryKeyIsEnough;
         readonly RelationLoader?[] _valueLoaders;
@@ -113,8 +133,15 @@ public class RelationInfo
             {
                 res = _valueLoaders[version];
                 if (res != null) return res;
+                StructList<TableFieldInfo> filteredFields = new();
+                foreach (var tableFieldInfo in _owner._relationVersions[version]!.Fields.Span)
+                {
+                    if (tableFieldInfo.Computed) continue;
+                    filteredFields.Add(tableFieldInfo);
+                }
+
                 res = CreateLoader(_itemType,
-                    _owner._relationVersions[version]!.Fields.Span,
+                    filteredFields,
                     $"RelationValueLoader_{_owner.Name}_{version}_{_itemType.ToSimpleName()}");
             } while (Interlocked.CompareExchange(ref _valueLoaders[version], res, null) != null);
 
@@ -741,11 +768,10 @@ public class RelationInfo
                 keyWriter.WriteBlock(PrefixSecondary);
                 keyWriter.WriteUInt8((byte)indexes[i].Key);
                 keySavers[i](tr, ref keyWriter, obj!);
-                var keyBytes = keyWriter.GetSpan();
+                var keyBytes = keyWriter.GetSpanAndReset();
 
                 if (!tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>()))
                     throw new BTDBException("Internal error, secondary key bytes must be always unique.");
-                keyWriter.Reset();
             }
         }
     }
@@ -809,7 +835,14 @@ public class RelationInfo
 
     void CreateCreatorLoadersAndSavers()
     {
-        _valueSaver = CreateSaver(ClientRelationVersionInfo.Fields.Span, $"RelationValueSaver_{Name}", false);
+        StructList<TableFieldInfo> filteredFields = new();
+        foreach (var tableFieldInfo in ClientRelationVersionInfo.Fields.Span)
+        {
+            if (tableFieldInfo.Computed) continue;
+            filteredFields.Add(tableFieldInfo);
+        }
+
+        _valueSaver = CreateSaver(filteredFields, $"RelationValueSaver_{Name}", false);
         _primaryKeysSaver = CreateSaver(ClientRelationVersionInfo.PrimaryKeyFields.Span,
             $"RelationKeySaver_{Name}", true);
         _beforeRemove = CreateBeforeRemove($"RelationBeforeRemove_{Name}");

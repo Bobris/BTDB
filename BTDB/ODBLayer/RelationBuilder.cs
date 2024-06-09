@@ -130,6 +130,12 @@ public class RelationBuilder
 
             if (actualPKAttribute != null)
             {
+                if (!pi.CanWrite)
+                {
+                    RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                        $"Key field {pi.Name} must have setter, cannot be computed");
+                }
+
                 var fieldInfo = TableFieldInfo.Build(_name, pi, RelationInfoResolver.FieldHandlerFactory,
                     FieldHandlerOptions.Orderable, actualPKAttribute.InKeyValue);
                 if (fieldInfo.Handler!.NeedsCtx())
@@ -141,6 +147,12 @@ public class RelationBuilder
             var sks = pi.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
             var id = (int)(-actualPKAttribute?.Order ?? secondaryKeyFields.Count);
             List<SecondaryKeyAttribute> currentList = null;
+            if (sks.Length == 0 && !pi.CanWrite)
+            {
+                RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                    $"Property {pi.Name} because it is not part of some secondary key must have setter, cannot be computed");
+            }
+
             for (var i = 0; i < sks.Length; i++)
             {
                 if (actualPKAttribute?.InKeyValue ?? false)
@@ -170,7 +182,7 @@ public class RelationBuilder
                     FieldHandlerOptions.None, false));
         }
 
-        return new RelationVersionInfo(primaryKeys, secondaryKeys, secondaryKeyFields.ToArray(), fields.ToArray());
+        return new(primaryKeys, secondaryKeys, secondaryKeyFields.ToArray(), fields.ToArray());
     }
 
     int RegisterLoadType(Type itemType)

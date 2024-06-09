@@ -56,6 +56,7 @@ public class RelationVersionInfo
     ReadOnlyMemory<TableFieldInfo> _secondaryKeyFields;
     IDictionary<string, uint> _secondaryKeysNames;
     IDictionary<uint, SecondaryKeyInfo> _secondaryKeys;
+    public bool HasComputedField;
 
     public RelationVersionInfo(Dictionary<uint, TableFieldInfo> primaryKeyFields, //order -> info
         List<Tuple<int, IList<SecondaryKeyAttribute>>>
@@ -82,6 +83,13 @@ public class RelationVersionInfo
         _secondaryKeyFields = secondaryKeyFields;
         CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields);
         Fields = fields;
+        HasComputedField = false;
+        foreach (var tableFieldInfo in fields.Span)
+        {
+            if (!tableFieldInfo.Computed) continue;
+            HasComputedField = true;
+            break;
+        }
     }
 
     void CreateSecondaryKeyInfo(List<Tuple<int, IList<SecondaryKeyAttribute>>> attributes,
@@ -168,6 +176,13 @@ public class RelationVersionInfo
 
         _secondaryKeyFields = secondaryKeyFields;
         Fields = fields;
+        HasComputedField = false;
+        foreach (var tableFieldInfo in fields.Span)
+        {
+            if (!tableFieldInfo.Computed) continue;
+            HasComputedField = true;
+            break;
+        }
     }
 
     internal TableFieldInfo? this[string name]
@@ -332,7 +347,7 @@ public class RelationVersionInfo
             fieldInfos[i] = UnresolvedTableFieldInfo.Load(ref reader, relationName, FieldHandlerOptions.None);
         }
 
-        return new RelationVersionInfo(primaryKeyFields, secondaryKeys, secondaryKeyFields, fieldInfos);
+        return new(primaryKeyFields, secondaryKeys, secondaryKeyFields, fieldInfos);
     }
 
     public void ResolveFieldHandlers(IFieldHandlerFactory fieldHandlerFactory)

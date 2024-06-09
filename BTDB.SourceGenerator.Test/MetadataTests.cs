@@ -25,6 +25,22 @@ public class MetadataTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task StaticMembersMustBeSkippedInMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public static string Name { get; set; } = "";
+                public static int Age;
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyCollectionMetadata()
     {
         // language=cs
