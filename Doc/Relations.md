@@ -597,3 +597,33 @@ of relation rows. UpdateById method in example could be used for modification of
 
 Data in database will be automatically upgraded when only InKeyValue fields are added/removed/modified in primary key
 definition.
+
+## Computed fields
+
+```C#
+    public class Person
+    {
+        [PrimaryKey(1)]
+        public uint Id { get; set; }
+
+        [PrimaryKey(2)]
+        public string? Email { get; set; }
+
+        public string? Name { get; set; }
+
+        [SecondaryKey("LowerCasedName", IncludePrimaryKeyOrder = 1)]
+        public string LowerCasedName => Name?.ToLowerInvariant() ?? "";
+    }
+
+    public interface IPersonTable : IRelation<Person>
+    {
+        Person FindByLowerCasedName(uint id, string lowerCasedName);
+    }
+```
+
+Properties with only getter and no setter are considered computed fields.
+In example above `LowerCasedName` is computed field.
+They are not stored in database value, just in secondary indexes.
+They are automatically recalculated when needed, it makes updating relation little bit slower because
+old value must be deserialized into object to calculate old value of secondary index. But it is faster than storing that string twice in value.
+It is not possible to use computed fields in primary key.
