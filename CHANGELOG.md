@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.8.0
+
 ### Fixed
 
 RemoveById rare random crash in tables with multiple secondary indexes, and value which fits to 7 bytes.
