@@ -710,8 +710,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return true;
     }
 
+    [SkipLocalsInit]
     public int RemoveByPrimaryKeyPrefix(in ReadOnlySpan<byte> keyBytesPrefix)
     {
+        Span<byte> buf = stackalloc byte[4096];
         var keysToDelete = new StructList<byte[]>();
         var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix,
             this, 0);
@@ -737,7 +739,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 throw new BTDBException("Not found record to delete. " + idx + "/" + keysToDelete.Count + " " +
                                         Convert.ToHexString(key.AsSpan(0, Math.Min(100, key.Length))));
 
-            var valueBytes = _kvtr.GetValue();
+            var valueBytes = _kvtr.GetClonedValue( ref MemoryMarshal.GetReference(buf), buf.Length);
 
             if (_hasSecondaryIndexes)
                 RemoveSecondaryIndexes(key, valueBytes);

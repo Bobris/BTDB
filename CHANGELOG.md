@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Fixed
+
+RemoveById rare random crash in tables with multiple secondary indexes, and value which fits to 7 bytes.
+
+### Added
+
+Relations support for computed fields.
+
 ## 32.7.1
 
 ### Fixed

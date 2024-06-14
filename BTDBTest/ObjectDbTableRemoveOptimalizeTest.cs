@@ -12,7 +12,7 @@ namespace BTDBTest;
 
 public class ObjectDbTableRemoveOptimizeTest : IDisposable
 {
-    readonly IKeyValueDB _lowDb;
+    IKeyValueDB _lowDb;
     IObjectDB _db;
 
     public ObjectDbTableRemoveOptimizeTest()
@@ -522,5 +522,62 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
         {
             _keyValueDBTransaction.Dispose();
         }
+    }
+
+    public class NodeRegistration
+    {
+        [PrimaryKey(1)] public ulong CompanyId { get; set; }
+        [PrimaryKey(2)] public string NodeId { get; set; }
+
+        [PrimaryKey(3)]
+        [SecondaryKey("Channel", IncludePrimaryKeyOrder = 1, Order = 2)]
+        [SecondaryKey("Channel2", Order = 3)]
+        public string? ChannelId { get; set; }
+
+        [SecondaryKey("Channel", Order = 3)]
+        [SecondaryKey("Channel2", IncludePrimaryKeyOrder = 1, Order = 2)]
+        public bool IsExclusive { get; set; }
+    }
+
+    public interface INodeRegistrationTable : IRelation<NodeRegistration>
+    {
+        int RemoveById(ulong companyId, string nodeId);
+    }
+
+    [Fact]
+    public void RemoveByIdPrefixWorks()
+    {
+        _db.Dispose();
+        _lowDb.Dispose();
+        var fc = new InMemoryFileCollection();
+        _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions()
+        {
+            FileCollection = fc
+        });
+        OpenDb();
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<INodeRegistrationTable>();
+        t.Upsert(new NodeRegistration
+        {
+            CompanyId = 1,
+            NodeId = "1",
+            ChannelId = "1",
+            IsExclusive = true
+        });
+        t.Upsert(new NodeRegistration
+        {
+            CompanyId = 1,
+            NodeId = "1",
+            ChannelId = "2",
+            IsExclusive = true
+        });
+        t.Upsert(new NodeRegistration
+        {
+            CompanyId = 1,
+            NodeId = "1",
+            ChannelId = "3",
+            IsExclusive = true
+        });
+        Assert.Equal(3, t.RemoveById(1, "1"));
     }
 }
