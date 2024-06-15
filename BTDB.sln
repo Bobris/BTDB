@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDB.SourceGenerator.Tests"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDB.SourceGenerator.Sample", "BTDB.SourceGenerator.Sample\BTDB.SourceGenerator.Sample.csproj", "{A942F2EA-491D-4E32-AEA1-17A61A8C949B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Releaser", "Releaser\Releaser\Releaser.csproj", "{57F40308-159D-4959-A4D8-2C4E0AAC1507}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -125,6 +127,18 @@ Global
 		{A942F2EA-491D-4E32-AEA1-17A61A8C949B}.Release|x64.Build.0 = Release|Any CPU
 		{A942F2EA-491D-4E32-AEA1-17A61A8C949B}.Release|x86.ActiveCfg = Release|Any CPU
 		{A942F2EA-491D-4E32-AEA1-17A61A8C949B}.Release|x86.Build.0 = Release|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Debug|x64.Build.0 = Debug|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Debug|x86.Build.0 = Debug|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Release|Any CPU.Build.0 = Release|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Release|x64.ActiveCfg = Release|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Release|x64.Build.0 = Release|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Release|x86.ActiveCfg = Release|Any CPU
+		{57F40308-159D-4959-A4D8-2C4E0AAC1507}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
