@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.9.0
+
 ### Improved
 
 Compaction does not need so much free space anymore.
