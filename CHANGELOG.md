@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Improved
+
+Compaction does not need so much free space anymore.
+
 ## 32.8.0
 
 ### Fixed

@@ -152,6 +152,7 @@ class Compactor
             }
 
             MarkTotallyUselessFilesAsUnknown();
+            _keyValueDB.FileCollection.DeleteAllUnknownFiles();
             var totalWaste = CalcTotalWaste();
             _keyValueDB.Logger?.CompactionStart(totalWaste);
             if (IsWasteSmall(totalWaste))
@@ -164,13 +165,21 @@ class Compactor
 
             long btreesCorrectInTransactionId;
             var toRemoveFileIds = new StructList<uint>();
+            var pvlCreated = 0;
             do
             {
                 _newPositionMap = new();
                 var pvlFileId = CompactOnePureValueFileIteration(ref toRemoveFileIds);
                 btreesCorrectInTransactionId =
                     _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap, pvlFileId);
+                pvlCreated++;
                 totalWaste = CalcTotalWaste();
+                if (pvlCreated >= 20)
+                {
+                    _keyValueDB.Logger?.LogWarning("Compactor didn't removed all waste (" + totalWaste +
+                                                   "), because it created 20 PVL files already. Remaining waste left to next compaction.");
+                    break;
+                }
             } while (!IsWasteSmall(totalWaste));
 
             var usedFileGens = _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
@@ -181,8 +190,8 @@ class Compactor
                 {
                     _keyValueDB.Logger?.LogWarning("Disaster prevented by skipping delete of " +
                                                    toRemoveFileIds[i] + " file which is used by new kvi");
-                    Debug.Fail("Should not get here");
                     toRemoveFileIds.RemoveAt(i);
+                    Debug.Fail("Should not get here");
                 }
             }
 
@@ -191,6 +200,11 @@ class Compactor
             if (_keyValueDB.AreAllTransactionsBeforeFinished(btreesCorrectInTransactionId))
             {
                 _keyValueDB.MarkAsUnknown(toRemoveFileIds);
+            }
+            else
+            {
+                _keyValueDB.Logger?.LogWarning(
+                    "Long running transaction detected, skipping deletion of still used files");
             }
 
             if (!_cancellation.IsCancellationRequested)
