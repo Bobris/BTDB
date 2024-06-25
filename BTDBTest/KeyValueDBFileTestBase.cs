@@ -561,7 +561,11 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         }
 
         db.Compact(CancellationToken.None);
-        Assert.Equal(513u, logger.MarkedForDeleteCount);
+        Assert.Equal(93u, logger.MarkedForDeleteCount);
+        Assert.Equal("Compactor didn't removed all waste (2375267), because it created 20 PVL files already. Remaining waste left to next compaction.", logger.LastWarning);
+        db.Compact(CancellationToken.None);
+        Assert.Equal(174u, logger.MarkedForDeleteCount);
+        Assert.Equal("Compactor didn't removed all waste (1859507), because it created 20 PVL files already. Remaining waste left to next compaction.", logger.LastWarning);
     }
 
     [Fact]
