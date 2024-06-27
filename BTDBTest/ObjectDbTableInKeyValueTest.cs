@@ -227,4 +227,61 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
         Assert.Equal("PrimaryKey Name cannot be after InKeyValue Age",
             Assert.Throws<BTDBException>(() => tr.GetRelation<IInvalidDataTable>()).Message);
     }
+
+
+    public class ListData
+    {
+        [PrimaryKey(1)]
+        public uint Id { get; set; }
+        [PrimaryKey(2)]
+        public uint QueueStamp { get; set; }
+        [PrimaryKey(3, InKeyValue = true)]
+        public bool IsProcessed { get; set; }
+    }
+
+    public interface IListDataTable : IRelation<ListData>
+    {
+        IEnumerable<ListData> ListById(uint id, AdvancedEnumeratorParam<uint> queueStampParam);
+    }
+
+    [Fact]
+    public void ListingWithAdvancedEnumeratorParam()
+    {
+        FillListingData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IListDataTable>();
+        Assert.Equal(2, t.ListById(1, new(EnumerationOrder.Ascending, 2, KeyProposition.Excluded, uint.MaxValue, KeyProposition.Included)).Count());
+    }
+
+    void FillListingData()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IListDataTable>();
+        t.Upsert(new ListData()
+        {
+            Id = 1,
+            QueueStamp = 1,
+            IsProcessed = true
+        });
+        t.Upsert(new ListData()
+        {
+            Id = 1,
+            QueueStamp = 2,
+            IsProcessed = true
+        });
+        t.Upsert(new ListData()
+        {
+            Id = 1,
+            QueueStamp = 3,
+            IsProcessed = false
+        });
+        t.Upsert(new ListData()
+        {
+            Id = 1,
+            QueueStamp = 4,
+            IsProcessed = false
+        });
+        tr.Commit();
+    }
 }
