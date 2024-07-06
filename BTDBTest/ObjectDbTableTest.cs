@@ -181,8 +181,9 @@ namespace BTDBTest
             }
         }
 
-        T GetNext<T>(IEnumerator<T> enumerator)
+        T GetNext<T>(IEnumerable<T> enumerable)
         {
+            var enumerator = enumerable.GetEnumerator();
             if (!enumerator.MoveNext())
                 throw new Exception("Empty");
             return enumerator.Current;
@@ -206,7 +207,7 @@ namespace BTDBTest
                 var personSimpleTable = creator(tr);
                 person.Name = "Lubos";
                 Assert.False(personSimpleTable.Upsert(person), "Was already there");
-                var p = GetNext(personSimpleTable.GetEnumerator());
+                var p = GetNext(personSimpleTable);
                 Assert.Equal("Lubos", p.Name);
                 tr.Commit();
             }
@@ -214,7 +215,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);
-                var p = GetNext(personSimpleTable.GetEnumerator());
+                var p = GetNext(personSimpleTable);
                 Assert.Equal("Lubos", p.Name);
             }
         }
@@ -237,7 +238,7 @@ namespace BTDBTest
                 var personSimpleTable = creator(tr);
                 person.Name = "Lubos";
                 Assert.False(personSimpleTable.ShallowUpsert(person), "Was already there");
-                var p = GetNext(personSimpleTable.GetEnumerator());
+                var p = GetNext(personSimpleTable);
                 Assert.Equal("Lubos", p.Name);
                 tr.Commit();
             }
@@ -245,7 +246,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);
-                var p = GetNext(personSimpleTable.GetEnumerator());
+                var p = GetNext(personSimpleTable);
                 Assert.Equal("Lubos", p.Name);
             }
         }
@@ -284,7 +285,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);
-                var p = GetNext(personSimpleTable.GetEnumerator());
+                var p = GetNext(personSimpleTable);
                 Assert.Equal("Lubos", p.Name);
                 Assert.Equal(new List<byte> { 3 }, p.Ratings["History"]);
             }
@@ -324,7 +325,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);
-                var p = GetNext(personSimpleTable.GetEnumerator());
+                var p = GetNext(personSimpleTable);
                 Assert.Equal("Lubos", p.Name);
                 Assert.Equal(new List<byte> { 3 }, p.Ratings["History"]);
             }
@@ -577,13 +578,7 @@ namespace BTDBTest
             Assert.True(orderedEnumeratorAgeOnly.NextKey(out age));
             Assert.Equal(129u, age);
 
-            var en = personTable.GetEnumerator(); //enumerate for all tenants
-            Assert.Equal(28u, GetNext(en).Age);
-            Assert.Equal(29u, GetNext(en).Age);
-            Assert.Equal(28u, GetNext(en).Age);
-            Assert.Equal(128u, GetNext(en).Age);
-            Assert.Equal(129u, GetNext(en).Age);
-            Assert.False(en.MoveNext());
+            Assert.Equal((uint[]) [28u, 29u, 28u, 128u, 129u], personTable.Select(p => p.Age).ToList());
 
             var orderedById = personTable.ListById(2, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
             Assert.True(orderedById.NextKey(out var id));
@@ -629,7 +624,7 @@ namespace BTDBTest
             bool RemoveById(ulong tenantId, ulong id);
             Person FindByNameOrDefault(ulong tenantId, string name);
             Person FindByAgeOrDefault(ulong tenantId, uint age);
-            IEnumerator<Person> FindByAge(ulong tenantId, uint age);
+            IEnumerable<Person> FindByAge(ulong tenantId, uint age);
         }
 
         [Fact]
@@ -654,9 +649,7 @@ namespace BTDBTest
                 Assert.Equal(28u, p.Age);
 
                 var enumerator = personTable.FindByAge(1, 28);
-                Assert.Equal("Boris", GetNext(enumerator).Name);
-                Assert.Equal("Lubos", GetNext(enumerator).Name);
-                Assert.False(enumerator.MoveNext());
+                Assert.Equal((string[]) ["Boris", "Lubos"], enumerator.Select(p => p.Name).ToArray());
 
                 Assert.True(personTable.RemoveById(1, 2));
                 tr.Commit();
@@ -686,8 +679,8 @@ namespace BTDBTest
             Job FindByIdOrDefault(ulong id);
             Job FindByNameOrDefault(string name);
 
-            IEnumerator<Job> ListByName(AdvancedEnumeratorParam<string> param);
-            IEnumerator<Job> ListByPrioritizedName(short priority, AdvancedEnumeratorParam<string> param);
+            IEnumerable<Job> ListByName(AdvancedEnumeratorParam<string> param);
+            IEnumerable<Job> ListByPrioritizedName(short priority, AdvancedEnumeratorParam<string> param);
         }
 
         [Fact]
@@ -715,9 +708,7 @@ namespace BTDBTest
                 var jobTable = creator(tr);
                 var en = jobTable.ListByPrioritizedName(2,
                     new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending));
-                var j = GetNext(en);
-                Assert.Equal("Sleep", j.Name);
-                Assert.False(en.MoveNext());
+                Assert.Equal((string[]) ["Sleep"], en.Select(j => j.Name).ToArray());
             }
 
             using (var tr = _db.StartTransaction())
@@ -783,34 +774,30 @@ namespace BTDBTest
 
             var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending));
 
-            Assert.Equal("Sleep", GetNext(en).Name);
-            Assert.Equal("Code", GetNext(en).Name);
-            Assert.Equal("Bicycle", GetNext(en).Name);
+            Assert.Equal((string[]) ["Sleep", "Code", "Bicycle"], en.Select(j => j.Name).ToArray());
 
             en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
                 "B", KeyProposition.Included,
                 "C", KeyProposition.Included));
-            Assert.Equal("Bicycle", GetNext(en).Name);
-            Assert.False(en.MoveNext());
+            Assert.Equal((string[]) ["Bicycle"], en.Select(j => j.Name).ToArray());
         }
 
-        [SkipWhen(SkipWhenAttribute.Is.Release, "Preventing exclude in secondary key is checked only in debug")]
+        [Fact]
         public void NotifyForPossiblyWrongUsageOfExcludedListing()
         {
             using var tr = _db.StartTransaction();
             var creator = tr.InitRelation<IJobTable>("Job");
             var jobTable = creator(tr);
             jobTable.Insert(new Job { Id = 11, Name = "Code" });
-            Assert.Throws<InvalidOperationException>(() => jobTable.ListByName(new AdvancedEnumeratorParam<string>(
+            Assert.Empty(jobTable.ListByName(new(
                 EnumerationOrder.Descending, "Code",
                 KeyProposition.Excluded, "Z", KeyProposition.Included)));
-            var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending, "Code",
-                KeyProposition.Included, "Z", KeyProposition.Included));
-            Assert.True(en.MoveNext());
+            Assert.NotEmpty(jobTable.ListByName(new(EnumerationOrder.Descending, "Code",
+                KeyProposition.Included, "Z", KeyProposition.Included)));
         }
 
-        [SkipWhen(SkipWhenAttribute.Is.Debug, "Preventing exclude in secondary key is checked only in debug")]
-        public void InReleaseIsPossibleUseExcludedListing()
+        [Fact]
+        public void ExcludedListingWorks()
         {
             using var tr = _db.StartTransaction();
             var creator = tr.InitRelation<IJobTable>("Job");
@@ -818,7 +805,7 @@ namespace BTDBTest
             jobTable.Insert(new Job { Id = 11, Name = "Code" });
             var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending, "Code",
                 KeyProposition.Excluded, "Z", KeyProposition.Included));
-            Assert.True(en.MoveNext());
+            Assert.Empty(en);
         }
 
         public class User
@@ -864,30 +851,18 @@ namespace BTDBTest
             Assert.Single(users);
         }
 
-        [SkipWhen(SkipWhenAttribute.Is.Release, "Preventing exclude in secondary key is checked only in debug")]
-        public void NotifyForPossiblyWrongUsageOfExcludedListingById()
+        [Fact]
+        public void ExcludedPrefixListingByIdWorks()
         {
             using var tr = _db.StartTransaction();
             var creator = tr.InitRelation<IUserTable>("User");
             var usersTable = creator(tr);
             usersTable.Upsert(new User { CompanyId = 1, Email = "a@c.cz" });
-            Assert.Throws<InvalidOperationException>(() => usersTable.ListById(new AdvancedEnumeratorParam<ulong>(
+            Assert.Empty(usersTable.ListById(new AdvancedEnumeratorParam<ulong>(
                 EnumerationOrder.Ascending, 1, KeyProposition.Excluded, 0, KeyProposition.Ignored)));
             var users = usersTable.ListById(new AdvancedEnumeratorParam<ulong>(
                 EnumerationOrder.Ascending, 1, KeyProposition.Included, 0, KeyProposition.Ignored));
             Assert.Single(users);
-        }
-
-        [SkipWhen(SkipWhenAttribute.Is.Debug, "Preventing exclude in secondary key is checked only in debug")]
-        public void InReleaseIsPossibleUseExcludedListingById()
-        {
-            using var tr = _db.StartTransaction();
-            var creator = tr.InitRelation<IJobTable>("Job");
-            var jobTable = creator(tr);
-            jobTable.Insert(new Job { Id = 11, Name = "Code" });
-            var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending, "Code",
-                KeyProposition.Excluded, "Z", KeyProposition.Included));
-            Assert.True(en.MoveNext());
         }
 
         public class Lic
@@ -966,11 +941,11 @@ namespace BTDBTest
             void Update(Room room);
             void Insert(Room room);
             bool RemoveById(ulong companyId, ulong id);
-            IEnumerator<Room> ListByCompanyId(AdvancedEnumeratorParam<ulong> param);
+            IEnumerable<Room> ListByCompanyId(AdvancedEnumeratorParam<ulong> param);
             IOrderedDictionaryEnumerator<ulong, Room> ListById(AdvancedEnumeratorParam<ulong> param);
-            IEnumerator<Room> ListById2(AdvancedEnumeratorParam<ulong> param);
+            IEnumerable<Room> ListById2(AdvancedEnumeratorParam<ulong> param);
             IOrderedDictionaryEnumerator<ulong, Room> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
-            IEnumerator<Room> ListByBeds(AdvancedEnumeratorParam<int> param);
+            IEnumerable<Room> ListByBeds(AdvancedEnumeratorParam<int> param);
         }
 
         [Fact]
@@ -988,11 +963,7 @@ namespace BTDBTest
                 1, KeyProposition.Included,
                 1 + 1, KeyProposition.Excluded));
 
-            var m = GetNext(en);
-            Assert.Equal("First 1", m.Name);
-            m = GetNext(en);
-            Assert.Equal("Second 1", m.Name);
-            Assert.False(en.MoveNext());
+            Assert.Equal((string[]) ["First 1", "Second 1"], en.Select(r => r.Name).ToArray());
 
             var oen = rooms.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Descending));
             Assert.Equal(3u, oen.Count);
@@ -1236,7 +1207,7 @@ namespace BTDBTest
                 tr.Commit();
             }
 
-            IEnumerator<Room> Query(IRoomTable table) => table.GetEnumerator();
+            IEnumerable<Room> Query(IRoomTable table) => table;
             ModifyDuringEnumerate(creator, Query, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
             ModifyDuringEnumerate(creator, Query, table => table.RemoveById(0, 20), true);
             ModifyDuringEnumerate(creator, Query, table => table.Update(new Room { Id = 10, Name = "First" }), false);
@@ -1249,13 +1220,14 @@ namespace BTDBTest
         }
 
         void ModifyDuringEnumerate(Func<IObjectDBTransaction, IRoomTable> creator,
-            Func<IRoomTable, IEnumerator<Room>> query, Action<IRoomTable> modifyAction,
+            Func<IRoomTable, IEnumerable<Room>> query, Action<IRoomTable> modifyAction,
             bool shouldThrow)
         {
             using var tr = _db.StartTransaction();
             var rooms = creator(tr);
-            using var en = query(rooms);
-            var oen = rooms.ListById2(new(EnumerationOrder.Ascending));
+            using var en = query(rooms).GetEnumerator();
+            var oene = rooms.ListById2(new(EnumerationOrder.Ascending));
+            using var oen = oene.GetEnumerator();
             Assert.True(oen.MoveNext());
             modifyAction(rooms);
             if (shouldThrow)
@@ -1287,7 +1259,7 @@ namespace BTDBTest
                 tr.Commit();
             }
 
-            IEnumerator<Room> Query(IRoomTable table) => table.ListByBeds(AdvancedEnumeratorParam<int>.Instance);
+            IEnumerable<Room> Query(IRoomTable table) => table.ListByBeds(AdvancedEnumeratorParam<int>.Instance);
             ModifyDuringEnumerate(creator, Query, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
             ModifyDuringEnumerate(creator, Query, table => table.RemoveById(0, 20), true);
             ModifyDuringEnumerate(creator, Query, table => table.Update(new Room { Id = 10, Name = "First" }), false);
@@ -1558,7 +1530,7 @@ namespace BTDBTest
             tr.Commit();
         }
 
-        [SkipWhen(SkipWhenAttribute.Is.Release, "Preventing exclude in secondary key is checked only in debug")]
+        [Fact]
         public void ListBySecondaryKey_ForDateTimeKey_StartKeyPropositionExcluded_ShouldNotContainThatItem()
         {
             using var tr = _db.StartTransaction();
@@ -1579,15 +1551,11 @@ namespace BTDBTest
             var dateParam = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending,
                 dateTimeValue, KeyProposition.Excluded,
                 DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc), KeyProposition.Excluded);
-            Assert.Throws<InvalidOperationException>(() =>
-            {
-                var en = table.ListByProductionDate(dateParam);
-                Assert.False(en.MoveNext());
-            });
+            var en = table.ListByProductionDate(dateParam);
+            Assert.False(en.MoveNext());
 
             tr.Commit();
         }
-
 
         public interface IProductionInvalidTable : IRelation<ProductionTrackingDaily>
         {

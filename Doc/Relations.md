@@ -465,7 +465,7 @@ in [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs).
 When you Insert, RemoveById or insert item using Upsert during enumerating relation an exception will be thrown. It is
 still possible to modify by Update (or Upsert for existing items) see `CheckModificationDuringEnumerate`
 in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs) for details. Modification of secondary indexes during
-enumerating by secondary indexes are not detected in this moment.
+enumerating by secondary indexes are not detected at this moment.
 
 ## OnCreate
 
@@ -625,5 +625,6 @@ Properties with only getter and no setter are considered computed fields.
 In example above `LowerCasedName` is computed field.
 They are not stored in database value, just in secondary indexes.
 They are automatically recalculated when needed, it makes updating relation little bit slower because
-old value must be deserialized into object to calculate old value of secondary index. But it is faster than storing that string twice in value.
+old value must be deserialized into object to calculate old value of secondary index. But it is faster than storing that
+string twice in value.
 It is not possible to use computed fields in primary key.

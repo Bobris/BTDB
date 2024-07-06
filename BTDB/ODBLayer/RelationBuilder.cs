@@ -551,8 +551,6 @@ public class RelationBuilder
         var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
         var field = primaryKeyFields[prefixParamCount];
 
-        if (parameters.Length != primaryKeyFields.Length)
-            ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
         ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
         reqMethod.Generator.Ldarg(0); //manipulator for call RemoveByIdAdvancedParam
@@ -667,8 +665,6 @@ public class RelationBuilder
             var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
             var field = primaryKeyFields[prefixParamCount];
 
-            if (parameters.Length != primaryKeyFields.Length)
-                ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
             ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
             reqMethod.Generator.Ldarg(0).Castclass(typeof(IRelationDbManipulator));
@@ -845,8 +841,6 @@ public class RelationBuilder
         var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
         var field = primaryKeyFields[prefixParamCount];
 
-        if (parameters.Length != primaryKeyFields.Length)
-            ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
         ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
         WritePrimaryKeyPrefixFinishedByAdvancedEnumeratorWithoutOrder(method, parameters, reqMethod,
@@ -871,8 +865,6 @@ public class RelationBuilder
             var skFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
             var field = skFields[prefixParamCount];
 
-            if (parameters.Length != skFields.Length)
-                ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
             ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
             reqMethod.Generator
@@ -966,22 +958,6 @@ public class RelationBuilder
         }
     }
 
-    [Conditional("DEBUG")]
-    void ForbidExcludePropositionInDebug(IILGen ilGenerator, ushort advEnumParamOrder, Type advEnumParamType)
-    {
-        var propositionCheckFinished = ilGenerator.DefineLabel();
-        ilGenerator
-            .LdcI4((int)KeyProposition.Excluded)
-            .Ldarg(advEnumParamOrder)
-            .Ldfld(advEnumParamType.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!)
-            .Ceq()
-            .Brfalse(propositionCheckFinished)
-            .Ldstr("Not supported Excluded proposition when listing by partial key.")
-            .Newobj(() => new InvalidOperationException(null))
-            .Throw()
-            .Mark(propositionCheckFinished);
-    }
-
     void BuildCountByMethod(MethodInfo method, IILMethod reqMethod)
     {
         var parameters = method.GetParameters();
@@ -1061,8 +1037,6 @@ public class RelationBuilder
         var skFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
         var field = skFields[prefixParamCount];
 
-        if (parameters.Length != skFields.Length)
-            ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
         ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
         var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);

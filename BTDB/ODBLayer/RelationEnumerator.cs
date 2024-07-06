@@ -829,6 +829,15 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         }
         else
         {
+            if (startKeyProposition == KeyProposition.Excluded)
+            {
+                if (_keyValueTr.FindLastKey(startKeyBytes))
+                {
+                    startIndex = _keyValueTr.GetKeyIndex() - prefixIndex + 1;
+                    goto startIndexFound;
+                }
+            }
+
             switch (_keyValueTr.Find(startKeyBytes, (uint)prefixLen))
             {
                 case FindResult.Exact:
@@ -853,6 +862,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, IEnumerable<T>
             }
         }
 
+        startIndexFound:
         _count = (uint)Math.Max(0, endIndex - startIndex + 1);
         _startPos = (uint)(_ascending ? startIndex : endIndex);
         _pos = 0;
@@ -1108,15 +1118,19 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
         }
         else
         {
+            if (startKeyProposition == KeyProposition.Excluded)
+            {
+                if (_keyValueTr.FindLastKey(startKeyBytes))
+                {
+                    startIndex = _keyValueTr.GetKeyIndex() - prefixIndex + 1;
+                    goto startIndexFound;
+                }
+            }
+
             switch (_keyValueTr.Find(startKeyBytes, (uint)prefixLen))
             {
                 case FindResult.Exact:
                     startIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
-                    if (startKeyProposition == KeyProposition.Excluded)
-                    {
-                        startIndex++;
-                    }
-
                     break;
                 case FindResult.Previous:
                     startIndex = _keyValueTr.GetKeyIndex() - prefixIndex + 1;
@@ -1132,6 +1146,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
             }
         }
 
+        startIndexFound:
         _count = (uint)Math.Max(0, endIndex - startIndex + 1);
         _startPos = (uint)(_ascending ? startIndex : endIndex);
         _pos = 0;

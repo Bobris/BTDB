@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+`Excluded` in start of range in `ListBy` when it is not last property of key now works correctly.
+
 ## 32.10.0
 
 ## 32.9.0
