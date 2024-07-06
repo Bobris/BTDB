@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.11.0
+
 ### Fixed
 
 `Excluded` in start of range in `ListBy` when it is not last property of key now works correctly.
