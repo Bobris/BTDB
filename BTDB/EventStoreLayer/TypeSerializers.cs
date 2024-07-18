@@ -131,6 +131,11 @@ public class TypeSerializers : ITypeSerializers
         {
             if (_type2DescriptorMap.TryGetValue(type, out var result)) return result;
             if (_temporaryMap.TryGetValue(type, out result)) return result;
+            if (_typeSerializersOptions.ForbidSerializeLazyDBObjects &&
+                type.InheritsOrImplements(typeof(IAmLazyDBObject)))
+            {
+                throw new BTDBException("Lazy DB object serialization is forbidden. Type: " + type.ToSimpleName());
+            }
             if (!type.IsSubclassOf(typeof(Delegate)))
             {
                 if (type.IsGenericType)

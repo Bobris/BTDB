@@ -18,7 +18,7 @@ delegate void WriterFun<in T>(T value, ref MemWriter writer, IWriterCtx? ctx);
 
 delegate void FreeContentFun(IInternalObjectDBTransaction transaction, ref MemReader reader, IList<ulong> dictIds);
 
-public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQuerySizeDictionary<TKey>
+public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQuerySizeDictionary<TKey>, IAmLazyDBObject
 {
     readonly IInternalObjectDBTransaction _tr;
     readonly IFieldHandler _keyHandler;

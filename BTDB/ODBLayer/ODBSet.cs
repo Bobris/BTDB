@@ -10,7 +10,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
 
-public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>
+public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLazyDBObject
 {
     readonly IInternalObjectDBTransaction _tr;
     readonly IFieldHandler _keyHandler;

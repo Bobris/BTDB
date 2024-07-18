@@ -41,15 +41,17 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
     readonly ISymmetricCipher _symmetricCipher;
 
     readonly bool _useInputDescriptors;
+    readonly bool _forbidSerializationOfLazyDBObjects;
     bool _newTypeFound;
 
     public EventSerializer(ITypeNameMapper? typeNameMapper = null,
         ITypeConvertorGenerator? typeConvertorGenerator = null, ISymmetricCipher? symmetricCipher = null,
-        bool useInputDescriptors = true)
+        bool useInputDescriptors = true, bool forbidSerializationOfLazyDBObjects = false)
     {
         TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
         ConvertorGenerator = typeConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
         _useInputDescriptors = useInputDescriptors;
+        _forbidSerializationOfLazyDBObjects = forbidSerializationOfLazyDBObjects;
         _symmetricCipher = symmetricCipher ?? new InvalidSymmetricCipher();
         _id2Info.Reserve(ReservedBuildinTypes + 10);
         _id2Info.Add(null); // 0 = null
@@ -329,6 +331,10 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         if (_typeOrDescriptor2InfoNew.TryGetValue(type, out result)) return result.Descriptor;
         ITypeDescriptor desc = null;
         Type typeAlternative = null;
+        if (_forbidSerializationOfLazyDBObjects && type.InheritsOrImplements(typeof(IAmLazyDBObject)))
+        {
+            throw new BTDBException("Lazy DB object serialization is forbidden. Type: "+type.ToSimpleName());
+        }
         if (!type.IsSubclassOf(typeof(Delegate)))
         {
             if (type.IsGenericType)

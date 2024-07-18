@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+New option in EventLayer and EventLayer2 to forbid serialization of lazy DB objects like `IDictionary<,>`
+
 ## 32.11.0
 
 ### Fixed

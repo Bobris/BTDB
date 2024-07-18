@@ -20,4 +20,6 @@ public class TypeSerializersOptions
     public TypeDescriptorOptions? TypeDescriptorOptions { get; set; }
 
     public ITypeConvertorGenerator? ConvertorGenerator { get; set; }
+
+    public bool ForbidSerializeLazyDBObjects { get; set; }
 }
