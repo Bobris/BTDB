@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Dictionary should support `ReadOnlyMemory<byte>` as value.
+
 ## 32.12.0
 
 ### Added

@@ -119,12 +119,12 @@ public class SimpleFieldHandlerBase : IFieldHandler
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
-            throw new InvalidOperationException();
+            return this;
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
         {
-            throw new InvalidOperationException();
+            return this;
         }
 
         public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)

@@ -3050,6 +3050,38 @@ namespace BTDBTest
             Assert.True(table.RemoveById(1, 1));
             Assert.Empty(table.FindByLowerCaseName(1, "hello"));
         }
+
+        public class ItemWithDictWithReadOnlyMemory
+        {
+            [PrimaryKey(1)]
+            public ulong Id { get; set; }
+
+            public Dictionary<string, ReadOnlyMemory<byte>> Dict { get; set; }
+        }
+
+        public interface IItemWithDictWithReadOnlyMemoryTable : IRelation<ItemWithDictWithReadOnlyMemory>
+        {
+        }
+
+        [Fact]
+        void DictionaryWithReadOnlyMemoryCanBeStored()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IItemWithDictWithReadOnlyMemoryTable>();
+            table.Upsert(new()
+            {
+                Id = 1,
+                Dict = new()
+                {
+                    {"a", new([1, 2, 3])},
+                    {"b", new([4, 5, 6])}
+                }
+            });
+            var item = table.First();
+            Assert.Equal(2, item.Dict.Count);
+            Assert.Equal(new byte[] {1, 2, 3}, item.Dict["a"].ToArray());
+            Assert.Equal(new byte[] {4, 5, 6}, item.Dict["b"].ToArray());
+        }
     }
 }
 

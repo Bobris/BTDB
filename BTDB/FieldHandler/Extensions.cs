@@ -40,8 +40,9 @@ public static class Extensions
     public static IILGen GenerateLoad(this IILGen ilGenerator, IFieldHandler fieldHandler, Type typeWanted,
         Action<IILGen> pushReader, Action<IILGen>? pushCtx, ITypeConvertorGenerator typeConvertorGenerator)
     {
-        fieldHandler.Load(ilGenerator, pushReader, pushCtx);
-        typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType(), typeWanted)!(ilGenerator);
+        var betterFieldHandler = fieldHandler.SpecializeLoadForType(typeWanted, null, null);
+        betterFieldHandler.Load(ilGenerator, pushReader, pushCtx);
+        typeConvertorGenerator.GenerateConversion(betterFieldHandler.HandledType()!, typeWanted)!(ilGenerator);
         return ilGenerator;
     }
 

@@ -206,14 +206,16 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Callvirt(typeAsIEnumerator.GetProperty("Current")!.GetGetMethod()!)
             .Stloc(localPair);
         var keyAndValueTypes = _type.GetGenericArguments();
-        _keysHandler.Save(ilGenerator, pushWriter, pushCtx, il => il
+        var keysHandler = _keysHandler.SpecializeSaveForType(keyAndValueTypes[0]);
+        keysHandler.Save(ilGenerator, pushWriter, pushCtx, il => il
             .Ldloca(localPair)
             .Call(typeKeyValuePair.GetProperty("Key")!.GetGetMethod()!)
-            .Do(_typeConvertGenerator.GenerateConversion(keyAndValueTypes[0], _keysHandler.HandledType())!));
-        _valuesHandler.Save(ilGenerator, pushWriter, pushCtx, il => il
+            .Do(_typeConvertGenerator.GenerateConversion(keyAndValueTypes[0], keysHandler.HandledType()!)!));
+        var valuesHandler = _valuesHandler.SpecializeSaveForType(keyAndValueTypes[1]);
+        valuesHandler.Save(ilGenerator, pushWriter, pushCtx, il => il
             .Ldloca(localPair)
             .Call(typeKeyValuePair.GetProperty("Value")!.GetGetMethod()!)
-            .Do(_typeConvertGenerator.GenerateConversion(keyAndValueTypes[1], _valuesHandler.HandledType())!));
+            .Do(_typeConvertGenerator.GenerateConversion(keyAndValueTypes[1], valuesHandler.HandledType()!)!));
         ilGenerator
             .Br(next)
             .Mark(finish)
