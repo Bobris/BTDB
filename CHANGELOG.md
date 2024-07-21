@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.12.1
+
 ### Fixed
 
 Dictionary should support `ReadOnlyMemory<byte>` as value.
