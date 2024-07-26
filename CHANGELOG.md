@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.13.0
+
 ### Added
 
 New KeyValueDBOptions.AutoAdjustFileSize which allows to automatically adjust split size for DB to be in range of 16MB up to 1GB. FileSplitSize does not need to be set as it is ignored when AutoAdjustFileSize is true.
