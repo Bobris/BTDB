@@ -48,6 +48,9 @@ static class Program
         //BenchmarkRunner.Run<BenchTest>();
         //new InKeyValueStressTest().Run();
         //BigBonTest.Run();
+        //var cts = new CancellationTokenSource();
+        //Console.CancelKeyPress += delegate { cts.Cancel(); };
+        //new AutoSplitSizeTest().Run("/tmp/db", cts.Token);
         BenchmarkRunner.Run<BenchLockTest>();
     }
 }

@@ -40,6 +40,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     MemWriter _writerWithTransactionLog;
     static readonly byte[] MagicStartOfTransaction = "\u0003tR"u8.ToArray();
     public long MaxTrLogFileSize { get; set; }
+    public bool AutoAdjustFileSize { get; set; }
 
     public IEnumerable<IKeyValueDBTransaction> Transactions()
     {
@@ -98,6 +99,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         _compactorScheduler = options.CompactorScheduler;
         _kviCompressionStrategy = options.KviCompressionStrategy;
         MaxTrLogFileSize = options.FileSplitSize;
+        AutoAdjustFileSize = options.AutoAdjustFileSize;
         _readOnly = options.ReadOnly;
         _lenientOpen = options.LenientOpen;
         _compression = options.Compression ?? throw new ArgumentNullException(nameof(options.Compression));
@@ -113,8 +115,22 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         LoadInfoAboutFiles(options.OpenUpToCommitUlong);
         if (!_readOnly)
         {
+            AdjustFileSize();
             _compactFunc = _compactorScheduler?.AddCompactAction(Compact);
             _compactorScheduler?.AdviceRunning(true);
+        }
+    }
+
+    void AdjustFileSize()
+    {
+        if (AutoAdjustFileSize)
+        {
+            var newFileSize = Compactor.CalculateIdealFileSplitSize(FileCollection);
+            if (newFileSize != MaxTrLogFileSize)
+            {
+                Logger?.LogInfo("AutoAdjustFileSize: " + MaxTrLogFileSize + " -> " + newFileSize);
+                MaxTrLogFileSize = newFileSize;
+            }
         }
     }
 
@@ -412,6 +428,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             MarkAsUnknown(_fileCollection.FileInfos.Where(p =>
                 p.Value.FileType == KVFileType.KeyIndex && p.Key != idxFileId &&
                 p.Value.Generation != preserveKeyIndexGeneration).Select(p => p.Key));
+            AdjustFileSize();
             return ((FileKeyIndex)_fileCollection.FileInfoByIdx(idxFileId))!.UsedFilesInOlderGenerations!;
         }
         finally
@@ -1417,6 +1434,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         transactionLog.WriteHeader(ref _writerWithTransactionLog);
         _writerWithTransactionLog.Flush();
         FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
+        AdjustFileSize();
     }
 
     public void WriteCreateOrUpdateCommand(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value,

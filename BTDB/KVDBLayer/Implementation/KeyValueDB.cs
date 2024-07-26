@@ -84,6 +84,7 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         Logger = options.Logger;
         _compactorScheduler = options.CompactorScheduler;
         MaxTrLogFileSize = options.FileSplitSize;
+        AutoAdjustFileSize = options.AutoAdjustFileSize;
         _compression = options.Compression ?? throw new ArgumentNullException(nameof(options.Compression));
         _kviCompressionStrategy = options.KviCompressionStrategy;
         DurableTransactions = false;
@@ -98,8 +99,22 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         LoadInfoAboutFiles(options.OpenUpToCommitUlong);
         if (!_readOnly)
         {
+            AdjustFileSize();
             _compactFunc = _compactorScheduler?.AddCompactAction(Compact);
             _compactorScheduler?.AdviceRunning(true);
+        }
+    }
+
+    void AdjustFileSize()
+    {
+        if (AutoAdjustFileSize)
+        {
+            var newFileSize = Compactor.CalculateIdealFileSplitSize(FileCollection);
+            if (newFileSize != MaxTrLogFileSize)
+            {
+                Logger?.LogInfo("AutoAdjustFileSize: " + MaxTrLogFileSize + " -> " + newFileSize);
+                MaxTrLogFileSize = newFileSize;
+            }
         }
     }
 
@@ -342,6 +357,7 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         MarkAsUnknown(_fileCollection.FileInfos.Where(p =>
             p.Value.FileType == KVFileType.KeyIndex && p.Key != idxFileId &&
             p.Value.Generation != preserveKeyIndexGeneration).Select(p => p.Key));
+        AdjustFileSize();
         return ((FileKeyIndex)_fileCollection.FileInfoByIdx(idxFileId))!.UsedFilesInOlderGenerations!;
     }
 
@@ -861,6 +877,7 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         new ConditionalWeakTable<IKeyValueDBTransaction, object?>();
 
     public long MaxTrLogFileSize { get; set; }
+    public bool AutoAdjustFileSize { get; set; }
 
     public IEnumerable<IKeyValueDBTransaction> Transactions()
     {
@@ -1149,6 +1166,7 @@ public class KeyValueDB : IHaveSubDB, IKeyValueDBInternal
         transactionLog.WriteHeader(ref _writerWithTransactionLog);
         _writerWithTransactionLog.Flush();
         FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
+        AdjustFileSize();
     }
 
     public void WriteCreateOrUpdateCommand(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value,

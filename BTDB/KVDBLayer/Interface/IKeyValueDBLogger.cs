@@ -18,6 +18,10 @@ public interface IKeyValueDBLogger
     {
     }
 
+    void LogInfo(string message)
+    {
+    }
+
     /// <returns>true when exception should be rethrown</returns>
     bool ReportCompactorException(Exception exception)
     {

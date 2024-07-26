@@ -8,6 +8,7 @@ public class KeyValueDBOptions
     public ICompressionStrategy? Compression = new SnappyCompressionStrategy();
     public IKviCompressionStrategy KviCompressionStrategy = new DefaultCompressionKviStrategy();
     public uint FileSplitSize = int.MaxValue;
+    public bool AutoAdjustFileSize = false;
     public ICompactorScheduler? CompactorScheduler = KVDBLayer.CompactorScheduler.Instance;
     public IKeyValueDBLogger? Logger;
     public ulong? OpenUpToCommitUlong;

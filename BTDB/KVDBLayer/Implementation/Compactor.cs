@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.Collections;
@@ -359,5 +360,33 @@ class Compactor
             _cancellation.ThrowIfCancellationRequested();
             _fileStats.GetOrFakeValueRef(valueFileId).AddLength((uint)Math.Abs(valueSize));
         });
+    }
+
+    public static uint CalculateIdealFileSplitSize(IFileCollectionWithFileInfos fc)
+    {
+        var totalSize = 0ul;
+        foreach (var (key, value) in fc.FileInfos)
+        {
+            if (value.FileType is KVFileType.PureValues or KVFileType.PureValuesWithId or KVFileType.TransactionLog)
+                totalSize += fc.GetSize(key);
+        }
+
+        // there should be ideally not much more than 8 splits
+        // Minimum size of split is 16MB
+        // Maximum size of split is 1GB
+        var oneSplitIn64OfGiga = (uint)(totalSize / 8 / (1024ul * 1024 * 1024 / 64));
+        if (oneSplitIn64OfGiga > 63) oneSplitIn64OfGiga = 64;
+        else if (oneSplitIn64OfGiga <= 1) oneSplitIn64OfGiga = 1;
+        else oneSplitIn64OfGiga = NextPowerOfTwo(oneSplitIn64OfGiga);
+
+        return oneSplitIn64OfGiga * (1024u * 1024 * 1024 / 64);
+
+        static uint NextPowerOfTwo(uint input)
+        {
+            Debug.Assert(input >= 2);
+            var leadingZeros = BitOperations.LeadingZeroCount(input - 1);
+            Debug.Assert(leadingZeros != 0);
+            return 1u << (32 - leadingZeros);
+        }
     }
 }
