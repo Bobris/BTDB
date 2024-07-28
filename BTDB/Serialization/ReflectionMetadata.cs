@@ -32,6 +32,15 @@ public static class ReflectionMetadata
         return NameToMetadata.TryGetValueSeqLock(name, out var metadata, ref _lock) ? metadata : null;
     }
 
+    public static ClassMetadata? FindByName(ReadOnlySpan<char> name)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(name.Length, 256);
+        Span<byte> buf = stackalloc byte[name.Length * 3];
+        var len = Encoding.UTF8.GetBytes(name, buf);
+        return NameToMetadata.TryGetValueSeqLock(buf[..len], out var metadata, ref _lock)
+            ? metadata
+            : null;
+    }
 
     /// Mostly for debugging purposes, returns all registered metadata. Slow because it needs to lock for writing.
     public static IList<ClassMetadata> All()
