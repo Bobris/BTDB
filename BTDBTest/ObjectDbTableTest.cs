@@ -3082,6 +3082,30 @@ namespace BTDBTest
             Assert.Equal(new byte[] {1, 2, 3}, item.Dict["a"].ToArray());
             Assert.Equal(new byte[] {4, 5, 6}, item.Dict["b"].ToArray());
         }
+
+        public record PlannedMigrationStartInfo(ulong ActionId, DateTime PlannedStartDateTime);
+
+        public class ActionItem
+        {
+            public PlannedMigrationStartInfo PlannedMigrationStart { get; set; }
+        }
+
+        public interface IActionTable : IRelation<ActionItem>
+        {
+        }
+
+        [Fact]
+        public void GivenRecordToStore_ThrowsFancyException()
+        {
+            using var tr = _db.StartTransaction();
+            var rel = tr.GetRelation<IActionTable>();
+            var exception = Assert.Throws<BTDBException>(() =>
+            {
+                rel.Upsert(new () { PlannedMigrationStart = new (1, DateTime.UtcNow) });
+                tr.Commit();
+            });
+            Assert.DoesNotContain("Type System.RuntimeType is not registered.", exception.Message);
+        }
     }
 }
 
