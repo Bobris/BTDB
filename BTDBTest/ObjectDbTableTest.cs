@@ -3053,8 +3053,7 @@ namespace BTDBTest
 
         public class ItemWithDictWithReadOnlyMemory
         {
-            [PrimaryKey(1)]
-            public ulong Id { get; set; }
+            [PrimaryKey(1)] public ulong Id { get; set; }
 
             public Dictionary<string, ReadOnlyMemory<byte>> Dict { get; set; }
         }
@@ -3073,14 +3072,14 @@ namespace BTDBTest
                 Id = 1,
                 Dict = new()
                 {
-                    {"a", new([1, 2, 3])},
-                    {"b", new([4, 5, 6])}
+                    { "a", new([1, 2, 3]) },
+                    { "b", new([4, 5, 6]) }
                 }
             });
             var item = table.First();
             Assert.Equal(2, item.Dict.Count);
-            Assert.Equal(new byte[] {1, 2, 3}, item.Dict["a"].ToArray());
-            Assert.Equal(new byte[] {4, 5, 6}, item.Dict["b"].ToArray());
+            Assert.Equal(new byte[] { 1, 2, 3 }, item.Dict["a"].ToArray());
+            Assert.Equal(new byte[] { 4, 5, 6 }, item.Dict["b"].ToArray());
         }
 
         public record PlannedMigrationStartInfo(ulong ActionId, DateTime PlannedStartDateTime);
@@ -3095,16 +3094,12 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void GivenRecordToStore_ThrowsFancyException()
+        public void GivenRecordToStore_ItSilentlySkipsEqualityContractProperty()
         {
             using var tr = _db.StartTransaction();
             var rel = tr.GetRelation<IActionTable>();
-            var exception = Assert.Throws<BTDBException>(() =>
-            {
-                rel.Upsert(new () { PlannedMigrationStart = new (1, DateTime.UtcNow) });
-                tr.Commit();
-            });
-            Assert.DoesNotContain("Type System.RuntimeType is not registered.", exception.Message);
+            rel.Upsert(new() { PlannedMigrationStart = new(1, DateTime.UtcNow) });
+            tr.Commit();
         }
     }
 }

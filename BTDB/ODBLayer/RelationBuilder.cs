@@ -118,6 +118,13 @@ public class RelationBuilder
         {
             if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
             if (pi.GetIndexParameters().Length != 0) continue;
+            if (!pi.CanRead)
+            {
+                throw new InvalidOperationException("Trying to serialize type " + ItemType.ToSimpleName() +
+                                                    " and property " + pi.Name +
+                                                    " does not have getter. If you don't want to serialize this property add [NotStored] attribute.");
+            }
+            if (!pi.CanWrite && pi.GetCustomAttribute<CompilerGeneratedAttribute>() != null) continue;
             var pks = pi.GetCustomAttributes<PrimaryKeyAttribute>(true);
             var actualPKAttribute = pks.FirstOrDefault();
             if (pi.GetCustomAttribute<InKeyValueAttribute>() is { } inKeyValueAttribute)

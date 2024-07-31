@@ -329,6 +329,19 @@ public class TableInfo
         {
             if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
             if (pi.GetIndexParameters().Length != 0) continue;
+
+            if (pi.GetAnyGetMethod() == null)
+                throw new InvalidOperationException("Trying to serialize type " + _clientType.ToSimpleName() +
+                                                    " and property " + pi.Name +
+                                                    " does not have getter. If you don't want to serialize this property add [NotStored] attribute.");
+            if (pi.GetAnySetMethod() == null)
+            {
+                if (pi.GetCustomAttribute<CompilerGeneratedAttribute>() is not null) continue;
+                throw new InvalidOperationException("Trying to serialize type " + _clientType.ToSimpleName() +
+                                                    " and property " + pi.Name +
+                                                    " does not have setter. If you don't want to serialize this property add [NotStored] attribute.");
+            }
+
             fields.Add(TableFieldInfo.Build(Name, pi, _tableInfoResolver.FieldHandlerFactory,
                 FieldHandlerOptions.None, pi.GetCustomAttribute<PrimaryKeyAttribute>()?.InKeyValue ?? false));
         }
