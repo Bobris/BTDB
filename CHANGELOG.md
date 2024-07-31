@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.13.1
+
 ### Added
 
 `record` support in ObjectDB. Also added validations for missing getters and setters in ObjectDB.
