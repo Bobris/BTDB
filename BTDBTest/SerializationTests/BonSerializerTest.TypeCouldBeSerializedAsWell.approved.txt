@@ -1,0 +1,10 @@
+[
+  {
+    "__type__": "type",
+    "Name": "s32"
+  },
+  {
+    "__type__": "type",
+    "Name": "BTDBTest.SerializationTests.AllSupportedTypes"
+  }
+]

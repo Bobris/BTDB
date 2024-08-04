@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -23,6 +24,8 @@ public interface ISerializerFactory
     Serialize CreateSerializerForType(Type type);
     object? DeserializeObject(ref DeserializerCtx ctx);
     Deserialize CreateDeserializerForType(Type type);
+    void SerializeTypeType(ref SerializerCtx ctx, Type type);
+    Type DeserializeTypeType(ref DeserializerCtx ctx);
 }
 
 public struct SerializerCtx
@@ -172,6 +175,14 @@ public class BonSerializerFactory : ISerializerFactory
             return static (ref SerializerCtx ctx, ref byte value) =>
             {
                 AsCtx(ref ctx).Builder.Write(Unsafe.As<byte, string>(ref value));
+            };
+        }
+
+        if (type == typeof(Type))
+        {
+            return static (ref SerializerCtx ctx, ref byte value) =>
+            {
+                AsCtx(ref ctx).Factory.SerializeTypeType(ref ctx, Unsafe.As<byte, Type>(ref value));
             };
         }
 
@@ -688,6 +699,11 @@ public class BonSerializerFactory : ISerializerFactory
 
     public Deserialize CreateCachedDeserializerForName(ReadOnlySpan<byte> name)
     {
+        if (name.SequenceEqual("type"u8))
+        {
+            return CreateCachedDeserializerForType(typeof(Type));
+        }
+
         if (ReflectionMetadata.FindByName(name) is { } classMetadata)
         {
             var type = classMetadata.Type;
@@ -760,6 +776,15 @@ public class BonSerializerFactory : ISerializerFactory
                 }
 
                 return true;
+            };
+        }
+
+        if (type == typeof(Type))
+        {
+            return static (ref DeserializerCtx ctx, ref byte value) =>
+            {
+                Unsafe.As<byte, Type>(ref value) = AsCtx(ref ctx).Factory.DeserializeTypeType(ref ctx);
+                return Unsafe.As<byte, Type>(ref value) != null;
             };
         }
 
@@ -1378,6 +1403,95 @@ public class BonSerializerFactory : ISerializerFactory
         }
 
         throw new NotSupportedException("BonDeserialization of " + type.ToSimpleName() + " is not supported.");
+    }
+
+    ReadOnlySpan<byte> SimpleType2String(Type type)
+    {
+        if (type == typeof(byte)) return "u8"u8;
+        if (type == typeof(sbyte)) return "s8"u8;
+        if (type == typeof(ushort)) return "u16"u8;
+        if (type == typeof(short)) return "s16"u8;
+        if (type == typeof(int)) return "s32"u8;
+        if (type == typeof(uint)) return "u32"u8;
+        if (type == typeof(long)) return "s64"u8;
+        if (type == typeof(ulong)) return "u64"u8;
+        if (type == typeof(Half)) return "f16"u8;
+        if (type == typeof(float)) return "f32"u8;
+        if (type == typeof(double)) return "f64"u8;
+        if (type == typeof(string)) return "s"u8;
+        if (type == typeof(char)) return "char"u8;
+        if (type == typeof(bool)) return "b"u8;
+        if (type == typeof(void)) return "void"u8;
+        if (type == typeof(object)) return "object"u8;
+        if (type == typeof(decimal)) return "decimal"u8;
+        if (type == typeof(nint)) return "ni"u8;
+        if (type == typeof(nuint)) return "nu"u8;
+        throw new NotSupportedException("BonSerialization of Type " + type.ToSimpleName() + " is not supported.");
+    }
+
+    public void SerializeTypeType(ref SerializerCtx ctx, Type type)
+    {
+        ref var builder = ref AsCtx(ref ctx).Builder;
+        builder.StartClass("type"u8);
+        builder.WriteKey("Name"u8);
+        if (ReflectionMetadata.FindByType(type) is { } metadata)
+        {
+            builder.Write(metadata.TruePersistedName);
+        }
+        else
+        {
+            builder.WriteUtf8(SimpleType2String(type));
+        }
+
+        AsCtx(ref ctx).Builder.FinishClass();
+    }
+
+    public Type? DeserializeTypeType(ref DeserializerCtx ctx)
+    {
+        if (!AsCtx(ref ctx).Bon.TryGetClass(out var keyedBon, out var name))
+        {
+            AsCtx(ref ctx).Bon.Skip();
+            return null;
+        }
+
+        if (!name.SequenceEqual("type"u8))
+        {
+            return null;
+        }
+
+        if (keyedBon.NextKeyUtf8().SequenceEqual("Name"u8))
+        {
+            if (keyedBon.Values().TryGetStringBytes(out var typeName))
+            {
+                if (ReflectionMetadata.FindByName(typeName) is { } metadata)
+                {
+                    return metadata.Type;
+                }
+
+                if (typeName.SequenceEqual("u8"u8)) return typeof(byte);
+                if (typeName.SequenceEqual("s8"u8)) return typeof(sbyte);
+                if (typeName.SequenceEqual("u16"u8)) return typeof(ushort);
+                if (typeName.SequenceEqual("s16"u8)) return typeof(short);
+                if (typeName.SequenceEqual("s32"u8)) return typeof(int);
+                if (typeName.SequenceEqual("u32"u8)) return typeof(uint);
+                if (typeName.SequenceEqual("s64"u8)) return typeof(long);
+                if (typeName.SequenceEqual("u64"u8)) return typeof(ulong);
+                if (typeName.SequenceEqual("f16"u8)) return typeof(Half);
+                if (typeName.SequenceEqual("f32"u8)) return typeof(float);
+                if (typeName.SequenceEqual("f64"u8)) return typeof(double);
+                if (typeName.SequenceEqual("s"u8)) return typeof(string);
+                if (typeName.SequenceEqual("char"u8)) return typeof(char);
+                if (typeName.SequenceEqual("b"u8)) return typeof(bool);
+                if (typeName.SequenceEqual("void"u8)) return typeof(void);
+                if (typeName.SequenceEqual("object"u8)) return typeof(object);
+                if (typeName.SequenceEqual("decimal"u8)) return typeof(decimal);
+                if (typeName.SequenceEqual("ni"u8)) return typeof(nint);
+                if (typeName.SequenceEqual("nu"u8)) return typeof(nuint);
+                throw new InvalidDataException("BonSerializer unknown type name: " + Encoding.UTF8.GetString(typeName));
+            }
+        }
+
+        return null;
     }
 
     public static BonSerializerFactory Instance { get; } = new();

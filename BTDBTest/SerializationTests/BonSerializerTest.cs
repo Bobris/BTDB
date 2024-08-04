@@ -83,4 +83,23 @@ public class BonSerializerTest
         Assert.Equal(42u, (ulong)a);
         Assert.Equal(424242424242L, (long)(ulong)b);
     }
+
+    [Fact]
+    public void TypeCouldBeSerializedAsWell()
+    {
+        Type[] obj = [typeof(int), typeof(AllSupportedTypes)];
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, obj);
+        var bon = new Bon(builder.FinishAsMemory());
+        this.Assent(bon.DumpToJson());
+        bon = new Bon(builder.FinishAsMemory());
+        var deserialized = BonSerializerFactory.Deserialize(ref bon);
+        Assert.IsType<object[]>(deserialized);
+        var deserializedArray = (object[])deserialized;
+        Assert.Equal(obj.Length, deserializedArray.Length);
+        for (var i = 0; i < obj.Length; i++)
+        {
+            Assert.Equal(obj[i], deserializedArray[i]);
+        }
+    }
 }
