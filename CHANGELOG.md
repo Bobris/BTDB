@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.14.0
+
 BonSerializer knows how to serialize `Type`. Only simple types and registered types are supported.
 
 ## 32.13.1
