@@ -1,0 +1,44 @@
+Relation IRelationWithComputedSecondaryKey
+SK OddAge
+StartField OddAge
+ScalarObj False
+ScalarStr False
+StartField Id
+ScalarObj 1
+ScalarStr 1
+
+StartField OddAge
+ScalarObj True
+ScalarStr True
+StartField Id
+ScalarObj 2
+ScalarStr 2
+
+
+Used key: 03 01 01 Value len:2
+BeginKey
+StartField Id
+ScalarObj 1
+ScalarStr 1
+EndField
+EndKey
+BeginValue
+StartField Age
+ScalarObj 42
+ScalarStr 42
+EndField
+EndValue
+Used key: 03 01 02 Value len:2
+BeginKey
+StartField Id
+ScalarObj 2
+ScalarStr 2
+EndField
+EndKey
+BeginValue
+StartField Age
+ScalarObj 43
+ScalarStr 43
+EndField
+EndValue
+EndRelation

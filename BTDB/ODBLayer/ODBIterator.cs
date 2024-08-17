@@ -384,6 +384,7 @@ public class ODBIterator
     {
         foreach (var fi in fields)
         {
+            if (fi.Computed) continue;
             if (_visitor == null || _visitor.StartField(fi.Name))
             {
                 IterateHandler(ref reader, fi.Handler!, false, knownInlineRefs);

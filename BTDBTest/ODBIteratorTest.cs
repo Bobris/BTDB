@@ -737,4 +737,38 @@ public class ODBIteratorTest : IDisposable
 
         IterateWithApprove();
     }
+
+    public class WithComputedSecondaryKey
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        [SecondaryKey("OddAge")] public bool OddAge => Age % 2 == 1;
+        public int Age { get; set; }
+    }
+
+    public interface IRelationWithComputedSecondaryKey : IRelation<WithComputedSecondaryKey>
+    {
+    }
+
+    [Fact]
+    public void IterateComputedSecondaryKey()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IRelationWithComputedSecondaryKey>("IRelationWithComputedSecondaryKey");
+            var table = creator(tr);
+            table.Upsert(new WithComputedSecondaryKey
+            {
+                Id = 1,
+                Age = 42
+            });
+            table.Upsert(new WithComputedSecondaryKey
+            {
+                Id = 2,
+                Age = 43
+            });
+            tr.Commit();
+        }
+
+        IterateWithApprove();
+    }
 }

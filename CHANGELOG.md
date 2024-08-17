@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Iterating over Relation with computed fields.
+
 ## 32.14.0
 
 BonSerializer knows how to serialize `Type`. Only simple types and registered types are supported.
