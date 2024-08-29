@@ -1209,7 +1209,7 @@ public class SourceGenerator : IIncrementalGenerator
                         metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Where(i => i.FullyQualifiedName.StartsWith("global::", StringComparison.Ordinal)).Select(i => $"typeof({i.FullyQualifiedName})"))}}];
                         metadata.Creator = &Creator;
                         var dummy = Unsafe.As<{{generationInfo.FullName}}>(metadata);
-                        metadata.Fields = new[]
+                        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
                         {
 
                 """);

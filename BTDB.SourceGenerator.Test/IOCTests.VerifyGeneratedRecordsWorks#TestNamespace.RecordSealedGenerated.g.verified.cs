@@ -31,7 +31,7 @@ static file class RecordSealedGeneratedRegistration
         metadata.Implements = [typeof(global::System.IEquatable<global::TestNamespace.RecordSealedGenerated>)];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::TestNamespace.RecordSealedGenerated>(metadata);
-        metadata.Fields = new[]
+        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
         {
             new global::BTDB.Serialization.FieldMetadata
             {

@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Make SourceGenerator code valid :D
+
 ## 32.15.0
 
 ### Added

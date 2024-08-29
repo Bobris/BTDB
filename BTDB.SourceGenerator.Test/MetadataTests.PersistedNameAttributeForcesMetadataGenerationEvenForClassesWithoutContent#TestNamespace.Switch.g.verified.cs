@@ -30,7 +30,7 @@ static file class SwitchRegistration
         metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::TestNamespace.Switch>(metadata);
-        metadata.Fields = new[]
+        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
         {
         };
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);

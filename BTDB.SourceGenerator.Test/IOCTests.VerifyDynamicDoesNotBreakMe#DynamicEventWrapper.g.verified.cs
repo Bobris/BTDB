@@ -33,7 +33,7 @@ static file class DynamicEventWrapperRegistration
         metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::DynamicEventWrapper>(metadata);
-        metadata.Fields = new[]
+        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
         {
             new global::BTDB.Serialization.FieldMetadata
             {

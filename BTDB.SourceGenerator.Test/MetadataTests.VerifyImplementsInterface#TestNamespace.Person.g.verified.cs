@@ -33,7 +33,7 @@ static file class PersonRegistration
         metadata.Implements = [typeof(global::TestNamespace.INamed)];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::TestNamespace.Person>(metadata);
-        metadata.Fields = new[]
+        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
         {
             new global::BTDB.Serialization.FieldMetadata
             {
