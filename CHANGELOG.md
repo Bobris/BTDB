@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.15.1
+
 ### Fixed
 
 Make SourceGenerator code valid :D
