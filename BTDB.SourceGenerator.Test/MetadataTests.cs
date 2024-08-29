@@ -1,11 +1,8 @@
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using VerifyXunit;
 using Xunit;
 
 namespace BTDB.SourceGenerator.Tests;
 
-[UsesVerify]
 public class MetadataTests : GeneratorTestsBase
 {
     [Fact]
@@ -19,6 +16,7 @@ public class MetadataTests : GeneratorTestsBase
             public class Person
             {
                 public string Name { get; set; } = "";
+                [BTDB.FieldHandler.PersistedNameAttribute("Years")]
                 public int Age;
             }
             """);
@@ -36,6 +34,21 @@ public class MetadataTests : GeneratorTestsBase
             {
                 public static string Name { get; set; } = "";
                 public static int Age;
+            }
+            """);
+    }
+
+    [Fact]
+    public Task PersistedNameAttributeForcesMetadataGenerationEvenForClassesWithoutContent()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.FieldHandler.PersistedNameAttribute("Hello")]
+            [BTDB.Generate]
+            public class Switch
+            {
             }
             """);
     }

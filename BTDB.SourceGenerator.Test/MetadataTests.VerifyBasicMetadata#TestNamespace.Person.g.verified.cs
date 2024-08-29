@@ -37,7 +37,7 @@ static file class PersonRegistration
         {
             new global::BTDB.Serialization.FieldMetadata
             {
-                Name = "Age",
+                Name = "Years",
                 Type = typeof(int),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
             },

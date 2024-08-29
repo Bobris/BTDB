@@ -6,7 +6,6 @@ using Xunit;
 
 namespace BTDB.SourceGenerator.Tests;
 
-[UsesVerify]
 public class IOCTests : GeneratorTestsBase
 {
     [ModuleInitializer]

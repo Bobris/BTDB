@@ -15,7 +15,7 @@
         <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
-        <PackageReadmeFile>README.md</PackageReadmeFile>        
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <Description>SourceGenerator for BTDB features to not need runtime code generation</Description>
         <PackageTags>BTDB IOC;Source Generator</PackageTags>
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -31,6 +31,6 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.8.0" PrivateAssets="all"/>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.11.0" PrivateAssets="all"/>
     </ItemGroup>
 </Project>

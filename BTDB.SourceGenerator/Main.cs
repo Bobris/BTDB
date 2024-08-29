@@ -59,7 +59,7 @@ public class SourceGenerator : IIncrementalGenerator
                         if (constructorParametersExpression is not CollectionExpressionSyntax aces)
                         {
                             return new GenerationInfo(GenerationType.Error, null, "BTDB0001",
-                                "Must use CollectionExpression syntax for ConstructorParameters", false, false,
+                                "Must use CollectionExpression syntax for ConstructorParameters", null, false, false,
                                 false, EquatableArray<ParameterInfo>.Empty, EquatableArray<PropertyInfo>.Empty,
                                 EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
                                 EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty,
@@ -118,7 +118,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 : null))
                         .ToArray();
                     return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
-                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, false,
+                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false, false,
                         parameters, [new PropertyInfo("", returnType, null, true, false, false, false, null)],
                         EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
                         EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty,
@@ -135,7 +135,7 @@ public class SourceGenerator : IIncrementalGenerator
                         : containingNamespace.ToDisplayString();
                     var interfaceName = symbol.Name;
                     return new(GenerationType.Interface, namespaceName, interfaceName,
-                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false, false,
+                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false, false,
                         EquatableArray<ParameterInfo>.Empty,
                         EquatableArray<PropertyInfo>.Empty, EquatableArray<string>.Empty,
                         dispatchers.ToArray(), EquatableArray<FieldsInfo>.Empty,
@@ -255,6 +255,8 @@ public class SourceGenerator : IIncrementalGenerator
                 return null;
             }
         }
+
+        var persistedName = ExtractPersistedName(symbol);
 
         var implements = symbol.AllInterfaces.Select(s => new TypeRef(s)).ToArray();
 
@@ -379,9 +381,7 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 return new FieldsInfo(f.Name,
                     f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    f.GetAttributes()
-                        .FirstOrDefault(a => a.AttributeClass?.Name == "PersistedNameAttribute")
-                        ?.ConstructorArguments.FirstOrDefault().Value as string,
+                    ExtractPersistedName(f),
                     f.Type.IsReferenceType, f.Name, null, null,
                     EquatableArray<IndexInfo>.Empty);
             })
@@ -411,9 +411,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                     return new FieldsInfo(p.Name,
                         p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                        p.GetAttributes().FirstOrDefault(a =>
-                                a.AttributeClass?.Name == "PersistedNameAttribute")
-                            ?.ConstructorArguments.FirstOrDefault().Value as string,
+                        ExtractPersistedName(p),
                         p.Type.IsReferenceType,
                         backingName, getterName, setterName, EquatableArray<IndexInfo>.Empty);
                 })).ToArray();
@@ -452,11 +450,33 @@ public class SourceGenerator : IIncrementalGenerator
                 .Any(p =>
                     p.IsRequired);
         return new GenerationInfo(GenerationType.Class, namespaceName, className,
-            symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), isPartial, privateConstructor,
+            symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), persistedName, isPartial,
+            privateConstructor,
             hasDefaultConstructor,
             parameters,
             propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, collections.ToArray(),
             nested.ToArray(), null);
+    }
+
+    static string? ExtractPersistedName(ISymbol symbol)
+    {
+        var persistedNameAttribute = symbol.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "PersistedNameAttribute");
+
+        var persistedName = GetStringArgForAttributeData(persistedNameAttribute);
+        return persistedName;
+    }
+
+    static string? GetStringArgForAttributeData(AttributeData? attributeData)
+    {
+        if (attributeData?.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax attributeSyntax)
+        {
+            var literalExpressionSyntax =
+                attributeSyntax.ArgumentList!.Arguments.FirstOrDefault()?.Expression as LiteralExpressionSyntax;
+            return literalExpressionSyntax?.Token.ValueText;
+        }
+
+        return null;
     }
 
     static void GatherCollections(SemanticModel model, IEnumerable<ITypeSymbol> types,
@@ -560,7 +580,8 @@ public class SourceGenerator : IIncrementalGenerator
         if (typeSymbol.IsValueType)
         {
             var gi = new GenerationInfo(GenerationType.Struct, typeSymbol.ContainingNamespace.ToString(),
-                typeSymbol.Name, typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), false, false,
+                typeSymbol.Name, typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false,
+                false,
                 true, EquatableArray<ParameterInfo>.Empty, EquatableArray<PropertyInfo>.Empty,
                 EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty, EquatableArray<FieldsInfo>.Empty,
                 EquatableArray<TypeRef>.Empty, EquatableArray<CollectionInfo>.Empty,
@@ -1144,7 +1165,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         var metadataCode = new StringBuilder();
 
-        if (generationInfo.Fields.Count != 0)
+        if (generationInfo.Fields.Count != 0 || generationInfo.PersistedName != null)
         {
             if (generationInfo.HasDefaultConstructor)
             {
@@ -1168,12 +1189,23 @@ public class SourceGenerator : IIncrementalGenerator
             }
 
             // language=c#
-            metadataCode.Append($$"""
+            metadataCode.Append($"""
 
                         var metadata = new global::BTDB.Serialization.ClassMetadata();
-                        metadata.Name = "{{generationInfo.Name}}";
-                        metadata.Type = typeof({{generationInfo.FullName}});
-                        metadata.Namespace = "{{generationInfo.Namespace ?? ""}}";
+                        metadata.Name = "{generationInfo.Name}";
+                        metadata.Type = typeof({generationInfo.FullName});
+                        metadata.Namespace = "{generationInfo.Namespace ?? ""}";
+                """);
+            if (generationInfo.PersistedName != null)
+            {
+                metadataCode.Append($"""
+
+                            metadata.PersistedName = "{generationInfo.PersistedName}";
+                    """);
+            }
+
+            metadataCode.Append($$"""
+
                         metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Where(i => i.FullyQualifiedName.StartsWith("global::", StringComparison.Ordinal)).Select(i => $"typeof({i.FullyQualifiedName})"))}}];
                         metadata.Creator = &Creator;
                         var dummy = Unsafe.As<{{generationInfo.FullName}}>(metadata);
@@ -1190,7 +1222,7 @@ public class SourceGenerator : IIncrementalGenerator
                 metadataCode.Append($$"""
                                 new global::BTDB.Serialization.FieldMetadata
                                 {
-                                    Name = "{{field.Name}}",
+                                    Name = "{{field.StoredName ?? field.Name}}",
                                     Type = typeof({{normalizedType}}),
 
                     """);
@@ -1325,6 +1357,7 @@ record GenerationInfo(
     string? Namespace,
     string Name,
     string FullName,
+    string? PersistedName,
     bool IsPartial,
     bool PrivateConstructor, // or has required fields
     bool HasDefaultConstructor,
