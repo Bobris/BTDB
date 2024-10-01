@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Optimized
+
+SeqLock is even faster.
+
 ## 32.15.1
 
 ### Fixed

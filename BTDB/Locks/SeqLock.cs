@@ -40,13 +40,11 @@ public struct SeqLock
     public uint StartRead()
     {
         SpinWait spin = default;
-        var res = _counter;
-        Interlocked.MemoryBarrier();
+        var res = Volatile.Read(ref _counter);
         while ((res & 1u) != 0)
         {
             spin.SpinOnce();
-            res = _counter;
-            Interlocked.MemoryBarrier();
+            res = Volatile.Read(ref _counter);
         }
 
         return res;
@@ -54,18 +52,16 @@ public struct SeqLock
 
     public bool RetryRead(ref uint seqCounter)
     {
-        Interlocked.MemoryBarrier();
-        var current = _counter;
+        var current = Volatile.Read(ref _counter);
         if (seqCounter != current)
         {
             SpinWait spin = default;
             while ((current & 1u) != 0)
             {
                 spin.SpinOnce();
-                current = _counter;
+                current = Volatile.Read(ref _counter);
             }
 
-            Interlocked.MemoryBarrier();
             seqCounter = current;
             return true;
         }
@@ -82,7 +78,7 @@ public struct SeqLock
             while ((counter & 1u) != 0)
             {
                 spin.SpinOnce();
-                counter = _counter;
+                counter = Volatile.Read(ref _counter);
             }
 
             if (Interlocked.CompareExchange(ref _counter, counter + 1u, counter) == counter)
@@ -93,7 +89,6 @@ public struct SeqLock
 
     public void EndWrite()
     {
-        Interlocked.MemoryBarrier();
-        _counter++;
+        Volatile.Write(ref _counter, _counter + 1);
     }
 }
