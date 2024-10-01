@@ -125,9 +125,6 @@ public class KeyValueSpeedTest
 
         return _kvType switch
         {
-            KVType.Managed => compressionStrategy == null
-                ? new KeyValueDB(fileCollection)
-                : new KeyValueDB(fileCollection, compressionStrategy),
             KVType.BTree => compressionStrategy == null
                 ? new BTreeKeyValueDB(fileCollection)
                 : new BTreeKeyValueDB(fileCollection, compressionStrategy),
@@ -139,7 +136,7 @@ public class KeyValueSpeedTest
     {
         _sw.Restart();
         using (var fileCollection = new OnDiskFileCollection("data"))
-        using (IKeyValueDB db = new KeyValueDB(fileCollection))
+        using (IKeyValueDB db = new BTreeKeyValueDB(fileCollection))
         {
             using (var trCheck = db.StartTransaction())
             {
@@ -184,7 +181,7 @@ public class KeyValueSpeedTest
         _sw.Stop();
         Console.WriteLine("Time to create 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
         _sw.Restart();
-        using (IKeyValueDB db = new KeyValueDB(fileCollection!))
+        using (IKeyValueDB db = new BTreeKeyValueDB(fileCollection!))
         {
             _sw.Stop();
             Console.WriteLine("Time to open 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);

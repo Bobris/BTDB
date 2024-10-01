@@ -35,7 +35,9 @@ public class BtdbTimeTests : IDbTimeTests
 
     public (TimeSpan openTime, long memorySize) Open()
     {
-        GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
         var memStart = GC.GetTotalMemory(true);
 
         var stopwatch = Stopwatch.StartNew();
@@ -44,7 +46,9 @@ public class BtdbTimeTests : IDbTimeTests
         {
             stopwatch.Stop();
 
-            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
             var memFinish = GC.GetTotalMemory(false);
 
             return (openTime: stopwatch.Elapsed, memorySize: (memFinish - memStart) / 1024);
@@ -53,7 +57,6 @@ public class BtdbTimeTests : IDbTimeTests
 
     public TimeSpan Insert(byte[] key, byte[] value)
     {
-
         using (var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy()))
         {
             var stopwatch = Stopwatch.StartNew();
@@ -62,13 +65,11 @@ public class BtdbTimeTests : IDbTimeTests
             {
                 tr.CreateOrUpdateKeyValue(key, value);
                 tr.Commit();
-
             }
 
             stopwatch.Stop();
             return stopwatch.Elapsed;
         }
-
     }
 
     public TimeSpan InsertRange(Dictionary<byte[], byte[]> data)
@@ -84,7 +85,6 @@ public class BtdbTimeTests : IDbTimeTests
             }
 
             tr.Commit();
-
         }
 
         stopwatch.Stop();
@@ -149,7 +149,6 @@ public class BtdbTimeTests : IDbTimeTests
         var stopwatch = Stopwatch.StartNew();
         using (var tr = db.StartTransaction())
         {
-
             foreach (var data in exceptedData)
             {
                 var key = tr.FindExactKey(data.Key);
@@ -209,6 +208,7 @@ public class BtdbTimeTests : IDbTimeTests
             _fileCollection = new InMemoryFileCollection();
             return _fileCollection;
         }
+
         const string dbfilename = "data";
         if (Directory.Exists(dbfilename))
             Directory.Delete(dbfilename, true);
@@ -235,7 +235,6 @@ public class BtdbTimeTests : IDbTimeTests
             var value = tr.GetValue().ToArray();
 
             data.Add(key, value);
-
         } while (tr.FindNextKey(ReadOnlySpan<byte>.Empty));
 
         return data;
@@ -252,14 +251,15 @@ public class BtdbTimeTests : IDbTimeTests
         return new OnDiskFileCollection(dbfilename);
     }
 
-    static IKeyValueDB CreateKeyValueDb(IFileCollection? fileCollection, ICompressionStrategy? compressionStrategy = null)
+    static IKeyValueDB CreateKeyValueDb(IFileCollection? fileCollection,
+        ICompressionStrategy? compressionStrategy = null)
     {
         if (fileCollection == null)
             return new InMemoryKeyValueDB();
 
         if (compressionStrategy == null)
-            return new KeyValueDB(fileCollection);
+            return new BTreeKeyValueDB(fileCollection);
 
-        return new KeyValueDB(fileCollection, compressionStrategy);
+        return new BTreeKeyValueDB(fileCollection, compressionStrategy);
     }
 }

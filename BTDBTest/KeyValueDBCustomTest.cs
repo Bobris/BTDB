@@ -31,10 +31,11 @@ public class KeyValueDBCustomTest
         //using (var fileCollection = new OnDiskFileCollection("data"))
         //failed
         using (var fileCollection = new OnDiskMemoryMappedFileCollection("data"))
-        //passed
-        //using (var fileCollection = new InMemoryFileCollection())
+            //passed
+            //using (var fileCollection = new InMemoryFileCollection())
         {
-            using (IKeyValueDB db = new KeyValueDB(fileCollection, new SnappyCompressionStrategy(), (uint)Int16.MaxValue * 10))
+            using (IKeyValueDB db = new BTreeKeyValueDB(fileCollection, new SnappyCompressionStrategy(),
+                       (uint)Int16.MaxValue * 10))
             {
                 using (var tr = db.StartTransaction())
                 {
@@ -45,6 +46,7 @@ public class KeyValueDBCustomTest
 
                         tr.CreateOrUpdateKeyValue(key, value);
                     }
+
                     tr.Commit();
                 }
 
@@ -143,7 +145,6 @@ public class KeyValueDBCustomTest
     }
 }
 
-
 public static class TicksGenerator
 {
     static readonly string[] symbols;
@@ -155,17 +156,25 @@ public static class TicksGenerator
     static TicksGenerator()
     {
         //2013-11-12 13:00
-        var data = new string[] { "USDCHF;4;0.9197", "GBPUSD;4;1.5880", "EURUSD;4;1.3403", "USDJPY;2;99.73", "EURCHF;4;1.2324", "AUDBGN;4;1.3596", "AUDCHF;4;0.8567", "AUDJPY;2;92.96",
-                "BGNJPY;2;68.31", "BGNUSD;4;0.6848", "CADBGN;4;1.3901", "CADCHF;4;0.8759", "CADUSD;4;0.9527", "CHFBGN;4;1.5862", "CHFJPY;2;108.44", "CHFUSD;4;1.0875", "EURAUD;4;1.4375", "EURCAD;4;1.4064",
-                "EURGBP;4;0.8438", "EURJPY;4;133.66", "GBPAUD;4;1.7031", "GBPBGN;4;2.3169", "GBPCAD;4;1.6661", "GBPCHF;4;1.4603", "GBPJPY;2;158.37", "NZDUSD;4;0.8217", "USDBGN;4;1.4594", "USDCAD;4;1.0493",
-                "XAUUSD;2;1281.15", "XAGUSD;2;21.21", "$DAX;2;9078.20","$FTSE;2;6707.49","$NASDAQ;2;3361.02","$SP500;2;1771.32"};
+        var data = new string[]
+        {
+            "USDCHF;4;0.9197", "GBPUSD;4;1.5880", "EURUSD;4;1.3403", "USDJPY;2;99.73", "EURCHF;4;1.2324",
+            "AUDBGN;4;1.3596", "AUDCHF;4;0.8567", "AUDJPY;2;92.96",
+            "BGNJPY;2;68.31", "BGNUSD;4;0.6848", "CADBGN;4;1.3901", "CADCHF;4;0.8759", "CADUSD;4;0.9527",
+            "CHFBGN;4;1.5862", "CHFJPY;2;108.44", "CHFUSD;4;1.0875", "EURAUD;4;1.4375", "EURCAD;4;1.4064",
+            "EURGBP;4;0.8438", "EURJPY;4;133.66", "GBPAUD;4;1.7031", "GBPBGN;4;2.3169", "GBPCAD;4;1.6661",
+            "GBPCHF;4;1.4603", "GBPJPY;2;158.37", "NZDUSD;4;0.8217", "USDBGN;4;1.4594", "USDCAD;4;1.0493",
+            "XAUUSD;2;1281.15", "XAGUSD;2;21.21", "$DAX;2;9078.20", "$FTSE;2;6707.49", "$NASDAQ;2;3361.02",
+            "$SP500;2;1771.32"
+        };
 
         symbols = new string[data.Length];
         digits = new int[data.Length];
         pipsizes = new double[data.Length];
         prices = new double[data.Length];
 
-        providers = new string[] { "eSignal", "Gain", "NYSE", "TSE", "NASDAQ", "Euronext", "LSE", "SSE", "ASE", "SE", "NSEI" };
+        providers = new string[]
+            { "eSignal", "Gain", "NYSE", "TSE", "NASDAQ", "Euronext", "LSE", "SSE", "ASE", "SE", "NSEI" };
 
         var format = new NumberFormatInfo();
         format.NumberDecimalSeparator = ".";
@@ -230,7 +239,6 @@ public enum KeysType : byte
     Sequential,
     Random
 }
-
 
 public class Tick : IComparable<Tick>
 {

@@ -20,10 +20,8 @@ public interface ITestTable : IRelation<Test>
 
 public class Test
 {
-    [PrimaryKey(1)]
-    public ulong CompanyId { get; set; }
-    [PrimaryKey(2)]
-    public ulong Id { get; set; }
+    [PrimaryKey(1)] public ulong CompanyId { get; set; }
+    [PrimaryKey(2)] public ulong Id { get; set; }
     public IDictionary<int, SimpleObject>? Simple { get; set; }
     public IDictionary<int, ComplexObject>? Complex { get; set; }
     public IDictionary<int, IIndirect<SimpleObject>>? IndirectSimple { get; set; }
@@ -52,8 +50,7 @@ public enum DictValueType
 [RPlotExporter, RankColumn]
 public class RelationFreeContentTest
 {
-    [Params(100ul, 5000ul)]
-    public int Count;
+    [Params(100ul, 5000ul)] public int Count;
 
     [Params(DictValueType.Simple, DictValueType.Complex, DictValueType.IndirectSimple, DictValueType.IndirectComplex)]
     public DictValueType ValueType;
@@ -87,12 +84,15 @@ public class RelationFreeContentTest
                     test.Complex = Enumerable.Range(1, Count).ToDictionary(item => item, item => new ComplexObject());
                     break;
                 case DictValueType.IndirectSimple:
-                    test.IndirectSimple = Enumerable.Range(1, Count).ToDictionary(item => item, item => (IIndirect<SimpleObject>)new DBIndirect<SimpleObject>(new SimpleObject()));
+                    test.IndirectSimple = Enumerable.Range(1, Count).ToDictionary(item => item,
+                        item => (IIndirect<SimpleObject>)new DBIndirect<SimpleObject>(new SimpleObject()));
                     break;
                 case DictValueType.IndirectComplex:
-                    test.IndirectComplex = Enumerable.Range(1, Count).ToDictionary(item => item, item => (IIndirect<ComplexObject>)new DBIndirect<ComplexObject>(new ComplexObject()));
+                    test.IndirectComplex = Enumerable.Range(1, Count).ToDictionary(item => item,
+                        item => (IIndirect<ComplexObject>)new DBIndirect<ComplexObject>(new ComplexObject()));
                     break;
             }
+
             table.Insert(test);
             tr.Commit();
         }
@@ -100,7 +100,7 @@ public class RelationFreeContentTest
 
     static ObjectDB CreateDb(IFileCollection fc)
     {
-        var lowDb = new KeyValueDB(fc);
+        var lowDb = new BTreeKeyValueDB(fc);
         var db = new ObjectDB();
         db.Open(lowDb, true);
         return db;
@@ -125,5 +125,4 @@ public class RelationFreeContentTest
         table.ShallowUpdate(test);
         tr.Commit();
     }
-
 }

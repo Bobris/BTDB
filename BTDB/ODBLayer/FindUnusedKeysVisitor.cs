@@ -24,7 +24,7 @@ public class FindUnusedKeysVisitor : IDisposable
             _fileCollection = new OnDiskFileCollection(onDiskFileCollectionDictionary);
         else
             _fileCollection = new InMemoryFileCollection();
-        _keyValueDb = new KeyValueDB(_fileCollection);
+        _keyValueDb = new BTreeKeyValueDB(_fileCollection);
     }
 
     IEnumerable<byte[]> SupportedKeySpaces()
@@ -50,8 +50,10 @@ public class FindUnusedKeysVisitor : IDisposable
             do
             {
                 //create all keys, instead of value store only byte length of value
-                kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(), Vuint2ByteBuffer(sourceKvTr.GetStorageSizeOfCurrentKey().Value));
+                kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(),
+                    Vuint2ByteBuffer(sourceKvTr.GetStorageSizeOfCurrentKey().Value));
             } while (sourceKvTr.FindNextKey(prefix));
+
             kvtr.Commit();
         }
     }
@@ -64,6 +66,7 @@ public class FindUnusedKeysVisitor : IDisposable
             iterator.Iterate();
             _kvtr.Commit();
         }
+
         _kvtr = null;
         return iterator;
     }

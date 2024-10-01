@@ -11,10 +11,8 @@ public class RelationSpeedTest
 {
     public class Person
     {
-        [PrimaryKey(1)]
-        public ulong Id { get; set; }
-        [SecondaryKey("Email")]
-        public string? Email { get; set; }
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        [SecondaryKey("Email")] public string? Email { get; set; }
     }
 
     static ObjectDB CreateInMemoryDb()
@@ -27,7 +25,7 @@ public class RelationSpeedTest
 
     static ObjectDB CreateDb(IFileCollection fc)
     {
-        var lowDb = new KeyValueDB(fc);
+        var lowDb = new BTreeKeyValueDB(fc);
         var db = new ObjectDB();
         db.Open(lowDb, true);
         return db;
@@ -259,25 +257,30 @@ public class RelationSpeedTest
         {
             Measure("Relation: ", new RelationPersonTest(db, cnt));
         }
+
         using (var fc = new InMemoryFileCollection())
         using (var db = CreateDb(fc))
         {
             Measure("2 Maps: ", new SingletonPersonTest(db, cnt));
         }
+
         using (var fc = new InMemoryFileCollection())
         using (var db = CreateBTreeDb(fc))
         {
             Measure("Relation (BTree): ", new RelationPersonTest(db, cnt));
         }
+
         using (var fc = new InMemoryFileCollection())
         using (var db = CreateBTreeDb(fc))
         {
             Measure("2 Maps (BTree): ", new SingletonPersonTest(db, cnt));
         }
+
         using (var db = CreateInMemoryDb())
         {
             Measure("Relation (mem): ", new RelationPersonTest(db, cnt));
         }
+
         using (var db = CreateInMemoryDb())
         {
             Measure("2 Maps (mem): ", new SingletonPersonTest(db, cnt));

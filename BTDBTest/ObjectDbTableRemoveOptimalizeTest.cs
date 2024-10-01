@@ -298,6 +298,11 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             set => _keyValueDBTransaction.DescriptionForLeaks = value;
         }
 
+        public IKeyValueDBCursor CreateCursor()
+        {
+            return _keyValueDBTransaction.CreateCursor();
+        }
+
         public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
         {
             return _keyValueDBTransaction.FindFirstKey(prefix);
@@ -421,6 +426,18 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
         public Dictionary<(uint Depth, uint Children), uint> CalcBTreeStats()
         {
             return _keyValueDBTransaction.CalcBTreeStats();
+        }
+
+        public IKeyValueDBCursor? FirstCursor
+        {
+            get => _keyValueDBTransaction.FirstCursor;
+            set => _keyValueDBTransaction.FirstCursor = value;
+        }
+
+        public IKeyValueDBCursor? LastCursor
+        {
+            get => _keyValueDBTransaction.LastCursor;
+            set => _keyValueDBTransaction.LastCursor = value;
         }
 
         public void EraseCurrent()
