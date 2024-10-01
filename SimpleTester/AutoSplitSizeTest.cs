@@ -16,7 +16,7 @@ public class AutoSplitSizeTest
         Directory.Delete(dbDirectory, true);
         Directory.CreateDirectory(dbDirectory);
         using var fc = new OnDiskFileCollection(dbDirectory);
-        using var lowDb = new KeyValueDB(fc, new NoCompressionStrategy());
+        using var lowDb = new BTreeKeyValueDB(fc, new NoCompressionStrategy());
         lowDb.AutoAdjustFileSize = true;
 
         var j = 0;

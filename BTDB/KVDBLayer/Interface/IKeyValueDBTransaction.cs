@@ -17,6 +17,12 @@ public interface IKeyValueDBTransaction : IDisposable
     string? DescriptionForLeaks { get; set; }
 
     /// <summary>
+    /// Creates new cursor after using it Dispose must be called.
+    /// </summary>
+    /// <returns>Fresh cursor bound to this transaction</returns>
+    IKeyValueDBCursor CreateCursor();
+
+    /// <summary>
     /// Move actual key pointer to first key matching provided prefix.
     /// </summary>
     /// <returns>true if there is such key, false if there are no such keys</returns>
@@ -247,4 +253,7 @@ public interface IKeyValueDBTransaction : IDisposable
     bool RollbackAdvised { get; set; }
 
     Dictionary<(uint Depth, uint Children), uint> CalcBTreeStats();
+
+    IKeyValueDBCursor? FirstCursor { get; set; }
+    IKeyValueDBCursor? LastCursor { get; set; }
 }

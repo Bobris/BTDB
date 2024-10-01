@@ -12,7 +12,7 @@ public class CompactionStressTest
     public void Run(string dbDirectory, CancellationToken cancellationToken)
     {
         using var fc = new OnDiskFileCollection(dbDirectory);
-        using var lowDb = new KeyValueDB(fc, new NoCompressionStrategy(), 2000);
+        using var lowDb = new BTreeKeyValueDB(fc, new NoCompressionStrategy(), 2000);
 
         var values = new List<byte[]>(100);
         for (var i = 0; i < 100; i++)

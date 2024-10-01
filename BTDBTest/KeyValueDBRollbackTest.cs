@@ -13,7 +13,7 @@ public class KeyValueDBRollbackTest
     public void CanRollback()
     {
         using var fileCollection = new InMemoryFileCollection();
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -39,7 +39,7 @@ public class KeyValueDBRollbackTest
             }
         }
 
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -57,7 +57,7 @@ public class KeyValueDBRollbackTest
         }
 
         // All commits after 50 are lost
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -73,7 +73,7 @@ public class KeyValueDBRollbackTest
         }
 
         // Opening without long enough preserving in previous open, removed possibility to rollback before it
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -93,7 +93,7 @@ public class KeyValueDBRollbackTest
     public void CannotRollbackTooFar()
     {
         using var fileCollection = new InMemoryFileCollection();
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -118,7 +118,7 @@ public class KeyValueDBRollbackTest
             }
         }
 
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -137,7 +137,7 @@ public class KeyValueDBRollbackTest
     public void CanRollbackToStartIfNoTrlMissing()
     {
         using var fileCollection = new InMemoryFileCollection();
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -161,7 +161,7 @@ public class KeyValueDBRollbackTest
             }
         }
 
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -176,7 +176,7 @@ public class KeyValueDBRollbackTest
         }
 
         // Again after open with OpenUpToCommitUlong you lost option to replay old history
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -195,7 +195,7 @@ public class KeyValueDBRollbackTest
     public void CannotRollbackToStartIfAnyTrlMissing()
     {
         using var fileCollection = new InMemoryFileCollection();
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -220,7 +220,7 @@ public class KeyValueDBRollbackTest
             }
         }
 
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 1024,
@@ -249,7 +249,7 @@ public class KeyValueDBRollbackTest
             CompactorScheduler = CompactorScheduler.Instance,
         };
 
-        using (var kvDb = new KeyValueDB(options))
+        using (var kvDb = new BTreeKeyValueDB(options))
         using (var objDb = new ObjectDB())
         {
             objDb.Open(kvDb, false);
@@ -274,7 +274,7 @@ public class KeyValueDBRollbackTest
             PreserveHistoryUpToCommitUlong = 9UL,
             CompactorScheduler = CompactorScheduler.Instance,
         };
-        using (var kvDb = new KeyValueDB(options))
+        using (var kvDb = new BTreeKeyValueDB(options))
         using (var objDb = new ObjectDB())
         {
             objDb.Open(kvDb, false);
@@ -304,7 +304,7 @@ public class KeyValueDBRollbackTest
             PreserveHistoryUpToCommitUlong = 50UL,
             CompactorScheduler = CompactorScheduler.Instance,
         };
-        using (var kvDb = new KeyValueDB(options))
+        using (var kvDb = new BTreeKeyValueDB(options))
         using (var objDb = new ObjectDB())
         {
             objDb.Open(kvDb, false);
@@ -330,7 +330,7 @@ public class KeyValueDBRollbackTest
             CompactorScheduler = CompactorScheduler.Instance,
         };
 
-        using (var kvDb = new KeyValueDB(options))
+        using (var kvDb = new BTreeKeyValueDB(options))
         using (var objDb = new ObjectDB())
         {
             objDb.Open(kvDb, false);
@@ -355,7 +355,7 @@ public class KeyValueDBRollbackTest
             PreserveHistoryUpToCommitUlong = 9UL,
             CompactorScheduler = CompactorScheduler.Instance,
         };
-        using (var kvDb = new KeyValueDB(options))
+        using (var kvDb = new BTreeKeyValueDB(options))
         using (var objDb = new ObjectDB())
         {
             objDb.Open(kvDb, false);
@@ -378,7 +378,7 @@ public class KeyValueDBRollbackTest
             FileSplitSize = 100 * 1024 * 1024,
             CompactorScheduler = CompactorScheduler.Instance,
         };
-        using (var kvDb = new KeyValueDB(options))
+        using (var kvDb = new BTreeKeyValueDB(options))
         using (var objDb = new ObjectDB())
         {
             objDb.Open(kvDb, false);
@@ -408,7 +408,7 @@ public class KeyValueDBRollbackTest
             PreserveHistoryUpToCommitUlong = 50UL,
             CompactorScheduler = CompactorScheduler.Instance,
         };
-        using (var kvDb = new KeyValueDB(options))
+        using (var kvDb = new BTreeKeyValueDB(options))
         using (var objDb = new ObjectDB())
         {
             objDb.Open(kvDb, false);
@@ -424,7 +424,7 @@ public class KeyValueDBRollbackTest
     public void ReopenAndReopenWithRollbackDoesNotCorruptDB()
     {
         using var fileCollection = new InMemoryFileCollection();
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 4096,
@@ -458,7 +458,7 @@ public class KeyValueDBRollbackTest
             }
         }
 
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 4096,
@@ -470,7 +470,7 @@ public class KeyValueDBRollbackTest
             ReadAllValues(kv);
         }
 
-        using (var kv = new KeyValueDB(new KeyValueDBOptions
+        using (var kv = new BTreeKeyValueDB(new KeyValueDBOptions
                {
                    FileCollection = fileCollection,
                    FileSplitSize = 4096,
@@ -507,7 +507,7 @@ public class KeyValueDBRollbackTest
             CompactorScheduler = null,
         };
 
-        using var kvDb = new KeyValueDB(options);
+        using var kvDb = new BTreeKeyValueDB(options);
         for (var i = 0; i < 100; i++)
         {
             using var tr = kvDb.StartWritingTransaction().Result;
@@ -573,7 +573,7 @@ public class KeyValueDBRollbackTest
             CompactorScheduler = null,
         };
 
-        using var kvDb = new KeyValueDB(options);
+        using var kvDb = new BTreeKeyValueDB(options);
         for (var i = 0; i < 100; i++)
         {
             using var tr = kvDb.StartWritingTransaction().Result;
@@ -636,7 +636,7 @@ public class KeyValueDBRollbackTest
             CompactorScheduler = null,
         };
 
-        using (var kvDb = new KeyValueDB(options))
+        using (var kvDb = new BTreeKeyValueDB(options))
         {
             using (var tr = kvDb.StartWritingTransaction().Result)
             {
@@ -648,7 +648,7 @@ public class KeyValueDBRollbackTest
             kvDb.Compact(CancellationToken.None);
         }
 
-        using (var kvDb = new KeyValueDB(options))
+        using (var kvDb = new BTreeKeyValueDB(options))
         {
             using (var tr = kvDb.StartWritingTransaction().Result)
             {
@@ -660,7 +660,7 @@ public class KeyValueDBRollbackTest
             kvDb.Compact(CancellationToken.None);
         }
 
-        using (var kvDb = new KeyValueDB(options))
+        using (var kvDb = new BTreeKeyValueDB(options))
         {
             // If there is error in KVI 3 it will create new KVI 4, but there is no problem in KVI 3
             Assert.Null(kvDb.FileCollection.FileInfoByIdx(4));

@@ -922,7 +922,7 @@ public class EventStore2Test
     [Fact]
     public void CanSerializeOdbDictionary()
     {
-        using (var kvDb = new KeyValueDB(new InMemoryFileCollection()))
+        using (var kvDb = new BTreeKeyValueDB(new InMemoryFileCollection()))
         using (var objDb = new ObjectDB())
         {
             objDb.Open(kvDb, false);

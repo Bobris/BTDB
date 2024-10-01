@@ -23,7 +23,7 @@ namespace ODbDump
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 Console.WriteLine(
-                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, statm, fileheaders, compact, export, import, leaks, leakscode, leakscodeapply, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump, printlast, updatelast, fix");
+                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, leakscodeapply, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump, printlast, updatelast, fix");
                 return;
             }
 
@@ -307,25 +307,6 @@ namespace ODbDump
 
                     break;
                 }
-                case "statm": // Stat but by old managed implementation
-                {
-                    var sw = new Stopwatch();
-                    sw.Start();
-                    using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(new KeyValueDBOptions
-                    {
-                        FileCollection = dfc,
-                        ReadOnly = true,
-                        Compression = new SnappyCompressionStrategy(),
-                        OpenUpToCommitUlong = args.Length >= 3 ? ulong.Parse(args[2]) : null
-                    });
-                    sw.Stop();
-                    Console.WriteLine(
-                        $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
-                    Console.WriteLine(kdb.CalcStats());
-
-                    break;
-                }
                 case "kvi":
                 {
                     var sw = Stopwatch.StartNew();
@@ -339,20 +320,6 @@ namespace ODbDump
                         Logger = new ConsoleKvdbLogger(),
                     };
                     using var kdb = new BTreeKeyValueDB(options);
-                    Console.WriteLine(
-                        $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
-                    sw.Restart();
-                    kdb.CreateKvi(CancellationToken.None);
-                    Console.WriteLine(
-                        $"Created kvi in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
-
-                    break;
-                }
-                case "kvim": // Kvi but by old managed implementation
-                {
-                    var sw = Stopwatch.StartNew();
-                    using var dfc = new OnDiskFileCollection(args[0]);
-                    using var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null);
                     Console.WriteLine(
                         $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
                     sw.Restart();

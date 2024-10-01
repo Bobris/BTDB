@@ -12,7 +12,7 @@ public class ChunkStorageTest : IDisposable
     readonly ThreadLocal<HashAlgorithm> _hashAlg = new(SHA1.Create);
 
     readonly IFileCollection _fileCollection;
-    KeyValueDB _kvdb;
+    BTreeKeyValueDB _kvdb;
     IChunkStorage _cs;
 
     ByteBuffer CalcHash(byte[] bytes)
@@ -23,8 +23,8 @@ public class ChunkStorageTest : IDisposable
     public ChunkStorageTest()
     {
         _fileCollection = new InMemoryFileCollection();
-        _kvdb = new KeyValueDB(_fileCollection);
-        _cs = _kvdb.GetSubDB<IChunkStorage>(1);
+        _kvdb = new BTreeKeyValueDB(_fileCollection);
+        _cs = _kvdb.GetSubDB<IChunkStorage>(1)!;
     }
 
     public void Dispose()
@@ -36,7 +36,7 @@ public class ChunkStorageTest : IDisposable
     void ReopenStorage()
     {
         _kvdb.Dispose();
-        _kvdb = new KeyValueDB(_fileCollection);
+        _kvdb = new BTreeKeyValueDB(_fileCollection);
         _cs = _kvdb.GetSubDB<IChunkStorage>(1);
     }
 

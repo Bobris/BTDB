@@ -11,23 +11,24 @@ namespace SimpleTester;
 
 public class Person
 {
-    [PrimaryKey(1)]
-    public int ParentId { get; set; }
-    [PrimaryKey(2)]
-    public int PersonId { get; set; }
+    [PrimaryKey(1)] public int ParentId { get; set; }
+    [PrimaryKey(2)] public int PersonId { get; set; }
     public string Name { get; set; } = null!;
     public ulong Age { get; set; }
     public IList<Person> Children { get; set; } = null!;
 }
+
 public class PersonOnlyId
 {
     public int ParentId { get; set; }
     public int PersonId { get; set; }
 }
+
 public class PersonOnlyName : PersonOnlyId
 {
     public string Name { get; set; } = null!;
 }
+
 public interface IPersonTable : IRelation<Person>
 {
     bool RemoveById(int parentId, int personId);
@@ -49,7 +50,7 @@ public class BenchmarkRelationPartialView : IDisposable
     public BenchmarkRelationPartialView()
     {
         _fc = new InMemoryFileCollection();
-        var lowDb = new KeyValueDB(_fc);
+        var lowDb = new BTreeKeyValueDB(_fc);
         _db = new ObjectDB();
         _db.Open(lowDb, true);
         using var tr = _db.StartTransaction();
@@ -62,10 +63,12 @@ public class BenchmarkRelationPartialView : IDisposable
                 PersonId = i,
                 Age = (ulong)(i / 128),
                 Name = "Lorem ipsum " + i,
-                Children = Enumerable.Range(0, 100).Select(j => new Person { ParentId = i, PersonId = i * 100 + j, Name = "Lorem ipsum child " + j, Age = (ulong)j }).ToList()
+                Children = Enumerable.Range(0, 100).Select(j => new Person
+                    { ParentId = i, PersonId = i * 100 + j, Name = "Lorem ipsum child " + j, Age = (ulong)j }).ToList()
             };
             table.Upsert(p);
         }
+
         tr.Commit();
         _tr = _db.StartReadOnlyTransaction();
         _table = _tr.GetRelation<IPersonTable>();

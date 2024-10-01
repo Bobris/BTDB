@@ -25,11 +25,13 @@ public class TestCompactor
             {
                 m.Data![counter + i] = data;
             }
+
             if (counter >= step)
             {
                 for (var i = 0ul; i < step; i++)
                     m.Data!.Remove(counter - step + i);
             }
+
             counter += 1000;
             tr.Commit();
         }
@@ -38,7 +40,7 @@ public class TestCompactor
     static ObjectDB CreateDb()
     {
         var fc = new OnDiskFileCollection(".");
-        var lowDb = new KeyValueDB(fc, new NoCompressionStrategy());
+        var lowDb = new BTreeKeyValueDB(fc, new NoCompressionStrategy());
         var db = new ObjectDB();
         db.Open(lowDb, true);
         return db;

@@ -89,7 +89,7 @@ public class MultiCoreDBTest : IKeyValueDBLogger
         Directory.Delete(_dbdir, true);
         Directory.CreateDirectory(_dbdir);
         _fc = new OnDiskFileCollection(_dbdir);
-        _kvdb = new KeyValueDB(new KeyValueDBOptions
+        _kvdb = new BTreeKeyValueDB(new KeyValueDBOptions
         {
             Compression = new SnappyCompressionStrategy(),
             FileSplitSize = 100 * 1024 * 1024,
@@ -124,10 +124,12 @@ public class MultiCoreDBTest : IKeyValueDBLogger
 
     public void CompactionCreatedPureValueFile(uint fileId, ulong size, uint itemsInMap, ulong roughMemory)
     {
-        Console.WriteLine($"Pvl file {fileId} with size {size} created. Items in map {itemsInMap} roughly {roughMemory} bytes.");
+        Console.WriteLine(
+            $"Pvl file {fileId} with size {size} created. Items in map {itemsInMap} roughly {roughMemory} bytes.");
     }
 
-    public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration, ulong beforeCompressionSize)
+    public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration,
+        ulong beforeCompressionSize)
     {
         Console.WriteLine(
             $"KeyValueIndexCreated file id: {fileId} kvcount: {keyValueCount} size: {size}({beforeCompressionSize}) duration: {duration.TotalSeconds:F2}s");
@@ -168,7 +170,8 @@ public class MultiCoreDBTest : IKeyValueDBLogger
                         cancelationSource.Cancel();
                         break;
                     case "m":
-                        Console.WriteLine($"GC Memory: {GC.GetTotalMemory(false)} Working set: {Process.GetCurrentProcess().WorkingSet64}");
+                        Console.WriteLine(
+                            $"GC Memory: {GC.GetTotalMemory(false)} Working set: {Process.GetCurrentProcess().WorkingSet64}");
                         break;
                     case "s":
                         Console.WriteLine(_kvdb!.CalcStats());

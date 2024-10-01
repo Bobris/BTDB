@@ -27,7 +27,7 @@ public class CompactorLatencyMeasurement
     public void Run()
     {
         var collection = new InMemoryFileCollection();
-        using (var kvDb = new KeyValueDB(collection, new NoCompressionStrategy(), 100 * 1024 * 1024))
+        using (var kvDb = new BTreeKeyValueDB(collection, new NoCompressionStrategy(), 100 * 1024 * 1024))
         {
             ulong itemsCount = 0;
             using (var objDb = new ObjectDB())
@@ -53,6 +53,7 @@ public class CompactorLatencyMeasurement
 
                     tr.Commit();
                 }
+
                 Console.WriteLine("finished generating");
 
 
@@ -123,8 +124,10 @@ public class CompactorLatencyMeasurement
                     if ((compactionFinishedBeforeLasttransaction && compactionFinished.IsSet))
                         break;
                 }
-                Console.WriteLine("Finished concurrent transaction creation, longest transaction create time was {0}ms, " +
-                                 "average {1}ms, iterations {2}", msMax, average / (double)iterations, iterations);
+
+                Console.WriteLine(
+                    "Finished concurrent transaction creation, longest transaction create time was {0}ms, " +
+                    "average {1}ms, iterations {2}", msMax, average / (double)iterations, iterations);
             }
         }
     }
