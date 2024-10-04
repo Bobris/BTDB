@@ -612,20 +612,27 @@ namespace ODbDump
                 }
                 else
                 {
-                    if (keyIndex.Compression != KeyIndexCompression.None)
-                        return "";
-                    for (var i = 0; i < keyCount; i++)
+                    var kviCompressionStrategy = new DefaultCompressionKviStrategy();
+                    var decompressionReader =
+                        kviCompressionStrategy.StartDecompression(keyIndex.Compression, reader);
+                    try
                     {
-                        reader.SkipVUInt32();
-                        var keyLengthWithoutPrefix = (int)reader.ReadVUInt32();
-                        reader.SkipBlock((uint)keyLengthWithoutPrefix);
-                        var vFileId = reader.ReadVUInt32();
-                        reader.SkipVUInt32();
-                        var len = reader.ReadVInt32();
-                        if (vFileId > 0) usedFileIds.GetOrAddValueRef(vFileId) += (ulong)Math.Abs(len);
+                        for (var i = 0; i < keyCount; i++)
+                        {
+                            decompressionReader.SkipVUInt32();
+                            var keyLengthWithoutPrefix = (int)decompressionReader.ReadVUInt32();
+                            decompressionReader.SkipBlock((uint)keyLengthWithoutPrefix);
+                            var vFileId = decompressionReader.ReadVUInt32();
+                            decompressionReader.SkipVUInt32();
+                            var len = decompressionReader.ReadVInt32();
+                            if (vFileId > 0) usedFileIds.GetOrAddValueRef(vFileId) += (ulong)Math.Abs(len);
+                        }
+                    }
+                    finally
+                    {
+                        kviCompressionStrategy.FinishDecompression(keyIndex.Compression, decompressionReader, ref reader);
                     }
                 }
-
                 var used = usedFileIds.OrderBy(a => a.Key).ToArray();
                 var sb = new StringBuilder();
                 foreach (var keyValuePair in used)
