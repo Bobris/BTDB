@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.16.0
+
 ### Fixed
 
 Corruption of DB in rare cases with compaction and lazy flushing data.
