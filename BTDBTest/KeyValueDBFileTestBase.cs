@@ -461,7 +461,8 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
         }
 
-        public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration, ulong beforeCompressionSize)
+        public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration,
+            ulong beforeCompressionSize)
         {
             KviTime = duration;
         }
@@ -562,10 +563,14 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
 
         db.Compact(CancellationToken.None);
         Assert.Equal(93u, logger.MarkedForDeleteCount);
-        Assert.Equal("Compactor didn't removed all waste (2375267), because it created 20 PVL files already. Remaining waste left to next compaction.", logger.LastWarning);
+        Assert.Equal(
+            "Compactor didn't removed all waste (2375267), because it created 20 PVL files already. Remaining waste left to next compaction.",
+            logger.LastWarning);
         db.Compact(CancellationToken.None);
         Assert.Equal(174u, logger.MarkedForDeleteCount);
-        Assert.Equal("Compactor didn't removed all waste (1859507), because it created 20 PVL files already. Remaining waste left to next compaction.", logger.LastWarning);
+        Assert.Equal(
+            "Compactor didn't removed all waste (1859507), because it created 20 PVL files already. Remaining waste left to next compaction.",
+            logger.LastWarning);
     }
 
     [Fact]
@@ -626,9 +631,42 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         }
     }
 
-    [Theory]
-    [InlineData(100)]
-    [InlineData(100000)]
+    [Fact]
+    public void CompactorEvenWithLossOfNotFlushedDataWillNotAnyData()
+    {
+        using var fc = new InMemoryFileCollection();
+        {
+            using var db = NewKeyValueDB(fc, new NoCompressionStrategy(), 1024);
+            {
+                using var tr = db.StartTransaction();
+                tr.CreateOrUpdateKeyValue(new byte[10], new byte[400]);
+                tr.Commit();
+            }
+            {
+                using var tr = db.StartTransaction();
+                tr.CreateOrUpdateKeyValue(new byte[40], new byte[560]);
+                tr.Commit();
+            }
+            db.Compact(CancellationToken.None);
+
+            {
+                using var tr = db.StartTransaction();
+                tr.FindFirstKey(new byte[40]);
+                tr.EraseCurrent();
+                tr.CreateOrUpdateKeyValue(new byte[10], new byte[100]);
+                tr.Commit();
+            }
+            db.Compact(CancellationToken.None);
+            fc.SimulateDataLossOfNotFlushedData();
+        }
+        {
+            using var db = NewKeyValueDB(fc, new NoCompressionStrategy(), 1024);
+            using var tr = db.StartTransaction();
+            Assert.Equal(FindResult.Exact, tr.Find(new byte[10], 0));
+            Assert.Equal(100, tr.GetValue().Length);
+        }
+    }
+
     public void CanChangeKeySuffixAndDataAreCorrectlyReplayedFromTrl(int keyLength)
     {
         using var fc = new InMemoryFileCollection();
@@ -641,6 +679,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
                 key[10] = (byte)i;
                 tr.CreateOrUpdateKeyValue(key, new byte[i]);
             }
+
             key[keyLength - 1] = 1;
             for (var i = 0; i < 250; i++)
             {
@@ -651,6 +690,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
                 Assert.Equal(i, tr.GetKeyIndex());
                 Assert.Equal(250, tr.GetKeyValueCount());
             }
+
             tr.Commit();
         }
         {

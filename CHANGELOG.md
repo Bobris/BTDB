@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+Corruption of DB in rare cases with compaction and lazy flushing data.
+
+Allowed to serialize to EventLayer relations with computed fields.
+
 ### Optimized
 
 SeqLock is even faster.

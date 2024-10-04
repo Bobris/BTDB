@@ -152,6 +152,11 @@ class Compactor
                 _keyValueDB.DereferenceRootNodeInternal(lastCommitted);
             }
 
+            {
+                using var flushingTransaction = _keyValueDB.StartWritingTransaction().GetAwaiter().GetResult();
+                flushingTransaction.NextCommitTemporaryCloseTransactionLog();
+                flushingTransaction.Commit();
+            }
             MarkTotallyUselessFilesAsUnknown();
             _keyValueDB.FileCollection.DeleteAllUnknownFiles();
             var totalWaste = CalcTotalWaste();

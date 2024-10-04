@@ -22,6 +22,14 @@ public class InMemoryFileCollection : IFileCollection
         _maxFileId = 0;
     }
 
+    public void SimulateDataLossOfNotFlushedData()
+    {
+        foreach (var filesValue in _files.Values)
+        {
+            filesValue.SimulateDataLossOfNotFushedData();
+        }
+    }
+
     class File : IFileCollectionFile
     {
         readonly InMemoryFileCollection _owner;
@@ -29,6 +37,7 @@ public class InMemoryFileCollection : IFileCollection
         byte[][] _data = Array.Empty<byte[]>();
         readonly Writer _writer;
         long _flushedSize;
+        long _lastTrueFlushedSize;
         const int OneBufSize = 128 * 1024;
 
         public File(InMemoryFileCollection owner, uint index)
@@ -36,6 +45,12 @@ public class InMemoryFileCollection : IFileCollection
             _owner = owner;
             _index = index;
             _writer = new Writer(this);
+        }
+
+        internal void SimulateDataLossOfNotFushedData()
+        {
+            _flushedSize = _lastTrueFlushedSize;
+            _writer.SimulateCorruptionBySetSize((int)_flushedSize);
         }
 
         public uint Index => _index;
@@ -257,16 +272,19 @@ public class InMemoryFileCollection : IFileCollection
 
         public void Truncate()
         {
+            _lastTrueFlushedSize = _flushedSize;
         }
 
         public void HardFlushTruncateSwitchToReadOnlyMode()
         {
-            // We are only in memory, so nothing to do
+            // We are only in memory, so nothing to do, only remember last true flushed size to be able to simulate data loss
+            _lastTrueFlushedSize = _flushedSize;
         }
 
         public void HardFlushTruncateSwitchToDisposedMode()
         {
-            // We are only in memory, so nothing to do
+            // We are only in memory, so nothing to do, only remember last true flushed size to be able to simulate data loss
+            _lastTrueFlushedSize = _flushedSize;
         }
 
         public ulong GetSize()
