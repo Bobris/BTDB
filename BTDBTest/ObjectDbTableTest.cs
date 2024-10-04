@@ -3101,6 +3101,30 @@ namespace BTDBTest
             rel.Upsert(new() { PlannedMigrationStart = new(1, DateTime.UtcNow) });
             tr.Commit();
         }
+
+        public class Invoice
+        {
+            [PrimaryKey(1)]
+            public ulong CompanyId { get; set; }
+            [SecondaryKey("ArchiveIdForMigration", IncludePrimaryKeyOrder = 1)]
+            [NotStored]
+            public string? OldArchiveIdForMigration => ArchiveId;
+            public string ArchiveId { get; set; }
+        }
+
+        public interface IInvoiceTable : IRelation<Invoice>
+        {
+            IEnumerable<Invoice> FindByArchiveIdForMigration(ulong companyId, string oldArchiveIdForMigration);
+        }
+
+        [Fact]
+        public void SupportsNotStoredAttributed_OnComputedProperty_ThatIsSecondaryKey()
+        {
+            using var tr = _db.StartTransaction();
+            var rel = tr.GetRelation<IInvoiceTable>();
+            rel.Upsert(new Invoice(){CompanyId = 1, ArchiveId = "1"});
+            Assert.Single(rel.FindByArchiveIdForMigration(1, "1"));
+        }
     }
 }
 
