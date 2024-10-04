@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using BTDB.Buffer;
 using BTDB.Encrypted;
+using BTDB.EventStore2Layer;
 using BTDB.FieldHandler;
 using BTDB.IOC;
 using BTDB.KVDBLayer;
@@ -3104,11 +3105,11 @@ namespace BTDBTest
 
         public class Invoice
         {
-            [PrimaryKey(1)]
-            public ulong CompanyId { get; set; }
+            [PrimaryKey(1)] public ulong CompanyId { get; set; }
+
             [SecondaryKey("ArchiveIdForMigration", IncludePrimaryKeyOrder = 1)]
-            [NotStored]
             public string? OldArchiveIdForMigration => ArchiveId;
+
             public string ArchiveId { get; set; }
         }
 
@@ -3118,12 +3119,13 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void SupportsNotStoredAttributed_OnComputedProperty_ThatIsSecondaryKey()
+        public void CanSerializeObjectWithComputedPropertyToEventLayer()
         {
             using var tr = _db.StartTransaction();
             var rel = tr.GetRelation<IInvoiceTable>();
-            rel.Upsert(new Invoice(){CompanyId = 1, ArchiveId = "1"});
+            rel.Upsert(new Invoice() { CompanyId = 1, ArchiveId = "1" });
             Assert.Single(rel.FindByArchiveIdForMigration(1, "1"));
+            new EventSerializer().Serialize(out var _, rel.FindByArchiveIdForMigration(1, "1").First());
         }
     }
 }
