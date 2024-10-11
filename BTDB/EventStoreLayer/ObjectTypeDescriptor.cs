@@ -100,6 +100,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     static bool ShouldNotBeStored(ICustomAttributeProvider propertyInfo)
     {
         return propertyInfo.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0
+               || propertyInfo.GetCustomAttributes(typeof(CompilerGeneratedAttribute), true).Length != 0
                || propertyInfo.GetCustomAttributes(typeof(SecondaryKeyAttribute), true).Length != 0 &&
                propertyInfo is PropertyInfo { CanWrite: false };
     }
