@@ -20,7 +20,10 @@ public interface ICursor
     long CalcIndex();
     bool IsValid();
     int GetKeyLength();
+    ReadOnlySpan<byte> GetKeyParts(out ReadOnlySpan<byte> keySuffix);
     ReadOnlySpan<byte> GetKey(scoped ref byte buffer, int bufferLength);
+    ReadOnlyMemory<byte> GetKeyMemory(ref Memory<byte> buffer, bool copy);
+    ReadOnlySpan<byte> GetKeySpan(ref Memory<byte> buffer, bool copy);
     bool KeyHasPrefix(in ReadOnlySpan<byte> prefix);
     int GetValueLength();
     ReadOnlySpan<byte> GetValue();

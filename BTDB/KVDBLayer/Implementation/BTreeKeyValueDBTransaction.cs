@@ -5,14 +5,351 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.BTreeLib;
+using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 
+public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
+{
+    BTreeKeyValueDBTransaction _transaction;
+    ICursor _cursor;
+    bool _modifiedFromLastFind;
+    long _keyIndex;
+
+    public BTreeKeyValueDBCursor(BTreeKeyValueDBTransaction transaction)
+    {
+        _transaction = transaction;
+        _cursor = transaction.BTreeRoot!.CreateCursor();
+        _modifiedFromLastFind = false;
+        _keyIndex = -1;
+        if (transaction.FirstCursor == null)
+        {
+            transaction.FirstCursor = this;
+            transaction.LastCursor = this;
+        }
+        else
+        {
+            ((IKeyValueDBCursorInternal)transaction.LastCursor!).NextCursor = this;
+            PrevCursor = (IKeyValueDBCursorInternal)transaction.LastCursor;
+            transaction.LastCursor = this;
+        }
+    }
+
+    public void Dispose()
+    {
+        var nextCursor = NextCursor;
+        var prevCursor = PrevCursor;
+        if (nextCursor == null)
+        {
+            if (prevCursor == null)
+            {
+                _transaction.FirstCursor = null!;
+                _transaction.LastCursor = null!;
+            }
+            else
+            {
+                prevCursor.NextCursor = null;
+                _transaction.LastCursor = prevCursor;
+            }
+        }
+        else
+        {
+            nextCursor.PrevCursor = prevCursor;
+            if (prevCursor == null)
+            {
+                _transaction.FirstCursor = nextCursor;
+            }
+            else
+            {
+                prevCursor.NextCursor = nextCursor;
+            }
+        }
+
+        _cursor = null!;
+        _transaction = null!;
+    }
+
+    public IKeyValueDBTransaction Transaction => _transaction;
+
+    public bool ModifiedFromLastFind => _modifiedFromLastFind;
+
+    public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
+    {
+        _keyIndex = -1;
+        return _cursor.FindFirst(prefix);
+    }
+
+    public bool FindLastKey(in ReadOnlySpan<byte> prefix)
+    {
+        _keyIndex = _cursor.FindLastWithPrefix(prefix);
+        return _keyIndex >= 0;
+    }
+
+    public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
+    {
+        if (!_cursor.IsValid()) return FindLastKey(prefix);
+        if (_cursor.MovePrevious())
+        {
+            if (_cursor.KeyHasPrefix(prefix))
+            {
+                if (_keyIndex != -1) _keyIndex--;
+                return true;
+            }
+        }
+
+        _keyIndex = -1;
+        _cursor.Invalidate();
+        return false;
+    }
+
+    public bool FindNextKey(in ReadOnlySpan<byte> prefix)
+    {
+        if (!_cursor.IsValid()) return FindFirstKey(prefix);
+        if (_cursor.MoveNext())
+        {
+            if (_cursor.KeyHasPrefix(prefix))
+            {
+                if (_keyIndex != -1) _keyIndex++;
+                return true;
+            }
+        }
+
+        _keyIndex = -1;
+        _cursor.Invalidate();
+        return false;
+    }
+
+    public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
+    {
+        var result = _cursor.Find(key);
+        _keyIndex = -1;
+        if (prefixLen == 0) return result;
+        switch (result)
+        {
+            case FindResult.Previous when !_cursor.KeyHasPrefix(key[..(int)prefixLen]):
+            {
+                if (!_cursor.MoveNext())
+                {
+                    return FindResult.NotFound;
+                }
+
+                if (_cursor.KeyHasPrefix(key[..(int)prefixLen]))
+                {
+                    return FindResult.Next;
+                }
+
+                _cursor.Invalidate();
+                return FindResult.NotFound;
+            }
+            case FindResult.Next when !_cursor.KeyHasPrefix(key[..(int)prefixLen]):
+                // FindResult.Previous is preferred that's why it has to be NotFound when next does not match prefix
+                _cursor.Invalidate();
+                return FindResult.NotFound;
+            default:
+                return result;
+        }
+    }
+
+    public long GetKeyIndex()
+    {
+        if (_keyIndex == -1) _keyIndex = _cursor.CalcIndex();
+        return _keyIndex;
+    }
+
+    public bool FindKeyIndex(in ReadOnlySpan<byte> prefix, long index)
+    {
+        if (!_cursor.FindFirst(prefix))
+        {
+            _keyIndex = -1;
+            return false;
+        }
+
+        index += _cursor.CalcIndex();
+        if (_cursor.SeekIndex(index))
+        {
+            _keyIndex = index;
+            if (_cursor.KeyHasPrefix(prefix))
+                return true;
+        }
+
+        _keyIndex = -1;
+        _cursor.Invalidate();
+        return false;
+    }
+
+    public bool FindKeyIndex(long index)
+    {
+        _keyIndex = -1;
+        if (_cursor.SeekIndex(index))
+        {
+            _keyIndex = index;
+            return true;
+        }
+
+        _cursor.Invalidate();
+        return false;
+    }
+
+    public void Invalidate()
+    {
+        _keyIndex = -1;
+        _cursor.Invalidate();
+    }
+
+    public bool IsValid()
+    {
+        return _cursor.IsValid();
+    }
+
+    public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
+    {
+        if (!IsValid()) return new();
+        var keyLen = _cursor.GetKeyLength();
+        var trueValue = _cursor.GetValue();
+        return new(
+            (uint)keyLen,
+            _transaction._keyValueDB.CalcValueSize(MemoryMarshal.Read<uint>(trueValue),
+                MemoryMarshal.Read<uint>(trueValue[4..]),
+                MemoryMarshal.Read<int>(trueValue[8..])));
+    }
+
+    public ReadOnlyMemory<byte> GetKeyMemory(ref Memory<byte> buffer, bool copy = false)
+    {
+        return _cursor.GetKeyMemory(ref buffer, copy);
+    }
+
+    public ReadOnlySpan<byte> GetKeySpan(ref Memory<byte> buffer, bool copy = false)
+    {
+        return _cursor.GetKeySpan(ref buffer, copy);
+    }
+
+    public bool IsValueCorrupted()
+    {
+        if (!IsValid()) return false;
+        var trueValue = _cursor.GetValue();
+        return _transaction._keyValueDB.IsCorruptedValue(trueValue);
+    }
+
+    public ReadOnlyMemory<byte> GetValueMemory(ref Memory<byte> buffer, bool copy = false)
+    {
+        if (!IsValid()) return new();
+        var trueValue = _cursor.GetValue();
+        var keyValueDB = _transaction._keyValueDB;
+        try
+        {
+            return keyValueDB.ReadValueMemory(trueValue, ref buffer, copy);
+        }
+        catch (BTDBException ex)
+        {
+            var oldestRoot = (IRootNode)keyValueDB.ReferenceAndGetOldestRoot();
+            var lastCommitted = (IRootNode)keyValueDB.ReferenceAndGetLastCommitted();
+            try
+            {
+                var treeRoot = _transaction.BTreeRoot!;
+                throw new BTDBException(
+                    $"{ex.Message} in TrId:{treeRoot.TransactionId},TRL:{treeRoot.TrLogFileId},Ofs:{treeRoot.TrLogOffset},ComUlong:{treeRoot.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong}",
+                    ex);
+            }
+            finally
+            {
+                keyValueDB.DereferenceRootNodeInternal(oldestRoot);
+                keyValueDB.DereferenceRootNodeInternal(lastCommitted);
+            }
+        }
+    }
+
+    public ReadOnlySpan<byte> GetValueSpan(ref Memory<byte> buffer, bool copy = false)
+    {
+        if (!IsValid()) return new();
+        var trueValue = _cursor.GetValue();
+        var keyValueDB = _transaction._keyValueDB;
+        try
+        {
+            return keyValueDB.ReadValueSpan(trueValue, ref buffer, copy);
+        }
+        catch (BTDBException ex)
+        {
+            var oldestRoot = (IRootNode)keyValueDB.ReferenceAndGetOldestRoot();
+            var lastCommitted = (IRootNode)keyValueDB.ReferenceAndGetLastCommitted();
+            try
+            {
+                var treeRoot = _transaction.BTreeRoot!;
+                throw new BTDBException(
+                    $"{ex.Message} in TrId:{treeRoot.TransactionId},TRL:{treeRoot.TrLogFileId},Ofs:{treeRoot.TrLogOffset},ComUlong:{treeRoot.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong}",
+                    ex);
+            }
+            finally
+            {
+                keyValueDB.DereferenceRootNodeInternal(oldestRoot);
+                keyValueDB.DereferenceRootNodeInternal(lastCommitted);
+            }
+        }
+    }
+
+    void EnsureValidKey()
+    {
+        if (!_cursor.IsValid())
+        {
+            throw new InvalidOperationException("Current key is not valid");
+        }
+    }
+
+    [SkipLocalsInit]
+    public void SetValue(in ReadOnlySpan<byte> value)
+    {
+        EnsureValidKey();
+        _transaction.MakeWritable();
+        Span<byte> trueValue = stackalloc byte[12];
+        _transaction._keyValueDB.WriteCreateOrUpdateCommand(_cursor.GetKeyParts(out var keySuffix), keySuffix, value,
+            trueValue);
+        _cursor.WriteValue(trueValue);
+    }
+
+    public void EraseCurrent()
+    {
+        EnsureValidKey();
+        var keyIndexToRemove = GetKeyIndex();
+        _transaction.MakeWritable();
+        _transaction._keyValueDB.WriteEraseOneCommand(_cursor.GetKeyParts(out var keySuffix), keySuffix);
+        var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
+        while (cursor != null)
+        {
+            if (cursor != this)
+            {
+                cursor.NotifyRemove(keyIndexToRemove, keyIndexToRemove);
+            }
+
+            cursor = cursor.NextCursor;
+        }
+        _cursor.Erase();
+
+        InvalidateCurrentKey();
+    }
+
+    public void NotifyRemove(ulong startIndex, ulong endIndex)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void NotifyInsert(ulong index)
+    {
+        throw new NotImplementedException();
+    }
+
+    public IKeyValueDBCursorInternal? PrevCursor { get; set; }
+    public IKeyValueDBCursorInternal? NextCursor { get; set; }
+
+    public void NotifyWritableTransaction()
+    {
+        _cursor.SetNewRoot(_transaction.BTreeRoot!);
+    }
+}
+
 public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
 {
-    readonly BTreeKeyValueDB _keyValueDB;
+    internal readonly BTreeKeyValueDB _keyValueDB;
     public IRootNode? BTreeRoot;
     readonly ICursor _cursor;
     ICursor? _cursor2;
@@ -44,6 +381,11 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
             Dispose();
             _keyValueDB.Logger?.ReportTransactionLeak(this);
         }
+    }
+
+    public IKeyValueDBCursor CreateCursor()
+    {
+        return new BTreeKeyValueDBCursor(this);
     }
 
     public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
@@ -132,7 +474,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         _cursorMovedCounter++;
         MakeWritable();
         Span<byte> trueValue = stackalloc byte[12];
-        _keyValueDB.WriteCreateOrUpdateCommand(key, value, trueValue);
+        _keyValueDB.WriteCreateOrUpdateCommand(key, default, value, trueValue);
         var result = _cursor.Upsert(key, trueValue);
         _keyIndex = -1;
         return result;
@@ -164,7 +506,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         return UpdateKeySuffixResult.Updated;
     }
 
-    void MakeWritable()
+    internal void MakeWritable()
     {
         if (_writing) return;
         if (_preapprovedWriting)
@@ -181,11 +523,19 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         }
 
         BTreeRoot = _keyValueDB.MakeWritableTransaction(this, BTreeRoot!);
+
         _cursor.SetNewRoot(BTreeRoot);
         _cursor2?.SetNewRoot(BTreeRoot);
         BTreeRoot.DescriptionForLeaks = _descriptionForLeaks;
         _writing = true;
         _keyValueDB.WriteStartTransaction();
+
+        var cursor = (IKeyValueDBCursorInternal)FirstCursor;
+        while (cursor != null)
+        {
+            cursor.NotifyWritableTransaction();
+            cursor = cursor.NextCursor;
+        }
     }
 
     public long GetKeyValueCount()
@@ -352,18 +702,15 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         MakeWritable();
         Span<byte> trueValue = stackalloc byte[12];
         Span<byte> buffer = stackalloc byte[512];
-        _keyValueDB.WriteCreateOrUpdateCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length),
-            value, trueValue);
+        _keyValueDB.WriteCreateOrUpdateCommand(_cursor.GetKeyParts(out var keySuffix), keySuffix, value, trueValue);
         _cursor.WriteValue(trueValue);
     }
 
-    [SkipLocalsInit]
     public void EraseCurrent()
     {
         EnsureValidKey();
         MakeWritable();
-        Span<byte> buffer = stackalloc byte[512];
-        _keyValueDB.WriteEraseOneCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length));
+        _keyValueDB.WriteEraseOneCommand(_cursor.GetKeyParts(out var keySuffix), keySuffix);
         _cursor.Erase();
         InvalidateCurrentKey();
     }
@@ -377,7 +724,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         }
 
         MakeWritable();
-        _keyValueDB.WriteEraseOneCommand(exactKey);
+        _keyValueDB.WriteEraseOneCommand(exactKey, default);
         _cursor.Erase();
         InvalidateCurrentKey();
         return true;
@@ -393,7 +740,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
 
         GetValue(ref valueReader);
         MakeWritable();
-        _keyValueDB.WriteEraseOneCommand(exactKey);
+        _keyValueDB.WriteEraseOneCommand(exactKey, default);
         _cursor.Erase();
         InvalidateCurrentKey();
         return true;
@@ -416,17 +763,14 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         {
             _cursor2 ??= BTreeRoot!.CreateCursor();
             _cursor2.SeekIndex(lastKeyIndex);
-            Span<byte> buffer = stackalloc byte[512];
-            Span<byte> buffer2 = stackalloc byte[512];
-            var firstKey = _cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length);
-            var secondKey = _cursor2.GetKey(ref MemoryMarshal.GetReference(buffer2), buffer2.Length);
-            _keyValueDB.WriteEraseRangeCommand(firstKey, secondKey);
+            var firstKeyPrefix = _cursor.GetKeyParts(out var firstKeySuffix);
+            var secondKeyPrefix = _cursor2.GetKeyParts(out var secondKeySuffix);
+            _keyValueDB.WriteEraseRangeCommand(firstKeyPrefix, firstKeySuffix, secondKeyPrefix, secondKeySuffix);
             _cursor.EraseTo(_cursor2);
         }
         else
         {
-            Span<byte> buffer = stackalloc byte[512];
-            _keyValueDB.WriteEraseOneCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length));
+            _keyValueDB.WriteEraseOneCommand(_cursor.GetKeyParts(out var keySuffix), keySuffix);
             _cursor.Erase();
         }
 
@@ -575,4 +919,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         BTreeRoot!.CalcBTreeStats(stats, 0);
         return stats.ToDictionary(kv => kv.Key, kv => kv.Value);
     }
+
+    public IKeyValueDBCursor? FirstCursor { get; set; }
+    public IKeyValueDBCursor? LastCursor { get; set; }
 }

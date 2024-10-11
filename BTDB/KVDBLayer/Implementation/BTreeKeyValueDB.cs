@@ -1445,19 +1445,21 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         AdjustFileSize();
     }
 
-    public void WriteCreateOrUpdateCommand(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value,
+    public void WriteCreateOrUpdateCommand(in ReadOnlySpan<byte> keyPrefix, in ReadOnlySpan<byte> keySuffix,
+        in ReadOnlySpan<byte> value,
         in Span<byte> trueValue)
     {
         var trlPos = _writerWithTransactionLog.GetCurrentPosition();
-        if (trlPos > 256 && trlPos + key.Length + 16 + value.Length > MaxTrLogFileSize)
+        if (trlPos > 256 && trlPos + keyPrefix.Length + keySuffix.Length + 16 + value.Length > MaxTrLogFileSize)
         {
             WriteStartOfNewTransactionLogFile();
         }
 
         _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.CreateOrUpdate);
-        _writerWithTransactionLog.WriteVInt32(key.Length);
+        _writerWithTransactionLog.WriteVInt32(keyPrefix.Length + keySuffix.Length);
         _writerWithTransactionLog.WriteVInt32(value.Length);
-        _writerWithTransactionLog.WriteBlock(key);
+        _writerWithTransactionLog.WriteBlock(keyPrefix);
+        _writerWithTransactionLog.WriteBlock(keySuffix);
         if (value.Length != 0)
         {
             if (value.Length <= MaxValueSizeInlineInMemory)
@@ -1561,7 +1563,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    public void WriteEraseOneCommand(in ReadOnlySpan<byte> key)
+    public void WriteEraseOneCommand(in ReadOnlySpan<byte> keyPrefix, in ReadOnlySpan<byte> keySuffix)
     {
         if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
         {
@@ -1569,11 +1571,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
 
         _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.EraseOne);
-        _writerWithTransactionLog.WriteVInt32(key.Length);
-        _writerWithTransactionLog.WriteBlock(key);
+        _writerWithTransactionLog.WriteVInt32(keyPrefix.Length + keySuffix.Length);
+        _writerWithTransactionLog.WriteBlock(keyPrefix);
+        _writerWithTransactionLog.WriteBlock(keySuffix);
     }
 
-    public void WriteEraseRangeCommand(in ReadOnlySpan<byte> firstKey, in ReadOnlySpan<byte> secondKey)
+    public void WriteEraseRangeCommand(in ReadOnlySpan<byte> firstKeyPrefix, in ReadOnlySpan<byte> firstKeySuffix,
+        in ReadOnlySpan<byte> secondKeyPrefix, in ReadOnlySpan<byte> secondKeySuffix)
     {
         if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
         {
@@ -1581,10 +1585,12 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
 
         _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.EraseRange);
-        _writerWithTransactionLog.WriteVInt32(firstKey.Length);
-        _writerWithTransactionLog.WriteVInt32(secondKey.Length);
-        _writerWithTransactionLog.WriteBlock(firstKey);
-        _writerWithTransactionLog.WriteBlock(secondKey);
+        _writerWithTransactionLog.WriteVInt32(firstKeyPrefix.Length + firstKeySuffix.Length);
+        _writerWithTransactionLog.WriteVInt32(secondKeyPrefix.Length + secondKeySuffix.Length);
+        _writerWithTransactionLog.WriteBlock(firstKeyPrefix);
+        _writerWithTransactionLog.WriteBlock(firstKeySuffix);
+        _writerWithTransactionLog.WriteBlock(secondKeyPrefix);
+        _writerWithTransactionLog.WriteBlock(secondKeySuffix);
     }
 
     uint CreateKeyIndexFile(IRootNode root, CancellationToken cancellation, bool fullSpeed)
@@ -1896,5 +1902,113 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         if (file == null)
             return true;
         return valueOfs + (ulong)valueSize > file.GetSize();
+    }
+
+    public ReadOnlyMemory<byte> ReadValueMemory(ReadOnlySpan<byte> trueValue, ref Memory<byte> buffer, bool copy)
+    {
+        var valueFileId = MemoryMarshal.Read<uint>(trueValue);
+        if (valueFileId == 0)
+        {
+            var len = trueValue[4];
+            var res = trueValue.Slice(5, len);
+            if (copy)
+            {
+                if (buffer.Length < len)
+                {
+                    buffer = GC.AllocateUninitializedArray<byte>(len);
+                }
+
+                res.CopyTo(buffer.Span);
+                return buffer[..len];
+            }
+
+            return new UnmanagedMemoryManager<byte>(res).Memory;
+        }
+
+        var valueSize = MemoryMarshal.Read<int>(trueValue[8..]);
+        if (valueSize == 0)
+        {
+            return default;
+        }
+
+        var valueOfs = MemoryMarshal.Read<uint>(trueValue[4..]);
+
+        var compressed = false;
+        if (valueSize < 0)
+        {
+            compressed = true;
+            valueSize = -valueSize;
+        }
+
+        if (buffer.Length < valueSize)
+        {
+            buffer = GC.AllocateUninitializedArray<byte>(valueSize);
+        }
+
+        var file = FileCollection.GetFile(valueFileId);
+        if (file == null)
+            throw new BTDBException(
+                $"ReadValue({valueFileId},{valueOfs},{valueSize}) compressed: {compressed} file does not exist in {CalcStats()}");
+        file.RandomRead(buffer.Span[..valueSize], valueOfs, false);
+        if (compressed)
+        {
+            return _compression.DecompressValue(buffer.Span[..valueSize]);
+        }
+
+        return buffer[..valueSize];
+    }
+
+    public ReadOnlySpan<byte> ReadValueSpan(ReadOnlySpan<byte> trueValue, ref Memory<byte> buffer, bool copy)
+    {
+        var valueFileId = MemoryMarshal.Read<uint>(trueValue);
+        if (valueFileId == 0)
+        {
+            var len = trueValue[4];
+            var res = trueValue.Slice(5, len);
+            if (copy)
+            {
+                if (buffer.Length < len)
+                {
+                    buffer = GC.AllocateUninitializedArray<byte>(len);
+                }
+
+                res.CopyTo(buffer.Span);
+                return buffer[..len].Span;
+            }
+
+            return res;
+        }
+
+        var valueSize = MemoryMarshal.Read<int>(trueValue[8..]);
+        if (valueSize == 0)
+        {
+            return default;
+        }
+
+        var valueOfs = MemoryMarshal.Read<uint>(trueValue[4..]);
+
+        var compressed = false;
+        if (valueSize < 0)
+        {
+            compressed = true;
+            valueSize = -valueSize;
+        }
+
+        if (buffer.Length < valueSize)
+        {
+            buffer = GC.AllocateUninitializedArray<byte>(valueSize);
+        }
+
+        var file = FileCollection.GetFile(valueFileId);
+        if (file == null)
+            throw new BTDBException(
+                $"ReadValue({valueFileId},{valueOfs},{valueSize}) compressed: {compressed} file does not exist in {CalcStats()}");
+        file.RandomRead(buffer.Span[..valueSize], valueOfs, false);
+        if (compressed)
+        {
+            return _compression.DecompressValue(buffer.Span[..valueSize]);
+        }
+
+        return buffer.Span[..valueSize];
     }
 }

@@ -9,6 +9,7 @@ public interface IKeyValueDBCursorInternal : IKeyValueDBCursor
     void NotifyInsert(ulong index);
     IKeyValueDBCursorInternal? PrevCursor { get; set; }
     IKeyValueDBCursorInternal? NextCursor { get; set; }
+    void NotifyWritableTransaction();
 }
 
 public interface IKeyValueDBCursor : IDisposable
