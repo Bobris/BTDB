@@ -1084,6 +1084,7 @@ public struct MemReader
     {
         if (End - Current < magic.Length)
         {
+            if (Controller is not IMemReader) return false;
             try
             {
                 if (FillBuf((uint)magic.Length))

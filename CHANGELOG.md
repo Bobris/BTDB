@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Optimized
+
+Constraint find could use exception flow making it slower than necessary.
+
 ## 32.16.1
 
 ## 32.16.0
