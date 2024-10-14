@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.16.2
+
 ### Optimized
 
 Constraint find could use exception flow making it slower than necessary.
