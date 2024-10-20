@@ -295,7 +295,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         RecalculateOffsets(leaf._keyValues);
     }
 
-    public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
+    public FindResult FindKey(ref StructList<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
     {
         var idx = Find(key);
         FindResult result;
@@ -326,7 +326,7 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         return _keyBytes.AsSpan(0, _keyValues[0].KeyLength).ToArray();
     }
 
-    public void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex)
+    public void FillStackByIndex(ref StructList<NodeIdxPair> stack, long keyIndex)
     {
         stack.Add(new NodeIdxPair { Node = this, Idx = (int)keyIndex });
     }
@@ -368,12 +368,12 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         return idx + 1 < _keyValues.Length;
     }
 
-    public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
+    public void FillStackByLeftMost(ref StructList<NodeIdxPair> stack, int idx)
     {
         // Nothing to do
     }
 
-    public void FillStackByRightMost(List<NodeIdxPair> stack, int i)
+    public void FillStackByRightMost(ref StructList<NodeIdxPair> stack, int i)
     {
         // Nothing to do
     }
@@ -440,9 +440,9 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         }
     }
 
-    public ReadOnlySpan<byte> GetKey(int idx)
+    public ReadOnlyMemory<byte> GetKey(int idx)
     {
-        return _keyBytes.AsSpan(_keyValues[idx].KeyOffset, _keyValues[idx].KeyLength);
+        return _keyBytes.AsMemory(_keyValues[idx].KeyOffset, _keyValues[idx].KeyLength);
     }
 
     public ReadOnlyMemory<byte> GetMemberValue(int idx)

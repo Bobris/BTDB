@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.Collections;
 
@@ -19,8 +18,7 @@ class BTreeRoot : IBTreeRootNode
     public void CreateOrUpdate(ref CreateOrUpdateCtx ctx)
     {
         ctx.TransactionId = _transactionId;
-        if (ctx.Stack == null) ctx.Stack = new();
-        else ctx.Stack.Clear();
+        ctx.Stack.Clear();
         if (_rootNode == null)
         {
             _rootNode = ctx.Key.Length > BTreeLeafComp.MaxTotalLen
@@ -38,7 +36,7 @@ class BTreeRoot : IBTreeRootNode
         if (ctx.Split)
         {
             _rootNode = new BTreeBranch(ctx.TransactionId, ctx.Node1!, ctx.Node2!);
-            ctx.Stack.Insert(0, new() { Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0 });
+            ctx.Stack.Insert(0) = new() { Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0 };
         }
         else if (ctx.Update)
         {
@@ -54,24 +52,25 @@ class BTreeRoot : IBTreeRootNode
     public void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx)
     {
         ctx.TransactionId = _transactionId;
-        ctx.Stack ??= new();
-        if (FindKey(ctx.Stack, out ctx.KeyIndex, ctx.Key[..(int)ctx.PrefixLen], ctx.PrefixLen) == FindResult.NotFound)
+        if (FindKey(ref ctx.Stack, out ctx.KeyIndex, ctx.Key[..(int)ctx.PrefixLen], ctx.PrefixLen) ==
+            FindResult.NotFound)
         {
             ctx.Result = UpdateKeySuffixResult.NotFound;
             return;
         }
 
-        if (FindNextKey(ctx.Stack))
+        if (FindNextKey(ref ctx.Stack))
         {
-            if (KeyStartsWithPrefix(ctx.Key[..(int)ctx.PrefixLen], GetKeyFromStack(ctx.Stack)))
+            if (KeyStartsWithPrefix(ctx.Key[..(int)ctx.PrefixLen], GetKeyFromStack(ref ctx.Stack).Span))
             {
                 ctx.Result = UpdateKeySuffixResult.NotUniquePrefix;
                 return;
             }
-            FindPreviousKey(ctx.Stack);
+
+            FindPreviousKey(ref ctx.Stack);
         }
 
-        if (ctx.Key.SequenceEqual(GetKeyFromStack(ctx.Stack)))
+        if (ctx.Key.SequenceEqual(GetKeyFromStack(ref ctx.Stack).Span))
         {
             ctx.Result = UpdateKeySuffixResult.NothingToDo;
             return;
@@ -85,12 +84,13 @@ class BTreeRoot : IBTreeRootNode
         }
     }
 
-    public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
+    public FindResult FindKey(ref StructList<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
     {
         throw new InvalidOperationException();
     }
 
-    public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key, uint prefixLen)
+    public FindResult FindKey(ref StructList<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key,
+        uint prefixLen)
     {
         stack.Clear();
         if (_rootNode == null)
@@ -99,7 +99,7 @@ class BTreeRoot : IBTreeRootNode
             return FindResult.NotFound;
         }
 
-        var result = _rootNode.FindKey(stack, out keyIndex, key);
+        var result = _rootNode.FindKey(ref stack, out keyIndex, key);
         if (result == FindResult.Previous)
         {
             if (keyIndex < 0)
@@ -110,18 +110,18 @@ class BTreeRoot : IBTreeRootNode
             }
             else
             {
-                if (!KeyStartsWithPrefix(key[..(int)prefixLen], GetKeyFromStack(stack)))
+                if (!KeyStartsWithPrefix(key[..(int)prefixLen], GetKeyFromStack(ref stack).Span))
                 {
                     result = FindResult.Next;
                     keyIndex++;
-                    if (!FindNextKey(stack))
+                    if (!FindNextKey(ref stack))
                     {
                         return FindResult.NotFound;
                     }
                 }
             }
 
-            if (!KeyStartsWithPrefix(key[..(int)prefixLen], GetKeyFromStack(stack)))
+            if (!KeyStartsWithPrefix(key[..(int)prefixLen], GetKeyFromStack(ref stack).Span))
             {
                 return FindResult.NotFound;
             }
@@ -136,9 +136,9 @@ class BTreeRoot : IBTreeRootNode
         return prefix.SequenceEqual(key[..prefix.Length]);
     }
 
-    static ReadOnlySpan<byte> GetKeyFromStack(List<NodeIdxPair> stack)
+    static ReadOnlyMemory<byte> GetKeyFromStack(ref StructList<NodeIdxPair> stack)
     {
-        var last = stack[^1];
+        ref var last = ref stack.Last;
         return ((IBTreeLeafNode)last.Node).GetKey(last.Idx);
     }
 
@@ -152,11 +152,11 @@ class BTreeRoot : IBTreeRootNode
         return _rootNode!.GetLeftMostKey();
     }
 
-    public void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex)
+    public void FillStackByIndex(ref StructList<NodeIdxPair> stack, long keyIndex)
     {
         Debug.Assert(keyIndex >= 0 && keyIndex < _keyValueCount);
         stack.Clear();
-        _rootNode!.FillStackByIndex(stack, keyIndex);
+        _rootNode!.FillStackByIndex(ref stack, keyIndex);
     }
 
     public long FindLastWithPrefix(in ReadOnlySpan<byte> prefix)
@@ -170,13 +170,13 @@ class BTreeRoot : IBTreeRootNode
         return false;
     }
 
-    public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
+    public void FillStackByLeftMost(ref StructList<NodeIdxPair> stack, int idx)
     {
         stack.Add(new() { Node = _rootNode!, Idx = 0 });
-        _rootNode!.FillStackByLeftMost(stack, 0);
+        _rootNode!.FillStackByLeftMost(ref stack, 0);
     }
 
-    public void FillStackByRightMost(List<NodeIdxPair> stack, int idx)
+    public void FillStackByRightMost(ref StructList<NodeIdxPair> stack, int idx)
     {
         throw new ArgumentException();
     }
@@ -240,17 +240,17 @@ class BTreeRoot : IBTreeRootNode
         }
     }
 
-    public bool FindNextKey(List<NodeIdxPair> stack)
+    public bool FindNextKey(ref StructList<NodeIdxPair> stack)
     {
-        int idx = stack.Count - 1;
+        int idx = (int)stack.Count - 1;
         while (idx >= 0)
         {
             var pair = stack[idx];
             if (pair.Node.NextIdxValid(pair.Idx))
             {
-                stack.RemoveRange(idx + 1, stack.Count - idx - 1);
+                stack.SetCount((uint)idx + 1);
                 stack[idx] = new() { Node = pair.Node, Idx = pair.Idx + 1 };
-                pair.Node.FillStackByLeftMost(stack, pair.Idx + 1);
+                pair.Node.FillStackByLeftMost(ref stack, pair.Idx + 1);
                 return true;
             }
 
@@ -260,17 +260,17 @@ class BTreeRoot : IBTreeRootNode
         return false;
     }
 
-    public bool FindPreviousKey(List<NodeIdxPair> stack)
+    public bool FindPreviousKey(ref StructList<NodeIdxPair> stack)
     {
-        int idx = stack.Count - 1;
+        var idx = (int)stack.Count - 1;
         while (idx >= 0)
         {
             var pair = stack[idx];
             if (pair.Idx > 0)
             {
-                stack.RemoveRange(idx + 1, stack.Count - idx - 1);
+                stack.SetCount((uint)idx + 1);
                 stack[idx] = new() { Node = pair.Node, Idx = pair.Idx - 1 };
-                pair.Node.FillStackByRightMost(stack, pair.Idx - 1);
+                pair.Node.FillStackByRightMost(ref stack, pair.Idx - 1);
                 return true;
             }
 

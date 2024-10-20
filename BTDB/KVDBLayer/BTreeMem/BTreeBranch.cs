@@ -233,11 +233,11 @@ class BTreeBranch : IBTreeNode
         Debug.Assert(newBranch.TransactionId == ctx.TransactionId);
     }
 
-    public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
+    public FindResult FindKey(ref StructList<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
     {
         var idx = Find(key);
         stack.Add(new NodeIdxPair { Node = this, Idx = idx });
-        var result = _children[idx].FindKey(stack, out keyIndex, key);
+        var result = _children[idx].FindKey(ref stack, out keyIndex, key);
         if (idx > 0) keyIndex += _pairCounts[idx - 1];
         return result;
     }
@@ -252,7 +252,7 @@ class BTreeBranch : IBTreeNode
         return _children[0].GetLeftMostKey();
     }
 
-    public void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex)
+    public void FillStackByIndex(ref StructList<NodeIdxPair> stack, long keyIndex)
     {
         var left = 0;
         var right = _pairCounts.Length - 1;
@@ -271,7 +271,7 @@ class BTreeBranch : IBTreeNode
         }
 
         stack.Add(new NodeIdxPair { Node = this, Idx = left });
-        _children[left].FillStackByIndex(stack, keyIndex - (left > 0 ? _pairCounts[left - 1] : 0));
+        _children[left].FillStackByIndex(ref stack, keyIndex - (left > 0 ? _pairCounts[left - 1] : 0));
     }
 
     public long FindLastWithPrefix(in ReadOnlySpan<byte> prefix)
@@ -301,19 +301,19 @@ class BTreeBranch : IBTreeNode
         return idx + 1 < _children.Length;
     }
 
-    public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
+    public void FillStackByLeftMost(ref StructList<NodeIdxPair> stack, int idx)
     {
         var leftMost = _children[idx];
         stack.Add(new NodeIdxPair { Node = leftMost, Idx = 0 });
-        leftMost.FillStackByLeftMost(stack, 0);
+        leftMost.FillStackByLeftMost(ref stack, 0);
     }
 
-    public void FillStackByRightMost(List<NodeIdxPair> stack, int idx)
+    public void FillStackByRightMost(ref StructList<NodeIdxPair> stack, int idx)
     {
         var rightMost = _children[idx];
         var lastIdx = rightMost.GetLastChildrenIdx();
         stack.Add(new NodeIdxPair { Node = rightMost, Idx = lastIdx });
-        rightMost.FillStackByRightMost(stack, lastIdx);
+        rightMost.FillStackByRightMost(ref stack, lastIdx);
     }
 
     public int GetLastChildrenIdx()

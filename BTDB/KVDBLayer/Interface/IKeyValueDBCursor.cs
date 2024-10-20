@@ -6,6 +6,7 @@ namespace BTDB.KVDBLayer;
 public interface IKeyValueDBCursorInternal : IKeyValueDBCursor
 {
     void NotifyRemove(ulong startIndex, ulong endIndex);
+    void PreNotifyUpsert();
     void NotifyInsert(ulong index);
     IKeyValueDBCursorInternal? PrevCursor { get; set; }
     IKeyValueDBCursorInternal? NextCursor { get; set; }
@@ -15,8 +16,6 @@ public interface IKeyValueDBCursorInternal : IKeyValueDBCursor
 public interface IKeyValueDBCursor : IDisposable
 {
     IKeyValueDBTransaction Transaction { get; }
-
-    bool ModifiedFromLastFind { get; }
 
     /// <summary>
     /// Move actual key pointer to first key matching provided prefix.
@@ -119,7 +118,31 @@ public interface IKeyValueDBCursor : IDisposable
 
     /// <summary>
     /// Remove current key and value. Current key will be fuzzy invalidated, you cannot get it, but you can use FindNextKey or FindPreviousKey to logically move to siblings.
-    /// It is same as calling EraseRange(GetKeyIndex(),GetKeyIndex()).
     /// </summary>
     void EraseCurrent();
+
+    /// <summary>
+    /// Remove all keys between current key and provided cursor. Both cursors will be fuzzy invalidated, you cannot get it, but you can use FindNextKey or FindPreviousKey to logically move to siblings.
+    /// If provided cursor is before current key, nothing will be removed.
+    /// </summary>
+    /// <param name="to">Valid cursor which points to last key which should be removed. It must be from same transaction.</param>
+    void EraseUpTo(IKeyValueDBCursor to);
+
+    /// <summary>
+    /// All in one function for creating and updating key value pair. If Key does not exist, it is created and value is always replaced.
+    /// This cursor will be positioned on the key.
+    /// </summary>
+    /// <returns>true for Create, false for Update</returns>
+    bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
+
+    /// <summary>
+    /// Updates key with preserving value.
+    /// </summary>
+    /// <returns>
+    /// If multiple keys of prefixLen of key exists it will return NotUniquePrefix.
+    /// If prefix is not even found it will return NotFound.
+    /// If Key is already equal then it will return NothingToDo.
+    /// Else it will update key and return Updated.
+    /// </returns>
+    UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen);
 }

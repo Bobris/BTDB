@@ -14,8 +14,8 @@ interface IBTreeRootNode : IBTreeNode
     void SetUlong(uint idx, ulong value);
     IBTreeRootNode NewTransactionRoot();
     void EraseRange(long firstKeyIndex, long lastKeyIndex);
-    FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key, uint prefixLen);
-    bool FindNextKey(List<NodeIdxPair> stack);
-    bool FindPreviousKey(List<NodeIdxPair> stack);
+    FindResult FindKey(ref StructList<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key, uint prefixLen);
+    bool FindNextKey(ref StructList<NodeIdxPair> stack);
+    bool FindPreviousKey(ref StructList<NodeIdxPair> stack);
     void BuildTree(long keyCount, Func<BTreeLeafMember> memberGenerator);
 }

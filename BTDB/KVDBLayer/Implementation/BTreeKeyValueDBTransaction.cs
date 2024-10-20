@@ -16,6 +16,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     BTreeKeyValueDBTransaction _transaction;
     ICursor _cursor;
     bool _modifiedFromLastFind;
+    bool _removedCurrent;
     long _keyIndex;
 
     public BTreeKeyValueDBCursor(BTreeKeyValueDBTransaction transaction)
@@ -23,6 +24,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         _transaction = transaction;
         _cursor = transaction.BTreeRoot!.CreateCursor();
         _modifiedFromLastFind = false;
+        _removedCurrent = false;
         _keyIndex = -1;
         if (transaction.FirstCursor == null)
         {
@@ -73,29 +75,39 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public IKeyValueDBTransaction Transaction => _transaction;
 
-    public bool ModifiedFromLastFind => _modifiedFromLastFind;
-
     public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
     {
+        _modifiedFromLastFind = false;
         _keyIndex = -1;
         return _cursor.FindFirst(prefix);
     }
 
     public bool FindLastKey(in ReadOnlySpan<byte> prefix)
     {
+        _modifiedFromLastFind = false;
         _keyIndex = _cursor.FindLastWithPrefix(prefix);
         return _keyIndex >= 0;
     }
 
     public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
     {
-        if (!_cursor.IsValid()) return FindLastKey(prefix);
-        if (_cursor.MovePrevious())
+        if (_modifiedFromLastFind)
         {
-            if (_cursor.KeyHasPrefix(prefix))
+            if (FindKeyIndex(_keyIndex - 1) && _cursor.KeyHasPrefix(prefix))
             {
-                if (_keyIndex != -1) _keyIndex--;
                 return true;
+            }
+        }
+        else
+        {
+            if (!_cursor.IsValid()) return FindLastKey(prefix);
+            if (_cursor.MovePrevious())
+            {
+                if (_cursor.KeyHasPrefix(prefix))
+                {
+                    if (_keyIndex != -1) _keyIndex--;
+                    return true;
+                }
             }
         }
 
@@ -106,13 +118,24 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindNextKey(in ReadOnlySpan<byte> prefix)
     {
-        if (!_cursor.IsValid()) return FindFirstKey(prefix);
-        if (_cursor.MoveNext())
+        if (_modifiedFromLastFind)
         {
-            if (_cursor.KeyHasPrefix(prefix))
+            if (!_removedCurrent) _keyIndex++;
+            if (FindKeyIndex(_keyIndex) && _cursor.KeyHasPrefix(prefix))
             {
-                if (_keyIndex != -1) _keyIndex++;
                 return true;
+            }
+        }
+        else
+        {
+            if (!_cursor.IsValid()) return FindFirstKey(prefix);
+            if (_cursor.MoveNext())
+            {
+                if (_cursor.KeyHasPrefix(prefix))
+                {
+                    if (_keyIndex != -1) _keyIndex++;
+                    return true;
+                }
             }
         }
 
@@ -160,6 +183,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindKeyIndex(in ReadOnlySpan<byte> prefix, long index)
     {
+        _modifiedFromLastFind = false;
         if (!_cursor.FindFirst(prefix))
         {
             _keyIndex = -1;
@@ -181,6 +205,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindKeyIndex(long index)
     {
+        _modifiedFromLastFind = false;
         _keyIndex = -1;
         if (_cursor.SeekIndex(index))
         {
@@ -194,6 +219,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public void Invalidate()
     {
+        _modifiedFromLastFind = false;
+        _removedCurrent = false;
         _keyIndex = -1;
         _cursor.Invalidate();
     }
@@ -292,6 +319,27 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     {
         if (!_cursor.IsValid())
         {
+            if (_modifiedFromLastFind)
+            {
+                throw new InvalidOperationException("Current key is not valid because it was modified from last find");
+            }
+
+            throw new InvalidOperationException("Current key is not valid");
+        }
+    }
+
+    void EnsureValidCursor()
+    {
+        if (!_cursor.IsValid())
+        {
+            if (_modifiedFromLastFind && _keyIndex != -1)
+            {
+                if (FindKeyIndex(_keyIndex))
+                {
+                    return;
+                }
+            }
+
             throw new InvalidOperationException("Current key is not valid");
         }
     }
@@ -309,10 +357,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public void EraseCurrent()
     {
-        EnsureValidKey();
-        var keyIndexToRemove = GetKeyIndex();
-        _transaction.MakeWritable();
-        _transaction._keyValueDB.WriteEraseOneCommand(_cursor.GetKeyParts(out var keySuffix), keySuffix);
+        EnsureValidCursor();
+        var keyIndexToRemove = (ulong)GetKeyIndex();
         var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
         while (cursor != null)
         {
@@ -323,19 +369,185 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
             cursor = cursor.NextCursor;
         }
-        _cursor.Erase();
 
-        InvalidateCurrentKey();
+        _transaction.MakeWritable();
+        _transaction._keyValueDB.WriteEraseOneCommand(_cursor.GetKeyParts(out var keySuffix), keySuffix);
+
+        _cursor.Erase();
+        _cursor.Invalidate();
+        _keyIndex = (long)keyIndexToRemove;
+        _modifiedFromLastFind = true;
+        _removedCurrent = true;
+    }
+
+    public void EraseUpTo(IKeyValueDBCursor to)
+    {
+        EnsureValidCursor();
+        var trueTo = (BTreeKeyValueDBCursor)to;
+        trueTo.EnsureValidCursor();
+        var firstKeyIndex = (ulong)GetKeyIndex();
+        var lastKeyIndex = (ulong)trueTo.GetKeyIndex();
+        if (lastKeyIndex < firstKeyIndex) return;
+        if (firstKeyIndex == lastKeyIndex)
+        {
+            EraseCurrent();
+            return;
+        }
+
+        var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
+        while (cursor != null)
+        {
+            if (cursor != this || cursor != to)
+            {
+                cursor.NotifyRemove(firstKeyIndex, lastKeyIndex);
+            }
+
+            cursor = cursor.NextCursor;
+        }
+
+        _transaction.MakeWritable();
+        var firstKeyPrefix = _cursor.GetKeyParts(out var firstKeySuffix);
+        var secondKeyPrefix = trueTo._cursor.GetKeyParts(out var secondKeySuffix);
+        _transaction._keyValueDB.WriteEraseRangeCommand(firstKeyPrefix, firstKeySuffix, secondKeyPrefix,
+            secondKeySuffix);
+        _cursor.EraseTo(trueTo._cursor);
+
+        _cursor.Invalidate();
+        trueTo._cursor.Invalidate();
+        _keyIndex = (long)firstKeyIndex;
+        trueTo._keyIndex = (long)firstKeyIndex;
+        _modifiedFromLastFind = true;
+        trueTo._modifiedFromLastFind = true;
+        _removedCurrent = true;
+        trueTo._removedCurrent = true;
+    }
+
+    [SkipLocalsInit]
+    public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    {
+        var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
+        while (cursor != null)
+        {
+            if (cursor != this)
+            {
+                cursor.PreNotifyUpsert();
+            }
+
+            cursor = cursor.NextCursor;
+        }
+
+        _transaction.MakeWritable();
+        Span<byte> trueValue = stackalloc byte[12];
+        _transaction._keyValueDB.WriteCreateOrUpdateCommand(key, default, value, trueValue);
+        var result = _cursor.Upsert(key, trueValue);
+        _keyIndex = _cursor.CalcIndex();
+        if (result)
+        {
+            cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
+            while (cursor != null)
+            {
+                if (cursor != this)
+                {
+                    cursor.NotifyInsert((ulong)_keyIndex);
+                }
+
+                cursor = cursor.NextCursor;
+            }
+        }
+
+        return result;
+    }
+
+    public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
+    {
+        var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
+        while (cursor != null)
+        {
+            if (cursor != this)
+            {
+                cursor.PreNotifyUpsert();
+            }
+
+            cursor = cursor.NextCursor;
+        }
+
+        _transaction.MakeWritable();
+        if (!_cursor.FindFirst(key[..(int)prefixLen])) return UpdateKeySuffixResult.NotFound;
+        if (_cursor.MoveNext())
+        {
+            if (_cursor.KeyHasPrefix(key[..(int)prefixLen]))
+            {
+                return UpdateKeySuffixResult.NotUniquePrefix;
+            }
+        }
+
+        _cursor.MovePrevious();
+
+        _keyIndex = -1;
+        if (_cursor.KeyHasPrefix(key) && _cursor.GetKeyLength() == key.Length)
+        {
+            return UpdateKeySuffixResult.NothingToDo;
+        }
+
+        _cursor.UpdateKeySuffix(key);
+        _transaction._keyValueDB.WriteUpdateKeySuffixCommand(key, prefixLen);
+        return UpdateKeySuffixResult.Updated;
     }
 
     public void NotifyRemove(ulong startIndex, ulong endIndex)
     {
-        throw new NotImplementedException();
+        if (_modifiedFromLastFind)
+        {
+            if (_keyIndex == -1) return;
+        }
+        else
+        {
+            if (_keyIndex == -1)
+            {
+                if (!_cursor.IsValid()) return;
+                _keyIndex = _cursor.CalcIndex();
+            }
+
+            _cursor.Invalidate();
+            _modifiedFromLastFind = true;
+        }
+
+        if ((ulong)_keyIndex >= startIndex && (ulong)_keyIndex <= endIndex)
+        {
+            _keyIndex = (long)startIndex;
+            _removedCurrent = true;
+        }
+        else if ((ulong)_keyIndex > endIndex)
+        {
+            _keyIndex -= (long)(endIndex - startIndex + 1);
+        }
+    }
+
+    public void PreNotifyUpsert()
+    {
+        if (_keyIndex == -1)
+        {
+            if (!_cursor.IsValid()) return;
+            _keyIndex = _cursor.CalcIndex();
+        }
+
+        _cursor.Invalidate();
+        if (!_modifiedFromLastFind)
+        {
+            _removedCurrent = false;
+        }
+        _modifiedFromLastFind = true;
     }
 
     public void NotifyInsert(ulong index)
     {
-        throw new NotImplementedException();
+        if (_keyIndex != -1)
+        {
+            if ((ulong)_keyIndex >= index)
+            {
+                _keyIndex++;
+            }
+        }
     }
 
     public IKeyValueDBCursorInternal? PrevCursor { get; set; }

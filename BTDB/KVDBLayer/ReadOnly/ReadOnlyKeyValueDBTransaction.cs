@@ -2,7 +2,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
@@ -98,6 +97,11 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
         }
 
         return l * 2;
+    }
+
+    public IKeyValueDBCursor CreateCursor()
+    {
+        throw new NotImplementedException();
     }
 
     public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
@@ -481,6 +485,10 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
     {
         throw new NotSupportedException();
     }
+
+    public IKeyValueDBCursor? FirstCursor { get; set; }
+
+    public IKeyValueDBCursor? LastCursor { get; set; }
 
     unsafe void SinkTo(uint offset)
     {

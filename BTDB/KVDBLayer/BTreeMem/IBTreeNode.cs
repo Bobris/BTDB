@@ -8,16 +8,16 @@ interface IBTreeNode
 {
     void CreateOrUpdate(ref CreateOrUpdateCtx ctx);
     void UpdateKeySuffix(ref UpdateKeySuffixCtx ctx);
-    FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key);
+    FindResult FindKey(ref StructList<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key);
     long CalcKeyCount();
     byte[] GetLeftMostKey();
-    void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex);
+    void FillStackByIndex(ref StructList<NodeIdxPair> stack, long keyIndex);
     long FindLastWithPrefix(in ReadOnlySpan<byte> prefix);
     bool NextIdxValid(int idx);
-    void FillStackByLeftMost(List<NodeIdxPair> stack, int i);
-    void FillStackByRightMost(List<NodeIdxPair> stack, int i);
+    void FillStackByLeftMost(ref StructList<NodeIdxPair> stack, int i);
+    void FillStackByRightMost(ref StructList<NodeIdxPair> stack, int i);
     int GetLastChildrenIdx();
     IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex);
     IBTreeNode EraseOne(long transactionId, long keyIndex);
-    void CalcBTreeStats(RefDictionary<(uint Depth, uint Children),uint> stats, uint depth);
+    void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth);
 }

@@ -31,6 +31,10 @@ class Cursor12 : ICursor
         if (newRoot.Impl != _rootNode.Impl)
             throw new ArgumentException("SetNewRoot allows only same db instance");
         _rootNode = (RootNode12)artRoot;
+        if (_stack.Count > 0)
+        {
+            _stack[0]._node = _rootNode.Root;
+        }
     }
 
     public long CalcDistance(ICursor to)

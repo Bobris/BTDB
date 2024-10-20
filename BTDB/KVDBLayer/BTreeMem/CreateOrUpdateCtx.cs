@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTDB.Collections;
 
 namespace BTDB.KVDBLayer.BTreeMem;
 
@@ -9,7 +10,7 @@ ref struct CreateOrUpdateCtx
     internal ReadOnlySpan<byte> Value;
 
     internal bool Created;
-    internal List<NodeIdxPair> Stack;
+    internal ref StructList<NodeIdxPair> Stack;
     internal long KeyIndex;
 
     internal int Depth;
