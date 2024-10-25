@@ -232,17 +232,25 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 _nextRoot = _lastCommitted.CreateWritableTransaction();
                 try
                 {
-                    if (LoadKeyIndex(keyIndex.Key, info!) && firstTrLogId <= info.TrLogFileId)
+                    if (LoadKeyIndex(keyIndex.Key, info!))
                     {
-                        _lastCommitted.Dispose();
-                        _lastCommitted = _nextRoot!;
-                        _lastCommitted!.Commit();
-                        _listHead = _lastCommitted;
-                        _nextRoot = null;
-                        firstTrLogId = info.TrLogFileId;
-                        firstTrLogOffset = info.TrLogOffset;
-                        hasKeyIndex = true;
-                        break;
+                        if (firstTrLogId <= info.TrLogFileId)
+                        {
+                            _lastCommitted.Dispose();
+                            _lastCommitted = _nextRoot!;
+                            _lastCommitted!.Commit();
+                            _listHead = _lastCommitted;
+                            _nextRoot = null;
+                            firstTrLogId = info.TrLogFileId;
+                            firstTrLogOffset = info.TrLogOffset;
+                            hasKeyIndex = true;
+                            break;
+                        }
+                        else
+                        {
+                            Logger?.LogWarning("Ignoring " + keyIndex.Key + ".kvi because it needs " + info.TrLogFileId +
+                                               ".trl, but first trl in chain is " + firstTrLogId + ".trl");
+                        }
                     }
                 }
                 finally

@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Improved
+
+Logging of reason why kvi is unusable.
+
 ## 32.16.2
 
 ### Optimized
