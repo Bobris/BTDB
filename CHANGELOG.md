@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.16.3
+
 ### Improved
 
 Logging of reason why kvi is unusable.
