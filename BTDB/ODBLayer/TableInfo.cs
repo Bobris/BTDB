@@ -45,7 +45,7 @@ public class TableInfo
 
     long _singletonOid;
     long _cachedSingletonTrNum;
-    byte[]? _cachedSingletonContent;
+    ReadOnlyMemory<byte> _cachedSingletonContent;
     readonly object _cachedSingletonLock = new();
 
     internal TableInfo(uint id, string name, ITableInfoResolver tableInfoResolver)
@@ -588,16 +588,16 @@ public class TableInfo
         return writer.GetSpan().ToArray();
     }
 
-    public byte[]? SingletonContent(long transactionNumber)
+    public ReadOnlyMemory<byte> SingletonContent(long transactionNumber)
     {
         lock (_cachedSingletonLock)
         {
-            if (_cachedSingletonTrNum - transactionNumber > 0) return null;
+            if (_cachedSingletonTrNum - transactionNumber > 0) return default;
             return _cachedSingletonContent;
         }
     }
 
-    public void CacheSingletonContent(long transactionNumber, byte[]? content)
+    public void CacheSingletonContent(long transactionNumber, ReadOnlyMemory<byte> content)
     {
         lock (_cachedSingletonLock)
         {

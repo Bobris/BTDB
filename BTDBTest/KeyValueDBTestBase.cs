@@ -43,7 +43,8 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
-        Assert.True(tr.CreateOrUpdateKeyValue(Key1, ReadOnlySpan<byte>.Empty));
+        using var cursor = tr.CreateCursor();
+        Assert.True(cursor.CreateOrUpdateKeyValue(Key1, new()));
         tr.Commit();
     }
 
@@ -52,8 +53,9 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
+        using var cursor = tr.CreateCursor();
         Assert.Equal(0, tr.GetTransactionNumber());
-        Assert.True(tr.CreateOrUpdateKeyValue(Key1, ReadOnlySpan<byte>.Empty));
+        Assert.True(cursor.CreateOrUpdateKeyValue(Key1, new()));
         Assert.Equal(1, tr.GetTransactionNumber());
         tr.Commit();
     }
@@ -64,7 +66,7 @@ public abstract class KeyValueDBTestBase
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
         using var tr2 = db.StartTransaction();
-        Assert.Equal(db.Transactions().ToHashSet(), new() { tr, tr2 });
+        Assert.Equal(db.Transactions().ToHashSet(), [tr, tr2]);
         Assert.True(tr.CreatedTime <= tr2.CreatedTime);
     }
 
@@ -73,8 +75,9 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
-        tr.CreateOrUpdateKeyValue(Key1, new byte[1]);
-        var s = tr.GetStorageSizeOfCurrentKey();
+        using var cursor = tr.CreateCursor();
+        cursor.CreateOrUpdateKeyValue(Key1, new byte[1]);
+        var s = cursor.GetStorageSizeOfCurrentKey();
         Assert.Equal((uint)Key1.Length, s.Key);
         Assert.Equal(1u, s.Value);
     }
@@ -84,7 +87,8 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartReadOnlyTransaction();
-        Assert.Throws<BTDBTransactionRetryException>(() => tr.CreateKey(new byte[1]));
+        using var cursor = tr.CreateCursor();
+        Assert.Throws<BTDBTransactionRetryException>(() => cursor.CreateKey(new byte[1]));
     }
 
     [Fact]
@@ -92,14 +96,15 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
-        Assert.True(tr.CreateOrUpdateKeyValue(Key1, ReadOnlySpan<byte>.Empty));
-        Assert.False(tr.CreateOrUpdateKeyValue(Key1, ReadOnlySpan<byte>.Empty));
-        Assert.Equal(FindResult.Previous, tr.Find(Key2, 0));
-        Assert.True(tr.CreateOrUpdateKeyValue(Key2, ReadOnlySpan<byte>.Empty));
-        Assert.Equal(FindResult.Exact, tr.Find(Key1, 0));
-        Assert.Equal(FindResult.Exact, tr.Find(Key2, 0));
-        Assert.Equal(FindResult.Previous, tr.Find(Key3, 0));
-        Assert.Equal(FindResult.Next, tr.Find(ReadOnlySpan<byte>.Empty, 0));
+        using var cursor = tr.CreateCursor();
+        Assert.True(cursor.CreateOrUpdateKeyValue(Key1, new()));
+        Assert.False(cursor.CreateOrUpdateKeyValue(Key1, new()));
+        Assert.Equal(FindResult.Previous, cursor.Find(Key2, 0));
+        Assert.True(cursor.CreateOrUpdateKeyValue(Key2, new()));
+        Assert.Equal(FindResult.Exact, cursor.Find(Key1, 0));
+        Assert.Equal(FindResult.Exact, cursor.Find(Key2, 0));
+        Assert.Equal(FindResult.Previous, cursor.Find(Key3, 0));
+        Assert.Equal(FindResult.Next, cursor.Find(new(), 0));
         tr.Commit();
     }
 
@@ -109,11 +114,13 @@ public abstract class KeyValueDBTestBase
         using var db = NewKeyValueDB();
         using (var tr1 = db.StartTransaction())
         {
-            tr1.CreateKey(Key1);
+            using var c1 = tr1.CreateCursor();
+            c1.CreateKey(Key1);
             using (var tr2 = db.StartTransaction())
             {
                 Assert.Equal(0, tr2.GetTransactionNumber());
-                Assert.False(tr2.FindExactKey(Key1));
+                using var c2 = tr2.CreateCursor();
+                Assert.False(c2.FindExactKey(Key1));
             }
 
             tr1.Commit();
@@ -122,7 +129,8 @@ public abstract class KeyValueDBTestBase
         using (var tr3 = db.StartTransaction())
         {
             Assert.Equal(1, tr3.GetTransactionNumber());
-            Assert.True(tr3.FindExactKey(Key1));
+            using var c3 = tr3.CreateCursor();
+            Assert.True(c3.FindExactKey(Key1));
         }
     }
 
@@ -149,14 +157,16 @@ public abstract class KeyValueDBTestBase
         using var db = NewKeyValueDB();
         using (var tr1 = db.StartTransaction())
         {
-            tr1.CreateKey(Key1);
+            using var c1 = tr1.CreateCursor();
+            c1.CreateKey(Key1);
             // Rollback because of missing commit
         }
 
         using (var tr2 = db.StartTransaction())
         {
             Assert.Equal(0, tr2.GetTransactionNumber());
-            Assert.False(tr2.FindExactKey(Key1));
+            using var c2 = tr2.CreateCursor();
+            Assert.False(c2.FindExactKey(Key1));
         }
     }
 
@@ -165,10 +175,12 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr1 = db.StartTransaction();
-        tr1.CreateKey(Key1);
+        using var c1 = tr1.CreateCursor();
+        c1.CreateKey(Key1);
         using var tr2 = db.StartTransaction();
-        Assert.False(tr2.FindExactKey(Key1));
-        Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKey(Key2));
+        using var c2 = tr2.CreateCursor();
+        Assert.False(c2.FindExactKey(Key1));
+        Assert.Throws<BTDBTransactionRetryException>(() => c2.CreateKey(Key2));
     }
 
     [Fact]
@@ -176,12 +188,15 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         var tr1 = db.StartTransaction();
-        tr1.CreateKey(Key1);
+        var c1 = tr1.CreateCursor();
+        c1.CreateKey(Key1);
         using var tr2 = db.StartTransaction();
+        c1.Dispose();
         tr1.Commit();
         tr1.Dispose();
-        Assert.False(tr2.FindExactKey(Key1));
-        Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKey(Key2));
+        using var c2 = tr2.CreateCursor();
+        Assert.False(c2.FindExactKey(Key1));
+        Assert.Throws<BTDBTransactionRetryException>(() => c2.CreateKey(Key2));
     }
 
     [Fact]
@@ -214,14 +229,22 @@ public abstract class KeyValueDBTestBase
         using var db = NewKeyValueDB();
         using (var tr1 = db.StartTransaction())
         {
-            tr1.CreateOrUpdateKeyValue(key, ReadOnlySpan<byte>.Empty);
+            using (var c1 = tr1.CreateCursor())
+            {
+                c1.CreateOrUpdateKeyValue(key, new());
+            }
+
             tr1.Commit();
         }
 
         using (var tr2 = db.StartTransaction())
         {
-            Assert.True(tr2.FindExactKey(key));
-            Assert.Equal(key.ToArray(), tr2.GetKey().ToArray());
+            using (var c2 = tr2.CreateCursor())
+            {
+                Assert.True(c2.FindExactKey(key));
+                var buf = new Span<byte>();
+                Assert.Equal(key.AsSpan(), c2.GetKeySpan(ref buf));
+            }
         }
     }
 
@@ -231,24 +254,30 @@ public abstract class KeyValueDBTestBase
         using var db = NewKeyValueDB();
         using (var tr1 = db.StartTransaction())
         {
-            tr1.CreateKey(Key1);
+            using (var c1 = tr1.CreateCursor())
+            {
+                c1.CreateKey(Key1);
+            }
+
             tr1.Commit();
         }
 
         using (var tr2 = db.StartTransaction())
         {
-            tr2.CreateKey(Key2);
-            Assert.True(tr2.FindExactKey(Key1));
-            Assert.True(tr2.FindExactKey(Key2));
-            Assert.False(tr2.FindExactKey(Key3));
+            using var cursor = tr2.CreateCursor();
+            cursor.CreateKey(Key2);
+            Assert.True(cursor.FindExactKey(Key1));
+            Assert.True(cursor.FindExactKey(Key2));
+            Assert.False(cursor.FindExactKey(Key3));
             tr2.Commit();
         }
 
         using (var tr3 = db.StartTransaction())
         {
-            Assert.True(tr3.FindExactKey(Key1));
-            Assert.True(tr3.FindExactKey(Key2));
-            Assert.False(tr3.FindExactKey(Key3));
+            using var cursor = tr3.CreateCursor();
+            Assert.True(cursor.FindExactKey(Key1));
+            Assert.True(cursor.FindExactKey(Key2));
+            Assert.False(cursor.FindExactKey(Key3));
         }
     }
 
@@ -263,15 +292,16 @@ public abstract class KeyValueDBTestBase
             key[0] = (byte)(i / 256);
             key[1] = (byte)(i % 256);
             using var tr1 = db.StartTransaction();
-            tr1.CreateOrUpdateKeyValue(key.AsSpan(0, 2 + i * 10), ReadOnlySpan<byte>.Empty);
-            Assert.Equal(i, tr1.GetKeyIndex());
+            using var cursor = tr1.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(key.AsSpan(0, 2 + i * 10), new());
+            Assert.Equal(i, cursor.GetKeyIndex());
             if (i % 100 == 0 || i == transactionCount - 1)
             {
                 for (var j = 0; j < i; j++)
                 {
                     key[0] = (byte)(j / 256);
                     key[1] = (byte)(j % 256);
-                    Assert.Equal(FindResult.Exact, tr1.Find(key.AsSpan(0, 2 + j * 10), 0));
+                    Assert.Equal(FindResult.Exact, cursor.Find(key.AsSpan(0, 2 + j * 10), 0));
                 }
             }
 
@@ -290,14 +320,15 @@ public abstract class KeyValueDBTestBase
             key[0] = (byte)((transactionCount - i) / 256);
             key[1] = (byte)((transactionCount - i) % 256);
             using var tr1 = db.StartTransaction();
-            tr1.CreateOrUpdateKeyValue(key.AsSpan(0, 2 + i * 10), ReadOnlySpan<byte>.Empty);
+            using var cursor = tr1.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(key.AsSpan(0, 2 + i * 10), new());
             if (i % 100 == 0 || i == transactionCount - 1)
             {
                 for (var j = 0; j < i; j++)
                 {
                     key[0] = (byte)((transactionCount - j) / 256);
                     key[1] = (byte)((transactionCount - j) % 256);
-                    Assert.Equal(FindResult.Exact, tr1.Find(key.AsSpan(0, 2 + j * 10), 0));
+                    Assert.Equal(FindResult.Exact, cursor.Find(key.AsSpan(0, 2 + j * 10), 0));
                 }
             }
 
@@ -311,18 +342,20 @@ public abstract class KeyValueDBTestBase
         using var db = NewKeyValueDB();
         using (var tr1 = db.StartTransaction())
         {
-            tr1.CreateKey(Key1);
-            tr1.CreateKey(Key2);
-            tr1.CreateKey(Key3);
+            using var cursor = tr1.CreateCursor();
+            cursor.CreateKey(Key1);
+            cursor.CreateKey(Key2);
+            cursor.CreateKey(Key3);
             tr1.Commit();
         }
 
         using (var tr2 = db.StartTransaction())
         {
-            Assert.True(tr2.FindExactKey(Key3));
-            Assert.True(tr2.FindPreviousKey(ReadOnlySpan<byte>.Empty));
-            Assert.Equal(Key1, tr2.GetKey().ToArray());
-            Assert.False(tr2.FindPreviousKey(ReadOnlySpan<byte>.Empty));
+            using var cursor = tr2.CreateCursor();
+            Assert.True(cursor.FindExactKey(Key3));
+            Assert.True(cursor.FindPreviousKey(new()));
+            Assert.Equal(Key1, cursor.SlowGetKey());
+            Assert.False(cursor.FindPreviousKey(new()));
         }
     }
 
@@ -333,12 +366,13 @@ public abstract class KeyValueDBTestBase
         using var db = NewKeyValueDB();
         using (var tr = db.StartTransaction())
         {
+            using var cursor = tr.CreateCursor();
             var key = new byte[100];
             for (var i = 0; i < keyCount; i++)
             {
                 key[0] = (byte)(i / 256);
                 key[1] = (byte)(i % 256);
-                tr.CreateKey(key);
+                cursor.CreateKey(key);
             }
 
             tr.Commit();
@@ -346,13 +380,14 @@ public abstract class KeyValueDBTestBase
 
         using (var tr = db.StartTransaction())
         {
+            using var cursor = tr.CreateCursor();
             var key = new byte[101];
             for (var i = 0; i < keyCount; i++)
             {
                 key[0] = (byte)(i / 256);
                 key[1] = (byte)(i % 256);
-                var findKeyResult = tr.Find(key, 0);
-                var idx = tr.GetKeyIndex();
+                var findKeyResult = cursor.Find(key, 0);
+                var idx = cursor.GetKeyIndex();
                 Assert.Equal(FindResult.Previous, findKeyResult);
                 Assert.Equal(i, idx);
             }
@@ -360,21 +395,22 @@ public abstract class KeyValueDBTestBase
 
         using (var tr = db.StartTransaction())
         {
+            using var cursor = tr.CreateCursor();
             var key = new byte[99];
             for (var i = 0; i < keyCount; i++)
             {
                 key[0] = (byte)(i / 256);
                 key[1] = (byte)(i % 256);
-                var findKeyResult = tr.Find(key, 0);
+                var findKeyResult = cursor.Find(key, 0);
                 if (i == 0)
                 {
                     Assert.Equal(FindResult.Next, findKeyResult);
-                    Assert.Equal(i, tr.GetKeyIndex());
+                    Assert.Equal(i, cursor.GetKeyIndex());
                 }
                 else
                 {
                     Assert.Equal(FindResult.Previous, findKeyResult);
-                    Assert.Equal(i - 1, tr.GetKeyIndex());
+                    Assert.Equal(i - 1, cursor.GetKeyIndex());
                 }
             }
         }
@@ -386,18 +422,20 @@ public abstract class KeyValueDBTestBase
         using var db = NewKeyValueDB();
         using (var tr1 = db.StartTransaction())
         {
-            tr1.CreateKey(Key1);
-            tr1.CreateKey(Key2);
-            tr1.CreateKey(Key3);
+            using var cursor = tr1.CreateCursor();
+            cursor.CreateKey(Key1);
+            cursor.CreateKey(Key2);
+            cursor.CreateKey(Key3);
             tr1.Commit();
         }
 
         using (var tr2 = db.StartTransaction())
         {
-            Assert.True(tr2.FindExactKey(Key3));
-            Assert.True(tr2.FindNextKey(ReadOnlySpan<byte>.Empty));
-            Assert.Equal(Key2, tr2.GetKey().ToArray());
-            Assert.False(tr2.FindNextKey(ReadOnlySpan<byte>.Empty));
+            using var cursor = tr2.CreateCursor();
+            Assert.True(cursor.FindExactKey(Key3));
+            Assert.True(cursor.FindNextKey(new()));
+            Assert.Equal(Key2, cursor.SlowGetKey());
+            Assert.False(cursor.FindNextKey(new()));
         }
     }
 
@@ -409,11 +447,12 @@ public abstract class KeyValueDBTestBase
         const int keysCreated = 10000;
         using (var tr = db.StartTransaction())
         {
+            using var cursor = tr.CreateCursor();
             for (var i = 0; i < keysCreated; i++)
             {
                 key[0] = (byte)(i / 256);
                 key[1] = (byte)(i % 256);
-                tr.CreateKey(key);
+                cursor.CreateKey(key);
             }
 
             tr.Commit();
@@ -421,25 +460,26 @@ public abstract class KeyValueDBTestBase
 
         using (var tr = db.StartTransaction())
         {
-            Assert.Equal(-1, tr.GetKeyIndex());
-            tr.FindExactKey(key);
-            Assert.Equal(keysCreated - 1, tr.GetKeyIndex());
+            using var cursor = tr.CreateCursor();
+            Assert.Equal(-1, cursor.GetKeyIndex());
+            cursor.FindExactKey(key);
+            Assert.Equal(keysCreated - 1, cursor.GetKeyIndex());
             for (var i = 1; i < keysCreated; i++)
             {
-                Assert.True(tr.FindPreviousKey(ReadOnlySpan<byte>.Empty));
-                Assert.Equal(keysCreated - 1 - i, tr.GetKeyIndex());
+                Assert.True(cursor.FindPreviousKey(new()));
+                Assert.Equal(keysCreated - 1 - i, cursor.GetKeyIndex());
             }
 
-            Assert.False(tr.FindPreviousKey(ReadOnlySpan<byte>.Empty));
-            Assert.Equal(-1, tr.GetKeyIndex());
+            Assert.False(cursor.FindPreviousKey(new()));
+            Assert.Equal(-1, cursor.GetKeyIndex());
             for (var i = 0; i < keysCreated; i++)
             {
-                Assert.True(tr.FindNextKey(ReadOnlySpan<byte>.Empty));
-                Assert.Equal(i, tr.GetKeyIndex());
+                Assert.True(cursor.FindNextKey(new()));
+                Assert.Equal(i, cursor.GetKeyIndex());
             }
 
-            Assert.False(tr.FindNextKey(ReadOnlySpan<byte>.Empty));
-            Assert.Equal(-1, tr.GetKeyIndex());
+            Assert.False(cursor.FindNextKey(new()));
+            Assert.Equal(-1, cursor.GetKeyIndex());
         }
     }
 
@@ -451,11 +491,12 @@ public abstract class KeyValueDBTestBase
         const int keysCreated = 10000;
         using (var tr = db.StartTransaction())
         {
+            using var cursor = tr.CreateCursor();
             for (var i = 0; i < keysCreated; i++)
             {
                 key[0] = (byte)(i / 256);
                 key[1] = (byte)(i % 256);
-                tr.CreateKey(key);
+                cursor.CreateKey(key);
             }
 
             tr.Commit();
@@ -463,14 +504,15 @@ public abstract class KeyValueDBTestBase
 
         using (var tr = db.StartTransaction())
         {
-            Assert.False(tr.SetKeyIndex(keysCreated));
+            using var cursor = tr.CreateCursor();
+            Assert.False(cursor.FindKeyIndex(keysCreated));
             for (var i = 0; i < keysCreated; i += 5)
             {
-                Assert.True(tr.SetKeyIndex(i));
-                key = tr.GetKey().ToArray();
+                Assert.True(cursor.FindKeyIndex(i));
+                key = cursor.SlowGetKey();
                 Assert.Equal((byte)(i / 256), key[0]);
                 Assert.Equal((byte)(i % 256), key[1]);
-                Assert.Equal(i, tr.GetKeyIndex());
+                Assert.Equal(i, cursor.GetKeyIndex());
             }
         }
     }
@@ -495,24 +537,26 @@ public abstract class KeyValueDBTestBase
         using var db = NewKeyValueDB();
         using (var tr1 = db.StartTransaction())
         {
-            Assert.True(tr1.CreateOrUpdateKeyValue(Key1, valueBuf));
-            Assert.False(tr1.CreateOrUpdateKeyValue(Key1, valueBuf));
-            Assert.True(tr1.CreateOrUpdateKeyValue(Key2, valueBuf));
+            using var cursor = tr1.CreateCursor();
+            Assert.True(cursor.CreateOrUpdateKeyValue(Key1, valueBuf));
+            Assert.False(cursor.CreateOrUpdateKeyValue(Key1, valueBuf));
+            Assert.True(cursor.CreateOrUpdateKeyValue(Key2, valueBuf));
             tr1.Commit();
         }
 
         using (var tr2 = db.StartTransaction())
         {
-            Assert.True(tr2.FindExactKey(Key1));
-            var valueBuf2 = tr2.GetValue().ToArray();
+            using var cursor = tr2.CreateCursor();
+            Assert.True(cursor.FindExactKey(Key1));
+            var valueBuf2 = cursor.SlowGetValue();
             for (var i = 0; i < length; i++)
             {
                 if (valueBuf[i] != valueBuf2[i])
                     Assert.Equal(valueBuf[i], valueBuf2[i]);
             }
 
-            Assert.True(tr2.FindExactKey(Key2));
-            valueBuf2 = tr2.GetValue().ToArray();
+            Assert.True(cursor.FindExactKey(Key2));
+            valueBuf2 = cursor.SlowGetValue();
             for (var i = 0; i < length; i++)
             {
                 if (valueBuf[i] != valueBuf2[i])
@@ -526,12 +570,13 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
-        Assert.False(tr.FindFirstKey(ReadOnlySpan<byte>.Empty));
-        tr.CreateKey(Key1);
-        tr.CreateKey(Key2);
-        tr.CreateKey(Key3);
-        Assert.True(tr.FindFirstKey(ReadOnlySpan<byte>.Empty));
-        Assert.Equal(Key1, tr.GetKey().ToArray());
+        using var cursor = tr.CreateCursor();
+        Assert.False(cursor.FindFirstKey(new()));
+        cursor.CreateKey(Key1);
+        cursor.CreateKey(Key2);
+        cursor.CreateKey(Key3);
+        Assert.True(cursor.FindFirstKey(new()));
+        Assert.Equal(Key1, cursor.SlowGetKey());
         tr.Commit();
     }
 
@@ -540,12 +585,13 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
-        Assert.False(tr.FindLastKey(ReadOnlySpan<byte>.Empty));
-        tr.CreateKey(Key1);
-        tr.CreateKey(Key2);
-        tr.CreateKey(Key3);
-        Assert.True(tr.FindLastKey(ReadOnlySpan<byte>.Empty));
-        Assert.Equal(Key2, tr.GetKey().ToArray());
+        using var cursor = tr.CreateCursor();
+        Assert.False(cursor.FindLastKey(new()));
+        cursor.CreateKey(Key1);
+        cursor.CreateKey(Key2);
+        cursor.CreateKey(Key3);
+        Assert.True(cursor.FindLastKey(new()));
+        Assert.Equal(Key2, cursor.SlowGetKey());
         tr.Commit();
     }
 
@@ -554,15 +600,16 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
-        tr.CreateKey(Key1);
-        tr.CreateKey(Key2);
-        tr.CreateKey(Key3);
+        using var cursor = tr.CreateCursor();
+        cursor.CreateKey(Key1);
+        cursor.CreateKey(Key2);
+        cursor.CreateKey(Key3);
         Assert.Equal(3, tr.GetKeyValueCount());
-        Assert.Equal(2, tr.GetKeyValueCount(Key1.AsSpan(0, 3)));
-        tr.FindFirstKey(Key1.AsSpan(0, 3));
-        Assert.Equal(Key1.AsSpan(0, 3).ToArray(), tr.GetKey().ToArray());
-        tr.FindLastKey(Key1.AsSpan(0, 3));
-        Assert.Equal(Key3, tr.GetKey().ToArray());
+        Assert.Equal(2, cursor.GetKeyValueCount(Key1.AsSpan(0, 3)));
+        cursor.FindFirstKey(Key1.AsSpan(0, 3));
+        Assert.Equal(Key1.AsSpan(0, 3).ToArray(), cursor.SlowGetKey());
+        cursor.FindLastKey(Key1.AsSpan(0, 3));
+        Assert.Equal(Key3, cursor.SlowGetKey());
         tr.Commit();
     }
 
@@ -571,11 +618,12 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
-        tr.CreateKey(Key1);
-        tr.CreateKey(Key2);
-        Assert.True(tr.FindFirstKey(Key2.AsSpan(0, 1)));
-        Assert.True(tr.FindNextKey(Key2.AsSpan(0, 1)));
-        Assert.False(tr.FindNextKey(Key2.AsSpan(0, 1)));
+        using var cursor = tr.CreateCursor();
+        cursor.CreateKey(Key1);
+        cursor.CreateKey(Key2);
+        Assert.True(cursor.FindFirstKey(Key2.AsSpan(0, 1)));
+        Assert.True(cursor.FindNextKey(Key2.AsSpan(0, 1)));
+        Assert.False(cursor.FindNextKey(Key2.AsSpan(0, 1)));
         tr.Commit();
     }
 
@@ -584,10 +632,11 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
-        tr.CreateKey(Key1);
-        tr.CreateKey(Key2);
-        Assert.True(tr.FindFirstKey(Key2.AsSpan(0, 1)));
-        Assert.False(tr.FindPreviousKey(Key2.AsSpan(0, 1)));
+        using var cursor = tr.CreateCursor();
+        cursor.CreateKey(Key1);
+        cursor.CreateKey(Key2);
+        Assert.True(cursor.FindFirstKey(Key2.AsSpan(0, 1)));
+        Assert.False(cursor.FindPreviousKey(Key2.AsSpan(0, 1)));
         tr.Commit();
     }
 
@@ -596,15 +645,16 @@ public abstract class KeyValueDBTestBase
     {
         using var db = NewKeyValueDB();
         using var tr = db.StartTransaction();
-        tr.CreateKey(Key1);
-        tr.CreateKey(Key2);
-        tr.CreateKey(Key3);
-        tr.EraseCurrent();
-        Assert.True(tr.FindFirstKey(ReadOnlySpan<byte>.Empty));
-        Assert.Equal(Key1, tr.GetKey().ToArray());
-        Assert.True(tr.FindNextKey(ReadOnlySpan<byte>.Empty));
-        Assert.Equal(Key2, tr.GetKey().ToArray());
-        Assert.False(tr.FindNextKey(ReadOnlySpan<byte>.Empty));
+        using var cursor = tr.CreateCursor();
+        cursor.CreateKey(Key1);
+        cursor.CreateKey(Key2);
+        cursor.CreateKey(Key3);
+        cursor.EraseCurrent();
+        Assert.True(cursor.FindFirstKey(new()));
+        Assert.Equal(Key1, cursor.SlowGetKey());
+        Assert.True(cursor.FindNextKey(new()));
+        Assert.Equal(Key2, cursor.SlowGetKey());
+        Assert.False(cursor.FindNextKey(new()));
         Assert.Equal(2, tr.GetKeyValueCount());
     }
 

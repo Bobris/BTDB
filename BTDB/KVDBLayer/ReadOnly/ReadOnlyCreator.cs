@@ -23,13 +23,15 @@ public class ReadOnlyCreator
     public void Run(ref MemWriter writer)
     {
         WriteHeader(ref writer);
+        using var cursor = _transaction.CreateCursor();
         var valueOffsets = new uint[_transaction.GetKeyValueCount()];
-        if (_transaction.FindFirstKey(default))
+        var buf = Span<byte>.Empty;
+        if (cursor.FindFirstKey(default))
         {
             var i = 0;
             do
             {
-                var val = _transaction.GetValue();
+                var val = cursor.GetValueSpan(ref buf);
                 if (val.Length == 0)
                 {
                     valueOffsets[i++] = 0;
@@ -42,15 +44,15 @@ public class ReadOnlyCreator
                     writer.WriteVUInt32((uint)val.Length);
                     writer.WriteBlock(val);
                 }
-            } while (_transaction.FindNextKey(default));
+            } while (cursor.FindNextKey(default));
         }
 
-        var rootOffset = BuildTreeNode(_transaction.GetKeyValueCount(), valueOffsets, ref writer);
+        var rootOffset = BuildTreeNode(cursor, _transaction.GetKeyValueCount(), valueOffsets, ref writer);
         if (rootOffset > uint.MaxValue) throw new BTDBException("RootOffset do not fit into 4GB");
         writer.WriteUInt32LE((uint)rootOffset);
     }
 
-    ulong BuildTreeNode(long keyCount, uint[] valueOffsets, ref MemWriter writer)
+    ulong BuildTreeNode(IKeyValueDBCursor cursor, long keyCount, uint[] valueOffsets, ref MemWriter writer)
     {
         var leafs = (keyCount + _maxChildren - 1) / _maxChildren;
         var order = 0L;
@@ -65,7 +67,7 @@ public class ReadOnlyCreator
             long totalKeyLen = 0;
             for (var i = 0; i < todo; i++)
             {
-                keys[i] = _transaction.GetKey().ToArray();
+                keys[i] = cursor.SlowGetKey();
                 totalKeyLen += keys[i].Length;
             }
 

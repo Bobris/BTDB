@@ -26,12 +26,14 @@ public class AutoSplitSizeTest
         while (!cancellationToken.IsCancellationRequested)
         {
             using var tr = lowDb.StartTransaction();
+            using var cursor = tr.CreateCursor();
             var pos = 0;
             PackUnpack.PackVInt(keyBuffer, ref pos, j);
-            tr.CreateOrUpdateKeyValue(keyBuffer.AsSpan(0, pos), value);
+            cursor.CreateOrUpdateKeyValue(keyBuffer.AsSpan(0, pos), value);
             pos = 0;
             PackUnpack.PackVInt(keyBuffer, ref pos, j / 2);
-            tr.EraseCurrent(keyBuffer.AsSpan(0, pos));
+            if (cursor.FindExactKey(keyBuffer.AsSpan(0, pos)))
+                cursor.EraseCurrent();
             tr.Commit();
             j++;
             if (j % 1000 == 0)

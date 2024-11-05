@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace BTDB.KVDBLayer;
 
@@ -44,7 +45,7 @@ public interface IKeyValueDBCursor : IDisposable
     /// <summary>
     /// Try to find key exactly, then try previous, then try next, then return NotFound. It has to match at least prefixLen
     /// </summary>
-    FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen);
+    FindResult Find(scoped in ReadOnlySpan<byte> key, uint prefixLen);
 
     /// <summary>
     /// Gets index of current key
@@ -88,7 +89,9 @@ public interface IKeyValueDBCursor : IDisposable
     /// <returns>memory of key</returns>
     ReadOnlyMemory<byte> GetKeyMemory(ref Memory<byte> buffer, bool copy = false);
 
-    ReadOnlySpan<byte> GetKeySpan(ref Memory<byte> buffer, bool copy = false);
+    ReadOnlySpan<byte> GetKeySpan(scoped ref Span<byte> buffer, bool copy = false);
+
+    ReadOnlySpan<byte> GetKeySpan(scoped Span<byte> buffer, bool copy = false);
 
     /// <summary>
     /// Returns true if GetValue would throw exception because missing or incomplete value file or transaction file containing current value.
@@ -109,7 +112,7 @@ public interface IKeyValueDBCursor : IDisposable
     /// <param name="buffer">It will try to use provided buffer if not big enough it will allocate new memory and update buffer for next time</param>
     /// <param name="copy">It forbids to return to mutable memory in database</param>
     /// <returns>span of value</returns>
-    ReadOnlySpan<byte> GetValueSpan(ref Memory<byte> buffer, bool copy = false);
+    ReadOnlySpan<byte> GetValueSpan(scoped ref Span<byte> buffer, bool copy = false);
 
     /// <summary>
     /// Overwrite current value with new content.
@@ -126,7 +129,8 @@ public interface IKeyValueDBCursor : IDisposable
     /// If provided cursor is before current key, nothing will be removed.
     /// </summary>
     /// <param name="to">Valid cursor which points to last key which should be removed. It must be from same transaction.</param>
-    void EraseUpTo(IKeyValueDBCursor to);
+    /// <returns>Number of rows removed</returns>
+    long EraseUpTo(IKeyValueDBCursor to);
 
     /// <summary>
     /// All in one function for creating and updating key value pair. If Key does not exist, it is created and value is always replaced.

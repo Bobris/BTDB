@@ -30,11 +30,12 @@ public class CompactionStressTest
             while (true)
             {
                 using var tr = await lowDb.StartWritingTransaction();
+                using var cursor = tr.CreateCursor();
                 for (var j = 0; j < 10000; j++)
                 {
                     var pos = 0;
                     PackUnpack.PackVInt(keyBuffer, ref pos, j);
-                    tr.CreateOrUpdateKeyValue(keyBuffer.AsSpan(0, pos), values[rnd.Next(0, 99)]);
+                    cursor.CreateOrUpdateKeyValue(keyBuffer.AsSpan(0, pos), values[rnd.Next(0, 99)]);
 
                     if (cancellationToken.IsCancellationRequested)
                         return;
@@ -63,14 +64,15 @@ public class CompactionStressTest
         {
             while (true)
             {
-                var transaction = lowDb.StartReadOnlyTransaction();
-                transaction.FindFirstKey(ReadOnlySpan<byte>.Empty);
+                using var transaction = lowDb.StartReadOnlyTransaction();
+                using var cursor = transaction.CreateCursor();
+                cursor.FindFirstKey(new());
                 var keyValueCount = transaction.GetKeyValueCount();
                 for (long kv = 0; kv < keyValueCount; kv++)
                 {
-                    transaction.GetKey();
-                    transaction.GetValue();
-                    transaction.FindNextKey(ReadOnlySpan<byte>.Empty);
+                    cursor.SlowGetKey();
+                    cursor.SlowGetValue();
+                    cursor.FindNextKey(new());
                     await Task.Delay(sleep, cancellationToken);
 
                     if (cancellationToken.IsCancellationRequested)

@@ -598,7 +598,8 @@ public class ObjectDbTableUpgradeTest : IDisposable
             Assert.Equal(2, table.First().D[g2].Num);
             table.Upsert(table.First());
             // Assert no leaks in IDictionaries
-            Assert.Equal(0, tr.KeyValueDBTransaction.GetKeyValueCount(new[] { ObjectDB.AllDictionariesPrefixByte }));
+            using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+            Assert.Equal(0, cursor.GetKeyValueCount([ObjectDB.AllDictionariesPrefixByte]));
         }
     }
 
@@ -671,7 +672,8 @@ public class ObjectDbTableUpgradeTest : IDisposable
             Assert.Equal(2, table.First().Obj.D[g2].Num);
             table.Upsert(table.First());
             // Assert no leaks in IDictionaries
-            Assert.Equal(0, tr.KeyValueDBTransaction.GetKeyValueCount(new[] { ObjectDB.AllDictionariesPrefixByte }));
+            using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+            Assert.Equal(0, cursor.GetKeyValueCount([ObjectDB.AllDictionariesPrefixByte]));
         }
     }
 
@@ -825,7 +827,8 @@ public class ObjectDbTableUpgradeTest : IDisposable
             Assert.Equal(1, table.First().L[0].D[1].Num);
             table.Upsert(table.First());
             // Assert no leaks in IDictionaries
-            Assert.Equal(0, tr.KeyValueDBTransaction.GetKeyValueCount(new[] { ObjectDB.AllDictionariesPrefixByte }));
+            using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+            Assert.Equal(0, cursor.GetKeyValueCount([ObjectDB.AllDictionariesPrefixByte]));
         }
     }
 

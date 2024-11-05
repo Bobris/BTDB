@@ -1774,7 +1774,8 @@ namespace BTDBTest
             {
                 //be bad, delete secondary indexes
                 var kvTr = ((IInternalObjectDBTransaction)tr).KeyValueDBTransaction;
-                kvTr.EraseAll(ObjectDB.AllRelationsSKPrefix);
+                using var cursor = kvTr.CreateCursor();
+                cursor.EraseAll(ObjectDB.AllRelationsSKPrefix);
                 tr.Commit();
             }
 

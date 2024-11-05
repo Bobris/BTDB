@@ -72,18 +72,19 @@ public class RelationInfo
         }
 
         [SkipLocalsInit]
-        internal unsafe object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes)
+        internal unsafe object CreateInstance(IInternalObjectDBTransaction tr, IKeyValueDBCursor cursor,
+            scoped in ReadOnlySpan<byte> keyBytes)
         {
             fixed (void* pKeyBytes = keyBytes)
             {
                 var reader = new MemReader(pKeyBytes, keyBytes.Length);
-                reader.Skip1Byte(); // 3
-                reader.SkipVUInt64(); // RelationId
+                reader.SkipBlock((uint)_owner.Prefix.Length);
                 var obj = _primaryKeysLoader(tr, ref reader);
                 if (_primaryKeyIsEnough) return obj;
                 if (_loadAsMemory)
                 {
-                    var valueBytes = tr.KeyValueDBTransaction.GetValueAsMemory();
+                    var buffer = new Memory<byte>();
+                    var valueBytes = cursor.GetValueMemory(ref buffer);
                     reader = MemReader.CreateFromReadOnlyMemory(valueBytes);
                     var version = reader.ReadVUInt32();
                     GetValueLoader(version)(tr, ref reader, obj);
@@ -92,11 +93,14 @@ public class RelationInfo
                 else
                 {
                     Span<byte> buf = stackalloc byte[4096];
-                    reader = MemReader.CreateFromPinnedSpan(buf);
-                    tr.KeyValueDBTransaction.GetValue(ref reader);
-                    var version = reader.ReadVUInt32();
-                    GetValueLoader(version)(tr, ref reader, obj);
-                    return obj;
+                    var valueSpan = cursor.GetValueSpan(ref buf);
+                    fixed (void* _ = valueSpan)
+                    {
+                        reader = MemReader.CreateFromPinnedSpan(valueSpan);
+                        var version = reader.ReadVUInt32();
+                        GetValueLoader(version)(tr, ref reader, obj);
+                        return obj;
+                    }
                 }
             }
         }
@@ -530,7 +534,8 @@ public class RelationInfo
         Span<byte> buffer2 = stackalloc byte[4096];
         var writerValue = MemWriter.CreateFromStackAllocatedSpan(buffer2);
         ClientRelationVersionInfo.Save(ref writerValue);
-        tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(writerKey.GetSpan(), writerValue.GetSpan());
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        cursor.CreateOrUpdateKeyValue(writerKey.GetSpan(), writerValue.GetSpan());
     }
 
     void CheckThatPrimaryKeyHasNotChanged(IInternalObjectDBTransaction tr, string name,
@@ -585,8 +590,9 @@ public class RelationInfo
         ItemLoaderInfos.Add(new(this, _clientType, prevPkFields));
         var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
         var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this,
-            Prefix, new SimpleModificationCounter(), (int)ItemLoaderInfos.Count - 1);
+            Prefix, (int)ItemLoaderInfos.Count - 1);
 
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
         var keyWriter = new MemWriter();
 
         while (enumerator!.MoveNext())
@@ -596,7 +602,7 @@ public class RelationInfo
             keyWriter.WriteBlock(Prefix);
             var lenOfPkWoInKeyValues = PrimaryKeysSaver(tr, ref keyWriter, obj);
             var keyBytes = keyWriter.GetSpan();
-            tr.KeyValueDBTransaction.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
+            cursor.UpdateKeySuffix(keyBytes, (uint)lenOfPkWoInKeyValues);
             keyWriter.Reset();
         }
 
@@ -676,7 +682,8 @@ public class RelationInfo
 
     long GetRelationCount(IInternalObjectDBTransaction tr)
     {
-        return tr.KeyValueDBTransaction.GetKeyValueCount(Prefix);
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        return cursor.GetKeyValueCount(Prefix);
     }
 
     void UpdateSecondaryKeys(IInternalObjectDBTransaction tr, RelationVersionInfo info,
@@ -709,8 +716,8 @@ public class RelationInfo
 
     bool WrongCountInSecondaryKey(IKeyValueDBTransaction tr, long count, uint index)
     {
-        Span<byte> buf = stackalloc byte[8];
-        return count != tr.GetKeyValueCount(GetPrefixToSecondaryKey(index, buf));
+        using var cursor = tr.CreateCursor();
+        return count != cursor.GetKeyValueCount(GetPrefixToSecondaryKey(index, stackalloc byte[8]));
     }
 
     void ClearRelationData(IInternalObjectDBTransaction tr, RelationVersionInfo info)
@@ -720,18 +727,18 @@ public class RelationInfo
             DeleteSecondaryKey(tr.KeyValueDBTransaction, prevIdx);
         }
 
-        Span<byte> buf = stackalloc byte[8];
-        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[8]);
         writer.WriteBlock(ObjectDB.AllRelationsPKPrefix);
         writer.WriteVUInt32(Id);
 
-        tr.KeyValueDBTransaction.EraseAll(writer.GetSpan());
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        cursor.EraseAll(writer.GetSpan());
     }
 
     void DeleteSecondaryKey(IKeyValueDBTransaction keyValueTr, uint index)
     {
-        Span<byte> buf = stackalloc byte[8];
-        keyValueTr.EraseAll(GetPrefixToSecondaryKey(index, buf));
+        using var cursor = keyValueTr.CreateCursor();
+        cursor.EraseAll(GetPrefixToSecondaryKey(index, stackalloc byte[8]));
     }
 
     ReadOnlySpan<byte> GetPrefixToSecondaryKey(uint index, Span<byte> buf)
@@ -747,7 +754,7 @@ public class RelationInfo
     {
         var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
         var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this,
-            Prefix, new SimpleModificationCounter(), 0);
+            Prefix, 0);
 
         var keySavers = new RelationSaver[indexes.Length];
 
@@ -758,6 +765,7 @@ public class RelationInfo
         }
 
         var keyWriter = new MemWriter();
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
 
         while (enumerator!.MoveNext())
         {
@@ -770,14 +778,14 @@ public class RelationInfo
                 keySavers[i](tr, ref keyWriter, obj!);
                 var keyBytes = keyWriter.GetSpanAndReset();
 
-                if (!tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>()))
+                if (!cursor.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>()))
                     throw new BTDBException("Internal error, secondary key bytes must be always unique.");
             }
         }
     }
 
     [SkipLocalsInit]
-    void LoadUnresolvedVersionInfos(IKeyValueDBTransaction tr)
+    unsafe void LoadUnresolvedVersionInfos(IKeyValueDBTransaction tr)
     {
         LastPersistedVersion = 0;
         Span<byte> buf = stackalloc byte[8];
@@ -786,18 +794,19 @@ public class RelationInfo
         writer.WriteVUInt32(_id);
         var prefix = writer.GetSpan();
         var relationVersions = new Dictionary<uint, RelationVersionInfo>();
-        if (tr.FindFirstKey(prefix))
+        using var cursor = tr.CreateCursor();
+        Span<byte> keyBuffer = stackalloc byte[16];
+        Span<byte> valueBuffer = stackalloc byte[4096];
+        while (cursor.FindNextKey(prefix))
         {
-            Span<byte> keyBuffer = stackalloc byte[16];
-            MemReader valueReader = new();
-            do
+            var valueSpan = cursor.GetValueSpan(ref valueBuffer);
+            fixed (void* _ = valueSpan)
             {
-                tr.GetValue(ref valueReader);
-                LastPersistedVersion = (uint)PackUnpack.UnpackVUInt(tr
-                    .GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length)[prefix.Length..]);
+                var valueReader = MemReader.CreateFromPinnedSpan(valueSpan);
+                LastPersistedVersion = (uint)PackUnpack.UnpackVUInt(cursor.GetKeySpan(ref keyBuffer)[prefix.Length..]);
                 var relationVersionInfo = RelationVersionInfo.LoadUnresolved(ref valueReader, _name);
                 relationVersions[LastPersistedVersion] = relationVersionInfo;
-            } while (tr.FindNextKey(prefix));
+            }
         }
 
         _relationVersions = new RelationVersionInfo[LastPersistedVersion + 2];
@@ -1054,7 +1063,7 @@ public class RelationInfo
         var targetType = skHandler.HandledType()!;
         if (sourceType == targetType)
             skHandler.Save(ilGenerator, pushWriter, pushCtx,
-                il => { valueHandler.Load(ilGenerator, buffer.PushReader, buffer.PushCtx); });
+                il => { valueHandler.Load(il, buffer.PushReader, buffer.PushCtx); });
         else
         {
             var converter = DefaultTypeConvertorGenerator.Instance.GenerateConversion(sourceType, targetType);
@@ -1063,8 +1072,8 @@ public class RelationInfo
             skHandler.Save(ilGenerator, pushWriter, pushCtx,
                 il =>
                 {
-                    valueHandler.Load(ilGenerator, buffer.PushReader, buffer.PushCtx);
-                    ilGenerator.Do(converter);
+                    valueHandler.Load(il, buffer.PushReader, buffer.PushCtx);
+                    il.Do(converter);
                 });
         }
     }
@@ -1608,8 +1617,9 @@ public class RelationInfo
         var len = PackUnpack.LengthVUInt(dictId);
         Span<byte> prefix = stackalloc byte[1 + (int)len];
         prefix[0] = ObjectDB.AllDictionariesPrefixByte;
-        PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(prefix.Slice(1)), dictId, len);
-        tr.KeyValueDBTransaction.EraseAll(prefix);
+        PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(prefix[1..]), dictId, len);
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        cursor.EraseAll(prefix);
     }
 
     public unsafe void FindUsedObjectsToFree(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> valueBytes,
@@ -1704,7 +1714,7 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
     }
 
     [SkipLocalsInit]
-    public override void FreeContentInNativeObject(ref MemReader outsideReader)
+    public override unsafe void FreeContentInNativeObject(ref MemReader outsideReader)
     {
         var id = outsideReader.ReadVInt64();
         if (id == 0)
@@ -1712,22 +1722,25 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
         }
         else if (id is <= int.MinValue or > 0)
         {
-            Span<byte> buffer10Bytes = stackalloc byte[10];
-            if (!Transaction!.KeyValueDBTransaction.FindExactKey(
-                    ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong)id, buffer10Bytes)))
+            using var cursor = Transaction!.KeyValueDBTransaction.CreateCursor();
+            if (!cursor.FindExactKey(
+                    ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong)id, stackalloc byte[10])))
                 return;
             Span<byte> buffer = stackalloc byte[2048];
-            var reader = MemReader.CreateFromPinnedSpan(buffer);
-            Transaction.KeyValueDBTransaction.GetValue(ref reader);
-            var tableId = reader.ReadVUInt32();
-            var tableInfo = ((ObjectDB)Transaction.Owner).TablesInfo.FindById(tableId);
-            if (tableInfo == null)
-                return;
-            var tableVersion = reader.ReadVUInt32();
-            var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
-            if (freeContentTuple.Item1 != NeedsFreeContent.No)
+            var valueSpan = cursor.GetValueSpan(ref buffer);
+            fixed (void* _ = valueSpan)
             {
-                freeContentTuple.Item2(Transaction, null, ref reader, _freeDictionaries);
+                var reader = MemReader.CreateFromPinnedSpan(valueSpan);
+                var tableId = reader.ReadVUInt32();
+                var tableInfo = ((ObjectDB)Transaction.Owner).TablesInfo.FindById(tableId);
+                if (tableInfo == null)
+                    return;
+                var tableVersion = reader.ReadVUInt32();
+                var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
+                if (freeContentTuple.Item1 != NeedsFreeContent.No)
+                {
+                    freeContentTuple.Item2(Transaction, null, ref reader, _freeDictionaries);
+                }
             }
         }
         else
@@ -1744,18 +1757,5 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
         var res = _seenObjects[ido];
         _seenObjects[ido] = true;
         return res;
-    }
-}
-
-class SimpleModificationCounter : IRelationModificationCounter
-{
-    public int ModificationCounter => 0;
-
-    public void CheckModifiedDuringEnum(int prevModification)
-    {
-    }
-
-    public void MarkModification()
-    {
     }
 }

@@ -1,8 +1,9 @@
+using System;
 using System.Collections.Generic;
 
 namespace BTDB.ODBLayer;
 
-public interface IOrderedDictionaryEnumerator<TKey, TValue>
+public interface IOrderedDictionaryEnumerator<TKey, TValue> : IDisposable
 {
     /// <summary>
     /// Read current cursor position key and move cursor to next pair, if at End just return false and stay at End
@@ -10,6 +11,7 @@ public interface IOrderedDictionaryEnumerator<TKey, TValue>
     /// <param name="key">Filled by read key</param>
     /// <returns>true if there was new key read</returns>
     bool NextKey(out TKey key);
+
     uint Position { get; set; }
     uint Count { get; }
     TValue CurrentValue { get; set; }
@@ -51,7 +53,8 @@ public class AdvancedEnumeratorParam<TKey>
         EndProposition = KeyProposition.Ignored;
     }
 
-    public AdvancedEnumeratorParam(EnumerationOrder order, TKey start, KeyProposition startProposition, TKey end, KeyProposition endProposition)
+    public AdvancedEnumeratorParam(EnumerationOrder order, TKey start, KeyProposition startProposition, TKey end,
+        KeyProposition endProposition)
     {
         Order = order;
         Start = start;

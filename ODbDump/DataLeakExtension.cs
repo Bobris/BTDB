@@ -127,17 +127,19 @@ namespace ODbDump
         {
             var sb = new StringBuilder();
             sb.Append($"var {varName} = new Dictionary<string, string>{{\n");
+            using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+            var buf = new Span<byte>();
             foreach (var key in lastUnseenKeys)
             {
                 if (key == null) continue;
                 sb.Append("[\"");
                 sb.Append(Convert.ToHexString(key));
                 sb.Append("\"] = \"");
-                if (tr.KeyValueDBTransaction.FindFirstKey(key))
+                if (cursor.FindFirstKey(key))
                 {
-                    var value = tr.KeyValueDBTransaction.GetValue();
+                    var value = cursor.GetValueSpan(ref buf);
                     if (value.Length > 20)
-                        value = value.Slice(0, 20);
+                        value = value[..20];
                     sb.Append(Convert.ToHexString(value));
                 }
 
@@ -178,7 +180,8 @@ namespace ODbDump
                     prefix[0] = firstKeyByte;
                     var pos = 1;
                     PackUnpack.PackVUInt(prefix, ref pos, id);
-                    tr.KeyValueDBTransaction.EraseAll(prefix.AsSpan());
+                    using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+                    cursor.EraseAll(prefix.AsSpan());
                 }
             }
 

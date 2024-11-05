@@ -269,20 +269,19 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
             var prefix = ((IRelationDbManipulator)this).RelationInfo.Prefix;
             var objectDBTransaction = ((IRelationDbManipulator)this).Transaction;
             var transaction = objectDBTransaction.KeyValueDBTransaction;
-            if (transaction.FindFirstKey(prefix))
+            using var cursor = transaction.CreateCursor();
+            while (cursor.FindNextKey(prefix))
             {
-                do
-                {
-                    var firstIndex = transaction.GetKeyIndex();
-                    var key = transaction.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
-                    var ofs = prefix.Length;
-                    var n1 = PackUnpack.UnpackVUInt(key, ref ofs); // this will throw if primary key data are corrupted
-                    transaction.FindLastKey(key[..ofs]); // this always succeeds
-                    var lastIndex = transaction.GetKeyIndex();
-                    var count = (ulong)(lastIndex - firstIndex + 1);
-                    result.Add((n1, count));
-                } while (transaction.FindNextKey(prefix));
+                var firstIndex = cursor.GetKeyIndex();
+                var key = cursor.GetKeySpan(ref keyBuffer);
+                var ofs = prefix.Length;
+                var n1 = PackUnpack.UnpackVUInt(key, ref ofs); // this will throw if primary key data are corrupted
+                cursor.FindLastKey(key[..ofs]); // this always succeeds
+                var lastIndex = cursor.GetKeyIndex();
+                var count = (ulong)(lastIndex - firstIndex + 1);
+                result.Add((n1, count));
             }
+
             return result;
         }
     }
@@ -300,7 +299,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         foreach (var valueTuple in groups.ToArray())
         {
             Assert.Equal((ulong)idx, valueTuple.N1);
-            Assert.Equal(25ul,valueTuple.Count);
+            Assert.Equal(25ul, valueTuple.Count);
             idx++;
         }
     }

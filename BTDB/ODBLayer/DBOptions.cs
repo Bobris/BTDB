@@ -1,4 +1,5 @@
-﻿using BTDB.Encrypted;
+﻿using System.Diagnostics.CodeAnalysis;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IOC;
 using BTDB.KVDBLayer;
@@ -86,6 +87,7 @@ public class DBOptions
 
     public IObjectDBLogger? Logger { get; private set; }
 
+    [DoesNotReturn]
     public void ThrowBTDBException(string message)
     {
         if (Name != null)

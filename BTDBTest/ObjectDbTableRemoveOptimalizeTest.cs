@@ -280,6 +280,193 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
         }
     }
 
+    class KeyValueDBCursorWithCount : IKeyValueDBCursorInternal
+    {
+        KeyValueDBTransactionWithCount _transaction;
+        IKeyValueDBCursorInternal _keyValueDBCursorInternalImplementation;
+
+        public KeyValueDBCursorWithCount(KeyValueDBTransactionWithCount transaction,
+            IKeyValueDBCursorInternal keyValueDBCursorInternalImplementation)
+        {
+            _transaction = transaction;
+            _keyValueDBCursorInternalImplementation = keyValueDBCursorInternalImplementation;
+            if (_transaction.FirstCursor == null)
+            {
+                _transaction.FirstCursor = this;
+                _transaction.LastCursor = this;
+            }
+            else
+            {
+                ((IKeyValueDBCursorInternal)_transaction.LastCursor!).NextCursor = this;
+                PrevCursor = (IKeyValueDBCursorInternal)_transaction.LastCursor;
+                _transaction.LastCursor = this;
+            }
+        }
+
+        public void Dispose()
+        {
+            if (PrevCursor == null)
+            {
+                _transaction.FirstCursor = NextCursor;
+                if (_transaction.FirstCursor == null)
+                {
+                    _transaction.LastCursor = null;
+                }
+                else
+                {
+                    ((IKeyValueDBCursorInternal)_transaction.FirstCursor!).PrevCursor = null;
+                }
+            }
+            else
+            {
+                ((IKeyValueDBCursorInternal)PrevCursor).NextCursor = NextCursor;
+                if (NextCursor == null)
+                {
+                    _transaction.LastCursor = (IKeyValueDBCursorInternal)PrevCursor;
+                }
+                else
+                {
+                    ((IKeyValueDBCursorInternal)NextCursor).PrevCursor = PrevCursor;
+                }
+            }
+
+            _keyValueDBCursorInternalImplementation.Dispose();
+        }
+
+        public IKeyValueDBTransaction Transaction => _transaction;
+
+        public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
+        {
+            return _keyValueDBCursorInternalImplementation.FindFirstKey(in prefix);
+        }
+
+        public bool FindLastKey(in ReadOnlySpan<byte> prefix)
+        {
+            return _keyValueDBCursorInternalImplementation.FindLastKey(in prefix);
+        }
+
+        public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
+        {
+            return _keyValueDBCursorInternalImplementation.FindPreviousKey(in prefix);
+        }
+
+        public bool FindNextKey(in ReadOnlySpan<byte> prefix)
+        {
+            return _keyValueDBCursorInternalImplementation.FindNextKey(in prefix);
+        }
+
+        public FindResult Find(scoped in ReadOnlySpan<byte> key, uint prefixLen)
+        {
+            return _keyValueDBCursorInternalImplementation.Find(in key, prefixLen);
+        }
+
+        public long GetKeyIndex()
+        {
+            return _keyValueDBCursorInternalImplementation.GetKeyIndex();
+        }
+
+        public bool FindKeyIndex(in ReadOnlySpan<byte> prefix, long index)
+        {
+            return _keyValueDBCursorInternalImplementation.FindKeyIndex(in prefix, index);
+        }
+
+        public bool FindKeyIndex(long index)
+        {
+            return _keyValueDBCursorInternalImplementation.FindKeyIndex(index);
+        }
+
+        public void Invalidate()
+        {
+            _keyValueDBCursorInternalImplementation.Invalidate();
+        }
+
+        public bool IsValid()
+        {
+            return _keyValueDBCursorInternalImplementation.IsValid();
+        }
+
+        public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
+        {
+            return _keyValueDBCursorInternalImplementation.GetStorageSizeOfCurrentKey();
+        }
+
+        public ReadOnlyMemory<byte> GetKeyMemory(ref Memory<byte> buffer, bool copy = false)
+        {
+            return _keyValueDBCursorInternalImplementation.GetKeyMemory(ref buffer, copy);
+        }
+
+        public ReadOnlySpan<byte> GetKeySpan(scoped ref Span<byte> buffer, bool copy = false)
+        {
+            return _keyValueDBCursorInternalImplementation.GetKeySpan(ref buffer, copy);
+        }
+
+        public bool IsValueCorrupted()
+        {
+            return _keyValueDBCursorInternalImplementation.IsValueCorrupted();
+        }
+
+        public ReadOnlyMemory<byte> GetValueMemory(ref Memory<byte> buffer, bool copy = false)
+        {
+            return _keyValueDBCursorInternalImplementation.GetValueMemory(ref buffer, copy);
+        }
+
+        public ReadOnlySpan<byte> GetValueSpan(scoped ref Span<byte> buffer, bool copy = false)
+        {
+            return _keyValueDBCursorInternalImplementation.GetValueSpan(ref buffer, copy);
+        }
+
+        public void SetValue(in ReadOnlySpan<byte> value)
+        {
+            _keyValueDBCursorInternalImplementation.SetValue(in value);
+        }
+
+        public void EraseCurrent()
+        {
+            _transaction.EraseCurrentCount++;
+            _keyValueDBCursorInternalImplementation.EraseCurrent();
+        }
+
+        public long EraseUpTo(IKeyValueDBCursor to)
+        {
+            _transaction.EraseRangeCount++;
+            return _keyValueDBCursorInternalImplementation.EraseUpTo(to);
+        }
+
+        public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        {
+            return _keyValueDBCursorInternalImplementation.CreateOrUpdateKeyValue(in key, in value);
+        }
+
+        public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
+        {
+            return _keyValueDBCursorInternalImplementation.UpdateKeySuffix(in key, prefixLen);
+        }
+
+        public void NotifyRemove(ulong startIndex, ulong endIndex)
+        {
+            _keyValueDBCursorInternalImplementation.NotifyRemove(startIndex, endIndex);
+        }
+
+        public void PreNotifyUpsert()
+        {
+            _keyValueDBCursorInternalImplementation.PreNotifyUpsert();
+        }
+
+        public void NotifyInsert(ulong index)
+        {
+            _keyValueDBCursorInternalImplementation.NotifyInsert(index);
+        }
+
+        public IKeyValueDBCursorInternal? PrevCursor { get; set; }
+
+        public IKeyValueDBCursorInternal? NextCursor { get; set; }
+
+        public void NotifyWritableTransaction()
+        {
+            _keyValueDBCursorInternalImplementation.NotifyWritableTransaction();
+        }
+    }
+
     class KeyValueDBTransactionWithCount : IKeyValueDBTransaction
     {
         readonly IKeyValueDBTransaction _keyValueDBTransaction;
@@ -303,117 +490,11 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDBTransaction.CreateCursor();
         }
 
-        public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
-        {
-            return _keyValueDBTransaction.FindFirstKey(prefix);
-        }
-
-        public bool FindLastKey(in ReadOnlySpan<byte> prefix)
-        {
-            return _keyValueDBTransaction.FindLastKey(prefix);
-        }
-
-        public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
-        {
-            return _keyValueDBTransaction.FindPreviousKey(prefix);
-        }
-
-        public bool FindNextKey(in ReadOnlySpan<byte> prefix)
-        {
-            return _keyValueDBTransaction.FindNextKey(prefix);
-        }
-
-        public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
-        {
-            return _keyValueDBTransaction.Find(key, prefixLen);
-        }
-
-        public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-        {
-            return _keyValueDBTransaction.CreateOrUpdateKeyValue(key, value);
-        }
-
-        public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
-        {
-            return _keyValueDBTransaction.UpdateKeySuffix(key, prefixLen);
-        }
-
         public long GetKeyValueCount()
         {
             return _keyValueDBTransaction.GetKeyValueCount();
         }
 
-        public long GetKeyIndex()
-        {
-            return _keyValueDBTransaction.GetKeyIndex();
-        }
-
-        public bool SetKeyIndex(in ReadOnlySpan<byte> prefix, long index)
-        {
-            return _keyValueDBTransaction.SetKeyIndex(prefix, index);
-        }
-
-        public bool SetKeyIndex(long index)
-        {
-            return _keyValueDBTransaction.SetKeyIndex(index);
-        }
-
-        public void InvalidateCurrentKey()
-        {
-            _keyValueDBTransaction.InvalidateCurrentKey();
-        }
-
-        public bool IsValidKey()
-        {
-            return _keyValueDBTransaction.IsValidKey();
-        }
-
-        public ReadOnlySpan<byte> GetKey()
-        {
-            return _keyValueDBTransaction.GetKey();
-        }
-
-        public byte[] GetKeyToArray()
-        {
-            return _keyValueDBTransaction.GetKeyToArray();
-        }
-
-        public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
-        {
-            return _keyValueDBTransaction.GetKey(ref buffer, bufferLength);
-        }
-
-        public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
-        {
-            return _keyValueDBTransaction.GetClonedValue(ref buffer, bufferLength);
-        }
-
-        public ReadOnlySpan<byte> GetValue()
-        {
-            return _keyValueDBTransaction.GetValue();
-        }
-
-        public ReadOnlyMemory<byte> GetValueAsMemory()
-        {
-            return _keyValueDBTransaction.GetValueAsMemory();
-        }
-
-        public void GetValue(ref MemReader reader)
-        {
-            _keyValueDBTransaction.GetValue(ref reader);
-        }
-
-        public bool IsValueCorrupted()
-        {
-            return _keyValueDBTransaction.IsValueCorrupted();
-        }
-
-        public void SetValue(in ReadOnlySpan<byte> value)
-        {
-            _keyValueDBTransaction.SetValue(value);
-        }
-
-        public int EraseAllCount { get; set; }
         public int EraseRangeCount { get; set; }
         public int EraseCurrentCount { get; set; }
 
@@ -438,39 +519,6 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
         {
             get => _keyValueDBTransaction.LastCursor;
             set => _keyValueDBTransaction.LastCursor = value;
-        }
-
-        public void EraseCurrent()
-        {
-            EraseCurrentCount++;
-            _keyValueDBTransaction.EraseCurrent();
-        }
-
-        public bool EraseCurrent(in ReadOnlySpan<byte> exactKey)
-        {
-            if (!_keyValueDBTransaction.EraseCurrent(in exactKey)) return false;
-            EraseCurrentCount++;
-            return true;
-        }
-
-        public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref MemReader valueReader)
-        {
-            if (!_keyValueDBTransaction.EraseCurrent(in exactKey, ref valueReader))
-                return false;
-            EraseCurrentCount++;
-            return true;
-        }
-
-        public void EraseAll()
-        {
-            EraseAllCount++;
-            _keyValueDBTransaction.EraseAll();
-        }
-
-        public void EraseRange(long firstKeyIndex, long lastKeyIndex)
-        {
-            EraseRangeCount++;
-            _keyValueDBTransaction.EraseRange(firstKeyIndex, lastKeyIndex);
         }
 
         public bool IsWriting()
@@ -526,13 +574,6 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
         public long GetTransactionNumber()
         {
             return _keyValueDBTransaction.GetTransactionNumber();
-        }
-
-        public long CursorMovedCounter => _keyValueDBTransaction.CursorMovedCounter;
-
-        public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
-        {
-            return _keyValueDBTransaction.GetStorageSizeOfCurrentKey();
         }
 
         public void Dispose()

@@ -247,7 +247,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         return _cursor.GetKeyMemory(ref buffer, copy);
     }
 
-    public ReadOnlySpan<byte> GetKeySpan(ref Memory<byte> buffer, bool copy = false)
+    public ReadOnlySpan<byte> GetKeySpan(scoped ref Span<byte> buffer, bool copy = false)
     {
         return _cursor.GetKeySpan(ref buffer, copy);
     }
@@ -287,7 +287,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         }
     }
 
-    public ReadOnlySpan<byte> GetValueSpan(ref Memory<byte> buffer, bool copy = false)
+    public ReadOnlySpan<byte> GetValueSpan(scoped ref Span<byte> buffer, bool copy = false)
     {
         if (!IsValid()) return new();
         var trueValue = _cursor.GetValue();
@@ -380,18 +380,18 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         _removedCurrent = true;
     }
 
-    public void EraseUpTo(IKeyValueDBCursor to)
+    public long EraseUpTo(IKeyValueDBCursor to)
     {
         EnsureValidCursor();
         var trueTo = (BTreeKeyValueDBCursor)to;
         trueTo.EnsureValidCursor();
         var firstKeyIndex = (ulong)GetKeyIndex();
         var lastKeyIndex = (ulong)trueTo.GetKeyIndex();
-        if (lastKeyIndex < firstKeyIndex) return;
+        if (lastKeyIndex < firstKeyIndex) return 0;
         if (firstKeyIndex == lastKeyIndex)
         {
             EraseCurrent();
-            return;
+            return 1;
         }
 
         var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
@@ -420,6 +420,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         trueTo._modifiedFromLastFind = true;
         _removedCurrent = true;
         trueTo._removedCurrent = true;
+        return (long)(lastKeyIndex - firstKeyIndex + 1);
     }
 
     [SkipLocalsInit]
@@ -536,6 +537,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         {
             _removedCurrent = false;
         }
+
         _modifiedFromLastFind = true;
     }
 

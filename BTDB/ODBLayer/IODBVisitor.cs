@@ -4,7 +4,7 @@ namespace BTDB.ODBLayer;
 
 public interface IODBFastVisitor
 {
-    void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr);
+    void MarkCurrentKeyAsUsed(IKeyValueDBCursor cursor);
 }
 
 public interface IODBVisitor : IODBFastVisitor

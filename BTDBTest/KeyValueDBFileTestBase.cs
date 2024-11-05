@@ -143,19 +143,22 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db.StartTransaction())
             {
-                tr.CreateKey(Key1);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateKey(Key1);
                 tr.Commit();
             }
 
             using (var tr = db.StartTransaction())
             {
-                tr.CreateKey(Key2);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateKey(Key2);
                 tr.Commit();
             }
 
             using (var tr = db.StartTransaction())
             {
-                tr.CreateKey(Key3);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateKey(Key3);
                 // rollback
             }
 
@@ -163,9 +166,10 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             {
                 using (var tr = db2.StartTransaction())
                 {
-                    Assert.True(tr.FindExactKey(Key1));
-                    Assert.True(tr.FindExactKey(Key2));
-                    Assert.False(tr.FindExactKey(Key3));
+                    using var cursor = tr.CreateCursor();
+                    Assert.True(cursor.FindExactKey(Key1));
+                    Assert.True(cursor.FindExactKey(Key2));
+                    Assert.False(cursor.FindExactKey(Key3));
                 }
             }
         }
@@ -174,9 +178,10 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db.StartTransaction())
             {
-                Assert.True(tr.FindExactKey(Key1));
-                Assert.True(tr.FindExactKey(Key2));
-                Assert.False(tr.FindExactKey(Key3));
+                using var cursor = tr.CreateCursor();
+                Assert.True(cursor.FindExactKey(Key1));
+                Assert.True(cursor.FindExactKey(Key2));
+                Assert.False(cursor.FindExactKey(Key3));
             }
         }
     }
@@ -191,17 +196,22 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             {
                 var key = new byte[100];
                 using var tr = db.StartTransaction();
+                using var cursor = tr.CreateCursor();
                 key[0] = (byte)(i / 256);
                 key[1] = (byte)(i % 256);
-                Assert.True(tr.CreateOrUpdateKeyValue(key, key));
+                Assert.True(cursor.CreateOrUpdateKeyValue(key, key));
                 tr.Commit();
             }
 
             using (var tr = db.StartTransaction())
             {
-                tr.SetKeyIndex(0);
-                tr.EraseCurrent();
-                tr.EraseRange(1, 3);
+                using var cursor = tr.CreateCursor();
+                cursor.FindKeyIndex(0);
+                cursor.EraseCurrent();
+                cursor.FindKeyIndex(1);
+                using var cursor2 = tr.CreateCursor();
+                cursor2.FindKeyIndex(3);
+                cursor.EraseUpTo(cursor2);
                 tr.Commit();
             }
         }
@@ -210,11 +220,12 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db.StartTransaction())
             {
+                using var cursor = tr.CreateCursor();
                 var key = new byte[100];
                 key[1] = 1;
-                Assert.True(tr.FindExactKey(key));
-                tr.FindNextKey(ReadOnlySpan<byte>.Empty);
-                Assert.Equal(5, tr.GetKey()[1]);
+                Assert.True(cursor.FindExactKey(key));
+                cursor.FindNextKey(new());
+                Assert.Equal(5, cursor.SlowGetKey()[1]);
                 Assert.Equal(96, tr.GetKeyValueCount());
             }
         }
@@ -228,7 +239,8 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db.StartTransaction())
             {
-                tr.CreateOrUpdateKeyValue(Key1, Key1);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(Key1, Key1);
                 tr.Commit();
             }
         }
@@ -237,7 +249,8 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db.StartTransaction())
             {
-                tr.CreateOrUpdateKeyValue(Key2, Key2);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(Key2, Key2);
                 tr.Commit();
             }
 
@@ -255,7 +268,8 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db.StartTransaction())
             {
-                tr.CreateOrUpdateKeyValue(Key1, Key1);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(Key1, Key1);
                 tr.Commit();
             }
         }
@@ -266,7 +280,8 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             using (var tr = db.StartTransaction())
             {
                 Assert.Equal(0, tr.GetKeyValueCount());
-                tr.CreateOrUpdateKeyValue(Key2, Key2);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(Key2, Key2);
                 tr.Commit();
             }
 
@@ -284,8 +299,9 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db.StartTransaction())
             {
-                tr.CreateOrUpdateKeyValue(Key1, new byte[1024]);
-                tr.CreateOrUpdateKeyValue(Key2, new byte[10]);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(Key1, new byte[1024]);
+                cursor.CreateOrUpdateKeyValue(Key2, new byte[10]);
                 tr.Commit();
             }
         }
@@ -295,8 +311,9 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db.StartTransaction())
             {
-                tr.CreateOrUpdateKeyValue(Key2, new byte[1024]);
-                tr.CreateOrUpdateKeyValue(Key3, new byte[10]);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(Key2, new byte[1024]);
+                cursor.CreateOrUpdateKeyValue(Key3, new byte[10]);
                 tr.Commit();
             }
         }
@@ -306,7 +323,8 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db.StartTransaction())
             {
-                tr.CreateOrUpdateKeyValue(Key2, Key2);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(Key2, Key2);
                 tr.Commit();
             }
         }
@@ -321,16 +339,18 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         using var db = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 1024, null);
         using (var tr = db.StartTransaction())
         {
-            tr.CreateOrUpdateKeyValue(Key1, new byte[1024]);
-            tr.CreateOrUpdateKeyValue(Key2, new byte[10]);
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key1, new byte[1024]);
+            cursor.CreateOrUpdateKeyValue(Key2, new byte[10]);
             tr.Commit();
         }
 
         var longTr = db.StartTransaction();
         using (var tr = db.StartTransaction())
         {
-            tr.FindExactKey(Key1);
-            tr.EraseCurrent();
+            using var cursor = tr.CreateCursor();
+            cursor.FindExactKey(Key1);
+            cursor.EraseCurrent();
             tr.Commit();
         }
 
@@ -341,7 +361,8 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         Assert.Equal(2u, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
         using (var tr = db.StartTransaction())
         {
-            tr.CreateOrUpdateKeyValue(Key3, new byte[10]);
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key3, new byte[10]);
             tr.Commit();
         }
 
@@ -349,7 +370,8 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db2.StartTransaction())
             {
-                Assert.True(tr.FindExactKey(Key3));
+                using var cursor = tr.CreateCursor();
+                Assert.True(cursor.FindExactKey(Key3));
             }
         }
     }
@@ -361,16 +383,18 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         using var db = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 10240, null);
         using (var tr = db.StartTransaction())
         {
-            tr.CreateOrUpdateKeyValue(Key1, new byte[4000]);
-            tr.CreateOrUpdateKeyValue(Key2, new byte[4000]);
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key1, new byte[4000]);
+            cursor.CreateOrUpdateKeyValue(Key2, new byte[4000]);
             tr.Commit();
         }
 
         using (var tr = db.StartTransaction())
         {
-            tr.CreateOrUpdateKeyValue(Key3, new byte[4000]); // creates new Log
-            tr.FindExactKey(Key1);
-            tr.EraseCurrent();
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key3, new byte[4000]); // creates new Log
+            cursor.FindExactKey(Key1);
+            cursor.EraseCurrent();
             tr.Commit();
         }
 
@@ -391,15 +415,18 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         using var db = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 1024);
         using (var tr = db.StartWritingTransaction().Result)
         {
-            tr.CreateOrUpdateKeyValue(Key1, new byte[1024]);
-            tr.CreateOrUpdateKeyValue(Key2, new byte[10]);
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key1, new byte[1024]);
+            cursor.CreateOrUpdateKeyValue(Key2, new byte[10]);
             tr.Commit();
         }
 
         db.Compact(new CancellationToken());
         using (var tr = db.StartWritingTransaction().Result)
         {
-            tr.EraseRange(0, 0);
+            using var cursor = tr.CreateCursor();
+            cursor.FindKeyIndex(0);
+            cursor.EraseCurrent();
             tr.Commit();
         }
 
@@ -408,8 +435,9 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using (var tr = db2.StartTransaction())
             {
-                Assert.False(tr.FindExactKey(Key1));
-                Assert.True(tr.FindExactKey(Key2));
+                using var cursor = tr.CreateCursor();
+                Assert.False(cursor.FindExactKey(Key1));
+                Assert.True(cursor.FindExactKey(Key2));
             }
         }
     }
@@ -423,7 +451,8 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         db.Logger = logger;
         using (var tr = db.StartTransaction())
         {
-            tr.CreateOrUpdateKeyValue(Key1, new byte[1]);
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key1, new byte[1]);
             tr.Commit();
         }
 
@@ -499,11 +528,12 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         });
         using (var tr = db.StartTransaction())
         {
+            using var cursor = tr.CreateCursor();
             var key = new byte[100];
             for (var i = 0; i < 256; i++)
             {
                 for (var j = 0; j < 100; j++) key[j] = (byte)i;
-                tr.CreateOrUpdateKeyValue(key, key);
+                cursor.CreateOrUpdateKeyValue(key, key);
             }
 
             tr.Commit();
@@ -529,12 +559,13 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         });
         using (var tr = db.StartTransaction())
         {
+            using var cursor = tr.CreateCursor();
             var key = new byte[100];
             var value = new byte[2000];
             for (var i = 0; i < 2000; i++)
             {
                 PackUnpack.PackInt32BE(key, 0, i);
-                tr.CreateOrUpdateKeyValue(key, value);
+                cursor.CreateOrUpdateKeyValue(key, value);
             }
 
             tr.Commit();
@@ -542,19 +573,20 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
 
         using (var tr = db.StartTransaction())
         {
+            using var cursor = tr.CreateCursor();
             var key = new byte[100];
             for (var i = 0; i < 2000; i += 2)
             {
                 PackUnpack.PackInt32BE(key, 0, i);
-                tr.FindExactKey(key);
-                tr.EraseCurrent();
+                cursor.FindExactKey(key);
+                cursor.EraseCurrent();
             }
 
             for (var i = 0; i < 2000; i += 3)
             {
                 PackUnpack.PackInt32BE(key, 0, i);
-                if (tr.FindExactKey(key))
-                    tr.EraseCurrent();
+                if (cursor.FindExactKey(key))
+                    cursor.EraseCurrent();
             }
 
             Assert.Equal(667, tr.GetKeyValueCount());
@@ -590,7 +622,8 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         using var tr = db.StartTransaction();
         Assert.Equal(0, tr.GetKeyValueCount());
         Assert.Equal(0u, fileCollection.GetCount());
-        tr.CreateOrUpdateKeyValue(Key1, new byte[1024]);
+        using var cursor = tr.CreateCursor();
+        cursor.CreateOrUpdateKeyValue(Key1, new byte[1024]);
         tr.Commit();
     }
 
@@ -620,13 +653,15 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         using var db = NewKeyValueDB(options);
         using (var tr = db.StartTransaction())
         {
-            tr.CreateOrUpdateKeyValue(Key1, new byte[1024]);
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key1, new byte[1024]);
             tr.Commit();
         }
 
         using (var tr = db.StartTransaction())
         {
-            tr.CreateOrUpdateKeyValue(Key3, new byte[50]);
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key3, new byte[50]);
             tr.Commit();
         }
     }
@@ -639,21 +674,24 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             using var db = NewKeyValueDB(fc, new NoCompressionStrategy(), 1024);
             {
                 using var tr = db.StartTransaction();
-                tr.CreateOrUpdateKeyValue(new byte[10], new byte[400]);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(new byte[10], new byte[400]);
                 tr.Commit();
             }
             {
                 using var tr = db.StartTransaction();
-                tr.CreateOrUpdateKeyValue(new byte[40], new byte[560]);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(new byte[40], new byte[560]);
                 tr.Commit();
             }
             db.Compact(CancellationToken.None);
 
             {
                 using var tr = db.StartTransaction();
-                tr.FindFirstKey(new byte[40]);
-                tr.EraseCurrent();
-                tr.CreateOrUpdateKeyValue(new byte[10], new byte[100]);
+                using var cursor = tr.CreateCursor();
+                cursor.FindFirstKey(new byte[40]);
+                cursor.EraseCurrent();
+                cursor.CreateOrUpdateKeyValue(new byte[10], new byte[100]);
                 tr.Commit();
             }
             db.Compact(CancellationToken.None);
@@ -662,8 +700,9 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using var db = NewKeyValueDB(fc, new NoCompressionStrategy(), 1024);
             using var tr = db.StartTransaction();
-            Assert.Equal(FindResult.Exact, tr.Find(new byte[10], 0));
-            Assert.Equal(100, tr.GetValue().Length);
+            using var cursor = tr.CreateCursor();
+            Assert.Equal(FindResult.Exact, cursor.Find(new byte[10], 0));
+            Assert.Equal(100, cursor.SlowGetValue().Length);
         }
     }
 
@@ -673,21 +712,22 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using var db = NewKeyValueDB(fc);
             using var tr = db.StartTransaction();
+            using var cursor = tr.CreateCursor();
             var key = new byte[keyLength];
             for (var i = 0; i < 250; i++)
             {
                 key[10] = (byte)i;
-                tr.CreateOrUpdateKeyValue(key, new byte[i]);
+                cursor.CreateOrUpdateKeyValue(key, new byte[i]);
             }
 
             key[keyLength - 1] = 1;
             for (var i = 0; i < 250; i++)
             {
                 key[10] = (byte)i;
-                Assert.Equal(UpdateKeySuffixResult.Updated, tr.UpdateKeySuffix(key, (uint)keyLength / 2));
-                Assert.True(key.AsSpan().SequenceEqual(tr.GetKey()));
-                Assert.Equal(i, tr.GetValue().Length);
-                Assert.Equal(i, tr.GetKeyIndex());
+                Assert.Equal(UpdateKeySuffixResult.Updated, cursor.UpdateKeySuffix(key, (uint)keyLength / 2));
+                Assert.True(key.AsSpan().SequenceEqual(cursor.SlowGetKey().AsSpan()));
+                Assert.Equal(i, cursor.SlowGetValue().Length);
+                Assert.Equal(i, cursor.GetKeyIndex());
                 Assert.Equal(250, tr.GetKeyValueCount());
             }
 
@@ -696,13 +736,14 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         {
             using var db = NewKeyValueDB(fc);
             using var tr = db.StartTransaction();
+            using var cursor = tr.CreateCursor();
             var key = new byte[keyLength];
             key[keyLength - 1] = 1;
             for (var i = 0; i < 250; i++)
             {
                 key[10] = (byte)i;
-                Assert.True(tr.FindExactKey(key));
-                Assert.Equal(i, tr.GetValue().Length);
+                Assert.True(cursor.FindExactKey(key));
+                Assert.Equal(i, cursor.SlowGetValue().Length);
             }
         }
     }

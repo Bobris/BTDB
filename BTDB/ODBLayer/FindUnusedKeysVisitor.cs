@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 
@@ -7,8 +8,8 @@ namespace BTDB.ODBLayer;
 
 public class FindUnusedKeysVisitor : IDisposable
 {
-    IFileCollection _fileCollection;
-    IKeyValueDB _keyValueDb;
+    IFileCollection? _fileCollection;
+    IKeyValueDB? _keyValueDb;
     IKeyValueDBTransaction? _kvtr;
     readonly byte[] _tempBytes = new byte[32];
 
@@ -35,24 +36,25 @@ public class FindUnusedKeysVisitor : IDisposable
 
     public void ImportAllKeys(IObjectDBTransaction sourceDbTr)
     {
-        var itr = (IInternalObjectDBTransaction)sourceDbTr;
-        var sourceKvTr = itr.KeyValueDBTransaction;
+        using var sourceCursor = sourceDbTr.KeyValueDBTransaction.CreateCursor();
         foreach (var prefix in SupportedKeySpaces())
-            ImportKeysWithPrefix(prefix, sourceKvTr);
+            ImportKeysWithPrefix(prefix, sourceCursor);
     }
 
-    void ImportKeysWithPrefix(byte[] prefix, IKeyValueDBTransaction sourceKvTr)
+    void ImportKeysWithPrefix(byte[] prefix, IKeyValueDBCursor sourceCursor)
     {
-        if (!sourceKvTr.FindFirstKey(prefix))
+        if (!sourceCursor.FindFirstKey(prefix))
             return;
-        using (var kvtr = _keyValueDb.StartWritingTransaction().Result)
+        var buf = Span<byte>.Empty;
+        using (var kvtr = _keyValueDb!.StartWritingTransaction().Result)
         {
+            using var cursor = kvtr.CreateCursor();
             do
             {
                 //create all keys, instead of value store only byte length of value
-                kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(),
-                    Vuint2ByteBuffer(sourceKvTr.GetStorageSizeOfCurrentKey().Value));
-            } while (sourceKvTr.FindNextKey(prefix));
+                cursor.CreateOrUpdateKeyValue(sourceCursor.GetKeySpan(ref buf),
+                    Vuint2ByteBuffer(sourceCursor.GetStorageSizeOfCurrentKey().Value));
+            } while (sourceCursor.FindNextKey(prefix));
 
             kvtr.Commit();
         }
@@ -61,7 +63,7 @@ public class FindUnusedKeysVisitor : IDisposable
     public ODBIterator Iterate(IObjectDBTransaction tr)
     {
         var iterator = new ODBIterator(tr, new VisitorForFindUnused(this));
-        using (_kvtr = _keyValueDb.StartWritingTransaction().Result)
+        using (_kvtr = _keyValueDb!.StartWritingTransaction().Result)
         {
             iterator.Iterate();
             _kvtr.Commit();
@@ -73,29 +75,30 @@ public class FindUnusedKeysVisitor : IDisposable
 
     public IEnumerable<UnseenKey> UnseenKeys()
     {
-        using var trkv = _keyValueDb.StartReadOnlyTransaction();
+        using var trkv = _keyValueDb!.StartReadOnlyTransaction();
+        using var cursor = trkv.CreateCursor();
+        var buf = Memory<byte>.Empty;
         foreach (var prefix in SupportedKeySpaces())
         {
-            if (!trkv.FindFirstKey(prefix))
+            if (!cursor.FindFirstKey(prefix))
                 continue;
             do
             {
                 yield return new UnseenKey
                 {
-                    Key = trkv.GetKeyToArray(),
-                    ValueSize = (uint)PackUnpack.UnpackVUInt(trkv.GetValue())
+                    Key = cursor.SlowGetKey(),
+                    ValueSize = (uint)PackUnpack.UnpackVUInt(cursor.GetValueMemory(ref buf).Span)
                 };
-            } while (trkv.FindNextKey(prefix));
+            } while (cursor.FindNextKey(prefix));
         }
     }
 
     public void DeleteUnused(IObjectDBTransaction tr)
     {
-        var itr = (IInternalObjectDBTransaction)tr;
-        var kvtr = itr.KeyValueDBTransaction;
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
         foreach (var unseen in UnseenKeys())
         {
-            kvtr.EraseAll(unseen.Key);
+            cursor.EraseAll(unseen.Key);
         }
     }
 
@@ -114,9 +117,15 @@ public class FindUnusedKeysVisitor : IDisposable
         return _tempBytes.AsSpan(0, ofs);
     }
 
-    void MarkKeyAsUsed(IKeyValueDBTransaction tr)
+    [SkipLocalsInit]
+    void MarkKeyAsUsed(IKeyValueDBCursor cursor)
     {
-        _kvtr!.EraseCurrent(tr.GetKey());
+        Span<byte> buf = stackalloc byte[4096];
+        using var cursorTarget = _kvtr!.CreateCursor();
+        if (cursorTarget.FindExactKey(cursor.GetKeySpan(ref buf)))
+        {
+            cursorTarget.EraseCurrent();
+        }
     }
 
     class VisitorForFindUnused : IODBFastVisitor
@@ -128,9 +137,9 @@ public class FindUnusedKeysVisitor : IDisposable
             _finder = finder;
         }
 
-        public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
+        public void MarkCurrentKeyAsUsed(IKeyValueDBCursor cursor)
         {
-            _finder.MarkKeyAsUsed(tr);
+            _finder.MarkKeyAsUsed(cursor);
         }
     }
 }

@@ -16,9 +16,9 @@ namespace ODbDump.Visitor
 
         const int KeyOverhead = 20;
 
-        public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
+        public void MarkCurrentKeyAsUsed(IKeyValueDBCursor cursor)
         {
-            var (memory, disk) = tr.GetStorageSizeOfCurrentKey();
+            var (memory, disk) = cursor.GetStorageSizeOfCurrentKey();
             _currentMemorySize += memory + KeyOverhead;
             _currentOnDiskSize += disk;
         }

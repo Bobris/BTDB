@@ -63,18 +63,19 @@ public class ODBIterator
         LoadTableNamesDict();
         LoadRelationInfoDict();
         MarkLastDictId();
-        _trkv.InvalidateCurrentKey();
+        using var cursor = _trkv.CreateCursor();
         _singletons = new();
-        while (_trkv.FindNextKey(ObjectDB.TableSingletonsPrefix))
+        Span<byte> buf = stackalloc byte[16];
+        while (cursor.FindNextKey(ObjectDB.TableSingletonsPrefix))
         {
             _singletons.Add(
-                (uint)PackUnpack.UnpackVUInt(_trkv.GetKey()[(int)ObjectDB.TableSingletonsPrefixLen..]),
-                PackUnpack.UnpackVUInt(_trkv.GetValue()));
+                (uint)PackUnpack.UnpackVUInt(cursor.GetKeySpan(ref buf)[(int)ObjectDB.TableSingletonsPrefixLen..]),
+                PackUnpack.UnpackVUInt(cursor.GetValueSpan(ref buf)));
         }
 
         if (sortTableByNameAsc)
         {
-            _singletons = _singletons.OrderBy(item => _tableId2Name.TryGetValue(item.Key, out var name) ? name : "")
+            _singletons = _singletons.OrderBy(item => _tableId2Name.GetValueOrDefault(item.Key, ""))
                 .ToDictionary(item => item.Key, item => item.Value);
         }
     }
@@ -89,9 +90,10 @@ public class ODBIterator
                     _tableId2Name.TryGetValue(singleton.Key, out var name) ? name : null, singleton.Value))
                 continue;
             MarkTableName(singleton.Key);
-            if (_trkv.Find(Vuint2ByteBuffer(ObjectDB.TableSingletonsPrefix, singleton.Key), 0) == FindResult.Exact)
+            using var cursor = _trkv.CreateCursor();
+            if (cursor.Find(Vuint2ByteBuffer(ObjectDB.TableSingletonsPrefix, singleton.Key), 0) == FindResult.Exact)
             {
-                _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
+                _fastVisitor.MarkCurrentKeyAsUsed(cursor);
             }
 
             IterateOid(singleton.Value);
@@ -124,50 +126,56 @@ public class ODBIterator
         }
     }
 
-    public void IterateOid(ulong oid)
+    public unsafe void IterateOid(ulong oid)
     {
         if (!SkipAlreadyVisitedOidChecks && !_visitedOids.Add(oid))
             return;
-        if (!_trkv.FindExactKey(Vuint2ByteBuffer(ObjectDB.AllObjectsPrefix, oid)))
+        using var cursor = _trkv.CreateCursor();
+        if (!cursor.FindExactKey(Vuint2ByteBuffer(ObjectDB.AllObjectsPrefix, oid)))
             return; // Object oid was deleted
-        _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
+        _fastVisitor.MarkCurrentKeyAsUsed(cursor);
 
-        var reader = new MemReader();
-        _trkv.GetValue(ref reader);
-        var tableId = reader.ReadVUInt32();
-        var version = reader.ReadVUInt32();
-        MarkTableIdVersionFieldInfo(tableId, version);
-        if (_visitor != null && !_visitor.StartObject(oid, tableId,
-                _tableId2Name.GetValueOrDefault(tableId), version))
-            return;
-        var tvi = GetTableVersionInfo(tableId, version);
-        var knownInlineId = new HashSet<int>();
-        for (var i = 0; i < tvi.FieldCount; i++)
+        Span<byte> buf = default;
+        var valueSpan = cursor.GetValueSpan(ref buf);
+        fixed (void* p = valueSpan)
         {
-            var fi = tvi[i];
-            if (_visitor == null || _visitor.StartField(fi.Name))
+            var reader = new MemReader(p, valueSpan.Length);
+            var tableId = reader.ReadVUInt32();
+            var version = reader.ReadVUInt32();
+            MarkTableIdVersionFieldInfo(tableId, version);
+            if (_visitor != null && !_visitor.StartObject(oid, tableId,
+                    _tableId2Name.GetValueOrDefault(tableId), version))
+                return;
+            var tvi = GetTableVersionInfo(tableId, version);
+            var knownInlineId = new HashSet<int>();
+            for (var i = 0; i < tvi.FieldCount; i++)
             {
-                IterateHandler(ref reader, fi.Handler!, false, knownInlineId);
-                _visitor?.EndField();
+                var fi = tvi[i];
+                if (_visitor == null || _visitor.StartField(fi.Name))
+                {
+                    IterateHandler(ref reader, fi.Handler!, false, knownInlineId);
+                    _visitor?.EndField();
+                }
+                else
+                {
+                    IterateHandler(ref reader, fi.Handler!, true, knownInlineId);
+                }
             }
-            else
-            {
-                IterateHandler(ref reader, fi.Handler!, true, knownInlineId);
-            }
-        }
 
-        _visitor?.EndObject();
+            _visitor?.EndObject();
+        }
     }
 
     public unsafe void IterateRelationRow(ODBIteratorRelationInfo relation, long pos)
     {
         var prefix = BuildRelationPrefix(relation.Id);
-        if (!_trkv.SetKeyIndex(prefix, pos)) return;
-        var prevProtectionCounter = _trkv.CursorMovedCounter;
-        var valueCorrupted = _trkv.IsValueCorrupted();
+        using var cursor = _trkv.CreateCursor();
+        if (!cursor.FindKeyIndex(prefix, pos)) return;
+        var valueCorrupted = cursor.IsValueCorrupted();
         if (_visitor == null || _visitor.StartRelationKey(valueCorrupted))
         {
-            var keySpan = _trkv.GetKey()[prefix.Length..];
+            Span<byte> buf = default;
+            var keySpan = cursor.GetKeySpan(ref buf)[prefix.Length..];
             fixed (void* _ = keySpan)
             {
                 var keyReader = MemReader.CreateFromPinnedSpan(keySpan);
@@ -178,18 +186,18 @@ public class ODBIterator
             _visitor?.EndRelationKey();
         }
 
-        if (_trkv.CursorMovedCounter != prevProtectionCounter)
-        {
-            if (!_trkv.SetKeyIndex(prefix, pos)) return;
-        }
-
         if (!valueCorrupted && (_visitor == null || _visitor.StartRelationValue()))
         {
-            var valueReader = new MemReader();
-            _trkv.GetValue(ref valueReader);
-            var version = valueReader.ReadVUInt32();
-            var relationInfo = relation.VersionInfos[version];
-            IterateFields(ref valueReader, relationInfo.Fields.Span, new());
+            Span<byte> buf = default;
+            var valueSpan = cursor.GetValueSpan(ref buf);
+            fixed (void* _ = valueSpan)
+            {
+                var valueReader = MemReader.CreateFromPinnedSpan(valueSpan);
+                var version = valueReader.ReadVUInt32();
+                var relationInfo = relation.VersionInfos[version];
+                IterateFields(ref valueReader, relationInfo.Fields.Span, []);
+            }
+
             _visitor?.EndRelationValue();
         }
     }
@@ -198,33 +206,15 @@ public class ODBIterator
     {
         IterateSecondaryIndexes(relation);
         var prefix = BuildRelationPrefix(relation.Id);
-
-        long prevProtectionCounter = 0;
-        long pos = 0;
-        while (true)
+        using var cursor = _trkv.CreateCursor();
+        var buf = Span<byte>.Empty;
+        while (cursor.FindNextKey(prefix))
         {
-            if (pos == 0)
-            {
-                if (!_trkv.FindFirstKey(prefix)) break;
-            }
-            else
-            {
-                if (_trkv.CursorMovedCounter != prevProtectionCounter)
-                {
-                    if (!_trkv.SetKeyIndex(prefix, pos)) break;
-                }
-                else
-                {
-                    if (!_trkv.FindNextKey(prefix)) break;
-                }
-            }
-
-            _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
-            prevProtectionCounter = _trkv.CursorMovedCounter;
-            var valueCorrupted = _trkv.IsValueCorrupted();
+            _fastVisitor.MarkCurrentKeyAsUsed(cursor);
+            var valueCorrupted = cursor.IsValueCorrupted();
             if (_visitor == null || _visitor.StartRelationKey(valueCorrupted))
             {
-                var keyBuf = _trkv.GetKey()[prefix.Length..];
+                var keyBuf = cursor.GetKeySpan(ref buf)[prefix.Length..];
                 fixed (void* _ = keyBuf)
                 {
                     var keyReader = MemReader.CreateFromPinnedSpan(keyBuf);
@@ -235,26 +225,22 @@ public class ODBIterator
                 _visitor?.EndRelationKey();
             }
 
-            if (_trkv.CursorMovedCounter != prevProtectionCounter)
-            {
-                if (!_trkv.SetKeyIndex(prefix, pos)) break;
-            }
-
             if (!valueCorrupted && (_visitor == null || _visitor.StartRelationValue()))
             {
-                var valueReader = new MemReader();
-                _trkv.GetValue(ref valueReader);
-                var version = valueReader.ReadVUInt32();
-                var relationInfo = relation.VersionInfos[version];
-                IterateFields(ref valueReader, relationInfo.Fields.Span, new());
-                _visitor?.EndRelationValue();
+                var valueSpan = cursor.GetValueSpan(ref buf);
+                fixed (void* _ = valueSpan)
+                {
+                    var valueReader = MemReader.CreateFromPinnedSpan(valueSpan);
+                    var version = valueReader.ReadVUInt32();
+                    var relationInfo = relation.VersionInfos[version];
+                    IterateFields(ref valueReader, relationInfo.Fields.Span, new());
+                    _visitor?.EndRelationValue();
+                }
             }
-
-            pos++;
         }
     }
 
-    public List<(string, string)> IterateRelationStats(ODBIteratorRelationInfo relation)
+    public unsafe List<(string, string)> IterateRelationStats(ODBIteratorRelationInfo relation)
     {
         var res = new List<(string, string)>();
         //IterateSecondaryIndexes(relation);
@@ -263,34 +249,20 @@ public class ODBIterator
         var stat1 = new RefDictionary<uint, uint>();
         var stat2 = new RefDictionary<uint, uint>();
         var stat3 = new RefDictionary<uint, uint>();
-        long prevProtectionCounter = 0;
-        long pos = 0;
-        var valueReader = new MemReader();
-        while (true)
+        Span<byte> buf = default;
+        using var cursor = _trkv.CreateCursor();
+        while (cursor.FindNextKey(prefix))
         {
-            if (pos == 0)
-            {
-                if (!_trkv.FindFirstKey(prefix)) break;
-            }
-            else
-            {
-                if (_trkv.CursorMovedCounter != prevProtectionCounter)
-                {
-                    if (!_trkv.SetKeyIndex(prefix, pos)) break;
-                }
-                else
-                {
-                    if (!_trkv.FindNextKey(prefix)) break;
-                }
-            }
-
-            var ss = _trkv.GetStorageSizeOfCurrentKey();
+            var ss = cursor.GetStorageSizeOfCurrentKey();
             stat2.GetOrAddValueRef(ss.Key)++;
             stat3.GetOrAddValueRef(ss.Value)++;
-            _trkv.GetValue(ref valueReader);
-            var version = valueReader.ReadVUInt32();
-            stat1.GetOrAddValueRef(version)++;
-            pos++;
+            var valueSpan = cursor.GetValueSpan(ref buf);
+            fixed (void* _ = valueSpan)
+            {
+                var valueReader = MemReader.CreateFromPinnedSpan(valueSpan);
+                var version = valueReader.ReadVUInt32();
+                stat1.GetOrAddValueRef(version)++;
+            }
         }
 
         foreach (var p in stat1.OrderBy(p => p.Key))
@@ -320,27 +292,11 @@ public class ODBIterator
             if (_visitor == null || _visitor.StartSecondaryIndex(secKeyName))
             {
                 var prefix = BuildRelationSecondaryKeyPrefix(relation.Id, secKeyIdx);
-                long prevProtectionCounter = 0;
-                long pos = 0;
-                while (true)
+                using var cursor = _trkv.CreateCursor();
+                var buf = Span<byte>.Empty;
+                while (cursor.FindNextKey(prefix))
                 {
-                    if (pos == 0)
-                    {
-                        if (!_trkv.FindFirstKey(prefix)) break;
-                    }
-                    else
-                    {
-                        if (_trkv.CursorMovedCounter != prevProtectionCounter)
-                        {
-                            if (!_trkv.SetKeyIndex(prefix, pos)) break;
-                        }
-                        else
-                        {
-                            if (!_trkv.FindNextKey(prefix)) break;
-                        }
-                    }
-
-                    var keySpan = _trkv.GetKey()[prefix.Length..];
+                    var keySpan = cursor.GetKeySpan(ref buf)[prefix.Length..];
                     fixed (void* _ = keySpan)
                     {
                         var reader = MemReader.CreateFromPinnedSpan(keySpan);
@@ -352,7 +308,6 @@ public class ODBIterator
                     }
 
                     _visitor?.NextSecondaryKey();
-                    pos++;
                 }
 
                 _visitor?.EndSecondaryIndex();
@@ -403,29 +358,29 @@ public class ODBIterator
         uint lastPersistedVersion = 0;
         var relationInfoResolver = new RelationInfoResolver((ObjectDB)_tr.Owner);
 
-        var writer = new MemWriter();
+        using var cursor = _trkv.CreateCursor();
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[8]);
         writer.WriteByteArrayRaw(ObjectDB.RelationVersionsPrefix);
         writer.WriteVUInt32(relationIndex);
-        var prefix = writer.GetSpan().ToArray();
-        if (!_trkv.FindFirstKey(prefix))
-        {
-            return lastPersistedVersion;
-        }
+        var prefix = writer.GetSpan();
 
-        var valueReader = new MemReader();
-        do
+        var keyBuf = Span<byte>.Empty;
+        var valueBuf = Span<byte>.Empty;
+        while (cursor.FindNextKey(prefix))
         {
-            var keySpan = _trkv.GetKey()[prefix.Length..];
+            var keySpan = cursor.GetKeySpan(ref keyBuf)[prefix.Length..];
+            var valueSpan = cursor.GetValueSpan(ref valueBuf);
             fixed (void* _ = keySpan)
+            fixed (void* __ = valueSpan)
             {
                 var keyReader = MemReader.CreateFromPinnedSpan(keySpan);
                 lastPersistedVersion = keyReader.ReadVUInt32();
-                _trkv.GetValue(ref valueReader);
+                var valueReader = MemReader.CreateFromPinnedSpan(valueSpan);
                 var relationVersionInfo = RelationVersionInfo.LoadUnresolved(ref valueReader, name);
                 relationVersionInfo.ResolveFieldHandlers(relationInfoResolver.FieldHandlerFactory);
                 relationVersions[lastPersistedVersion] = relationVersionInfo;
             }
-        } while (_trkv.FindNextKey(prefix));
+        }
 
         return lastPersistedVersion;
     }
@@ -439,34 +394,14 @@ public class ODBIterator
         var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
         Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
         PackUnpack.PackVUInt(prefix, ref o, dictId);
-        long prevProtectionCounter = 0;
-        long pos = 0;
-        Span<byte> keyBuffer = stackalloc byte[512];
-        var valueReader = new MemReader();
-        while (true)
+        Span<byte> buf = stackalloc byte[512];
+        using var cursor = _trkv.CreateCursor();
+        while (cursor.FindNextKey(prefix))
         {
-            if (pos == 0)
-            {
-                if (!_trkv.FindFirstKey(prefix)) break;
-            }
-            else
-            {
-                if (_trkv.CursorMovedCounter != prevProtectionCounter)
-                {
-                    if (!_trkv.SetKeyIndex(prefix, pos)) break;
-                }
-                else
-                {
-                    if (!_trkv.FindNextKey(prefix)) break;
-                }
-            }
-
-            _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
-            prevProtectionCounter = _trkv.CursorMovedCounter;
+            _fastVisitor.MarkCurrentKeyAsUsed(cursor);
             if (_visitor == null || _visitor.StartDictKey())
             {
-                var keySpan = _trkv
-                    .GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length)[prefix.Length..];
+                var keySpan = cursor.GetKeySpan(ref buf)[prefix.Length..];
                 fixed (void* _ = keySpan)
                 {
                     var keyReader = MemReader.CreateFromPinnedSpan(keySpan);
@@ -476,19 +411,16 @@ public class ODBIterator
                 _visitor?.EndDictKey();
             }
 
-            if (_trkv.CursorMovedCounter != prevProtectionCounter)
-            {
-                if (!_trkv.SetKeyIndex(prefix, pos)) break;
-            }
-
             if (_visitor == null || _visitor.StartDictValue())
             {
-                _trkv.GetValue(ref valueReader);
-                IterateHandler(ref valueReader, valueHandler, false, null);
-                _visitor?.EndDictValue();
+                var valueSpan = cursor.GetValueSpan(ref buf);
+                fixed (void* _ = valueSpan)
+                {
+                    var valueReader = MemReader.CreateFromPinnedSpan(valueSpan);
+                    IterateHandler(ref valueReader, valueHandler, false, null);
+                    _visitor?.EndDictValue();
+                }
             }
-
-            pos++;
         }
 
         _visitor?.EndDictionary();
@@ -502,31 +434,14 @@ public class ODBIterator
         var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
         Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
         PackUnpack.PackVUInt(prefix, ref o, dictId);
-        long prevProtectionCounter = 0;
-        long pos = 0;
-        while (true)
+        using var cursor = _trkv.CreateCursor();
+        var buf = Span<byte>.Empty;
+        while (cursor.FindNextKey(prefix))
         {
-            if (pos == 0)
-            {
-                if (!_trkv.FindFirstKey(prefix)) break;
-            }
-            else
-            {
-                if (_trkv.CursorMovedCounter != prevProtectionCounter)
-                {
-                    if (!_trkv.SetKeyIndex(prefix, pos)) break;
-                }
-                else
-                {
-                    if (!_trkv.FindNextKey(prefix)) break;
-                }
-            }
-
-            _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
-            prevProtectionCounter = _trkv.CursorMovedCounter;
+            _fastVisitor.MarkCurrentKeyAsUsed(cursor);
             if (_visitor == null || _visitor.StartSetKey())
             {
-                var keySpan = _trkv.GetKey()[prefix.Length..];
+                var keySpan = cursor.GetKeySpan(ref buf)[prefix.Length..];
                 fixed (void* _ = keySpan)
                 {
                     var keyReader = MemReader.CreateFromPinnedSpan(keySpan);
@@ -535,8 +450,6 @@ public class ODBIterator
 
                 _visitor?.EndSetKey();
             }
-
-            pos++;
         }
 
         _visitor?.EndSet();
@@ -825,17 +738,19 @@ public class ODBIterator
         if (!_usedTableVersions.Add(new(tableId, version)))
             return;
         MarkTableName(tableId);
-        if (_trkv.FindExactKey(TwiceVuint2ByteBuffer(ObjectDB.TableVersionsPrefix, tableId, version)))
+        using var cursor = _trkv.CreateCursor();
+        if (cursor.FindExactKey(TwiceVuint2ByteBuffer(ObjectDB.TableVersionsPrefix, tableId, version)))
         {
-            _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
+            _fastVisitor.MarkCurrentKeyAsUsed(cursor);
         }
     }
 
     void MarkLastDictId()
     {
-        if (_trkv.FindExactKey(ObjectDB.LastDictIdKey))
+        using var cursor = _trkv.CreateCursor();
+        if (cursor.FindExactKey(ObjectDB.LastDictIdKey))
         {
-            _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
+            _fastVisitor.MarkCurrentKeyAsUsed(cursor);
         }
     }
 
@@ -843,35 +758,40 @@ public class ODBIterator
     {
         if (!_usedTableIds.Add(tableId))
             return;
-        if (_trkv.FindExactKey(Vuint2ByteBuffer(ObjectDB.TableNamesPrefix, tableId)))
+        using var cursor = _trkv.CreateCursor();
+        if (cursor.FindExactKey(Vuint2ByteBuffer(ObjectDB.TableNamesPrefix, tableId)))
         {
-            _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
+            _fastVisitor.MarkCurrentKeyAsUsed(cursor);
         }
     }
 
     void MarkRelationName(uint relationId)
     {
-        if (_trkv.FindExactKey(Vuint2ByteBuffer(ObjectDB.RelationNamesPrefix, relationId)))
+        using var cursor = _trkv.CreateCursor();
+        if (cursor.FindExactKey(Vuint2ByteBuffer(ObjectDB.RelationNamesPrefix, relationId)))
         {
-            _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
+            _fastVisitor.MarkCurrentKeyAsUsed(cursor);
         }
     }
 
     ReadOnlySpan<byte> Vuint2ByteBuffer(in ReadOnlySpan<byte> prefix, ulong value)
     {
-        var writer = new MemWriter();
-        writer.WriteBlock(prefix);
-        writer.WriteVUInt64(value);
-        return writer.GetSpan();
+        var len = PackUnpack.LengthVUInt(value);
+        var res = new byte[prefix.Length + len];
+        prefix.CopyTo(res);
+        PackUnpack.UnsafePackVUInt(ref res[prefix.Length], value, len);
+        return res;
     }
 
     ReadOnlySpan<byte> TwiceVuint2ByteBuffer(in ReadOnlySpan<byte> prefix, uint v1, uint v2)
     {
-        var writer = new MemWriter();
-        writer.WriteBlock(prefix);
-        writer.WriteVUInt32(v1);
-        writer.WriteVUInt32(v2);
-        return writer.GetSpan();
+        var len1 = PackUnpack.LengthVUInt(v1);
+        var len2 = PackUnpack.LengthVUInt(v2);
+        var res = new byte[prefix.Length + len1 + len2];
+        prefix.CopyTo(res);
+        PackUnpack.UnsafePackVUInt(ref res[prefix.Length], v1, len1);
+        PackUnpack.UnsafePackVUInt(ref res[prefix.Length + len1], v2, len2);
+        return res;
     }
 
     void LoadTableNamesDict()
@@ -896,22 +816,28 @@ public class ODBIterator
         var relationVersions = new Dictionary<uint, RelationVersionInfo>();
         res.LastPersistedVersion = ReadRelationVersions(res.Id, res.Name, relationVersions);
         res.VersionInfos = relationVersions;
-        res.RowCount = _trkv.GetKeyValueCount(BuildRelationPrefix(res.Id));
+        using var cursor = _trkv.CreateCursor();
+        res.RowCount = cursor.GetKeyValueCount(BuildRelationPrefix(res.Id));
         return res;
     }
 
     [SkipLocalsInit]
-    TableVersionInfo GetTableVersionInfo(uint tableId, uint version)
+    unsafe TableVersionInfo GetTableVersionInfo(uint tableId, uint version)
     {
         if (_tableVersionInfos.TryGetValue(new(tableId, version), out var res))
             return res;
-        if (_trkv.FindExactKey(TwiceVuint2ByteBuffer(ObjectDB.TableVersionsPrefix, tableId, version)))
+        using var cursor = _trkv.CreateCursor();
+        if (cursor.FindExactKey(TwiceVuint2ByteBuffer(ObjectDB.TableVersionsPrefix, tableId, version)))
         {
             Span<byte> buf = stackalloc byte[4096];
-            var reader = MemReader.CreateFromPinnedSpan(buf);
-            _trkv.GetValue(ref reader);
-            res = TableVersionInfo.Load(ref reader, _tr.Owner.FieldHandlerFactory, _tableId2Name[tableId]);
-            _tableVersionInfos.Add(new(tableId, version), res);
+            var valueSpan = cursor.GetValueSpan(ref buf);
+            fixed (void* _ = valueSpan)
+            {
+                var reader = MemReader.CreateFromPinnedSpan(valueSpan);
+                res = TableVersionInfo.Load(ref reader, _tr.Owner.FieldHandlerFactory, _tableId2Name[tableId]);
+                _tableVersionInfos.Add(new(tableId, version), res);
+            }
+
             return res;
         }
 

@@ -113,12 +113,13 @@ public class InKeyValueStressTest
             while (true)
             {
                 using var tr = _lowDb.StartReadOnlyTransaction();
-                if (tr.FindFirstKey(new()))
+                using var cursor = tr.CreateCursor();
+                if (cursor.FindFirstKey(new()))
                 {
-                    var prevKey = tr.GetKeyToArray();
-                    while (tr.FindNextKey(new()))
+                    var prevKey = cursor.SlowGetKey();
+                    while (cursor.FindNextKey(new()))
                     {
-                        var key = tr.GetKeyToArray();
+                        var key = cursor.SlowGetKey();
                         if (key.SequenceEqual(prevKey))
                         {
                             throw new InvalidOperationException();
@@ -138,6 +139,7 @@ public class InKeyValueStressTest
             {
                 Console.WriteLine(cmdId);
             }
+
             switch (r.Next(1, 3))
             {
                 case 1:

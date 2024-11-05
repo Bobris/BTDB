@@ -117,11 +117,14 @@ public class ObjectDB : IObjectDB
         using var tr = _keyValueDB.StartTransaction();
         _lastObjId = (long)tr.GetUlong(0);
         _lastDictId = (long)tr.GetUlong(1);
+        Span<byte> stackBuffer = stackalloc byte[16];
+        var buf = stackBuffer;
         if (_lastObjId == 0)
         {
-            if (tr.FindLastKey(AllObjectsPrefix))
+            using var cursor = tr.CreateCursor();
+            if (cursor.FindLastKey(AllObjectsPrefix))
             {
-                _lastObjId = (long)PackUnpack.UnpackVUInt(tr.GetKey().Slice(AllObjectsPrefixLen));
+                _lastObjId = (long)PackUnpack.UnpackVUInt(cursor.GetKeySpan(ref buf)[AllObjectsPrefixLen..]);
             }
         }
 
@@ -129,9 +132,10 @@ public class ObjectDB : IObjectDB
         _relationsInfo.LoadRelations(LoadRelationNamesEnum(tr));
         if (_lastDictId == 0)
         {
-            if (tr.FindExactKey(LastDictIdKey))
+            using var cursor = tr.CreateCursor();
+            if (cursor.FindExactKey(LastDictIdKey))
             {
-                _lastDictId = (long)PackUnpack.UnpackVUInt(tr.GetValue());
+                _lastDictId = (long)PackUnpack.UnpackVUInt(cursor.GetValueSpan(ref buf));
             }
         }
     }
@@ -151,36 +155,55 @@ public class ObjectDB : IObjectDB
         }
     }
 
-    [SkipLocalsInit]
     internal static IEnumerable<KeyValuePair<uint, string>> LoadTablesEnum(IKeyValueDBTransaction tr)
     {
-        tr.InvalidateCurrentKey();
-        var reader = new MemReader(); // Cannot be stackalloced because of yield return
-        while (tr.FindNextKey(TableNamesPrefix))
+        using var cursor = tr.CreateCursor();
+        while (cursor.FindNextKey(TableNamesPrefix))
         {
-            tr.GetValue(ref reader);
-            yield return new(
-                (uint)PackUnpack.UnpackVUInt(tr.GetKey()[TableNamesPrefixLen..]),
-                reader.ReadString());
+            yield return ReadTableNameFromCursor(cursor);
         }
+    }
+
+    [SkipLocalsInit]
+    static unsafe KeyValuePair<uint, string> ReadTableNameFromCursor(IKeyValueDBCursor cursor)
+    {
+        Span<byte> buf = stackalloc byte[4096];
+        var valueSpan = cursor.GetValueSpan(ref buf);
+        string name;
+        fixed (void* ptr = valueSpan)
+        {
+            name = new MemReader(ptr, valueSpan.Length).ReadString()!;
+        }
+
+        var tableId = (uint)PackUnpack.UnpackVUInt(cursor.GetKeySpan(ref buf)[TableNamesPrefixLen..]);
+        return new(tableId, name);
     }
 
     internal static IEnumerable<KeyValuePair<uint, string>> LoadRelationNamesEnum(IKeyValueDBTransaction tr)
     {
-        tr.InvalidateCurrentKey();
-        while (tr.FindNextKey(RelationNamesPrefix))
+        using var cursor = tr.CreateCursor();
+        while (cursor.FindNextKey(RelationNamesPrefix))
         {
+            [SkipLocalsInit]
             unsafe string ReadName()
             {
-                var bufName = tr.GetKey()[RelationNamesPrefixLen..];
-                fixed (void* bufPtr = &bufName[0])
+                Span<byte> buf = stackalloc byte[4096];
+                var bufName = cursor.GetKeySpan(ref buf)[RelationNamesPrefixLen..];
+                fixed (void* bufPtr = bufName)
                 {
                     return new MemReader(bufPtr, bufName.Length).ReadString()!;
                 }
             }
 
-            yield return new((uint)PackUnpack.UnpackVUInt(tr.GetValue()),
-                ReadName());
+            [SkipLocalsInit]
+            unsafe uint ReadId()
+            {
+                Span<byte> buf = stackalloc byte[16];
+                var bufId = cursor.GetValueSpan(ref buf);
+                return (uint)PackUnpack.UnpackVUInt(bufId);
+            }
+
+            yield return new(ReadId(), ReadName());
         }
     }
 
@@ -295,40 +318,48 @@ public class ObjectDB : IObjectDB
         uint ITableInfoResolver.GetLastPersistedVersion(uint id)
         {
             using var tr = _keyValueDB.StartTransaction();
-            var key = TableInfo.BuildKeyForTableVersions(id, uint.MaxValue);
+            using var cursor = tr.CreateCursor();
+            var key = TableInfo.BuildKeyForTableVersions(id, 0);
             var ofs = PackUnpack.LengthVUInt(id);
-            if (tr.Find(key, TableVersionsPrefixLen + ofs) == FindResult.NotFound)
+            if (!cursor.FindLastKey(key.AsSpan()[..(int)(TableVersionsPrefixLen + ofs)]))
                 return 0;
-            var key2 = tr.GetKey()[(int)(TableVersionsPrefixLen + ofs)..];
+            Span<byte> buf = stackalloc byte[16];
+            var key2 = cursor.GetKeySpan(ref buf)[(int)(TableVersionsPrefixLen + ofs)..];
             return checked((uint)PackUnpack.UnpackVUInt(key2));
         }
 
         [SkipLocalsInit]
-        TableVersionInfo ITableInfoResolver.LoadTableVersionInfo(uint id, uint version, string tableName)
+        unsafe TableVersionInfo ITableInfoResolver.LoadTableVersionInfo(uint id, uint version, string tableName)
         {
             using var tr = _keyValueDB.StartReadOnlyTransaction();
+            using var cursor = tr.CreateCursor();
             var key = TableInfo.BuildKeyForTableVersions(id, version);
-            if (!tr.FindExactKey(key))
+            if (!cursor.FindExactKey(key))
                 _objectDB.ActualOptions.ThrowBTDBException(
                     $"Missing TableVersionInfo Id: {id} Version: {version} TableName: {tableName}");
             Span<byte> buffer = stackalloc byte[4096];
-            var reader = MemReader.CreateFromPinnedSpan(buffer);
-            tr.GetValue(ref reader);
-            return TableVersionInfo.Load(ref reader, _objectDB.FieldHandlerFactory, tableName);
+            var valueSpan = cursor.GetValueSpan(ref buffer);
+            fixed (void* ptr = valueSpan)
+            {
+                var reader = new MemReader(ptr, valueSpan.Length);
+                return TableVersionInfo.Load(ref reader, _objectDB.FieldHandlerFactory, tableName);
+            }
         }
 
         public long GetSingletonOid(uint id)
         {
             using var tr = _keyValueDB.StartTransaction();
+            using var cursor = tr.CreateCursor();
             var len = PackUnpack.LengthVUInt(id);
-            Span<byte> key = stackalloc byte[(int)(TableSingletonsPrefixLen + len)];
+            Span<byte> buf = stackalloc byte[16];
+            Span<byte> key = buf[..(int)(TableSingletonsPrefixLen + len)];
             TableSingletonsPrefix.CopyTo(key);
             PackUnpack.UnsafePackVUInt(
                 ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(key), (IntPtr)TableSingletonsPrefixLen),
                 id, len);
-            if (tr.FindExactKey(key))
+            if (cursor.FindExactKey(key))
             {
-                return (long)PackUnpack.UnpackVUInt(tr.GetValue());
+                return (long)PackUnpack.UnpackVUInt(cursor.GetValueSpan(ref buf));
             }
 
             return 0;

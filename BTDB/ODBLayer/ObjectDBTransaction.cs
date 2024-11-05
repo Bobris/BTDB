@@ -114,7 +114,8 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
     public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
-        return _keyValueTr!.CreateOrUpdateKeyValue(key, value);
+        using var cursor = _keyValueTr!.CreateCursor();
+        return cursor.CreateOrUpdateKeyValue(key, value);
     }
 
     public void ThrowIfDisposed()
@@ -160,48 +161,12 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     {
         if (type == typeof(object)) type = null;
         else if (type != null) AutoRegisterType(type);
-        ulong oid = 0;
-        var finalOid = _owner.GetLastAllocatedOid();
-        var reader = new MemReader(); // cannot be stackalloced because of yield return
-        long prevProtectionCounter = 0;
-        while (true)
+        using var cursor = _keyValueTr!.CreateCursor();
+        var buffer = new Memory<byte>();
+        var oid = 0UL;
+        while (cursor.FindNextKey(ObjectDB.AllObjectsPrefix))
         {
-            if (oid == 0)
-            {
-                if (!_keyValueTr!.FindFirstKey(ObjectDB.AllObjectsPrefix)) break;
-                prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            }
-            else
-            {
-                if (prevProtectionCounter != _keyValueTr!.CursorMovedCounter)
-                {
-                    oid++;
-                    Span<byte> buffer10Bytes = stackalloc byte[10];
-                    var key = BuildKeyFromOidWithAllObjectsPrefix(oid, buffer10Bytes);
-                    var result = _keyValueTr.Find(key, 0);
-                    if (result == FindResult.Previous)
-                    {
-                        if (!_keyValueTr.FindNextKey(ObjectDB.AllObjectsPrefix))
-                        {
-                            result = FindResult.NotFound;
-                        }
-                    }
-
-                    if (result == FindResult.NotFound)
-                    {
-                        oid--;
-                        break;
-                    }
-                }
-                else
-                {
-                    if (!_keyValueTr!.FindNextKey(ObjectDB.AllObjectsPrefix)) break;
-                }
-
-                prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            }
-
-            oid = ReadOidFromCurrentKeyInTransaction();
+            oid = ReadOidFromCurrentKeyInTransaction(cursor);
             var o = GetObjFromObjCacheByOid(oid);
             if (o != null)
             {
@@ -213,14 +178,28 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
                 continue;
             }
 
-            ReadObjStart(oid, out var tableInfo, ref reader);
-            if (type != null && !type.IsAssignableFrom(tableInfo.ClientType)) continue;
-            var obj = ReadObjFinish(oid, tableInfo, ref reader);
-            yield return obj;
+            static unsafe object? ReadObject(IKeyValueDBCursor cursor, ref Memory<byte> buffer, ulong oid,
+                ObjectDBTransaction objectDBTransaction, Type? type)
+            {
+                var valueMemory = cursor.GetValueMemory(ref buffer);
+                fixed (void* valuePtr = valueMemory.Span)
+                {
+                    var reader = new MemReader((byte*)valuePtr, valueMemory.Length);
+                    objectDBTransaction.ReadObjStart(oid, out var tableInfo, ref reader);
+                    if (type != null && !type.IsAssignableFrom(tableInfo.ClientType)) return null;
+                    return objectDBTransaction.ReadObjFinish(oid, tableInfo, ref reader);
+                }
+            }
+
+            var obj = ReadObject(cursor, ref buffer, oid, this, type);
+            if (obj != null)
+            {
+                yield return obj;
+            }
         }
 
         if (_dirtyObjSet == null) yield break;
-        var dirtyObjsToEnum = _dirtyObjSet.Where(p => p.Key > oid && p.Key <= finalOid).ToList();
+        var dirtyObjsToEnum = _dirtyObjSet.Where(p => p.Key > oid).ToList();
         dirtyObjsToEnum.Sort((p1, p2) => p1.Key < p2.Key ? -1 : p1.Key > p2.Key ? 1 : 0);
         foreach (var dObjPair in dirtyObjsToEnum)
         {
@@ -328,8 +307,6 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
     void ReadObjStart(ulong oid, out TableInfo tableInfo, ref MemReader reader)
     {
-        _keyValueTr.GetValue(ref reader);
-        reader = MemReader.CreateFromReadOnlyMemory(_keyValueTr!.GetValueAsMemory());
         var tableId = reader.ReadVUInt32();
         tableInfo = _owner.TablesInfo.FindById(tableId)!;
         if (tableInfo == null)
@@ -354,13 +331,13 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     [SkipLocalsInit]
     object? GetDirectlyFromStorage(ulong oid)
     {
-        Span<byte> buffer10Bytes = stackalloc byte[10];
-        if (!_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid, buffer10Bytes)))
+        using var cursor = _keyValueTr!.CreateCursor();
+        Span<byte> buffer = stackalloc byte[4096];
+        if (!cursor.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid, buffer)))
         {
             return null;
         }
 
-        Span<byte> buffer = stackalloc byte[4096];
         var reader = MemReader.CreateFromPinnedSpan(buffer);
         ReadObjStart(oid, out var tableInfo, ref reader);
         return ReadObjFinish(oid, tableInfo, ref reader);
@@ -385,13 +362,14 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
     public KeyValuePair<uint, uint> GetStorageSize(ulong oid)
     {
+        using var cursor = _keyValueTr!.CreateCursor();
         Span<byte> buffer10Bytes = stackalloc byte[10];
-        if (!_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid, buffer10Bytes)))
+        if (!cursor.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid, buffer10Bytes)))
         {
             return new(0, 0);
         }
 
-        var res = _keyValueTr.GetStorageSizeOfCurrentKey();
+        var res = cursor.GetStorageSizeOfCurrentKey();
         return res;
     }
 
@@ -502,7 +480,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         }
     }
 
-    public object Singleton(Type type)
+    public unsafe object Singleton(Type type)
     {
         var tableInfo = AutoRegisterType(type, true);
         tableInfo.EnsureClientTypeVersion();
@@ -511,23 +489,26 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         if (obj == null)
         {
             var content = tableInfo.SingletonContent(_transactionNumber);
-            if (content == null)
+            if (content.Length == 0)
             {
+                using var cursor = _keyValueTr!.CreateCursor();
                 Span<byte> buffer10Bytes = stackalloc byte[10];
-                if (_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid, buffer10Bytes)))
+                if (cursor.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid, buffer10Bytes)))
                 {
-                    var value = _keyValueTr.GetValue();
-                    content = GC.AllocateUninitializedArray<byte>(value.Length, pinned: true);
-                    value.CopyTo(content);
+                    var buf = new Memory<byte>();
+                    content = cursor.GetValueMemory(ref buf);
                     tableInfo.CacheSingletonContent(_transactionNumber, content);
                 }
             }
 
-            if (content != null)
+            if (content.Length != 0)
             {
-                var reader = MemReader.CreateFromPinnedArray(content, 0, content.Length);
-                reader.SkipVUInt32();
-                obj = ReadObjFinish(oid, tableInfo, ref reader);
+                fixed (void* ptr = content.Span)
+                {
+                    var reader = new MemReader((byte*)ptr, content.Length);
+                    reader.SkipVUInt32();
+                    obj = ReadObjFinish(oid, tableInfo, ref reader);
+                }
             }
         }
 
@@ -765,11 +746,10 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     }
 
     [SkipLocalsInit]
-    ulong ReadOidFromCurrentKeyInTransaction()
+    ulong ReadOidFromCurrentKeyInTransaction(IKeyValueDBCursor cursor)
     {
         Span<byte> buffer = stackalloc byte[16];
-        return PackUnpack.UnpackVUInt(_keyValueTr!.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length)
-            .Slice(1));
+        return PackUnpack.UnpackVUInt(cursor.GetKeySpan(ref buffer)[1..]);
     }
 
     internal static ReadOnlySpan<byte> BuildKeyFromOidWithAllObjectsPrefix(ulong oid, Span<byte> buffer10Bytes)
@@ -864,10 +844,12 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         }
         else return;
 
-        if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return;
+        if (metadata!.Id == 0 || metadata.State == DBObjectState.Deleted) return;
         metadata.State = DBObjectState.Deleted;
-        Span<byte> buffer10Bytes = stackalloc byte[10];
-        _keyValueTr!.EraseCurrent(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id, buffer10Bytes));
+
+        using var cursor = _keyValueTr!.CreateCursor();
+        if (cursor.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id, stackalloc byte[10])))
+            cursor.EraseCurrent();
         tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
         if (_objSmallCache != null)
         {
@@ -902,8 +884,9 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
         _dirtyObjSet?.Remove(oid);
 
-        Span<byte> buffer10Bytes = stackalloc byte[10];
-        _keyValueTr!.EraseCurrent(BuildKeyFromOidWithAllObjectsPrefix(oid, buffer10Bytes));
+        using var cursor = _keyValueTr!.CreateCursor();
+        if (cursor.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid, stackalloc byte[10])))
+            cursor.EraseCurrent();
         if (obj == null) return;
         DBObjectMetadata metadata = null;
         if (_objSmallMetadata != null)
@@ -1005,8 +988,8 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
             tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
         }
 
-        Span<byte> buffer10Bytes = stackalloc byte[10];
-        _keyValueTr!.CreateOrUpdateKeyValue(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id, buffer10Bytes),
+        using var cursor = _keyValueTr!.CreateCursor();
+        cursor.CreateOrUpdateKeyValue(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id, stackalloc byte[10]),
             writer.GetSpan());
     }
 
@@ -1015,26 +998,27 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     {
         if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion)
         {
+            using var cursor = _keyValueTr!.CreateCursor();
             if (tableInfo.LastPersistedVersion <= 0)
             {
                 var keyTableId = BuildKeyFromOid(ObjectDB.TableNamesPrefix, tableInfo.Id);
-                if (!_keyValueTr!.FindExactKey(keyTableId))
+                if (!cursor.FindExactKey(keyTableId))
                 {
                     Span<byte> buf = stackalloc byte[128];
                     var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
                     writer.WriteString(tableInfo.Name);
-                    _keyValueTr.CreateOrUpdateKeyValue(keyTableId, writer.GetSpan());
+                    cursor.CreateOrUpdateKeyValue(keyTableId, writer.GetSpan());
                 }
             }
 
-            if (!_keyValueTr!.FindExactKey(
+            if (!cursor.FindExactKey(
                     TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion)))
             {
                 var tableVersionInfo = tableInfo.ClientTableVersionInfo;
                 Span<byte> buf = stackalloc byte[4096];
                 var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
                 tableVersionInfo!.Save(ref writer);
-                _keyValueTr.CreateOrUpdateKeyValue(
+                cursor.CreateOrUpdateKeyValue(
                     TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion),
                     writer.GetSpan());
             }
@@ -1042,7 +1026,8 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
         if (tableInfo.NeedStoreSingletonOid)
         {
-            _keyValueTr!.CreateOrUpdateKeyValue(BuildKeyFromOid(ObjectDB.TableSingletonsPrefix, tableInfo.Id),
+            using var cursor = _keyValueTr!.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(BuildKeyFromOid(ObjectDB.TableSingletonsPrefix, tableInfo.Id),
                 BuildKeyFromOid(new ReadOnlySpan<byte>(), (ulong)tableInfo.SingletonOid));
         }
     }
@@ -1075,9 +1060,10 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     public void DeleteAllData()
     {
         // Resetting last oid is risky due to singletons. Resetting lastDictId is risky due to parallelism. So better to waste something.
-        _keyValueTr!.EraseAll(ObjectDB.AllObjectsPrefix);
-        _keyValueTr.EraseAll(ObjectDB.AllDictionariesPrefix);
-        _keyValueTr.EraseAll(ObjectDB.AllRelationsPKPrefix);
-        _keyValueTr.EraseAll(ObjectDB.AllRelationsSKPrefix);
+        using var cursor = _keyValueTr!.CreateCursor();
+        cursor.EraseAll(ObjectDB.AllObjectsPrefix);
+        cursor.EraseAll(ObjectDB.AllDictionariesPrefix);
+        cursor.EraseAll(ObjectDB.AllRelationsPKPrefix);
+        cursor.EraseAll(ObjectDB.AllRelationsSKPrefix);
     }
 }

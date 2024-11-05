@@ -2290,7 +2290,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
                 end,
                 end == -1 ? KeyProposition.Ignored :
                 includeEnd ? KeyProposition.Included : KeyProposition.Excluded);
-            var e = d.GetAdvancedEnumerator(param);
+            using var e = d.GetAdvancedEnumerator(param);
             var res = "";
             int key;
             Assert.Equal(result.Length, (int)e.Count);
@@ -2313,19 +2313,19 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
                 end,
                 end == -1 ? KeyProposition.Ignored :
                 includeEnd ? KeyProposition.Included : KeyProposition.Excluded);
-            e = d.GetAdvancedEnumerator(param);
+            using var e2 = d.GetAdvancedEnumerator(param);
             res = "";
             Assert.Equal(result.Length, (int)e.Count);
-            while (e.NextKey(out key))
+            while (e2.NextKey(out key))
             {
                 Assert.Equal(res.Length, (int)e.Position);
-                var val = e.CurrentValue;
+                var val = e2.CurrentValue;
                 Assert.Equal(key.ToString(CultureInfo.InvariantCulture), val);
                 res = val + res;
             }
 
             Assert.Equal(result, res);
-            Assert.Equal(res.Length, (int)e.Position);
+            Assert.Equal(res.Length, (int)e2.Position);
         }
     }
 
@@ -2372,7 +2372,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
                 end,
                 end == -1 ? KeyProposition.Ignored :
                 includeEnd ? KeyProposition.Included : KeyProposition.Excluded);
-            var e = d.GetAdvancedEnumerator(param);
+            using var e = d.GetAdvancedEnumerator(param);
             var res = "";
             int key;
             e.Position = 2;
@@ -2394,13 +2394,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
                 end,
                 end == -1 ? KeyProposition.Ignored :
                 includeEnd ? KeyProposition.Included : KeyProposition.Excluded);
-            e = d.GetAdvancedEnumerator(param);
+            using var e2 = d.GetAdvancedEnumerator(param);
             res = "";
-            e.Position = 2;
-            while (e.NextKey(out key))
+            e2.Position = 2;
+            while (e2.NextKey(out key))
             {
-                Assert.Equal(res.Length, (int)(e.Position - 2));
-                var val = e.CurrentValue;
+                Assert.Equal(res.Length, (int)(e2.Position - 2));
+                var val = e2.CurrentValue;
                 Assert.Equal(key.ToString(CultureInfo.InvariantCulture), val);
                 res = val + res;
             }

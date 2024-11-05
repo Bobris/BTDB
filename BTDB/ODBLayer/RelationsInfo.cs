@@ -52,7 +52,8 @@ public class RelationsInfo
             Span<byte> buf2 = stackalloc byte[8];
             var idWriter = MemWriter.CreateFromStackAllocatedSpan(buf2);
             idWriter.WriteVUInt32(id);
-            tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(nameWriter.GetSpan(), idWriter.GetSpan());
+            using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(nameWriter.GetSpan(), idWriter.GetSpan());
         }
 
         if (Id2Relation.TryGetValue(id, out var relation))

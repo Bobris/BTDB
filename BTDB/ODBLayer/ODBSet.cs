@@ -20,7 +20,6 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
     readonly ulong _id;
     readonly byte[] _prefix;
     int _count;
-    int _modificationCounter;
 
     // ReSharper disable once MemberCanBePrivate.Global used by FieldHandler.Load
     public ODBSet(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config, ulong id)
@@ -130,21 +129,25 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
     {
         foreach (var key in other)
         {
-            Add(key);
+            Add(key!);
         }
     }
 
     public void Clear()
     {
-        _modificationCounter++;
-        _keyValueTr.EraseAll(_prefix);
+        using var cursor = _keyValueTr.CreateCursor();
+        cursor.EraseAll(_prefix);
         _count = 0;
     }
 
+    [SkipLocalsInit]
     public bool Contains(TKey item)
     {
-        var keyBytes = KeyToByteArray(item);
-        return _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
+        using var cursor = _keyValueTr.CreateCursor();
+        Span<byte> buf = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buf);
+        var keyBytes = KeyToByteArray(item, ref writer);
+        return cursor.Find(keyBytes, 0) == FindResult.Exact;
     }
 
     public void CopyTo(TKey[] array, int arrayIndex)
@@ -172,7 +175,8 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
         {
             if (_count == -1)
             {
-                _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(_prefix), int.MaxValue);
+                using var cursor = _keyValueTr.CreateCursor();
+                _count = (int)Math.Min(cursor.GetKeyValueCount(_prefix), int.MaxValue);
             }
 
             return _count;
@@ -181,21 +185,29 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
 
     public bool IsReadOnly => false;
 
-    ReadOnlySpan<byte> KeyToByteArray(TKey key)
+
+    [SkipLocalsInit]
+    FindResult FindKey(IKeyValueDBCursor cursor, TKey key)
     {
-        var writer = new MemWriter();
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+        var keyBytes = KeyToByteArray(key, ref writer);
+        return cursor.Find(keyBytes, (uint)_prefix.Length);
+    }
+
+    ReadOnlySpan<byte> KeyToByteArray(TKey key, ref MemWriter writer)
+    {
+        writer.WriteBlock(_prefix);
         IWriterCtx ctx = null;
         if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
-        writer.WriteBlock(_prefix);
         _keyWriter(key, ref writer, ctx);
-        return writer.GetSpan();
+        return writer.GetScopedSpanAndReset();
     }
 
     [SkipLocalsInit]
-    unsafe TKey CurrentToKey()
+    unsafe TKey CurrentToKey(IKeyValueDBCursor cursor)
     {
         Span<byte> buffer = stackalloc byte[2048];
-        var keySpan = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length).Slice(_prefix.Length);
+        var keySpan = cursor.GetKeySpan(ref buffer)[_prefix.Length..];
         fixed (byte* _ = keySpan)
         {
             var reader = MemReader.CreateFromPinnedSpan(keySpan);
@@ -205,21 +217,26 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
         }
     }
 
+    [SkipLocalsInit]
     public bool Add(TKey key)
     {
-        var keyBytes = KeyToByteArray(key);
-        _modificationCounter++;
-        var created = _keyValueTr!.CreateOrUpdateKeyValue(keyBytes, new());
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+        var keyBytes = KeyToByteArray(key, ref writer);
+        using var cursor = _keyValueTr.CreateCursor();
+        var created = cursor.CreateOrUpdateKeyValue(keyBytes, new());
         if (created) NotifyAdded();
         return created;
     }
 
+    [SkipLocalsInit]
     public bool Remove(TKey key)
     {
-        var keyBytes = KeyToByteArray(key);
-        _modificationCounter++;
-        if (_keyValueTr.EraseCurrent(keyBytes))
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+        var keyBytes = KeyToByteArray(key, ref writer);
+        using var cursor = _keyValueTr.CreateCursor();
+        if (cursor.FindExactKey(keyBytes))
         {
+            cursor.EraseCurrent();
             NotifyRemoved();
             return true;
         }
@@ -241,7 +258,7 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
         {
             if (_count == int.MaxValue)
             {
-                _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
+                _count = -1;
             }
             else
             {
@@ -252,396 +269,212 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
 
     public IEnumerator<TKey> GetEnumerator()
     {
-        long prevProtectionCounter = 0;
-        var prevModificationCounter = 0;
-        long pos = 0;
-        while (true)
+        using var cursor = _keyValueTr.CreateCursor();
+        while (cursor.FindNextKey(_prefix))
         {
-            if (pos == 0)
-            {
-                prevModificationCounter = _modificationCounter;
-                if (!_keyValueTr.FindFirstKey(_prefix)) break;
-            }
-            else
-            {
-                if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
-                {
-                    if (prevModificationCounter != _modificationCounter)
-                        ThrowModifiedDuringEnum();
-                    if (!_keyValueTr.SetKeyIndex(_prefix, pos)) break;
-                }
-                else
-                {
-                    if (!_keyValueTr.FindNextKey(_prefix)) break;
-                }
-            }
-
-            prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            var key = CurrentToKey();
+            var key = CurrentToKey(cursor);
             yield return key;
-            pos++;
         }
     }
 
     public IEnumerable<TKey> GetReverseEnumerator()
     {
-        long prevProtectionCounter = 0;
-        var prevModificationCounter = 0;
-        var pos = long.MaxValue;
-        while (true)
+        using var cursor = _keyValueTr.CreateCursor();
+        while (cursor.FindPreviousKey(_prefix))
         {
-            if (pos == long.MaxValue)
-            {
-                prevModificationCounter = _modificationCounter;
-                if (!_keyValueTr.FindLastKey(_prefix)) break;
-                pos = _keyValueTr.GetKeyIndex();
-            }
-            else
-            {
-                if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
-                {
-                    if (prevModificationCounter != _modificationCounter)
-                        ThrowModifiedDuringEnum();
-                    if (!_keyValueTr.SetKeyIndex(_prefix, pos)) break;
-                }
-                else
-                {
-                    if (!_keyValueTr.FindPreviousKey(_prefix)) break;
-                }
-            }
-
-            prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            var key = CurrentToKey();
+            var key = CurrentToKey(cursor);
             yield return key;
-            pos--;
         }
     }
 
     public IEnumerable<TKey> GetIncreasingEnumerator(TKey start)
     {
-        var startKeyBytes = KeyToByteArray(start).ToArray();
-        long prevProtectionCounter = 0;
-        var prevModificationCounter = 0;
-        long pos = 0;
-        while (true)
+        using var cursor = _keyValueTr.CreateCursor();
+        switch (FindKey(cursor, start))
         {
-            if (pos == 0)
-            {
-                prevModificationCounter = _modificationCounter;
-                bool startOk;
-                switch (_keyValueTr.Find(startKeyBytes, (uint)_prefix.Length))
-                {
-                    case FindResult.Exact:
-                    case FindResult.Next:
-                        startOk = true;
-                        break;
-                    case FindResult.Previous:
-                        startOk = _keyValueTr.FindNextKey(_prefix);
-                        break;
-                    case FindResult.NotFound:
-                        startOk = false;
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-
-                if (!startOk) break;
-                pos = _keyValueTr.GetKeyIndex();
-            }
-            else
-            {
-                if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
-                {
-                    if (prevModificationCounter != _modificationCounter)
-                        ThrowModifiedDuringEnum();
-                    if (!_keyValueTr.SetKeyIndex(_prefix, pos)) break;
-                }
-                else
-                {
-                    if (!_keyValueTr.FindNextKey(_prefix)) break;
-                }
-            }
-
-            prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            var key = CurrentToKey();
-            yield return key;
-            pos++;
+            case FindResult.Exact:
+            case FindResult.Next:
+                break;
+            case FindResult.Previous:
+                if (!cursor.FindNextKey(_prefix)) yield break;
+                break;
+            case FindResult.NotFound:
+                yield break;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
+
+        do
+        {
+            var key = CurrentToKey(cursor);
+            yield return key;
+        } while (cursor.FindNextKey(_prefix));
     }
 
     public IEnumerable<TKey> GetDecreasingEnumerator(TKey start)
     {
-        var startKeyBytes = KeyToByteArray(start).ToArray();
-        long prevProtectionCounter = 0;
-        var prevModificationCounter = 0;
-        var pos = long.MaxValue;
-        while (true)
+        using var cursor = _keyValueTr.CreateCursor();
+        switch (FindKey(cursor, start))
         {
-            if (pos == long.MaxValue)
-            {
-                prevModificationCounter = _modificationCounter;
-                bool startOk;
-                switch (_keyValueTr.Find(startKeyBytes, (uint)_prefix.Length))
-                {
-                    case FindResult.Exact:
-                    case FindResult.Previous:
-                        startOk = true;
-                        break;
-                    case FindResult.Next:
-                        startOk = _keyValueTr.FindPreviousKey(_prefix);
-                        break;
-                    case FindResult.NotFound:
-                        startOk = false;
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-
-                if (!startOk) break;
-                pos = _keyValueTr.GetKeyIndex(_prefix);
-            }
-            else
-            {
-                if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
-                {
-                    if (prevModificationCounter != _modificationCounter)
-                        ThrowModifiedDuringEnum();
-                    if (!_keyValueTr.SetKeyIndex(_prefix, pos)) break;
-                }
-                else
-                {
-                    if (!_keyValueTr.FindPreviousKey(_prefix)) break;
-                }
-            }
-
-            prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            var key = CurrentToKey();
-            yield return key;
-            pos--;
+            case FindResult.Exact:
+            case FindResult.Previous:
+                break;
+            case FindResult.Next:
+                if (!cursor.FindPreviousKey(_prefix)) yield break;
+                break;
+            case FindResult.NotFound:
+                yield break;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
+
+        do
+        {
+            var key = CurrentToKey(cursor);
+            yield return key;
+        } while (cursor.FindPreviousKey(_prefix));
     }
 
     public long RemoveRange(AdvancedEnumeratorParam<TKey> param)
     {
-        _modificationCounter++;
-
-        _keyValueTr.FindFirstKey(_prefix);
-        var prefixIndex = _keyValueTr.GetKeyIndex();
-        long startIndex;
-        long endIndex;
-        if (param.EndProposition == KeyProposition.Ignored)
+        var startCursor = _keyValueTr.CreateCursor();
+        var result = param.StartProposition == KeyProposition.Ignored
+            ? (startCursor.FindFirstKey(_prefix) ? FindResult.Next : FindResult.NotFound)
+            : FindKey(startCursor, param.Start);
+        if (result == FindResult.NotFound) return 0;
+        if (result == FindResult.Exact)
         {
-            _keyValueTr.FindLastKey(_prefix);
-            endIndex = _keyValueTr.GetKeyIndex() - prefixIndex - 1;
+            if (param.StartProposition == KeyProposition.Excluded)
+                if (!startCursor.FindNextKey(_prefix))
+                    return 0;
         }
-        else
+        else if (result == FindResult.Previous)
         {
-            var keyBytes = KeyToByteArray(param.End);
-            switch (_keyValueTr.Find(keyBytes, (uint)_prefix.Length))
-            {
-                case FindResult.Exact:
-                    endIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
-                    if (param.EndProposition == KeyProposition.Excluded)
-                    {
-                        endIndex--;
-                    }
-
-                    break;
-                case FindResult.Previous:
-                    endIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
-                    break;
-                case FindResult.Next:
-                    endIndex = _keyValueTr.GetKeyIndex() - prefixIndex - 1;
-                    break;
-                case FindResult.NotFound:
-                    endIndex = -1;
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
+            if (!startCursor.FindNextKey(_prefix))
+                return 0;
         }
 
-        if (param.StartProposition == KeyProposition.Ignored)
+        var endCursor = _keyValueTr.CreateCursor();
+        result = param.EndProposition == KeyProposition.Ignored
+            ? endCursor.FindLastKey(_prefix) ? FindResult.Previous : throw new InvalidOperationException()
+            : FindKey(endCursor, param.End);
+        if (result == FindResult.Exact)
         {
-            startIndex = 0;
+            if (param.EndProposition == KeyProposition.Excluded)
+                if (!endCursor.FindPreviousKey(_prefix))
+                    return 0;
         }
-        else
+        else if (result == FindResult.Next)
         {
-            var keyBytes = KeyToByteArray(param.Start);
-            switch (_keyValueTr.Find(keyBytes, (uint)_prefix.Length))
-            {
-                case FindResult.Exact:
-                    startIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
-                    if (param.StartProposition == KeyProposition.Excluded)
-                    {
-                        startIndex++;
-                    }
-
-                    break;
-                case FindResult.Previous:
-                    startIndex = _keyValueTr.GetKeyIndex() - prefixIndex + 1;
-                    break;
-                case FindResult.Next:
-                    startIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
-                    break;
-                case FindResult.NotFound:
-                    startIndex = 0;
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
+            if (!endCursor.FindPreviousKey(_prefix))
+                return 0;
         }
 
-        _keyValueTr.EraseRange(prefixIndex + startIndex, prefixIndex + endIndex);
         _count = -1;
-        return Math.Max(0, endIndex - startIndex + 1);
+        return startCursor.EraseUpTo(endCursor);
     }
 
     public IEnumerable<KeyValuePair<uint, uint>> QuerySizeEnumerator()
     {
-        long prevProtectionCounter = 0;
-        var prevModificationCounter = 0;
-        long pos = 0;
-        while (true)
+        using var cursor = _keyValueTr.CreateCursor();
+        while (cursor.FindNextKey(_prefix))
         {
-            if (pos == 0)
-            {
-                prevModificationCounter = _modificationCounter;
-                if (!_keyValueTr.FindFirstKey(_prefix)) break;
-            }
-            else
-            {
-                if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
-                {
-                    if (prevModificationCounter != _modificationCounter)
-                        ThrowModifiedDuringEnum();
-                    if (!_keyValueTr.SetKeyIndex(_prefix, pos)) break;
-                }
-                else
-                {
-                    if (!_keyValueTr.FindNextKey(_prefix)) break;
-                }
-            }
-
-            prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            var size = _keyValueTr.GetStorageSizeOfCurrentKey();
+            var size = cursor.GetStorageSizeOfCurrentKey();
             yield return size;
-            pos++;
         }
     }
 
     public KeyValuePair<uint, uint> QuerySizeByKey(TKey key)
     {
-        var keyBytes = KeyToByteArray(key);
-        var found = _keyValueTr.FindExactKey(keyBytes);
-        if (!found)
+        using var cursor = _keyValueTr.CreateCursor();
+        if (FindKey(cursor, key) != FindResult.Exact)
         {
             throw new ArgumentException("Key not found in Set");
         }
 
-        var size = _keyValueTr.GetStorageSizeOfCurrentKey();
-        return size;
+        return cursor.GetStorageSizeOfCurrentKey();
     }
 
     class AdvancedEnumerator : IEnumerable<TKey>, IEnumerator<TKey>
     {
         readonly ODBSet<TKey> _owner;
-        readonly IKeyValueDBTransaction _keyValueTr;
-        long _prevProtectionCounter;
-        readonly int _prevModificationCounter;
-        readonly uint _startPos;
-        readonly uint _count;
-        uint _pos;
+        readonly IKeyValueDBCursor? _startCursor;
+        readonly IKeyValueDBCursor? _endCursor;
+        readonly IKeyValueDBCursor? _cursor;
         SeekState _seekState;
         readonly bool _ascending;
 
         public AdvancedEnumerator(ODBSet<TKey> owner, AdvancedEnumeratorParam<TKey> param)
         {
             _owner = owner;
-            _keyValueTr = _owner._keyValueTr;
+            var keyValueTr = _owner._keyValueTr;
             _ascending = param.Order == EnumerationOrder.Ascending;
-            _prevModificationCounter = _owner._modificationCounter;
-            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            _keyValueTr.FindFirstKey(_owner._prefix);
-            var prefixIndex = _keyValueTr.GetKeyIndex();
-            long startIndex;
-            long endIndex;
-            if (param.EndProposition == KeyProposition.Ignored)
-            {
-                _keyValueTr.FindLastKey(_owner._prefix);
-                endIndex = _keyValueTr.GetKeyIndex() - prefixIndex - 1;
-            }
-            else
-            {
-                var keyBytes = _owner.KeyToByteArray(param.End);
-                switch (_keyValueTr.Find(keyBytes, (uint)_owner._prefix.Length))
-                {
-                    case FindResult.Exact:
-                        endIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
-                        if (param.EndProposition == KeyProposition.Excluded)
-                        {
-                            endIndex--;
-                        }
-
-                        break;
-                    case FindResult.Previous:
-                        endIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
-                        break;
-                    case FindResult.Next:
-                        endIndex = _keyValueTr.GetKeyIndex() - prefixIndex - 1;
-                        break;
-                    case FindResult.NotFound:
-                        endIndex = -1;
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-            }
-
+            _startCursor = keyValueTr.CreateCursor();
             if (param.StartProposition == KeyProposition.Ignored)
             {
-                startIndex = 0;
+                if (!_startCursor.FindFirstKey(_owner._prefix))
+                {
+                    return;
+                }
             }
             else
             {
-                var keyBytes = _owner.KeyToByteArray(param.Start);
-                switch (_keyValueTr.Find(keyBytes, (uint)_owner._prefix.Length))
+                switch (_owner.FindKey(_startCursor, param.Start))
                 {
                     case FindResult.Exact:
-                        startIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
                         if (param.StartProposition == KeyProposition.Excluded)
                         {
-                            startIndex++;
+                            if (!_startCursor.FindNextKey(_owner._prefix)) return;
                         }
 
                         break;
                     case FindResult.Previous:
-                        startIndex = _keyValueTr.GetKeyIndex() - prefixIndex + 1;
+                        if (!_startCursor.FindNextKey(_owner._prefix)) return;
                         break;
                     case FindResult.Next:
-                        startIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
                         break;
                     case FindResult.NotFound:
-                        startIndex = 0;
-                        break;
+                        return;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
             }
 
-            _count = (uint)Math.Max(0, endIndex - startIndex + 1);
-            _startPos = (uint)(_ascending ? startIndex : endIndex);
-            _pos = 0;
-            _seekState = SeekState.Undefined;
-        }
-
-        void Seek()
-        {
-            if (_ascending)
-                _keyValueTr.SetKeyIndex(_owner._prefix, _startPos + _pos);
+            _endCursor = keyValueTr.CreateCursor();
+            if (param.EndProposition == KeyProposition.Ignored)
+            {
+                if (!_endCursor.FindLastKey(_owner._prefix)) return;
+            }
             else
-                _keyValueTr.SetKeyIndex(_owner._prefix, _startPos - _pos);
-            _seekState = SeekState.Ready;
+            {
+                switch (_owner.FindKey(_endCursor, param.End))
+                {
+                    case FindResult.Exact:
+                        if (param.EndProposition == KeyProposition.Excluded)
+                        {
+                            if (!_endCursor.FindPreviousKey(_owner._prefix)) return;
+                        }
+
+                        break;
+                    case FindResult.Previous:
+                        break;
+                    case FindResult.Next:
+                        if (!_endCursor.FindPreviousKey(_owner._prefix)) return;
+                        break;
+                    case FindResult.NotFound:
+                        return;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+
+
+            var startIndex = _startCursor.GetKeyIndex();
+            var endIndex = _endCursor.GetKeyIndex();
+            if (startIndex > endIndex) return;
+            _cursor = keyValueTr.CreateCursor();
+            _cursor.FindKeyIndex(_ascending ? startIndex : endIndex);
+            _seekState = SeekState.Undefined;
         }
 
         public IEnumerator<TKey> GetEnumerator()
@@ -656,38 +489,49 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
 
         public bool MoveNext()
         {
-            if (_seekState == SeekState.Ready)
-                _pos++;
-            if (_pos >= _count)
+            if (_cursor == null)
             {
                 Current = default;
                 return false;
             }
 
-            if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
-            {
-                if (_prevModificationCounter != _owner._modificationCounter)
-                    ThrowModifiedDuringEnum();
-                Seek();
-            }
-            else if (_seekState != SeekState.Ready)
-            {
-                Seek();
-            }
-            else
+            if (_seekState == SeekState.Ready)
             {
                 if (_ascending)
                 {
-                    _keyValueTr.FindNextKey(_owner._prefix);
+                    if (!_cursor.FindNextKey(_owner._prefix))
+                    {
+                        Current = default;
+                        return false;
+                    }
+
+                    if (_cursor.GetKeyIndex() > _endCursor!.GetKeyIndex())
+                    {
+                        Current = default;
+                        return false;
+                    }
                 }
                 else
                 {
-                    _keyValueTr.FindPreviousKey(_owner._prefix);
+                    if (!_cursor.FindPreviousKey(_owner._prefix))
+                    {
+                        Current = default;
+                        return false;
+                    }
+
+                    if (_cursor.GetKeyIndex() < _startCursor!.GetKeyIndex())
+                    {
+                        Current = default;
+                        return false;
+                    }
                 }
             }
+            else
+            {
+                _seekState = SeekState.Ready;
+            }
 
-            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            Current = _owner.CurrentToKey();
+            Current = _owner.CurrentToKey(_cursor);
             return true;
         }
 
@@ -702,6 +546,9 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
 
         public void Dispose()
         {
+            _startCursor?.Dispose();
+            _endCursor?.Dispose();
+            _cursor?.Dispose();
         }
     }
 

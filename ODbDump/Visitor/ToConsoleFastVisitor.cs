@@ -12,7 +12,7 @@ namespace ODbDump.Visitor
 
         readonly StringBuilder _builder = new StringBuilder();
 
-        public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
+        public void MarkCurrentKeyAsUsed(IKeyValueDBCursor cursor)
         {
         }
 

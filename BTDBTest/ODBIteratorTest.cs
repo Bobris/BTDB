@@ -67,12 +67,12 @@ public class ODBIteratorTest : IDisposable
             return Builder.ToString();
         }
 
-        public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
+        public void MarkCurrentKeyAsUsed(IKeyValueDBCursor cursor)
         {
-            Keys = Keys.ResizingAppend(ByteBuffer.NewAsync(tr.GetKey()));
+            Keys = Keys.ResizingAppend(ByteBuffer.NewAsync(cursor.SlowGetKey()));
             Builder.Append("Used key: ");
-            Print(tr.GetKey());
-            Builder.AppendFormat(" Value len:{0}", tr.GetStorageSizeOfCurrentKey().Value);
+            Print(cursor.SlowGetKey());
+            Builder.AppendFormat(" Value len:{0}", cursor.GetStorageSizeOfCurrentKey().Value);
             Builder.AppendLine();
         }
 

@@ -248,7 +248,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         }
                         else
                         {
-                            Logger?.LogWarning("Ignoring " + keyIndex.Key + ".kvi because it needs " + info.TrLogFileId +
+                            Logger?.LogWarning("Ignoring " + keyIndex.Key + ".kvi because it needs " +
+                                               info.TrLogFileId +
                                                ".trl, but first trl in chain is " + firstTrLogId + ".trl");
                         }
                     }
@@ -1958,7 +1959,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return buffer[..valueSize];
     }
 
-    public ReadOnlySpan<byte> ReadValueSpan(ReadOnlySpan<byte> trueValue, ref Memory<byte> buffer, bool copy)
+    public ReadOnlySpan<byte> ReadValueSpan(ReadOnlySpan<byte> trueValue, scoped ref Span<byte> buffer, bool copy)
     {
         var valueFileId = MemoryMarshal.Read<uint>(trueValue);
         if (valueFileId == 0)
@@ -1972,8 +1973,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     buffer = GC.AllocateUninitializedArray<byte>(len);
                 }
 
-                res.CopyTo(buffer.Span);
-                return buffer[..len].Span;
+                res.CopyTo(buffer);
+                return buffer[..len];
             }
 
             return res;
@@ -2003,12 +2004,12 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         if (file == null)
             throw new BTDBException(
                 $"ReadValue({valueFileId},{valueOfs},{valueSize}) compressed: {compressed} file does not exist in {CalcStats()}");
-        file.RandomRead(buffer.Span[..valueSize], valueOfs, false);
+        file.RandomRead(buffer[..valueSize], valueOfs, false);
         if (compressed)
         {
-            return _compression.DecompressValue(buffer.Span[..valueSize]);
+            return _compression.DecompressValue(buffer[..valueSize]);
         }
 
-        return buffer.Span[..valueSize];
+        return buffer[..valueSize];
     }
 }

@@ -63,7 +63,8 @@ public class BtdbTimeTests : IDbTimeTests
 
             using (var tr = db.StartTransaction())
             {
-                tr.CreateOrUpdateKeyValue(key, value);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(key, value);
                 tr.Commit();
             }
 
@@ -79,9 +80,10 @@ public class BtdbTimeTests : IDbTimeTests
         using (var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy()))
         using (var tr = db.StartTransaction())
         {
+            using var cursor = tr.CreateCursor();
             foreach (var keyValue in data)
             {
-                tr.CreateOrUpdateKeyValue(keyValue.Key, keyValue.Value);
+                cursor.CreateOrUpdateKeyValue(keyValue.Key, keyValue.Value);
             }
 
             tr.Commit();
@@ -101,7 +103,8 @@ public class BtdbTimeTests : IDbTimeTests
             {
                 using (var tr = db.StartTransaction())
                 {
-                    tr.CreateOrUpdateKeyValue(keyValue.Key, keyValue.Value);
+                    using var cursor = tr.CreateCursor();
+                    cursor.CreateOrUpdateKeyValue(keyValue.Key, keyValue.Value);
                     tr.Commit();
                 }
             }
@@ -116,9 +119,11 @@ public class BtdbTimeTests : IDbTimeTests
         using var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy());
         var stopwatch = Stopwatch.StartNew();
         using (var tr = db.StartTransaction())
+        using (var cursor = tr.CreateCursor())
         {
-            tr.FindExactKey(key);
-            tr.GetValue();
+            cursor.FindExactKey(key);
+            var buf = new Span<byte>();
+            cursor.GetValueSpan(ref buf);
         }
 
         stopwatch.Stop();
@@ -131,11 +136,13 @@ public class BtdbTimeTests : IDbTimeTests
 
         using (var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy()))
         using (var tr = db.StartTransaction())
+        using (var cursor = tr.CreateCursor())
         {
             foreach (var key in keys)
             {
-                tr.FindExactKey(key);
-                tr.GetValue();
+                cursor.FindExactKey(key);
+                var buf = new Span<byte>();
+                cursor.GetValueSpan(ref buf);
             }
         }
 
@@ -148,20 +155,17 @@ public class BtdbTimeTests : IDbTimeTests
         using var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy());
         var stopwatch = Stopwatch.StartNew();
         using (var tr = db.StartTransaction())
+        using (var cursor = tr.CreateCursor())
         {
+            var buf = new Span<byte>();
             foreach (var data in exceptedData)
             {
-                var key = tr.FindExactKey(data.Key);
+                var key = cursor.FindExactKey(data.Key);
                 if (!key) throw new Exception("Key not found");
 
-                var value = tr.GetValue();
+                var value = cursor.GetValueSpan(ref buf);
 
-                if (value.Length != data.Value.Length) throw new Exception("value length different");
-
-                for (var j = 0; j < value.Length; j++)
-                {
-                    if (value[j] != data.Value[j]) throw new Exception("value different");
-                }
+                if (!value.SequenceEqual(data.Value)) throw new Exception("value different");
             }
         }
 
@@ -175,8 +179,10 @@ public class BtdbTimeTests : IDbTimeTests
 
         using (var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy()))
         using (var tr = db.StartTransaction())
+        using (var cursor = tr.CreateCursor())
         {
-            tr.EraseCurrent(key);
+            cursor.FindExactKey(key);
+            cursor.EraseCurrent();
             tr.Commit();
         }
 
@@ -191,7 +197,8 @@ public class BtdbTimeTests : IDbTimeTests
         using (var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy()))
         using (var tr = db.StartTransaction())
         {
-            tr.EraseAll();
+            using var cursor = tr.CreateCursor();
+            cursor.EraseAll([]);
             tr.Commit();
         }
 
@@ -226,16 +233,17 @@ public class BtdbTimeTests : IDbTimeTests
         using var tr = db.StartTransaction();
         var data = new Dictionary<byte[], byte[]>();
 
-        if (!tr.FindFirstKey(ReadOnlySpan<byte>.Empty))
+        using var cursor = tr.CreateCursor();
+        if (!cursor.FindFirstKey([]))
             return data;
 
         do
         {
-            var key = tr.GetKeyToArray();
-            var value = tr.GetValue().ToArray();
+            var key = cursor.SlowGetKey();
+            var value = cursor.SlowGetValue();
 
             data.Add(key, value);
-        } while (tr.FindNextKey(ReadOnlySpan<byte>.Empty));
+        } while (cursor.FindNextKey([]));
 
         return data;
     }

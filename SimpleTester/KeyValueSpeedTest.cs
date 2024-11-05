@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using BTDB.ODBLayer;
 
 namespace SimpleTester;
@@ -81,20 +82,22 @@ public class KeyValueSpeedTest
             {
                 var pureDataLengthPrevTr = pureDataLength;
                 using var tr = db.StartTransaction();
+                using var cursor = tr.CreateCursor();
                 for (var j = 0; j < 200; j++)
                 {
-                    tr.CreateOrUpdateKeyValue(new[] { (byte)j, (byte)i }, new byte[1 + i * j]);
+                    cursor.CreateOrUpdateKeyValue(new[] { (byte)j, (byte)i }, new byte[1 + i * j]);
                     pureDataLength += 2 + 1 + i * j;
                 }
 
                 if (alsoDoReads)
                 {
                     using var trCheck = db.StartTransaction();
+                    using var cursorCheck = trCheck.CreateCursor();
                     long pureDataLengthCheck = 0;
-                    while (trCheck.FindNextKey(ReadOnlySpan<byte>.Empty))
+                    while (cursorCheck.FindNextKey(ReadOnlySpan<byte>.Empty))
                     {
                         pureDataLengthCheck +=
-                            trCheck.GetKey().Length + trCheck.GetValue().Length;
+                            cursorCheck.SlowGetKey().Length + cursorCheck.SlowGetValue().Length;
                     }
 
                     if (pureDataLengthCheck != pureDataLengthPrevTr)
@@ -140,10 +143,11 @@ public class KeyValueSpeedTest
         {
             using (var trCheck = db.StartTransaction())
             {
+                using var cursorCheck = trCheck.CreateCursor();
                 long pureDataLengthCheck = 0;
-                while (trCheck.FindNextKey(ReadOnlySpan<byte>.Empty))
+                while (cursorCheck.FindNextKey(ReadOnlySpan<byte>.Empty))
                 {
-                    pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValue().Length;
+                    pureDataLengthCheck += cursorCheck.SlowGetKey().Length + cursorCheck.SlowGetValue().Length;
                 }
 
                 if (pureDataLengthCheck != 396130000)
@@ -169,11 +173,12 @@ public class KeyValueSpeedTest
             for (var i = 0; i < keyCount; i++)
             {
                 using var tr = db.StartTransaction();
+                using var cursor = tr.CreateCursor();
                 key[0] = (byte)(i / 100);
                 key[1] = (byte)(i % 100);
                 value[100] = (byte)(i / 100);
                 value[200] = (byte)(i % 100);
-                tr.CreateOrUpdateKeyValue(key, value);
+                cursor.CreateOrUpdateKeyValue(key, value);
                 tr.Commit();
             }
         }
@@ -187,13 +192,15 @@ public class KeyValueSpeedTest
             Console.WriteLine("Time to open 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
             _sw.Restart();
             var key = new byte[100];
+            var buf = Span<byte>.Empty;
             for (var i = 0; i < keyCount; i++)
             {
                 using var tr = db.StartTransaction();
+                using var cursor = tr.CreateCursor();
                 key[0] = (byte)(i / 100);
                 key[1] = (byte)(i % 100);
-                tr.FindExactKey(key);
-                var value = tr.GetValue();
+                cursor.FindExactKey(key);
+                var value = cursor.GetValueSpan(ref buf);
                 if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
                 if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
             }
@@ -210,13 +217,15 @@ public class KeyValueSpeedTest
             Console.WriteLine("Time to open2 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
             _sw.Restart();
             var key = new byte[100];
+            var buf = Span<byte>.Empty;
             for (var i = 0; i < keyCount; i++)
             {
                 using var tr = db.StartTransaction();
+                using var cursor = tr.CreateCursor();
                 key[0] = (byte)(i / 100);
                 key[1] = (byte)(i % 100);
-                tr.FindExactKey(key);
-                var value = tr.GetValue();
+                cursor.FindExactKey(key);
+                var value = cursor.GetValueSpan(ref buf);
                 if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
                 if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
             }
@@ -235,13 +244,14 @@ public class KeyValueSpeedTest
         {
             using (var tr = db.StartTransaction())
             {
+                using var cursor = tr.CreateCursor();
                 for (var i = 0; i < keys; i++)
                 {
                     var key = new byte[rnd.Next(10, 50)];
                     rnd.NextBytes(key);
                     var value = new byte[rnd.Next(50, 500)];
                     rnd.NextBytes(value);
-                    tr.CreateOrUpdateKeyValue(key, value);
+                    cursor.CreateOrUpdateKeyValue(key, value);
                 }
 
                 tr.Commit();
@@ -286,20 +296,18 @@ public class KeyValueSpeedTest
         using var fileCollection = OpenTestFileCollection();
         using var db = CreateKeyValueDB(fileCollection);
         using var tr = db.StartTransaction();
-        if (tr.GetKeyValueCount() != keys) throw new Exception("KeyCount does not match");
+        using var cursor = tr.CreateCursor();
+        if (cursor.GetKeyValueCount(default) != keys) throw new Exception("KeyCount does not match");
+        Span<byte> buf = default;
         for (var i = 0; i < keys; i++)
         {
             var key = new byte[rnd.Next(10, 50)];
             rnd.NextBytes(key);
             var value = new byte[rnd.Next(50, 500)];
             rnd.NextBytes(value);
-            if (!tr.FindExactKey(key)) throw new Exception("Key not found");
-            var value2 = tr.GetValue();
-            if (value.Length != value2.Length) throw new Exception("value length different");
-            for (var j = 0; j < value.Length; j++)
-            {
-                if (value[j] != value2[j]) throw new Exception("value different");
-            }
+            if (!cursor.FindExactKey(key)) throw new Exception("Key not found");
+            var value2 = cursor.GetValueSpan(ref buf);
+            if (!value.AsSpan().SequenceEqual(value2)) throw new Exception("value different");
         }
     }
 
@@ -315,11 +323,12 @@ public class KeyValueSpeedTest
             {
                 using (var tr = db.StartTransaction())
                 {
+                    using var cursor = tr.CreateCursor();
                     for (var i = 0; i < keys; i++)
                     {
                         var o = 0;
                         PackUnpack.PackVUInt(key, ref o, (uint)i);
-                        tr.CreateOrUpdateKeyValue(key.AsSpan(0, o), value);
+                        cursor.CreateOrUpdateKeyValue(key.AsSpan(0, o), value);
                     }
 
                     tr.Commit();
@@ -341,11 +350,12 @@ public class KeyValueSpeedTest
             {
                 using (var tr = db.StartTransaction())
                 {
+                    using var cursor = tr.CreateCursor();
                     for (var i = 0; i < keys; i++)
                     {
                         var o = 0;
                         PackUnpack.PackVUInt(key, ref o, (uint)i);
-                        tr.Find(key.AsSpan(0, o), 0);
+                        cursor.Find(key.AsSpan(0, o), 0);
                     }
 
                     tr.Commit();
@@ -366,13 +376,14 @@ public class KeyValueSpeedTest
         using var db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy());
         using (var tr = db.StartTransaction())
         {
+            using var cursor = tr.CreateCursor();
             for (var i = 0; i < keys; i++)
             {
                 var keyLen = rnd.Next(10, 50);
                 rnd.NextBytes(key.AsSpan(0, keyLen));
                 var valueLen = rnd.Next(50, 500);
                 rnd.NextBytes(value.AsSpan(0, valueLen));
-                tr.CreateOrUpdateKeyValue(key.AsSpan(0, keyLen), value.AsSpan(0, valueLen));
+                cursor.CreateOrUpdateKeyValue(key.AsSpan(0, keyLen), value.AsSpan(0, valueLen));
             }
 
             tr.Commit();
@@ -414,11 +425,16 @@ public class KeyValueSpeedTest
             table = tr.InitRelation<IBtdbTestTable>("BtdbTest");
             tr.Commit();
         }
+
         for (var i = 0; i < count; i++)
         {
             using var tr = odb.StartTransaction();
             var tbl = table(tr);
-            tbl.Upsert(new BtdbTest { CompanyId = 123456, TestId = (ulong)i, TestName = "test name " + i, Data1 = "data1 " + i, Data2 = "data2 " + i, Data3 = "data3 " + i });
+            tbl.Upsert(new BtdbTest
+            {
+                CompanyId = 123456, TestId = (ulong)i, TestName = "test name " + i, Data1 = "data1 " + i,
+                Data2 = "data2 " + i, Data3 = "data3 " + i
+            });
             tr.Commit();
         }
 

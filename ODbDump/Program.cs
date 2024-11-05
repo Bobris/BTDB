@@ -235,13 +235,13 @@ namespace ODbDump
                     using var transaction = kdb.StartReadOnlyTransaction();
                     var keyValueCount = transaction.GetKeyValueCount();
                     Console.WriteLine("Checking " + keyValueCount + " pairs for corruption");
-                    transaction.FindFirstKey(ReadOnlySpan<byte>.Empty);
+                    using var cursor = transaction.CreateCursor();
+                    cursor.FindFirstKey(new());
                     var corruptedCount = 0ul;
                     for (long kv = 0; kv < keyValueCount; kv++)
                     {
-                        transaction.GetKey();
-                        if (transaction.IsValueCorrupted()) corruptedCount++;
-                        transaction.FindNextKey(ReadOnlySpan<byte>.Empty);
+                        if (cursor.IsValueCorrupted()) corruptedCount++;
+                        cursor.FindNextKey(new());
                     }
 
                     if (corruptedCount == 0) Console.WriteLine("No corruption found");
@@ -260,13 +260,13 @@ namespace ODbDump
                     var keyValueCount = transaction.GetKeyValueCount();
                     Console.WriteLine("Scanning and fixing " + keyValueCount + " pairs for corruption");
                     var corruptedCount = 0ul;
-                    for (long kv = 0; kv < keyValueCount; kv++)
+                    using var cursor = transaction.CreateCursor();
+                    while (cursor.FindNextKey(new()))
                     {
-                        transaction.SetKeyIndex(kv);
-                        if (transaction.IsValueCorrupted())
+                        if (cursor.IsValueCorrupted())
                         {
                             corruptedCount++;
-                            transaction.EraseCurrent();
+                            cursor.EraseCurrent();
                         }
                     }
 
@@ -275,13 +275,10 @@ namespace ODbDump
                     {
                         Console.WriteLine("Erased " + corruptedCount +
                                           " pairs because of corruption! Now removing all secondary indexes so they could be rebuild");
-                        if (transaction.FindFirstKey(new byte[] { 4 }))
+                        var erased = cursor.EraseAll([4]);
+                        if (erased > 0)
                         {
-                            var first = transaction.GetKeyIndex();
-                            transaction.FindLastKey(new byte[] { 4 });
-                            var last = transaction.GetKeyIndex();
-                            transaction.EraseRange(first, last);
-                            Console.WriteLine("Erased " + (last - first + 1) + " pairs of secondary indexes");
+                            Console.WriteLine("Erased " + erased + " pairs of secondary indexes");
                         }
                     }
 
@@ -597,9 +594,11 @@ namespace ODbDump
                     }
                     finally
                     {
-                        kviCompressionStrategy.FinishDecompression(keyIndex.Compression, decompressionReader, ref reader);
+                        kviCompressionStrategy.FinishDecompression(keyIndex.Compression, decompressionReader,
+                            ref reader);
                     }
                 }
+
                 var used = usedFileIds.OrderBy(a => a.Key).ToArray();
                 var sb = new StringBuilder();
                 foreach (var keyValuePair in used)

@@ -1,64 +1,75 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.IO;
 using System.Threading;
 
 namespace BTDB.KVDBLayer;
 
 public static class ExtensionMethods
 {
-    public static bool CreateKey(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> keyBuf)
+    public static byte[] SlowGetKey(this IKeyValueDBCursor cursor)
     {
-        if (FindExactKey(transaction, keyBuf)) return false;
-        return transaction.CreateOrUpdateKeyValue(keyBuf, new ReadOnlySpan<byte>());
+        var buf = new byte[cursor.GetStorageSizeOfCurrentKey().Key];
+        var memoryBuf = buf.AsMemory();
+        cursor.GetKeyMemory(ref memoryBuf, true);
+        return buf;
     }
 
-    public static bool FindExactKey(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> key)
+    public static byte[] SlowGetValue(this IKeyValueDBCursor cursor)
     {
-        return transaction.Find(key, 0) == FindResult.Exact;
+        var buf = new byte[cursor.GetStorageSizeOfCurrentKey().Value];
+        var memoryBuf = buf.AsMemory();
+        cursor.GetValueMemory(ref memoryBuf, true);
+        return buf;
     }
 
-    public static bool FindExactOrNextKey(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> key)
+    public static bool CreateKey(this IKeyValueDBCursor cursor, in ReadOnlySpan<byte> keyBuf)
     {
-        var r = transaction.Find(key, 0);
+        if (FindExactKey(cursor, keyBuf)) return false;
+        return cursor.CreateOrUpdateKeyValue(keyBuf, new());
+    }
+
+    public static bool FindExactKey(this IKeyValueDBCursor cursor, scoped in ReadOnlySpan<byte> key)
+    {
+        return cursor.Find(key, 0) == FindResult.Exact;
+    }
+
+    public static bool FindExactOrNextKey(this IKeyValueDBCursor cursor, in ReadOnlySpan<byte> key)
+    {
+        var r = cursor.Find(key, 0);
         switch (r)
         {
             case FindResult.Exact:
                 return true;
             case FindResult.Previous:
-                transaction.FindNextKey(new());
+                cursor.FindNextKey(new());
                 break;
         }
 
         return false;
     }
 
-    public static long GetKeyValueCount(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
+    public static long GetKeyValueCount(this IKeyValueDBCursor cursor, in ReadOnlySpan<byte> prefix)
     {
-        if (!transaction.FindFirstKey(prefix)) return 0;
-        var startIndex = transaction.GetKeyIndex();
-        transaction.FindLastKey(prefix);
-        var endIndex = transaction.GetKeyIndex();
+        if (!cursor.FindFirstKey(prefix)) return 0;
+        var startIndex = cursor.GetKeyIndex();
+        cursor.FindLastKey(prefix);
+        var endIndex = cursor.GetKeyIndex();
         return endIndex - startIndex + 1;
     }
 
-    public static long GetKeyIndex(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
+    public static long GetKeyIndex(this IKeyValueDBCursor cursor, in ReadOnlySpan<byte> prefix)
     {
-        var currentIndex = transaction.GetKeyIndex();
-        if (!transaction.FindFirstKey(prefix)) return -1;
-        var relative = currentIndex - transaction.GetKeyIndex();
-        transaction.SetKeyIndex(currentIndex);
-        return relative;
+        using var cursorForPrefix = cursor.Transaction.CreateCursor();
+        if (!cursorForPrefix.FindFirstKey(prefix)) return -1;
+        return cursor.GetKeyIndex() - cursorForPrefix.GetKeyIndex();
     }
 
-    public static long EraseAll(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
+    public static long EraseAll(this IKeyValueDBCursor cursor, in ReadOnlySpan<byte> prefix)
     {
-        if (!transaction.FindFirstKey(prefix)) return 0;
-        var startIndex = transaction.GetKeyIndex();
-        transaction.FindLastKey(prefix);
-        var endIndex = transaction.GetKeyIndex();
-        transaction.EraseRange(startIndex, endIndex);
-        return endIndex - startIndex + 1;
+        if (!cursor.FindFirstKey(prefix)) return 0;
+        using var cursorForEnd = cursor.Transaction.CreateCursor();
+        cursorForEnd.FindLastKey(prefix);
+        return cursor.EraseUpTo(cursorForEnd);
     }
 
     public static bool TryRemove<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dict, TKey key)

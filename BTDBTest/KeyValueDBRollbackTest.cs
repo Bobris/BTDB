@@ -24,10 +24,11 @@ public class KeyValueDBRollbackTest
             {
                 using (var tr = kv.StartTransaction())
                 {
+                    using var cursor = tr.CreateCursor();
                     var key = new byte[4];
                     BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
-                    tr.CreateOrUpdateKeyValue(key, new byte[200]);
-                    tr.CreateOrUpdateKeyValue(key, new byte[0]);
+                    cursor.CreateOrUpdateKeyValue(key, new byte[200]);
+                    cursor.CreateOrUpdateKeyValue(key, new byte[0]);
                     tr.SetCommitUlong((ulong)i);
                     tr.Commit();
                 }
@@ -104,10 +105,11 @@ public class KeyValueDBRollbackTest
             {
                 using (var tr = kv.StartTransaction())
                 {
+                    using var cursor = tr.CreateCursor();
                     var key = new byte[4];
                     BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
-                    tr.CreateOrUpdateKeyValue(key, new byte[200]);
-                    tr.CreateOrUpdateKeyValue(key, new byte[0]);
+                    cursor.CreateOrUpdateKeyValue(key, new byte[200]);
+                    cursor.CreateOrUpdateKeyValue(key, new byte[0]);
                     tr.SetCommitUlong((ulong)i);
                     tr.Commit();
                 }
@@ -148,9 +150,10 @@ public class KeyValueDBRollbackTest
             {
                 using (var tr = kv.StartTransaction())
                 {
+                    using var cursor = tr.CreateCursor();
                     var key = new byte[4];
                     BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
-                    tr.CreateOrUpdateKeyValue(key, new byte[200]);
+                    cursor.CreateOrUpdateKeyValue(key, new byte[200]);
                     tr.SetCommitUlong((ulong)i);
                     tr.Commit();
                 }
@@ -206,10 +209,11 @@ public class KeyValueDBRollbackTest
             {
                 using (var tr = kv.StartTransaction())
                 {
+                    using var cursor = tr.CreateCursor();
                     var key = new byte[4];
                     BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
-                    tr.CreateOrUpdateKeyValue(key, new byte[200]);
-                    tr.CreateOrUpdateKeyValue(key, new byte[0]);
+                    cursor.CreateOrUpdateKeyValue(key, new byte[200]);
+                    cursor.CreateOrUpdateKeyValue(key, new byte[0]);
                     tr.SetCommitUlong((ulong)i);
                     tr.Commit();
                 }
@@ -435,9 +439,10 @@ public class KeyValueDBRollbackTest
             {
                 using (var tr = kv.StartTransaction())
                 {
+                    using var cursor = tr.CreateCursor();
                     var key = new byte[4];
                     BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
-                    tr.CreateOrUpdateKeyValue(key, new byte[2000]);
+                    cursor.CreateOrUpdateKeyValue(key, new byte[2000]);
                     tr.SetCommitUlong((ulong)i);
                     tr.Commit();
                 }
@@ -445,10 +450,11 @@ public class KeyValueDBRollbackTest
                 if (i % 2 == 0)
                 {
                     using var tr = kv.StartTransaction();
+                    using var cursor = tr.CreateCursor();
                     var key = new byte[4];
                     BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i - 1);
-                    tr.FindExactKey(key);
-                    tr.EraseCurrent();
+                    cursor.FindExactKey(key);
+                    cursor.EraseCurrent();
                     tr.Commit();
                 }
 
@@ -486,10 +492,10 @@ public class KeyValueDBRollbackTest
     void ReadAllValues(IKeyValueDB kv)
     {
         using var tr = kv.StartTransaction();
-        tr.InvalidateCurrentKey();
-        while (tr.FindNextKey(ReadOnlySpan<byte>.Empty))
+        using var cursor = tr.CreateCursor();
+        while (cursor.FindNextKey(new()))
         {
-            tr.GetValue();
+            cursor.SlowGetValue();
         }
     }
 
@@ -511,9 +517,10 @@ public class KeyValueDBRollbackTest
         for (var i = 0; i < 100; i++)
         {
             using var tr = kvDb.StartWritingTransaction().Result;
+            using var cursor = tr.CreateCursor();
             var key = new byte[4];
             BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
-            tr.CreateOrUpdateKeyValue(key, new byte[2000]);
+            cursor.CreateOrUpdateKeyValue(key, new byte[2000]);
             tr.SetCommitUlong((ulong)i);
             tr.Commit();
         }
@@ -524,10 +531,11 @@ public class KeyValueDBRollbackTest
         for (var i = 0; i < 50; i++)
         {
             using var tr = kvDb.StartWritingTransaction().Result;
+            using var cursor = tr.CreateCursor();
             var key = new byte[4];
             BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
-            tr.FindExactKey(key);
-            tr.EraseCurrent();
+            cursor.FindExactKey(key);
+            cursor.EraseCurrent();
             tr.SetCommitUlong(100 + (ulong)i);
             tr.Commit();
         }
@@ -540,10 +548,11 @@ public class KeyValueDBRollbackTest
             for (var i = 50; i < 100; i++)
             {
                 using var tr = kvDb.StartWritingTransaction().Result;
+                using var cursor = tr.CreateCursor();
                 var key = new byte[4];
                 BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
-                tr.FindExactKey(key);
-                tr.EraseCurrent();
+                cursor.FindExactKey(key);
+                cursor.EraseCurrent();
                 tr.SetCommitUlong(100 + (ulong)i);
                 tr.Commit();
             }
@@ -577,9 +586,10 @@ public class KeyValueDBRollbackTest
         for (var i = 0; i < 100; i++)
         {
             using var tr = kvDb.StartWritingTransaction().Result;
+            using var cursor = tr.CreateCursor();
             var key = new byte[4];
             BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
-            tr.CreateOrUpdateKeyValue(key, new byte[2000]);
+            cursor.CreateOrUpdateKeyValue(key, new byte[2000]);
             tr.Commit();
         }
 
@@ -590,10 +600,11 @@ public class KeyValueDBRollbackTest
             for (var i = 0; i < 50; i++)
             {
                 using var tr = kvDb.StartWritingTransaction().Result;
+                using var cursor = tr.CreateCursor();
                 var key = new byte[4];
                 BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i * 2);
-                tr.FindExactKey(key);
-                tr.EraseCurrent();
+                cursor.FindExactKey(key);
+                cursor.EraseCurrent();
                 tr.Commit();
             }
 
@@ -608,9 +619,10 @@ public class KeyValueDBRollbackTest
         for (var i = 0; i < 4; i++)
         {
             using var tr = kvDb.StartWritingTransaction().Result;
+            using var cursor = tr.CreateCursor();
             var key = new byte[4];
             BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
-            tr.CreateOrUpdateKeyValue(key, new byte[2000]);
+            cursor.CreateOrUpdateKeyValue(key, new byte[2000]);
             tr.Commit();
         }
 
@@ -640,8 +652,9 @@ public class KeyValueDBRollbackTest
         {
             using (var tr = kvDb.StartWritingTransaction().Result)
             {
-                tr.CreateOrUpdateKeyValue(new byte[5], new byte[3000]);
-                tr.CreateOrUpdateKeyValue(new byte[6], new byte[2000]);
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(new byte[5], new byte[3000]);
+                cursor.CreateOrUpdateKeyValue(new byte[6], new byte[2000]);
                 tr.Commit();
             }
 
@@ -652,8 +665,9 @@ public class KeyValueDBRollbackTest
         {
             using (var tr = kvDb.StartWritingTransaction().Result)
             {
-                tr.FindFirstKey(ReadOnlySpan<byte>.Empty);
-                tr.EraseCurrent();
+                using var cursor = tr.CreateCursor();
+                cursor.FindFirstKey(new());
+                cursor.EraseCurrent();
                 tr.Commit();
             }
 

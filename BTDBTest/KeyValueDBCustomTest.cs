@@ -39,12 +39,13 @@ public class KeyValueDBCustomTest
             {
                 using (var tr = db.StartTransaction())
                 {
+                    using var cursor = tr.CreateCursor();
                     foreach (KeyValuePair<long, Tick> item in flow)
                     {
                         byte[] key = Direct(item.Key);
                         byte[] value = FromTick(item.Value);
 
-                        tr.CreateOrUpdateKeyValue(key, value);
+                        cursor.CreateOrUpdateKeyValue(key, value);
                     }
 
                     tr.Commit();
@@ -52,19 +53,18 @@ public class KeyValueDBCustomTest
 
                 flow = TicksGenerator.GetFlow(1000000, KeysType.Random);
 
-                foreach (KeyValuePair<long, Tick> item in flow)
+                foreach (var item in flow)
                 {
-                    using (var tr = db.StartTransaction())
-                    {
-                        byte[] key = Direct(item.Key);
-                        bool find = tr.FindExactKey(key);
+                    using var tr = db.StartTransaction();
+                    using var cursor = tr.CreateCursor();
+                    var key = Direct(item.Key);
+                    var find = cursor.FindExactKey(key);
 
-                        if (find)
-                        {
-                            var id = Reverse(tr.GetKeyToArray());
-                            var tick = ToTick(tr.GetValue().ToArray());
-                            Assert.Equal(item.Key, id);
-                        }
+                    if (find)
+                    {
+                        var id = Reverse(cursor.SlowGetKey());
+                        var tick = ToTick(cursor.SlowGetValue());
+                        Assert.Equal(item.Key, id);
                     }
                 }
             }
