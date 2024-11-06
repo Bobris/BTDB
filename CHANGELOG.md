@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Serialization of boxed enums in Layer1 and Layer2. It stay unsupported for ObjectDB.
+
 ## 32.16.3
 
 ### Improved

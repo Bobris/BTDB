@@ -333,8 +333,9 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         Type typeAlternative = null;
         if (_forbidSerializationOfLazyDBObjects && type.InheritsOrImplements(typeof(IAmLazyDBObject)))
         {
-            throw new BTDBException("Lazy DB object serialization is forbidden. Type: "+type.ToSimpleName());
+            throw new BTDBException("Lazy DB object serialization is forbidden. Type: " + type.ToSimpleName());
         }
+
         if (!type.IsSubclassOf(typeof(Delegate)))
         {
             if (type.IsGenericType)
@@ -698,8 +699,9 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
             return;
         }
 
-        visited.Add(obj, visited.Count);
         var objType = obj.GetType();
+        if (!objType.IsEnum)
+            visited.Add(obj, visited.Count);
         if (!_typeOrDescriptor2Info.TryGetValue(objType, out var info))
         {
             if (_useInputDescriptors && obj is IKnowDescriptor knowDescriptor)

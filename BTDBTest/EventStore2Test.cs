@@ -1430,4 +1430,72 @@ public class EventStore2Test
 
         Assert.Throws<InvalidOperationException>(() => serializer.Serialize(out var hasMetadata, obj));
     }
+
+    public interface IDynamicValue
+    {
+    }
+
+    public class DynamicValueWrapper<TValueType> : IDynamicValue
+    {
+        public TValueType Value { get; set; }
+    }
+
+    public class Money
+    {
+        public decimal MinorValue { get; init; }
+
+        public Currency Currency { get; init; }
+    }
+
+    public class Currency
+    {
+        public int MinorToAmountRatio { get; init; }
+
+        public string Code { get; init; }
+    }
+
+    public class Root
+    {
+        public List<IDynamicValue> R { get; set; }
+    }
+
+    enum Test1
+    {
+        A = 325,
+        B
+    }
+
+    [Fact]
+    public void CanDeserializeWithReferentialIdentityAndBoxedEnum()
+    {
+        var usd = new Currency() { Code = "USD", MinorToAmountRatio = 100 };
+        var obj = new Root()
+        {
+            R = new List<IDynamicValue>()
+            {
+                new DynamicValueWrapper<Enum>() { Value = Test1.A },
+                new DynamicValueWrapper<Money>()
+                {
+                    Value = new Money()
+                    {
+                        MinorValue = 10000,
+                        Currency = usd
+                    }
+                },
+                new DynamicValueWrapper<Money>()
+                {
+                    Value = new Money()
+                    {
+                        MinorValue = 61000,
+                        Currency = usd
+                    }
+                }
+            }
+        };
+        var obj2 = SerializationInternal<Root>(obj);
+        Assert.Equal(obj.R.Count, obj2.R.Count);
+        Assert.Equal("A", ((DynamicValueWrapper<Enum>)obj2.R[0]).Value.ToString());
+        Assert.Same(((DynamicValueWrapper<Money>)obj2.R[1]).Value.Currency,
+            ((DynamicValueWrapper<Money>)obj2.R[2]).Value.Currency);
+    }
 }

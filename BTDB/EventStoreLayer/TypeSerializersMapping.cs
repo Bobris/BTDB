@@ -614,10 +614,11 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
                 return;
             }
 
-            _backRefs.Add(obj, (uint)_backRefs.Count);
+            var objType = obj.GetType();
+            if (!objType.IsEnum)
+                _backRefs.Add(obj, (uint)_backRefs.Count);
             var infoForType = _mapping.GetInfoFromObject(obj, out var typeSerializers);
             writer.WriteVUInt32((uint)infoForType.Id);
-            var objType = obj.GetType();
             ref var actions = ref infoForType.Type2Actions.GetOrAddValueRef(objType);
             if (!actions.KnownSimpleSaver)
             {

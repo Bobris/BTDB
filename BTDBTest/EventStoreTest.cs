@@ -23,8 +23,8 @@ public class EventStoreTest
         var metadata = new User { Name = "A", Age = 1 };
         var events = new object[]
         {
-                new User {Name = "B", Age = 2},
-                new User {Name = "C", Age = 3}
+            new User { Name = "B", Age = 2 },
+            new User { Name = "C", Age = 3 }
         };
         appender.Store(metadata, events);
         appender.FinalizeStore();
@@ -238,8 +238,8 @@ public class EventStoreTest
         var metadata = new User { Name = "A", Age = 1 };
         var events = new object[]
         {
-                new User {Name = "B", Age = 2},
-                new User {Name = "C", Age = 3}
+            new User { Name = "B", Age = 2 },
+            new User { Name = "C", Age = 3 }
         };
         appender.Store(metadata, events);
         var eventObserver = new StoringEventObserver();
@@ -591,7 +591,7 @@ public class EventStoreTest
         var userA = new User { Name = "A", Age = 1 };
         var userB = new User { Name = "B", Age = 2 };
         var userEvent = new UserEventDictionary
-        { Id = 10, Dict = new Dictionary<string, User> { { "A", userA }, { "B", userB } } };
+            { Id = 10, Dict = new Dictionary<string, User> { { "A", userA }, { "B", userB } } };
         appender.Store(null, new object[] { userEvent });
 
         manager = new EventStoreManager();
@@ -690,8 +690,8 @@ public class EventStoreTest
         var metadata = new User { Name = "A", Age = 1 };
         var events = new object[]
         {
-                new User {Name = "B", Age = 2},
-                new User {Name = "C", Age = 3}
+            new User { Name = "B", Age = 2 },
+            new User { Name = "C", Age = 3 }
         };
         appender.Store(metadata, events);
         appender.Store(metadata, events);
@@ -816,9 +816,9 @@ public class EventStoreTest
         var dictInDictEvent = new EventDictionaryInDictionary
         {
             DictInDict = new Dictionary<string, IDictionary<string, string>>
-                {
-                    {"level-A", new Dictionary<string, string> {{"level-B", "level-C"}}}
-                }
+            {
+                { "level-A", new Dictionary<string, string> { { "level-B", "level-C" } } }
+            }
         };
         appender.Store(null, new object[] { dictInDictEvent });
         manager = new EventStoreManager();
@@ -1144,5 +1144,88 @@ public class EventStoreTest
         appender.ReadFromStartToEnd(eventObserver);
         var ev = eventObserver.Events[0][0] as ObjWithReadOnlyMemory;
         Assert.Equal(ev.Data.ToArray(), "ahoj"u8.ToArray());
+    }
+
+    public interface IDynamicValue
+    {
+    }
+
+    public class DynamicValueWrapper<TValueType> : IDynamicValue
+    {
+        public TValueType Value { get; set; }
+    }
+
+    public class Money
+    {
+        public decimal MinorValue { get; init; }
+
+        public Currency Currency { get; init; }
+    }
+
+    public class Currency
+    {
+        public int MinorToAmountRatio { get; init; }
+
+        public string Code { get; init; }
+    }
+
+    public class Root
+    {
+        public List<IDynamicValue> R { get; set; }
+    }
+
+    enum Test1
+    {
+        A = 325,
+        B
+    }
+
+    T SerializationInternal<T>(object input)
+    {
+        var manager = new EventStoreManager();
+        var file = new MemoryEventFileStorage();
+        var appender = manager.AppendToStore(file);
+        appender.Store(null, new object[] { input });
+        manager = new EventStoreManager();
+        var reader = manager.OpenReadOnlyStore(file);
+        var eventObserver = new StoringEventObserver();
+        reader.ReadFromStartToEnd(eventObserver);
+
+        return (T)eventObserver.Events[0][0];
+    }
+
+    [Fact]
+    public void CanDeserializeWithReferentialIdentityAndBoxedEnum()
+    {
+        var usd = new Currency() { Code = "USD", MinorToAmountRatio = 100 };
+        var obj = new Root()
+        {
+            R = new List<IDynamicValue>()
+            {
+                new DynamicValueWrapper<Enum>() { Value = Test1.A },
+                new DynamicValueWrapper<Money>()
+                {
+                    Value = new Money()
+                    {
+                        MinorValue = 10000,
+                        Currency = usd
+                    }
+                },
+                new DynamicValueWrapper<Money>()
+                {
+                    Value = new Money()
+                    {
+                        MinorValue = 61000,
+                        Currency = usd
+                    }
+                }
+            }
+        };
+
+        var obj2 = SerializationInternal<Root>(obj);
+        Assert.Equal(obj.R.Count, obj2.R.Count);
+        Assert.Equal("A", ((DynamicValueWrapper<Enum>)obj2.R[0]).Value.ToString());
+        Assert.Same(((DynamicValueWrapper<Money>)obj2.R[1]).Value.Currency,
+            ((DynamicValueWrapper<Money>)obj2.R[2]).Value.Currency);
     }
 }
