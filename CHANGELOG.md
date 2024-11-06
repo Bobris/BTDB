@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.16.4
+
 ### Fixed
 
 Serialization of boxed enums in Layer1 and Layer2. It stay unsupported for ObjectDB.
