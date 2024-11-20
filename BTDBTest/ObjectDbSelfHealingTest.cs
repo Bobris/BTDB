@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -67,7 +68,7 @@ public class ObjectDbSelfHealingTest : IDisposable
     public interface IJobTableIncompatible : IRelation<JobIncompatible>
     {
         void Insert(JobIncompatible job);
-        IEnumerator<JobIncompatible> ListByName(AdvancedEnumeratorParam<string> name);
+        IEnumerable<JobIncompatible> ListByName(AdvancedEnumeratorParam<string> name);
     }
 
     [Fact]
@@ -96,9 +97,8 @@ public class ObjectDbSelfHealingTest : IDisposable
             var job = new JobIncompatible() { Id = Guid.NewGuid(), Name = "Code" };
             jobTable.Insert(job);
 
-            var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending));
-            Assert.True(en.MoveNext());
-            Assert.Equal("Code", en.Current.Name);
+            var en = jobTable.ListByName(new(EnumerationOrder.Ascending)).First();
+            Assert.Equal("Code", en.Name);
 
             AssertNoLeaksInDb();
         }

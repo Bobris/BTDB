@@ -474,7 +474,7 @@ namespace BTDBTest
             // Find by secondary key, it will throw if it find multiple Persons with that age
             Person FindByAgeOrDefault(ulong tenantId, uint age);
 
-            IEnumerator<Person> FindByAge(ulong tenantId, uint age);
+            IEnumerable<Person> FindByAge(ulong tenantId, uint age);
 
             // Returns true if removed, if returning void it does throw if does not exists
             bool RemoveById(ulong tenantId, ulong id);
@@ -543,7 +543,8 @@ namespace BTDBTest
             var creator = tr.InitRelation<IPersonTableComplexFuture>("PersonComplex");
             var personTable = creator(tr);
 
-            var ena2 = personTable.ListByAgePartial(1, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
+            using var ena2 = personTable.ListByAgePartial(1, new AdvancedEnumeratorParam<uint>(
+                EnumerationOrder.Ascending, 29,
                 KeyProposition.Included,
                 0, KeyProposition.Ignored));
             Assert.False(ena2.NextKey(out var age));
@@ -556,7 +557,7 @@ namespace BTDBTest
             personTable.Insert(new Person { TenantId = 2, Id = 2, Name = "Lubos", Age = 128 });
             personTable.Insert(new Person { TenantId = 2, Id = 3, Name = "Boris", Age = 129 });
 
-            var orderedEnumerator =
+            using var orderedEnumerator =
                 personTable.ListByAge(2, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
             Assert.Equal(2u, orderedEnumerator.Count);
 
@@ -569,7 +570,7 @@ namespace BTDBTest
             Assert.True(orderedEnumerator.NextKey(out age));
             Assert.Equal(129u, age);
 
-            var orderedEnumeratorAgeOnly =
+            using var orderedEnumeratorAgeOnly =
                 personTable.ListByAgePartial(2, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
             Assert.Equal(2u, orderedEnumeratorAgeOnly.Count);
 
@@ -581,7 +582,8 @@ namespace BTDBTest
 
             Assert.Equal((uint[]) [28u, 29u, 28u, 128u, 129u], personTable.Select(p => p.Age).ToList());
 
-            var orderedById = personTable.ListById(2, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
+            using var orderedById =
+                personTable.ListById(2, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
             Assert.True(orderedById.NextKey(out var id));
             Assert.Equal(2ul, id);
             Assert.True(orderedById.NextKey(out id));
@@ -593,19 +595,20 @@ namespace BTDBTest
             Assert.False(personTable.AnyById(2, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 10,
                 KeyProposition.Included, 0, KeyProposition.Ignored)));
 
-            var ena = personTable.ListByAge(1, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
+            using var ena = personTable.ListByAge(1, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
                 KeyProposition.Included,
                 29, KeyProposition.Included));
             Assert.True(ena.NextKey(out age));
             Assert.Equal(29u, age);
             Assert.False(ena.NextKey(out _));
 
-            ena2 = personTable.ListByAgePartial(1, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
+            using var ena3 = personTable.ListByAgePartial(1, new AdvancedEnumeratorParam<uint>(
+                EnumerationOrder.Ascending, 29,
                 KeyProposition.Included,
                 29, KeyProposition.Included));
-            Assert.True(ena2.NextKey(out age));
+            Assert.True(ena3.NextKey(out age));
             Assert.Equal(29u, age);
-            Assert.False(ena2.NextKey(out _));
+            Assert.False(ena3.NextKey(out _));
 
             Assert.Equal(2, personTable.CountByAge(1, 28));
             Assert.Equal(1, personTable.CountByAge(1, 29));
@@ -1085,7 +1088,7 @@ namespace BTDBTest
         public interface IUserNoticeTable : IRelation<UserNotice>
         {
             void Insert(UserNotice un);
-            IEnumerator<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<ulong> noticeId);
+            IEnumerable<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<ulong> noticeId);
         }
 
         [Fact]
@@ -1095,8 +1098,8 @@ namespace BTDBTest
             {
                 var table = tr.GetRelation<IUserNoticeTable>();
                 table.Insert(new UserNotice { UserId = 1, NoticeId = 2 });
-                var en = table.ListByNoticeId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
-                    1, KeyProposition.Included, 3, KeyProposition.Included));
+                using var en = table.ListByNoticeId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
+                    1, KeyProposition.Included, 3, KeyProposition.Included)).GetEnumerator();
                 Assert.True(en.MoveNext());
                 Assert.Equal(2u, en.Current!.NoticeId);
                 foreach (var row in table)
@@ -1209,15 +1212,15 @@ namespace BTDBTest
             }
 
             IEnumerable<Room> Query(IRoomTable table) => table;
-            ModifyDuringEnumerate(creator, Query, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
-            ModifyDuringEnumerate(creator, Query, table => table.RemoveById(0, 20), true);
+            ModifyDuringEnumerate(creator, Query, table => table.Insert(new Room { Id = 30, Name = "third" }), false);
+            ModifyDuringEnumerate(creator, Query, table => table.RemoveById(0, 10), false);
             ModifyDuringEnumerate(creator, Query, table => table.Update(new Room { Id = 10, Name = "First" }), false);
             ModifyDuringEnumerate(creator, Query,
-                table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), true);
+                table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), false);
             ModifyDuringEnumerate(creator, Query, table => table.Upsert(new Room { Id = 10, Name = "update existing" }),
                 false);
             ModifyDuringEnumerate(creator, Query,
-                table => table.Upsert(new Room { Id = 10, Name = "update existing, change SK", Beds = 4 }), true);
+                table => table.Upsert(new Room { Id = 10, Name = "update existing, change SK", Beds = 4 }), false);
         }
 
         void ModifyDuringEnumerate(Func<IObjectDBTransaction, IRoomTable> creator,
@@ -1426,7 +1429,7 @@ namespace BTDBTest
             personTable.Insert(new Person { Id = 6, Name = "B" });
             personTable.Insert(new Person { Id = 7, Name = "C" });
 
-            var orderedEnumerator = personTable.ListByName(0, new AdvancedEnumeratorParam<string>(
+            using var orderedEnumerator = personTable.ListByName(0, new AdvancedEnumeratorParam<string>(
                 EnumerationOrder.Ascending,
                 "B", KeyProposition.Included, "C", KeyProposition.Excluded));
             Assert.Equal(3u, orderedEnumerator.Count);
@@ -1443,7 +1446,7 @@ namespace BTDBTest
         public interface IPersonSimpleFindTable : IRelation<PersonSimple>
         {
             void Insert(PersonSimple person);
-            IEnumerator<PersonSimple> FindById(ulong tenantId);
+            IEnumerable<PersonSimple> FindById(ulong tenantId);
             bool RemoveById(ulong tenantId, string email);
             int RemoveById(ulong tenantId);
         }
@@ -1458,14 +1461,14 @@ namespace BTDBTest
             personTable.Insert(new PersonSimple { TenantId = 13, Email = "a@d.cz", Name = "A" });
             personTable.Insert(new PersonSimple { TenantId = 13, Email = "b@d.cz", Name = "B" });
 
-            var enumerator = personTable.FindById(13);
+            using var enumerator = personTable.FindById(13).GetEnumerator();
             Assert.True(enumerator.MoveNext());
             Assert.Equal("a@d.cz", enumerator.Current.Email);
             Assert.True(enumerator.MoveNext());
             Assert.False(enumerator.MoveNext());
 
-            enumerator = personTable.FindById(2);
-            Assert.False(enumerator.MoveNext());
+            using var enumerator2 = personTable.FindById(2).GetEnumerator();
+            Assert.False(enumerator2.MoveNext());
 
             Assert.True(personTable.RemoveById(13, "a@d.cz"));
 
@@ -1490,12 +1493,12 @@ namespace BTDBTest
         public interface IProductionTrackingDailyTable : IRelation<ProductionTrackingDaily>
         {
             void Insert(ProductionTrackingDaily productionTrackingDaily);
-            IEnumerator<ProductionTrackingDaily> FindByProductionDate(DateTime productionDate);
+            IEnumerable<ProductionTrackingDaily> FindByProductionDate(DateTime productionDate);
 
-            IEnumerator<ProductionTrackingDaily> ListByProductionDateWithCompanyId(ulong companyId,
+            IEnumerable<ProductionTrackingDaily> ListByProductionDateWithCompanyId(ulong companyId,
                 AdvancedEnumeratorParam<DateTime> productionDate);
 
-            IEnumerator<ProductionTrackingDaily> ListByProductionDate(AdvancedEnumeratorParam<DateTime> productionDate);
+            IEnumerable<ProductionTrackingDaily> ListByProductionDate(AdvancedEnumeratorParam<DateTime> productionDate);
         }
 
         [Fact]
@@ -1510,7 +1513,7 @@ namespace BTDBTest
             table.Insert(new ProductionTrackingDaily
                 { CompanyId = 5, ProductionDate = currentDay, ProductionsCount = 1 });
 
-            var companyProduction = table.FindByProductionDate(currentDay);
+            using var companyProduction = table.FindByProductionDate(currentDay).GetEnumerator();
             Assert.True(companyProduction.MoveNext());
             Assert.Equal(1u, companyProduction.Current.ProductionsCount);
 
@@ -1518,15 +1521,15 @@ namespace BTDBTest
             var dateParam = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending, currentDay,
                 KeyProposition.Included,
                 nextDay, KeyProposition.Excluded);
-            var en = table.ListByProductionDateWithCompanyId(5, dateParam);
+            using var en = table.ListByProductionDateWithCompanyId(5, dateParam).GetEnumerator();
             Assert.True(en.MoveNext());
             Assert.Equal(1u, en.Current.ProductionsCount);
 
-            en = table.ListByProductionDateWithCompanyId(5,
+            using var en2 = table.ListByProductionDateWithCompanyId(5,
                 new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending, DateTime.MinValue,
-                    KeyProposition.Included, DateTime.MaxValue, KeyProposition.Excluded));
-            Assert.True(en.MoveNext());
-            Assert.Equal(1u, en.Current.ProductionsCount);
+                    KeyProposition.Included, DateTime.MaxValue, KeyProposition.Excluded)).GetEnumerator();
+            Assert.True(en2.MoveNext());
+            Assert.Equal(1u, en2.Current.ProductionsCount);
 
             tr.Commit();
         }
@@ -1545,14 +1548,14 @@ namespace BTDBTest
             table.Insert(new ProductionTrackingDaily
                 { CompanyId = 123, ProductionDate = dateTimeValue, ProductionsCount = 12 });
 
-            var companyProduction = table.FindByProductionDate(dateTimeValue);
+            using var companyProduction = table.FindByProductionDate(dateTimeValue).GetEnumerator();
             Assert.True(companyProduction.MoveNext());
             Assert.Equal(12u, companyProduction.Current.ProductionsCount);
 
             var dateParam = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending,
                 dateTimeValue, KeyProposition.Excluded,
                 DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc), KeyProposition.Excluded);
-            var en = table.ListByProductionDate(dateParam);
+            using var en = table.ListByProductionDate(dateParam).GetEnumerator();
             Assert.False(en.MoveNext());
 
             tr.Commit();
@@ -1698,35 +1701,31 @@ namespace BTDBTest
 
             bool RemoveById(ulong id);
 
-            IEnumerator<SimpleObject> ListByName(string name, AdvancedEnumeratorParam<ulong> param);
+            IEnumerable<SimpleObject> ListByName(string name, AdvancedEnumeratorParam<ulong> param);
             SimpleObject FindByNameOrDefault(string name);
         }
 
         [Fact]
-        public void RemoveFromRelationWhileEnumerating_()
+        public void RemoveFromRelationWhileEnumeratingWorks()
         {
-            var exc = Assert.Throws<InvalidOperationException>(() =>
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<ISimpleRelation>("ISimpleRelation");
+            var personSimpleTable = creator(tr);
+            for (var i = 0; i < 100; i++)
             {
-                using var tr = _db.StartTransaction();
-                var creator = tr.InitRelation<ISimpleRelation>("ISimpleRelation");
-                var personSimpleTable = creator(tr);
-                for (var i = 0; i < 100; i++)
-                {
-                    var duty = new SimpleObject() { Id = (ulong)i, Name = "HardCore Code" + i % 5 };
-                    personSimpleTable.Insert(duty);
-                }
+                var duty = new SimpleObject() { Id = (ulong)i, Name = "HardCore Code" + i % 5 };
+                personSimpleTable.Insert(duty);
+            }
 
-                var enumerator =
-                    personSimpleTable.ListByName("HardCore Code" + 0, new AdvancedEnumeratorParam<ulong>());
-                while (enumerator.MoveNext())
-                {
-                    personSimpleTable.RemoveById(enumerator.Current.Id);
-                }
+            using var enumerator =
+                personSimpleTable.ListByName("HardCore Code" + 0, new AdvancedEnumeratorParam<ulong>())
+                    .GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                personSimpleTable.RemoveById(enumerator.Current.Id);
+            }
 
-                tr.Commit();
-            });
-
-            Assert.Equal("Relation modified during iteration.", exc.Message);
+            tr.Commit();
         }
 
         [Fact]
@@ -1784,8 +1783,9 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<ISimpleRelation>("ISimpleRelation");
                 var personSimpleTable = creator(tr);
-                var enumerator =
-                    personSimpleTable.ListByName("HardCore Code" + 0, new AdvancedEnumeratorParam<ulong>());
+                using var enumerator =
+                    personSimpleTable.ListByName("HardCore Code" + 0, new AdvancedEnumeratorParam<ulong>())
+                        .GetEnumerator();
                 var cnt = 0;
                 while (enumerator.MoveNext()) cnt++;
                 Assert.Equal(20, cnt);

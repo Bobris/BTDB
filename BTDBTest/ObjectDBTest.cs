@@ -2062,13 +2062,12 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             var sd = tr.Singleton<SimpleDictionary>().Int2String;
             Assert.Equal(3, sd.Count);
 
-            Assert.Throws<InvalidOperationException>(() =>
+            foreach (var kvp in sd)
             {
-                foreach (var kvp in sd)
-                {
-                    sd.Remove(kvp.Key);
-                }
-            });
+                sd.Remove(kvp.Key);
+            }
+
+            Assert.Empty(sd);
         }
     }
 

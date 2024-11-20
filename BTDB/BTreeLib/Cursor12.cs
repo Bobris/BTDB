@@ -108,6 +108,12 @@ class Cursor12 : ICursor
     {
         var res = BTreeImpl12.FindLastWithPrefix(_rootNode, keyPrefix);
         SeekIndex(res);
+        if (!KeyHasPrefix(keyPrefix))
+        {
+            Invalidate();
+            return -1;
+        }
+
         return res;
     }
 
@@ -240,7 +246,46 @@ class Cursor12 : ICursor
         }
     }
 
-    public unsafe ReadOnlySpan<byte> GetKeySpan(ref Span<byte> buffer, bool copy)
+    public unsafe ReadOnlySpan<byte> GetKeySpan(scoped ref Span<byte> buffer, bool copy)
+    {
+        if (_stack.Count == 0) return default;
+        ref var stackItem = ref _stack[_stack.Count - 1];
+        ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
+        if (header.HasLongKeys)
+        {
+            var keys = NodeUtils12.GetLongKeyPtrs(stackItem._node);
+            var keyPtr = keys[stackItem._posInNode];
+            var lenSuffix = TreeNodeUtils.ReadInt32Aligned(keyPtr);
+            var len = header._keyPrefixLength + lenSuffix;
+            if (len > buffer.Length)
+            {
+                buffer = GC.AllocateUninitializedArray<byte>(len);
+            }
+
+            var res = buffer[..len];
+            NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(res);
+            new Span<byte>((keyPtr + 4).ToPointer(), lenSuffix).CopyTo(res[header._keyPrefixLength..]);
+            return res;
+        }
+        else
+        {
+            var keyOffsets = NodeUtils12.GetKeySpans(stackItem._node, out var keySuffixes);
+            var ofs = keyOffsets[stackItem._posInNode];
+            var lenSuffix = keyOffsets[stackItem._posInNode + 1] - ofs;
+            var len = header._keyPrefixLength + lenSuffix;
+            if (len > buffer.Length)
+            {
+                buffer = GC.AllocateUninitializedArray<byte>(len);
+            }
+
+            var res = buffer[..len];
+            NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(res);
+            keySuffixes.Slice(ofs, lenSuffix).CopyTo(res[header._keyPrefixLength..]);
+            return res;
+        }
+    }
+
+    public unsafe ReadOnlySpan<byte> GetKeySpan(Span<byte> buffer, bool copy)
     {
         if (_stack.Count == 0) return default;
         ref var stackItem = ref _stack[_stack.Count - 1];

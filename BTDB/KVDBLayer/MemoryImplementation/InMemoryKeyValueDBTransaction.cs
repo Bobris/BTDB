@@ -262,6 +262,25 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         return GetCurrentKeyFromStack();
     }
 
+    public ReadOnlySpan<byte> GetKeySpan(Span<byte> buffer, bool copy = false)
+    {
+        var key = GetCurrentKeyFromStack();
+        if (copy)
+        {
+            if (buffer.Length < key.Length)
+            {
+                var newBuffer = GC.AllocateUninitializedArray<byte>(key.Length);
+                key.CopyTo(newBuffer);
+                return newBuffer[..key.Length];
+            }
+
+            key.CopyTo(buffer);
+            return buffer[..key.Length];
+        }
+
+        return key;
+    }
+
     public bool IsValueCorrupted()
     {
         return false;

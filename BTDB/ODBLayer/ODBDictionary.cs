@@ -225,7 +225,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
     unsafe TKey CurrentToKey(IKeyValueDBCursor cursor)
     {
         Span<byte> buffer = stackalloc byte[4096];
-        var keySpan = cursor.GetKeySpan(ref buffer);
+        var keySpan = cursor.GetKeySpan(ref buffer)[_prefix.Length..];
         fixed (byte* keyPtr = keySpan)
         {
             var reader = new MemReader(keyPtr, keySpan.Length);

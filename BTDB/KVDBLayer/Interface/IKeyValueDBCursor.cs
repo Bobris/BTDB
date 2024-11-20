@@ -91,7 +91,7 @@ public interface IKeyValueDBCursor : IDisposable
 
     ReadOnlySpan<byte> GetKeySpan(scoped ref Span<byte> buffer, bool copy = false);
 
-    ReadOnlySpan<byte> GetKeySpan(scoped Span<byte> buffer, bool copy = false);
+    ReadOnlySpan<byte> GetKeySpan(Span<byte> buffer, bool copy = false);
 
     /// <summary>
     /// Returns true if GetValue would throw exception because missing or incomplete value file or transaction file containing current value.

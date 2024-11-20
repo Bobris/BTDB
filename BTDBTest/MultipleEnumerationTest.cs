@@ -14,10 +14,8 @@ public class MultipleEnumerationTest : ObjectDbTestBase
 
     public class Application
     {
-        [PrimaryKey(1)]
-        public ulong CompanyId { get; set; }
-        [PrimaryKey(2)]
-        public ulong ApplicationId { get; set; }
+        [PrimaryKey(1)] public ulong CompanyId { get; set; }
+        [PrimaryKey(2)] public ulong ApplicationId { get; set; }
     }
 
     public interface IApplicationTable : IRelation<Application>
@@ -82,11 +80,13 @@ public class MultipleEnumerationTest : ObjectDbTestBase
         var result = table.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
             1, KeyProposition.Included, 2, KeyProposition.Included));
 
-        var resultEnumerator = result.GetEnumerator();
-        Assert.True(resultEnumerator.MoveNext());
+        {
+            using var resultEnumerator = result.GetEnumerator();
+            Assert.True(resultEnumerator.MoveNext());
 
-        var val1 = resultEnumerator.Current;
-        Assert.Equal(100U, val1.ApplicationId);
+            var val1 = resultEnumerator.Current;
+            Assert.Equal(100U, val1.ApplicationId);
+        }
 
         var values = result.ToList();
         Assert.Equal(3, values.Count());

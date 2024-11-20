@@ -141,7 +141,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             if (_hasSecondaryIndexes)
             {
                 var writer2 = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[1024]);
-                UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                UpdateSecondaryIndexes(obj, cursor, keyBytes, oldValueBytes, ref writer2);
             }
 
             FreeContentInUpdate(oldValueBytes, valueBytes);
@@ -271,7 +271,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
                 Span<byte> buf2 = stackalloc byte[512];
                 var writer2 = MemWriter.CreateFromStackAllocatedSpan(buf2);
-                UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                UpdateSecondaryIndexes(obj, cursor, keyBytes, oldValueBytes, ref writer2);
 
                 return false;
             }
@@ -336,7 +336,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         {
             Span<byte> buf2 = stackalloc byte[1024];
             var writer2 = MemWriter.CreateFromStackAllocatedSpan(buf2);
-            UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+            UpdateSecondaryIndexes(obj, cursor, keyBytes, oldValueBytes, ref writer2);
         }
 
         FreeContentInUpdate(oldValueBytes, valueBytes);
@@ -376,7 +376,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             if (_hasSecondaryIndexes)
             {
                 var writer2 = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[1024]);
-                UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                UpdateSecondaryIndexes(obj, cursor, keyBytes, oldValueBytes, ref writer2);
             }
         }
         else
@@ -516,10 +516,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
     [SkipLocalsInit]
     // ReSharper disable once UnusedMember.Global
-    public bool RemoveById(scoped in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
+    public unsafe bool RemoveById(scoped in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
     {
         using var cursor = _kvtr.CreateCursor();
-        Span<byte> keyBuffer = stackalloc byte[1024];
+        Span<byte> keyBufferScoped = stackalloc byte[1024];
+        Span<byte> keyBuffer =
+            new Span<byte>(Unsafe.AsPointer(ref keyBufferScoped.GetPinnableReference()), keyBytes.Length);
         Span<byte> valueBuffer = stackalloc byte[1024];
         var fullKeyBytes = keyBytes;
         var beforeRemove = _relationInfo.BeforeRemove;
@@ -569,7 +571,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         if (_hasSecondaryIndexes)
         {
-            RemoveSecondaryIndexes(fullKeyBytes, valueSpan);
+            RemoveSecondaryIndexes(cursor, fullKeyBytes, valueSpan);
         }
 
         _relationInfo.FreeContent(_transaction, valueSpan);
@@ -610,7 +612,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         cursor.EraseCurrent();
         if (_hasSecondaryIndexes)
         {
-            RemoveSecondaryIndexes(keyBytes, value);
+            RemoveSecondaryIndexes(cursor, keyBytes, value);
         }
 
         _relationInfo.FreeContent(_transaction, value);
@@ -619,12 +621,14 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
     [SkipLocalsInit]
     // ReSharper disable once UnusedMember.Global
-    public bool ShallowRemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
+    public unsafe bool ShallowRemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
     {
         var beforeRemove = _relationInfo.BeforeRemove;
         ReadOnlySpan<byte> fullKeyBytes = keyBytes;
         using var cursor = _kvtr.CreateCursor();
-        Span<byte> keyBuffer = stackalloc byte[1024];
+        Span<byte> keyBufferScoped = stackalloc byte[1024];
+        Span<byte> keyBuffer =
+            new Span<byte>(Unsafe.AsPointer(ref keyBufferScoped.GetPinnableReference()), keyBytes.Length);
         if (beforeRemove != null)
         {
             if (!cursor.FindFirstKey(keyBytes))
@@ -671,7 +675,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             var value = cursor.GetValueSpan(ref valueBuffer, true);
 
             cursor.EraseCurrent();
-            RemoveSecondaryIndexes(fullKeyBytes, value);
+            RemoveSecondaryIndexes(cursor, fullKeyBytes, value);
         }
         else
         {
@@ -711,7 +715,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 var valueBytes = enumerator.Cursor.GetValueSpan(ref buf, true);
 
                 if (_hasSecondaryIndexes)
-                    RemoveSecondaryIndexes(enumerator.Cursor.GetKeySpan(ref keyBuffer), valueBytes);
+                {
+                    using var tempCursor = _kvtr.CreateCursor();
+                    RemoveSecondaryIndexes(tempCursor, enumerator.Cursor.GetKeySpan(ref keyBuffer), valueBytes);
+                }
 
                 if (needImplementFreeContent)
                     _relationInfo.FreeContent(_transaction, valueBytes);
@@ -759,7 +766,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 var valueBytes = enumerator.Cursor.GetValueSpan(ref buf, true);
 
                 if (_hasSecondaryIndexes)
-                    RemoveSecondaryIndexes(enumerator.Cursor.GetKeySpan(ref keyBuffer), valueBytes);
+                {
+                    var tempCursor = _kvtr.CreateCursor();
+                    RemoveSecondaryIndexes(tempCursor, enumerator.Cursor.GetKeySpan(ref keyBuffer), valueBytes);
+                }
 
                 if (needImplementFreeContent)
                     _relationInfo.FreeContent(_transaction, valueBytes);
@@ -857,30 +867,31 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         in ReadOnlySpan<byte> startKeyBytes,
         KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
     {
-        if (!_kvtr.FindFirstKey(startKeyBytes.Slice(0, prefixLen)))
+        using var cursor = _kvtr.CreateCursor();
+        if (!cursor.FindFirstKey(startKeyBytes.Slice(0, prefixLen)))
             return 0;
 
-        var prefixIndex = _kvtr.GetKeyIndex();
+        var prefixIndex = cursor.GetKeyIndex();
 
         var realEndKeyBytes = endKeyBytes;
         if (endKeyProposition == KeyProposition.Included)
             realEndKeyBytes =
-                RelationAdvancedEnumerator<T>.FindLastKeyWithPrefix(endKeyBytes, _kvtr);
+                RelationAdvancedEnumerator<T>.FindLastKeyWithPrefix(endKeyBytes, cursor);
 
         long startIndex;
         long endIndex;
         if (endKeyProposition == KeyProposition.Ignored)
         {
-            _kvtr.FindLastKey(startKeyBytes.Slice(0, prefixLen));
+            cursor.FindLastKey(startKeyBytes.Slice(0, prefixLen));
 
-            endIndex = _kvtr.GetKeyIndex() - prefixIndex;
+            endIndex = cursor.GetKeyIndex() - prefixIndex;
         }
         else
         {
-            switch (_kvtr.Find(realEndKeyBytes, (uint)prefixLen))
+            switch (cursor.Find(realEndKeyBytes, (uint)prefixLen))
             {
                 case FindResult.Exact:
-                    endIndex = _kvtr.GetKeyIndex() - prefixIndex;
+                    endIndex = cursor.GetKeyIndex() - prefixIndex;
                     if (endKeyProposition == KeyProposition.Excluded)
                     {
                         endIndex--;
@@ -888,14 +899,13 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
                     break;
                 case FindResult.Previous:
-                    endIndex = _kvtr.GetKeyIndex() - prefixIndex;
+                    endIndex = cursor.GetKeyIndex() - prefixIndex;
                     break;
                 case FindResult.Next:
-                    endIndex = _kvtr.GetKeyIndex() - prefixIndex - 1;
+                    endIndex = cursor.GetKeyIndex() - prefixIndex - 1;
                     break;
                 case FindResult.NotFound:
-                    endIndex = -1;
-                    break;
+                    throw new InvalidOperationException();
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -907,10 +917,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
         else
         {
-            switch (_kvtr.Find(startKeyBytes, (uint)prefixLen))
+            switch (cursor.Find(startKeyBytes, (uint)prefixLen))
             {
                 case FindResult.Exact:
-                    startIndex = _kvtr.GetKeyIndex() - prefixIndex;
+                    startIndex = cursor.GetKeyIndex() - prefixIndex;
                     if (startKeyProposition == KeyProposition.Excluded)
                     {
                         startIndex++;
@@ -918,10 +928,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
                     break;
                 case FindResult.Previous:
-                    startIndex = _kvtr.GetKeyIndex() - prefixIndex + 1;
+                    startIndex = cursor.GetKeyIndex() - prefixIndex + 1;
                     break;
                 case FindResult.Next:
-                    startIndex = _kvtr.GetKeyIndex() - prefixIndex;
+                    startIndex = cursor.GetKeyIndex() - prefixIndex;
                     break;
                 case FindResult.NotFound:
                     startIndex = 0;
@@ -939,7 +949,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
         KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
     {
-        using var enumerator = new RelationAdvancedEnumerator<T>(this, prefixFieldCount,
+        using var enumerator = new RelationAdvancedEnumerator<T>(this,
             order, startKeyProposition, prefixLen, startKeyBytes, endKeyProposition, endKeyBytes, 0);
         var keysToDelete = new StructList<byte[]>();
         while (enumerator.MoveNext())
@@ -957,14 +967,13 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
     public IEnumerator<T> GetEnumerator()
     {
-        return new RelationEnumerator<T>(_transaction, _relationInfo, _relationInfo.Prefix, this, 0);
+        return new RelationEnumerator<T>(_transaction, _relationInfo, _relationInfo.Prefix, 0);
     }
 
     public IEnumerable<TAs> As<TAs>()
     {
-        if (_kvtr.GetKeyValueCount(_relationInfo.Prefix) == 0) return Enumerable.Empty<TAs>();
         var loaderInfo = new RelationInfo.ItemLoaderInfo(_relationInfo, typeof(TAs));
-        return new RelationEnumerator<TAs>(_transaction, _relationInfo.Prefix, this, loaderInfo);
+        return new RelationEnumerator<TAs>(_transaction, _relationInfo.Prefix, loaderInfo);
     }
 
     public TItem FindByIdOrDefault<TItem>(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound, int loaderIndex)
@@ -973,10 +982,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             throwWhenNotFound);
     }
 
+    [SkipLocalsInit]
     object? FindByIdOrDefaultInternal(RelationInfo.ItemLoaderInfo itemLoader, in ReadOnlySpan<byte> keyBytes,
         bool throwWhenNotFound)
     {
-        if (!_kvtr.FindFirstKey(keyBytes))
+        using var cursor = _kvtr.CreateCursor();
+        if (!cursor.FindFirstKey(keyBytes))
         {
             if (throwWhenNotFound)
                 throw new BTDBException("Not found.");
@@ -985,16 +996,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         if (_relationInfo.HasInKeyValue)
         {
-            return itemLoader.CreateInstance(_transaction, _kvtr.GetKey());
+            return itemLoader.CreateInstance(_transaction, cursor, cursor.GetKeySpan(stackalloc byte[1024]));
         }
 
-        return itemLoader.CreateInstance(_transaction, keyBytes);
+        return itemLoader.CreateInstance(_transaction, cursor, keyBytes);
     }
 
     public IEnumerator<TItem> FindByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex)
     {
-        return new RelationPrimaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, this,
-            loaderIndex);
+        return new RelationPrimaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, loaderIndex);
     }
 
     public TItem FirstByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
@@ -1010,7 +1020,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
             if (enumerator.MoveNextInGather())
             {
-                return enumerator.CurrentInGather;
+                return enumerator.Current!;
             }
 
             ThrowIfNotHasOrDefault(hasOrDefault);
@@ -1436,17 +1446,17 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         in ReadOnlySpan<byte> secKeyBytes,
         bool throwWhenNotFound, int loaderIndex)
     {
-        _kvtr.InvalidateCurrentKey();
-        if (!_kvtr.FindFirstKey(secKeyBytes))
+        using var cursor = _kvtr.CreateCursor();
+        if (!cursor.FindFirstKey(secKeyBytes))
         {
             if (throwWhenNotFound)
                 throw new BTDBException("Not found.");
             return default;
         }
 
-        var keyBytes = _kvtr.GetKey();
+        var keyBytes = cursor.GetKeySpan(stackalloc byte[4096]);
 
-        if (_kvtr.FindNextKey(secKeyBytes))
+        if (cursor.FindNextKey(secKeyBytes))
             throw new BTDBException("Ambiguous result.");
 
         return (TItem)CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex],
@@ -1486,8 +1496,9 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
         {
+            using var cursor = _kvtr.CreateCursor();
             var keyBytes = WriteSecondaryKeyKey(sk.Key, obj, ref writer);
-            _kvtr.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>());
+            cursor.CreateOrUpdateKeyValue(keyBytes, new());
             writer.Reset();
         }
     }
@@ -1497,6 +1508,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         in ReadOnlySpan<byte> newValue)
     {
         var changed = false;
+        using var cursor = _kvtr.CreateCursor();
         if (_relationInfo.ClientRelationVersionInfo.HasComputedField)
         {
             var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
@@ -1513,9 +1525,9 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 if (oldKeyBytes.SequenceEqual(newKeyBytes))
                     continue;
                 //remove old index
-                EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
+                EraseOldSecondaryKey(cursor, oldKey, oldKeyBytes, key);
                 //insert new value
-                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
+                cursor.CreateOrUpdateKeyValue(newKeyBytes, new());
                 changed = true;
             }
         }
@@ -1528,9 +1540,9 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 if (oldKeyBytes.SequenceEqual(newKeyBytes))
                     continue;
                 //remove old index
-                EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
+                EraseOldSecondaryKey(cursor, oldKey, oldKeyBytes, key);
                 //insert new value
-                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
+                cursor.CreateOrUpdateKeyValue(newKeyBytes, new());
                 changed = true;
             }
         }
@@ -1539,7 +1551,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
-    bool UpdateSecondaryIndexes(T newValue, in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue,
+    bool UpdateSecondaryIndexes(T newValue, IKeyValueDBCursor cursor, in ReadOnlySpan<byte> oldKey,
+        in ReadOnlySpan<byte> oldValue,
         ref MemWriter writer)
     {
         var changed = false;
@@ -1556,9 +1569,9 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 if (oldKeyBytes.SequenceEqual(newKeyBytes))
                     continue;
                 //remove old index
-                EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
+                EraseOldSecondaryKey(cursor, oldKey, oldKeyBytes, key);
                 //insert new value
-                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
+                cursor.CreateOrUpdateKeyValue(newKeyBytes, new());
                 changed = true;
             }
         }
@@ -1572,9 +1585,9 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 if (oldKeyBytes.SequenceEqual(newKeyBytes))
                     continue;
                 //remove old index
-                EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
+                EraseOldSecondaryKey(cursor, oldKey, oldKeyBytes, key);
                 //insert new value
-                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, new());
+                cursor.CreateOrUpdateKeyValue(newKeyBytes, new());
                 changed = true;
             }
         }
@@ -1583,7 +1596,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     [SkipLocalsInit]
-    void RemoveSecondaryIndexes(scoped in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue)
+    void RemoveSecondaryIndexes(IKeyValueDBCursor cursor, scoped in ReadOnlySpan<byte> oldKey,
+        in ReadOnlySpan<byte> oldValue)
     {
         if (_relationInfo.ClientRelationVersionInfo.HasComputedField)
         {
@@ -1593,7 +1607,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             {
                 writer.Reset();
                 var keyBytes = WriteSecondaryKeyKey(key, Unsafe.As<T>(obj), ref writer);
-                EraseOldSecondaryKey(oldKey, keyBytes, key);
+                EraseOldSecondaryKey(cursor, oldKey, keyBytes, key);
             }
         }
         else
@@ -1601,19 +1615,22 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 var keyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
-                EraseOldSecondaryKey(oldKey, keyBytes, key);
+                EraseOldSecondaryKey(cursor, oldKey, keyBytes, key);
             }
         }
     }
 
-    void EraseOldSecondaryKey(in ReadOnlySpan<byte> primaryKey, in ReadOnlySpan<byte> keyBytes, uint skKey)
+    void EraseOldSecondaryKey(IKeyValueDBCursor cursor, in ReadOnlySpan<byte> primaryKey,
+        in ReadOnlySpan<byte> keyBytes, uint skKey)
     {
-        if (!_kvtr.EraseCurrent(keyBytes))
+        if (!cursor.FindExactKey(keyBytes))
         {
             var sk = _relationInfo.ClientRelationVersionInfo.SecondaryKeys[skKey];
             throw new BTDBException(
                 $"Error in removing secondary indexes, previous index entry not found. {_relationInfo.Name}:{sk.Name} PK:{BitConverter.ToString(primaryKey.ToArray()).Replace("-", "")}");
         }
+
+        cursor.EraseCurrent();
     }
 
     IEnumerator IEnumerable.GetEnumerator()
@@ -1621,7 +1638,14 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return GetEnumerator();
     }
 
-    public int Count => (int)_kvtr.GetKeyValueCount(_relationInfo.Prefix);
+    public int Count
+    {
+        get
+        {
+            using var cursor = _kvtr.CreateCursor();
+            return (int)cursor.GetKeyValueCount(_relationInfo.Prefix);
+        }
+    }
 
     public Type BtdbInternalGetRelationInterfaceType()
     {

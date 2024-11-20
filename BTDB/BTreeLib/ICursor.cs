@@ -24,6 +24,7 @@ public interface ICursor
     ReadOnlySpan<byte> GetKey(scoped ref byte buffer, int bufferLength);
     ReadOnlyMemory<byte> GetKeyMemory(ref Memory<byte> buffer, bool copy);
     ReadOnlySpan<byte> GetKeySpan(scoped ref Span<byte> buffer, bool copy);
+    ReadOnlySpan<byte> GetKeySpan(Span<byte> buffer, bool copy);
     bool KeyHasPrefix(in ReadOnlySpan<byte> prefix);
     int GetValueLength();
     ReadOnlySpan<byte> GetValue();

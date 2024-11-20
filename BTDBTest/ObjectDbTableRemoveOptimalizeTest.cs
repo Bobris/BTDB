@@ -400,6 +400,11 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDBCursorInternalImplementation.GetKeySpan(ref buffer, copy);
         }
 
+        public ReadOnlySpan<byte> GetKeySpan(Span<byte> buffer, bool copy = false)
+        {
+            return _keyValueDBCursorInternalImplementation.GetKeySpan(buffer, copy);
+        }
+
         public bool IsValueCorrupted()
         {
             return _keyValueDBCursorInternalImplementation.IsValueCorrupted();
@@ -429,7 +434,8 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
         public long EraseUpTo(IKeyValueDBCursor to)
         {
             _transaction.EraseRangeCount++;
-            return _keyValueDBCursorInternalImplementation.EraseUpTo(to);
+            return _keyValueDBCursorInternalImplementation.EraseUpTo(((KeyValueDBCursorWithCount)to)
+                ._keyValueDBCursorInternalImplementation);
         }
 
         public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
@@ -487,7 +493,8 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
 
         public IKeyValueDBCursor CreateCursor()
         {
-            return _keyValueDBTransaction.CreateCursor();
+            return new KeyValueDBCursorWithCount(this,
+                (IKeyValueDBCursorInternal)_keyValueDBTransaction.CreateCursor());
         }
 
         public long GetKeyValueCount()

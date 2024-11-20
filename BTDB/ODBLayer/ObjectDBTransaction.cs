@@ -329,7 +329,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     }
 
     [SkipLocalsInit]
-    object? GetDirectlyFromStorage(ulong oid)
+    unsafe object? GetDirectlyFromStorage(ulong oid)
     {
         using var cursor = _keyValueTr!.CreateCursor();
         Span<byte> buffer = stackalloc byte[4096];
@@ -338,9 +338,13 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
             return null;
         }
 
-        var reader = MemReader.CreateFromPinnedSpan(buffer);
-        ReadObjStart(oid, out var tableInfo, ref reader);
-        return ReadObjFinish(oid, tableInfo, ref reader);
+        var valueSpan = cursor.GetValueSpan(ref buffer);
+        fixed (byte* valuePtr = valueSpan)
+        {
+            var reader = new MemReader(valuePtr, valueSpan.Length);
+            ReadObjStart(oid, out var tableInfo, ref reader);
+            return ReadObjFinish(oid, tableInfo, ref reader);
+        }
     }
 
     public ulong GetOid(object? obj)
@@ -496,7 +500,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
                 if (cursor.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid, buffer10Bytes)))
                 {
                     var buf = new Memory<byte>();
-                    content = cursor.GetValueMemory(ref buf);
+                    content = cursor.GetValueMemory(ref buf, true);
                     tableInfo.CacheSingletonContent(_transactionNumber, content);
                 }
             }
@@ -931,31 +935,24 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
     public void Commit()
     {
-        try
+        while (_dirtyObjSet != null)
         {
-            while (_dirtyObjSet != null)
+            var curObjsToStore = _dirtyObjSet;
+            _dirtyObjSet = null;
+            foreach (var o in curObjsToStore)
             {
-                var curObjsToStore = _dirtyObjSet;
-                _dirtyObjSet = null;
-                foreach (var o in curObjsToStore)
-                {
-                    StoreObject(o.Value);
-                }
+                StoreObject(o.Value);
             }
+        }
 
-            _owner.CommitLastObjIdAndDictId(_keyValueTr!);
-            _keyValueTr.Commit();
-            if (_updatedTables != null)
-                foreach (var updatedTable in _updatedTables)
-                {
-                    updatedTable.LastPersistedVersion = updatedTable.ClientTypeVersion;
-                    updatedTable.ResetNeedStoreSingletonOid();
-                }
-        }
-        finally
-        {
-            Dispose();
-        }
+        _owner.CommitLastObjIdAndDictId(_keyValueTr!);
+        _keyValueTr.Commit();
+        if (_updatedTables != null)
+            foreach (var updatedTable in _updatedTables)
+            {
+                updatedTable.LastPersistedVersion = updatedTable.ClientTypeVersion;
+                updatedTable.ResetNeedStoreSingletonOid();
+            }
     }
 
     [SkipLocalsInit]

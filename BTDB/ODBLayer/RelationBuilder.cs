@@ -124,6 +124,7 @@ public class RelationBuilder
                                                     " and property " + pi.Name +
                                                     " does not have getter. If you don't want to serialize this property add [NotStored] attribute.");
             }
+
             if (!pi.CanWrite && pi.GetCustomAttribute<CompilerGeneratedAttribute>() != null) continue;
             var pks = pi.GetCustomAttributes<PrimaryKeyAttribute>(true);
             var actualPKAttribute = pks.FirstOrDefault();
@@ -562,7 +563,7 @@ public class RelationBuilder
 
         reqMethod.Generator.Ldarg(0); //manipulator for call RemoveByIdAdvancedParam
 
-        WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(method, parameters, reqMethod, prefixParamCount,
+        WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(method, parameters, reqMethod,
             advEnumParamOrder, advEnumParam, field, pushWriter, ctxLocFactory);
         reqMethod.Generator.Call(
             _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
@@ -571,11 +572,10 @@ public class RelationBuilder
 
     void WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(MethodInfo method,
         ReadOnlySpan<ParameterInfo> parameters,
-        IILMethod reqMethod, int prefixParamCount, ushort advEnumParamOrder, Type advEnumParam,
+        IILMethod reqMethod, ushort advEnumParamOrder, Type advEnumParam,
         TableFieldInfo field, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
     {
         reqMethod.Generator
-            .LdcI4(prefixParamCount)
             .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Order))!);
         KeyPropositionStartBefore(advEnumParamOrder, reqMethod.Generator, advEnumParam);
         SerializePKListPrefixBytes(reqMethod.Generator, method.Name,
@@ -676,7 +676,7 @@ public class RelationBuilder
 
             reqMethod.Generator.Ldarg(0).Castclass(typeof(IRelationDbManipulator));
 
-            WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(method, parameters, reqMethod, prefixParamCount,
+            WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(method, parameters, reqMethod,
                 advEnumParamOrder, advEnumParam, field, pushWriter, ctxLocFactory);
 
             if (ReturnTypeIsEnumeratorOrEnumerable(method, out var itemType))
@@ -688,28 +688,27 @@ public class RelationBuilder
                 //    endKeyProposition, endKeyBytes, loaderIndex);
                 var enumType = typeof(RelationAdvancedEnumerator<>).MakeGenericType(itemType);
                 var advancedEnumeratorCtor =
-                    enumType.GetConstructors().Single(ci => ci.GetParameters().Length == 9);
+                    enumType.GetConstructors().Single(ci => ci.GetParameters().Length == 8);
                 reqMethod.Generator
                     .LdcI4(RegisterLoadType(itemType))
                     .Newobj(advancedEnumeratorCtor);
             }
             else if (ReturnTypeIsIOrderedDictionaryEnumerator(method, advEnumParamType, out itemType))
             {
-                reqMethod.Generator
-                    .LdcI4(1); //init key reader
-
                 //return new RelationAdvancedOrderedEnumerator<T>(relationManipulator,
-                //    prefixBytes, prefixFieldCount,
+                //    prefixBytes
                 //    order,
                 //    startKeyProposition, startKeyBytes,
-                //    endKeyProposition, endKeyBytes, initKeyReader, loaderIndex);
+                //    endKeyProposition, endKeyBytes, loaderIndex, keyParamIndex);
                 var enumType =
                     typeof(RelationAdvancedOrderedEnumerator<,>).MakeGenericType(advEnumParamType,
                         itemType);
                 var advancedEnumeratorCtor =
-                    enumType.GetConstructors().Single(ci => ci.GetParameters().Length == 10);
+                    enumType.GetConstructors().Single(ci => ci.GetParameters().Length == 9);
+
                 reqMethod.Generator
                     .LdcI4(RegisterLoadType(itemType))
+                    .LdcI4(prefixParamCount)
                     .Newobj(advancedEnumeratorCtor);
             }
             else
@@ -744,8 +743,13 @@ public class RelationBuilder
 
     static bool TypeIsEnumeratorOrEnumerable(Type type, [NotNullWhen(true)] out Type? itemType)
     {
-        itemType = type.SpecializationOf(typeof(IEnumerator<>)) ??
-                   type.SpecializationOf(typeof(IEnumerable<>));
+        if (type.SpecializationOf(typeof(IEnumerator<>)) is { } spec)
+        {
+            throw new NotSupportedException(spec.ToSimpleName() +
+                                            " is not supported anymore, replace it by IEnumerable<...>.");
+        }
+
+        itemType = type.SpecializationOf(typeof(IEnumerable<>));
 
         if (itemType != null)
         {
@@ -878,8 +882,8 @@ public class RelationBuilder
                 .Ldarg(0).Castclass(typeof(IRelationDbManipulator));
 
             reqMethod.Generator
-                .LdcI4(prefixParamCount)
-                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Order))!);
+                .Ldarg(advEnumParamOrder)
+                .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Order))!);
 
             var localRemapped = RemapSecondaryKeyIndex(reqMethod.Generator, secondaryKeyIndex);
 
@@ -899,14 +903,14 @@ public class RelationBuilder
             if (ReturnTypeIsEnumeratorOrEnumerable(method, out var itemType))
             {
                 //return new RelationAdvancedSecondaryKeyEnumerator<T>(relationManipulator,
-                //    prefixLen, prefixFieldCount,
+                //    prefixLen,
                 //    order,
                 //    startKeyProposition, startKeyBytes,
                 //    endKeyProposition, endKeyBytes, secondaryKeyIndex, loaderIndex);
                 var enumType =
                     typeof(RelationAdvancedSecondaryKeyEnumerator<>).MakeGenericType(itemType);
                 var advancedEnumeratorCtor =
-                    enumType.GetConstructors().Single(ci => ci.GetParameters().Length == 10);
+                    enumType.GetConstructors().Single(ci => ci.GetParameters().Length == 9);
                 reqMethod.Generator
                     .LdcI4(RegisterLoadType(itemType))
                     .Newobj(advancedEnumeratorCtor);
@@ -914,16 +918,16 @@ public class RelationBuilder
             else if (ReturnTypeIsIOrderedDictionaryEnumerator(method, advEnumParamType, out itemType))
             {
                 //return new RelationAdvancedOrderedSecondaryKeyEnumerator<T>(relationManipulator,
-                //    prefixLen, prefixFieldCount,
                 //    order,
-                //    startKeyProposition, startKeyBytes,
-                //    endKeyProposition, endKeyBytes, secondaryKeyIndex, loaderIndex);
+                //    startKeyProposition, prefixLen, startKeyBytes,
+                //    endKeyProposition, endKeyBytes, secondaryKeyIndex, loaderIndex, prefixFieldCount);
                 var enumType =
                     typeof(RelationAdvancedOrderedSecondaryKeyEnumerator<,>).MakeGenericType(advEnumParamType,
                         itemType);
                 var advancedEnumeratorCtor = enumType.GetConstructors()[0];
                 reqMethod.Generator
                     .LdcI4(RegisterLoadType(itemType))
+                    .LdcI4(prefixParamCount)
                     .Newobj(advancedEnumeratorCtor);
             }
             else
@@ -943,17 +947,16 @@ public class RelationBuilder
             var localRemapped = SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
                 parameters, pushWriter, ctxLocFactory);
             reqMethod.Generator
-                .LdcI4(parameters.Length)
                 .Ldloc(localRemapped);
 
             if (ReturnTypeIsEnumeratorOrEnumerable(method, out var itemType))
             {
                 //return new RelationAdvancedSecondaryKeyEnumerator<T>(relationManipulator,
-                //    prefixBytes, prefixFieldCount, secondaryKeyIndex, loaderIndex);
+                //    prefixBytes, secondaryKeyIndex, loaderIndex);
                 var enumType =
                     typeof(RelationAdvancedSecondaryKeyEnumerator<>).MakeGenericType(itemType);
                 var advancedEnumeratorCtor =
-                    enumType.GetConstructors().Single(ci => ci.GetParameters().Length == 5);
+                    enumType.GetConstructors().Single(ci => ci.GetParameters().Length == 4);
                 reqMethod.Generator
                     .LdcI4(RegisterLoadType(itemType))
                     .Newobj(advancedEnumeratorCtor);
@@ -1516,7 +1519,7 @@ public class RelationBuilder
         var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
         if (!isPrefixBased)
             RelationInfoResolver.ActualOptions.ThrowBTDBException(
-                $"Method {methodName} must return IEnumerable<T> or IEnumerator<T> type.");
+                $"Method {methodName} must return IEnumerable<T> type.");
 
         var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
 
@@ -1541,7 +1544,7 @@ public class RelationBuilder
         var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
         if (!isPrefixBased)
             RelationInfoResolver.ActualOptions.ThrowBTDBException(
-                $"Method {methodName} must return IEnumerable<T> or IEnumerator<T> type.");
+                $"Method {methodName} must return IEnumerable<T> type.");
 
         var skName = StripVariant(methodName[6..], false).IndexName;
         var skIndex = ClientRelationVersionInfo.GetSecondaryKeyIndex(skName);
