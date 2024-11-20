@@ -1039,7 +1039,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
     [Fact]
     public void CanRemovePropertyTogetherWithClass()
     {
-        var objName = _db.RegisterType(typeof(Obj));
+        var objName = _db.RegisterType(typeof(Obj2));
         using (var tr = _db.StartTransaction())
         {
             var t = tr.GetRelation<IRootWithObjTable>();
