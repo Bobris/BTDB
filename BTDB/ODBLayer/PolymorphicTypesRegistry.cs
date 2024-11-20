@@ -10,6 +10,8 @@ public class PolymorphicTypesRegistry : IPolymorphicTypesRegistry
 
     public void RegisterPolymorphicType(Type type)
     {
+        // ReSharper disable once ConditionIsAlwaysTrueOrFalse - used only for testing
+        if (type == null) return;
         lock (_lock)
         {
             _types.Add(type);

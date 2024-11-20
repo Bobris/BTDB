@@ -647,7 +647,11 @@ public class ObjectDbTableUpgradeTest : IDisposable
             var table = creator(tr);
             table.Upsert(new()
             {
-                Id = 1, Obj = new() { D = new Dictionary<Guid, Obj> { { g1, new Obj { Num = 1 } }, { g2, new Obj { Num = 2 } } } }
+                Id = 1,
+                Obj = new()
+                {
+                    D = new Dictionary<Guid, Obj> { { g1, new Obj { Num = 1 } }, { g2, new Obj { Num = 2 } } }
+                }
             });
 
             tr.Commit();
@@ -778,19 +782,25 @@ public class ObjectDbTableUpgradeTest : IDisposable
             var table = creator(tr);
             table.Upsert(new()
             {
-                Id = 1, L = new List<S1ObjWithDictV1> {
-                    new () {
-                        D = new Dictionary<int, Obj> {
+                Id = 1, L = new List<S1ObjWithDictV1>
+                {
+                    new()
+                    {
+                        D = new Dictionary<int, Obj>
+                        {
                             { 1, new Obj { Num = 1 } }
-                            }
                         }
                     }
+                }
             });
             table.Upsert(new()
             {
-                Id = 2, L = new List<S1ObjWithDictV1> {
-                    new () {
-                        D = new Dictionary<int, Obj> {
+                Id = 2, L = new List<S1ObjWithDictV1>
+                {
+                    new()
+                    {
+                        D = new Dictionary<int, Obj>
+                        {
                             { 2, new Obj { Num = 2 } }
                         }
                     }
@@ -864,7 +874,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
             var table = creator(tr);
             table.Upsert(new()
             {
-                Id = 1, O = new () { Num = 2 }
+                Id = 1, O = new() { Num = 2 }
             });
             tr.Commit();
         }
@@ -900,9 +910,13 @@ public class ObjectDbTableUpgradeTest : IDisposable
         public TestEnum? MyTestEnum { get; set; }
     }
 
-    public interface IObjV1Table : IRelation<ObjV1> { }
+    public interface IObjV1Table : IRelation<ObjV1>
+    {
+    }
 
-    public interface IObjV2Table : IRelation<ObjV2> { }
+    public interface IObjV2Table : IRelation<ObjV2>
+    {
+    }
 
     [Fact]
     public void UpgradeNotNullableEnumToNullableEnum()
@@ -940,9 +954,13 @@ public class ObjectDbTableUpgradeTest : IDisposable
         [SecondaryKey("A")] public ulong? Sk { get; set; }
     }
 
-    public interface IObj2V1Table : IRelation<Obj2V1> { }
+    public interface IObj2V1Table : IRelation<Obj2V1>
+    {
+    }
 
-    public interface IObj2V2Table : IRelation<Obj2V2> { }
+    public interface IObj2V2Table : IRelation<Obj2V2>
+    {
+    }
 
     [Fact]
     public void UpgradeNotNullableSecondaryKeyToNullableSecondaryKeyWorks()
@@ -951,7 +969,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
         {
             var creator = tr.InitRelation<IObj2V1Table>("MyRelation");
             var objV1Table = creator(tr);
-            var job1 = new Obj2V1 { Id=2, Sk=4 };
+            var job1 = new Obj2V1 { Id = 2, Sk = 4 };
             objV1Table.Upsert(job1);
             tr.Commit();
         }
@@ -974,7 +992,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
         {
             var creator = tr.InitRelation<IObj2V2Table>("MyRelation");
             var objV1Table = creator(tr);
-            var job1 = new Obj2V2 { Id=2, Sk=4 };
+            var job1 = new Obj2V2 { Id = 2, Sk = 4 };
             objV1Table.Upsert(job1);
             tr.Commit();
         }
@@ -990,4 +1008,57 @@ public class ObjectDbTableUpgradeTest : IDisposable
         }
     }
 
+    public class Obj2
+    {
+        public Obj2? Ref { get; set; }
+    }
+
+    public class RootWithObj
+    {
+        [PrimaryKey(1)] public int I { get; set; }
+        public Obj2 O { get; set; }
+        public int After { get; set; }
+    }
+
+    public class RootWithoutObj
+    {
+        [PrimaryKey(1)] public int I { get; set; }
+        public int After { get; set; }
+    }
+
+    [PersistedName("R")]
+    public interface IRootWithObjTable : IRelation<RootWithObj>
+    {
+    }
+
+    [PersistedName("R")]
+    public interface IRootWithoutObjTable : IRelation<RootWithoutObj>
+    {
+    }
+
+    [Fact]
+    public void CanRemovePropertyTogetherWithClass()
+    {
+        var objName = _db.RegisterType(typeof(Obj));
+        using (var tr = _db.StartTransaction())
+        {
+            var t = tr.GetRelation<IRootWithObjTable>();
+            var root = new RootWithObj();
+            root.I = 42;
+            root.O = new Obj2 { Ref = new Obj2() };
+            root.After = 43;
+            t.Upsert(root);
+            tr.Commit();
+        }
+
+        ReopenDb();
+        _db.RegisterType(null!, objName);
+        using (var tr = _db.StartTransaction())
+        {
+            var t = tr.GetRelation<IRootWithoutObjTable>();
+            var root = t.First();
+            Assert.Equal(42, root.I);
+            Assert.Equal(43, root.After);
+        }
+    }
 }

@@ -2895,4 +2895,43 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
                 ((DynamicValueWrapper<Money>)obj2.R[2]).Value.Currency);
         }
     }
+
+    public class Obj
+    {
+        public Obj? Ref { get; set; }
+    }
+
+    public class RootWithObj
+    {
+        public Obj O { get; set; }
+        public int I { get; set; }
+    }
+
+    public class RootWithoutObj
+    {
+        public int I { get; set; }
+    }
+
+    [Fact]
+    public void CanRemovePropertyTogetherWithClass()
+    {
+        var rootName = _db.RegisterType(typeof(RootWithObj));
+        var objName = _db.RegisterType(typeof(Obj));
+        using (var tr = _db.StartTransaction())
+        {
+            var root = tr.Singleton<RootWithObj>();
+            root.I = 42;
+            root.O = new Obj { Ref = new Obj() };
+            tr.Commit();
+        }
+
+        ReopenDb();
+        _db.RegisterType(typeof(RootWithoutObj), rootName);
+        _db.RegisterType(null!, objName);
+        using (var tr = _db.StartTransaction())
+        {
+            var root = tr.Singleton<RootWithoutObj>();
+            Assert.Equal(42, root.I);
+        }
+    }
 }
