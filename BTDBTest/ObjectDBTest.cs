@@ -2934,4 +2934,43 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             Assert.Equal(42, root.I);
         }
     }
+
+    public interface IFace
+    {
+        int I { get; set; }
+    }
+
+    public class ObjFace: IFace
+    {
+        public int I { get; set; }
+    }
+
+    public class RootObj
+    {
+        public IFace O { get; set; }
+        public int I { get; set; }
+    }
+
+    [Fact]
+    public void CanRemoveDerivedClassWhenPropertyWithBaseClassExists()
+    {
+        _db.RegisterType(typeof(RootObj));
+        _db.RegisterType(typeof(ObjFace));
+        using (var tr = _db.StartTransaction())
+        {
+            var root = tr.Singleton<RootObj>();
+            root.I = 42;
+            root.O = new ObjFace { I = 5 };
+            tr.Commit();
+        }
+
+        ReopenDb();
+        _db.RegisterType(typeof(RootObj));
+        using (var tr = _db.StartTransaction())
+        {
+            var root = tr.Singleton<RootObj>();
+            Assert.Equal(42, root.I);
+            Assert.Null(root.O);
+        }
+    }
 }

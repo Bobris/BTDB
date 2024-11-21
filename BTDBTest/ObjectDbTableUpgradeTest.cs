@@ -1061,4 +1061,50 @@ public class ObjectDbTableUpgradeTest : IDisposable
             Assert.Equal(43, root.After);
         }
     }
+
+    public interface IFace
+    {
+        int I { get; set; }
+    }
+
+    public class ObjFace: IFace
+    {
+        public int I { get; set; }
+    }
+
+    public class RootObj
+    {
+        public IFace O { get; set; }
+        public int I { get; set; }
+    }
+
+    public interface IRootObjTable : IRelation<RootObj>
+    {
+    }
+
+    [Fact]
+    public void CanRemoveDerivedClassWhenPropertyWithBaseClassExists()
+    {
+        _db.RegisterType(typeof(ObjFace));
+        using (var tr = _db.StartTransaction())
+        {
+            var t = tr.GetRelation<IRootObjTable>();
+            var root = new RootObj
+            {
+                I = 42,
+                O = new ObjFace { I = 5 }
+            };
+            t.Upsert(root);
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using (var tr = _db.StartTransaction())
+        {
+            var t = tr.GetRelation<IRootObjTable>();
+            var root = t.First();
+            Assert.Equal(42, root.I);
+            Assert.Null(root.O);
+        }
+    }
 }
