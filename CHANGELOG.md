@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 32.17.0
+
 ### Added
 
 Add support for skipping unknown types and logging when it happens in ObjectDB transactions. See test `CanRemoveClassWhenPropertyExistsWithAutoSkipUnknownTypes` for example.
