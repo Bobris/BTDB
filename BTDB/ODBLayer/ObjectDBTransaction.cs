@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -36,6 +35,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         _keyValueTr = keyValueTr;
         _readOnly = readOnly;
         _transactionNumber = keyValueTr.GetTransactionNumber();
+        SkipUnknownTypes = owner.AutoSkipUnknownTypes;
     }
 
     public void Dispose()
@@ -48,6 +48,8 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     public IObjectDB Owner => _owner;
 
     public IKeyValueDBTransaction? KeyValueDBTransaction => _keyValueTr;
+
+    public bool SkipUnknownTypes { get; set; }
 
     public bool RollbackAdvised
     {
@@ -73,6 +75,15 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
             tableInfo.GetSkipper(tableVersion)(this, null, ref reader, obj);
             readerCtx.ReadObjectDone(ref reader);
             return obj;
+        }
+        else if (!skipping && SkipUnknownTypes && !TryToEnsureClientTypeNotNull(tableInfo))
+        {
+            _owner.Logger?.ReportSkippedUnknownType(tableInfo.Name);
+            var obj = new BTDBException("Skipped InlineObject " + tableInfo.Name);
+            readerCtx.RegisterObject(obj);
+            tableInfo.GetSkipper(tableVersion)(this, null, ref reader, obj);
+            readerCtx.ReadObjectDone(ref reader);
+            return null!;
         }
         else
         {

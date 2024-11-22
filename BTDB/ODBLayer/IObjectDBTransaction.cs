@@ -8,12 +8,15 @@ public interface IObjectDBTransaction : IDisposable
 {
     IObjectDB Owner { get; }
     IKeyValueDBTransaction KeyValueDBTransaction { get; }
+    bool SkipUnknownTypes { get; set; }
 
     IEnumerable<T> Enumerate<T>() where T : class;
     IEnumerable<object> Enumerate(Type type);
 
     object Get(ulong oid);
+
     ulong GetOid(object @object);
+
     // return key and value byte size by object id
     KeyValuePair<uint, uint> GetStorageSize(ulong oid);
 

@@ -25,6 +25,12 @@ public class DBOptions
         return this;
     }
 
+    public DBOptions WithAutoSkipUnknownTypes()
+    {
+        AutoSkipUnknownTypes = true;
+        return this;
+    }
+
     public DBOptions WithCustomType2NameRegistry(IType2NameRegistry registry)
     {
         CustomType2NameRegistry = registry;
@@ -61,8 +67,15 @@ public class DBOptions
         return this;
     }
 
+    public DBOptions WithLogger(IObjectDBLogger logger)
+    {
+        Logger = logger;
+        return this;
+    }
+
     public bool AutoRegisterRelations { get; private set; }
     public bool AutoRegisterType { get; private set; }
+    public bool AutoSkipUnknownTypes { get; private set; }
     public IType2NameRegistry? CustomType2NameRegistry { get; private set; }
     public bool SelfHealing { get; private set; }
     public IContainer? Container { get; private set; }
@@ -70,6 +83,8 @@ public class DBOptions
     public IFieldHandlerLogger? FieldHandlerLogger { get; private set; }
 
     public ISymmetricCipher? SymmetricCipher { get; private set; }
+
+    public IObjectDBLogger? Logger { get; private set; }
 
     public void ThrowBTDBException(string message)
     {

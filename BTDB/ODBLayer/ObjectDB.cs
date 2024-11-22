@@ -82,7 +82,7 @@ public class ObjectDB : IObjectDB
 
     public bool AutoRegisterTypes { get; set; }
     public bool AutoRegisterRelations { get; set; }
-
+    public bool AutoSkipUnknownTypes { get; set; }
     public DBOptions ActualOptions { get; private set; }
 
     public TablesInfo TablesInfo => _tablesInfo;
@@ -103,9 +103,11 @@ public class ObjectDB : IObjectDB
         _polymorphicTypesRegistry = new PolymorphicTypesRegistry();
         AutoRegisterTypes = options.AutoRegisterType;
         AllowAutoRegistrationOfRelations = options.AutoRegisterRelations;
+        AutoSkipUnknownTypes = options.AutoSkipUnknownTypes;
         ActualOptions = options;
         SymmetricCipher = options.SymmetricCipher ?? new InvalidSymmetricCipher();
         FieldHandlerLogger = options.FieldHandlerLogger;
+        Logger = options.Logger ?? Logger;
 
         _tableInfoResolver = new TableInfoResolver(keyValueDB, this);
         _tablesInfo = new TablesInfo(_tableInfoResolver);
@@ -247,7 +249,7 @@ public class ObjectDB : IObjectDB
         return Type2NameRegistry.FindTypeByName(name);
     }
 
-    public IObjectDBLogger Logger { get; set; }
+    public IObjectDBLogger? Logger { get; set; }
 
     public ISymmetricCipher GetSymmetricCipher() => SymmetricCipher;
 

@@ -1067,7 +1067,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
         int I { get; set; }
     }
 
-    public class ObjFace: IFace
+    public class ObjFace : IFace
     {
         public int I { get; set; }
     }
@@ -1101,10 +1101,17 @@ public class ObjectDbTableUpgradeTest : IDisposable
         ReopenDb();
         using (var tr = _db.StartTransaction())
         {
+            tr.SkipUnknownTypes = true;
             var t = tr.GetRelation<IRootObjTable>();
             var root = t.First();
             Assert.Equal(42, root.I);
             Assert.Null(root.O);
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var t = tr.GetRelation<IRootObjTable>();
+            Assert.Throws<BTDBException>(() => t.First());
         }
     }
 }

@@ -87,24 +87,25 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         _allocator.Dispose();
     }
 
-    void ReopenDb(bool resetMetadataCache = false)
+    void ReopenDb(bool resetMetadataCache = false, DBOptions? options = null)
     {
         _db.Dispose();
         if (resetMetadataCache)
             ObjectDB.ResetAllMetadataCaches();
-        OpenDb();
+        OpenDb(options);
     }
 
-    void OpenDb()
+    void OpenDb(DBOptions? options = null)
     {
         ReportedTypeIncompatibilities.Clear();
         _db = new ObjectDB();
-        _db.Open(_lowDb, false,
-            new DBOptions().WithSymmetricCipher(new AesGcmSymmetricCipher(new byte[]
-            {
-                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-                27, 28, 29, 30, 31
-            })).WithFieldHandlerLogger(this));
+        _db.Open(_lowDb, false, options ??
+                                new DBOptions().WithSymmetricCipher(new AesGcmSymmetricCipher(new byte[]
+                                {
+                                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                                    23, 24, 25, 26,
+                                    27, 28, 29, 30, 31
+                                })).WithFieldHandlerLogger(this));
     }
 
     [Fact]
@@ -2940,19 +2941,19 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         int I { get; set; }
     }
 
-    public class ObjFace: IFace
+    public class ObjFace : IFace
     {
         public int I { get; set; }
     }
 
     public class RootObj
     {
-        public IFace O { get; set; }
+        public IFace? O { get; set; }
         public int I { get; set; }
     }
 
     [Fact]
-    public void CanRemoveDerivedClassWhenPropertyWithBaseClassExists()
+    public void CanRemoveClassWhenPropertyExistsWithAutoSkipUnknownTypes()
     {
         _db.RegisterType(typeof(RootObj));
         _db.RegisterType(typeof(ObjFace));
@@ -2966,11 +2967,47 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 
         ReopenDb();
         _db.RegisterType(typeof(RootObj));
+
         using (var tr = _db.StartTransaction())
         {
+            Assert.Throws<BTDBException>(() => tr.Singleton<RootObj>());
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            tr.SkipUnknownTypes = true;
             var root = tr.Singleton<RootObj>();
             Assert.Equal(42, root.I);
             Assert.Null(root.O);
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            Assert.Throws<BTDBException>(() => tr.Singleton<RootObj>());
+        }
+
+        var myLogger = new MyLogger();
+        ReopenDb(false, new DBOptions().WithAutoSkipUnknownTypes().WithLogger(myLogger));
+        using (var tr = _db.StartTransaction())
+        {
+            var root = tr.Singleton<RootObj>();
+            Assert.Equal(["ObjFace"], myLogger.SkippedUnknownTypes);
+            Assert.Equal(42, root.I);
+            Assert.Null(root.O);
+        }
+    }
+
+    public class MyLogger : IObjectDBLogger
+    {
+        public readonly List<string> SkippedUnknownTypes = new();
+
+        public void ReportIncompatiblePrimaryKey(string relationName, string field)
+        {
+        }
+
+        public void ReportSkippedUnknownType(string typeName)
+        {
+            SkippedUnknownTypes.Add(typeName);
         }
     }
 }

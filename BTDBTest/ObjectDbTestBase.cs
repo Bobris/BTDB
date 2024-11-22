@@ -37,13 +37,13 @@ public abstract class ObjectDbTestBase : IDisposable
         _lowDb.Dispose();
     }
 
-    protected void ReopenDb()
+    protected void ReopenDb(DBOptions? options = null)
     {
         _db.Dispose();
-        OpenDb();
+        OpenDb(options);
     }
 
-    protected void ReopenEmptyDb()
+    protected void ReopenEmptyDb(DBOptions? options = null)
     {
         _db.Dispose();
         _lowDb.Dispose();
@@ -53,19 +53,19 @@ public abstract class ObjectDbTestBase : IDisposable
             Compression = new NoCompressionStrategy(),
             FileCollection = new InMemoryFileCollection()
         });
-        OpenDb();
+        OpenDb(options);
     }
 
-    void OpenDb()
+    void OpenDb(DBOptions? options = null)
     {
         _db = new ObjectDB();
-        _db.Open(_lowDb, false, new DBOptions()
+        _db.Open(_lowDb, false, options ?? new DBOptions()
             .WithoutAutoRegistration()
             .WithFieldHandlerLogger(new DefaultFieldHandlerLogger(s => _fieldHandlerLoggerMessages.Add(s)))
             .WithSymmetricCipher(new AesGcmSymmetricCipher(new byte[]
             {
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-                    27, 28, 29, 30, 31
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+                27, 28, 29, 30, 31
             })).WithContainer(_container));
     }
 }
