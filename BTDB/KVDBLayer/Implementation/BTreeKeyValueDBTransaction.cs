@@ -1,14 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.BTreeLib;
-using BTDB.Buffer;
 using BTDB.Collections;
-using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 
@@ -147,6 +144,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
     {
+        _modifiedFromLastFind = false;
         var result = _cursor.Find(key);
         _keyIndex = -1;
         if (prefixLen == 0) return result;
@@ -179,6 +177,11 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     public long GetKeyIndex()
     {
         if (_keyIndex == -1) _keyIndex = _cursor.CalcIndex();
+        if (_modifiedFromLastFind && _removedCurrent && _keyIndex != -1)
+        {
+            return _keyIndex - 1;
+        }
+
         return _keyIndex;
     }
 
@@ -216,6 +219,11 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
         _cursor.Invalidate();
         return false;
+    }
+
+    public bool KeyHasPrefix(in ReadOnlySpan<byte> prefix)
+    {
+        return _cursor.KeyHasPrefix(prefix);
     }
 
     public void Invalidate()

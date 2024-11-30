@@ -375,6 +375,11 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDBCursorInternalImplementation.FindKeyIndex(index);
         }
 
+        public bool KeyHasPrefix(in ReadOnlySpan<byte> prefix)
+        {
+            return _keyValueDBCursorInternalImplementation.KeyHasPrefix(in prefix);
+        }
+
         public void Invalidate()
         {
             _keyValueDBCursorInternalImplementation.Invalidate();

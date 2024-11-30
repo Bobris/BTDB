@@ -543,7 +543,6 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
 
         ItemLoader = loaderInfo;
         _keyValueTr = _transaction.KeyValueDBTransaction;
-        _cursor = _keyValueTr.CreateCursor();
 
         KeyBytes = keyBytes;
         _seekNeeded = true;
@@ -584,13 +583,13 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
 
     public void Reset()
     {
-        if (_cursor == null) _cursor = _keyValueTr.CreateCursor();
+        _cursor ??= _keyValueTr.CreateCursor();
         _seekNeeded = true;
     }
 
     public void Dispose()
     {
-        _cursor.Dispose();
+        _cursor?.Dispose();
         _cursor = null;
     }
 
@@ -713,6 +712,11 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
 
                     break;
                 case FindResult.Next:
+                    if (_startKeyProposition == KeyProposition.Excluded && _startCursor.KeyHasPrefix(_startKeyBytes))
+                    {
+                        if (!_startCursor.FindNextKey(_keyBytes)) return;
+                    }
+
                     break;
                 case FindResult.NotFound:
                     return;
@@ -830,7 +834,8 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
 
     public void Reset()
     {
-        _cursor?.FindKeyIndex(_ascending ? _startCursor!.GetKeyIndex() : _endCursor!.GetKeyIndex());
+        Dispose();
+        CreateCursors();
         _seekNeeded = true;
     }
 
@@ -935,6 +940,8 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
     }
 
     public bool IsReadOnly => true;
+
+    public IKeyValueDBCursor Cursor => _cursor!;
 }
 
 public class RelationAdvancedSecondaryKeyEnumerator<T> : RelationAdvancedEnumerator<T>
@@ -1102,19 +1109,19 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
         set => throw new NotSupportedException();
     }
 
-    public uint Position
+    public int Position
     {
         get
         {
             if (_cursor == null) return 0;
-            return (uint)(_ascending
+            return (int)(_ascending
                 ? _cursor.GetKeyIndex() - _startCursor!.GetKeyIndex()
                 : _endCursor!.GetKeyIndex() - _cursor.GetKeyIndex());
         }
 
         set
         {
-            if (value >= Count) throw new IndexOutOfRangeException();
+            if ((uint)value >= Count) throw new IndexOutOfRangeException();
             if (_ascending)
             {
                 _cursor!.FindKeyIndex(_startCursor!.GetKeyIndex() + value);

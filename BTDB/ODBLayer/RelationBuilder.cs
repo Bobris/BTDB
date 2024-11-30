@@ -721,15 +721,14 @@ public class RelationBuilder
             var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
             reqMethod.Generator.Ldarg(0).Castclass(typeof(IRelationDbManipulator));
             SavePKListPrefixBytes(reqMethod.Generator, method.Name, parameters, pushWriter, ctxLocFactory);
-            reqMethod.Generator.LdcI4(parameters.Length);
 
             if (ReturnTypeIsEnumeratorOrEnumerable(method, out var itemType))
             {
                 //return new RelationAdvancedEnumerator<T>(relationManipulator,
-                //    prefixBytes, prefixFieldCount, loaderIndex);
+                //    prefixBytes, loaderIndex);
                 var enumType = typeof(RelationAdvancedEnumerator<>).MakeGenericType(itemType);
                 var advancedEnumeratorCtor =
-                    enumType.GetConstructors().Single(ci => ci.GetParameters().Length == 4);
+                    enumType.GetConstructors().Single(ci => ci.GetParameters().Length == 3);
                 reqMethod.Generator
                     .LdcI4(RegisterLoadType(itemType))
                     .Newobj(advancedEnumeratorCtor);

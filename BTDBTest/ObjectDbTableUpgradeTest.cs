@@ -77,7 +77,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
         void Insert(JobV2 job);
         JobV2 FindByNameOrDefault(string name);
         JobV2 FindByCostOrDefault(ulong id, uint cost);
-        IEnumerator<JobV2> ListByCost(AdvancedEnumeratorParam<uint> param);
+        IEnumerable<JobV2> ListByCost(AdvancedEnumeratorParam<uint> param);
     }
 
     public class JobIncompatible
@@ -133,11 +133,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
             j = jobTable.FindByCostOrDefault(21, 42);
             Assert.Equal("Build", j.Name);
 
-            var en = jobTable.ListByCost(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
-            Assert.True(en.MoveNext());
-            Assert.Equal(0u, en.Current.Cost);
-            Assert.True(en.MoveNext());
-            Assert.Equal(42u, en.Current.Cost);
+            Assert.Equal([0u, 42u], jobTable.ListByCost(new(EnumerationOrder.Ascending)).Take(2).Select(v => v.Cost));
             tr.Commit();
         }
     }

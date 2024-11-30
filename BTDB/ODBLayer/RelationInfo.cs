@@ -589,16 +589,12 @@ public class RelationInfo
 
         ItemLoaderInfos.Add(new(this, _clientType, prevPkFields));
         var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
-        var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this,
-            Prefix, (int)ItemLoaderInfos.Count - 1);
-
         using var cursor = tr.KeyValueDBTransaction.CreateCursor();
         var keyWriter = new MemWriter();
 
-        while (enumerator!.MoveNext())
+        foreach (var obj in (IEnumerable)Activator.CreateInstance(enumeratorType, tr, this, Prefix,
+                     (int)ItemLoaderInfos.Count - 1)!)
         {
-            var obj = enumerator.Current!;
-
             keyWriter.WriteBlock(Prefix);
             var lenOfPkWoInKeyValues = PrimaryKeysSaver(tr, ref keyWriter, obj);
             var keyBytes = keyWriter.GetSpan();
@@ -753,8 +749,6 @@ public class RelationInfo
         ReadOnlySpan<KeyValuePair<uint, SecondaryKeyInfo>> indexes)
     {
         var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
-        var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this,
-            Prefix, 0);
 
         var keySavers = new RelationSaver[indexes.Length];
 
@@ -767,10 +761,8 @@ public class RelationInfo
         var keyWriter = new MemWriter();
         using var cursor = tr.KeyValueDBTransaction.CreateCursor();
 
-        while (enumerator!.MoveNext())
+        foreach (var obj in (IEnumerable)Activator.CreateInstance(enumeratorType, tr, this, Prefix, 0)!)
         {
-            var obj = enumerator.Current;
-
             for (var i = 0; i < indexes.Length; i++)
             {
                 keyWriter.WriteBlock(PrefixSecondary);
@@ -778,7 +770,7 @@ public class RelationInfo
                 keySavers[i](tr, ref keyWriter, obj!);
                 var keyBytes = keyWriter.GetSpanAndReset();
 
-                if (!cursor.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>()))
+                if (!cursor.CreateOrUpdateKeyValue(keyBytes, new()))
                     throw new BTDBException("Internal error, secondary key bytes must be always unique.");
             }
         }

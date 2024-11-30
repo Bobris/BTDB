@@ -698,7 +698,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         Span<byte> buf = stackalloc byte[4096];
         Span<byte> keyBuffer = stackalloc byte[1024];
         var needImplementFreeContent = _relationInfo.NeedImplementFreeContent();
-        using var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, 0);
+        using var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, 0)
+            .GetEnumerator();
         var beforeRemove = _relationInfo.BeforeRemove;
         var removed = 0;
         while (enumerator.MoveNext())
@@ -712,12 +713,14 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
             if (_hasSecondaryIndexes || needImplementFreeContent)
             {
-                var valueBytes = enumerator.Cursor.GetValueSpan(ref buf, true);
+                var valueBytes = ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.GetValueSpan(ref buf, true);
 
                 if (_hasSecondaryIndexes)
                 {
                     using var tempCursor = _kvtr.CreateCursor();
-                    RemoveSecondaryIndexes(tempCursor, enumerator.Cursor.GetKeySpan(ref keyBuffer), valueBytes);
+                    RemoveSecondaryIndexes(tempCursor,
+                        ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.GetKeySpan(ref keyBuffer, true),
+                        valueBytes);
                 }
 
                 if (needImplementFreeContent)
@@ -726,9 +729,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
             if (beforeRemove != null)
             {
-                enumerator.Cursor.EraseCurrent();
-                removed++;
+                ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.EraseCurrent();
             }
+
+            removed++;
         }
 
         if (beforeRemove != null)
@@ -745,7 +749,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         Span<byte> buf = stackalloc byte[4096];
         Span<byte> keyBuffer = stackalloc byte[1024];
         var needImplementFreeContent = _relationInfo.NeedImplementFreeContent();
-        using var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, 0);
+        using var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, 0)
+            .GetEnumerator();
         var beforeRemove = _relationInfo.BeforeRemove;
         var removed = 0;
         var idx = 0;
@@ -763,19 +768,20 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
             if (_hasSecondaryIndexes || needImplementFreeContent)
             {
-                var valueBytes = enumerator.Cursor.GetValueSpan(ref buf, true);
+                var valueBytes = ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.GetValueSpan(ref buf, true);
 
                 if (_hasSecondaryIndexes)
                 {
                     var tempCursor = _kvtr.CreateCursor();
-                    RemoveSecondaryIndexes(tempCursor, enumerator.Cursor.GetKeySpan(ref keyBuffer), valueBytes);
+                    RemoveSecondaryIndexes(tempCursor,
+                        ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.GetKeySpan(ref keyBuffer), valueBytes);
                 }
 
                 if (needImplementFreeContent)
                     _relationInfo.FreeContent(_transaction, valueBytes);
             }
 
-            enumerator.Cursor.EraseCurrent();
+            ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.EraseCurrent();
             removed++;
         }
 
@@ -944,30 +950,46 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return Math.Max(0, endIndex - startIndex + 1);
     }
 
-    public int RemoveByIdAdvancedParam(uint prefixFieldCount,
-        EnumerationOrder order,
+    public unsafe int RemoveByIdAdvancedParam(EnumerationOrder order,
         KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
         KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
     {
         using var enumerator = new RelationAdvancedEnumerator<T>(this,
-            order, startKeyProposition, prefixLen, startKeyBytes, endKeyProposition, endKeyBytes, 0);
-        var keysToDelete = new StructList<byte[]>();
+            order, startKeyProposition, prefixLen, startKeyBytes, endKeyProposition, endKeyBytes, 0).GetEnumerator();
+        var count = 0;
+        var cursor = ((RelationAdvancedEnumerator<T>)enumerator).Cursor;
+        Span<byte> keyBufferScoped = stackalloc byte[1024];
+        Span<byte> valueBuffer = stackalloc byte[1024];
         while (enumerator.MoveNext())
         {
-            keysToDelete.Add(enumerator.GetKeyBytes());
+            var fullKeyBytes = cursor.GetKeySpan(ref keyBufferScoped);
+            var beforeRemove = _relationInfo.BeforeRemove;
+            if (beforeRemove != null)
+            {
+                var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, cursor, fullKeyBytes);
+                if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+                    continue;
+            }
+
+            var valueSpan = cursor.GetValueSpan(ref valueBuffer, true);
+
+            cursor.EraseCurrent();
+
+            if (_hasSecondaryIndexes)
+            {
+                RemoveSecondaryIndexes(cursor, fullKeyBytes, valueSpan);
+            }
+
+            _relationInfo.FreeContent(_transaction, valueSpan);
+            count++;
         }
 
-        foreach (var key in keysToDelete)
-        {
-            RemoveByIdWithFullKey(key, true);
-        }
-
-        return (int)keysToDelete.Count;
+        return count;
     }
 
     public IEnumerator<T> GetEnumerator()
     {
-        return new RelationEnumerator<T>(_transaction, _relationInfo, _relationInfo.Prefix, 0);
+        return new RelationEnumerator<T>(_transaction, _relationInfo, _relationInfo.Prefix, 0).GetEnumerator();
     }
 
     public IEnumerable<TAs> As<TAs>()
@@ -1627,7 +1649,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         {
             var sk = _relationInfo.ClientRelationVersionInfo.SecondaryKeys[skKey];
             throw new BTDBException(
-                $"Error in removing secondary indexes, previous index entry not found. {_relationInfo.Name}:{sk.Name} PK:{BitConverter.ToString(primaryKey.ToArray()).Replace("-", "")}");
+                $"Error in removing secondary indexes, previous index entry not found. {_relationInfo.Name}:{sk.Name} PK:{Convert.ToHexString(primaryKey)}");
         }
 
         cursor.EraseCurrent();

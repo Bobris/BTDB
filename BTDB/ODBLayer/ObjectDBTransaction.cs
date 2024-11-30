@@ -43,6 +43,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         if (_keyValueTr == null) return;
         _keyValueTr.Dispose();
         _keyValueTr = null;
+        _afterCommitOrDispose = true;
     }
 
     public IObjectDB Owner => _owner;
@@ -120,7 +121,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
     public void ThrowIfDisposed()
     {
-        if (_keyValueTr == null) throw new BTDBException("Transaction already disposed");
+        if (_afterCommitOrDispose) throw new BTDBException("Transaction already commited or disposed");
     }
 
     public void WriteInlineObject(ref MemWriter writer, object @object, IWriterCtx writerCtx)
@@ -407,6 +408,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
     IRelation? _relationInstances;
     Dictionary<Type, IRelation>? _relationsInstanceCache;
+    bool _afterCommitOrDispose;
     const int LinearSearchLimit = 4;
 
     public IRelation GetRelation(Type type)
@@ -953,6 +955,8 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
                 updatedTable.LastPersistedVersion = updatedTable.ClientTypeVersion;
                 updatedTable.ResetNeedStoreSingletonOid();
             }
+
+        _afterCommitOrDispose = true;
     }
 
     [SkipLocalsInit]

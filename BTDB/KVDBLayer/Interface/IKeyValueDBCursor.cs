@@ -66,6 +66,12 @@ public interface IKeyValueDBCursor : IDisposable
     bool FindKeyIndex(long index);
 
     /// <summary>
+    /// Test if key matches prefix
+    /// </summary>
+    /// <returns>true if key matches prefix</returns>
+    bool KeyHasPrefix(in ReadOnlySpan<byte> prefix);
+
+    /// <summary>
     /// Actual key pointer will be set to invalid state.
     /// </summary>
     void Invalidate();

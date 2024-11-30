@@ -337,7 +337,7 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
 
     public long RemoveRange(AdvancedEnumeratorParam<TKey> param)
     {
-        var startCursor = _keyValueTr.CreateCursor();
+        using var startCursor = _keyValueTr.CreateCursor();
         var result = param.StartProposition == KeyProposition.Ignored
             ? (startCursor.FindFirstKey(_prefix) ? FindResult.Next : FindResult.NotFound)
             : FindKey(startCursor, param.Start);
@@ -354,7 +354,7 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
                 return 0;
         }
 
-        var endCursor = _keyValueTr.CreateCursor();
+        using var endCursor = _keyValueTr.CreateCursor();
         result = param.EndProposition == KeyProposition.Ignored
             ? endCursor.FindLastKey(_prefix) ? FindResult.Previous : throw new InvalidOperationException()
             : FindKey(endCursor, param.End);

@@ -575,7 +575,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
 
     public long RemoveRange(TKey start, bool includeStart, TKey end, bool includeEnd)
     {
-        var startCursor = _keyValueTr.CreateCursor();
+        using var startCursor = _keyValueTr.CreateCursor();
         var result = FindKey(startCursor, start);
         if (result == FindResult.NotFound) return 0;
         if (result == FindResult.Exact)
@@ -590,7 +590,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                 return 0;
         }
 
-        var endCursor = _keyValueTr.CreateCursor();
+        using var endCursor = _keyValueTr.CreateCursor();
         result = FindKey(endCursor, end);
         if (result == FindResult.Exact)
         {
@@ -740,26 +740,34 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             }
         }
 
-        public uint Position
+        public int Position
         {
             get
             {
-                if (_cursor == null) return 0;
-                return (uint)(_ascending
+                if (_cursor == null) return -1;
+                return (int)(_ascending
                     ? _cursor.GetKeyIndex() - _startCursor!.GetKeyIndex()
                     : _endCursor!.GetKeyIndex() - _cursor.GetKeyIndex());
             }
 
             set
             {
-                if (value >= Count) throw new IndexOutOfRangeException();
-                if (_ascending)
+                if ((uint)value >= Count)
                 {
-                    _cursor!.FindKeyIndex(_startCursor!.GetKeyIndex() + value);
+                    _cursor?.Dispose();
+                    _cursor = null;
                 }
                 else
                 {
-                    _cursor!.FindKeyIndex(_endCursor!.GetKeyIndex() - value);
+                    _cursor ??= _owner._keyValueTr.CreateCursor();
+                    if (_ascending)
+                    {
+                        _cursor!.FindKeyIndex(_startCursor!.GetKeyIndex() + value);
+                    }
+                    else
+                    {
+                        _cursor!.FindKeyIndex(_endCursor!.GetKeyIndex() - value);
+                    }
                 }
 
                 _seekState = SeekState.Undefined;
@@ -781,12 +789,16 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                     if (!_cursor.FindNextKey(_owner._prefix))
                     {
                         key = default;
+                        _cursor.Dispose();
+                        _cursor = null;
                         return false;
                     }
 
                     if (_cursor.GetKeyIndex() > _endCursor!.GetKeyIndex())
                     {
                         key = default;
+                        _cursor.Dispose();
+                        _cursor = null;
                         return false;
                     }
                 }
@@ -795,12 +807,16 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                     if (!_cursor.FindPreviousKey(_owner._prefix))
                     {
                         key = default;
+                        _cursor.Dispose();
+                        _cursor = null;
                         return false;
                     }
 
                     if (_cursor.GetKeyIndex() < _startCursor!.GetKeyIndex())
                     {
                         key = default;
+                        _cursor.Dispose();
+                        _cursor = null;
                         return false;
                     }
                 }

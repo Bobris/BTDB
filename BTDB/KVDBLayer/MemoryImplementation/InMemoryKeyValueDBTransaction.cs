@@ -83,19 +83,21 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         return true;
     }
 
-    bool CheckPrefixIn(in ReadOnlySpan<byte> prefix, in ReadOnlySpan<byte> key)
+    static bool CheckPrefixIn(in ReadOnlySpan<byte> prefix, in ReadOnlySpan<byte> key)
     {
         return BTreeRoot.KeyStartsWithPrefix(prefix, key);
     }
 
     ReadOnlySpan<byte> GetCurrentKeyFromStack()
     {
+        EnsureValidCursor();
         var nodeIdxPair = _stack[^1];
         return ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx).Span;
     }
 
     ReadOnlyMemory<byte> GetCurrentKeyFromStackAsMemory()
     {
+        EnsureValidCursor();
         var nodeIdxPair = _stack[^1];
         return ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx);
     }
@@ -177,6 +179,11 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public long GetKeyIndex()
     {
+        if (_modifiedFromLastFind && _removedCurrent && _keyIndex != -1)
+        {
+            return _keyIndex - 1;
+        }
+
         return _keyIndex;
     }
 
@@ -214,6 +221,12 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
         _transaction._btreeRoot!.FillStackByIndex(ref _stack, index);
         return true;
+    }
+
+    public bool KeyHasPrefix(in ReadOnlySpan<byte> prefix)
+    {
+        if (_keyIndex == -1) return false;
+        return CheckPrefixIn(prefix, GetCurrentKeyFromStack());
     }
 
     public void Invalidate()
@@ -264,6 +277,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public ReadOnlySpan<byte> GetKeySpan(Span<byte> buffer, bool copy = false)
     {
+        EnsureValidCursor();
         var key = GetCurrentKeyFromStack();
         if (copy)
         {
@@ -288,6 +302,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public ReadOnlyMemory<byte> GetValueMemory(ref Memory<byte> buffer, bool copy = false)
     {
+        EnsureValidCursor();
         var nodeIdxPair = _stack[^1];
         var value = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
         if (copy)
@@ -302,6 +317,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public ReadOnlySpan<byte> GetValueSpan(scoped ref Span<byte> buffer, bool copy = false)
     {
+        EnsureValidCursor();
         var nodeIdxPair = _stack[^1];
         var value = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx).Span;
         if (copy)

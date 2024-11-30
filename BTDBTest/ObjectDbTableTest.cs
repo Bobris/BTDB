@@ -182,14 +182,6 @@ namespace BTDBTest
             }
         }
 
-        T GetNext<T>(IEnumerable<T> enumerable)
-        {
-            var enumerator = enumerable.GetEnumerator();
-            if (!enumerator.MoveNext())
-                throw new Exception("Empty");
-            return enumerator.Current;
-        }
-
         [Fact]
         public void UpsertWorks()
         {
@@ -208,7 +200,7 @@ namespace BTDBTest
                 var personSimpleTable = creator(tr);
                 person.Name = "Lubos";
                 Assert.False(personSimpleTable.Upsert(person), "Was already there");
-                var p = GetNext(personSimpleTable);
+                var p = personSimpleTable.First();
                 Assert.Equal("Lubos", p.Name);
                 tr.Commit();
             }
@@ -216,7 +208,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);
-                var p = GetNext(personSimpleTable);
+                var p = personSimpleTable.First();
                 Assert.Equal("Lubos", p.Name);
             }
         }
@@ -239,7 +231,7 @@ namespace BTDBTest
                 var personSimpleTable = creator(tr);
                 person.Name = "Lubos";
                 Assert.False(personSimpleTable.ShallowUpsert(person), "Was already there");
-                var p = GetNext(personSimpleTable);
+                var p = personSimpleTable.First();
                 Assert.Equal("Lubos", p.Name);
                 tr.Commit();
             }
@@ -247,7 +239,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);
-                var p = GetNext(personSimpleTable);
+                var p = personSimpleTable.First();
                 Assert.Equal("Lubos", p.Name);
             }
         }
@@ -286,7 +278,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);
-                var p = GetNext(personSimpleTable);
+                var p = personSimpleTable.First();
                 Assert.Equal("Lubos", p.Name);
                 Assert.Equal(new List<byte> { 3 }, p.Ratings["History"]);
             }
@@ -326,7 +318,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);
-                var p = GetNext(personSimpleTable);
+                var p = personSimpleTable.First();
                 Assert.Equal("Lubos", p.Name);
                 Assert.Equal(new List<byte> { 3 }, p.Ratings["History"]);
             }
@@ -350,7 +342,7 @@ namespace BTDBTest
                 var personSimpleTable = creator(tr);
                 Assert.False(personSimpleTable.RemoveById(0, "no@no.cz"));
                 Assert.True(personSimpleTable.RemoveById(person.TenantId, person.Email));
-                Assert.False(personSimpleTable.GetEnumerator().MoveNext());
+                Assert.Empty(personSimpleTable);
             }
         }
 
@@ -524,15 +516,17 @@ namespace BTDBTest
         {
             using var tr = _db.StartTransaction();
             var table = tr.GetRelation<INestedEventMetaDataTable>();
-            ;
-            var enumerable = table.ListById(new AdvancedEnumeratorParam<ulong>(
+            var enumerable = table.ListById(new(
                 EnumerationOrder.Ascending,
                 0,
                 KeyProposition.Included,
                 ulong.MaxValue,
                 KeyProposition.Ignored
             ));
-            var enumerator = enumerable.GetEnumerator();
+            // ReSharper disable once PossibleMultipleEnumeration - it is supported
+            Assert.Empty(enumerable);
+            // ReSharper disable once PossibleMultipleEnumeration - it is supported
+            using var enumerator = enumerable.GetEnumerator();
             Assert.False(enumerator.MoveNext());
         }
 
@@ -807,7 +801,7 @@ namespace BTDBTest
             var creator = tr.InitRelation<IJobTable>("Job");
             var jobTable = creator(tr);
             jobTable.Insert(new Job { Id = 11, Name = "Code" });
-            var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending, "Code",
+            var en = jobTable.ListByName(new(EnumerationOrder.Descending, "Code",
                 KeyProposition.Excluded, "Z", KeyProposition.Included));
             Assert.Empty(en);
         }
@@ -969,7 +963,7 @@ namespace BTDBTest
 
             Assert.Equal((string[]) ["First 1", "Second 1"], en.Select(r => r.Name).ToArray());
 
-            var oen = rooms.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Descending));
+            using var oen = rooms.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Descending));
             Assert.Equal(3u, oen.Count);
             ulong key;
             Assert.True(oen.NextKey(out key));
@@ -980,10 +974,10 @@ namespace BTDBTest
             Assert.Equal(1ul, key);
             Assert.False(oen.NextKey(out key));
 
-            oen = rooms.ListById(2ul, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
-            Assert.True(oen.NextKey(out key));
+            using var oen2 = rooms.ListById(2ul, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
+            Assert.True(oen2.NextKey(out key));
             Assert.Equal(30ul, key);
-            Assert.False(oen.NextKey(out key));
+            Assert.False(oen2.NextKey(out key));
         }
 
         public class Document
@@ -1007,7 +1001,7 @@ namespace BTDBTest
             void Update(Document item);
             Document FindById(ulong companyId, ulong id);
             Document FindByIdOrDefault(ulong companyId, ulong id);
-            IEnumerator<Document> ListByDocumentType(AdvancedEnumeratorParam<uint> param);
+            IEnumerable<Document> ListByDocumentType(AdvancedEnumeratorParam<uint> param);
         }
 
         [Fact]
@@ -1026,9 +1020,9 @@ namespace BTDBTest
                 var docTable = creator(tr);
                 docTable.Insert(new Document
                     { CompanyId = 1, Id = 2, DocumentType = 3, CreatedDate = DateTime.UtcNow });
-                var en = docTable.ListByDocumentType(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
-                Assert.True(en.MoveNext());
-                Assert.Equal(2u, en.Current.Id);
+                Assert.Equal(2u,
+                    docTable.ListByDocumentType(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending)).First()
+                        .Id);
             }
         }
 
@@ -1264,15 +1258,15 @@ namespace BTDBTest
             }
 
             IEnumerable<Room> Query(IRoomTable table) => table.ListByBeds(AdvancedEnumeratorParam<int>.Instance);
-            ModifyDuringEnumerate(creator, Query, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
-            ModifyDuringEnumerate(creator, Query, table => table.RemoveById(0, 20), true);
+            ModifyDuringEnumerate(creator, Query, table => table.Insert(new Room { Id = 30, Name = "third" }), false);
+            ModifyDuringEnumerate(creator, Query, table => table.RemoveById(0, 10), false);
             ModifyDuringEnumerate(creator, Query, table => table.Update(new Room { Id = 10, Name = "First" }), false);
             ModifyDuringEnumerate(creator, Query, table => table.Update(new Room { Id = 10, Name = "First", Beds = 3 }),
-                true);
+                false);
             ModifyDuringEnumerate(creator, Query,
-                table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), true);
+                table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), false);
             ModifyDuringEnumerate(creator, Query,
-                table => table.Upsert(new Room { Id = 10, Name = "update existing", Beds = 4 }), true);
+                table => table.Upsert(new Room { Id = 10, Name = "update existing", Beds = 4 }), false);
         }
 
         public class PermutationOfKeys
@@ -1316,10 +1310,10 @@ namespace BTDBTest
         public interface IPermutationOfKeysTable : IRelation<PermutationOfKeys>
         {
             void Insert(PermutationOfKeys per);
-            IEnumerator<PermutationOfKeys> ListBySec(AdvancedEnumeratorParam<string> a0);
-            IEnumerator<PermutationOfKeys> ListBySec(string a0, AdvancedEnumeratorParam<string> a);
+            IEnumerable<PermutationOfKeys> ListBySec(AdvancedEnumeratorParam<string> a0);
+            IEnumerable<PermutationOfKeys> ListBySec(string a0, AdvancedEnumeratorParam<string> a);
 
-            IEnumerator<PermutationOfKeys> ListBySec(string a0, string a, string a1, string d, string d1,
+            IEnumerable<PermutationOfKeys> ListBySec(string a0, string a, string a1, string d, string d1,
                 AdvancedEnumeratorParam<string> c0);
         }
 
@@ -1346,19 +1340,13 @@ namespace BTDBTest
                     E = "ee",
                     E1 = "eee"
                 });
-                var en = table.ListBySec(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
-                    "a", KeyProposition.Included, "b", KeyProposition.Excluded));
-                Assert.True(en.MoveNext());
-                Assert.Equal("aa", en.Current.A);
-                en = table.ListBySec("a", new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
-                    "a", KeyProposition.Included, "b", KeyProposition.Excluded));
-                Assert.True(en.MoveNext());
-                Assert.Equal("bb", en.Current.B);
-                en = table.ListBySec("a", "aa", "aaa", "dd", "ddd", new AdvancedEnumeratorParam<string>(
+                Assert.Equal("aa", table.ListBySec(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
+                    "a", KeyProposition.Included, "b", KeyProposition.Excluded)).First().A);
+                Assert.Equal("bb", table.ListBySec("a", new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
+                    "a", KeyProposition.Included, "b", KeyProposition.Excluded)).First().B);
+                Assert.Equal("eee", table.ListBySec("a", "aa", "aaa", "dd", "ddd", new AdvancedEnumeratorParam<string>(
                     EnumerationOrder.Ascending,
-                    "c", KeyProposition.Included, "d", KeyProposition.Included));
-                Assert.True(en.MoveNext());
-                Assert.Equal("eee", en.Current.E1);
+                    "c", KeyProposition.Included, "d", KeyProposition.Included)).First().E1);
                 tr.Commit();
             }
 
@@ -1387,7 +1375,7 @@ namespace BTDBTest
                 tr.Commit();
             }
 
-            var roTr = _db.StartReadOnlyTransaction();
+            using var roTr = _db.StartReadOnlyTransaction();
             var roTable = creator(roTr);
             using var en = roTable.GetEnumerator();
             Assert.True(en.MoveNext());
@@ -1399,11 +1387,10 @@ namespace BTDBTest
                 tr.Commit();
             }
 
-            roTable.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 0, KeyProposition.Included,
-                100, KeyProposition.Included));
+            roTable.ListById(new(EnumerationOrder.Ascending, 0, KeyProposition.Included,
+                100, KeyProposition.Included)).Dispose();
             Assert.True(en.MoveNext());
-            Assert.Equal(20ul, en.Current.Id);
-            roTr.Dispose();
+            Assert.Equal(20ul, en.Current!.Id);
         }
 
         public interface IPersonTableNamePrefixSearch : IRelation<Person>
@@ -2133,7 +2120,7 @@ namespace BTDBTest
 
         public interface IApplicationV3Table : IRelation<ApplicationV3>
         {
-            IEnumerator<ApplicationV3> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
+            IEnumerable<ApplicationV3> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
         }
 
         [Fact]
@@ -2146,9 +2133,7 @@ namespace BTDBTest
                 { CompanyId = 1, ApplicationId = 100, CreatedUserId = 100, Description = "info" };
             table.Upsert(app);
 
-            var en = table.ListById(1, new AdvancedEnumeratorParam<ulong>());
-            Assert.True(en.MoveNext());
-            var app2 = en.Current;
+            var app2 = table.ListById(1, new AdvancedEnumeratorParam<ulong>()).First();
             Assert.Equal(app.Description, app2.Description);
             Assert.Equal(app.ApplicationId, app2.ApplicationId);
             Assert.Equal(app.CreatedUserId, app2.CreatedUserId);
@@ -2316,7 +2301,7 @@ namespace BTDBTest
                         KeyProposition.Included)));
             Assert.Equal(3, table.CountById(1, 2));
             Assert.Equal(1, table.CountById(1, 2, 3));
-            Assert.Equal(new[] { 1, 2, 3 }, table.ListById(1, 2).Select(o => o.C));
+            Assert.Equal([1, 2, 3], table.ListById(1, 2).Select(o => o.C));
         }
 
         public class EncryptedStringSecondaryKey
@@ -2328,7 +2313,7 @@ namespace BTDBTest
         public interface IEncryptedStringSecondaryKey : IRelation<EncryptedStringSecondaryKey>
         {
             void Insert(EncryptedStringSecondaryKey value);
-            IEnumerator<EncryptedStringSecondaryKey> FindByB(EncryptedString b);
+            IEnumerable<EncryptedStringSecondaryKey> FindByB(EncryptedString b);
         }
 
         [Fact]
@@ -2341,10 +2326,7 @@ namespace BTDBTest
             EncryptedString secondaryKey = "string";
             table.Insert(new EncryptedStringSecondaryKey { A = 1, B = secondaryKey });
 
-            using var en = table.FindByB(secondaryKey);
-            Assert.True(en.MoveNext());
-
-            var item = en.Current;
+            var item = table.FindByB(secondaryKey).First();
             Assert.Equal(1ul, item.A);
             Assert.Equal(secondaryKey, item.B);
         }
@@ -2407,7 +2389,7 @@ namespace BTDBTest
             Assert.True(i.Parts.Add("D"));
             Assert.False(i.Parts.Add("D"));
             Assert.Equal(2,
-                i.Parts.RemoveRange(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "B",
+                i.Parts.RemoveRange(new(EnumerationOrder.Ascending, "B",
                     KeyProposition.Included, "D", KeyProposition.Excluded)));
             Assert.Equal(2, i.Parts.Count);
         }
@@ -2798,7 +2780,7 @@ namespace BTDBTest
             using var tr = _db.StartTransaction();
             var table = tr.GetRelation<IPersonWoConstructorTable>();
             table.Upsert(new(1) { Name = "Boris" });
-            var enumerator = table.GetEnumerator();
+            using var enumerator = table.GetEnumerator();
             tr.Commit();
             Assert.Throws<BTDBException>(() => enumerator.MoveNext());
         }
