@@ -26,7 +26,7 @@ inline). Such objects also don't have object id, they can be retrieved by primar
 
 How do we get `IPersonTable` interface to actually insert persons? First we need [obtain transaction](ODBDictionary.md)
 
-From transaction we get creator of relation which we should keep and use for creating relation interface for transaction
+From transaction, we get creator of relation which we should keep and use for creating relation interface for transaction
 every time we need it.
 
 ```C#
@@ -63,8 +63,8 @@ But this was "old school" way easier to just always use `GetRelation<T>`:
     }
 ```
 
-It is still good to do first GetRelation for all your relations in first independent transaction. To control name of
-relation by `PersistedNameAttribute` on your `IRelation` interface.
+It is still good to do first GetRelation for all your relations in first independent transaction, it will calculate all
+changed indexes. To control name of relation by `PersistedNameAttribute` on your `IRelation` interface.
 
 ## Basic operations
 
@@ -117,8 +117,9 @@ secondary indexes when it does not even need to read old value.
 
     (long Inserted, long Updated) UpsertRange(IEnumerable<T> items)
 
-Every relation have this method it is very useful with `As<T>()` when you want quicky upgrade old relation into new one.
-Other than that it is pretty self explanatory.
+Every relation have this method it is very useful with `As<T>()` when you want quickly upgrade old relation into new
+one.
+Other than that it is pretty self-explanatory.
 
 ### As
 
@@ -132,7 +133,7 @@ generated deserialization code, its purpose is upgrade scenarios (See OnCreate b
     (void|bool) RemoveById(primaryKey1, ..., primaryKeyN);
     (void|bool) ShallowRemoveById(primaryKey1, ..., primaryKeyN);
 
-Returns true if removed, void variant throw when does not exists. All primary keys fields are used as parameters, for
+Returns true if removed, void variant throw when does not exist. All primary keys fields are used as parameters, for
 example `void RemoveById(ulong tenantId, ulong userId);`
 ShallowRemoveById does not free nested content (like `IDictionary<K,V>`).
 
@@ -178,16 +179,17 @@ It will throw if does not exists, as parameters expects primary key fields (same
 
 Will return null if not exists
 
-    IEnumerator<T> FindById(primaryKey1 [, primaryKey2, ...]);
+    IEnumerable<T> FindById(primaryKey1 [, primaryKey2, ...]);
 
 Find all items with given primary key prefix
 
     Person FindByAgeOrDefault(uint age);
 
-Find by secondary key, it will throw if it find multiple Persons with that age. **Note**: "Age" in the name is name of
-secondary key index.
+Find by secondary key, it will throw if it finds multiple Persons with that age.
 
-    IEnumerator<Person> FindByAge(uint age);
+**Note**: "Age" in the name is name of secondary key index.
+
+    IEnumerable<Person> FindByAge(uint age);
 
 Find all items with given secondary key. **Note**: for advanced range enumerating use ListBy{SecondaryIndexName},
 multiple result possibility handles legal case when exists several records for one secondary index key.
@@ -201,18 +203,18 @@ because only fields with matching names and types will be deserialized. Note: Th
         public uint Age { get; set; }
     }
 
-    IEnumerator<Age> FindByIdJustAge(ulong id);
+    IEnumerable<Age> FindByIdJustAge(ulong id);
 
 ### List
 
     IOrderedDictionaryEnumerator<uint, Person> ListById(AdvancedEnumeratorParam<uint> param);
-    IEnumerator<Person> ListById(AdvancedEnumeratorParam<uint> param);
+    IEnumerable<Person> ListById(AdvancedEnumeratorParam<uint> param);
     IEnumerable<Person> ListById();
 
 List by ascending/descending order and specified range. Parts of primary key may be used for listing. In example below
-you can list all rooms or just rooms for specified company by two `ListById`
-method. (`IOrderedDictionaryEnumerator`, `IEnumerator`, `IEnumerable` can be used as return values if used without
-AdvancedEnumeratorParam only `IEnumerator` or `IEnumerable` could be used and it is ascending order only.)
+you can list all rooms or just rooms for specified company by two `ListById` method. (`IOrderedDictionaryEnumerator`,
+`IEnumerable` can be used as return values if used without AdvancedEnumeratorParam only `IEnumerable` could be used and
+it is ascending order only.)
 
 ```C#
     public class Room
@@ -256,7 +258,7 @@ missing constraints are automatically "Any"):
 
 Scan by primary key also support variants like `ScanByIdVariantName`.
 
-`Scan` can do most of same stuff like `List`, it is little bit slower though, so prefer `List` if you can. `Scan` needs
+`Scan` can do most of the same stuff as `List`, it is a little bit slower though, so prefer `List` if you can. `Scan` needs
 to iterate all rows in many cases, because BTDB has all indexes in memory it is not slow even for millions of items,
 still be careful.
 
@@ -315,7 +317,7 @@ First by primary key also support variants like `FirstByIdVariantName` and `Firs
 
     IEnumerator<Person> GetEnumerator();
 
-Enumerates all items sorted by primary key.
+Enumerates all items sorted by primary key. Must be Disposed.
 
 ### IReadOnlyCollection
 
@@ -393,7 +395,8 @@ List by secondary key also support variants like `ListByAgeVariantName`.
     uint|int|long|ulong CountByAge(uint age);
 
 Count records by specified
-range `CountBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
+range
+`CountBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
 
 ### Any (by secondary index)
 
@@ -401,7 +404,8 @@ range `CountBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [Advan
     bool AnyByAge(uint age);
 
 Returns true if there is any item in specified
-range `AnyBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
+range
+`AnyBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
 
 ### Scan (by secondary index)
 

@@ -28,11 +28,11 @@ class Cursor12 : ICursor
     public void SetNewRoot(IRootNode artRoot)
     {
         var newRoot = (RootNode12)artRoot;
-        if (newRoot.Impl != _rootNode.Impl)
-            throw new ArgumentException("SetNewRoot allows only same db instance");
         _rootNode = (RootNode12)artRoot;
         if (_stack.Count > 0)
         {
+            if (newRoot.Impl != _rootNode.Impl)
+                throw new ArgumentException("SetNewRoot allows only same db instance");
             _stack[0]._node = _rootNode.Root;
         }
     }
