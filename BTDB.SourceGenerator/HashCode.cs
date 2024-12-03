@@ -10,7 +10,7 @@ namespace BTDB.SourceGenerator;
 /// </summary>
 struct HashCode
 {
-    static readonly uint s_seed = GenerateGlobalSeed();
+    static readonly uint s_seed = 42;
 
     const uint Prime1 = 2654435761U;
     const uint Prime2 = 2246822519U;
@@ -21,13 +21,6 @@ struct HashCode
     uint _v1, _v2, _v3, _v4;
     uint _queue1, _queue2, _queue3;
     uint _length;
-
-    static uint GenerateGlobalSeed()
-    {
-        var buffer = new byte[sizeof(uint)];
-        new Random().NextBytes(buffer);
-        return BitConverter.ToUInt32(buffer, 0);
-    }
 
     public static int Combine<T1>(T1 value1)
     {

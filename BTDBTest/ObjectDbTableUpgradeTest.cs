@@ -32,7 +32,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
 
     void ApproveFieldHandlerLoggerMessages([CallerMemberName] string? testName = null)
     {
-        Assent.Extensions.Assent(this, string.Join('\n', _fieldHandlerLoggerMessages) + "\n", null, testName);
+        Assent.Extensions.Assent(this, string.Join('\n', _fieldHandlerLoggerMessages.AsSpan()) + "\n", null, testName);
         _fieldHandlerLoggerMessages.Clear();
     }
 

@@ -131,7 +131,7 @@ class RootNode12 : IRootNode
     {
         while (true)
         {
-            var original = Thread.VolatileRead(ref _referenceCount);
+            var original = Volatile.Read(ref _referenceCount);
             if (original == 0)
                 return true;
             if (Interlocked.CompareExchange(ref _referenceCount, original + 1, original) == original)
