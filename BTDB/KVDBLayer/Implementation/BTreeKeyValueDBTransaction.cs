@@ -35,6 +35,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
 
     public IKeyValueDBCursor CreateCursor()
     {
+        ObjectDisposedException.ThrowIf(BTreeRoot == null, this);
         return BTreeKeyValueDBCursor.Create(this);
     }
 
@@ -70,7 +71,8 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
 
     public long GetKeyValueCount()
     {
-        return BTreeRoot!.GetCount();
+        ObjectDisposedException.ThrowIf(BTreeRoot == null, this);
+        return BTreeRoot.GetCount();
     }
 
     public bool IsWriting()
@@ -172,6 +174,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
 
     public void SetUlong(uint idx, ulong value)
     {
+        ObjectDisposedException.ThrowIf(BTreeRoot == null, this);
         if (BTreeRoot!.GetUlong(idx) != value)
         {
             MakeWritable();
@@ -202,8 +205,9 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
 
     public Dictionary<(uint Depth, uint Children), uint> CalcBTreeStats()
     {
+        ObjectDisposedException.ThrowIf(BTreeRoot == null, this);
         var stats = new RefDictionary<(uint Depth, uint Children), uint>();
-        BTreeRoot!.CalcBTreeStats(stats, 0);
+        BTreeRoot.CalcBTreeStats(stats, 0);
         return stats.ToDictionary(kv => kv.Key, kv => kv.Value);
     }
 

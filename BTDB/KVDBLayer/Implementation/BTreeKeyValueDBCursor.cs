@@ -91,6 +91,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         _modifiedFromLastFind = false;
         _keyIndex = -1;
         return _cursor!.FindFirst(prefix);
@@ -98,6 +100,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindLastKey(in ReadOnlySpan<byte> prefix)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         _modifiedFromLastFind = false;
         _keyIndex = _cursor!.FindLastWithPrefix(prefix);
         return _keyIndex >= 0;
@@ -105,6 +109,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         if (_modifiedFromLastFind)
         {
             if (FindKeyIndex(_keyIndex - 1) && _cursor!.KeyHasPrefix(prefix))
@@ -132,6 +138,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindNextKey(in ReadOnlySpan<byte> prefix)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         if (_modifiedFromLastFind)
         {
             if (!_removedCurrent) _keyIndex++;
@@ -160,6 +168,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         _modifiedFromLastFind = false;
         var result = _cursor!.Find(key);
         _keyIndex = -1;
@@ -203,6 +213,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindKeyIndex(in ReadOnlySpan<byte> prefix, long index)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         _modifiedFromLastFind = false;
         if (!_cursor!.FindFirst(prefix))
         {
@@ -225,6 +237,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindKeyIndex(long index)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         _modifiedFromLastFind = false;
         _keyIndex = -1;
         if (_cursor!.SeekIndex(index))
@@ -269,16 +283,22 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public ReadOnlyMemory<byte> GetKeyMemory(ref Memory<byte> buffer, bool copy = false)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         return _cursor!.GetKeyMemory(ref buffer, copy);
     }
 
     public ReadOnlySpan<byte> GetKeySpan(scoped ref Span<byte> buffer, bool copy = false)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         return _cursor!.GetKeySpan(ref buffer, copy);
     }
 
     public ReadOnlySpan<byte> GetKeySpan(Span<byte> buffer, bool copy = false)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         return _cursor!.GetKeySpan(buffer, copy);
     }
 
@@ -291,6 +311,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public ReadOnlyMemory<byte> GetValueMemory(ref Memory<byte> buffer, bool copy = false)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         if (!IsValid()) return new();
         var trueValue = _cursor!.GetValue();
         var keyValueDB = _transaction!.KeyValueDB;
@@ -319,6 +341,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public ReadOnlySpan<byte> GetValueSpan(scoped ref Span<byte> buffer, bool copy = false)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         if (!IsValid()) return new();
         var trueValue = _cursor!.GetValue();
         var keyValueDB = _transaction!.KeyValueDB;
@@ -360,6 +384,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     void EnsureValidCursor()
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         if (!_cursor!.IsValid())
         {
             if (_modifiedFromLastFind && _keyIndex != -1)
@@ -456,6 +482,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     [SkipLocalsInit]
     public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         var cursor = (IKeyValueDBCursorInternal)_transaction!.FirstCursor;
         while (cursor != null)
         {
@@ -491,6 +519,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
         var cursor = (IKeyValueDBCursorInternal)_transaction!.FirstCursor;
         while (cursor != null)
         {

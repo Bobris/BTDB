@@ -2,38 +2,43 @@ using System;
 using System.Collections.Generic;
 using BTDB.Collections;
 using BTDB.KVDBLayer.BTreeMem;
+using Microsoft.Extensions.ObjectPool;
 
 namespace BTDB.KVDBLayer;
 
 class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 {
-    InMemoryKeyValueDBTransaction _transaction;
+    InMemoryKeyValueDBTransaction? _transaction;
     StructList<NodeIdxPair> _stack;
     bool _modifiedFromLastFind;
     bool _removedCurrent;
     long _keyIndex;
 
-    public InMemoryKeyValueDBCursor(InMemoryKeyValueDBTransaction transaction)
+    public static InMemoryKeyValueDBCursor Create(InMemoryKeyValueDBTransaction transaction)
     {
-        _transaction = transaction;
-        _keyIndex = -1;
-        _modifiedFromLastFind = false;
-        _removedCurrent = false;
+        var cursor = PooledCursors.Get();
+        cursor._transaction = transaction;
+        cursor._keyIndex = -1;
         if (transaction.FirstCursor == null)
         {
-            transaction.FirstCursor = this;
-            transaction.LastCursor = this;
+            transaction.FirstCursor = cursor;
         }
         else
         {
-            ((IKeyValueDBCursorInternal)transaction.LastCursor!).NextCursor = this;
-            PrevCursor = (IKeyValueDBCursorInternal)transaction.LastCursor;
-            transaction.LastCursor = this;
+            ((IKeyValueDBCursorInternal)transaction.LastCursor!).NextCursor = cursor;
+            cursor.PrevCursor = (IKeyValueDBCursorInternal)transaction.LastCursor;
         }
+
+        transaction.LastCursor = cursor;
+        return cursor;
     }
+
+    static readonly DefaultObjectPool<InMemoryKeyValueDBCursor> PooledCursors =
+        new(new DefaultPooledObjectPolicy<InMemoryKeyValueDBCursor>(), 50);
 
     public void Dispose()
     {
+        if (_transaction == null) return;
         var nextCursor = NextCursor;
         var prevCursor = PrevCursor;
         if (nextCursor == null)
@@ -63,15 +68,22 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         }
 
         _stack.Clear();
-        _transaction = null!;
+        _modifiedFromLastFind = false;
+        _removedCurrent = false;
+        _transaction = null;
+        NextCursor = null;
+        PrevCursor = null;
+        PooledCursors.Return(this);
     }
 
-    public IKeyValueDBTransaction Transaction => _transaction;
+    public IKeyValueDBTransaction Transaction => _transaction!;
 
     public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
         _modifiedFromLastFind = false;
-        if (_transaction._btreeRoot!.FindKey(ref _stack, out _keyIndex, prefix, (uint)prefix.Length) ==
+        if (_transaction._btreeRoot.FindKey(ref _stack, out _keyIndex, prefix, (uint)prefix.Length) ==
             FindResult.NotFound)
         {
             return false;
@@ -101,20 +113,24 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindLastKey(in ReadOnlySpan<byte> prefix)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
         _modifiedFromLastFind = false;
-        _keyIndex = _transaction._btreeRoot!.FindLastWithPrefix(prefix);
+        _keyIndex = _transaction._btreeRoot.FindLastWithPrefix(prefix);
         if (_keyIndex == -1)
         {
             _stack.Clear();
             return false;
         }
 
-        _transaction._btreeRoot!.FillStackByIndex(ref _stack, _keyIndex);
+        _transaction._btreeRoot.FillStackByIndex(ref _stack, _keyIndex);
         return true;
     }
 
     public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
         if (_modifiedFromLastFind)
         {
             if (FindKeyIndex(_keyIndex - 1) && CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
@@ -125,7 +141,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         else
         {
             if (_keyIndex < 0) return FindLastKey(prefix);
-            if (_transaction._btreeRoot!.FindPreviousKey(ref _stack))
+            if (_transaction._btreeRoot.FindPreviousKey(ref _stack))
             {
                 if (CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
                 {
@@ -142,6 +158,8 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindNextKey(in ReadOnlySpan<byte> prefix)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
         if (_modifiedFromLastFind)
         {
             if (!_removedCurrent) _keyIndex++;
@@ -153,7 +171,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         else
         {
             if (_keyIndex < 0) return FindFirstKey(prefix);
-            if (_transaction._btreeRoot!.FindNextKey(ref _stack))
+            if (_transaction._btreeRoot.FindNextKey(ref _stack))
             {
                 if (CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
                 {
@@ -170,8 +188,10 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
         _modifiedFromLastFind = false;
-        return _transaction._btreeRoot!.FindKey(ref _stack, out _keyIndex, key, prefixLen);
+        return _transaction._btreeRoot.FindKey(ref _stack, out _keyIndex, key, prefixLen);
     }
 
     public long GetKeyIndex()
@@ -186,44 +206,49 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindKeyIndex(in ReadOnlySpan<byte> prefix, long index)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
         _modifiedFromLastFind = false;
-        if (_transaction._btreeRoot!.FindKey(ref _stack, out _keyIndex, prefix, (uint)prefix.Length) ==
+        if (_transaction._btreeRoot.FindKey(ref _stack, out _keyIndex, prefix, (uint)prefix.Length) ==
             FindResult.NotFound)
         {
             return false;
         }
 
         _keyIndex += index;
-        if (_keyIndex < 0 || _keyIndex >= _transaction._btreeRoot!.CalcKeyCount())
+        if (_keyIndex < 0 || _keyIndex >= _transaction._btreeRoot.CalcKeyCount())
         {
             _keyIndex = -1;
             _stack.Clear();
             return false;
         }
 
-        _transaction._btreeRoot!.FillStackByIndex(ref _stack, _keyIndex);
+        _transaction._btreeRoot.FillStackByIndex(ref _stack, _keyIndex);
         return true;
     }
 
     public bool FindKeyIndex(long index)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
         _modifiedFromLastFind = false;
         _keyIndex = index;
-        if (index < 0 || index >= _transaction._btreeRoot!.CalcKeyCount())
+        if (index < 0 || index >= _transaction._btreeRoot.CalcKeyCount())
         {
             _keyIndex = -1;
             _stack.Clear();
             return false;
         }
 
-        _transaction._btreeRoot!.FillStackByIndex(ref _stack, index);
+        _transaction._btreeRoot.FillStackByIndex(ref _stack, index);
         return true;
     }
 
     public bool KeyHasPrefix(in ReadOnlySpan<byte> prefix)
     {
         if (_keyIndex == -1) return false;
-        return CheckPrefixIn(prefix, GetCurrentKeyFromStack());
+        ReadOnlySpan<byte> key = GetCurrentKeyFromStack();
+        return key.StartsWith(prefix);
     }
 
     public void Invalidate()
@@ -329,7 +354,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public void SetValue(in ReadOnlySpan<byte> value)
     {
-        _transaction.MakeWritable();
+        _transaction!.MakeWritable();
         if (_keyIndex != -1 && _stack.Count == 0)
         {
             _transaction._btreeRoot!.FillStackByIndex(ref _stack, _keyIndex);
@@ -341,6 +366,8 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     void EnsureValidCursor()
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
         if (_keyIndex == -1 || _stack.Count == 0)
         {
             if (_modifiedFromLastFind && _keyIndex != -1)
@@ -359,7 +386,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
     {
         EnsureValidCursor();
         var keyIndexToRemove = (ulong)_keyIndex;
-        var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
+        var cursor = (IKeyValueDBCursorInternal)_transaction!.FirstCursor;
         while (cursor != null)
         {
             if (cursor != this)
@@ -387,7 +414,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         var lastKeyIndex = (ulong)trueTo.GetKeyIndex();
         if (lastKeyIndex < firstKeyIndex) return 0;
 
-        var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
+        var cursor = (IKeyValueDBCursorInternal)_transaction!.FirstCursor;
         while (cursor != null)
         {
             if (cursor != this || cursor != to)
@@ -413,6 +440,8 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
         var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
         while (cursor != null)
         {
@@ -432,7 +461,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
             Stack = ref _stack
         };
         _transaction.MakeWritable();
-        _transaction._btreeRoot!.CreateOrUpdate(ref ctx);
+        _transaction._btreeRoot.CreateOrUpdate(ref ctx);
         _keyIndex = ctx.KeyIndex;
         if (ctx.Created)
         {
@@ -453,6 +482,8 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
     {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
         var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
         while (cursor != null)
         {

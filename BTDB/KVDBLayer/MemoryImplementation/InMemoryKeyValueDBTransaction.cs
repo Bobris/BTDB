@@ -27,7 +27,8 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
 
     public IKeyValueDBCursor CreateCursor()
     {
-        return new InMemoryKeyValueDBCursor(this);
+        ObjectDisposedException.ThrowIf(_btreeRoot == null, this);
+        return InMemoryKeyValueDBCursor.Create(this);
     }
 
     internal void MakeWritable()
@@ -59,7 +60,8 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
 
     public long GetKeyValueCount()
     {
-        return _btreeRoot!.CalcKeyCount();
+        ObjectDisposedException.ThrowIf(_btreeRoot == null, this);
+        return _btreeRoot.CalcKeyCount();
     }
 
     public bool IsWriting()
@@ -84,10 +86,11 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
 
     public void SetCommitUlong(ulong value)
     {
-        if (_btreeRoot!.CommitUlong != value)
+        ObjectDisposedException.ThrowIf(_btreeRoot == null, this);
+        if (_btreeRoot.CommitUlong != value)
         {
             MakeWritable();
-            _btreeRoot!.CommitUlong = value;
+            _btreeRoot.CommitUlong = value;
         }
     }
 
@@ -98,7 +101,7 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
 
     public void Commit()
     {
-        if (_btreeRoot! == null) throw new BTDBException("Transaction already committed or disposed");
+        if (_btreeRoot == null) throw new BTDBException("Transaction already committed or disposed");
         var currentBtreeRoot = _btreeRoot;
         _btreeRoot = null;
         if (_preapprovedWriting)
@@ -137,10 +140,11 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
 
     public void SetUlong(uint idx, ulong value)
     {
-        if (_btreeRoot!.GetUlong(idx) != value)
+        ObjectDisposedException.ThrowIf(_btreeRoot == null, this);
+        if (_btreeRoot.GetUlong(idx) != value)
         {
             MakeWritable();
-            _btreeRoot!.SetUlong(idx, value);
+            _btreeRoot.SetUlong(idx, value);
         }
     }
 
