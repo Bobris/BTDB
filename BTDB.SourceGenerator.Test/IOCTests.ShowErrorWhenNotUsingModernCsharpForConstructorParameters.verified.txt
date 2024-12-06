@@ -1,14 +1,23 @@
 ﻿{
   Diagnostics: [
     {
-      Id: BTDB0001,
-      Title: Must use CollectionExpression syntax for ConstructorParameters,
-      Severity: Error,
-      WarningLevel: 0,
-      Location: : (7,70)-(7,90),
-      MessageFormat: Must use CollectionExpression syntax for ConstructorParameters,
+      Location: /*
+
+            [BTDB.GenerateFor(typeof(Logger), ConstructorParameters = new [] {typeof(int)})]
+                                                                      ^^^^^^^^^^^^^^^^^^^^
+            public class Logger: ILogger
+*/
+ : (7,70)-(7,90),
       Message: Must use CollectionExpression syntax for ConstructorParameters,
-      Category: BTDB
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0001,
+        Title: Must use CollectionExpression syntax for ConstructorParameters,
+        MessageFormat: Must use CollectionExpression syntax for ConstructorParameters,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
     }
   ]
 }
