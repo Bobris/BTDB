@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 
@@ -12,6 +13,17 @@ public static class ExtensionMethods
         var memoryBuf = buf.AsMemory();
         cursor.GetKeyMemory(ref memoryBuf, true);
         return buf;
+    }
+
+    public static void GetKeyIntoMemWriter(this IKeyValueDBCursor cursor, ref MemWriter writer)
+    {
+        writer.Reset();
+        var span = cursor.GetKeySpan(
+            writer.BlockWriteToSpan((int)cursor.GetStorageSizeOfCurrentKey().Key, out var needToBeWritten), true);
+        if (needToBeWritten)
+        {
+            writer.WriteBlock(span);
+        }
     }
 
     public static byte[] SlowGetValue(this IKeyValueDBCursor cursor)

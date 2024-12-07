@@ -51,6 +51,7 @@ static class Program
         //var cts = new CancellationTokenSource();
         //Console.CancelKeyPress += delegate { cts.Cancel(); };
         //new AutoSplitSizeTest().Run("/tmp/db", cts.Token);
-        BenchmarkRunner.Run<BenchLockTest>();
+        //BenchmarkRunner.Run<BenchLockTest>();
+        new GatherSpeedTest().Run();
     }
 }
