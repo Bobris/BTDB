@@ -77,13 +77,6 @@ static class TreeNodeUtils
         Unsafe.CopyBlockUnaligned(dst.ToPointer(), src.ToPointer(), (uint)size);
     }
 
-    internal static bool IsPrefix(in ReadOnlySpan<byte> data, in ReadOnlySpan<byte> prefix)
-    {
-        if (data.Length < prefix.Length)
-            return false;
-        return data[..prefix.Length].SequenceEqual(prefix);
-    }
-
     internal static int FindFirstDifference(in ReadOnlySpan<byte> buf1, in ReadOnlySpan<byte> buf2)
     {
         return buf1.CommonPrefixLength(buf2);

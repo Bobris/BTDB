@@ -76,10 +76,10 @@ public class GatherSpeedTest
         for (int i = 0; i < 2; i++)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            t.GatherById(coll, 0, 100, Constraint<ulong>.Any, Constraint<ulong>.Any, Constraint<ulong>.Any,
-                Constraint.String.Exact("nonexistent"));
+            var count = t.GatherById(coll, 0, 100, Constraint<ulong>.Any, Constraint<ulong>.Any, Constraint<ulong>.Any,
+                Constraint.String.Contains("@"));
             sw.Stop();
-            Console.WriteLine("GatherById took " + sw.ElapsedMilliseconds + "ms");
+            Console.WriteLine("GatherById took " + sw.ElapsedMilliseconds + "ms Found " + count);
         }
     }
 }

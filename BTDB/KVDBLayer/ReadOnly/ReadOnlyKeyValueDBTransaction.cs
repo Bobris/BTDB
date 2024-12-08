@@ -244,7 +244,7 @@ public class ReadOnlyKeyValueDBTransaction : IKeyValueDBTransaction
             prefix = prefix[nodePrefix.Length..];
         }
 
-        return TreeNodeUtils.IsPrefix(GetKeySuffixSpan(ownerBegin, top, top._pos), prefix);
+        return GetKeySuffixSpan(ownerBegin, top, top._pos).StartsWith(prefix);
     }
 
     static ReadOnlySpan<byte> GetKeySuffixSpan(nuint ownerBegin, in StackItem top, uint topPos)

@@ -105,7 +105,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     [SkipLocalsInit]
     unsafe bool FindNextKey(bool first = false)
     {
-        Span<byte> buf = stackalloc byte[512];
+        Span<byte> buf = stackalloc byte[1024];
         ref var writer = ref _key;
         var i = 0;
         if (first)
@@ -165,6 +165,8 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
             writer.UpdateBuffer(key);
             return true;
         }
+
+        var dataDidntChangedForConstraint = i;
         for (var j = i; j < _constraints.Length; j++) _constraints[j].Offset = -1;
         var offsetPrefix = i > 0 ? _constraints[i - 1].Offset : _keyBytesCount;
         fixed (void* _ = key)
@@ -204,6 +206,11 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T>
             {
                 goto goNextFast;
             }
+        }
+
+        if (dataDidntChangedForConstraint < i && _skipNextOn == -1)
+        {
+            goto goNextKey;
         }
 
         switch (_constraints[i].MatchType)

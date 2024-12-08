@@ -941,7 +941,7 @@ public class BTreeImpl12
     internal IntPtr CloneNode(IntPtr nodePtr)
     {
         var size = NodeUtils12.NodeSize(nodePtr);
-        var newNode = _allocator.Allocate((IntPtr)size);
+        var newNode = _allocator.Allocate(size);
         TreeNodeUtils.CopyMemory(nodePtr, newNode, size);
         ref var header = ref NodeUtils12.Ptr2NodeHeader(newNode);
         header._referenceCount = 1;
@@ -970,9 +970,9 @@ public class BTreeImpl12
     {
         if (NodeUtils12.Ptr2NodeHeader(node).IsNodeLeaf) return;
         var ptrs = NodeUtils12.GetBranchValuePtrs(node);
-        for (var i = 0; i < ptrs.Length; i++)
+        foreach (var t in ptrs)
         {
-            NodeUtils12.Reference(ptrs[i]);
+            NodeUtils12.Reference(t);
         }
     }
 
@@ -991,18 +991,18 @@ public class BTreeImpl12
         if (nodeHeader.HasLongKeys)
         {
             var ptrs = NodeUtils12.GetLongKeyPtrs(node);
-            for (var i = 0; i < ptrs.Length; i++)
+            foreach (var t in ptrs)
             {
-                FreeLongKey(ptrs[i]);
+                FreeLongKey(t);
             }
         }
 
         if (!nodeHeader.IsNodeLeaf)
         {
             var ptrs = NodeUtils12.GetBranchValuePtrs(node);
-            for (var i = 0; i < ptrs.Length; i++)
+            foreach (var t in ptrs)
             {
-                Dereference(ptrs[i]);
+                Dereference(t);
             }
         }
 
@@ -1057,7 +1057,7 @@ public class BTreeImpl12
         ptr = newNode;
     }
 
-    internal unsafe bool FindExact(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> key)
+    internal static unsafe bool FindExact(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> key)
     {
         stack.Clear();
         var top = rootNode.Root;
@@ -1083,7 +1083,7 @@ public class BTreeImpl12
                         return false;
                     }
 
-                    var comp = key.Slice(0, header._keyPrefixLength).SequenceCompareTo(prefix);
+                    var comp = key[..header._keyPrefixLength].SequenceCompareTo(prefix);
                     if (comp != 0)
                     {
                         stack.Clear();
@@ -1091,7 +1091,7 @@ public class BTreeImpl12
                     }
                 }
 
-                var keyRest = key.Slice(header._keyPrefixLength);
+                var keyRest = key[header._keyPrefixLength..];
                 if (header.HasLongKeys)
                 {
                     var keys = NodeUtils12.GetLongKeyPtrs(top);
@@ -1439,14 +1439,14 @@ public class BTreeImpl12
         if (header.HasLongKeys)
         {
             var keys = NodeUtils12.GetLongKeyPtrs(nodePtr);
-            return TreeNodeUtils.IsPrefix(NodeUtils12.LongKeyPtrToSpan(keys[idx]), prefix);
+            return ((ReadOnlySpan<byte>)NodeUtils12.LongKeyPtrToSpan(keys[idx])).StartsWith(prefix);
         }
         else
         {
             var keyOffsets = NodeUtils12.GetKeySpans(nodePtr, out var keySuffixes);
             var ofs = keyOffsets[idx];
             var lenSuffix = keyOffsets[idx + 1] - ofs;
-            return TreeNodeUtils.IsPrefix(keySuffixes.Slice(ofs, lenSuffix), prefix);
+            return ((ReadOnlySpan<byte>)keySuffixes.Slice(ofs, lenSuffix)).StartsWith(prefix);
         }
     }
 

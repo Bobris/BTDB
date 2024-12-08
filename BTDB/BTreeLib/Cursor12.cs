@@ -91,7 +91,7 @@ class Cursor12 : ICursor
 
     public bool FindExact(in ReadOnlySpan<byte> key)
     {
-        return _rootNode.Impl.FindExact(_rootNode, ref _stack, key);
+        return BTreeImpl12.FindExact(_rootNode, ref _stack, key);
     }
 
     public FindResult Find(in ReadOnlySpan<byte> key)
@@ -328,6 +328,8 @@ class Cursor12 : ICursor
     {
         if (_stack.Count == 0)
             return false;
+        if (prefix.Length == 0)
+            return true;
         ref var stackItem = ref _stack[_stack.Count - 1];
         return BTreeImpl12.IsKeyPrefix(stackItem._node, stackItem._posInNode, prefix);
     }
