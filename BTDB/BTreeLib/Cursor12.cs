@@ -424,4 +424,9 @@ class Cursor12 : ICursor
     {
         BTreeImpl12.TestTreeCorrectness(_rootNode.Root, ref _stack);
     }
+
+    public void FastIterate(ref Span<byte> buffer, ref long keyIndex, CursorIterateCallback callback)
+    {
+        BTreeImpl12.FastIterate(0, _rootNode.Root, ref _stack, ref buffer, ref keyIndex, callback);
+    }
 }

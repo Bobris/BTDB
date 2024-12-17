@@ -18,4 +18,7 @@ interface IBTreeRootNode : IBTreeNode
     bool FindNextKey(ref StructList<NodeIdxPair> stack);
     bool FindPreviousKey(ref StructList<NodeIdxPair> stack);
     void BuildTree(long keyCount, Func<BTreeLeafMember> memberGenerator);
+
+    void FastIterate(ref StructList<NodeIdxPair> stack, ref long keyIndex, ref Span<byte> buffer,
+        CursorIterateCallback callback);
 }

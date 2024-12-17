@@ -45,6 +45,7 @@ public interface ICursor
     }
 
     void TestTreeCorrectness();
+    void FastIterate(ref Span<byte> buffer, ref long keyIndex, CursorIterateCallback callback);
 }
 
 public delegate void BuildTreeCallback(ref MemReader reader, ref ByteBuffer key, in Span<byte> value);

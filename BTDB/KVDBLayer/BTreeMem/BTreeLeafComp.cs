@@ -430,6 +430,23 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         stats.GetOrAddValueRef((depth, (uint)_keyValues.Length))++;
     }
 
+    public void FastIterate(int deepness, ref StructList<NodeIdxPair> stack, ref long keyIndex,
+        CursorIterateCallback callback)
+    {
+        if (deepness == stack.Count)
+        {
+            stack.Add(new() { Node = this, Idx = 0 });
+        }
+
+        for (var i = stack.Last.Idx; i < _keyValues.Length; i++, stack.Last.Idx++)
+        {
+            callback.Invoke(keyIndex, _keyBytes.AsSpan(_keyValues[i].KeyOffset, _keyValues[i].KeyLength));
+            keyIndex++;
+        }
+
+        stack.Pop();
+    }
+
     static void RecalculateOffsets(Member[] keyValues)
     {
         ushort ofs = 0;

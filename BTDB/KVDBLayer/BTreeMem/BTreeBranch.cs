@@ -490,4 +490,20 @@ class BTreeBranch : IBTreeNode
             child.CalcBTreeStats(stats, depth + 1);
         }
     }
+
+    public void FastIterate(int deepness, ref StructList<NodeIdxPair> stack, ref long keyIndex,
+        CursorIterateCallback callback)
+    {
+        if (deepness == stack.Count)
+        {
+            stack.Add(new() { Node = this, Idx = 0 });
+        }
+
+        for (var i = stack[deepness].Idx; i < _children.Length; i++, stack[deepness].Idx++)
+        {
+            _children[i].FastIterate(deepness + 1, ref stack, ref keyIndex, callback);
+        }
+
+        stack.Pop();
+    }
 }

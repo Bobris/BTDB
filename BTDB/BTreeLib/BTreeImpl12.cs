@@ -2585,4 +2585,86 @@ public class BTreeImpl12
             }
         }
     }
+
+    internal static void FastIterate(int deepness, IntPtr top, ref StructList<CursorItem> stack, ref Span<byte> buffer,
+        ref long keyIndex, CursorIterateCallback callback)
+    {
+        if (top == IntPtr.Zero)
+            return;
+        if (deepness == stack.Count)
+        {
+            stack.AddRef().Set(top, 0);
+        }
+
+        ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+        if (header.IsNodeLeaf)
+        {
+            var prefixSpan = NodeUtils12.GetPrefixSpan(top);
+            if (prefixSpan.Length > buffer.Length)
+            {
+                buffer = GC.AllocateUninitializedArray<byte>(NewSize(prefixSpan.Length, buffer.Length));
+            }
+
+            prefixSpan.CopyTo(buffer);
+            if (header.HasLongKeys)
+            {
+                var longKeys = NodeUtils12.GetLongKeyPtrs(top);
+                for (var i = (int)stack.Last._posInNode; i < longKeys.Length; i++, stack.Last._posInNode++)
+                {
+                    var key = NodeUtils12.LongKeyPtrToSpan(longKeys[i]);
+                    if (key.Length + prefixSpan.Length > buffer.Length)
+                    {
+                        buffer = GC.AllocateUninitializedArray<byte>(NewSize(key.Length + prefixSpan.Length,
+                            buffer.Length));
+                        prefixSpan.CopyTo(buffer);
+                    }
+
+                    key.CopyTo(buffer[prefixSpan.Length..]);
+                    callback.Invoke(keyIndex, buffer[..(prefixSpan.Length + key.Length)]);
+                    keyIndex++;
+                }
+            }
+            else
+            {
+                var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
+                for (var i = (int)stack.Last._posInNode; i < keyOfs.Length - 1; i++, stack.Last._posInNode++)
+                {
+                    var key = keyData.Slice(keyOfs[i], keyOfs[i + 1] - keyOfs[i]);
+                    if (key.Length + prefixSpan.Length > buffer.Length)
+                    {
+                        buffer = GC.AllocateUninitializedArray<byte>(NewSize(key.Length + prefixSpan.Length,
+                            buffer.Length));
+                        prefixSpan.CopyTo(buffer);
+                    }
+
+                    key.CopyTo(buffer[prefixSpan.Length..]);
+                    callback.Invoke(keyIndex, buffer[..(prefixSpan.Length + key.Length)]);
+                    keyIndex++;
+                }
+            }
+        }
+        else
+        {
+            var children = NodeUtils12.GetBranchValuePtrs(top);
+            for (var i = (int)stack[deepness]._posInNode; i < children.Length; i++, stack[deepness]._posInNode++)
+            {
+                FastIterate(deepness + 1, children[i], ref stack, ref buffer, ref keyIndex, callback);
+            }
+        }
+
+        stack.Pop();
+    }
+
+    static int NewSize(int size, int existingSize)
+    {
+        if (existingSize * 2L > Array.MaxLength)
+        {
+            if (size > Array.MaxLength)
+                throw new ArgumentOutOfRangeException();
+            return Array.MaxLength;
+        }
+
+        size = Math.Max(size, existingSize * 2);
+        return size;
+    }
 }

@@ -20,4 +20,7 @@ interface IBTreeNode
     IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex);
     IBTreeNode EraseOne(long transactionId, long keyIndex);
     void CalcBTreeStats(RefDictionary<(uint Depth, uint Children), uint> stats, uint depth);
+
+    void FastIterate(int deepness, ref StructList<NodeIdxPair> stack, ref long keyIndex,
+        CursorIterateCallback callback);
 }

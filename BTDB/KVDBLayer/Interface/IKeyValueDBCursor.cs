@@ -155,4 +155,14 @@ public interface IKeyValueDBCursor : IDisposable
     /// Else it will update key and return Updated.
     /// </returns>
     UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen);
+
+    /// <summary>
+    /// From current position it will repeatedly call callback for each key in ascending order.
+    /// It is forbidden to modify database in callback. It is also not allowed to call any Cursor method on this cursor.
+    /// </summary>
+    /// <param name="buffer">It will be used and enlarged to fit keys</param>
+    /// <param name="callback">Iteration will stop if callback returns true</param>
+    void FastIterate(ref Span<byte> buffer, CursorIterateCallback callback);
 }
+
+public delegate bool CursorIterateCallback(long keyIndex, ReadOnlySpan<byte> key);

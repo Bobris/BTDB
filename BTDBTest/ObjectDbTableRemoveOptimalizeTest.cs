@@ -453,6 +453,11 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDBCursorInternalImplementation.UpdateKeySuffix(in key, prefixLen);
         }
 
+        public void FastIterate(ref Span<byte> buffer, CursorIterateCallback callback)
+        {
+            _keyValueDBCursorInternalImplementation.FastIterate(ref buffer, callback);
+        }
+
         public void NotifyRemove(ulong startIndex, ulong endIndex)
         {
             _keyValueDBCursorInternalImplementation.NotifyRemove(startIndex, endIndex);

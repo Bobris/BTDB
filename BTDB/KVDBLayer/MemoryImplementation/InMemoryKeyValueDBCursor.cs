@@ -13,6 +13,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
     bool _modifiedFromLastFind;
     bool _removedCurrent;
     long _keyIndex;
+    bool _modificationForbiden;
 
     public static InMemoryKeyValueDBCursor Create(InMemoryKeyValueDBTransaction transaction)
     {
@@ -508,8 +509,24 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         return ctx.Result;
     }
 
+    public void FastIterate(ref Span<byte> buffer, CursorIterateCallback callback)
+    {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction._btreeRoot == null, _transaction);
+        _modificationForbiden = true;
+        try
+        {
+            _transaction._btreeRoot!.FastIterate(ref _stack, ref _keyIndex, ref buffer, callback);
+        }
+        finally
+        {
+            _modificationForbiden = false;
+        }
+    }
+
     public void NotifyRemove(ulong startIndex, ulong endIndex)
     {
+        if (_modificationForbiden) throw new BTDBException("DB cannot be modified during fast iteration");
         if (_modifiedFromLastFind)
         {
             if (_keyIndex == -1) return;
@@ -534,6 +551,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public void PreNotifyUpsert()
     {
+        if (_modificationForbiden) throw new BTDBException("DB cannot be modified during fast iteration");
         _stack.Clear();
         if (!_modifiedFromLastFind)
         {
@@ -560,6 +578,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public void NotifyWritableTransaction()
     {
+        if (_modificationForbiden) throw new BTDBException("DB cannot be modified during fast iteration");
         _stack.Clear();
     }
 }

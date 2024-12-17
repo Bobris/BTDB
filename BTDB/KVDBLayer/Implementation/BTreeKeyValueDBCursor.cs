@@ -13,6 +13,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     ICursor? _cursor;
     bool _modifiedFromLastFind;
     bool _removedCurrent;
+    bool _modificationForbidden;
     long _keyIndex;
 
     public static BTreeKeyValueDBCursor Create(BTreeKeyValueDBTransaction transaction)
@@ -555,8 +556,25 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         return UpdateKeySuffixResult.Updated;
     }
 
+    public void FastIterate(ref Span<byte> buffer, CursorIterateCallback callback)
+    {
+        ObjectDisposedException.ThrowIf(_transaction == null, this);
+        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        _modificationForbidden = true;
+        try
+        {
+            if (_keyIndex == -1) _keyIndex = _cursor!.CalcIndex();
+            _cursor!.FastIterate(ref buffer, ref _keyIndex, callback);
+        }
+        finally
+        {
+            _modificationForbidden = false;
+        }
+    }
+
     public void NotifyRemove(ulong startIndex, ulong endIndex)
     {
+        if (_modificationForbidden) throw new BTDBException("DB modification during FastIterate is forbidden");
         if (_modifiedFromLastFind)
         {
             if (_keyIndex == -1) return;
@@ -586,6 +604,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public void PreNotifyUpsert()
     {
+        if (_modificationForbidden) throw new BTDBException("DB modification during FastIterate is forbidden");
         if (_keyIndex == -1)
         {
             if (!_cursor!.IsValid()) return;
@@ -617,6 +636,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public void NotifyWritableTransaction()
     {
+        if (_modificationForbidden) throw new BTDBException("DB modification during FastIterate is forbidden");
         _cursor!.SetNewRoot(_transaction!.BTreeRoot!);
     }
 }
