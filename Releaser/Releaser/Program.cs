@@ -70,11 +70,12 @@ static class Program
         Console.WriteLine("Press 1 for Major " + majorVersionNumber.ToString(3));
         Console.WriteLine("Press 2 for Minor " + minorVersionNumber.ToString(3));
         Console.WriteLine("Press 3 for Patch " + patchVersionNumber.ToString(3));
+        Console.WriteLine("Press 4 for Nuget repush");
         var choice = Console.ReadKey().KeyChar;
         Console.WriteLine();
-        if (choice < '1' || choice > '3')
+        if (choice < '1' || choice > '4')
         {
-            Console.WriteLine("Not pressed 1, 2 or 3. Exiting.");
+            Console.WriteLine("Not pressed 1, 2, 3 or 4. Exiting.");
             return 1;
         }
 
@@ -113,6 +114,7 @@ static class Program
         BuildSourceGenerator(projDir, newVersion, nugetToken);
         BuildODbDump(projDir);
 
+        if (choice == '4') return 0;
         var client = new GitHubClient(new ProductHeaderValue("BTDB-releaser"));
         client.SetRequestTimeout(TimeSpan.FromMinutes(15));
         var fileNameOfGithubToken =
@@ -156,7 +158,8 @@ static class Program
         var uploadAsset = await UploadWithRetry(projDir + "/artifacts/bin/BTDB/Release/", client, release2, "BTDB.zip");
         Console.WriteLine("BTDB url:");
         Console.WriteLine(uploadAsset.BrowserDownloadUrl);
-        uploadAsset = await UploadWithRetry(projDir + "/artifacts/bin/ODbDump/Release/", client, release2, "ODbDump.zip");
+        uploadAsset =
+            await UploadWithRetry(projDir + "/artifacts/bin/ODbDump/Release/", client, release2, "ODbDump.zip");
         Console.WriteLine("ODbDump url:");
         Console.WriteLine(uploadAsset.BrowserDownloadUrl);
         Console.WriteLine("Press Enter for finish");
@@ -220,7 +223,8 @@ static class Program
             File.Copy(fn, releaseSources + "/" + relfn);
         }
 
-        System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources, projDir + "/artifacts/bin/BTDB/release/BTDB.zip",
+        System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources,
+            projDir + "/artifacts/bin/BTDB/release/BTDB.zip",
             System.IO.Compression.CompressionLevel.Optimal, false);
         start = new("dotnet", "nuget push BTDB." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
         {
