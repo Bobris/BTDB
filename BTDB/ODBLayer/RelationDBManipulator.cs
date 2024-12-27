@@ -1032,13 +1032,13 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     public TItem FirstByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
         IOrderer[]? orderers, bool hasOrDefault) where TItem : class
     {
-        MemWriter keyBytes = new();
+        var keyBytes = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         keyBytes.WriteBlock(_relationInfo.Prefix);
 
         var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
         var primaryKeyFields = relationVersionInfo.PrimaryKeyFields.Span;
 
-        Span<byte> buffer = stackalloc byte[1024];
+        Span<byte> buffer = stackalloc byte[4096];
         var writer = MemWriter.CreateFromStackAllocatedSpan(buffer);
         if (orderers == null || orderers.Length == 0)
         {
@@ -1085,12 +1085,11 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     public TItem FirstBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex,
         IOrderer[]? orderers, bool hasOrDefault) where TItem : class
     {
-        var keyBytes = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[16]);
+        var keyBytes = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         keyBytes.WriteBlock(_relationInfo.PrefixSecondary);
         var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
         keyBytes.WriteUInt8((byte)remappedSecondaryKeyIndex);
-        Span<byte> keyBuffer = stackalloc byte[4096];
-        var writer = MemWriter.CreateFromStackAllocatedSpan(keyBuffer);
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         if (orderers == null || orderers.Length == 0)
         {
             using var enumerator = new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo,
@@ -1258,7 +1257,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             skip = 0;
         }
 
-        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[1024]);
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
         var primaryKeyFields = relationVersionInfo.PrimaryKeyFields.Span;
 
@@ -1363,7 +1362,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         var fastIteration = IsFastIterable(constraints, constraints.Length);
 
-        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[1024]);
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         if (orderers == null || orderers.Length == 0)
         {
             using var enumerator = new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo,
