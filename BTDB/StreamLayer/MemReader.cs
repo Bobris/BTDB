@@ -39,6 +39,7 @@ public struct MemReader
         Controller = null;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static MemReader CreateFromPinnedSpan(ReadOnlySpan<byte> buf)
     {
         return new(buf);
@@ -906,28 +907,30 @@ public struct MemReader
 
     public void SkipBlock(uint length)
     {
-        if (length > End - Current)
+        var newCurrent = Current + (nint)length;
+        if (newCurrent <= End)
         {
-            if (Controller is IMemReader memReader)
-            {
-                length -= (uint)(End - Current);
-                Current = End;
-
-                while (length > 0x4000_0000)
-                {
-                    memReader.SkipBlock(ref this, 0x4000_0000);
-                    length -= 0x4000_0000;
-                }
-
-                memReader.SkipBlock(ref this, length);
-                return;
-            }
-
-            Current = End;
-            PackUnpack.ThrowEndOfStreamException();
+            Current = newCurrent;
+            return;
         }
 
-        Current += (nint)length;
+        if (Controller is IMemReader memReader)
+        {
+            length -= (uint)(End - Current);
+            Current = End;
+
+            while (length > 0x4000_0000)
+            {
+                memReader.SkipBlock(ref this, 0x4000_0000);
+                length -= 0x4000_0000;
+            }
+
+            memReader.SkipBlock(ref this, length);
+            return;
+        }
+
+        Current = End;
+        PackUnpack.ThrowEndOfStreamException();
     }
 
     public void SkipByteArray()

@@ -20,7 +20,7 @@ public interface IConstraint
         Exact
     }
 
-    public enum MatchResult
+    public enum MatchResult : uint
     {
         No = 0,
         Yes = 1,
@@ -28,7 +28,13 @@ public interface IConstraint
         YesSkipNext = 3 // This cannot be returned from MatchType.Exact
     }
 
+    static bool IsYesLike(MatchResult result)
+    {
+        return ((uint)result & 1) != 0;
+    }
+
     public bool IsAnyConstraint();
+    public bool IsSimpleExact();
     public MatchType Prepare(ref MemWriter buffer);
 
     // Will be called only for Prefix and Exact MatchTypes, for Exact it have to write full part of key
@@ -37,15 +43,25 @@ public interface IConstraint
     // return true if match was successful and in ALL CASES SKIP reader after this field
     // when MatchType is Exact this method does not need to be called at all if part of key matches written prefix
     public MatchResult Match(ref MemReader reader, in MemWriter buffer);
+
+    // return true if match was successful, reader does not need to be updated (that's why it must at least as fast as Match)
+    // when MatchType is Exact this method does not need to be called at all if part of key matches written prefix
+    public MatchResult MatchLast(ref MemReader reader, in MemWriter buffer);
 }
 
 public abstract class Constraint<T> : IConstraint
 {
     public virtual bool IsAnyConstraint() => false;
+    public abstract bool IsSimpleExact();
 
     public abstract IConstraint.MatchType Prepare(ref MemWriter buffer);
     public abstract void WritePrefix(ref MemWriter writer, in MemWriter buffer);
     public abstract IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer);
+
+    public virtual IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        return Match(ref reader, buffer);
+    }
 
     public static IConstraint.MatchResult AsMatchResult(bool value)
     {
@@ -147,6 +163,7 @@ public class ConstraintNullableAny<T> : Constraint<T>
     }
 
     public override bool IsAnyConstraint() => true;
+    public override bool IsSimpleExact() => false;
 
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
@@ -166,10 +183,25 @@ public class ConstraintNullableAny<T> : Constraint<T>
 
         return IConstraint.MatchResult.Yes;
     }
+
+    public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        if (reader.ReadUInt8() != 0)
+        {
+            return _anyT.MatchLast(ref reader, buffer);
+        }
+
+        return IConstraint.MatchResult.Yes;
+    }
 }
 
 public class ConstraintNotImplemented<T> : Constraint<T>
 {
+    public override bool IsSimpleExact()
+    {
+        throw new NotImplementedException();
+    }
+
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         throw new NotImplementedException();
@@ -527,7 +559,9 @@ public static partial class Constraint
             new ConstraintStringPredicateSlow(predicate);
 
         public static Constraint<string> Exact(string value) => new ConstraintStringExact(value);
-        public static Constraint<string> ExactCaseInsensitive(string value) => Predicate((in ReadOnlySpan<char> v) => v.Equals(value, StringComparison.OrdinalIgnoreCase));
+
+        public static Constraint<string> ExactCaseInsensitive(string value) => Predicate((in ReadOnlySpan<char> v) =>
+            v.Equals(value, StringComparison.OrdinalIgnoreCase));
 
         public static Constraint<string> UpTo(string value, bool including = true) =>
             new ConstraintStringUpTo(value, including);
@@ -553,6 +587,8 @@ public class ConstraintDateTimeRange : Constraint<DateTime>
         _to = to;
         _including = including;
     }
+
+    public override bool IsSimpleExact() => false;
 
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
@@ -581,6 +617,8 @@ public class NullableExactValue<T> : Constraint<T>
         _exact = exact;
     }
 
+    public override bool IsSimpleExact() => _exact.IsSimpleExact();
+
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         _exact.Prepare(ref buffer);
@@ -602,6 +640,16 @@ public class NullableExactValue<T> : Constraint<T>
 
         return IConstraint.MatchResult.No;
     }
+
+    public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        if (reader.ReadUInt8() == 1)
+        {
+            return _exact.MatchLast(ref reader, buffer);
+        }
+
+        return IConstraint.MatchResult.No;
+    }
 }
 
 public class NullableExactNull<T> : Constraint<T>
@@ -612,6 +660,8 @@ public class NullableExactNull<T> : Constraint<T>
     {
         _anyT = anyT;
     }
+
+    public override bool IsSimpleExact() => true;
 
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
@@ -634,6 +684,16 @@ public class NullableExactNull<T> : Constraint<T>
         _anyT.Match(ref reader, buffer);
         return IConstraint.MatchResult.NoAfterLast;
     }
+
+    public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        if (reader.ReadUInt8() == 0)
+        {
+            return IConstraint.MatchResult.Yes;
+        }
+
+        return IConstraint.MatchResult.NoAfterLast;
+    }
 }
 
 public class FirstConstraint<T> : Constraint<T>
@@ -644,6 +704,9 @@ public class FirstConstraint<T> : Constraint<T>
     {
         _of = of;
     }
+
+    public override bool IsSimpleExact() => false;
+    public override bool IsAnyConstraint() => false;
 
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
@@ -660,6 +723,13 @@ public class FirstConstraint<T> : Constraint<T>
     public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         var res = _of.Match(ref reader, buffer);
+        if (res == IConstraint.MatchResult.Yes) return IConstraint.MatchResult.YesSkipNext;
+        return res;
+    }
+
+    public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        var res = _of.MatchLast(ref reader, buffer);
         if (res == IConstraint.MatchResult.Yes) return IConstraint.MatchResult.YesSkipNext;
         return res;
     }
@@ -681,6 +751,8 @@ public class ConstraintStringPredicate : ConstraintNoPrefix<string>
 
     public ConstraintStringPredicate(PredicateSpanChar predicate) => _predicate = predicate;
 
+    public override bool IsSimpleExact() => false;
+
     [SkipLocalsInit]
     public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
@@ -692,6 +764,8 @@ public class ConstraintStringPredicate : ConstraintNoPrefix<string>
 
 public abstract class ConstraintNoPrefix<T> : Constraint<T>
 {
+    public override bool IsSimpleExact() => false;
+
     public override IConstraint.MatchType Prepare(ref MemWriter buffer) => IConstraint.MatchType.NoPrefix;
 
     public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
@@ -734,6 +808,8 @@ public abstract class ConstraintExact<T> : Constraint<T>
     int _ofs;
     int _len;
 
+    public override bool IsSimpleExact() => true;
+
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         _ofs = (int)buffer.GetCurrentPosition();
@@ -756,6 +832,12 @@ public abstract class ConstraintExact<T> : Constraint<T>
         return IConstraint.MatchResult.No;
     }
 
+    public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        if (reader.PeekSpanTillEof().StartsWith(buffer.AsReadOnlySpan(_ofs, _len))) return IConstraint.MatchResult.Yes;
+        return IConstraint.MatchResult.No;
+    }
+
     protected abstract void Skip(ref MemReader reader);
 }
 
@@ -764,6 +846,8 @@ public abstract class ConstraintUpTo<T> : Constraint<T>
     int _ofs;
     int _len;
     readonly bool _including;
+
+    public override bool IsSimpleExact() => false;
 
     protected ConstraintUpTo(bool including)
     {
@@ -790,6 +874,15 @@ public abstract class ConstraintUpTo<T> : Constraint<T>
         if (readerBuf.Length > _len) readerBuf = readerBuf.Slice(0, _len);
         var comp = readerBuf.SequenceCompareTo(buffer.AsReadOnlySpan(_ofs, _len));
         Skip(ref reader);
+        if (comp < 0 || _including && comp == 0) return IConstraint.MatchResult.Yes;
+        return IConstraint.MatchResult.NoAfterLast;
+    }
+
+    public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        var readerBuf = reader.PeekSpanTillEof();
+        if (readerBuf.Length > _len) readerBuf = readerBuf.Slice(0, _len);
+        var comp = readerBuf.SequenceCompareTo(buffer.AsReadOnlySpan(_ofs, _len));
         if (comp < 0 || _including && comp == 0) return IConstraint.MatchResult.Yes;
         return IConstraint.MatchResult.NoAfterLast;
     }
@@ -837,10 +930,16 @@ public class ConstraintStringUpTo : ConstraintUpTo<string>
 public abstract class ConstraintAny<T> : Constraint<T>
 {
     public override bool IsAnyConstraint() => true;
+    public override bool IsSimpleExact() => false;
 
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
         return IConstraint.MatchType.NoPrefix;
+    }
+
+    public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        return IConstraint.MatchResult.Yes;
     }
 
     public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
@@ -906,6 +1005,8 @@ public class ConstraintStringStartsWith : Constraint<string>
     int _ofs;
     int _len;
 
+    public override bool IsSimpleExact() => false;
+
     public ConstraintStringStartsWith(string value)
     {
         _value = value;
@@ -933,6 +1034,16 @@ public class ConstraintStringStartsWith : Constraint<string>
         }
 
         reader.SkipStringOrdered();
+        return IConstraint.MatchResult.No;
+    }
+
+    public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        if (reader.PeekSpanTillEof().StartsWith(buffer.AsReadOnlySpan(_ofs, _len)))
+        {
+            return IConstraint.MatchResult.Yes;
+        }
+
         return IConstraint.MatchResult.No;
     }
 }

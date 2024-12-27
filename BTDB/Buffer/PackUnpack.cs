@@ -587,6 +587,12 @@ public static class PackUnpack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T UnsafeAlignedGet<T>(ReadOnlySpan<T> p, uint offset) where T : unmanaged
+    {
+        return Unsafe.Add(ref MemoryMarshal.GetReference(p), offset);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void UnsafeAdvance(ref ReadOnlySpan<byte> p, int delta)
     {
         p = MemoryMarshal.CreateReadOnlySpan(

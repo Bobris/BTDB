@@ -427,6 +427,8 @@ class Cursor12 : ICursor
 
     public void FastIterate(ref Span<byte> buffer, ref long keyIndex, CursorIterateCallback callback)
     {
+        if (_rootNode.Root == IntPtr.Zero)
+            return;
         BTreeImpl12.FastIterate(0, _rootNode.Root, ref _stack, ref buffer, ref keyIndex, callback);
     }
 }

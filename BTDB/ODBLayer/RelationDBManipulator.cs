@@ -1035,11 +1035,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         MemWriter keyBytes = new();
         keyBytes.WriteBlock(_relationInfo.Prefix);
 
+        var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
+        var primaryKeyFields = relationVersionInfo.PrimaryKeyFields.Span;
+
         Span<byte> buffer = stackalloc byte[1024];
         var writer = MemWriter.CreateFromStackAllocatedSpan(buffer);
         if (orderers == null || orderers.Length == 0)
         {
-            using var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, writer,
+            using var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
+                writer,
                 loaderIndex, constraints);
 
             if (enumerator.MoveNext())
@@ -1052,11 +1056,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
         else
         {
-            var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
-            var primaryKeyFields = relationVersionInfo.PrimaryKeyFields.Span;
             var ordererIdxs = PrepareOrderers(ref constraints, orderers, primaryKeyFields);
 
-            using var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, writer,
+            using var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
+                writer,
                 loaderIndex, constraints);
 
             var sns = new SortNativeStorage(true);
@@ -1082,12 +1085,11 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     public TItem FirstBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex,
         IOrderer[]? orderers, bool hasOrDefault) where TItem : class
     {
-        Span<byte> buf = stackalloc byte[4096];
-        var keyBytes = MemWriter.CreateFromStackAllocatedSpan(buf);
+        var keyBytes = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[16]);
         keyBytes.WriteBlock(_relationInfo.PrefixSecondary);
         var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
         keyBytes.WriteUInt8((byte)remappedSecondaryKeyIndex);
-        Span<byte> keyBuffer = stackalloc byte[1024];
+        Span<byte> keyBuffer = stackalloc byte[4096];
         var writer = MemWriter.CreateFromStackAllocatedSpan(keyBuffer);
         if (orderers == null || orderers.Length == 0)
         {
@@ -1246,7 +1248,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
     [SkipLocalsInit]
     public ulong GatherByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
-        long skip, long take, IOrderer[]? orderers)
+        long skip, long take, IOrderer[]? orderers) where TItem : class
     {
         var keyBytes = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         keyBytes.WriteBlock(_relationInfo.Prefix);
@@ -1257,37 +1259,32 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
 
         var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[1024]);
+        var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
+        var primaryKeyFields = relationVersionInfo.PrimaryKeyFields.Span;
+
+        var firstInKeyValue = FindIndexOfFirstInKeyValue(constraints, primaryKeyFields);
+
+        var fastIteration = IsFastIterable(constraints, firstInKeyValue);
 
         if (orderers == null || orderers.Length == 0)
         {
-            using var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, writer,
+            using var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
+                writer,
                 loaderIndex, constraints);
 
-            var count = 0ul;
-
-            while (enumerator.MoveNextInGather())
+            if (fastIteration)
             {
-                count++;
-                if (skip > 0)
-                {
-                    skip--;
-                    continue;
-                }
-
-                if (take <= 0) continue;
-                take--;
-                target.Add(enumerator.Current);
+                return enumerator.FastGather(skip, take, target);
             }
 
-            return count;
+            return enumerator.NormalGather(skip, take, target);
         }
         else
         {
-            var relationVersionInfo = _relationInfo.ClientRelationVersionInfo;
-            var primaryKeyFields = relationVersionInfo.PrimaryKeyFields.Span;
             var ordererIdxs = PrepareOrderers(ref constraints, orderers, primaryKeyFields);
 
-            using var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes, writer,
+            using var enumerator = new RelationConstraintEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
+                writer,
                 loaderIndex, constraints);
 
             var sns = new SortNativeStorage(false);
@@ -1311,9 +1308,48 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
     }
 
+    static int FindIndexOfFirstInKeyValue(ConstraintInfo[] constraints, ReadOnlySpan<TableFieldInfo> primaryKeyFields)
+    {
+        var firstInKeyValue = constraints.Length;
+        for (var i = 0; i < primaryKeyFields.Length; i++)
+        {
+            if (!primaryKeyFields[i].InKeyValue) continue;
+            firstInKeyValue = i;
+            break;
+        }
+
+        return firstInKeyValue;
+    }
+
+    static bool IsFastIterable(ConstraintInfo[] constraints, int firstInKeyValue)
+    {
+        var indexOfFirstAnyConstraint = -1;
+        for (var i = 0; i < firstInKeyValue; i++)
+        {
+            if (constraints[i].Constraint.IsAnyConstraint())
+            {
+                if (indexOfFirstAnyConstraint == -1)
+                    indexOfFirstAnyConstraint = i;
+            }
+            else if (constraints[i].Constraint.IsSimpleExact())
+            {
+                if (indexOfFirstAnyConstraint != -1)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     [SkipLocalsInit]
     public ulong GatherBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
-        long skip, long take, uint secondaryKeyIndex, IOrderer[]? orderers)
+        long skip, long take, uint secondaryKeyIndex, IOrderer[]? orderers) where TItem : class
     {
         var keyBytes = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         keyBytes.WriteBlock(_relationInfo.PrefixSecondary);
@@ -1324,6 +1360,9 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             take += skip;
             skip = 0;
         }
+
+        var fastIteration = IsFastIterable(constraints, constraints.Length);
+
         var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[1024]);
         if (orderers == null || orderers.Length == 0)
         {
@@ -1331,23 +1370,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 keyBytes, writer,
                 loaderIndex, constraints, remappedSecondaryKeyIndex, this);
 
-            var count = 0ul;
-
-            while (enumerator.MoveNextInGather())
+            if (fastIteration)
             {
-                count++;
-                if (skip > 0)
-                {
-                    skip--;
-                    continue;
-                }
-
-                if (take <= 0) continue;
-                take--;
-                target.Add(enumerator.Current);
+                return enumerator.FastGather(skip, take, target);
             }
 
-            return count;
+            return enumerator.NormalGather(skip, take, target);
         }
         else
         {
@@ -1426,6 +1454,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     public IEnumerable<TItem> ScanByPrimaryKeyPrefix<TItem>(int loaderIndex, ConstraintInfo[] constraints)
+        where TItem : class
     {
         MemWriter keyBytes = new();
         keyBytes.WriteBlock(_relationInfo.Prefix);
@@ -1434,13 +1463,14 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     }
 
     public IEnumerable<TItem> ScanBySecondaryKeyPrefix<TItem>(int loaderIndex, ConstraintInfo[] constraints,
-        uint secondaryKeyIndex)
+        uint secondaryKeyIndex) where TItem : class
     {
         var keyBytes = new MemWriter();
         keyBytes.WriteBlock(_relationInfo.PrefixSecondary);
         var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
         keyBytes.WriteUInt8((byte)remappedSecondaryKeyIndex);
-        return new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes, new MemWriter(),
+        return new RelationConstraintSecondaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
+            new MemWriter(),
             loaderIndex, constraints, remappedSecondaryKeyIndex, this);
     }
 

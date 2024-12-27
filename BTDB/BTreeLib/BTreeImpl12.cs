@@ -2589,8 +2589,6 @@ public class BTreeImpl12
     internal static void FastIterate(int deepness, IntPtr top, ref StructList<CursorItem> stack, ref Span<byte> buffer,
         ref long keyIndex, CursorIterateCallback callback)
     {
-        if (top == IntPtr.Zero)
-            return;
         if (deepness == stack.Count)
         {
             stack.AddRef().Set(top, 0);
@@ -2627,9 +2625,13 @@ public class BTreeImpl12
             else
             {
                 var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
-                for (var i = (int)stack.Last._posInNode; i < keyOfs.Length - 1; i++, stack.Last._posInNode++)
+                for (var i = (int)stack.Last._posInNode;
+                     (uint)i + 1 < (uint)keyOfs.Length;
+                     i++, stack.Last._posInNode++)
                 {
-                    var key = keyData.Slice(keyOfs[i], keyOfs[i + 1] - keyOfs[i]);
+                    var key = keyData[
+                        PackUnpack.UnsafeAlignedGet<ushort>(keyOfs, (uint)i)..PackUnpack.UnsafeAlignedGet<ushort>(
+                            keyOfs, (uint)i + 1)];
                     if (key.Length + prefixSpan.Length > buffer.Length)
                     {
                         buffer = GC.AllocateUninitializedArray<byte>(NewSize(key.Length + prefixSpan.Length,

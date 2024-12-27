@@ -23,6 +23,9 @@ public interface IRecordTable : IRelation<Record>
 {
     ulong GatherById(ICollection<Record> target, long skip, long take, Constraint<ulong> companyId,
         Constraint<ulong> batchId, Constraint<ulong> messageId, Constraint<string> recipient);
+
+    IEnumerable<Record> ScanById(Constraint<ulong> companyId, Constraint<ulong> batchId, Constraint<ulong> messageId,
+        Constraint<string> recipient);
 }
 
 public class GatherSpeedTest
@@ -75,11 +78,19 @@ public class GatherSpeedTest
         ICollection<Record> coll = new List<Record>();
         for (int i = 0; i < 2; i++)
         {
+            var constraint = Constraint.String.Any;
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var count = t.GatherById(coll, 0, 100, Constraint<ulong>.Any, Constraint<ulong>.Any, Constraint<ulong>.Any,
-                Constraint.String.Contains("@"));
+            var count = t.GatherById(coll, 0, 0, Constraint<ulong>.Any, Constraint<ulong>.Any,
+                Constraint<ulong>.Any,
+                constraint);
             sw.Stop();
             Console.WriteLine("GatherById took " + sw.ElapsedMilliseconds + "ms Found " + count);
+            sw = System.Diagnostics.Stopwatch.StartNew();
+            var count2 = t.ScanById(Constraint<ulong>.Any, Constraint<ulong>.Any,
+                Constraint<ulong>.Any,
+                constraint).Count();
+            sw.Stop();
+            Console.WriteLine("ScanById took " + sw.ElapsedMilliseconds + "ms Found " + count2);
         }
     }
 }
