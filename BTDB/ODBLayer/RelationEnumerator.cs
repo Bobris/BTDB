@@ -587,8 +587,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
     protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
     readonly IInternalObjectDBTransaction _tr;
     readonly IKeyValueDBTransaction _keyValueTr;
-    IKeyValueDBCursor? _startCursor;
-    IKeyValueDBCursor? _endCursor;
+    IKeyValueDBCursor? _untilCursor;
     IKeyValueDBCursor? _cursor;
     bool _seekNeeded;
     readonly bool _ascending;
@@ -628,85 +627,106 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
 
     void CreateCursors()
     {
-        _startCursor = _keyValueTr.CreateCursor();
-        if (_startKeyProposition == KeyProposition.Ignored)
+        IKeyValueDBCursor? startCursor = null;
+        IKeyValueDBCursor? endCursor = null;
+        try
         {
-            if (!_startCursor.FindFirstKey(_keyBytes))
+            startCursor = _keyValueTr.CreateCursor();
+            if (_startKeyProposition == KeyProposition.Ignored)
             {
-                return;
-            }
-        }
-        else
-        {
-            switch (_startCursor.Find(_startKeyBytes, (uint)_keyBytes.Length))
-            {
-                case FindResult.Exact:
-                    if (_startKeyProposition == KeyProposition.Excluded)
-                    {
-                        if (!_startCursor.FindNextKey(_keyBytes)) return;
-                    }
-
-                    break;
-                case FindResult.Previous:
-                    if (!_startCursor.FindNextKey(_keyBytes)) return;
-                    if (_startKeyProposition == KeyProposition.Excluded)
-                    {
-                        if (!_startCursor.FindNextKey(_keyBytes)) return;
-                    }
-
-                    break;
-                case FindResult.Next:
-                    if (_startKeyProposition == KeyProposition.Excluded && _startCursor.KeyHasPrefix(_startKeyBytes))
-                    {
-                        if (!_startCursor.FindNextKey(_keyBytes)) return;
-                    }
-
-                    break;
-                case FindResult.NotFound:
+                if (!startCursor.FindFirstKey(_keyBytes))
+                {
                     return;
-                default:
-                    throw new ArgumentOutOfRangeException();
+                }
             }
-        }
-
-        _endCursor = _keyValueTr.CreateCursor();
-        var realEndKeyBytes = new ReadOnlySpan<byte>(_endKeyBytes);
-        if (_endKeyProposition == KeyProposition.Included)
-            realEndKeyBytes = FindLastKeyWithPrefix(_endKeyBytes.AsSpan(), _endCursor);
-
-        if (_endKeyProposition == KeyProposition.Ignored)
-        {
-            if (!_endCursor.FindLastKey(_keyBytes)) return;
-        }
-        else
-        {
-            switch (_endCursor.Find(realEndKeyBytes, (uint)_keyBytes.Length))
+            else
             {
-                case FindResult.Exact:
-                    if (_endKeyProposition == KeyProposition.Excluded)
-                    {
-                        if (!_endCursor.FindPreviousKey(_keyBytes)) return;
-                    }
+                switch (startCursor.Find(_startKeyBytes, (uint)_keyBytes.Length))
+                {
+                    case FindResult.Exact:
+                        if (_startKeyProposition == KeyProposition.Excluded)
+                        {
+                            if (!startCursor.FindNextKey(_keyBytes)) return;
+                        }
 
-                    break;
-                case FindResult.Previous:
-                    break;
-                case FindResult.Next:
-                    if (!_endCursor.FindPreviousKey(_keyBytes)) return;
-                    break;
-                case FindResult.NotFound:
-                    return;
-                default:
-                    throw new ArgumentOutOfRangeException();
+                        break;
+                    case FindResult.Previous:
+                        if (!startCursor.FindNextKey(_keyBytes)) return;
+                        if (_startKeyProposition == KeyProposition.Excluded)
+                        {
+                            if (!startCursor.FindNextKey(_keyBytes)) return;
+                        }
+
+                        break;
+                    case FindResult.Next:
+                        if (_startKeyProposition == KeyProposition.Excluded && startCursor.KeyHasPrefix(_startKeyBytes))
+                        {
+                            if (!startCursor.FindNextKey(_keyBytes)) return;
+                        }
+
+                        break;
+                    case FindResult.NotFound:
+                        return;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
             }
-        }
 
-        var startIndex = _startCursor.GetKeyIndex();
-        var endIndex = _endCursor.GetKeyIndex();
-        if (startIndex > endIndex) return;
-        _cursor = _keyValueTr.CreateCursor();
-        _cursor.FindKeyIndex(_ascending ? startIndex : endIndex);
-        _seekNeeded = true;
+            endCursor = _keyValueTr.CreateCursor();
+            var realEndKeyBytes = new ReadOnlySpan<byte>(_endKeyBytes);
+            if (_endKeyProposition == KeyProposition.Included)
+                realEndKeyBytes = FindLastKeyWithPrefix(_endKeyBytes.AsSpan(), endCursor);
+
+            if (_endKeyProposition == KeyProposition.Ignored)
+            {
+                if (!endCursor.FindLastKey(_keyBytes)) return;
+            }
+            else
+            {
+                switch (endCursor.Find(realEndKeyBytes, (uint)_keyBytes.Length))
+                {
+                    case FindResult.Exact:
+                        if (_endKeyProposition == KeyProposition.Excluded)
+                        {
+                            if (!endCursor.FindPreviousKey(_keyBytes)) return;
+                        }
+
+                        break;
+                    case FindResult.Previous:
+                        break;
+                    case FindResult.Next:
+                        if (!endCursor.FindPreviousKey(_keyBytes)) return;
+                        break;
+                    case FindResult.NotFound:
+                        return;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+
+            var startIndex = startCursor.GetKeyIndex();
+            var endIndex = endCursor.GetKeyIndex();
+            if (startIndex > endIndex) return;
+            if (_ascending)
+            {
+                _cursor = startCursor;
+                _untilCursor = endCursor;
+            }
+            else
+            {
+                _cursor = endCursor;
+                _untilCursor = startCursor;
+            }
+
+            startCursor = null;
+            endCursor = null;
+            _seekNeeded = true;
+        }
+        finally
+        {
+            startCursor?.Dispose();
+            endCursor?.Dispose();
+        }
     }
 
     public RelationAdvancedEnumerator(
@@ -754,7 +774,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
                     return false;
                 }
 
-                if (_cursor.GetKeyIndex() > _endCursor!.GetKeyIndex())
+                if (_cursor.GetKeyIndex() > _untilCursor!.GetKeyIndex())
                 {
                     return false;
                 }
@@ -766,7 +786,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
                     return false;
                 }
 
-                if (_cursor.GetKeyIndex() < _startCursor!.GetKeyIndex())
+                if (_cursor.GetKeyIndex() < _untilCursor!.GetKeyIndex())
                 {
                     return false;
                 }
@@ -809,10 +829,8 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
 
     public void Dispose()
     {
-        _startCursor?.Dispose();
-        _startCursor = null;
-        _endCursor?.Dispose();
-        _endCursor = null;
+        _untilCursor?.Dispose();
+        _untilCursor = null;
         _cursor?.Dispose();
         _cursor = null;
     }
@@ -848,7 +866,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
         CreateCursors();
         try
         {
-            var count = _endCursor == null ? 0 : (int)(_endCursor.GetKeyIndex() - _startCursor!.GetKeyIndex() + 1);
+            var count = _cursor == null ? 0 : (int)(Math.Abs(_cursor.GetKeyIndex() - _untilCursor!.GetKeyIndex()) + 1);
             if (count == 0) return;
             if (array.Length - arrayIndex < count) throw new ArgumentException("Array too small");
             while (MoveNext())
@@ -874,7 +892,7 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
             try
             {
                 CreateCursors();
-                return _endCursor == null ? 0 : (int)(_endCursor.GetKeyIndex() - _startCursor!.GetKeyIndex() + 1);
+                return _cursor == null ? 0 : (int)(Math.Abs(_cursor.GetKeyIndex() - _untilCursor!.GetKeyIndex()) + 1);
             }
             finally
             {
