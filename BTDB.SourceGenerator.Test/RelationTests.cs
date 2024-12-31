@@ -26,4 +26,27 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyRelationWithSecondaryKey()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public int ParentId { get; set; }
+                [PrimaryKey(2)] [SecondaryKey("PersonId", Order = 1) public int PersonId { get; set; }
+                [PrimaryKey(3, true)] public string Name { get; set; } = null!;
+                [SecondaryKey("LowerCaseName", IncludePrimaryKeyOrder = 1, Order = 2)] public string LowerCaseName => Name.ToLower();
+            }
+
+            public interface IPersonTable : IRelation<Person>
+            {
+            }
+            """);
+    }
 }
