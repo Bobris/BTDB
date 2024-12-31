@@ -468,9 +468,6 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         if (spec == null)
             _owner.ActualOptions.ThrowBTDBException("Relation type " + type.ToSimpleName() +
                                                     " must implement ICovariantRelation<>");
-        if (!spec.GenericTypeArguments[0].IsClass)
-            _owner.ActualOptions.ThrowBTDBException("Relation type " + type.ToSimpleName() +
-                                                    " does not have item as class");
         var name = type.GetCustomAttribute<PersistedNameAttribute>() is { } persistedNameAttribute
             ? persistedNameAttribute.Name
             : type.ToSimpleName();

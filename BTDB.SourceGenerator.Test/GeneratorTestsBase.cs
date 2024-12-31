@@ -16,12 +16,11 @@ public class GeneratorTestsBase
         var driver = CSharpGeneratorDriver.Create([generator.AsSourceGenerator()],
             driverOptions: new GeneratorDriverOptions(default, trackIncrementalGeneratorSteps: true));
         var compilation = CSharpCompilation.Create("test",
-            new[] { CSharpSyntaxTree.ParseText(sourceCode) },
-            new[]
-            {
+            [CSharpSyntaxTree.ParseText(sourceCode)],
+            [
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(GenerateAttribute).Assembly.Location)
-            }, new(OutputKind.ConsoleApplication, allowUnsafe: true));
+            ], new(OutputKind.ConsoleApplication, allowUnsafe: true));
         var runResult = driver.RunGenerators(compilation);
         // Update the compilation and rerun the generator
         compilation = compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText("// dummy"));

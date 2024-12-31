@@ -35,7 +35,7 @@ public class RelationInfo
     public readonly Type _clientType;
     readonly object _defaultClientObject;
 
-    RelationVersionInfo?[] _relationVersions = Array.Empty<RelationVersionInfo?>();
+    RelationVersionInfo?[] _relationVersions = [];
     RelationSaver _primaryKeysSaver;
     RelationSaver _valueSaver;
     RelationBeforeRemove? _beforeRemove;

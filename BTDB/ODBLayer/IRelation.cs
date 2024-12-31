@@ -1,14 +1,13 @@
 using System;
 using System.Collections.Generic;
-using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
 
-public interface ICovariantRelation<out T> : IReadOnlyCollection<T>, IRelation
+public interface ICovariantRelation<out T> : IReadOnlyCollection<T>, IRelation where T : class
 {
 }
 
-public interface IRelation<T> : ICovariantRelation<T>
+public interface IRelation<T> : ICovariantRelation<T> where T : class
 {
     bool Upsert(T item);
     (long Inserted, long Updated) UpsertRange(IEnumerable<T> items);

@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
@@ -12,9 +13,9 @@ namespace BTDB.SourceGenerator;
 [Generator]
 public class SourceGenerator : IIncrementalGenerator
 {
-    const string Namespace = "BTDB";
     const string AttributeName = "GenerateAttribute";
     const string GenerateForName = "GenerateForAttribute";
+    const string CovariantRelationInterfaceName = "ICovariantRelation";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -27,7 +28,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                 if (syntaxContext.Node is AttributeSyntax attributeSyntax)
                 {
-                    var symbolInfo = semanticModel.GetSymbolInfo(attributeSyntax);
+                    var symbolInfo = ModelExtensions.GetSymbolInfo(semanticModel, attributeSyntax);
                     IMethodSymbol? ms = null;
                     if (symbolInfo.CandidateReason == CandidateReason.NotAnAttributeType &&
                         symbolInfo.CandidateSymbols.FirstOrDefault() is IMethodSymbol ms1)
@@ -42,13 +43,14 @@ public class SourceGenerator : IIncrementalGenerator
                     if (ms == null) return null!;
                     if (ms.ContainingType.Name != GenerateForName)
                         return null!;
-                    if (ms.ContainingNamespace.Name != Namespace)
+                    if (!ms.InBTDBNamespace())
                         return null!;
                     var typeParam =
                         attributeSyntax.ArgumentList!.Arguments.FirstOrDefault()?.Expression as TypeOfExpressionSyntax;
                     if (typeParam == null)
                         return null!;
-                    if (semanticModel.GetSymbolInfo(typeParam.Type).Symbol is not INamedTypeSymbol symb)
+                    if (ModelExtensions.GetSymbolInfo(semanticModel, typeParam.Type)
+                            .Symbol is not INamedTypeSymbol symb)
                         return null!;
                     var constructorParametersExpression = attributeSyntax.ArgumentList!.Arguments
                         .FirstOrDefault(a => a.NameEquals?.Name?.Identifier.ValueText == "ConstructorParameters")
@@ -58,12 +60,10 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         if (constructorParametersExpression is not CollectionExpressionSyntax aces)
                         {
-                            return new GenerationInfo(GenerationType.Error, null, "BTDB0001",
+                            return new(GenerationType.Error, null, "BTDB0001",
                                 "Must use CollectionExpression syntax for ConstructorParameters", null, false, false,
-                                false, EquatableArray<ParameterInfo>.Empty, EquatableArray<PropertyInfo>.Empty,
-                                EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
-                                EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty,
-                                EquatableArray<CollectionInfo>.Empty, EquatableArray<GenerationInfo>.Empty,
+                                false, [], [],
+                                [], [], [], [], [], [],
                                 constructorParametersExpression.GetLocation());
                         }
 
@@ -73,7 +73,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 var expressionSyntax = (e as ExpressionElementSyntax)?.Expression;
                                 var typeSyntax = (expressionSyntax as TypeOfExpressionSyntax)?.Type;
                                 if (typeSyntax == null) return null;
-                                var info = semanticModel.GetSymbolInfo(typeSyntax);
+                                var info = ModelExtensions.GetSymbolInfo(semanticModel, typeSyntax);
                                 return info.Symbol;
                             })
                             .OfType<INamedTypeSymbol>()
@@ -81,7 +81,7 @@ public class SourceGenerator : IIncrementalGenerator
                     }
 
                     return GenerationInfoForClass(symb, null, false, constructorParameters, semanticModel,
-                        new HashSet<CollectionInfo>(), new HashSet<GenerationInfo>());
+                        [], []);
                 }
 
                 // Symbols allow us to get the compile-time information.
@@ -91,7 +91,7 @@ public class SourceGenerator : IIncrementalGenerator
                 {
                     if (!symbol.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: AttributeName } attr &&
-                            attr.ContainingNamespace?.ToDisplayString() == Namespace))
+                            attr.InBTDBNamespace()))
                     {
                         return null!;
                     }
@@ -119,28 +119,51 @@ public class SourceGenerator : IIncrementalGenerator
                         .ToArray();
                     return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
                         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false, false,
-                        parameters, [new PropertyInfo("", returnType, null, true, false, false, false, null)],
-                        EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
-                        EquatableArray<FieldsInfo>.Empty, EquatableArray<TypeRef>.Empty,
-                        EquatableArray<CollectionInfo>.Empty, EquatableArray<GenerationInfo>.Empty, null);
+                        parameters, [],
+                        [], [],
+                        [], [], [], [], null);
                 }
 
                 if (syntaxContext.Node is InterfaceDeclarationSyntax)
                 {
-                    var dispatchers = DetectDispatcherInfo(symbol);
-                    if (dispatchers.Length == 0) return null;
-                    var containingNamespace = symbol.ContainingNamespace;
-                    var namespaceName = containingNamespace.IsGlobalNamespace
-                        ? null
-                        : containingNamespace.ToDisplayString();
-                    var interfaceName = symbol.Name;
-                    return new(GenerationType.Interface, namespaceName, interfaceName,
-                        symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false, false,
-                        EquatableArray<ParameterInfo>.Empty,
-                        EquatableArray<PropertyInfo>.Empty, EquatableArray<string>.Empty,
-                        dispatchers.ToArray(), EquatableArray<FieldsInfo>.Empty,
-                        EquatableArray<TypeRef>.Empty, EquatableArray<CollectionInfo>.Empty,
-                        EquatableArray<GenerationInfo>.Empty, null);
+                    if (symbol.AllInterfaces.SingleOrDefault(IsICovariantRelation) is { } relation)
+                    {
+                        var relationType = relation.TypeArguments[0].OriginalDefinition;
+                        if (relationType is not INamedTypeSymbol)
+                            return null;
+                        var containingNamespace = symbol.ContainingNamespace;
+                        var namespaceName = containingNamespace.IsGlobalNamespace
+                            ? null
+                            : containingNamespace.ToDisplayString();
+                        var interfaceName = symbol.Name;
+                        var persistedName = ExtractPersistedName(symbol);
+                        var generationInfo = GenerationInfoForClass((INamedTypeSymbol)relationType, null, false, null,
+                            semanticModel,
+                            [], []);
+                        if (generationInfo is not { GenType: GenerationType.Class }) return null;
+                        return new(GenerationType.RelationIface, namespaceName, interfaceName,
+                            symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), persistedName, false,
+                            false, false,
+                            [], [], [], [], generationInfo.Fields,
+                            [new(relationType)], [], [generationInfo], null);
+                    }
+                    else
+                    {
+                        var dispatchers = DetectDispatcherInfo(symbol);
+                        if (dispatchers.Length == 0) return null;
+                        var containingNamespace = symbol.ContainingNamespace;
+                        var namespaceName = containingNamespace.IsGlobalNamespace
+                            ? null
+                            : containingNamespace.ToDisplayString();
+                        var interfaceName = symbol.Name;
+                        return new(GenerationType.Interface, namespaceName, interfaceName,
+                            symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false, false,
+                            [],
+                            [], [],
+                            [], [],
+                            [], [],
+                            [], null);
+                    }
                 }
 
                 if (syntaxContext.Node is ClassDeclarationSyntax classDeclarationSyntax)
@@ -158,17 +181,17 @@ public class SourceGenerator : IIncrementalGenerator
                     // If it has GenerateForAttribute then it has priority over GenerateAttribute
                     if (symbol.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: GenerateForName } attr &&
-                            attr.ContainingNamespace?.ToDisplayString() == Namespace))
+                            attr.InBTDBNamespace()))
                         return null;
                     if (!symbol.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: AttributeName } attr &&
-                            attr.ContainingNamespace?.ToDisplayString() == Namespace)
+                            attr.InBTDBNamespace())
                         && !symbol.AllInterfaces.Any(interfaceSymbol => interfaceSymbol.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: AttributeName } attr &&
-                            attr.ContainingNamespace?.ToDisplayString() == Namespace))
+                            attr.InBTDBNamespace()))
                         && !(symbol.BaseType?.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: AttributeName } attr &&
-                            attr.ContainingNamespace?.ToDisplayString() == Namespace) ?? false))
+                            attr.InBTDBNamespace()) ?? false))
                     {
                         return null;
                     }
@@ -177,7 +200,7 @@ public class SourceGenerator : IIncrementalGenerator
                         .Any(m => m.ValueText == "partial");
 
                     return GenerationInfoForClass(symbol, classDeclarationSyntax, isPartial, null, semanticModel,
-                        new HashSet<CollectionInfo>(), new HashSet<GenerationInfo>());
+                        [], []);
                 }
 
                 if (syntaxContext.Node is RecordDeclarationSyntax recordDeclarationSyntax)
@@ -195,17 +218,17 @@ public class SourceGenerator : IIncrementalGenerator
                     // If it has GenerateForAttribute then it has priority over GenerateAttribute
                     if (symbol.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: GenerateForName } attr &&
-                            attr.ContainingNamespace?.ToDisplayString() == Namespace))
+                            attr.InBTDBNamespace()))
                         return null;
                     if (!symbol.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: AttributeName } attr &&
-                            attr.ContainingNamespace?.ToDisplayString() == Namespace)
+                            attr.InBTDBNamespace())
                         && !symbol.AllInterfaces.Any(interfaceSymbol => interfaceSymbol.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: AttributeName } attr &&
-                            attr.ContainingNamespace?.ToDisplayString() == Namespace))
+                            attr.InBTDBNamespace()))
                         && !(symbol.BaseType?.GetAttributes().Any(a =>
                             a.AttributeClass is { Name: AttributeName } attr &&
-                            attr.ContainingNamespace?.ToDisplayString() == Namespace) ?? false))
+                            attr.InBTDBNamespace()) ?? false))
                     {
                         return null;
                     }
@@ -214,13 +237,21 @@ public class SourceGenerator : IIncrementalGenerator
                         .Any(m => m.ValueText == "partial");
 
                     return GenerationInfoForClass(symbol, recordDeclarationSyntax, isPartial, null, semanticModel,
-                        new HashSet<CollectionInfo>(), new HashSet<GenerationInfo>());
+                        [], []);
                 }
 
                 return null!;
             }).Where(i => i != null);
         gen = gen.SelectMany((g, _) => g!.Nested.IsEmpty ? Enumerable.Repeat(g, 1) : [g, ..g.Nested])!;
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
+    }
+
+    static bool IsICovariantRelation(INamedTypeSymbol typeSymbol)
+    {
+        // Check if the type is BTDB.ODBLayer.ICovariantRelation<?>
+        return typeSymbol is
+                   { TypeKind: TypeKind.Interface, TypeArguments.Length: 1, Name: CovariantRelationInterfaceName } &&
+               typeSymbol.InODBLayerNamespace();
     }
 
     static GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol,
@@ -330,7 +361,7 @@ public class SourceGenerator : IIncrementalGenerator
                                          new(p.Type))
                                      : null))
                              .ToArray() ??
-                         Array.Empty<ParameterInfo>();
+                         [];
 
         var parentDeclarations = EquatableArray<string>.Empty;
         if (isPartial)
@@ -382,8 +413,8 @@ public class SourceGenerator : IIncrementalGenerator
                 return new FieldsInfo(f.Name,
                     f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                     ExtractPersistedName(f),
-                    f.Type.IsReferenceType, f.Name, null, null,
-                    EquatableArray<IndexInfo>.Empty);
+                    f.Type.IsReferenceType, f.Name, null, null, false,
+                    ExtractIndexInfo(f.GetAttributes()));
             })
             .Concat(symbol.GetMembers()
                 .OfType<IPropertySymbol>()
@@ -391,15 +422,18 @@ public class SourceGenerator : IIncrementalGenerator
                 .Where(p =>
                     p.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
                     p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
-                    p.SetMethod is not null && p.GetMethod is not null)
+                    p.GetMethod is not null)
                 .Select(p =>
                 {
+                    var isReadOnly = p.SetMethod is null;
                     var getterName = !IsDefaultMethodImpl(p.GetMethod!.DeclaringSyntaxReferences)
                         ? p.GetMethod.Name
                         : null;
-                    var setterName = !IsDefaultMethodImpl(p.SetMethod!.DeclaringSyntaxReferences)
-                        ? p.SetMethod.Name
-                        : null;
+                    var setterName = isReadOnly
+                        ? ""
+                        : !IsDefaultMethodImpl(p.SetMethod!.DeclaringSyntaxReferences)
+                            ? p.SetMethod.Name
+                            : null;
                     var backingName = getterName == null || setterName == null
                         ? $"<{p.Name}>k__BackingField"
                         : null;
@@ -413,7 +447,7 @@ public class SourceGenerator : IIncrementalGenerator
                         p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                         ExtractPersistedName(p),
                         p.Type.IsReferenceType,
-                        backingName, getterName, setterName, EquatableArray<IndexInfo>.Empty);
+                        backingName, getterName, setterName, isReadOnly, ExtractIndexInfo(p.GetAttributes()));
                 })).ToArray();
 
         var fieldTypes = symbol.GetMembers()
@@ -458,6 +492,35 @@ public class SourceGenerator : IIncrementalGenerator
             nested.ToArray(), null);
     }
 
+    static EquatableArray<IndexInfo> ExtractIndexInfo(ImmutableArray<AttributeData> attributeDatas)
+    {
+        var indexInfos = new List<IndexInfo>();
+        foreach (var attributeData in attributeDatas)
+        {
+            if (attributeData.AttributeClass?.Name == "PrimaryKeyAttribute")
+            {
+                var order = GetUintArgForAttributeData(attributeData, 0) ?? 0;
+                var inKeyValue =
+                    attributeData.NamedArguments.FirstOrDefault(a => a.Key == "InKeyValue").Value.Value as bool? ??
+                    false;
+                var primaryKeyAttribute = new IndexInfo(null, order, inKeyValue, 0);
+                indexInfos.Add(primaryKeyAttribute);
+            }
+
+            if (attributeData.AttributeClass?.Name == "SecondaryKeyAttribute")
+            {
+                var name = GetStringArgForAttributeData(attributeData);
+                var order = GetUintArgForAttributeData(attributeData, 0) ?? 0;
+                var includePrimaryKeyOrder = attributeData.NamedArguments
+                    .FirstOrDefault(a => a.Key == "IncludePrimaryKeyOrder").Value.Value as uint? ?? 0;
+                var secondaryKeyAttribute = new IndexInfo(name, order, false, includePrimaryKeyOrder);
+                indexInfos.Add(secondaryKeyAttribute);
+            }
+        }
+
+        return new(indexInfos.ToArray());
+    }
+
     static string? ExtractPersistedName(ISymbol symbol)
     {
         var persistedNameAttribute = symbol.GetAttributes()
@@ -474,6 +537,36 @@ public class SourceGenerator : IIncrementalGenerator
             var literalExpressionSyntax =
                 attributeSyntax.ArgumentList!.Arguments.FirstOrDefault()?.Expression as LiteralExpressionSyntax;
             return literalExpressionSyntax?.Token.ValueText;
+        }
+
+        return null;
+    }
+
+    static uint? GetUintArgForAttributeData(AttributeData? attributeData, int index)
+    {
+        if (attributeData?.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax attributeSyntax)
+        {
+            var literalExpressionSyntax =
+                attributeSyntax.ArgumentList!.Arguments.Skip(index)
+                    .FirstOrDefault()
+                    ?.Expression;
+            if (literalExpressionSyntax?.Kind() == SyntaxKind.NumericLiteralExpression)
+            {
+                var val = literalExpressionSyntax.GetFirstToken().Value;
+                if (val is int i)
+                {
+                    return (uint)i;
+                }
+
+                if (val is uint u)
+                {
+                    return u;
+                }
+
+                return uint.Parse(literalExpressionSyntax.ToString());
+            }
+
+            return null;
         }
 
         return null;
@@ -618,7 +711,8 @@ public class SourceGenerator : IIncrementalGenerator
         if (syntax is not AccessorDeclarationSyntax ads) return null;
         if (ads.ExpressionBody is { } aecs)
         {
-            if (aecs.Expression is IdentifierNameSyntax ins && model.GetSymbolInfo(ins) is { Symbol: IFieldSymbol })
+            if (aecs.Expression is IdentifierNameSyntax ins && ModelExtensions.GetSymbolInfo(model, ins) is
+                    { Symbol: IFieldSymbol })
             {
                 return ins.Identifier.ValueText;
             }
@@ -644,7 +738,7 @@ public class SourceGenerator : IIncrementalGenerator
     {
         if (!symbol.GetAttributes().Any(a =>
                 a.AttributeClass is { Name: AttributeName } attr &&
-                attr.ContainingNamespace?.ToDisplayString() == Namespace))
+                attr.InBTDBNamespace()))
         {
             return Array.Empty<DispatcherInfo>();
         }
@@ -742,6 +836,10 @@ public class SourceGenerator : IIncrementalGenerator
             else if (generationInfo.GenType == GenerationType.Struct)
             {
                 structs.Add(generationInfo);
+            }
+            else if (generationInfo.GenType == GenerationType.RelationIface)
+            {
+                GenerateRelationInterfaceFactory(context, generationInfo);
             }
         }
 
@@ -1336,6 +1434,66 @@ public class SourceGenerator : IIncrementalGenerator
             SourceText.From(code, Encoding.UTF8));
     }
 
+    static void GenerateRelationInterfaceFactory(SourceProductionContext context, GenerationInfo generationInfo)
+    {
+        var code = new StringBuilder();
+        // language=c#
+        code.Append($"""
+            // <auto-generated/>
+            #pragma warning disable 612,618
+            #nullable enable
+            using System;
+            using System.Runtime.CompilerServices;
+
+            """);
+
+        code.Append($"// Name: {generationInfo.Name}\n");
+        if (generationInfo.PersistedName != null)
+            code.Append($"// Persisted Name: {generationInfo.PersistedName}\n");
+        foreach (var f in generationInfo.Fields.GetArray()!)
+        {
+            code.Append(
+                $"""
+                // Field: {f.StoredName ?? f.Name} {f.Type}{(f.IsReference ? " reference" : "")}{(f.ReadOnly ? " computed" : "")}
+
+                """);
+            foreach (var i in f.Indexes.GetArray()!)
+            {
+                code.Append($"""
+                    //           {(i.Name != null ? "SecondaryIndex " + i.Name : "PrimaryIndex")}: {i.Order}{(i.InKeyValue ? " InKeyValue" : "")}{(i.IncludePrimaryKeyOrder != 0 ? " IncludePrimaryKeyOrder " + i.IncludePrimaryKeyOrder : "")}
+
+                    """);
+            }
+        }
+
+        if (generationInfo.Namespace != null)
+        {
+            // language=c#
+            code.Append($"\nnamespace {generationInfo.Namespace};\n");
+        }
+
+        // language=c#
+        var declarations = new StringBuilder();
+        declarations.Append("[CompilerGenerated]\n");
+        declarations.Append($"static file class {generationInfo.Name}Registration\n{{\n");
+
+        code.Append(declarations);
+
+        // language=c#
+        code.Append($$"""
+                [ModuleInitializer]
+                internal static unsafe void Register4BTDB()
+                {
+                }
+            }
+
+            """);
+
+        context.AddSource(
+            $"{generationInfo.FullName.Replace("global::", "").Replace("<", "[").Replace(">", "]")}.g.cs",
+            SourceText.From(code.ToString(), Encoding.UTF8));
+    }
+
     static string NormalizeType(string type)
     {
         if (type == "dynamic") return "object";
@@ -1349,6 +1507,7 @@ enum GenerationType
     Delegate,
     Interface,
     Struct,
+    RelationIface,
     Error
 }
 
@@ -1429,8 +1588,10 @@ record FieldsInfo(
     string? BackingName,
     string? GetterName,
     string? SetterName,
+    bool ReadOnly,
     EquatableArray<IndexInfo> Indexes);
 
-record IndexInfo(string? Name, int Order);
+// Name == null for primary key, InKeyValue could be true only for primary key, IncludePrimaryKeyOrder is used only for secondary key
+record IndexInfo(string? Name, uint Order, bool InKeyValue, uint IncludePrimaryKeyOrder);
 
 record DispatcherInfo(string Name, string? Type, string? ResultType, string IfaceName);
