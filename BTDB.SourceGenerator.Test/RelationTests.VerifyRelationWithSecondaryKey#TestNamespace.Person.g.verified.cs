@@ -23,6 +23,8 @@ static file class PersonRegistration
     {
         Unsafe.As<byte, string>(ref value) = Getter4(Unsafe.As<global::TestNamespace.Person>(@this));
     }
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Description>k__BackingField")]
+    extern static ref string Field5(global::TestNamespace.Person @this);
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -66,6 +68,12 @@ static file class PersonRegistration
                 Name = "LowerCaseName",
                 Type = typeof(string),
                 PropRefGetter = &GenGetter4,
+            },
+            new global::BTDB.Serialization.FieldMetadata
+            {
+                Name = "Description",
+                Type = typeof(string),
+                ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field5(dummy)),
             },
         };
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);

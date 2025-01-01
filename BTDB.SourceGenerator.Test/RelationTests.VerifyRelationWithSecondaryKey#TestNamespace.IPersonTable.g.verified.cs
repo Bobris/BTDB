@@ -14,6 +14,8 @@ using System.Runtime.CompilerServices;
 //           PrimaryIndex: 3 InKeyValue
 // Field: LowerCaseName string reference computed
 //           SecondaryIndex LowerCaseName: 2 IncludePrimaryKeyOrder 1
+// Field: Description string reference
+//           PrimaryIndex: 4 InKeyValue
 
 namespace TestNamespace;
 [CompilerGenerated]

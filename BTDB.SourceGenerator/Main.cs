@@ -146,6 +146,10 @@ public class SourceGenerator : IIncrementalGenerator
                                 semanticModel,
                                 [], []);
                             if (generationInfo is not { GenType: GenerationType.Class }) return null;
+                            var detectedError = DetectErrors(generationInfo.Fields.AsSpan(),
+                                ((InterfaceDeclarationSyntax)syntaxContext.Node).Identifier.GetLocation());
+                            if (detectedError != null)
+                                return detectedError;
                             return new(GenerationType.RelationIface, namespaceName, interfaceName,
                                 symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), persistedName, false,
                                 false, false,
@@ -256,6 +260,22 @@ public class SourceGenerator : IIncrementalGenerator
             }).Where(i => i != null);
         gen = gen.SelectMany((g, _) => g!.Nested.IsEmpty ? Enumerable.Repeat(g, 1) : [g, ..g.Nested])!;
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
+    }
+
+    GenerationInfo? DetectErrors(ReadOnlySpan<FieldsInfo> fields, Location location)
+    {
+        for (var i = 0; i < fields.Length; i++)
+        {
+            if (fields[i].Indexes.ToArray().Any(ii => ii.Name == null && ii.IncludePrimaryKeyOrder == 1))
+            {
+                return new(GenerationType.Error, null, "BTDB0002",
+                    "Cannot use PrimaryKey together with InKeyValue in " + fields[i].Name, null, false, false, false,
+                    [],
+                    [], [], [], [], [], [], [], location);
+            }
+        }
+
+        return null;
     }
 
     static bool IsICovariantRelation(INamedTypeSymbol typeSymbol)
@@ -511,6 +531,7 @@ public class SourceGenerator : IIncrementalGenerator
     static EquatableArray<IndexInfo> ExtractIndexInfo(ImmutableArray<AttributeData> attributeDatas)
     {
         var indexInfos = new List<IndexInfo>();
+        var hasBothPrimaryAndInKeyValue = 0;
         foreach (var attributeData in attributeDatas)
         {
             if (attributeData.AttributeClass?.Name == "PrimaryKeyAttribute")
@@ -519,6 +540,15 @@ public class SourceGenerator : IIncrementalGenerator
                 var inKeyValue = GetBoolArgForAttributeData(attributeData, 1) ?? false;
                 var primaryKeyAttribute = new IndexInfo(null, order, inKeyValue, 0);
                 indexInfos.Add(primaryKeyAttribute);
+                hasBothPrimaryAndInKeyValue |= 1;
+            }
+
+            if (attributeData.AttributeClass?.Name == "InKeyValueAttribute")
+            {
+                var order = GetUintArgForAttributeData(attributeData, 0) ?? 0;
+                var primaryKeyAttribute = new IndexInfo(null, order, true, 0);
+                indexInfos.Add(primaryKeyAttribute);
+                hasBothPrimaryAndInKeyValue |= 2;
             }
 
             if (attributeData.AttributeClass?.Name == "SecondaryKeyAttribute")
@@ -529,6 +559,11 @@ public class SourceGenerator : IIncrementalGenerator
                 var secondaryKeyAttribute = new IndexInfo(name, order, false, includePrimaryKeyOrder);
                 indexInfos.Add(secondaryKeyAttribute);
             }
+        }
+
+        if (hasBothPrimaryAndInKeyValue == 3)
+        {
+            indexInfos.Add(new(null, 0, false, 1));
         }
 
         return new(indexInfos.ToArray());

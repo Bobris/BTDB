@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+
+            public interface IPersonTable : IRelation<Person>
+                             ^^^^^^^^^^^^
+            {
+*/
+ : (11,29)-(11,41),
+      Message: Cannot use PrimaryKey together with InKeyValue in Id,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0002,
+        Title: Cannot use PrimaryKey together with InKeyValue in Id,
+        MessageFormat: Cannot use PrimaryKey together with InKeyValue in Id,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}
