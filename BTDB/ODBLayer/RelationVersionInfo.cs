@@ -115,12 +115,12 @@ public class RelationVersionInfo
                 Name = indexName,
                 Fields = new List<FieldId>()
             };
-            var usedPKFields = new Dictionary<uint, object>();
+            var usedPKFields = new HashSet<uint>();
             foreach (var attr in orderedAttrs)
             {
                 for (uint i = 1; i <= attr.Item2.IncludePrimaryKeyOrder; i++)
                 {
-                    usedPKFields.Add(i, null);
+                    usedPKFields.Add(i);
                     var pi = PrimaryKeyFields.Span.IndexOf(primaryKeyFields[i]);
                     info.Fields.Add(new FieldId(true, (uint)pi));
                 }
@@ -128,7 +128,7 @@ public class RelationVersionInfo
                 if (attr.Item1 < 0)
                 {
                     var pkOrder = (uint)-attr.Item1;
-                    usedPKFields.Add(pkOrder, null);
+                    usedPKFields.Add(pkOrder);
                     var pi = PrimaryKeyFields.Span.IndexOf(primaryKeyFields[pkOrder]);
                     info.Fields.Add(new FieldId(true, (uint)pi));
                 }
@@ -143,7 +143,7 @@ public class RelationVersionInfo
             {
                 if (pk.Value.InKeyValue)
                     continue;
-                if (!usedPKFields.ContainsKey(pk.Key))
+                if (!usedPKFields.Contains(pk.Key))
                     info.Fields.Add(new FieldId(true, (uint)PrimaryKeyFields.Span.IndexOf(primaryKeyFields[pk.Key])));
             }
 
