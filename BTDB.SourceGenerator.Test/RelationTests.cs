@@ -55,7 +55,7 @@ public class RelationTests : GeneratorTestsBase
     public Task VerifyCannotUsePrimaryKeyTogetherWithInKeyValue()
     {
         // language=cs
-        return VerifySourceGenerator(@"
+        return VerifySourceGenerator("""
             using BTDB.ODBLayer;
 
             namespace TestNamespace;
@@ -69,6 +69,125 @@ public class RelationTests : GeneratorTestsBase
             public interface IPersonTable : IRelation<Person>
             {
             }
-            ");
+
+            """);
+    }
+
+    [Fact]
+    public Task VerifyThatSecondaryKeyCannotBeNamedId()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public int Id { get; set; }
+                [SecondaryKey("Id")] public string Name { get; set; } = null!;
+            }
+
+            public interface IPersonTable : IRelation<Person>
+            {
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task VerifyThatInKeyValueCannotBeAlsoSecondaryKey()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Person
+            {
+                [PrimaryKey(1)]
+                public int Id { get; set; }
+                [SecondaryKey("Name")]
+                [InKeyValue(2)]
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IPersonTable : IRelation<Person>
+            {
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task VerifyThatInKeyValueCannotBeBeforePrimaryKey()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Person
+            {
+                [InKeyValue(1)]
+                public int InKeyValue { get; set; }
+                [PrimaryKey(2)]
+                public int PrimaryKey { get; set; }
+            }
+            public interface IPersonTable : IRelation<Person>
+            {
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task VerifyThatTwoPrimaryKeysCannotHaveSameOrder()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Person
+            {
+                [PrimaryKey(1)]
+                public int P1 { get; set; }
+                [PrimaryKey(1)]
+                public int P1Also { get; set; }
+            }
+            public interface IPersonTable : IRelation<Person>
+            {
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task VerifyThatTwoSecondaryKeysCannotHaveSameOrder()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Person
+            {
+                [PrimaryKey(1)]
+                public int P1 { get; set; }
+                [SecondaryKey("SK", Order = 1)]
+                public int S1 { get; set; }
+                [SecondaryKey("SK", Order = 1)]
+                public int S1Also { get; set; }
+            }
+            public interface IPersonTable : IRelation<Person>
+            {
+            }
+
+            """);
     }
 }

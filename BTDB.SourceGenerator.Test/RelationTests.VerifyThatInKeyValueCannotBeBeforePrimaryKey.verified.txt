@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+}
+public interface IPersonTable : IRelation<Person>
+                 ^^^^^^^^^^^^
+{
+*/
+ : (11,17)-(11,29),
+      Message: InKeyValue InKeyValue must be in order after PrimaryKey PrimaryKey,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0006,
+        Title: InKeyValue InKeyValue must be in order after PrimaryKey PrimaryKey,
+        MessageFormat: InKeyValue InKeyValue must be in order after PrimaryKey PrimaryKey,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

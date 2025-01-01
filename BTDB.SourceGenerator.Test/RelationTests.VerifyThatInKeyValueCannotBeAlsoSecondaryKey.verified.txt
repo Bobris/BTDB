@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+
+public interface IPersonTable : IRelation<Person>
+                 ^^^^^^^^^^^^
+{
+*/
+ : (13,17)-(13,29),
+      Message: Cannot use InKeyValue cannot be part of any SecondaryKey in Name,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0004,
+        Title: Cannot use InKeyValue cannot be part of any SecondaryKey in Name,
+        MessageFormat: Cannot use InKeyValue cannot be part of any SecondaryKey in Name,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

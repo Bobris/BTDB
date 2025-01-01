@@ -903,25 +903,6 @@ namespace BTDBTest
             }
         }
 
-        public class WronglyDefined
-        {
-            [PrimaryKey(1)] [SecondaryKey("Id")] public ulong Id { get; set; }
-
-            public string Name { get; set; }
-        }
-
-        public interface IWronglyDefined : IRelation<WronglyDefined>
-        {
-            void Insert(WronglyDefined room);
-        }
-
-        [Fact]
-        public void NameIdIsReservedAndCannotBeUsedForSecondaryKeyName()
-        {
-            using var tr = _db.StartTransaction();
-            Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefined>("No"));
-        }
-
         public class Room
         {
             [PrimaryKey(1)]

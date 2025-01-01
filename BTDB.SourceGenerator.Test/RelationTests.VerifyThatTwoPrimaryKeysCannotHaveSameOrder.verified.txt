@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+}
+public interface IPersonTable : IRelation<Person>
+                 ^^^^^^^^^^^^
+{
+*/
+ : (11,17)-(11,29),
+      Message: Cannot have multiple PrimaryKey with same order in P1Also as in P1,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0005,
+        Title: Cannot have multiple PrimaryKey with same order in P1Also as in P1,
+        MessageFormat: Cannot have multiple PrimaryKey with same order in P1Also as in P1,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

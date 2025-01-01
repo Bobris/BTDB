@@ -26,7 +26,8 @@ inline). Such objects also don't have object id, they can be retrieved by primar
 
 How do we get `IPersonTable` interface to actually insert persons? First we need [obtain transaction](ODBDictionary.md)
 
-From transaction, we get creator of relation which we should keep and use for creating relation interface for transaction
+From transaction, we get creator of relation which we should keep and use for creating relation interface for
+transaction
 every time we need it.
 
 ```C#
@@ -258,7 +259,8 @@ missing constraints are automatically "Any"):
 
 Scan by primary key also support variants like `ScanByIdVariantName`.
 
-`Scan` can do most of the same stuff as `List`, it is a little bit slower though, so prefer `List` if you can. `Scan` needs
+`Scan` can do most of the same stuff as `List`, it is a little bit slower though, so prefer `List` if you can. `Scan`
+needs
 to iterate all rows in many cases, because BTDB has all indexes in memory it is not slow even for millions of items,
 still be careful.
 
@@ -351,7 +353,7 @@ methods will look like:
 ## Secondary Key
 
 Secondary keys are useful for fast access by other fields then primary key. Declared are as attribute `SecondaryKey`.
-Each secondary index has it's name (may be different then existing fields names). Secondary index may be compound from
+Each secondary index has it's name (could be different from existing fields names). Secondary index may be compound from
 several fields. Each field can be part of more than one secondary key. for example:
 
 ```C#
@@ -551,9 +553,9 @@ only update (obj, false, true) behaviors.
 If called with (obj, false, false) it could be used for getting if obj exists in relation (KeySize>0) and stored value
 length (OldValueSize).
 
-Currently limitation is that it could be used only for relations without secondary keys.
+Currently, limitation is that it could be used only for relations without secondary keys.
 
-Note: It is "shallow" version only, so don't use with properties of IDictionary type or it could leak data.
+Note: It is "shallow" version only, so don't use with properties of IDictionary type, or it could leak data.
 
 ## RemoveWithSizesById
 
@@ -565,7 +567,7 @@ Allow very quickly remove rows if you complain to limitations.
 
 First limitation that it could be used only for constraints which are implementable by key prefix search.
 Second limitation is that it could be used only for relations without secondary keys.
-Also it does not FreeContent so don't use with properties of IDictionary type (it will throw).
+Also, it does not FreeContent so don't use with properties of IDictionary type (it will throw).
 
 ## InKeyValue
 
@@ -593,7 +595,7 @@ Also it does not FreeContent so don't use with properties of IDictionary type (i
     }
 ```
 
-Fields with InKeyValue are allowed only at end of primary key and they cannot be in any secondary keys.
+Fields with InKeyValue are allowed only at end of primary key, and they cannot be in any secondary keys.
 Primary key without InKeyValue fields must be unique. In example above it means that where cannot be two persons with
 same tenant and email with just different LastLogins. These InKeyValue fields could be used in Scan/GatherById for
 relatively fast searching without need to introduce Secondary Keys. This is very useful for implementation of expiration

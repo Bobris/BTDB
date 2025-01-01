@@ -8,12 +8,12 @@ public interface IPersonTable : IRelation<Person>
 {
 */
  : (10,17)-(10,29),
-      Message: Cannot use PrimaryKey together with InKeyValue in Id,
+      Message: Cannot use Id as name of secondary key in Name,
       Severity: Error,
       Descriptor: {
-        Id: BTDB0002,
-        Title: Cannot use PrimaryKey together with InKeyValue in Id,
-        MessageFormat: Cannot use PrimaryKey together with InKeyValue in Id,
+        Id: BTDB0003,
+        Title: Cannot use Id as name of secondary key in Name,
+        MessageFormat: Cannot use Id as name of secondary key in Name,
         Category: BTDB,
         DefaultSeverity: Error,
         IsEnabledByDefault: true

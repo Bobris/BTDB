@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -264,18 +265,121 @@ public class SourceGenerator : IIncrementalGenerator
 
     GenerationInfo? DetectErrors(ReadOnlySpan<FieldsInfo> fields, Location location)
     {
+        uint? orderOfLastPrimaryKey = null;
+        uint? orderOfFirstInKeyValue = null;
+        var pkOrder2Index = new Dictionary<uint, int>();
         for (var i = 0; i < fields.Length; i++)
         {
-            if (fields[i].Indexes.ToArray().Any(ii => ii.Name == null && ii.IncludePrimaryKeyOrder == 1))
+            var f = fields[i];
+            var indexes = f.Indexes.GetArray() ?? [];
+            if (indexes.Any(ii => ii.Name == null && ii.IncludePrimaryKeyOrder == 1))
             {
-                return new(GenerationType.Error, null, "BTDB0002",
-                    "Cannot use PrimaryKey together with InKeyValue in " + fields[i].Name, null, false, false, false,
-                    [],
-                    [], [], [], [], [], [], [], location);
+                return GenerationError("BTDB0002", "Cannot use PrimaryKey together with InKeyValue in " + f.Name,
+                    location);
+            }
+
+            if (indexes.Any(ii => ii.Name == "Id"))
+            {
+                return GenerationError("BTDB0003", "Cannot use Id as name of secondary key in " + f.Name, location);
+            }
+
+            if (indexes.Any(ii => ii.InKeyValue) && indexes.Any(ii => ii.Name != null))
+            {
+                return GenerationError("BTDB0004",
+                    "Cannot use InKeyValue cannot be part of any SecondaryKey in " + f.Name, location);
+            }
+
+            if (indexes.FirstOrDefault(ii => ii.Name == null) is { } pk)
+            {
+                if (pkOrder2Index.ContainsKey(pk.Order))
+                {
+                    return GenerationError("BTDB0005",
+                        "Cannot have multiple PrimaryKey with same order in " + f.Name + " as in " +
+                        fields[pkOrder2Index[pk.Order]].Name, location);
+                }
+
+                pkOrder2Index[pk.Order] = i;
+                if (pk.InKeyValue)
+                {
+                    if (orderOfFirstInKeyValue == null)
+                    {
+                        orderOfFirstInKeyValue = pk.Order;
+                    }
+                    else if (orderOfFirstInKeyValue > pk.Order)
+                    {
+                        orderOfFirstInKeyValue = pk.Order;
+                    }
+                }
+                else
+                {
+                    if (orderOfLastPrimaryKey == null)
+                    {
+                        orderOfLastPrimaryKey = pk.Order;
+                    }
+                    else if (orderOfLastPrimaryKey < pk.Order)
+                    {
+                        orderOfLastPrimaryKey = pk.Order;
+                    }
+                }
+            }
+        }
+
+        if (orderOfLastPrimaryKey > orderOfFirstInKeyValue)
+        {
+            return GenerationError("BTDB0006",
+                "InKeyValue " + fields[pkOrder2Index[orderOfFirstInKeyValue.Value]].Name +
+                " must be in order after PrimaryKey " + fields[pkOrder2Index[orderOfLastPrimaryKey.Value]].Name,
+                location);
+        }
+
+        var skName2Order2Index = new Dictionary<string, Dictionary<uint, int>>();
+
+        for (var i = 0; i < fields.Length; i++)
+        {
+            var f = fields[i];
+            var indexes = f.Indexes.GetArray() ?? [];
+            foreach (var index in indexes)
+            {
+                if (index.Name == null) continue;
+                if (!skName2Order2Index.TryGetValue(index.Name, out var order2Index))
+                {
+                    order2Index = new();
+                    skName2Order2Index[index.Name] = order2Index;
+                }
+
+                for (var j = 1u; j <= index.IncludePrimaryKeyOrder; j++)
+                {
+                    if (pkOrder2Index.TryGetValue(j, out var pkIndex))
+                    {
+                        if (order2Index.TryGetValue(j, out var oldIndex))
+                        {
+                            return GenerationError("BTDB0007",
+                                "Cannot have multiple SecondaryKey with same order in " + f.Name + " as in " +
+                                fields[oldIndex].Name, location);
+                        }
+
+                        order2Index[j] = pkIndex;
+                    }
+                }
+
+                if (order2Index.ContainsKey(index.Order))
+                {
+                    return GenerationError("BTDB0007",
+                        "Cannot have multiple SecondaryKey with same order in " + f.Name + " as in " +
+                        fields[order2Index[index.Order]].Name, location);
+                }
+
+                order2Index[index.Order] = i;
             }
         }
 
         return null;
+    }
+
+    static GenerationInfo GenerationError(string code, string message, Location location)
+    {
+        return new(GenerationType.Error, null, code, message, null, false, false, false, [],
+            [], [], [], [], [], [], [], location);
     }
 
     static bool IsICovariantRelation(INamedTypeSymbol typeSymbol)

@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+}
+public interface IPersonTable : IRelation<Person>
+                 ^^^^^^^^^^^^
+{
+*/
+ : (13,17)-(13,29),
+      Message: Cannot have multiple SecondaryKey with same order in S1Also as in S1,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0007,
+        Title: Cannot have multiple SecondaryKey with same order in S1Also as in S1,
+        MessageFormat: Cannot have multiple SecondaryKey with same order in S1Also as in S1,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}
