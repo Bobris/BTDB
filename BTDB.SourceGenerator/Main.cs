@@ -166,17 +166,16 @@ public class SourceGenerator : IIncrementalGenerator
                                 }
                             }
 
-                            // Get method return types and skip void
-                            var methodReturnTypes = methods.Select(m => m.ReturnType)
-                                .Where(t => t.SpecialType != SpecialType.System_Void).ToArray();
-
                             if (detectedError != null)
                                 return detectedError;
+                            return null;
+                            /*
                             return new(GenerationType.RelationIface, namespaceName, interfaceName,
                                 symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), persistedName, false,
                                 false, false,
                                 [], [], [], [], generationInfo.Fields,
                                 [new(relationType)], [], [generationInfo], null);
+                            */
                         }
                         else
                         {
