@@ -149,6 +149,27 @@ public class SourceGenerator : IIncrementalGenerator
                             if (generationInfo is not { GenType: GenerationType.Class }) return null;
                             var detectedError = DetectErrors(generationInfo.Fields.AsSpan(),
                                 ((InterfaceDeclarationSyntax)syntaxContext.Node).Identifier.GetLocation());
+                            // Get all methods
+                            var methods = symbol.GetMembers().OfType<IMethodSymbol>().ToArray();
+                            foreach (var method in methods)
+                            {
+                                if (method.ReturnType.TypeKind == TypeKind.Interface)
+                                {
+                                    // Check is return type is IEnumerator<>
+                                    if (method.ReturnType.OriginalDefinition.SpecialType ==
+                                        SpecialType.System_Collections_Generic_IEnumerator_T)
+                                    {
+                                        return GenerationError("BTDB0009",
+                                            "Cannot use IEnumerator<> as return type in " + method.Name,
+                                            method.Locations[0]);
+                                    }
+                                }
+                            }
+
+                            // Get method return types and skip void
+                            var methodReturnTypes = methods.Select(m => m.ReturnType)
+                                .Where(t => t.SpecialType != SpecialType.System_Void).ToArray();
+
                             if (detectedError != null)
                                 return detectedError;
                             return new(GenerationType.RelationIface, namespaceName, interfaceName,
@@ -364,7 +385,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                 if (order2Index.ContainsKey(index.Order))
                 {
-                    return GenerationError("BTDB0007",
+                    return GenerationError("BTDB0008",
                         "Cannot have multiple SecondaryKey with same order in " + f.Name + " as in " +
                         fields[order2Index[index.Order]].Name, location);
                 }

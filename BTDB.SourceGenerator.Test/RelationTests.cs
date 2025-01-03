@@ -190,4 +190,58 @@ public class RelationTests : GeneratorTestsBase
 
             """);
     }
+
+    [Fact]
+    public Task VerifyThatIEnumerableIsOk()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class UserNotice
+            {
+                [PrimaryKey(1)] public ulong UserId { get; set; }
+
+                [PrimaryKey(2)]
+                [SecondaryKey("NoticeId")]
+                public ulong NoticeId { get; set; }
+            }
+
+            [PersistedName("UserNotice")]
+            public interface IUserNoticeTable : IRelation<UserNotice>
+            {
+                void Insert(UserNotice un);
+                IEnumerable<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<ulong> noticeId);
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task VerifyThatIEnumeratorIsError()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class UserNotice
+            {
+                [PrimaryKey(1)] public ulong UserId { get; set; }
+
+                [PrimaryKey(2)]
+                [SecondaryKey("NoticeId")]
+                public ulong NoticeId { get; set; }
+            }
+
+            [PersistedName("UserNotice")]
+            public interface IUserNoticeTable : IRelation<UserNotice>
+            {
+                void Insert(UserNotice un);
+                IEnumerator<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<ulong> noticeId);
+            }
+
+            """);
+    }
 }

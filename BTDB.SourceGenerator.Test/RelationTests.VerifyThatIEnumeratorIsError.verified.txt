@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    void Insert(UserNotice un);
+    IEnumerator<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<ulong> noticeId);
+                            ^^^^^^^^^^^^^^
+}
+*/
+ : (16,28)-(16,42),
+      Message: Cannot use IEnumerator<> as return type in ListByNoticeId,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0009,
+        Title: Cannot use IEnumerator<> as return type in ListByNoticeId,
+        MessageFormat: Cannot use IEnumerator<> as return type in ListByNoticeId,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

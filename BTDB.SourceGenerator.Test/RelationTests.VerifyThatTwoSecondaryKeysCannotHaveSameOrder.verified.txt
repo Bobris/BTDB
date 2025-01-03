@@ -11,7 +11,7 @@ public interface IPersonTable : IRelation<Person>
       Message: Cannot have multiple SecondaryKey with same order in S1Also as in S1,
       Severity: Error,
       Descriptor: {
-        Id: BTDB0007,
+        Id: BTDB0008,
         Title: Cannot have multiple SecondaryKey with same order in S1Also as in S1,
         MessageFormat: Cannot have multiple SecondaryKey with same order in S1Also as in S1,
         Category: BTDB,

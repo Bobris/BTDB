@@ -1533,7 +1533,7 @@ namespace BTDBTest
         {
             void Insert(ProductionTrackingDaily productionTrackingDaily);
 
-            IEnumerator<ProductionTrackingDaily> FindByProductionDateWithCompanyId(ulong companyId,
+            IEnumerable<ProductionTrackingDaily> FindByProductionDateWithCompanyId(ulong companyId,
                 AdvancedEnumeratorParam<DateTime> productionDate);
         }
 
@@ -1950,7 +1950,7 @@ namespace BTDBTest
         public interface IPersonTableSuperfluousParameter : IRelation<Person>
         {
             void Insert(Person person);
-            IEnumerator<Person> ListByName(ulong tenantId, string name, AdvancedEnumeratorParam<int> param);
+            IEnumerable<Person> ListByName(ulong tenantId, string name, AdvancedEnumeratorParam<int> param);
         }
 
         [Fact]
@@ -1965,7 +1965,7 @@ namespace BTDBTest
         public interface IPersonTableWrongTypeParameter : IRelation<Person>
         {
             void Insert(Person person);
-            IEnumerator<Person> ListByName(ulong tenantId, AdvancedEnumeratorParam<int> param);
+            IEnumerable<Person> ListByName(ulong tenantId, AdvancedEnumeratorParam<int> param);
         }
 
         [Fact]
