@@ -1,3 +1,5 @@
+![BTDB Logo](BTDBLogo.png)
+
 # BTDB
 
 Currently this project these parts:
