@@ -2,10 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using BTDB.Collections;
-using BTDB.KVDBLayer.BTree;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
+
+public delegate void ValuesIterateAction(uint valueFileId, uint valueOfs, int valueSize);
 
 interface IKeyValueDBInternal : IKeyValueDB
 {

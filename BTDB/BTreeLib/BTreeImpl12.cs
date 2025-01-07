@@ -2,7 +2,6 @@ using BTDB.Allocators;
 using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.KVDBLayer;
-using BTDB.KVDBLayer.BTree;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

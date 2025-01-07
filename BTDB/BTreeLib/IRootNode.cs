@@ -4,7 +4,6 @@ using System.Threading;
 using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.KVDBLayer;
-using BTDB.KVDBLayer.BTree;
 using BTDB.StreamLayer;
 
 namespace BTDB.BTreeLib;

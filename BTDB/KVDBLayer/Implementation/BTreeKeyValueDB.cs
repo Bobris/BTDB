@@ -11,7 +11,6 @@ using BTDB.Allocators;
 using BTDB.BTreeLib;
 using BTDB.Buffer;
 using BTDB.Collections;
-using BTDB.KVDBLayer.BTree;
 using BTDB.KVDBLayer.Implementation;
 using BTDB.StreamLayer;
 
