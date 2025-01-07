@@ -2,6 +2,20 @@
 
 ## [unreleased]
 
+### Fixed
+
+Regression in Source Generator for Relations.
+
+## 33.0.0
+
+### Added
+
+.Net 9.0 support. Cursors in KeyValueDB. Parallel enumeration and modification of DB in ObjectDB. Optimizations in ScanBy and GatherBy.
+
+### Breaking changes
+
+Major version bump, read README.md for more info.
+
 ## 32.17.0
 
 ### Added

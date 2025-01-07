@@ -1,6 +1,6 @@
-![BTDB Logo](BTDBLogo.png)
-
 # BTDB
+
+![BTDB Logo](BTDBLogo.png)
 
 Currently this project these parts:
 
