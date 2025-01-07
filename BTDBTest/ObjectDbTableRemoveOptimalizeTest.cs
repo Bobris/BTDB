@@ -526,17 +526,9 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDBTransaction.CalcBTreeStats();
         }
 
-        public IKeyValueDBCursor? FirstCursor
-        {
-            get => _keyValueDBTransaction.FirstCursor;
-            set => _keyValueDBTransaction.FirstCursor = value;
-        }
+        public IKeyValueDBCursor? FirstCursor { get; set; }
 
-        public IKeyValueDBCursor? LastCursor
-        {
-            get => _keyValueDBTransaction.LastCursor;
-            set => _keyValueDBTransaction.LastCursor = value;
-        }
+        public IKeyValueDBCursor? LastCursor { get; set; }
 
         public bool IsWriting()
         {

@@ -131,7 +131,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                     if (syntaxContext.Node is InterfaceDeclarationSyntax)
                     {
-                        if (symbol.AllInterfaces.SingleOrDefault(IsICovariantRelation) is { } relation)
+                        if (symbol.AllInterfaces.FirstOrDefault(IsICovariantRelation) is { } relation)
                         {
                             var relationType = relation.TypeArguments[0].OriginalDefinition;
                             if (relationType is not INamedTypeSymbol)
