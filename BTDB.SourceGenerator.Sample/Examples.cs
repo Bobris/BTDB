@@ -13,13 +13,11 @@ unsafe
     builder.AutoRegisterTypes().AsSelf();
     var container = builder.Build();
     container.Resolve<Klass>();
-    unsafe
     {
         var h = IAnyHandler.CreateConsumeDispatcher(container);
         h(container, "Hello");
     }
 
-    unsafe
     {
         ReflectionMetadata.RegisterCollection(new()
         {
