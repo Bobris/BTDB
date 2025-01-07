@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.0.1
+
 ### Fixed
 
 Regression in Source Generator for Relations.
