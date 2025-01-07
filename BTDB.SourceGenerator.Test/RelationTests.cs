@@ -244,4 +244,34 @@ public class RelationTests : GeneratorTestsBase
 
             """);
     }
+
+    [Fact]
+    public Task ComplexSkymambaExample()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+                     using System.Collections.Generic;
+                     using BTDB.ODBLayer;
+
+                     public class ContinentMigrationInfo
+                     {
+                         [PrimaryKey(1)]
+                         public ulong CompanyId { get; set; }
+                     }
+
+                     public interface ICompanyTableBase<T> : ICovariantCompanyTableBase<T>, IRelation<T>
+                         where T : class
+                     {
+                     }
+
+                     public interface ICovariantCompanyTableBase<out T> : ICovariantRelation<T> where T : class
+                     {
+                     }
+
+                     public interface IPeripheryMigrationInfoTable : ICompanyTableBase<ContinentMigrationInfo>
+                     {
+                     }
+
+                     """);
+    }
 }
