@@ -250,28 +250,66 @@ public class RelationTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
-                     using System.Collections.Generic;
-                     using BTDB.ODBLayer;
+             using System.Collections.Generic;
+             using BTDB.ODBLayer;
 
-                     public class ContinentMigrationInfo
-                     {
-                         [PrimaryKey(1)]
-                         public ulong CompanyId { get; set; }
-                     }
+             public class ContinentMigrationInfo
+             {
+                 [PrimaryKey(1)]
+                 public ulong CompanyId { get; set; }
+             }
 
-                     public interface ICompanyTableBase<T> : ICovariantCompanyTableBase<T>, IRelation<T>
-                         where T : class
-                     {
-                     }
+             public interface ICompanyTableBase<T> : ICovariantCompanyTableBase<T>, IRelation<T>
+                 where T : class
+             {
+             }
 
-                     public interface ICovariantCompanyTableBase<out T> : ICovariantRelation<T> where T : class
-                     {
-                     }
+             public interface ICovariantCompanyTableBase<out T> : ICovariantRelation<T> where T : class
+             {
+             }
 
-                     public interface IPeripheryMigrationInfoTable : ICompanyTableBase<ContinentMigrationInfo>
-                     {
-                     }
+             public interface IPeripheryMigrationInfoTable : ICompanyTableBase<ContinentMigrationInfo>
+             {
+             }
 
-                     """);
+             """);
+    }
+
+    [Fact]
+    public Task ComplexSkymambaExample_OrderError()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+             using System.Collections.Generic;
+             using BTDB.ODBLayer;
+
+             public class Item : ICompanyRecord
+             {
+                 [PrimaryKey(1)]
+                 public ulong CompanyId { get; set; }
+
+                 [PrimaryKey(2)]
+                 public string Queue { get; set; }
+
+                 [PrimaryKey(3)]
+                 public Guid ItemId { get; set; }
+
+                 [SecondaryKey(nameof(LockDeadline), IncludePrimaryKeyOrder = 2, Order = 3)]
+                 public int Priority { get; set; }
+
+                 /// <summary>
+                 /// The deadline by which the worker should renew lock or complete the work;
+                 /// after deadline work item is available to other worker.
+                 /// </summary>
+                 [SecondaryKey(nameof(LockDeadline), Order = 4)]
+                 public DateTime LockDeadline { get; set; }
+             }
+
+
+             public interface IItemTable : IRelation<Item>
+             {
+             }
+
+             """);
     }
 }
