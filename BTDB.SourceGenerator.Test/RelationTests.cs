@@ -289,7 +289,7 @@ public class RelationTests : GeneratorTestsBase
                  public ulong CompanyId { get; set; }
 
                  [PrimaryKey(2)]
-                 public QueueName Queue { get; set; }
+                 public string Queue { get; set; }
 
                  [PrimaryKey(3)]
                  public Guid ItemId { get; set; }
