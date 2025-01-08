@@ -2302,7 +2302,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             }
 
             Assert.Equal(result, res);
-            Assert.Equal(-1, (int)e.Position);
+            Assert.Equal(0, (int)e.Count);
             param = new AdvancedEnumeratorParam<int>(EnumerationOrder.Descending, start,
                 start == -1
                     ? KeyProposition.Ignored
@@ -2317,14 +2317,14 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             Assert.Equal(result.Length, (int)e2.Count);
             while (e2.NextKey(out key))
             {
-                Assert.Equal(res.Length, e2.Position);
+                Assert.Equal(res.Length, (int)e2.Position);
                 var val = e2.CurrentValue;
                 Assert.Equal(key.ToString(CultureInfo.InvariantCulture), val);
                 res = val + res;
             }
 
             Assert.Equal(result, res);
-            Assert.Equal(-1, e2.Position);
+            Assert.Equal(0u, e2.Position);
         }
     }
 
@@ -2377,7 +2377,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             e.Position = 2;
             while (e.NextKey(out key))
             {
-                Assert.Equal(res.Length, e.Position - 2);
+                Assert.Equal(res.Length, (int)e.Position - 2);
                 var val = e.CurrentValue;
                 Assert.Equal(key.ToString(CultureInfo.InvariantCulture), val);
                 res += val;

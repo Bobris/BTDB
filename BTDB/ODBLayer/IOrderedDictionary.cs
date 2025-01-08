@@ -12,7 +12,7 @@ public interface IOrderedDictionaryEnumerator<TKey, TValue> : IDisposable
     /// <returns>true if there was new key read</returns>
     bool NextKey(out TKey key);
 
-    int Position { get; set; }
+    uint Position { get; set; }
     uint Count { get; }
     TValue CurrentValue { get; set; }
 }

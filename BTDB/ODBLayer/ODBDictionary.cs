@@ -740,19 +740,19 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             }
         }
 
-        public int Position
+        public uint Position
         {
             get
             {
-                if (_cursor == null) return -1;
-                return (int)(_ascending
+                if (_cursor == null) return 0;
+                return (uint)(_ascending
                     ? _cursor.GetKeyIndex() - _startCursor!.GetKeyIndex()
                     : _endCursor!.GetKeyIndex() - _cursor.GetKeyIndex());
             }
 
             set
             {
-                if ((uint)value >= Count)
+                if (value >= Count)
                 {
                     _cursor?.Dispose();
                     _cursor = null;

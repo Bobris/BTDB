@@ -1071,19 +1071,19 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
         set => throw new NotSupportedException();
     }
 
-    public int Position
+    public uint Position
     {
         get
         {
             if (_cursor == null) return 0;
-            return (int)(_ascending
+            return (uint)(_ascending
                 ? _cursor.GetKeyIndex() - _startCursor!.GetKeyIndex()
                 : _endCursor!.GetKeyIndex() - _cursor.GetKeyIndex());
         }
 
         set
         {
-            if ((uint)value >= Count) throw new IndexOutOfRangeException();
+            if (value >= Count) throw new IndexOutOfRangeException();
             if (_ascending)
             {
                 _cursor!.FindKeyIndex(_startCursor!.GetKeyIndex() + value);
