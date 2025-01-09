@@ -707,7 +707,21 @@ public class SourceGenerator : IIncrementalGenerator
         {
             var literalExpressionSyntax =
                 attributeSyntax.ArgumentList?.Arguments.FirstOrDefault()?.Expression as LiteralExpressionSyntax;
-            return literalExpressionSyntax?.Token.ValueText;
+            if (literalExpressionSyntax != null)
+            {
+                return literalExpressionSyntax.Token.ValueText;
+            }
+
+            var nameOfExpressionSyntax =
+                attributeSyntax.ArgumentList?.Arguments.FirstOrDefault()?.Expression as InvocationExpressionSyntax;
+            if (nameOfExpressionSyntax != null)
+            {
+                var nameOfArgument = nameOfExpressionSyntax.ArgumentList.Arguments.FirstOrDefault()?.Expression;
+                if (nameOfArgument is IdentifierNameSyntax identifierNameSyntax)
+                {
+                    return identifierNameSyntax.Identifier.ValueText;
+                }
+            }
         }
 
         return null;
