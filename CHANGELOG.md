@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.0.3
+
 ### Fixed
 
 Workaround crash in ExtractPropertyFromGetter in source generator.
