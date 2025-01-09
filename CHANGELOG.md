@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+## 33.0.2
+
+### Fixed
+
+Support of nameof expression in name of SecondaryKey in Relation.
+
 ## 33.0.1
 
 ### Fixed
