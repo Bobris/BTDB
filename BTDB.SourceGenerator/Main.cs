@@ -950,10 +950,17 @@ public class SourceGenerator : IIncrementalGenerator
         if (syntax is not AccessorDeclarationSyntax ads) return null;
         if (ads.ExpressionBody is { } aecs)
         {
-            if (aecs.Expression is IdentifierNameSyntax ins && ModelExtensions.GetSymbolInfo(model, ins) is
-                    { Symbol: IFieldSymbol })
+            try
             {
-                return ins.Identifier.ValueText;
+                if (aecs.Expression is IdentifierNameSyntax ins && ModelExtensions.GetSymbolInfo(model, ins) is
+                        { Symbol: IFieldSymbol })
+                {
+                    return ins.Identifier.ValueText;
+                }
+            }
+            catch
+            {
+                // ignored
             }
         }
 
