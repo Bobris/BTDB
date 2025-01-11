@@ -596,6 +596,20 @@ public abstract class KeyValueDBTestBase
     }
 
     [Fact]
+    public void FindLastKeyReallyWorks()
+    {
+        using var db = NewKeyValueDB();
+        using var tr = db.StartTransaction();
+        using var cursor = tr.CreateCursor();
+        Assert.False(cursor.FindLastKey(new()));
+        cursor.CreateKey([0, 1, 1, 1]);
+        cursor.CreateKey([0, 2, 0]);
+        Assert.False(cursor.FindLastKey([0, 1, 2]));
+        Assert.True(cursor.FindLastKey([0, 2]));
+        tr.Commit();
+    }
+
+    [Fact]
     public void SimplePrefixWorks()
     {
         using var db = NewKeyValueDB();

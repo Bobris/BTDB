@@ -17,6 +17,7 @@
         <PackageTags>KeyValue database objectDB BTDB IOC RPC Compression</PackageTags>
         <WarningsAsErrors/>
         <NoWarn>1701;1702;1720</NoWarn>
+        <WarningsNotAsErrors>NU1900;NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>        
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
         <DebugSymbols>true</DebugSymbols>
         <DebugType>embedded</DebugType>

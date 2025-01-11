@@ -125,6 +125,12 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         }
 
         _transaction._btreeRoot.FillStackByIndex(ref _stack, _keyIndex);
+        if (!CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
+        {
+            _stack.Clear();
+            return false;
+        }
+
         return true;
     }
 

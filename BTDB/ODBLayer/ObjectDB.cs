@@ -317,7 +317,7 @@ public class ObjectDB : IObjectDB
 
         uint ITableInfoResolver.GetLastPersistedVersion(uint id)
         {
-            using var tr = _keyValueDB.StartTransaction();
+            using var tr = _keyValueDB.StartReadOnlyTransaction();
             using var cursor = tr.CreateCursor();
             var key = TableInfo.BuildKeyForTableVersions(id, 0);
             var ofs = PackUnpack.LengthVUInt(id);
