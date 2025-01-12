@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.0.4
+
 ### Fixed
 
 Long time bug in FindLastWithPrefix in InMemoryKeyValueDB.
