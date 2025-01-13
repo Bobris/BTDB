@@ -697,6 +697,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         Span<byte> buf = stackalloc byte[4096];
         Span<byte> keyBuffer = stackalloc byte[1024];
+        using var tempCursor = _kvtr.CreateCursor();
         var needImplementFreeContent = _relationInfo.NeedImplementFreeContent();
         using var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, 0)
             .GetEnumerator();
@@ -717,7 +718,6 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
                 if (_hasSecondaryIndexes)
                 {
-                    using var tempCursor = _kvtr.CreateCursor();
                     RemoveSecondaryIndexes(tempCursor,
                         ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.GetKeySpan(ref keyBuffer, true),
                         valueBytes);
@@ -772,7 +772,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
                 if (_hasSecondaryIndexes)
                 {
-                    var tempCursor = _kvtr.CreateCursor();
+                    using var tempCursor = _kvtr.CreateCursor();
                     RemoveSecondaryIndexes(tempCursor,
                         ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.GetKeySpan(ref keyBuffer), valueBytes);
                 }
