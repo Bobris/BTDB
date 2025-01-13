@@ -159,6 +159,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
             KeyValueDB.DereferenceRoot(currentRoot);
         }
 
+        KeyValueDB.TransactionDisposed(this);
         GC.SuppressFinalize(this);
     }
 

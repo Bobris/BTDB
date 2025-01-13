@@ -126,6 +126,7 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
         }
 
         _btreeRoot = null;
+        _keyValueDB.TransactionDisposed(this);
     }
 
     public long GetTransactionNumber()

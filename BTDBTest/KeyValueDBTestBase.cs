@@ -71,6 +71,26 @@ public abstract class KeyValueDBTestBase
     }
 
     [Fact]
+    public void ItShouldThrowOnUsageAfterDisposeOfDB()
+    {
+        var db = NewKeyValueDB();
+        db.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => db.StartTransaction());
+        Assert.Throws<ObjectDisposedException>(() => db.StartReadOnlyTransaction());
+        Assert.Throws<ObjectDisposedException>(() => db.StartWritingTransaction().AsTask().GetAwaiter().GetResult());
+    }
+
+    [Fact]
+    public void DisposeOfDBShouldThrowIfThereAreRunningTransactions()
+    {
+        var db = NewKeyValueDB();
+        var tr = db.StartTransaction();
+        Assert.Throws<BTDBException>(() => db.Dispose());
+        tr.Dispose();
+        db.Dispose();
+    }
+
+    [Fact]
     public void CanGetSizeOfPair()
     {
         using var db = NewKeyValueDB();

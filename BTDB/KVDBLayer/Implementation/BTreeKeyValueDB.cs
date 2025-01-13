@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -45,7 +46,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         foreach (var keyValuePair in _transactions)
         {
-            yield return keyValuePair.Key;
+            if (!keyValuePair.Value.Disposed)
+                yield return keyValuePair.Key;
         }
     }
 
@@ -62,6 +64,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     readonly Func<CancellationToken, bool>? _compactFunc;
     readonly bool _readOnly;
     readonly bool _lenientOpen;
+    bool _disposed = false;
     uint? _missingSomeTrlFiles;
 
     public BTreeKeyValueDB(IFileCollection fileCollection)
@@ -994,6 +997,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             _writerWithTransactionLog.Flush();
             _fileWithTransactionLog!.HardFlushTruncateSwitchToDisposedMode();
         }
+
+        if (Transactions().Any())
+        {
+            throw new BTDBException("Cannot dispose KeyValueDB when transactions still running");
+        }
+
+        _disposed = true;
     }
 
     public bool DurableTransactions { get; set; }
@@ -1059,6 +1069,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     public IKeyValueDBTransaction StartTransaction()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         while (true)
         {
             var node = _lastCommitted;
@@ -1066,16 +1077,22 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             if (!node.Reference())
             {
                 var tr = new BTreeKeyValueDBTransaction(this, node, false, false);
-                _transactions.Add(tr, null);
+                _transactions.TryAdd(tr, new());
                 return tr;
             }
         }
     }
 
-    readonly ConditionalWeakTable<IKeyValueDBTransaction, object?> _transactions = new();
+    class DisposedValue
+    {
+        internal bool Disposed = false;
+    }
+
+    readonly ConditionalWeakTable<IKeyValueDBTransaction, DisposedValue> _transactions = new();
 
     public IKeyValueDBTransaction StartReadOnlyTransaction()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         while (true)
         {
             var node = _lastCommitted;
@@ -1083,7 +1100,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             if (!node.Reference())
             {
                 var tr = new BTreeKeyValueDBTransaction(this, node, false, true);
-                _transactions.Add(tr, null);
+                _transactions.TryAdd(tr, new());
                 return tr;
             }
         }
@@ -1091,12 +1108,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     public ValueTask<IKeyValueDBTransaction> StartWritingTransaction()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_writeLock)
         {
             if (_writingTransaction == null)
             {
                 var tr = NewWritingTransactionUnsafe();
-                _transactions.Add(tr, null);
+                _transactions.TryAdd(tr, new());
                 return new(tr);
             }
 
@@ -1310,7 +1328,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         if (_writeWaitingQueue.Count == 0) return;
         var tcs = _writeWaitingQueue.Dequeue();
         var tr = NewWritingTransactionUnsafe();
-        _transactions.Add(tr, null);
+        _transactions.TryAdd(tr, new());
         tcs.SetResult(tr);
     }
 
@@ -2010,5 +2028,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
 
         return buffer[..valueSize];
+    }
+
+    public void TransactionDisposed(IKeyValueDBTransaction transaction)
+    {
+        if (_transactions.TryGetValue(transaction, out var disposedValue))
+        {
+            disposedValue!.Disposed = true;
+        }
     }
 }

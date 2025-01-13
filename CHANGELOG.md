@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Added
+
+Disposing DB when there are still some transactions now throws BTDBException.
+
+### Fixed
+
+- Position setter in IOrderedDictionaryEnumerator was returned to behaviour before 33.0.0.
+
 ## 33.0.7
 
 ### Fixed

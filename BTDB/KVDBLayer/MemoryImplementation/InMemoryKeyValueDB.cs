@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -11,8 +12,12 @@ public class InMemoryKeyValueDB : IKeyValueDB
 {
     IBTreeRootNode _lastCommited;
     InMemoryKeyValueDBTransaction? _writingTransaction;
-    readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
+
+    readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue =
+        new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
+
     readonly object _writeLock = new object();
+    bool _disposed = false;
 
     public InMemoryKeyValueDB()
     {
@@ -23,12 +28,17 @@ public class InMemoryKeyValueDB : IKeyValueDB
     {
         lock (_writeLock)
         {
-            if (_writingTransaction != null) throw new BTDBException("Cannot dispose KeyValueDB when writing transaction still running");
+            if (_writingTransaction != null)
+                throw new BTDBException("Cannot dispose KeyValueDB when writing transaction still running");
             while (_writeWaitingQueue.Count > 0)
             {
                 _writeWaitingQueue.Dequeue().TrySetCanceled();
             }
         }
+        if (_transactions.Count > 0)
+            throw new BTDBException("Cannot dispose KeyValueDB when transactions still running");
+
+        _disposed = true;
     }
 
     public bool DurableTransactions { get; set; }
@@ -37,34 +47,36 @@ public class InMemoryKeyValueDB : IKeyValueDB
 
     public IKeyValueDBTransaction StartTransaction()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var tr = new InMemoryKeyValueDBTransaction(this, LastCommited, false, false);
-        _transactions.Add(tr, null);
+        _transactions.TryAdd(tr, false);
         return tr;
     }
 
     public IKeyValueDBTransaction StartReadOnlyTransaction()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var tr = new InMemoryKeyValueDBTransaction(this, LastCommited, false, true);
-        _transactions.Add(tr, null);
+        _transactions.TryAdd(tr, false);
         return tr;
     }
 
     public ValueTask<IKeyValueDBTransaction> StartWritingTransaction()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_writeLock)
         {
-
             if (_writingTransaction == null)
             {
                 var tr = NewWritingTransactionUnsafe();
-                _transactions.Add(tr, null);
-                return new ValueTask<IKeyValueDBTransaction>(tr);
+                _transactions.TryAdd(tr, false);
+                return new(tr);
             }
 
             var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
             _writeWaitingQueue.Enqueue(tcs);
 
-            return new ValueTask<IKeyValueDBTransaction>(tcs.Task);
+            return new(tcs.Task);
         }
     }
 
@@ -91,32 +103,38 @@ public class InMemoryKeyValueDB : IKeyValueDB
 
     public uint CompactorRamLimitInMb { get; set; }
     public long MaxTrLogFileSize { get; set; }
+
     public IEnumerable<IKeyValueDBTransaction> Transactions()
     {
-        foreach (var keyValuePair in _transactions)
+        foreach (var keyValuePair in _transactions.Keys)
         {
-            yield return keyValuePair.Key;
+            yield return keyValuePair;
         }
     }
 
     public ulong CompactorReadBytesPerSecondLimit { get; set; }
     public ulong CompactorWriteBytesPerSecondLimit { get; set; }
 
-    readonly ConditionalWeakTable<IKeyValueDBTransaction, object?> _transactions =
-        new ConditionalWeakTable<IKeyValueDBTransaction, object?>();
+    readonly ConcurrentDictionary<IKeyValueDBTransaction, bool> _transactions = new();
 
     public ulong? PreserveHistoryUpToCommitUlong
     {
         get { return null; }
-        set { /* ignore */ }
+        set
+        {
+            /* ignore */
+        }
     }
 
-    internal IBTreeRootNode MakeWritableTransaction(InMemoryKeyValueDBTransaction keyValueDBTransaction, IBTreeRootNode btreeRoot)
+    internal IBTreeRootNode MakeWritableTransaction(InMemoryKeyValueDBTransaction keyValueDBTransaction,
+        IBTreeRootNode btreeRoot)
     {
         lock (_writeLock)
         {
-            if (_writingTransaction != null) throw new BTDBTransactionRetryException("Another writing transaction already running");
-            if (LastCommited != btreeRoot) throw new BTDBTransactionRetryException("Another writing transaction already finished");
+            if (_writingTransaction != null)
+                throw new BTDBTransactionRetryException("Another writing transaction already running");
+            if (LastCommited != btreeRoot)
+                throw new BTDBTransactionRetryException("Another writing transaction already finished");
             _writingTransaction = keyValueDBTransaction;
             return btreeRoot.NewTransactionRoot();
         }
@@ -137,7 +155,7 @@ public class InMemoryKeyValueDB : IKeyValueDB
         if (_writeWaitingQueue.Count == 0) return;
         var tcs = _writeWaitingQueue.Dequeue();
         var tr = NewWritingTransactionUnsafe();
-        _transactions.Add(tr, null);
+        _transactions.TryAdd(tr, false);
         tcs.SetResult(tr);
     }
 
@@ -156,5 +174,10 @@ public class InMemoryKeyValueDB : IKeyValueDB
             _writingTransaction = null;
             TryDequeWaiterForWritingTransaction();
         }
+    }
+
+    public void TransactionDisposed(IKeyValueDBTransaction transaction)
+    {
+        _transactions.TryRemove(transaction, out _);
     }
 }
