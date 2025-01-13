@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.1.0
+
 ### Added
 
 Disposing DB when there are still some transactions now throws BTDBException.
