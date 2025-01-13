@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Constraint Enumerator could be not correctly iterated multiple times.
+
 ## 33.0.5
 
 ### Fixed

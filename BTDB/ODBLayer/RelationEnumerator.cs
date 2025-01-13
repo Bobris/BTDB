@@ -25,7 +25,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
     protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
     readonly ConstraintInfo[] _constraints;
     protected readonly IKeyValueDBTransaction KeyValueTr;
-    protected IKeyValueDBCursor _cursor;
+    protected IKeyValueDBCursor? _cursor;
 
     bool _seekNeeded;
 
@@ -123,7 +123,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
                         _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
                         goto case IConstraint.MatchType.NoPrefix;
                     case IConstraint.MatchType.NoPrefix:
-                        if (!_cursor.FindFirstKey(writer.GetSpan())) return false;
+                        if (!_cursor!.FindFirstKey(writer.GetSpan())) return false;
                         goto nextKeyTest;
                     default:
                         throw new InvalidOperationException();
@@ -132,7 +132,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
                 i++;
             }
 
-            if (_cursor.FindFirstKey(writer.GetSpan()))
+            if (_cursor!.FindFirstKey(writer.GetSpan()))
             {
                 _cursor.GetKeyIntoMemWriter(ref writer);
                 return true;
@@ -142,7 +142,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
         }
 
         goNextKey:
-        if (!_cursor.FindNextKey(new())) return false;
+        if (!_cursor!.FindNextKey(new())) return false;
         nextKeyTest:
         var key = _cursor.GetKeySpan(ref buf);
         var commonUpToOffset = (uint)writer.GetSpan().CommonPrefixLength(key);
@@ -303,32 +303,32 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
         return false;
     }
 
-    public virtual T Current
-    {
-        get => (T)ItemLoader.CreateInstance(_transaction, _cursor, _key.GetSpan());
-    }
+    public virtual T Current => (T)ItemLoader.CreateInstance(_transaction, _cursor!, _key.GetSpan());
 
     public virtual T CurrentFromKeySpan(ReadOnlySpan<byte> key)
     {
-        return (T)ItemLoader.CreateInstance(_transaction, _cursor, key);
+        return (T)ItemLoader.CreateInstance(_transaction, _cursor!, key);
     }
 
     object IEnumerator.Current => Current!;
 
     public void Reset()
     {
-        _cursor.Invalidate();
+        _cursor!.Invalidate();
         _seekNeeded = true;
     }
 
     public void Dispose()
     {
-        _cursor.Dispose();
+        _cursor!.Dispose();
         _cursor = null!;
     }
 
     public IEnumerator<T> GetEnumerator()
     {
+        _seekNeeded = true;
+        _cursor ??= KeyValueTr.CreateCursor();
+
         return this;
     }
 
@@ -339,7 +339,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
 
     public T CurrentByKeyIndex(ulong keyIndex)
     {
-        _cursor.FindKeyIndex((long)keyIndex);
+        _cursor!.FindKeyIndex((long)keyIndex);
         _cursor.GetKeyIntoMemWriter(ref _key);
         return Current;
     }
@@ -365,7 +365,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
                     _constraints[i].Constraint.WritePrefix(ref writer, _buffer);
                     goto case IConstraint.MatchType.NoPrefix;
                 case IConstraint.MatchType.NoPrefix:
-                    if (!_cursor.FindFirstKey(writer.GetSpan())) return 0;
+                    if (!_cursor!.FindFirstKey(writer.GetSpan())) return 0;
                     goto startIteration;
                 default:
                     throw new InvalidOperationException();
@@ -376,7 +376,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
 
         startIteration:
         var count = 0UL;
-        _cursor.FastIterate(ref buf, (index, key) =>
+        _cursor!.FastIterate(ref buf, (index, key) =>
         {
             if (!key.StartsWith(_key.GetSpan())) return true;
             fixed (void* _ = key)
@@ -451,11 +451,11 @@ class RelationConstraintSecondaryKeyEnumerator<T> : RelationConstraintEnumerator
     }
 
     public override T Current =>
-        (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, _key.GetSpan());
+        (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, _key.GetSpan())!;
 
     public override T CurrentFromKeySpan(ReadOnlySpan<byte> key)
     {
-        return (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, key);
+        return (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, key)!;
     }
 }
 
@@ -465,10 +465,10 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
     readonly IKeyValueDBTransaction _keyValueTr;
 
-    protected IKeyValueDBCursor? _cursor;
+    public IKeyValueDBCursor? Cursor;
     bool _seekNeeded;
 
-    protected readonly byte[] KeyBytes;
+    readonly byte[] _keyBytes;
 
     public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
         ReadOnlySpan<byte> keyBytes, int loaderIndex) : this(tr, keyBytes.ToArray(),
@@ -488,22 +488,22 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         ItemLoader = loaderInfo;
         _keyValueTr = _transaction.KeyValueDBTransaction;
 
-        KeyBytes = keyBytes;
+        _keyBytes = keyBytes;
         _seekNeeded = true;
     }
 
     public bool MoveNext()
     {
-        ObjectDisposedException.ThrowIf(_cursor == null, this);
+        ObjectDisposedException.ThrowIf(Cursor == null, this);
         _transaction.ThrowIfDisposed();
         if (_seekNeeded)
         {
-            var ret = _cursor.FindFirstKey(KeyBytes);
+            var ret = Cursor.FindFirstKey(_keyBytes);
             _seekNeeded = false;
             return ret;
         }
 
-        return _cursor.FindNextKey(KeyBytes);
+        return Cursor.FindNextKey(_keyBytes);
     }
 
     public T Current
@@ -511,30 +511,30 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         [SkipLocalsInit]
         get
         {
-            ObjectDisposedException.ThrowIf(_cursor == null, this);
+            ObjectDisposedException.ThrowIf(Cursor == null, this);
             Span<byte> keyBuffer = stackalloc byte[2048];
-            var keyBytes = _cursor.GetKeySpan(keyBuffer);
+            var keyBytes = Cursor.GetKeySpan(keyBuffer);
             return CreateInstance(keyBytes);
         }
     }
 
     protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes)
     {
-        return (T)ItemLoader.CreateInstance(_transaction, _cursor!, keyBytes);
+        return (T)ItemLoader.CreateInstance(_transaction, Cursor!, keyBytes);
     }
 
     object IEnumerator.Current => Current!;
 
     public void Reset()
     {
-        _cursor ??= _keyValueTr.CreateCursor();
+        Cursor ??= _keyValueTr.CreateCursor();
         _seekNeeded = true;
     }
 
     public void Dispose()
     {
-        _cursor?.Dispose();
-        _cursor = null;
+        Cursor?.Dispose();
+        Cursor = null;
     }
 
     public IEnumerator<T> GetEnumerator()
@@ -556,8 +556,6 @@ class RelationPrimaryKeyEnumerator<T> : RelationEnumerator<T>
         : base(tr, relationInfo, keyBytes, loaderIndex)
     {
     }
-
-    public IKeyValueDBCursor Cursor => _cursor;
 }
 
 class RelationSecondaryKeyEnumerator<T> : RelationEnumerator<T>
@@ -945,13 +943,14 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
     protected readonly IRelationDbManipulator Manipulator;
     protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
     readonly IInternalObjectDBTransaction _tr;
+    // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable could be useful for debugging
     readonly IKeyValueDBTransaction _keyValueTr;
     IKeyValueDBCursor? _startCursor;
     IKeyValueDBCursor? _endCursor;
     IKeyValueDBCursor? _cursor;
     bool _seekNeeded;
     readonly bool _ascending;
-    protected readonly byte[] KeyBytes;
+    readonly byte[] _keyBytes;
     protected ReaderFun<TKey>? KeyReader;
 
     public RelationAdvancedOrderedEnumerator(IRelationDbManipulator manipulator, EnumerationOrder order,
@@ -968,13 +967,13 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
         _keyValueTr = _tr.KeyValueDBTransaction;
         _seekNeeded = true;
 
-        KeyBytes = startKeyBytes.Slice(0, prefixLen).ToArray();
+        _keyBytes = startKeyBytes[..prefixLen].ToArray();
 
 
         _startCursor = _keyValueTr.CreateCursor();
         if (startKeyProposition == KeyProposition.Ignored)
         {
-            if (!_startCursor.FindFirstKey(KeyBytes))
+            if (!_startCursor.FindFirstKey(_keyBytes))
             {
                 return;
             }
@@ -986,12 +985,12 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
                 case FindResult.Exact:
                     if (startKeyProposition == KeyProposition.Excluded)
                     {
-                        if (!_startCursor.FindNextKey(KeyBytes)) return;
+                        if (!_startCursor.FindNextKey(_keyBytes)) return;
                     }
 
                     break;
                 case FindResult.Previous:
-                    if (!_startCursor.FindNextKey(KeyBytes)) return;
+                    if (!_startCursor.FindNextKey(_keyBytes)) return;
                     break;
                 case FindResult.Next:
                     break;
@@ -1009,7 +1008,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
 
         if (endKeyProposition == KeyProposition.Ignored)
         {
-            if (!_endCursor.FindLastKey(KeyBytes)) return;
+            if (!_endCursor.FindLastKey(_keyBytes)) return;
         }
         else
         {
@@ -1018,14 +1017,14 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
                 case FindResult.Exact:
                     if (endKeyProposition == KeyProposition.Excluded)
                     {
-                        if (!_endCursor.FindPreviousKey(KeyBytes)) return;
+                        if (!_endCursor.FindPreviousKey(_keyBytes)) return;
                     }
 
                     break;
                 case FindResult.Previous:
                     break;
                 case FindResult.Next:
-                    if (!_endCursor.FindPreviousKey(KeyBytes)) return;
+                    if (!_endCursor.FindPreviousKey(_keyBytes)) return;
                     break;
                 case FindResult.NotFound:
                     return;
@@ -1115,7 +1114,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
         {
             if (_ascending)
             {
-                if (!_cursor.FindNextKey(KeyBytes))
+                if (!_cursor.FindNextKey(_keyBytes))
                 {
                     key = default;
                     return false;
@@ -1129,7 +1128,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
             }
             else
             {
-                if (!_cursor.FindPreviousKey(KeyBytes))
+                if (!_cursor.FindPreviousKey(_keyBytes))
                 {
                     key = default;
                     return false;
@@ -1143,7 +1142,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
             }
         }
 
-        var keySpan = _cursor.GetKeySpan(stackalloc byte[2048])[KeyBytes.Length..];
+        var keySpan = _cursor.GetKeySpan(stackalloc byte[2048])[_keyBytes.Length..];
         fixed (void* _ = keySpan)
         {
             var reader = MemReader.CreateFromPinnedSpan(keySpan);
