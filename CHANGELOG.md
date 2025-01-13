@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Cursor leak. And another bug in BTree Cursor.
+
 ## 33.0.4
 
 ### Fixed
