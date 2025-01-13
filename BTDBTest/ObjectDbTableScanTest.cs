@@ -566,6 +566,11 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal("C", p.Name);
         p = t.ScanByName(Constraint.String.Any, Constraint.Unsigned.Any, Constraint.Unsigned.Exact(3)).Single();
         Assert.Equal("D", p.Name);
+        var e = t.ScanByName(Constraint.String.Any, Constraint.Unsigned.Any, Constraint.Unsigned.Exact(3));
+        // ReSharper disable once PossibleMultipleEnumeration it must work
+        Assert.True(e.Any());
+        // ReSharper disable once PossibleMultipleEnumeration it must work
+        Assert.True(e.Any());
     }
 
     [Fact]

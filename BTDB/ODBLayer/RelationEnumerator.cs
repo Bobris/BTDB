@@ -60,7 +60,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
     [SkipLocalsInit]
     public void GatherForSorting(ref SortNativeStorage sortNativeStorage, int[] ordererIdx, IOrderer[] orderers)
     {
-        if (!_cursor.FindFirstKey(_buffer.AsReadOnlySpan(0, _keyBytesCount))) return;
+        if (!_cursor!.FindFirstKey(_buffer.AsReadOnlySpan(0, _keyBytesCount))) return;
         sortNativeStorage.StartKeyIndex = (ulong)_cursor.GetKeyIndex();
         while (MoveNextInGather())
         {
@@ -110,6 +110,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
         var i = 0;
         if (first)
         {
+            writer.Reset();
             writer.WriteBlock(_buffer.AsReadOnlySpan(0, _keyBytesCount));
             while (i < _constraints.Length)
             {
@@ -314,8 +315,8 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
 
     public void Reset()
     {
-        _cursor!.Invalidate();
         _seekNeeded = true;
+        _cursor!.Invalidate();
     }
 
     public void Dispose()
@@ -943,6 +944,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
     protected readonly IRelationDbManipulator Manipulator;
     protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
     readonly IInternalObjectDBTransaction _tr;
+
     // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable could be useful for debugging
     readonly IKeyValueDBTransaction _keyValueTr;
     IKeyValueDBCursor? _startCursor;
