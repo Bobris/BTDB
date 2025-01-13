@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.0.5
+
 ### Fixed
 
 Cursor leak. And another bug in BTree Cursor.
