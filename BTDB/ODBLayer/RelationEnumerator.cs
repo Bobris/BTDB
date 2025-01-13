@@ -1076,7 +1076,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
     {
         get
         {
-            if (_cursor == null) return 0;
+            if (_cursor == null) return Count;
             return (uint)(_ascending
                 ? _cursor.GetKeyIndex() - _startCursor!.GetKeyIndex()
                 : _endCursor!.GetKeyIndex() - _cursor.GetKeyIndex());
@@ -1084,7 +1084,13 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
 
         set
         {
-            if (value >= Count) throw new IndexOutOfRangeException();
+            if (value >= Count)
+            {
+                _cursor?.Dispose();
+                _cursor = null;
+                return;
+            }
+
             if (_ascending)
             {
                 _cursor!.FindKeyIndex(_startCursor!.GetKeyIndex() + value);

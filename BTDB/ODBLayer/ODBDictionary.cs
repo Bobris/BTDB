@@ -744,7 +744,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         {
             get
             {
-                if (_cursor == null) return 0;
+                if (_cursor == null) return Count;
                 return (uint)(_ascending
                     ? _cursor.GetKeyIndex() - _startCursor!.GetKeyIndex()
                     : _endCursor!.GetKeyIndex() - _cursor.GetKeyIndex());
