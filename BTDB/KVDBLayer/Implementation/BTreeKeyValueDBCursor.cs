@@ -342,8 +342,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public ReadOnlySpan<byte> GetValueSpan(scoped ref Span<byte> buffer, bool copy = false)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        EnsureValidCursor();
         if (!IsValid()) return new();
         var trueValue = _cursor!.GetValue();
         var keyValueDB = _transaction!.KeyValueDB;
