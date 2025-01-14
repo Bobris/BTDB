@@ -974,6 +974,12 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
                 root.Int2String.GetDecreasingEnumerator(3).Aggregate("", (current, p) => current + p.Value));
             Assert.Equal("CA",
                 root.Int2String.GetDecreasingEnumerator(4).Aggregate("", (current, p) => current + p.Value));
+            using var enumerator = root.Int2String.GetAdvancedEnumerator(new(EnumerationOrder.Ascending, 0,
+                KeyProposition.Included, Int32.MaxValue, KeyProposition.Included));
+            enumerator.Position = 1;
+            Assert.Throws<BTDBException>(() => enumerator.CurrentValue);
+            Assert.True(enumerator.NextKey(out var key));
+            Assert.Equal(3, key);
         }
     }
 
