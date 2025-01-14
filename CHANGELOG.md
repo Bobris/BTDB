@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.1.3
+
 ### Fixed
 
 Upsert with changing secondary key during enumeration by same secondary key. Correctly continue enumeration after such change.
