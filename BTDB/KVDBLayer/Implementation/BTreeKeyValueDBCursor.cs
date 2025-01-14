@@ -623,7 +623,11 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     {
         if (_keyIndex != -1)
         {
-            if ((ulong)_keyIndex >= index)
+            if (_removedCurrent && (ulong)_keyIndex == index)
+            {
+                _removedCurrent = false;
+            }
+            else if ((ulong)_keyIndex >= index)
             {
                 _keyIndex++;
             }
