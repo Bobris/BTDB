@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+RemoveById with relations with secondary indexes didn't work correctly.
+
 ## 33.1.0
 
 ### Added
