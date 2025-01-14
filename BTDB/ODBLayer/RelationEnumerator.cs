@@ -468,6 +468,7 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
 
     public IKeyValueDBCursor? Cursor;
     bool _seekNeeded;
+    bool _afterEnd;
 
     readonly byte[] _keyBytes;
 
@@ -501,10 +502,20 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
         {
             var ret = Cursor.FindFirstKey(_keyBytes);
             _seekNeeded = false;
-            return ret;
+            if (ret) return true;
+            _afterEnd = true;
+            return false;
         }
 
-        return Cursor.FindNextKey(_keyBytes);
+        if (_afterEnd) return false;
+
+        var res = Cursor.FindNextKey(_keyBytes);
+        if (!res)
+        {
+            _afterEnd = true;
+        }
+
+        return res;
     }
 
     public T Current
@@ -530,6 +541,7 @@ class RelationEnumerator<T> : IEnumerator<T>, IEnumerable<T>
     {
         Cursor ??= _keyValueTr.CreateCursor();
         _seekNeeded = true;
+        _afterEnd = false;
     }
 
     public void Dispose()
@@ -770,11 +782,13 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
             {
                 if (!_cursor.FindNextKey(_keyBytes))
                 {
+                    Dispose();
                     return false;
                 }
 
                 if (_cursor.GetKeyIndex() > _untilCursor!.GetKeyIndex())
                 {
+                    Dispose();
                     return false;
                 }
             }
@@ -782,11 +796,13 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
             {
                 if (!_cursor.FindPreviousKey(_keyBytes))
                 {
+                    Dispose();
                     return false;
                 }
 
                 if (_cursor.GetKeyIndex() < _untilCursor!.GetKeyIndex())
                 {
+                    Dispose();
                     return false;
                 }
             }

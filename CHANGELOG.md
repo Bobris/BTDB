@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Enumerator MoveNext return always false after end of iteration.
+
 ## 33.1.1
 
 ### Fixed

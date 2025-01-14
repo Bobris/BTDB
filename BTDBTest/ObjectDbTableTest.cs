@@ -214,6 +214,29 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void EnumeratorReturnsAlwaysFalseAfterEnd()
+        {
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" };
+            Func<IObjectDBTransaction, ISimplePersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
+                var personSimpleTable = creator(tr);
+                Assert.True(personSimpleTable.ShallowUpsert(person), "Is newly inserted");
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator(tr);
+                using var enumerator = personSimpleTable.GetEnumerator();
+                Assert.True(enumerator.MoveNext());
+                Assert.False(enumerator.MoveNext());
+                Assert.False(enumerator.MoveNext());
+            }
+        }
+
+        [Fact]
         public void ShallowUpsertWorks()
         {
             var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" };
@@ -2283,6 +2306,12 @@ namespace BTDBTest
             Assert.Equal(3, table.CountById(1, 2));
             Assert.Equal(1, table.CountById(1, 2, 3));
             Assert.Equal([1, 2, 3], table.ListById(1, 2).Select(o => o.C));
+            using var enumerator = table.ListById(1, 2).GetEnumerator();
+            Assert.True(enumerator.MoveNext());
+            Assert.True(enumerator.MoveNext());
+            Assert.True(enumerator.MoveNext());
+            Assert.False(enumerator.MoveNext());
+            Assert.False(enumerator.MoveNext());
         }
 
         public class EncryptedStringSecondaryKey
