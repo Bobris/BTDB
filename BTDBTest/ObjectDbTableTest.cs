@@ -3031,6 +3031,51 @@ namespace BTDBTest
             bool RemoveById(ulong tenantId, ulong id);
         }
 
+        public class ContentVersion
+        {
+            [PrimaryKey(1)] public ulong CompanyId { get; set; }
+
+            [PrimaryKey(2)] public ulong ContentId { get; set; }
+
+            [PrimaryKey(3)]
+            [SecondaryKey("State", Order = 4)]
+            public uint Version { get; set; }
+
+            [SecondaryKey("State", Order = 3, IncludePrimaryKeyOrder = 2)]
+            public ContentVersionState State { get; set; }
+        }
+
+        public enum ContentVersionState
+        {
+            Published = 0,
+            PreviouslyPublished = 1,
+        }
+
+        public interface IContentVersionTable : IRelation<ContentVersion>
+        {
+            IEnumerable<ContentVersion> ListByState(ulong companyId, ulong contentId, ContentVersionState state, AdvancedEnumeratorParam<uint> param);
+        }
+
+        [Fact]
+        void CanUpdateWhileEnumeratingUsingListBySecondaryKey()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IContentVersionTable>();
+            table.Upsert(new ContentVersion(){CompanyId = 1, ContentId = 2, State = ContentVersionState.Published, Version = 501});
+            table.Upsert(new ContentVersion(){CompanyId = 1, ContentId = 2, State = ContentVersionState.Published, Version = 502});
+            int count = 0;
+            var enumerator = table.ListByState(1,2, ContentVersionState.Published, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Descending));
+            foreach (var contentVersion in enumerator)
+            {
+                count++;
+                contentVersion.State = ContentVersionState.PreviouslyPublished;
+                table.Upsert(contentVersion);
+            }
+
+            Assert.Equal(2, count);
+
+        }
+
         [Fact]
         void SecondaryIndexWithLowercasedStringWorks()
         {
