@@ -519,6 +519,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     public unsafe bool RemoveById(scoped in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
     {
         using var cursor = _kvtr.CreateCursor();
+        using var tempCursor = _kvtr.CreateCursor();
         Span<byte> keyBufferScoped = stackalloc byte[1024];
         Span<byte> keyBuffer =
             new Span<byte>(Unsafe.AsPointer(ref keyBufferScoped.GetPinnableReference()), keyBytes.Length);
@@ -571,7 +572,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
         if (_hasSecondaryIndexes)
         {
-            RemoveSecondaryIndexes(cursor, fullKeyBytes, valueSpan);
+            RemoveSecondaryIndexes(tempCursor, fullKeyBytes, valueSpan);
         }
 
         _relationInfo.FreeContent(_transaction, valueSpan);
@@ -583,6 +584,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     public bool RemoveByIdWithFullKey(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
     {
         using var cursor = _kvtr.CreateCursor();
+        using var tempCursor = _kvtr.CreateCursor();
         Span<byte> valueBuffer = stackalloc byte[512];
 
         var beforeRemove = _relationInfo.BeforeRemove;
@@ -612,7 +614,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         cursor.EraseCurrent();
         if (_hasSecondaryIndexes)
         {
-            RemoveSecondaryIndexes(cursor, keyBytes, value);
+            RemoveSecondaryIndexes(tempCursor, keyBytes, value);
         }
 
         _relationInfo.FreeContent(_transaction, value);
@@ -626,6 +628,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         var beforeRemove = _relationInfo.BeforeRemove;
         ReadOnlySpan<byte> fullKeyBytes = keyBytes;
         using var cursor = _kvtr.CreateCursor();
+        using var tempCursor = _kvtr.CreateCursor();
         Span<byte> keyBufferScoped = stackalloc byte[1024];
         Span<byte> keyBuffer =
             new Span<byte>(Unsafe.AsPointer(ref keyBufferScoped.GetPinnableReference()), keyBytes.Length);
@@ -675,7 +678,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             var value = cursor.GetValueSpan(ref valueBuffer, true);
 
             cursor.EraseCurrent();
-            RemoveSecondaryIndexes(cursor, fullKeyBytes, value);
+            RemoveSecondaryIndexes(tempCursor, fullKeyBytes, value);
         }
         else
         {
@@ -714,12 +717,12 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
             if (_hasSecondaryIndexes || needImplementFreeContent)
             {
-                var valueBytes = ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.GetValueSpan(ref buf, true);
+                var valueBytes = ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor!.GetValueSpan(ref buf, true);
 
                 if (_hasSecondaryIndexes)
                 {
                     RemoveSecondaryIndexes(tempCursor,
-                        ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.GetKeySpan(ref keyBuffer, true),
+                        ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor!.GetKeySpan(ref keyBuffer, true),
                         valueBytes);
                 }
 
@@ -729,7 +732,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
             if (beforeRemove != null)
             {
-                ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.EraseCurrent();
+                ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor!.EraseCurrent();
             }
 
             removed++;
@@ -768,20 +771,20 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
             if (_hasSecondaryIndexes || needImplementFreeContent)
             {
-                var valueBytes = ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.GetValueSpan(ref buf, true);
+                var valueBytes = ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor!.GetValueSpan(ref buf, true);
 
                 if (_hasSecondaryIndexes)
                 {
                     using var tempCursor = _kvtr.CreateCursor();
                     RemoveSecondaryIndexes(tempCursor,
-                        ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.GetKeySpan(ref keyBuffer), valueBytes);
+                        ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor!.GetKeySpan(ref keyBuffer), valueBytes);
                 }
 
                 if (needImplementFreeContent)
                     _relationInfo.FreeContent(_transaction, valueBytes);
             }
 
-            ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor.EraseCurrent();
+            ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor!.EraseCurrent();
             removed++;
         }
 
@@ -957,6 +960,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         using var enumerator = new RelationAdvancedEnumerator<T>(this,
             order, startKeyProposition, prefixLen, startKeyBytes, endKeyProposition, endKeyBytes, 0).GetEnumerator();
         var count = 0;
+        using var tempCursor = _kvtr.CreateCursor();
         var cursor = ((RelationAdvancedEnumerator<T>)enumerator).Cursor;
         Span<byte> keyBufferScoped = stackalloc byte[1024];
         Span<byte> valueBuffer = stackalloc byte[1024];
@@ -977,7 +981,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
             if (_hasSecondaryIndexes)
             {
-                RemoveSecondaryIndexes(cursor, fullKeyBytes, valueSpan);
+                RemoveSecondaryIndexes(tempCursor, fullKeyBytes, valueSpan);
             }
 
             _relationInfo.FreeContent(_transaction, valueSpan);

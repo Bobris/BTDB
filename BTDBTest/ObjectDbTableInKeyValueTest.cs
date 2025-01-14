@@ -19,18 +19,18 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
     {
         [PrimaryKey(1)] public uint TenantId { get; set; }
 
-        [PrimaryKey(2)]
-        public string? Email { get; set; }
+        [PrimaryKey(2)] public string? Email { get; set; }
 
-        [InKeyValue(3)]
-        public DateTime LastLogin { get; set; }
+        [InKeyValue(3)] public DateTime LastLogin { get; set; }
 
         public string? Name { get; set; }
     }
 
     public interface IPersonTable : IRelation<Person>
     {
-        IEnumerable<Person> ScanById(Constraint<ulong> tenantId, Constraint<string> email, Constraint<DateTime> lastLogin);
+        IEnumerable<Person> ScanById(Constraint<ulong> tenantId, Constraint<string> email,
+            Constraint<DateTime> lastLogin);
+
         bool UpdateById(uint tenantId, string email, DateTime lastLogin);
         bool UpdateById(uint tenantId, string email, DateTime lastLogin, string name);
         void Insert(Person person);
@@ -87,7 +87,7 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
         using var tr = _db.StartTransaction();
         var t = tr.GetRelation<IPersonTable>();
         t.RemoveById(1, "b@b.cd");
-        Assert.Equal(3,t.Count);
+        Assert.Equal(3, t.Count);
     }
 
     [Fact]
@@ -97,7 +97,8 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
 
         using var tr = _db.StartTransaction();
         var t = tr.GetRelation<IPersonTable>();
-        Assert.False(t.UpdateById(1, "c@b.cd", new DateTime(2023, 7, 30, 0, 0, 0, DateTimeKind.Utc), "does not matter"));
+        Assert.False(t.UpdateById(1, "c@b.cd", new DateTime(2023, 7, 30, 0, 0, 0, DateTimeKind.Utc),
+            "does not matter"));
         Assert.True(t.UpdateById(1, "b@b.cd", new DateTime(2023, 7, 30, 0, 0, 0, DateTimeKind.Utc), "OK"));
         Assert.Equal("A",
             string.Join("",
@@ -116,13 +117,16 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
 
         using var tr = _db.StartTransaction();
         var t = tr.GetRelation<IPersonTable>();
-        t.Insert(new() { TenantId = 1, Email = "c@b.cd", Name = "BB", LastLogin = new(2023, 7, 30, 0, 0, 0, DateTimeKind.Utc) });
+        t.Insert(new()
+            { TenantId = 1, Email = "c@b.cd", Name = "BB", LastLogin = new(2023, 7, 30, 0, 0, 0, DateTimeKind.Utc) });
         Assert.Equal("BB",
             t.ScanById(Constraint.Unsigned.Exact(1), Constraint.String.Exact("c@b.cd"), Constraint<DateTime>.Any)
                 .Single().Name);
-        t.Update(new() { TenantId = 1, Email = "c@b.cd", Name = "CC", LastLogin = new(2024, 1,1,0,0,0,DateTimeKind.Utc) });
+        t.Update(new()
+            { TenantId = 1, Email = "c@b.cd", Name = "CC", LastLogin = new(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
         Assert.Equal("CC",
-            t.ScanById(Constraint.Unsigned.Exact(1), Constraint.String.Exact("c@b.cd"), Constraint.DateTime.Predicate(d=>d.Year==2024))
+            t.ScanById(Constraint.Unsigned.Exact(1), Constraint.String.Exact("c@b.cd"),
+                    Constraint.DateTime.Predicate(d => d.Year == 2024))
                 .Single().Name);
     }
 
@@ -161,8 +165,7 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
 
         public string Name { get; set; }
 
-        [InKeyValue(2)]
-        public int Age { get; set; }
+        [InKeyValue(2)] public int Age { get; set; }
     }
 
     [PersistedName("Data")]
@@ -177,8 +180,8 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
         {
             using var tr = _db.StartTransaction();
             var t = tr.GetRelation<IDataV1Table>();
-            t.Upsert(new (){ Id = 1, Name = "A", Age = 11});
-            t.Upsert(new (){ Id = 2, Name = "B", Age = 22});
+            t.Upsert(new() { Id = 1, Name = "A", Age = 11 });
+            t.Upsert(new() { Id = 2, Name = "B", Age = 22 });
             tr.Commit();
         }
         ReopenDb();
@@ -206,17 +209,16 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
 
     public class ListData
     {
-        [PrimaryKey(1)]
-        public uint Id { get; set; }
-        [PrimaryKey(2)]
-        public uint QueueStamp { get; set; }
-        [PrimaryKey(3, InKeyValue = true)]
-        public bool IsProcessed { get; set; }
+        [PrimaryKey(1)] public uint Id { get; set; }
+        [PrimaryKey(2)] public uint QueueStamp { get; set; }
+        [PrimaryKey(3, InKeyValue = true)] public bool IsProcessed { get; set; }
+        [SecondaryKey("SomeKey")] public string? SomeKey { get; set; }
     }
 
     public interface IListDataTable : IRelation<ListData>
     {
         IEnumerable<ListData> ListById(uint id, AdvancedEnumeratorParam<uint> queueStampParam);
+        int RemoveById(uint id, AdvancedEnumeratorParam<uint> queueStampParam);
     }
 
     [Fact]
@@ -226,7 +228,22 @@ public class ObjectDbTableInKeyValueTest : ObjectDbTestBase
 
         using var tr = _db.StartTransaction();
         var t = tr.GetRelation<IListDataTable>();
-        Assert.Equal(2, t.ListById(1, new(EnumerationOrder.Ascending, 2, KeyProposition.Excluded, uint.MaxValue, KeyProposition.Included)).Count());
+        Assert.Equal(2,
+            t.ListById(1,
+                    new(EnumerationOrder.Ascending, 2, KeyProposition.Excluded, uint.MaxValue, KeyProposition.Included))
+                .Count());
+    }
+
+    [Fact]
+    public void RemoveByIdWithAdvancedEnumeratorParam()
+    {
+        FillListingData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IListDataTable>();
+        Assert.Equal(2,
+            t.RemoveById(1, new(EnumerationOrder.Ascending, 2, KeyProposition.Included, 3, KeyProposition.Included)));
+        Assert.Equal(2, t.Count);
     }
 
     void FillListingData()
