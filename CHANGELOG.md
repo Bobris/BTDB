@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.1.1
+
 ### Fixed
 
 RemoveById with relations with secondary indexes didn't work correctly.
