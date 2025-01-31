@@ -82,9 +82,9 @@ public class MemoryMappedMemReader : IMemReader, IDisposable
 
     public void Dispose()
     {
-        _viewAccessor.SafeMemoryMappedViewHandle.ReleasePointer();
-        _memoryMappedFile.Dispose();
-        _fileHandle.Dispose();
+        _viewAccessor?.SafeMemoryMappedViewHandle.ReleasePointer();
+        _memoryMappedFile?.Dispose();
+        _fileHandle?.Dispose();
         GC.SuppressFinalize(this);
     }
 
