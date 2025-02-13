@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using BTDB.Collections;
 using BTDB.StreamLayer;
 
@@ -24,7 +25,7 @@ interface IKeyValueDBInternal : IKeyValueDB
     IRootNodeInternal ReferenceAndGetLastCommitted();
     void DereferenceRootNodeInternal(IRootNodeInternal root);
 
-    long ReplaceBTreeValues(CancellationToken cancellation, RefDictionary<ulong, uint> newPositionMap,
+    ValueTask<long> ReplaceBTreeValues(CancellationToken cancellation, RefDictionary<ulong, uint> newPositionMap,
         uint targetFileId);
 
     long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using BTDB.Collections;
 using BTDB.KVDBLayer.Implementation;
 using BTDB.StreamLayer;
@@ -98,11 +99,11 @@ class Compactor
         if (toRemoveFileIds.Count > 0) _keyValueDB.MarkAsUnknown(toRemoveFileIds);
     }
 
-    internal bool Run()
+    internal async ValueTask<bool> Run()
     {
         try
         {
-            return RunCore();
+            return await RunCore();
         }
         catch (Exception e)
         {
@@ -112,7 +113,7 @@ class Compactor
         return false;
     }
 
-    bool RunCore()
+    async ValueTask<bool> RunCore()
     {
         if (_keyValueDB.FileCollection.GetCount() == 0) return false;
         _root = _keyValueDB.ReferenceAndGetOldestRoot();
@@ -153,15 +154,15 @@ class Compactor
             }
 
             {
-                using var flushingTransaction = _keyValueDB.StartWritingTransaction().GetAwaiter().GetResult();
+                using var flushingTransaction = await _keyValueDB.StartWritingTransaction();
                 flushingTransaction.NextCommitTemporaryCloseTransactionLog();
                 flushingTransaction.Commit();
             }
             MarkTotallyUselessFilesAsUnknown();
             _keyValueDB.FileCollection.DeleteAllUnknownFiles();
-            var totalWaste = CalcTotalWaste();
+            var (totalWaste, maxInOneFile) = CalcTotalWaste();
             _keyValueDB.Logger?.CompactionStart(totalWaste);
-            if (IsWasteSmall(totalWaste))
+            if (IsWasteSmall(totalWaste, maxInOneFile))
             {
                 if (_keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.MaxTrLogFileSize / 4))
                     _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
@@ -177,16 +178,16 @@ class Compactor
                 _newPositionMap = new();
                 var pvlFileId = CompactOnePureValueFileIteration(ref toRemoveFileIds);
                 btreesCorrectInTransactionId =
-                    _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap, pvlFileId);
+                    await _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap, pvlFileId);
                 pvlCreated++;
-                totalWaste = CalcTotalWaste();
+                (totalWaste, maxInOneFile) = CalcTotalWaste();
                 if (pvlCreated >= 20)
                 {
                     _keyValueDB.Logger?.LogWarning("Compactor didn't removed all waste (" + totalWaste +
                                                    "), because it created 20 PVL files already. Remaining waste left to next compaction.");
                     break;
                 }
-            } while (!IsWasteSmall(totalWaste));
+            } while (!IsWasteSmall(totalWaste, maxInOneFile));
 
             var usedFileGens = _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
             for (var i = (int)toRemoveFileIds.Count - 1; i >= 0; i--)
@@ -263,9 +264,10 @@ class Compactor
         }
     }
 
-    bool IsWasteSmall(ulong totalWaste)
+    bool IsWasteSmall(ulong totalWaste, ulong maxInOneFile)
     {
-        return totalWaste < (ulong)_keyValueDB.MaxTrLogFileSize / 4;
+        return maxInOneFile < (ulong)_keyValueDB.MaxTrLogFileSize / 4 ||
+               totalWaste < (ulong)_keyValueDB.MaxTrLogFileSize;
     }
 
     void MoveValuesContent(ref MemWriter writerIn, uint wastefulFileId)
@@ -314,16 +316,19 @@ class Compactor
         writerIn = writer;
     }
 
-    ulong CalcTotalWaste()
+    (ulong Total, ulong MaxInOneFile) CalcTotalWaste()
     {
         var total = 0ul;
+        var maxInOneFile = 0ul;
         foreach (var fileStat in _fileStats.Index)
         {
-            var waste = _fileStats.ValueRef(fileStat).CalcWasteIgnoreUseless();
-            if (waste > 1024) total += waste;
+            ref var stat = ref _fileStats.ValueRef(fileStat);
+            var waste = stat.CalcWasteIgnoreUseless();
+            if (waste > maxInOneFile) maxInOneFile = waste;
+            if (waste > stat.CalcUsed() / 8) total += waste;
         }
 
-        return total;
+        return (total, maxInOneFile);
     }
 
     uint FindMostWastefulFile(long space)

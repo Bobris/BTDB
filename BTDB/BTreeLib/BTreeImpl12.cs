@@ -304,7 +304,8 @@ public class BTreeImpl12
         {
             if (ctx._afterFirst)
             {
-                if (ctx._cancellation.IsCancellationRequested || DateTime.UtcNow > ctx._operationTimeout)
+                if ((ctx._timeoutTestCounter++ & 15) == 0 && (ctx._cancellation.IsCancellationRequested ||
+                                                              DateTime.UtcNow > ctx._operationTimeout))
                 {
                     ctx._interrupted = true;
                     if (header.HasLongKeys)

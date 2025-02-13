@@ -84,12 +84,12 @@ public class CompactorLatencyMeasurement
                 var transactionCreationStarted = new ManualResetEventSlim(false);
                 var compactionFinished = new ManualResetEventSlim(false);
 
-                Task.Run(() =>
+                Task.Run(async () =>
                 {
                     Console.WriteLine("Started waiting for transaction creating");
                     transactionCreationStarted.Wait();
                     Console.WriteLine("Started Compacting");
-                    Trace.Assert(kvDb.Compact(CancellationToken.None));
+                    Trace.Assert(await kvDb.Compact(CancellationToken.None));
                     Console.WriteLine("Finished Compacting");
                     compactionFinished.Set();
                 });

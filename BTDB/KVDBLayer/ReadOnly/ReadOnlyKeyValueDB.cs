@@ -68,9 +68,9 @@ public class ReadOnlyKeyValueDB : IKeyValueDB
         return (_totalLen, 1, 0, 0);
     }
 
-    public bool Compact(CancellationToken cancellation)
+    public ValueTask<bool> Compact(CancellationToken cancellation)
     {
-        return false;
+        return ValueTask.FromResult(false);
     }
 
     public void CreateKvi(CancellationToken cancellation)

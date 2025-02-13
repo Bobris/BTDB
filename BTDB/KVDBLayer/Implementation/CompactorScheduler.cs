@@ -1,22 +1,23 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace BTDB.KVDBLayer;
 
 public class CompactorScheduler : IDisposable, ICompactorScheduler
 {
-    Func<CancellationToken, bool>[] _coreActions = new Func<CancellationToken, bool>[0];
+    Func<CancellationToken, ValueTask<bool>>[] _coreActions = [];
     readonly Timer _timer;
     CancellationTokenSource _cancellationSource = new CancellationTokenSource();
-    readonly object _lock = new object();
-    bool _running;  //compacting in progress
-    bool _advicedRunning;  //was advised again during compacting
-    bool _firstTime;  //in time period before first compact (try save resource during app startup)
+    readonly object _lock = new();
+    bool _running; //compacting in progress
+    bool _advisedRunning; //was advised again during compacting
+    bool _firstTime; //in time period before first compact (try save resource during app startup)
     bool _timerStarted; //timer is planned
     bool _disposed;
     internal TimeSpan WaitTime { get; set; }
 
-    static ICompactorScheduler _instance;
+    static ICompactorScheduler? _instance;
 
     public static ICompactorScheduler Instance
     {
@@ -26,9 +27,10 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
             {
                 Interlocked.CompareExchange(ref _instance, new CompactorScheduler(), null);
             }
-            return _instance;
+
+            return _instance!;
         }
-        set { _instance = value; }
+        set => _instance = value;
     }
 
     internal CompactorScheduler()
@@ -38,7 +40,8 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
         WaitTime = TimeSpan.FromMinutes(10 + new Random().NextDouble() * 5);
     }
 
-    public Func<CancellationToken, bool> AddCompactAction(Func<CancellationToken, bool> compactAction)
+    public Func<CancellationToken, ValueTask<bool>> AddCompactAction(
+        Func<CancellationToken, ValueTask<bool>> compactAction)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(CompactorScheduler));
         while (true)
@@ -49,10 +52,11 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
             newA[oldA.Length] = compactAction;
             if (Interlocked.CompareExchange(ref _coreActions, newA, oldA) == oldA) break;
         }
+
         return compactAction;
     }
 
-    public void RemoveCompactAction(Func<CancellationToken, bool> compactAction)
+    public void RemoveCompactAction(Func<CancellationToken, ValueTask<bool>> compactAction)
     {
         if (_disposed) return;
         lock (_lock)
@@ -62,6 +66,7 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
             {
                 Monitor.Wait(_lock);
             }
+
             _cancellationSource = new CancellationTokenSource();
             while (true)
             {
@@ -83,9 +88,10 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
         {
             if (_running)
             {
-                _advicedRunning = true;
+                _advisedRunning = true;
                 return;
             }
+
             if (openingDb)
             {
                 if (_timerStarted)
@@ -101,7 +107,8 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
         }
     }
 
-    void OnTimer(object state)
+    // ReSharper disable once AsyncVoidMethod
+    async void OnTimer(object state)
     {
         lock (_lock)
         {
@@ -109,26 +116,27 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
             _timerStarted = false;
             if (_running) return;
             _running = true;
-
         }
+
         try
         {
             var needed = false;
             do
             {
-                _advicedRunning = false;
+                _advisedRunning = false;
                 var actions = _coreActions;
                 for (var i = 0; i < actions.Length; i++)
                 {
                     if (_cancellationSource.IsCancellationRequested) break;
-                    needed |= actions[i](_cancellationSource.Token);
+                    needed |= await actions[i](_cancellationSource.Token);
                 }
-            } while (_advicedRunning);
+            } while (_advisedRunning);
+
             lock (_lock)
             {
                 _running = false;
                 Monitor.PulseAll(_lock);
-                needed |= _advicedRunning;
+                needed |= _advisedRunning;
                 if (needed && !_cancellationSource.IsCancellationRequested)
                 {
                     _timer.Change(WaitTime, TimeSpan.FromMilliseconds(-1));
@@ -156,6 +164,7 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
                 Monitor.Wait(_lock);
             }
         }
+
         _timer.Dispose();
     }
 }

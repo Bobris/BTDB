@@ -14,4 +14,5 @@ public struct ValueReplacerCtx
     internal byte[] _interruptedKey;
     internal bool _afterFirst;
     internal uint _targetFileId;
+    internal uint _timeoutTestCounter;
 }

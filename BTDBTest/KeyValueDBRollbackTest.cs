@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -571,7 +572,7 @@ public class KeyValueDBRollbackTest
     }
 
     [Fact]
-    public void CompactorShouldNotBePessimistDespiteRunningTransactions()
+    public async Task CompactorShouldNotBePessimistDespiteRunningTransactions()
     {
         using var fileCollection = new InMemoryFileCollection();
         var options = new KeyValueDBOptions
@@ -608,7 +609,7 @@ public class KeyValueDBRollbackTest
                 tr.Commit();
             }
 
-            while (kvDb.Compact(new CancellationToken()))
+            while (await kvDb.Compact(new CancellationToken()))
             {
             }
 
@@ -626,7 +627,7 @@ public class KeyValueDBRollbackTest
             tr.Commit();
         }
 
-        while (kvDb.Compact(new CancellationToken()))
+        while (await kvDb.Compact(CancellationToken.None))
         {
         }
 

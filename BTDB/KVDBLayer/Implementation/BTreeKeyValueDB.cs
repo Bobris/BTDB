@@ -61,7 +61,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     readonly IFileCollectionWithFileInfos _fileCollection;
     readonly Dictionary<long, object> _subDBs = new();
-    readonly Func<CancellationToken, bool>? _compactFunc;
+    readonly Func<CancellationToken, ValueTask<bool>>? _compactFunc;
     readonly bool _readOnly;
     readonly bool _lenientOpen;
     bool _disposed = false;
@@ -413,10 +413,10 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return preserveKeyIndexKey;
     }
 
-    long IKeyValueDBInternal.ReplaceBTreeValues(CancellationToken cancellation,
+    async ValueTask<long> IKeyValueDBInternal.ReplaceBTreeValues(CancellationToken cancellation,
         RefDictionary<ulong, uint> newPositionMap, uint targetFileId)
     {
-        return ReplaceBTreeValues(cancellation, newPositionMap, targetFileId);
+        return await ReplaceBTreeValues(cancellation, newPositionMap, targetFileId);
     }
 
     long[] IKeyValueDBInternal.CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
@@ -1179,9 +1179,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return _allocator.GetStats();
     }
 
-    public bool Compact(CancellationToken cancellation)
+    public async ValueTask<bool> Compact(CancellationToken cancellation)
     {
-        return new Compactor(this, cancellation).Run();
+        return await new Compactor(this, cancellation).Run();
     }
 
     public void CreateKvi(CancellationToken cancellation)
@@ -1759,14 +1759,14 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return writer;
     }
 
-    long ReplaceBTreeValues(CancellationToken cancellation, RefDictionary<ulong, uint> newPositionMap,
+    async ValueTask<long> ReplaceBTreeValues(CancellationToken cancellation, RefDictionary<ulong, uint> newPositionMap,
         uint targetFileId)
     {
         byte[] restartKey = null;
         while (true)
         {
             var iterationTimeOut = DateTime.UtcNow + TimeSpan.FromMilliseconds(50);
-            using (var tr = StartWritingTransaction().GetAwaiter().GetResult())
+            using (var tr = await StartWritingTransaction())
             {
                 var newRoot = ((BTreeKeyValueDBTransaction)tr).BTreeRoot;
                 var cursor = newRoot!.CreateCursor();
@@ -1797,7 +1797,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
             }
 
-            Thread.Sleep(10);
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellation);
         }
     }
 

@@ -241,9 +241,9 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return _keyValueDB.GetNativeMemoryStats();
         }
 
-        public bool Compact(CancellationToken cancellation)
+        public async ValueTask<bool> Compact(CancellationToken cancellation)
         {
-            return _keyValueDB.Compact(cancellation);
+            return await _keyValueDB.Compact(cancellation);
         }
 
         public void CreateKvi(CancellationToken cancellation)

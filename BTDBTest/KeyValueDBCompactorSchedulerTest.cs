@@ -13,46 +13,46 @@ public class KeyValueDBCompactorSchedulerTest
         var run = false;
         using (var sch = new CompactorScheduler())
         {
-            sch.AddCompactAction(token =>
+            sch.AddCompactAction(async token =>
             {
                 run = true;
                 return false;
             });
         }
-        Assert.False(run, "Should not Start imidietly");
+
+        Assert.False(run, "Should not Start immediately");
     }
 
     [Fact]
     public void ItWillRunFirstTimeAfterWaitTime()
     {
         var e = new AutoResetEvent(false);
-        using (var s = new CompactorScheduler())
+        using var s = new CompactorScheduler();
+        s.AddCompactAction(async token =>
         {
-            s.AddCompactAction(token =>
-            {
-                e.Set();
-                return false;
-            });
-            s.WaitTime = TimeSpan.FromMilliseconds(1);
-            s.AdviceRunning(true);
-            Assert.True(e.WaitOne(1000));
-        }
+            e.Set();
+            return false;
+        });
+        s.WaitTime = TimeSpan.FromMilliseconds(1);
+        s.AdviceRunning(true);
+        Assert.True(e.WaitOne(1000));
     }
 
     [Fact]
-    public void ItShouldRunAgainSoonIfCompactionSuccessfull()
+    public void ItShouldRunAgainSoonIfCompactionSuccessful()
     {
         var e = new AutoResetEvent(false);
         var first = true;
         using (var s = new CompactorScheduler())
         {
-            s.AddCompactAction(token =>
+            s.AddCompactAction(async token =>
             {
                 if (first)
                 {
                     first = false;
                     return true;
                 }
+
                 e.Set();
                 return false;
             });
@@ -85,6 +85,7 @@ public class KeyValueDBCompactorSchedulerTest
             s.AdviceRunning(true);
             Assert.True(e.WaitOne(1000));
         }
+
         Assert.True(e.WaitOne(1000));
     }
 
@@ -94,7 +95,7 @@ public class KeyValueDBCompactorSchedulerTest
         var e = new AutoResetEvent(false);
         using (var s = new CompactorScheduler())
         {
-            s.AddCompactAction(token =>
+            s.AddCompactAction(async token =>
             {
                 e.Set();
                 return false;
@@ -118,7 +119,7 @@ public class KeyValueDBCompactorSchedulerTest
         var e = new AutoResetEvent(false);
         using (var s = new CompactorScheduler())
         {
-            s.AddCompactAction(token =>
+            s.AddCompactAction(async token =>
             {
                 e.Set();
                 return false;
@@ -137,7 +138,7 @@ public class KeyValueDBCompactorSchedulerTest
         var e = new AutoResetEvent(false);
         using (var s = new CompactorScheduler())
         {
-            s.AddCompactAction(token =>
+            s.AddCompactAction(async token =>
             {
                 e.Set();
                 return false;

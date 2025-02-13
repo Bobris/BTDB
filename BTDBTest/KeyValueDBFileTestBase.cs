@@ -333,7 +333,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
     }
 
     [Fact]
-    public void CompactionDoesNotRemoveStillUsedFiles()
+    public async Task CompactionDoesNotRemoveStillUsedFiles()
     {
         using var fileCollection = new InMemoryFileCollection();
         using var db = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 1024, null);
@@ -354,10 +354,10 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             tr.Commit();
         }
 
-        db.Compact(new CancellationToken());
+        await db.Compact(CancellationToken.None);
         Assert.Equal(3u, fileCollection.GetCount()); // 2 Logs, 1 KeyIndex
         longTr.Dispose();
-        db.Compact(new CancellationToken());
+        await db.Compact(CancellationToken.None);
         Assert.Equal(2u, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
         using (var tr = db.StartTransaction())
         {
@@ -377,7 +377,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
     }
 
     [Fact]
-    public void CompactionStabilizedEvenWithOldTransactions()
+    public async Task CompactionStabilizedEvenWithOldTransactions()
     {
         using var fileCollection = new InMemoryFileCollection();
         using var db = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 10240, null);
@@ -398,18 +398,22 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             tr.Commit();
         }
 
-        var longTr = db.StartTransaction();
-        db.Compact(new CancellationToken());
-        Assert.Equal(4u, fileCollection.GetCount()); // 2 Logs, 1 values, 1 KeyIndex
-        db.Compact(new CancellationToken());
-        Assert.Equal(4u, fileCollection.GetCount()); // 2 Logs, 1 values, 1 KeyIndex
-        longTr.Dispose();
-        db.Compact(new CancellationToken());
+        Assert.Equal(2u, fileCollection.GetCount()); // 2 Logs
+
+        using (var longTr = db.StartTransaction())
+        {
+            await db.Compact(CancellationToken.None);
+            Assert.Equal(3u, fileCollection.GetCount()); // 2 Logs, 1 KeyIndex
+            await db.Compact(CancellationToken.None);
+            Assert.Equal(3u, fileCollection.GetCount()); // 2 Logs, 1 KeyIndex
+        }
+
+        await db.Compact(CancellationToken.None);
         Assert.Equal(3u, fileCollection.GetCount()); // 1 Log, 1 values, 1 KeyIndex
     }
 
     [Fact]
-    public void PreapprovedCommitAndCompaction()
+    public async Task PreapprovedCommitAndCompaction()
     {
         using var fileCollection = new InMemoryFileCollection();
         using var db = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 1024);
@@ -421,7 +425,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             tr.Commit();
         }
 
-        db.Compact(new CancellationToken());
+        await db.Compact(CancellationToken.None);
         using (var tr = db.StartWritingTransaction().Result)
         {
             using var cursor = tr.CreateCursor();
@@ -430,7 +434,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             tr.Commit();
         }
 
-        db.Compact(new CancellationToken());
+        await db.Compact(CancellationToken.None);
         using (var db2 = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
         {
             using (var tr = db2.StartTransaction())

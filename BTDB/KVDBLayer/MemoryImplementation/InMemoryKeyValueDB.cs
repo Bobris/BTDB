@@ -35,6 +35,7 @@ public class InMemoryKeyValueDB : IKeyValueDB
                 _writeWaitingQueue.Dequeue().TrySetCanceled();
             }
         }
+
         if (_transactions.Count > 0)
             throw new BTDBException("Cannot dispose KeyValueDB when transactions still running");
 
@@ -90,9 +91,9 @@ public class InMemoryKeyValueDB : IKeyValueDB
         return (0, 0, 0, 0);
     }
 
-    public bool Compact(CancellationToken cancellation)
+    public ValueTask<bool> Compact(CancellationToken cancellation)
     {
-        return false;
+        return ValueTask.FromResult(false);
     }
 
     public void CreateKvi(CancellationToken cancellation)

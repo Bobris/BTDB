@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Improved
+
+Compactor was rewritten to be async. Also it gives more time to writing transactions to run during its running. Frequency of big compactions is reduced because condition now takes in account also maximum waste per file and the condition for total waste was 4 times increased.
+
 ## 33.1.3
 
 ### Fixed
@@ -28,7 +32,7 @@ Disposing DB when there are still some transactions now throws BTDBException.
 
 ### Fixed
 
-- Position setter in IOrderedDictionaryEnumerator was returned to behaviour before 33.0.0.
+-   Position setter in IOrderedDictionaryEnumerator was returned to behaviour before 33.0.0.
 
 ## 33.0.7
 

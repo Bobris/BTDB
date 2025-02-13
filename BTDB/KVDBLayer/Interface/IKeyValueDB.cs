@@ -22,7 +22,7 @@ public interface IKeyValueDB : IDisposable
     (ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) GetNativeMemoryStats();
 
     // Returns true if there was big compaction (probably will need another one)
-    bool Compact(CancellationToken cancellation);
+    ValueTask<bool> Compact(CancellationToken cancellation);
 
     void CreateKvi(CancellationToken cancellation);
 
