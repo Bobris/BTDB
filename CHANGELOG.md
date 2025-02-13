@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.2.0
+
 ### Improved
 
 Compactor was rewritten to be async. Also it gives more time to writing transactions to run during its running. Frequency of big compactions is reduced because condition now takes in account also maximum waste per file and the condition for total waste was 4 times increased.
