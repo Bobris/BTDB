@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+`Utf16Utf8Dictionary` for fast searching by string in UTF-16 and UTF-8. `DerivedUtf16Utf8Dictionary` for fast searching by string in UTF-16 and UTF-8 from parent dictionary with attached another values.
+
 ## 33.2.0
 
 ### Improved
