@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BTDB.Collections;
+using BTDB.IL;
 
 namespace BTDB.IOC;
 
@@ -13,12 +14,12 @@ abstract class RegistrationBaseImpl<TTraits> : IRegistration<TTraits>, IAsTrait,
 
     public void As(Type type)
     {
-        _asTypes.Add(new KeyAndType(null, type));
+        _asTypes.Add(new(null, type));
     }
 
     public void Keyed(object serviceKey, Type type)
     {
-        _asTypes.Add(new KeyAndType(serviceKey, type));
+        _asTypes.Add(new(serviceKey, type));
     }
 
     public void AsSelf()
@@ -41,23 +42,35 @@ abstract class RegistrationBaseImpl<TTraits> : IRegistration<TTraits>, IAsTrait,
         var defaultNeeded = true;
         foreach (var asType in _asTypes)
         {
+            // if asType is open generic type, we need to close it with implementationType's generic arguments
+            if (asType.Type.IsGenericTypeDefinition)
+            {
+                var closedType = implementationType.SpecializationOf(asType.Type);
+                if (closedType == null) continue;
+                yield return new(asType.Key, closedType);
+                defaultNeeded = false;
+                continue;
+            }
+
             if (!asType.Type.IsAssignableFrom(implementationType)) continue;
             yield return asType;
             defaultNeeded = false;
         }
+
         if (_asImplementedInterfaces)
         {
             foreach (var type in implementationType.GetInterfaces())
             {
                 if (type == typeof(IDisposable)) continue;
                 if (type == typeof(IAsyncDisposable)) continue;
-                yield return new KeyAndType(null, type);
+                yield return new(null, type);
                 defaultNeeded = false;
             }
         }
+
         if (_asSelf || defaultNeeded)
         {
-            yield return new KeyAndType(null, implementationType);
+            yield return new(null, implementationType);
         }
     }
 

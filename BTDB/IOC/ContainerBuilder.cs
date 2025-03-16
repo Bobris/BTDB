@@ -122,6 +122,14 @@ public class ContainerBuilder
         return registration;
     }
 
+    public IRegistration<IAsLiveScopeScanTrait> RegisterGeneric(Type openGenericClass)
+    {
+        var registration = new MultiRegistration();
+        registration.Where(type => type.IsGenericType && type.GetGenericTypeDefinition() == openGenericClass);
+        _registrations.Add(registration);
+        return registration;
+    }
+
     public IContainer Build()
     {
         return new ContainerImpl(_registrations.AsReadOnlySpan(), ContainerVerification.AllTypesAreGenerated);

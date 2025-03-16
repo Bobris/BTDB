@@ -1719,4 +1719,60 @@ public partial class IocTests
 
         Assert.Equal(expected, actual);
     }
+
+    public interface ILogger<T> where T : class
+    {
+        string MyName { get; }
+    }
+
+    [GenerateFor(typeof(Logger<C1>))]
+    [GenerateFor(typeof(Logger<C2>))]
+    public class Logger<T> : ILogger<T> where T : class
+    {
+        public string MyName => typeof(T).Name;
+    }
+
+    [Generate]
+    public interface INamed
+    {
+        string Name { get; }
+    }
+
+    public class C1 : INamed
+    {
+        ILogger<C1> _logger;
+
+        public C1(ILogger<C1> logger)
+        {
+            _logger = logger;
+        }
+
+        public string Name => _logger.MyName;
+    }
+
+    public class C2 : INamed
+    {
+        ILogger<C2> _logger;
+
+        public C2(ILogger<C2> logger)
+        {
+            _logger = logger;
+        }
+
+        public string Name => _logger.MyName;
+    }
+
+    [Fact]
+    public void GenericClassWithGenericDependency()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterGeneric(typeof(Logger<>)).As(typeof(ILogger<>));
+        builder.RegisterType<C1>().Keyed<INamed>("1");
+        builder.RegisterType<C2>().Keyed<INamed>("2");
+        var container = builder.Build();
+        var c1 = container.ResolveKeyed<INamed>("1");
+        Assert.Equal("C1", c1.Name);
+        var c2 = container.ResolveKeyed<INamed>("2");
+        Assert.Equal("C2", c2.Name);
+    }
 }
