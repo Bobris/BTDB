@@ -115,6 +115,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 SymbolDisplayFormat.FullyQualifiedFormat);
                         var parameters = symbol.DelegateInvokeMethod!.Parameters.Select(p => new ParameterInfo(p.Name,
                                 p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                                DetectDependencyName(p),
                                 p.Type.IsReferenceType,
                                 p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
                                 p.HasExplicitDefaultValue
@@ -280,6 +281,22 @@ public class SourceGenerator : IIncrementalGenerator
             }).Where(i => i != null);
         gen = gen.SelectMany((g, _) => g!.Nested.IsEmpty ? Enumerable.Repeat(g, 1) : [g, ..g.Nested])!;
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
+    }
+
+    static string? DetectDependencyName(IParameterSymbol parameterSymbol)
+    {
+        var attr = parameterSymbol.GetAttributes()
+                .FirstOrDefault(a =>
+                    a.AttributeClass?.Name == "FromKeyedServicesAttribute" &&
+                    (a.AttributeClass?.InNamespace("Microsoft", "Extensions", "DependencyInjection") ?? false))
+            ;
+        if (attr != null)
+        {
+            var val = GetStringArgForAttributeData(attr);
+            if (val is not null) return SymbolDisplay.FormatLiteral(val, quote: true);
+        }
+
+        return null;
     }
 
     GenerationInfo? DetectErrors(ReadOnlySpan<FieldsInfo> fields, Location location)
@@ -509,6 +526,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         var parameters = constructor?.Parameters.Select(p => new ParameterInfo(p.Name,
                                  p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                                 DetectDependencyName(p),
                                  p.Type.IsReferenceType,
                                  p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
                                  p.HasExplicitDefaultValue
@@ -724,6 +742,8 @@ public class SourceGenerator : IIncrementalGenerator
             }
         }
 
+        if (attributeData?.ConstructorArguments.FirstOrDefault().Value is string str)
+            return str;
         return null;
     }
 
@@ -1301,7 +1321,7 @@ public class SourceGenerator : IIncrementalGenerator
         var parametersCode = new StringBuilder();
         var parameterIndex = 0;
 
-        foreach (var (name, type, _, _, _) in generationInfo.ConstructorParameters)
+        foreach (var (name, type, _, _, _, _) in generationInfo.ConstructorParameters)
         {
             var normalizeType = NormalizeType(type);
             if (parameterIndex > 0) parametersCode.Append(", ");
@@ -1386,12 +1406,25 @@ public class SourceGenerator : IIncrementalGenerator
         var additionalDeclarations = new StringBuilder();
         var parameterIndex = 0;
 
-        foreach (var (name, type, isReference, optional, defaultValue) in generationInfo.ConstructorParameters)
+        foreach (var (name, type, keyCode, isReference, optional, defaultValue) in generationInfo
+                     .ConstructorParameters)
         {
             var normalizeType = NormalizeType(type);
             if (parameterIndex > 0) parametersCode.Append(", ");
             factoryCode.Append(
-                $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizeType}), \"{name}\");");
+                $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizeType}), ");
+            if (keyCode != null)
+            {
+                factoryCode.Append(keyCode);
+            }
+            else
+            {
+                factoryCode.Append("\"");
+                factoryCode.Append(name);
+                factoryCode.Append("\"");
+            }
+
+            factoryCode.Append(");");
             factoryCode.Append("\n            ");
             if (!optional)
             {
@@ -1491,7 +1524,7 @@ public class SourceGenerator : IIncrementalGenerator
         if (generationInfo.PrivateConstructor)
         {
             var constructorParameters = new StringBuilder();
-            foreach (var (name, type, _, _, _) in generationInfo.ConstructorParameters)
+            foreach (var (name, type, _, _, _, _) in generationInfo.ConstructorParameters)
             {
                 if (constructorParameters.Length > 0) constructorParameters.Append(", ");
                 constructorParameters.Append($"{type} {name}");
@@ -1814,7 +1847,13 @@ record CollectionInfo(
     }
 }
 
-record ParameterInfo(string Name, string Type, bool IsReference, bool Optional, string? DefaultValue);
+record ParameterInfo(
+    string Name,
+    string Type,
+    string? KeyCode,
+    bool IsReference,
+    bool Optional,
+    string? DefaultValue);
 
 record PropertyInfo(
     string Name,

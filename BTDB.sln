@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDB.SourceGenerator.Sample
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Releaser", "Releaser\Releaser\Releaser.csproj", "{81A30C70-D317-4EA3-A89F-3438801C9B08}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sample3rdPartyLib", "Sample3rdPartyLib\Sample3rdPartyLib.csproj", "{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -139,6 +141,18 @@ Global
 		{81A30C70-D317-4EA3-A89F-3438801C9B08}.Release|x64.Build.0 = Release|Any CPU
 		{81A30C70-D317-4EA3-A89F-3438801C9B08}.Release|x86.ActiveCfg = Release|Any CPU
 		{81A30C70-D317-4EA3-A89F-3438801C9B08}.Release|x86.Build.0 = Release|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Debug|x64.Build.0 = Debug|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Debug|x86.Build.0 = Debug|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Release|x64.ActiveCfg = Release|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Release|x64.Build.0 = Release|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Release|x86.ActiveCfg = Release|Any CPU
+		{D90C62BD-2EA7-4A02-846C-A08DDEDF61D3}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

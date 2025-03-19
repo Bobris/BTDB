@@ -2,16 +2,24 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using BTDB;
+using BTDB.IL;
 using BTDB.IOC;
 using BTDB.Serialization;
-using Microsoft.AspNetCore.Http;
+using Sample3rdPartyLib;
+
+[assembly: GenerateFor(typeof(Class3rdPartyWithKeyedDependency))]
 
 unsafe
 {
     var builder = new ContainerBuilder();
 //builder.RegisterType<Klass>();
-    builder.AutoRegisterTypes().AsSelf();
+    builder.AutoRegisterTypes().Where(t=>!t.InheritsOrImplements(typeof(I3rdPartyInterface))).AsSelf();
+    builder.RegisterType<Class3rdPartyWithKeyedDependency>().AsSelf();
+    builder.RegisterType<K3rdPartyDependencyWrong>().As<I3rdPartyInterface>();
+    builder.RegisterType<K3rdPartyDependency>().Named<I3rdPartyInterface>("Key1");
     var container = builder.Build();
+    var name = container.Resolve<Class3rdPartyWithKeyedDependency>().Name;
+    Console.WriteLine(name);
     container.Resolve<Klass>();
     {
         var h = IAnyHandler.CreateConsumeDispatcher(container);
@@ -135,3 +143,16 @@ public class ErrorHandler
         init => Console.WriteLine(value!.ToString());
     }
 }
+
+[Generate]
+public class K3rdPartyDependency : I3rdPartyInterface
+{
+    public string Name => "K3rdPartyDependency";
+}
+
+[Generate]
+public class K3rdPartyDependencyWrong : I3rdPartyInterface
+{
+    public string Name => "K3rdPartyDependencyWrong";
+}
+

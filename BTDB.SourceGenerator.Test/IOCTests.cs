@@ -598,4 +598,44 @@ public class IOCTests : GeneratorTestsBase
             }
             ");
     }
+
+    [Fact]
+    public Task VerifySupportFromKeyedServices()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+            using Microsoft.Extensions.DependencyInjection;
+
+            public interface ILogger
+            {
+            }
+
+            public interface IErrorHandler
+            {
+                ILogger Logger { get; }
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler : IErrorHandler
+            {
+                readonly ILogger _logger;
+
+                public ErrorHandler([FromKeyedServices("key1")] ILogger logger)
+                {
+                    _logger = logger;
+                }
+
+                public ILogger Logger => _logger;
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifySupportFromKeyedServicesFromExternalDependency()
+    {
+        // language=cs
+        return VerifySourceGenerator(
+            "[assembly: BTDB.GenerateFor(typeof(Sample3rdPartyLib.Class3rdPartyWithKeyedDependency))]");
+    }
 }
