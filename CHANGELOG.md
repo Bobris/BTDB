@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.4.0
+
 ### Added
 
 IOC: RegisterGeneric to register open generic types. As(Type) and Keyed(object, Type) now works for open generic types. For now, you need to use \[GenerateFor(typeof(...))]] to manually register all used instances of generic type.
