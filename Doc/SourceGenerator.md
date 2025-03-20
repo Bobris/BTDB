@@ -34,13 +34,28 @@ public class MyService : IMyService
 }
 ```
 
-All injectable properties must be marked by `[Dependency]` attribute.
+You can customize resolved parameter name by `[Dependency("name")]` attribute or by
+Microsoft.Extensions.DependencyInjection.FromKeyedServices attribute.
+
+```csharp
+[Generate]
+public class MyService
+{
+    public MyService([Dependency("key1")] int a, [Microsoft.Extensions.DependencyInjection.FromKeyedServices("key2")] string b)
+    {
+    }
+}
+```
+
+All injectable properties or fields must be marked by `[Dependency]` attribute.
 
 ```csharp
 internal class MyService : IMyService
 {
     [Dependency]
     internal ILogger Logger { get; init; }
+    [Dependency]
+    internal ILooger Logger2;
 }
 ```
 
@@ -59,6 +74,12 @@ public delegate IMyService Factory(int a);
 If you want to make Func<...> resolvable just declare new delegate with same signature and mark it by `[Generate]`
 attribute.
 It means that previous example also allows to use `Func<int, IMyService>`.
+
+```csharp
+[Generate]
+
+
+```
 
 ### How to generate for specific generic type instance
 

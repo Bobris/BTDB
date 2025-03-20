@@ -255,7 +255,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         [SkipLocalsInit]
         ReadOnlyMemory<(ulong N1, ulong Count)> CountN1Groups()
         {
-            StructList<(ulong N1, ulong Count)> result = new();
+            StructList<(ulong N1, ulong Count)> result = [];
             /* this is just for demonstration what this method does
             foreach (var (key, count) in this
                 .GroupBy(v => v.N1)
@@ -375,7 +375,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         dst.Clear();
         Assert.Equal((ulong)t.Count(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1),
             t.GatherById(dst, 0, 1000, Constraint.First(Constraint.Unsigned.Any), Constraint.Unsigned.Any,
-                new[] { Orderer.Ascending((ThreeUlongs v) => v.N1) }));
+                [Orderer.Ascending((ThreeUlongs v) => v.N1)]));
         AssertSameCondition(t.Where(v => v.N1 == 1 && v.N2 == 1 && v.N3 == 1), dst);
     }
 
@@ -398,13 +398,13 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         dst.Clear();
         Assert.Equal((ulong)t.Count(v => v.N2 == 1 && v.N3 == 1),
             t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any),
-                new[] { Orderer.Ascending((ThreeUlongs v) => v.N1) }));
+                [Orderer.Ascending((ThreeUlongs v) => v.N1)]));
         AssertSameCondition(t.Where(v => v.N2 == 1 && v.N3 == 1), dst);
         dst.Clear();
         Assert.Equal((ulong)t.Count(v => v.N1 <= 3 && v.N2 == 3 && v.N3 == 1),
             t.GatherById(dst, 0, 1000, Constraint.Unsigned.UpTo(3),
                 Constraint.First(Constraint.Unsigned.Predicate(v => v > 2)),
-                new[] { Orderer.Ascending((ThreeUlongs v) => v.N1) }));
+                [Orderer.Ascending((ThreeUlongs v) => v.N1)]));
         AssertSameCondition(t.Where(v => v.N1 <= 3 && v.N2 == 3 && v.N3 == 1), dst);
     }
 
@@ -418,7 +418,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var dst = new List<ThreeUlongs>();
         Assert.Equal((ulong)t.Count,
             t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.Unsigned.Any,
-                new[] { Orderer.Ascending((ThreeUlongs v) => v.N2) }));
+                [Orderer.Ascending((ThreeUlongs v) => v.N2)]));
         AssertSameCondition(t.OrderBy(v => v.N2).ThenBy(v => v.N1).ThenBy(v => v.N3), dst);
     }
 
@@ -432,7 +432,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var dst = new List<ThreeUlongs>();
         Assert.Equal((ulong)t.Count,
             t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.Unsigned.Any,
-                new[] { Orderer.Descending((ThreeUlongs v) => v.N2) }));
+                [Orderer.Descending((ThreeUlongs v) => v.N2)]));
         AssertSameCondition(t.OrderByDescending(v => v.N2).ThenBy(v => v.N1).ThenBy(v => v.N3), dst);
     }
 
@@ -446,7 +446,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var dst = new List<ThreeUlongs>();
         Assert.Equal((ulong)t.Count,
             t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.Unsigned.Any,
-                new[] { Orderer.Ascending((ThreeUlongs v) => v.N3) }));
+                [Orderer.Ascending((ThreeUlongs v) => v.N3)]));
         AssertSameCondition(t.OrderBy(v => v.N3).ThenBy(v => v.N1).ThenBy(v => v.N2), dst);
     }
 
@@ -460,7 +460,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var dst = new List<ThreeUlongs>();
         Assert.Equal((ulong)t.Count,
             t.GatherById(dst, 0, 1000, Constraint.Unsigned.Any, Constraint.Unsigned.Any,
-                new[] { Orderer.Ascending((ThreeUlongs v) => v.N3), Orderer.Ascending((ThreeUlongs v) => v.N2) }));
+                [Orderer.Ascending((ThreeUlongs v) => v.N3), Orderer.Ascending((ThreeUlongs v) => v.N2)]));
         AssertSameCondition(t.OrderBy(v => v.N3).ThenBy(v => v.N2).ThenBy(v => v.N1), dst);
     }
 
@@ -474,7 +474,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var dst = new List<ThreeUlongs>();
         Assert.Equal((ulong)t.Count(v => v.N1 > 2),
             t.GatherById(dst, 0, 1000, Constraint.Unsigned.Predicate(v => v > 2), Constraint.Unsigned.Any,
-                new[] { Orderer.Ascending((ThreeUlongs v) => v.N3), Orderer.Descending((ThreeUlongs v) => v.N2) }));
+                [Orderer.Ascending((ThreeUlongs v) => v.N3), Orderer.Descending((ThreeUlongs v) => v.N2)]));
         AssertSameCondition(t.Where(v => v.N1 > 2).OrderBy(v => v.N3).ThenByDescending(v => v.N2).ThenBy(v => v.N1),
             dst);
     }
@@ -488,11 +488,10 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Contains("Unmatched orderer[2] Id", Assert.Throws<BTDBException>(() =>
         {
             t.GatherById(dst, 0, 1, Constraint.Unsigned.Any, Constraint.Unsigned.Any,
-                new[]
-                {
-                    Orderer.Ascending((ThreeUlongs v) => v.N3), Orderer.Descending((ThreeUlongs v) => v.N2),
-                    Orderer.Ascending((ThreeUlongs v) => v.Id)
-                });
+            [
+                Orderer.Ascending((ThreeUlongs v) => v.N3), Orderer.Descending((ThreeUlongs v) => v.N2),
+                Orderer.Ascending((ThreeUlongs v) => v.Id)
+            ]);
         }).Message);
     }
 
@@ -583,12 +582,12 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var target = new List<ThingWithSK>();
         Assert.Equal((ulong)t.Count,
             t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any,
-                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
+                [Orderer.Descending((ThingWithSK v) => v.Tenant)]));
         Assert.Equal("DCAB", string.Concat(target.Select(v => v.Name)));
         target.Clear();
         Assert.Equal((ulong)t.Count,
             t.GatherByName(target, 1, 2, Constraint.String.Any, Constraint.Unsigned.Any,
-                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
+                [Orderer.Descending((ThingWithSK v) => v.Tenant)]));
         Assert.Equal("CA", string.Concat(target.Select(v => v.Name)));
     }
 
@@ -601,10 +600,10 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var t = tr.GetRelation<IThingWithSKTable>();
         Assert.Equal("D",
             t.FirstByName(Constraint.String.Any, Constraint.Unsigned.Any,
-                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }).Name);
+                [Orderer.Descending((ThingWithSK v) => v.Tenant)]).Name);
         Assert.Throws<BTDBException>(() =>
             t.FirstByName(Constraint.String.Exact("NotExisting"), Constraint.Unsigned.Any,
-                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
+                [Orderer.Descending((ThingWithSK v) => v.Tenant)]));
     }
 
     [Fact]
@@ -616,9 +615,9 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var t = tr.GetRelation<IThingWithSKTable>();
         Assert.Equal("D",
             t.FirstByNameOrDefault(Constraint.String.Any, Constraint.Unsigned.Any,
-                new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) })!.Name);
+                [Orderer.Descending((ThingWithSK v) => v.Tenant)])!.Name);
         Assert.Null(t.FirstByNameOrDefault(Constraint.String.Exact("NotExisting"), Constraint.Unsigned.Any,
-            new[] { Orderer.Descending((ThingWithSK v) => v.Tenant) }));
+            [Orderer.Descending((ThingWithSK v) => v.Tenant)]));
     }
 
     void FillThingWithSKData()
@@ -642,28 +641,25 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var target = new List<ThingWithSK>();
         Assert.Equal((ulong)t.Count,
             t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any,
-                new[]
-                {
-                    Orderer.AscendingStringByLocale((ThingWithSK v) => v.Name, new CultureInfo("cs").CompareInfo)
-                }));
+            [
+                Orderer.AscendingStringByLocale((ThingWithSK v) => v.Name, new CultureInfo("cs").CompareInfo)
+            ]));
         Assert.Equal("3124", string.Concat(target.Select(v => v.Age.ToString())));
         target.Clear();
         Assert.Equal((ulong)t.Count,
             t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any,
-                new[]
-                {
-                    Orderer.Backwards(Orderer.AscendingStringByLocale((ThingWithSK v) => v.Name,
-                        new CultureInfo("cs").CompareInfo))
-                }));
+            [
+                Orderer.Backwards(Orderer.AscendingStringByLocale((ThingWithSK v) => v.Name,
+                    new CultureInfo("cs").CompareInfo))
+            ]));
         Assert.Equal("4213", string.Concat(target.Select(v => v.Age.ToString())));
         target.Clear();
         Assert.Equal((ulong)t.Count,
             t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any,
-                new[]
-                {
-                    Orderer.AscendingStringByLocale((ThingWithSK v) => v.Name, new CultureInfo("cs").CompareInfo,
-                        CompareOptions.IgnoreSymbols)
-                }));
+            [
+                Orderer.AscendingStringByLocale((ThingWithSK v) => v.Name, new CultureInfo("cs").CompareInfo,
+                    CompareOptions.IgnoreSymbols)
+            ]));
         Assert.Equal("1324", string.Concat(target.Select(v => v.Age.ToString())));
         target.Clear();
     }
@@ -694,12 +690,12 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var target = new List<ThingWithSK>();
         Assert.Equal((ulong)t.Count,
             t.GatherByName(target, 0, 100, Constraint.String.Any, Constraint.Unsigned.Any,
-                new[] { Orderer.GenericDescending((TenantProp v) => v.Tenant) }));
+                [Orderer.GenericDescending((TenantProp v) => v.Tenant)]));
         Assert.Equal("DCAB", string.Concat(target.Select(v => v.Name)));
         target.Clear();
         Assert.Equal((ulong)t.Count,
             t.GatherByName(target, 1, 2, Constraint.String.Any, Constraint.Unsigned.Any,
-                new[] { Orderer.GenericAscending((TenantProp v) => v.Tenant) }));
+                [Orderer.GenericAscending((TenantProp v) => v.Tenant)]));
         Assert.Equal("BC", string.Concat(target.Select(v => v.Name)));
     }
 
@@ -991,5 +987,52 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Single(t.ScanById(Constraint.DateTime.Range(g12, g2)));
         Assert.Single(t.ScanById(Constraint.DateTime.Range(g1, g12)));
         Assert.Empty(t.ScanById(Constraint.DateTime.Range(g12, g2, false)));
+    }
+
+    public class ObjWithIndexedListString : IEquatable<ObjWithIndexedListString>
+    {
+        [PrimaryKey(1)] public List<string> Strings { get; set; }
+
+        public bool Equals(ObjWithIndexedListString? other)
+        {
+            if (other is null) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Strings.SequenceEqual(other.Strings);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (obj is null) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != GetType()) return false;
+            return Equals((ObjWithIndexedListString)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return Strings.Count;
+        }
+    }
+
+    public interface IObjectWithIndexedListStringTable : IRelation<ObjWithIndexedListString>
+    {
+        IEnumerable<ObjWithIndexedListString> ScanById(Constraint<List<string>> strings);
+    }
+
+    [Fact]
+    public void ConstraintListStringContainsWorks()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IObjectWithIndexedListStringTable>();
+        t.Upsert(new() { Strings = ["a", "b", "c"] });
+        t.Upsert(new() { Strings = ["a", "b", "d"] });
+        t.Upsert(new() { Strings = ["a", "c", "d"] });
+        t.Upsert(new() { Strings = ["b", "c", "d"] });
+        t.Upsert(new() { Strings = ["a", "b", "c", "d"] });
+        t.Upsert(new() { Strings = ["a", "b", "c", "d", "e"] });
+        Assert.Equal([new() { Strings = ["a", "b", "c", "d", "e"] }],
+            t.ScanById(Constraint.ListString.Contains("e")));
+        Assert.Equal(5, t.ScanById(Constraint.ListString.Contains("d")).Count());
+        Assert.Equal(6, t.ScanById(Constraint<List<string>>.Any).Count());
     }
 }

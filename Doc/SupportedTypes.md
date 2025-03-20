@@ -19,6 +19,8 @@
 - `Version`
 - `byte[]` (`ReadOnlyMemory<byte>` (fewer copies)) (if it is last field in ordering it is lexicographically sorted)
 - `StringValues` from Microsoft.Extensions.Primitives
+- `List<string>` (orderable `Constraint<List<string>>`/`Constraint.ListString`, order is by number of elements, then by
+  length of element[0], then it is not important)
 
 ## Complex types
 
@@ -26,7 +28,8 @@
   serialization it stores only public properties. In DB it stores all properties, but to support records it silently
   skips compiler generated properties without setter. All public fields must be now annotated with `[NotStored]` because
   they are currently not supported, but could be in the future. Private fields are never stored.
-- `IIndirect<T>` In Object DB is it not stored inline, and it has its own `Oid`, lazily loaded. In Event serialization it
+- `IIndirect<T>` In Object DB is it not stored inline, and it has its own `Oid`, lazily loaded. In Event serialization
+  it
   is skipped by default, but could be configured to store it too (always as inline).
 - `IList<T>`, `List<T>`, `ISet<T>`, `HashSet<T>` (Inline list of items only for smaller amount of items, set versions
   deduplicate items on deserialization)
