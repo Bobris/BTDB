@@ -283,12 +283,14 @@ public class SourceGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
     }
 
-    static string? DetectDependencyName(IParameterSymbol parameterSymbol)
+    static string? DetectDependencyName(ISymbol parameterSymbol)
     {
         var attr = parameterSymbol.GetAttributes()
                 .FirstOrDefault(a =>
-                    a.AttributeClass?.Name == "FromKeyedServicesAttribute" &&
-                    (a.AttributeClass?.InNamespace("Microsoft", "Extensions", "DependencyInjection") ?? false))
+                    (a.AttributeClass?.Name == "FromKeyedServicesAttribute" &&
+                     (a.AttributeClass?.InNamespace("Microsoft", "Extensions", "DependencyInjection") ?? false)) ||
+                    (a.AttributeClass?.Name == "DependencyAttribute" &&
+                     (a.AttributeClass?.InBTDBIOCNamespace() ?? false)))
             ;
         if (attr != null)
         {
@@ -556,7 +558,7 @@ public class SourceGenerator : IIncrementalGenerator
         var propertyInfos = symbol.GetMembers()
             .OfType<IPropertySymbol>()
             .Where(p => !p.IsStatic)
-            .Where(p => p.GetAttributes().Any(a => a.AttributeClass?.Name == "DependencyAttribute") &&
+            .Where(p => HasDependencyAttribute(p) &&
                         p.SetMethod is not null)
             .Select(p =>
             {
@@ -566,19 +568,31 @@ public class SourceGenerator : IIncrementalGenerator
                 var isFieldBased = isComplex && IsDefaultMethodImpl(p.SetMethod.DeclaringSyntaxReferences);
                 return new PropertyInfo(p.Name,
                     p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    p.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "DependencyAttribute")
-                        ?.ConstructorArguments.FirstOrDefault().Value as string,
+                    DetectDependencyName(p),
                     p.Type.IsReferenceType,
                     p.NullableAnnotation == NullableAnnotation.Annotated, isComplex, isFieldBased,
                     isComplex ? isFieldBased ? $"<{p.Name}>k__BackingField" : p.SetMethod.Name : null);
-            })
+            }).Concat(
+                symbol.GetMembers()
+                    .OfType<IFieldSymbol>()
+                    .Where(p => !p.IsStatic)
+                    .Where(HasDependencyAttribute)
+                    .Select(p =>
+                    {
+                        return new PropertyInfo(p.Name,
+                            p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                            DetectDependencyName(p),
+                            p.Type.IsReferenceType,
+                            p.NullableAnnotation == NullableAnnotation.Annotated,
+                            p.DeclaredAccessibility != Accessibility.Public, true, p.Name);
+                    }))
             .ToArray();
         var fields = symbol.GetMembers()
             .OfType<IFieldSymbol>()
             .Where(f => !f.IsStatic)
             .Where(f =>
                 f.DeclaredAccessibility == Accessibility.Public &&
-                f.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
+                !HasDependencyAttribute(f) &&
                 f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
                 || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
             .Select(f =>
@@ -593,7 +607,7 @@ public class SourceGenerator : IIncrementalGenerator
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic)
                 .Where(p =>
-                    p.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
+                    !HasDependencyAttribute(p) &&
                     p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
                     p.GetMethod is not null && (p.SetMethod is not null ||
                                                 p.GetAttributes().Any(a =>
@@ -632,7 +646,7 @@ public class SourceGenerator : IIncrementalGenerator
             .Where(f => !f.IsStatic)
             .Where(f =>
                 f.DeclaredAccessibility == Accessibility.Public &&
-                f.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
+                !HasDependencyAttribute(f) &&
                 f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
                 || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
             .Select(f => f.Type)
@@ -640,7 +654,7 @@ public class SourceGenerator : IIncrementalGenerator
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic)
                 .Where(p =>
-                    p.GetAttributes().All(a => a.AttributeClass?.Name != "DependencyAttribute") &&
+                    !HasDependencyAttribute(p) &&
                     p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
                     p.SetMethod is not null && p.GetMethod is not null)
                 .Select(p => p.Type));
@@ -667,6 +681,12 @@ public class SourceGenerator : IIncrementalGenerator
             parameters,
             propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, collections.ToArray(),
             nested.ToArray(), null);
+    }
+
+    static bool HasDependencyAttribute(ISymbol p)
+    {
+        return p.GetAttributes().Any(a =>
+            a.AttributeClass?.Name == "DependencyAttribute" && a.AttributeClass.InBTDBIOCNamespace());
     }
 
     static EquatableArray<IndexInfo> ExtractIndexInfo(ImmutableArray<AttributeData> attributeDatas)
@@ -1449,11 +1469,11 @@ public class SourceGenerator : IIncrementalGenerator
         {
             var name = propertyInfo.Name;
             var normalizedType = NormalizeType(propertyInfo.Type);
-            var dependencyName = propertyInfo.DependencyName ?? name;
+            var dependencyName = propertyInfo.DependencyName ?? "\"" + name + "\"";
             var isReference = propertyInfo.IsReference;
             var optional = propertyInfo.Optional;
             factoryCode.Append(
-                $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizedType}), \"{dependencyName}\");");
+                $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizedType}), {dependencyName});");
             factoryCode.Append("\n            ");
             if (!optional)
             {

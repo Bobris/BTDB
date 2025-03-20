@@ -263,6 +263,60 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyIocRegistrationForDependencyFields()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            public interface ILogger
+            {
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler
+            {
+                [BTDB.IOC.Dependency]
+                public ILogger Logger;
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyIocRegistrationForNamedDependencyProperties()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            public interface ILogger
+            {
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler
+            {
+                [BTDB.IOC.Dependency("Key1")]
+                public ILogger Logger { get; set; }
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyIocRegistrationForNamedDependencyFields()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            public interface ILogger
+            {
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler
+            {
+                [BTDB.IOC.Dependency("Key1")]
+                public ILogger Logger;
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyDelegateGeneration()
     {
         // language=cs
@@ -637,5 +691,37 @@ public class IOCTests : GeneratorTestsBase
         // language=cs
         return VerifySourceGenerator(
             "[assembly: BTDB.GenerateFor(typeof(Sample3rdPartyLib.Class3rdPartyWithKeyedDependency))]");
+    }
+
+    [Fact]
+    public Task VerifySupportNamedDependecyInParameters()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+            using BTDB.IOC;
+
+            public interface ILogger
+            {
+            }
+
+            public interface IErrorHandler
+            {
+                ILogger Logger { get; }
+            }
+
+            [BTDB.Generate]
+            public class ErrorHandler : IErrorHandler
+            {
+                readonly ILogger _logger;
+
+                public ErrorHandler([Dependency("key1")] ILogger logger)
+                {
+                    _logger = logger;
+                }
+
+                public ILogger Logger => _logger;
+            }
+            """);
     }
 }

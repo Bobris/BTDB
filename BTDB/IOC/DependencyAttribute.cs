@@ -3,7 +3,7 @@ using BTDB.ODBLayer;
 
 namespace BTDB.IOC;
 
-[AttributeUsage(AttributeTargets.Property)]
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Parameter)]
 public class DependencyAttribute : NotStoredAttribute
 {
     public readonly string? Name;

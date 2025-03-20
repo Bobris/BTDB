@@ -8,6 +8,8 @@ IOC: RegisterGeneric to register open generic types. As(Type) and Keyed(object, 
 
 IOC: Supports FromKeyedServices attribute (only for string type)
 
+IOC: Dependency attribute with optional name is supported for properties, fields and parameters.
+
 ## 33.3.0
 
 ### Added

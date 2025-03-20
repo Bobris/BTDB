@@ -27,5 +27,6 @@ public static class Extensions
     }
 
     public static bool InBTDBNamespace(this ISymbol symbol) => symbol.InNamespace("BTDB");
+    public static bool InBTDBIOCNamespace(this ISymbol symbol) => symbol.InNamespace("BTDB", "IOC");
     public static bool InODBLayerNamespace(this ISymbol symbol) => symbol.InNamespace("BTDB", "ODBLayer");
 }
