@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+EventLayer2: Tuple and ValueType serialization works.
+
 ## 33.4.0
 
 ### Added

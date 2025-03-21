@@ -20,22 +20,21 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
     public const int ReservedBuildinTypes = 50;
 
     readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2Info =
-        new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
+        new(ReferenceEqualityComparer<object>.Instance);
 
     readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2InfoNew =
-        new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
+        new(ReferenceEqualityComparer<object>.Instance);
 
     StructList<SerializerTypeInfo?> _id2Info;
     StructList<SerializerTypeInfo?> _id2InfoNew;
 
     readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld =
-        new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+        new(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
-    readonly Dictionary<object, int> _visited =
-        new Dictionary<object, int>(ReferenceEqualityComparer<object>.Instance);
+    readonly Dictionary<object, int> _visited = new(ReferenceEqualityComparer<object>.Instance);
 
     readonly Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>> _gathererCache =
-        new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<Type>
+        new(ReferenceEqualityComparer<Type>
             .Instance);
 
     readonly ISymmetricCipher _symmetricCipher;
@@ -219,7 +218,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                 while (-typeId - 1 >= _id2InfoNew.Count)
                     _id2InfoNew.Add(null);
                 if (_id2InfoNew[-typeId - 1] == null)
-                    _id2InfoNew[-typeId - 1] = new SerializerTypeInfo { Id = typeId, Descriptor = descriptor };
+                    _id2InfoNew[-typeId - 1] = new() { Id = typeId, Descriptor = descriptor };
                 typeId = reader.ReadVInt32();
             }
         }
@@ -409,10 +408,10 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
 
                             desc = new NullableTypeDescriptor(this, typeAlternative);
                         }
-                        else if (type.InheritsOrImplements(typeof(ITuple)))
-                        {
-                            desc = new TupleTypeDescriptor(this, type);
-                        }
+                    }
+                    else if (type.InheritsOrImplements(typeof(ITuple)))
+                    {
+                        desc = new TupleTypeDescriptor(this, type);
                     }
                     else
                     {
@@ -453,7 +452,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
         }
 
         if (desc == null) throw new BTDBException("Don't know how to serialize type " + type.ToSimpleName());
-        result = new SerializerTypeInfo
+        result = new()
         {
             Id = 0,
             Descriptor = desc
@@ -488,7 +487,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                 var newDesc = MergeDescriptor(origDesc);
                 if (!_typeOrDescriptor2Info.TryGetValue(newDesc, out info))
                 {
-                    info = new SerializerTypeInfo
+                    info = new()
                     {
                         Id = 0,
                         Descriptor = newDesc
