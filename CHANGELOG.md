@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.4.1
+
 ### Fixed
 
 EventLayer2: Tuple and ValueType serialization works.
