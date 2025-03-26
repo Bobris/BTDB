@@ -3165,6 +3165,61 @@ namespace BTDBTest
             Assert.Single(rel.FindByArchiveIdForMigration(1, "1"));
             new EventSerializer().Serialize(out var _, rel.FindByArchiveIdForMigration(1, "1").First());
         }
+
+        public class PspApiPackageForDistribution
+        {
+            [PrimaryKey(Order = 1)]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(Order = 2)]
+            [SecondaryKey("ServiceProviderId", Order = 1)]
+            [SecondaryKey("PackageId", Order = 1)]
+            public ulong ServiceProviderId { get; set; }
+            [PrimaryKey(Order = 3)]
+            [SecondaryKey("PackageId", Order = 2)]
+            [SecondaryKey("ServiceProviderId", Order = 3)]
+            public required string PackageId { get; set; }
+
+
+            [SecondaryKey("ServiceProviderId", Order = 2)]
+            public required DateTime CreatedAt { get; set; }
+        }
+
+        public interface IPspApiPackageForDistributionTable : IRelation<PspApiPackageForDistribution>
+        {
+            IOrderedDictionaryEnumerator<DateTime, PspApiPackageForDistribution> ListByServiceProviderId(ulong serviceProviderId, AdvancedEnumeratorParam<DateTime> param);
+        }
+
+        [Fact]
+        public void ListByRespectsKeyPropositionExcluded()
+        {
+            using var tr = _db.StartTransaction();
+            var rel = tr.GetRelation<IPspApiPackageForDistributionTable>();
+            var now = DateTime.UtcNow;
+            rel.Upsert(new PspApiPackageForDistribution
+            {
+                CompanyId = 1,
+                ServiceProviderId = 1,
+                PackageId = "1",
+                CreatedAt = now // should not be found
+            });
+            rel.Upsert(new PspApiPackageForDistribution
+            {
+                CompanyId = 1,
+                ServiceProviderId = 1,
+                PackageId = "2",
+                CreatedAt = now  // should not be found
+            });
+            rel.Upsert(new PspApiPackageForDistribution
+            {
+                CompanyId = 1,
+                ServiceProviderId = 1,
+                PackageId = "3",
+                CreatedAt = now.AddSeconds(1)  // should be found
+            });
+
+            using var enumerator = rel.ListByServiceProviderId(1, new(EnumerationOrder.Ascending, now, KeyProposition.Excluded, default, KeyProposition.Ignored));
+            Assert.Equal(1u, enumerator.Count);
+        }
     }
 }
 
