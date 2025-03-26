@@ -1637,6 +1637,7 @@ public class RelationInfo
         var valueFields = relationVersionInfo!.Fields.ToArray();
         for (var i = 0; i < valueFields.Length; i++)
         {
+            if (valueFields[i].Computed || valueFields[i].InKeyValue) continue;
             var needsFreeContent = valueFields[i].Handler!.FreeContent(fakeGenerator, _ => { }, _ => { });
             if (needsFreeContent != NeedsFreeContent.No)
                 needGenerateFreeFor = i + 1;
