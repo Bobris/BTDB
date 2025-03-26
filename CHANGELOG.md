@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+Relations: IDict finder didn't skipped computed and inkeyvalue fields.
+
+Relations: Start proposition Excluded in ListBy didn't work correctly when it was not last property of key.
+
 ## 33.4.1
 
 ### Fixed

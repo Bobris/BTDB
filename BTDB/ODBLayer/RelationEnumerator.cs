@@ -1001,16 +1001,19 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
             switch (_startCursor.Find(startKeyBytes, (uint)prefixLen))
             {
                 case FindResult.Exact:
+                case FindResult.Next:
                     if (startKeyProposition == KeyProposition.Excluded)
                     {
-                        if (!_startCursor.FindNextKey(_keyBytes)) return;
+                        if (_startCursor.KeyHasPrefix(startKeyBytes))
+                        {
+                            _startCursor.FindLastKey(startKeyBytes);
+                            if (!_startCursor.FindNextKey(_keyBytes)) return;
+                        }
                     }
 
                     break;
                 case FindResult.Previous:
                     if (!_startCursor.FindNextKey(_keyBytes)) return;
-                    break;
-                case FindResult.Next:
                     break;
                 case FindResult.NotFound:
                     return;
