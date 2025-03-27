@@ -1662,6 +1662,7 @@ public class RelationInfo
 
         for (var i = 0; i < needGenerateFreeFor; i++)
         {
+            if (valueFields[i].Computed || valueFields[i].InKeyValue) continue;
             valueFields[i].Handler!.FreeContent(ilGenerator, il => il.Ldarg(1), il => il.Ldloc(0));
         }
 
