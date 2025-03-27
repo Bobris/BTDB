@@ -1014,7 +1014,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
                     break;
                 case FindResult.Previous:
                     if (!_startCursor.FindNextKey(_keyBytes)) return;
-                    break;
+                    goto case FindResult.Next;
                 case FindResult.NotFound:
                     return;
                 default:

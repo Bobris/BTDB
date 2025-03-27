@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Relations: Start proposition Excluded in ListBy didn't work correctly when it was not last property of key another case fixed.
+
 ## 33.4.2
 
 ### Fixed
