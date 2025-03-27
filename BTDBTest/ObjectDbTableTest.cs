@@ -3220,6 +3220,34 @@ namespace BTDBTest
             using var enumerator = rel.ListByServiceProviderId(1, new(EnumerationOrder.Ascending, now, KeyProposition.Excluded, default, KeyProposition.Ignored));
             Assert.Equal(1u, enumerator.Count);
         }
+
+        [Fact]
+        public void ListByRespectsKeyPropositionExcluded2()
+        {
+            using var tr = _db.StartTransaction();
+            var rel = tr.GetRelation<IPspApiPackageForDistributionTable>();
+            var time1 = DateTime.UtcNow;
+
+            rel.Upsert(new PspApiPackageForDistribution
+            {
+                PackageId = "transactionid0",
+                CompanyId = 1,
+                ServiceProviderId = 1,
+                CreatedAt = time1
+            });
+
+            var time2 = time1.AddSeconds(1);
+            rel.Upsert(new PspApiPackageForDistribution
+            {
+                PackageId = "transactionid1",
+                CompanyId = 1,
+                ServiceProviderId = 1,
+                CreatedAt = time2
+            });
+
+            using var enumerator = rel.ListByServiceProviderId(1, new(EnumerationOrder.Ascending, time2, KeyProposition.Excluded, default, KeyProposition.Ignored));
+            Assert.Equal(0u, enumerator.Count);
+        }
     }
 }
 
