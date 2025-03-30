@@ -2,14 +2,12 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Dynamic;
-using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
-using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;

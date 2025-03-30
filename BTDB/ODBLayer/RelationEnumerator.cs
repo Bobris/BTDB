@@ -2,9 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using BTDB.Buffer;
-using BTDB.Collections;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 

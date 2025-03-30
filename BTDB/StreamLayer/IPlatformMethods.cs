@@ -1,6 +1,3 @@
-using System;
-using Microsoft.Win32.SafeHandles;
-
 namespace BTDB.StreamLayer;
 
 public interface IPlatformMethods

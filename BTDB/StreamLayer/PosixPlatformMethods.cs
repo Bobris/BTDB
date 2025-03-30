@@ -1,7 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using BTDB.KVDBLayer;
-using Microsoft.Win32.SafeHandles;
 
 namespace BTDB.StreamLayer;
 

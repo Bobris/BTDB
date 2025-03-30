@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using BTDB.Collections;
 using BTDB.KVDBLayer.BTreeMem;
-using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 

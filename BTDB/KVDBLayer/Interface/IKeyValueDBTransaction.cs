@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using BTDB.Collections;
-using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 

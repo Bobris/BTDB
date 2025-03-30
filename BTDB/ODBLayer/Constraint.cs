@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.StreamLayer;

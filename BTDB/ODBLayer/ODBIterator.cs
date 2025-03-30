@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.Encrypted;
