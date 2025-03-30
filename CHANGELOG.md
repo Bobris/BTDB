@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Relations: UpdateById didn't work with Computed fields.
+
 ## 33.4.3
 
 ### Fixed

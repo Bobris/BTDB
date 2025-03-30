@@ -1173,6 +1173,8 @@ public class RelationBuilder
 
             foreach (var valueField in valueFields)
             {
+                if (valueField.Computed) continue;
+
                 var paramIndex = -1;
                 for (var j = 0; j < updateParams.Length; j++)
                 {

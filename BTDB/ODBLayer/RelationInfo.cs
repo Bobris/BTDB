@@ -1637,7 +1637,7 @@ public class RelationInfo
         var valueFields = relationVersionInfo!.Fields.ToArray();
         for (var i = 0; i < valueFields.Length; i++)
         {
-            if (valueFields[i].Computed || valueFields[i].InKeyValue) continue;
+            if (valueFields[i].Computed) continue;
             var needsFreeContent = valueFields[i].Handler!.FreeContent(fakeGenerator, _ => { }, _ => { });
             if (needsFreeContent != NeedsFreeContent.No)
                 needGenerateFreeFor = i + 1;
@@ -1662,7 +1662,7 @@ public class RelationInfo
 
         for (var i = 0; i < needGenerateFreeFor; i++)
         {
-            if (valueFields[i].Computed || valueFields[i].InKeyValue) continue;
+            if (valueFields[i].Computed) continue;
             valueFields[i].Handler!.FreeContent(ilGenerator, il => il.Ldarg(1), il => il.Ldloc(0));
         }
 
