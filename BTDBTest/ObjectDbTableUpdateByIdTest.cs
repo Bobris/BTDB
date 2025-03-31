@@ -175,4 +175,34 @@ public class ObjectDbTableUpdateByIdTest : ObjectDbTestBase
         Assert.Equal("s3cr3t", p.Secret.Secret);
         Assert.Same(p.N1, p.N2);
     }
+
+    public class PersonWithComputed
+    {
+        [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+        public string? Name { get; set; }
+
+        [PrimaryKey(2)] public int Age { get; set; }
+
+        [SecondaryKey("Computed", IncludePrimaryKeyOrder = 1, Order = 2)]
+        public string ComputedName => $"{Name} ({Age})";
+    }
+
+    public interface IPersonWithComputedTable : IRelation<PersonWithComputed>
+    {
+        bool UpdateById(ulong tenantId, int age, string name);
+    }
+
+    [Fact]
+    public void UpdateByIdWithComputedWorks()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IPersonWithComputedTable>();
+        t.Upsert(new() { TenantId = 1, Name = "A", Age = 42 });
+        t.UpdateById(1, 42, "B");
+        var p = t.First();
+        Assert.Equal("B", p.Name);
+        Assert.Equal(42, p.Age);
+        Assert.Equal("B (42)", p.ComputedName);
+    }
 }
