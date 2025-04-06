@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.5.0
+
 ### Improve
 
 KVDB: Make Cursors more robust, to survive programmers errors. Writing transactions do not reuse pooled cursors. Inside current transaction reuse last 2 cursors. Faster disposed checks.
