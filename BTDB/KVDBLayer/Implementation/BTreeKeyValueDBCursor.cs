@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using BTDB.BTreeLib;
 using Microsoft.Extensions.ObjectPool;
 
@@ -14,11 +16,15 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     bool _modifiedFromLastFind;
     bool _removedCurrent;
     bool _modificationForbidden;
+    bool _forbidPooling;
+    internal bool Disposed;
     long _keyIndex;
 
-    public static BTreeKeyValueDBCursor Create(BTreeKeyValueDBTransaction transaction)
+    public static BTreeKeyValueDBCursor Create(BTreeKeyValueDBTransaction transaction, bool forbidPooling)
     {
-        var cursor = PooledCursors.Get();
+        var cursor = forbidPooling ? new() : PooledCursors.Get();
+        cursor._forbidPooling = forbidPooling;
+        cursor.Disposed = false;
         if (cursor._cursor == null)
         {
             cursor._cursor = transaction.BTreeRoot!.CreateCursor();
@@ -47,20 +53,46 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public void Dispose()
     {
-        if (_transaction == null) return;
+        if (Interlocked.Exchange(ref Disposed, true)) return;
+        var transaction = _transaction;
+        if (transaction == null)
+        {
+            Debug.Fail("Transaction is already closed");
+            return;
+        }
+
+        if (transaction.Reused1 == null)
+        {
+            Invalidate();
+            transaction.Reused1 = this;
+            return;
+        }
+
+        if (transaction.Reused2 == null)
+        {
+            Invalidate();
+            transaction.Reused2 = this;
+            return;
+        }
+
+        RealDispose(transaction);
+    }
+
+    internal void RealDispose(BTreeKeyValueDBTransaction transaction)
+    {
         var nextCursor = NextCursor;
         var prevCursor = PrevCursor;
         if (nextCursor == null)
         {
             if (prevCursor == null)
             {
-                _transaction.FirstCursor = null!;
-                _transaction.LastCursor = null!;
+                transaction.FirstCursor = null!;
+                transaction.LastCursor = null!;
             }
             else
             {
                 prevCursor.NextCursor = null;
-                _transaction.LastCursor = prevCursor;
+                transaction.LastCursor = prevCursor;
             }
         }
         else
@@ -68,7 +100,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
             nextCursor.PrevCursor = prevCursor;
             if (prevCursor == null)
             {
-                _transaction.FirstCursor = nextCursor;
+                transaction.FirstCursor = nextCursor;
             }
             else
             {
@@ -82,7 +114,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         PrevCursor = null;
         _modifiedFromLastFind = false;
         _removedCurrent = false;
-        PooledCursors.Return(this);
+        if (!_forbidPooling)
+            PooledCursors.Return(this);
     }
 
     static readonly DefaultObjectPool<BTreeKeyValueDBCursor> PooledCursors =
@@ -92,8 +125,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         _modifiedFromLastFind = false;
         _keyIndex = -1;
         return _cursor!.FindFirst(prefix);
@@ -101,8 +133,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindLastKey(in ReadOnlySpan<byte> prefix)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         _modifiedFromLastFind = false;
         _keyIndex = _cursor!.FindLastWithPrefix(prefix);
         return _keyIndex >= 0;
@@ -110,8 +141,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         if (_modifiedFromLastFind)
         {
             if (FindKeyIndex(_keyIndex - 1) && _cursor!.KeyHasPrefix(prefix))
@@ -139,8 +169,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindNextKey(in ReadOnlySpan<byte> prefix)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         if (_modifiedFromLastFind)
         {
             if (!_removedCurrent) _keyIndex++;
@@ -169,8 +198,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         _modifiedFromLastFind = false;
         var result = _cursor!.Find(key);
         _keyIndex = -1;
@@ -214,8 +242,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindKeyIndex(in ReadOnlySpan<byte> prefix, long index)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         _modifiedFromLastFind = false;
         if (!_cursor!.FindFirst(prefix))
         {
@@ -238,8 +265,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool FindKeyIndex(long index)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         _modifiedFromLastFind = false;
         _keyIndex = -1;
         if (_cursor!.SeekIndex(index))
@@ -284,22 +310,19 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public ReadOnlyMemory<byte> GetKeyMemory(ref Memory<byte> buffer, bool copy = false)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         return _cursor!.GetKeyMemory(ref buffer, copy);
     }
 
     public ReadOnlySpan<byte> GetKeySpan(scoped ref Span<byte> buffer, bool copy = false)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         return _cursor!.GetKeySpan(ref buffer, copy);
     }
 
     public ReadOnlySpan<byte> GetKeySpan(Span<byte> buffer, bool copy = false)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         return _cursor!.GetKeySpan(buffer, copy);
     }
 
@@ -312,8 +335,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public ReadOnlyMemory<byte> GetValueMemory(ref Memory<byte> buffer, bool copy = false)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         if (!IsValid()) return new();
         var trueValue = _cursor!.GetValue();
         var keyValueDB = _transaction!.KeyValueDB;
@@ -384,8 +406,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     void EnsureValidCursor()
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         if (!_cursor!.IsValid())
         {
             if (_modifiedFromLastFind && _keyIndex != -1)
@@ -482,8 +503,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     [SkipLocalsInit]
     public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         var cursor = (IKeyValueDBCursorInternal)_transaction!.FirstCursor;
         while (cursor != null)
         {
@@ -519,8 +539,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         var cursor = (IKeyValueDBCursorInternal)_transaction!.FirstCursor;
         while (cursor != null)
         {
@@ -557,8 +576,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public void FastIterate(ref Span<byte> buffer, CursorIterateCallback callback)
     {
-        ObjectDisposedException.ThrowIf(_transaction == null, this);
-        ObjectDisposedException.ThrowIf(_transaction.BTreeRoot == null, _transaction);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         _modificationForbidden = true;
         try
         {

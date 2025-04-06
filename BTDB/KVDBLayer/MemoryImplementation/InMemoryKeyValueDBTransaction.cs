@@ -13,6 +13,8 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
     bool _writing;
     readonly bool _readOnly;
     bool _preapprovedWriting;
+    internal IKeyValueDBCursor? Reused1;
+    internal IKeyValueDBCursor? Reused2;
 
     public InMemoryKeyValueDBTransaction(InMemoryKeyValueDB keyValueDB, IBTreeRootNode btreeRoot, bool writing,
         bool readOnly)
@@ -26,7 +28,23 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
     public IKeyValueDBCursor CreateCursor()
     {
         ObjectDisposedException.ThrowIf(_btreeRoot == null, this);
-        return InMemoryKeyValueDBCursor.Create(this);
+        if (Reused1 != null)
+        {
+            var cursor = Reused1;
+            Reused1 = null;
+            ((InMemoryKeyValueDBCursor)cursor).Disposed = false;
+            return cursor;
+        }
+
+        if (Reused2 != null)
+        {
+            var cursor = Reused2;
+            Reused2 = null;
+            ((InMemoryKeyValueDBCursor)cursor).Disposed = false;
+            return cursor;
+        }
+
+        return InMemoryKeyValueDBCursor.Create(this, _writing || _preapprovedWriting);
     }
 
     internal void MakeWritable()
@@ -116,6 +134,16 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
 
     public void Dispose()
     {
+        if (Reused1 != null)
+        {
+            ((InMemoryKeyValueDBCursor)Reused1).RealDispose(this);
+        }
+
+        if (Reused2 != null)
+        {
+            ((InMemoryKeyValueDBCursor)Reused2).RealDispose(this);
+        }
+
         if (_writing || _preapprovedWriting)
         {
             _keyValueDB.RevertWritingTransaction();
