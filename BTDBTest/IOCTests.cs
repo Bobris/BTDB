@@ -1,20 +1,18 @@
-using BTDB.IOC;
-using BTDB.KVDBLayer;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using BTDB;
+using BTDB.IOC;
+using BTDB.KVDBLayer;
+using BTDBTest.IOCDomain;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace BTDBTest;
-
-using IOCDomain;
 
 public partial class IocTests
 {
@@ -1774,5 +1772,71 @@ public partial class IocTests
         Assert.Equal("C1", c1.Name);
         var c2 = container.ResolveKeyed<INamed>("2");
         Assert.Equal("C2", c2.Name);
+    }
+
+    class TestLogger : ILogger;
+
+    class TestLogger2 : ILogger;
+
+    class ServiceForServiceProvider(ILogger logger)
+    {
+        public ILogger Logger { get; } = logger;
+    }
+
+    [Fact]
+    public void RegisterSingletonAndResolveFromServiceProvider()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.ServiceCollection.AddSingleton<ILogger, TestLogger>();
+        containerBuilder.ServiceCollection.AddSingleton<ServiceForServiceProvider>();
+        var container = containerBuilder.Build();
+
+        var actual = container.Resolve<ServiceForServiceProvider>();
+
+        Assert.NotNull(actual);
+        Assert.IsType<TestLogger>(actual.Logger);
+    }
+
+    [Fact]
+    public void RegisterAndResolveIEnumerableFromServiceProvider()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.ServiceCollection.AddTransient<ILogger, TestLogger>();
+        containerBuilder.ServiceCollection.AddTransient<ILogger, TestLogger2>();
+
+        var container = containerBuilder.Build();
+
+        var actual = container.Resolve<IEnumerable<ILogger>>();
+
+        Assert.NotNull(actual);
+        Assert.Equal(2, actual.Count());
+    }
+
+    [Fact]
+    public void WhenIEnumerableTypeIsNotRegistered_ResolveIEnumerable_ReturnsEmpty()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.ServiceCollection.AddTransient<TestLogger>();
+
+        var container = containerBuilder.Build();
+
+        var actual = container.Resolve<IEnumerable<ILogger>>();
+
+        Assert.NotNull(actual);
+        Assert.Empty(actual);
+    }
+
+    [Fact]
+    public void WhenSomethingRegisteredInServiceProvider_ShouldResolveServiceProvider()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.ServiceCollection.AddTransient<TestLogger>();
+
+        var container = containerBuilder.Build();
+
+        var actual = container.Resolve<IServiceProvider>();
+
+        Assert.NotNull(actual);
+        Assert.IsAssignableFrom<TestLogger>(actual.GetService(typeof(TestLogger)));
     }
 }
