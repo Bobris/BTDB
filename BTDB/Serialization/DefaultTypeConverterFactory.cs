@@ -10,9 +10,13 @@ namespace BTDB.Serialization;
 
 public class DefaultTypeConverterFactory : ITypeConverterFactory
 {
+    readonly Dictionary<(Type From, Type To), Converter> _converters = new();
+
     public Converter? GetConverter(Type from, Type to)
     {
         if (from == to) return CreateAssign(from);
+        if (_converters.TryGetValue((from, to), out var converter))
+            return converter;
         if (from.IsEnum)
         {
             return GetConverter(from.GetEnumUnderlyingType(), to);
@@ -86,25 +90,90 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
             }
         }
 
-        if (to.IsGenericType && to.GetGenericTypeDefinition() == typeof(List<>))
+        if (to.IsGenericType && (to.GetGenericTypeDefinition() == typeof(List<>) ||
+                                 to.GetGenericTypeDefinition() == typeof(IList<>)))
         {
             var toList = to.GenericTypeArguments[0];
             var collectionMetadata = ReflectionMetadata.FindCollectionByType(to);
+            if (collectionMetadata == null)
+                throw new NotSupportedException(
+                    $"Type {to} is not supported for conversion. Use [assembly: GenerateFor(typeof(...))] to generate code for it.");
+            if (from == toList)
+            {
+                if (toList.IsValueType)
+                {
+                    return (ref byte fromI, ref byte toI) =>
+                    {
+                        unsafe
+                        {
+                            var listResult = collectionMetadata.Creator(1);
+                            collectionMetadata.Adder(listResult, ref fromI);
+                            Unsafe.As<byte, object>(ref toI) = listResult;
+                        }
+                    };
+                }
+
+                return (ref byte fromI, ref byte toI) =>
+                {
+                    unsafe
+                    {
+                        if (Unsafe.As<byte, object>(ref fromI) == null)
+                        {
+                            var listResult = collectionMetadata.Creator(0);
+                            Unsafe.As<byte, object>(ref toI) = listResult;
+                        }
+                        else
+                        {
+                            var listResult = collectionMetadata.Creator(1);
+                            collectionMetadata.Adder(listResult, ref fromI);
+                            Unsafe.As<byte, object>(ref toI) = listResult;
+                        }
+                    }
+                };
+            }
 
             if (GetConverter(from, toList) is { } itemConversion)
             {
-                var itemSize = RawData.GetSizeAndAlign(toList).Size;
-                var itemAlign = RawData.GetSizeAndAlign(toList).Align;
-                var offset = RawData.Align(1, itemAlign);
-                return (ref byte fromI, ref byte toI) =>
+                if (!toList.IsValueType)
                 {
-                    var count = Unsafe.ReadUnaligned<uint>(ref Unsafe.AddByteOffset(ref fromI, (int)offset));
-                    for (uint i = 0; i < count; i++)
+                    return (ref byte fromI, ref byte toI) =>
                     {
-                        itemConversion(ref Unsafe.AddByteOffset(ref fromI, (int)(offset + i * itemSize)),
-                            ref Unsafe.AddByteOffset(ref toI, (int)(offset + i * itemSize)));
-                    }
-                };
+                        unsafe
+                        {
+                            object? toItem = null;
+                            itemConversion(ref fromI, ref Unsafe.As<object, byte>(ref toItem));
+                            if (toItem == null)
+                            {
+                                var listResult = collectionMetadata.Creator(0);
+                                Unsafe.As<byte, object>(ref toI) = listResult;
+                            }
+                            else
+                            {
+                                var listResult = collectionMetadata.Creator(1);
+                                collectionMetadata.Adder(listResult, ref Unsafe.As<object, byte>(ref toItem));
+                                Unsafe.As<byte, object>(ref toI) = listResult;
+                            }
+                        }
+                    };
+                }
+
+                if (!RawData.MethodTableOf(toList).ContainsGCPointers)
+                {
+                    return (ref byte fromI, ref byte toI) =>
+                    {
+                        unsafe
+                        {
+                            Int128 toItem = default;
+                            itemConversion(ref fromI, ref Unsafe.As<Int128, byte>(ref toItem));
+                            var listResult = collectionMetadata.Creator(1);
+                            collectionMetadata.Adder(listResult, ref Unsafe.As<Int128, byte>(ref toItem));
+                            Unsafe.As<byte, object>(ref toI) = listResult;
+                        }
+                    };
+                }
+
+                throw new NotSupportedException("Cannot convert from " + from.ToSimpleName() + " to " +
+                                                to.ToSimpleName());
             }
         }
 
@@ -865,6 +934,14 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
         }
 
         return null;
+    }
+
+    public void RegisterConverter<TFrom, TTo>(ActionConverter<TFrom, TTo> converter)
+    {
+        _converters[(typeof(TFrom), typeof(TTo))] = (ref byte from, ref byte to) =>
+        {
+            converter(in Unsafe.As<byte, TFrom>(ref from), out Unsafe.As<byte, TTo>(ref to));
+        };
     }
 
     Converter? CreateAssign(Type type)
