@@ -1194,7 +1194,7 @@ public class SourceGenerator : IIncrementalGenerator
             static file class CollectionRegistrations
             {
                 [ModuleInitializer]
-                internal static void Register4BTDB()
+                internal static unsafe void Register4BTDB()
                 {
             """);
 

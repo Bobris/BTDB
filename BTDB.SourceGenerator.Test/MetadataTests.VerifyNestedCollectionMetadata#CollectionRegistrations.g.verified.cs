@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 static file class CollectionRegistrations
 {
     [ModuleInitializer]
-    internal static void Register4BTDB()
+    internal static unsafe void Register4BTDB()
     {
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
