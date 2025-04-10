@@ -10,6 +10,7 @@ using BTDB.Collections;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.Serialization;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace BTDB.IOC;
 
@@ -18,12 +19,14 @@ public class ContainerImpl : IContainer
     internal readonly Dictionary<KeyAndType, CReg> Registrations = new();
 
     internal readonly object?[] Singletons;
-    readonly IServiceProvider? _serviceProvider;
+    readonly ServiceProvider? _serviceProvider;
+    readonly IServiceProviderIsKeyedService? _serviceProviderIsKeyedService;
 
     internal ContainerImpl(ReadOnlySpan<IRegistration> registrations, ContainerVerification containerVerification,
-        IServiceProvider? serviceProvider)
+        ServiceProvider? serviceProvider)
     {
         _serviceProvider = serviceProvider;
+        _serviceProviderIsKeyedService = serviceProvider?.GetService<IServiceProviderIsKeyedService>();
         var context = new ContainerRegistrationContext(Registrations,
             !containerVerification.HasFlag(ContainerVerification.AllTypesAreGenerated),
             containerVerification.HasFlag(ContainerVerification.ReportNotGeneratedTypes));
@@ -68,12 +71,6 @@ public class ContainerImpl : IContainer
 
     public object ResolveKeyed(object? key, Type type)
     {
-        var resolvedFromServiceProvider = TryResolveFromServiceProvider(type);
-        if (resolvedFromServiceProvider is not null)
-        {
-            return resolvedFromServiceProvider;
-        }
-
         var factory = CreateFactory(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key);
         if (factory is null)
         {
@@ -95,12 +92,6 @@ public class ContainerImpl : IContainer
 
     public object? ResolveOptionalKeyed(object? key, Type type)
     {
-        var resolvedFromServiceProvider = TryResolveFromServiceProvider(type);
-        if (resolvedFromServiceProvider is not null)
-        {
-            return resolvedFromServiceProvider;
-        }
-
         var factory = CreateFactory(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key);
         return factory?.Invoke(this, null);
     }
@@ -111,6 +102,20 @@ public class ContainerImpl : IContainer
         if (ctxImpl.IsBound(type, key as string, out var paramIdx))
         {
             return (c, r) => r!.Get(paramIdx);
+        }
+
+        if (_serviceProviderIsKeyedService != null)
+        {
+            if (key != null && _serviceProviderIsKeyedService.IsKeyedService(type, key))
+            {
+                ctxImpl.ForbidKeylessFallback = false;
+                return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredKeyedService(type, key);
+            }
+
+            if ((key == null || !ctxImpl.ForbidKeylessFallback) && _serviceProviderIsKeyedService.IsService(type))
+            {
+                return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredService(type);
+            }
         }
 
         if (Registrations.TryGetValue(new(key, type), out var cReg))
@@ -501,24 +506,6 @@ public class ContainerImpl : IContainer
         if (nestedType.IsValueType)
             throw new NotSupportedException(
                 "Tuple<> with value type argument is not supported.");
-    }
-
-    object? TryResolveFromServiceProvider(Type type)
-    {
-        var resolved = _serviceProvider?.GetService(type);
-        if (resolved == null || !type.IsAssignableTo(typeof(IEnumerable)))
-        {
-            return resolved;
-        }
-
-        var enumerator = ((IEnumerable)resolved).GetEnumerator();
-        using var enumerator1 = enumerator as IDisposable;
-        if (!enumerator.MoveNext())
-        {
-            resolved = null;
-        }
-
-        return resolved;
     }
 
     class SingletonLocker

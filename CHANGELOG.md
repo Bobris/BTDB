@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Allow to register IOC though `ContainerBuilder.ServiceCollection`. Native registrations are only used as fallback.
+
 ## 33.6.0
 
 ## 33.5.0

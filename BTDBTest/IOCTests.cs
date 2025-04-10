@@ -1839,4 +1839,18 @@ public partial class IocTests
         Assert.NotNull(actual);
         Assert.IsAssignableFrom<TestLogger>(actual.GetService(typeof(TestLogger)));
     }
+
+    [Fact]
+    public void DependencyFromServiceProvider_ShouldResolve()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.ServiceCollection.AddSingleton<ILogger, TestLogger>();
+        containerBuilder.RegisterType<ErrorHandler>().As<IErrorHandler>();
+
+        var container = containerBuilder.Build();
+        var actual = container.Resolve<IErrorHandler>();
+        Assert.NotNull(actual);
+        Assert.IsType<ErrorHandler>(actual);
+        Assert.IsType<TestLogger>(actual.Logger);
+    }
 }
