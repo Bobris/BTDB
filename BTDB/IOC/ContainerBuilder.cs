@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Reflection;
 using BTDB.Collections;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace BTDB.IOC;
 
@@ -26,6 +27,10 @@ public class ContainerBuilder
     StructList<IRegistration> _registrations;
 
     readonly ContainerBuilderBehaviour _builderBehaviour;
+
+    ServiceCollection? _serviceCollection;
+
+    public ServiceCollection ServiceCollection => _serviceCollection ??= new();
 
     public ContainerBuilder(ContainerBuilderBehaviour builderBehaviour = ContainerBuilderBehaviour.None)
     {
@@ -132,11 +137,14 @@ public class ContainerBuilder
 
     public IContainer Build()
     {
-        return new ContainerImpl(_registrations.AsReadOnlySpan(), ContainerVerification.AllTypesAreGenerated);
+        var serviceProvider = _serviceCollection?.BuildServiceProvider();
+        return new ContainerImpl(_registrations.AsReadOnlySpan(), ContainerVerification.AllTypesAreGenerated,
+            serviceProvider);
     }
 
     public IContainer BuildAndVerify(ContainerVerification options = ContainerVerification.All)
     {
-        return new ContainerImpl(_registrations.AsReadOnlySpan(), options);
+        var serviceProvider = _serviceCollection?.BuildServiceProvider();
+        return new ContainerImpl(_registrations.AsReadOnlySpan(), options, serviceProvider);
     }
 }
