@@ -1871,4 +1871,33 @@ public partial class IocTests
         Assert.NotNull(actual);
         Assert.Equal(2, actual.Count());
     }
+
+    [Fact]
+    public void MsIocTest()
+    {
+        var serviceCollection = new ServiceCollection();
+
+        serviceCollection.AddKeyedSingleton<ILogger, TestLogger>("A");
+        serviceCollection.AddKeyedSingleton<ILogger, TestLogger2>("A");
+        var provider = serviceCollection.BuildServiceProvider();
+
+        var isKeyedService = provider.GetService<IServiceProviderIsKeyedService>();
+        Assert.True(isKeyedService.IsKeyedService(typeof(IEnumerable<ILogger>), "A"));
+        Assert.True(isKeyedService.IsKeyedService(typeof(IEnumerable<ILogger>), "B"));
+        Assert.True(isKeyedService.IsKeyedService(typeof(IEnumerable<IDatabase>), "DoesNotMatter"));
+        Assert.True(isKeyedService.IsKeyedService(typeof(ILogger), "A"));
+        Assert.False(isKeyedService.IsKeyedService(typeof(ILogger), "B"));
+        Assert.False(isKeyedService.IsKeyedService(typeof(ILogger), KeyedService.AnyKey)); // !!!
+        Assert.True(isKeyedService.IsService(typeof(IEnumerable<ILogger>)));
+        Assert.False(isKeyedService.IsService(typeof(ILogger)));
+        Assert.True(isKeyedService.IsService(typeof(IEnumerable<IDatabase>)));
+        Assert.False(isKeyedService.IsService(typeof(IDatabase)));
+
+        Assert.Equal(2, provider.GetKeyedService<IEnumerable<ILogger>>("A").Count());
+        Assert.NotNull(provider.GetKeyedService<ILogger>("A"));
+        Assert.Empty(provider.GetKeyedService<IEnumerable<ILogger>>("B"));
+        Assert.Null(provider.GetService<ILogger>());
+        Assert.Null(provider.GetKeyedService<ILogger>(KeyedService.AnyKey)); // !!!
+        Assert.Equal(2, provider.GetKeyedService<IEnumerable<ILogger>>(KeyedService.AnyKey).Count());
+    }
 }

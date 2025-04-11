@@ -96,12 +96,14 @@ public class ContainerImpl : IContainer
         return factory?.Invoke(this, null);
     }
 
-    bool ShouldResolveFromServiceProvider(Type type)
+    bool ShouldResolveFromServiceProvider(Type type, object? key)
     {
         if (type.IsAssignableTo(typeof(IEnumerable)) && type.IsGenericType)
         {
             var genericType = type.GenericTypeArguments[0];
-            return _serviceProviderIsKeyedService!.IsService(genericType);
+            return key != null
+                ? _serviceProviderIsKeyedService!.IsKeyedService(genericType, key)
+                : _serviceProviderIsKeyedService!.IsService(genericType);
         }
 
         return true;
@@ -118,14 +120,14 @@ public class ContainerImpl : IContainer
         if (_serviceProviderIsKeyedService != null)
         {
             if (key != null && _serviceProviderIsKeyedService.IsKeyedService(type, key) &&
-                ShouldResolveFromServiceProvider(type))
+                ShouldResolveFromServiceProvider(type, key))
             {
                 ctxImpl.ForbidKeylessFallback = false;
                 return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredKeyedService(type, key);
             }
 
             if ((key == null || !ctxImpl.ForbidKeylessFallback) && _serviceProviderIsKeyedService.IsService(type) &&
-                ShouldResolveFromServiceProvider(type))
+                ShouldResolveFromServiceProvider(type, key))
             {
                 return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredService(type);
             }
