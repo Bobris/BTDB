@@ -96,6 +96,18 @@ public class ContainerImpl : IContainer
         return factory?.Invoke(this, null);
     }
 
+    bool ShouldResolveFromServiceProvider(Type type)
+    {
+        if (type.IsAssignableTo(typeof(IEnumerable)) && type.IsGenericType)
+        {
+            var genericType = type.GenericTypeArguments[0];
+            var resolved = _serviceProvider!.GetService(genericType);
+            return resolved != null;
+        }
+
+        return true;
+    }
+
     public Func<IContainer, IResolvingCtx?, object?>? CreateFactory(ICreateFactoryCtx ctx, Type type, object? key)
     {
         var ctxImpl = (CreateFactoryCtx)ctx;
@@ -106,42 +118,17 @@ public class ContainerImpl : IContainer
 
         if (_serviceProviderIsKeyedService != null)
         {
-            if (key != null && _serviceProviderIsKeyedService.IsKeyedService(type, key))
+            if (key != null && _serviceProviderIsKeyedService.IsKeyedService(type, key) &&
+                ShouldResolveFromServiceProvider(type))
             {
-                if (type.IsAssignableTo(typeof(IEnumerable)))
-                {
-                    var resolved = _serviceProvider!.GetRequiredKeyedService(type, key);
-                    var enumerator = ((IEnumerable)resolved).GetEnumerator();
-                    using var enumerator1 = enumerator as IDisposable;
-                    if (enumerator.MoveNext())
-                    {
-                        ctxImpl.ForbidKeylessFallback = false;
-                        return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredKeyedService(type, key);
-                    }
-                }
-                else
-                {
-                    ctxImpl.ForbidKeylessFallback = false;
-                    return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredKeyedService(type, key);
-                }
+                ctxImpl.ForbidKeylessFallback = false;
+                return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredKeyedService(type, key);
             }
 
-            if ((key == null || !ctxImpl.ForbidKeylessFallback) && _serviceProviderIsKeyedService.IsService(type))
+            if ((key == null || !ctxImpl.ForbidKeylessFallback) && _serviceProviderIsKeyedService.IsService(type) &&
+                ShouldResolveFromServiceProvider(type))
             {
-                if (type.IsAssignableTo(typeof(IEnumerable)))
-                {
-                    var resolved = _serviceProvider!.GetRequiredService(type);
-                    var enumerator = ((IEnumerable)resolved).GetEnumerator();
-                    using var enumerator1 = enumerator as IDisposable;
-                    if (enumerator.MoveNext())
-                    {
-                        return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredService(type);
-                    }
-                }
-                else
-                {
-                    return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredService(type);
-                }
+                return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredService(type);
             }
         }
 
