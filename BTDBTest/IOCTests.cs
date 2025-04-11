@@ -1774,9 +1774,11 @@ public partial class IocTests
         Assert.Equal("C2", c2.Name);
     }
 
-    class TestLogger : ILogger;
+    [Generate]
+    public class TestLogger : ILogger;
 
-    class TestLogger2 : ILogger;
+    [Generate]
+    public class TestLogger2 : ILogger;
 
     class ServiceForServiceProvider(ILogger logger)
     {
@@ -1852,5 +1854,21 @@ public partial class IocTests
         Assert.NotNull(actual);
         Assert.IsType<ErrorHandler>(actual);
         Assert.IsType<TestLogger>(actual.Logger);
+    }
+
+    [Fact]
+    public void GivenMultipleRegistrations_WhenSomethingRegisteredInServiceProvider_ShouldResolve()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterType<TestLogger>().As<ILogger>();
+        containerBuilder.RegisterType<TestLogger2>().As<ILogger>();
+        containerBuilder.ServiceCollection.AddTransient<ErrorHandler>();
+
+        var container = containerBuilder.Build();
+
+        var actual = container.Resolve<IEnumerable<ILogger>>();
+
+        Assert.NotNull(actual);
+        Assert.Equal(2, actual.Count());
     }
 }

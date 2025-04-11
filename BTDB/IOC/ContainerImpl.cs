@@ -108,13 +108,40 @@ public class ContainerImpl : IContainer
         {
             if (key != null && _serviceProviderIsKeyedService.IsKeyedService(type, key))
             {
-                ctxImpl.ForbidKeylessFallback = false;
-                return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredKeyedService(type, key);
+                if (type.IsAssignableTo(typeof(IEnumerable)))
+                {
+                    var resolved = _serviceProvider!.GetRequiredKeyedService(type, key);
+                    var enumerator = ((IEnumerable)resolved).GetEnumerator();
+                    using var enumerator1 = enumerator as IDisposable;
+                    if (enumerator.MoveNext())
+                    {
+                        ctxImpl.ForbidKeylessFallback = false;
+                        return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredKeyedService(type, key);
+                    }
+                }
+                else
+                {
+                    ctxImpl.ForbidKeylessFallback = false;
+                    return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredKeyedService(type, key);
+                }
             }
 
             if ((key == null || !ctxImpl.ForbidKeylessFallback) && _serviceProviderIsKeyedService.IsService(type))
             {
-                return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredService(type);
+                if (type.IsAssignableTo(typeof(IEnumerable)))
+                {
+                    var resolved = _serviceProvider!.GetRequiredService(type);
+                    var enumerator = ((IEnumerable)resolved).GetEnumerator();
+                    using var enumerator1 = enumerator as IDisposable;
+                    if (enumerator.MoveNext())
+                    {
+                        return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredService(type);
+                    }
+                }
+                else
+                {
+                    return (c, r) => ((ContainerImpl)c)._serviceProvider!.GetRequiredService(type);
+                }
             }
         }
 
