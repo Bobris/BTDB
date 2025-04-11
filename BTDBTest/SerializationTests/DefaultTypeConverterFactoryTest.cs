@@ -177,7 +177,6 @@ public class DefaultTypeConverterFactoryTest
         CheckConverter(factory, (double)42, (ulong)42);
         CheckConverter(factory, (double)42, (Half)42);
         CheckConverter(factory, (double)42, (float)42);
-        CheckConverter(factory, (double)42, (double?)42);
         CheckConverter(factory, (double)42, (decimal)42);
     }
 
@@ -219,6 +218,7 @@ public class DefaultTypeConverterFactoryTest
         var factory = new DefaultTypeConverterFactory();
         CheckConverter(factory, (byte)42, (int?)42);
         CheckConverter(factory, (float)42, (double?)42);
+        CheckConverter(factory, (double)42, (double?)42);
     }
 
     [Fact]
