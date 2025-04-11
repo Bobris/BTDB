@@ -101,8 +101,7 @@ public class ContainerImpl : IContainer
         if (type.IsAssignableTo(typeof(IEnumerable)) && type.IsGenericType)
         {
             var genericType = type.GenericTypeArguments[0];
-            var resolved = _serviceProvider!.GetService(genericType);
-            return resolved != null;
+            return _serviceProviderIsKeyedService!.IsService(genericType);
         }
 
         return true;
