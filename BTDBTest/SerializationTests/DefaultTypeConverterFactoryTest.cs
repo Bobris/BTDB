@@ -8,23 +8,6 @@ using Xunit;
 
 namespace BTDBTest.SerializationTests;
 
-[Generate]
-public class DummyClassUsedJustForGenerationOfMetadata
-{
-    public List<int>? ListInt;
-    public List<uint>? ListUint;
-    public List<ulong>? ListUlong;
-    public List<Half>? ListHalf;
-    public List<string>? ListString;
-    public List<object>? ListObject;
-    public IList<int>? IListInt;
-    public IList<uint>? IListUint;
-    public IList<ulong>? IListUlong;
-    public IList<Half>? IListHalf;
-    public IList<string>? IListString;
-    public IList<object>? IListObject;
-}
-
 public class DefaultTypeConverterFactoryTest
 {
     [Fact]
@@ -51,11 +34,42 @@ public class DefaultTypeConverterFactoryTest
 
     static void CheckConverter<TFrom, TTo>(ITypeConverterFactory factory, TFrom from, TTo to)
     {
+        Assert.Equal((uint)Unsafe.SizeOf<TFrom>(), RawData.GetSizeAndAlign(typeof(TFrom)).Size);
+        Assert.Equal((uint)Unsafe.SizeOf<TTo>(), RawData.GetSizeAndAlign(typeof(TTo)).Size);
         var converter = factory.GetConverter(typeof(TFrom), typeof(TTo));
+        var protection = 0x1234567890abcdef;
         TTo to2 = default!;
+        var protection2 = 0x1234567890abcdef;
         if (converter == null) Assert.Fail($"Converter for {typeof(TFrom).Name} to {typeof(TTo).Name} not found");
+        //var hex = ToHex(ref protection, ref protection2);
         converter.Invoke(ref Unsafe.As<TFrom, byte>(ref from), ref Unsafe.As<TTo, byte>(ref to2));
+        //var hex2 = ToHex(ref protection, ref protection2);
+        CheckProtection(ref protection, ref protection2);
         Assert.Equal(to, to2);
+    }
+
+    static string ToHex(ref long protection, ref long protection2)
+    {
+        ref var start = ref Unsafe.As<long, byte>(ref protection);
+        ref var end = ref Unsafe.As<long, byte>(ref protection2);
+        if (Unsafe.ByteOffset(in start, in end) < 0)
+        {
+            start = ref Unsafe.As<long, byte>(ref protection2);
+            end = ref Unsafe.As<long, byte>(ref protection);
+        }
+
+        var length = Unsafe.ByteOffset(in start, in end) + 8;
+        var bytes = new byte[length];
+        Unsafe.CopyBlockUnaligned(ref bytes[0], ref start, (uint)length);
+        var hex = BitConverter.ToString(bytes).Replace("-", "");
+        return hex;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static void CheckProtection(ref long protection, ref long protection2)
+    {
+        Assert.Equal(0x1234567890abcdef, protection);
+        Assert.Equal(0x1234567890abcdef, protection2);
     }
 
     [Fact]
@@ -219,6 +233,7 @@ public class DefaultTypeConverterFactoryTest
         CheckConverter(factory, (byte)42, (int?)42);
         CheckConverter(factory, (float)42, (double?)42);
         CheckConverter(factory, (double)42, (double?)42);
+        CheckConverter(factory, (decimal)42, (decimal?)42);
     }
 
     [Fact]

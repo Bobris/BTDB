@@ -78,9 +78,6 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
             var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
             if (GetConverter(from, elementType) is { } itemConversion)
             {
-                var itemSize = RawData.GetSizeAndAlign(elementType).Size;
-                var itemAlign = RawData.GetSizeAndAlign(elementType).Align;
-                var offsetDelta = RawData.Align(1, itemAlign);
                 return (ref byte fromI, ref byte toI) =>
                 {
                     var res = Array.CreateInstance(elementType, 1);
@@ -93,88 +90,19 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
         if (to.IsGenericType && (to.GetGenericTypeDefinition() == typeof(List<>) ||
                                  to.GetGenericTypeDefinition() == typeof(IList<>)))
         {
-            var toList = to.GenericTypeArguments[0];
-            var collectionMetadata = ReflectionMetadata.FindCollectionByType(to);
-            if (collectionMetadata == null)
-                throw new NotSupportedException(
-                    $"Type {to} is not supported for conversion. Use [assembly: GenerateFor(typeof(...))] to generate code for it.");
-            if (from == toList)
+            var itemType = to.GenericTypeArguments[0];
+            var arrayType = itemType.MakeArrayType();
+            var listType = typeof(List<>).MakeGenericType(itemType);
+            var convertToArray = GetConverter(from, arrayType);
+            if (convertToArray == null)
+                return null;
+            return (ref byte fromI, ref byte toI) =>
             {
-                if (toList.IsValueType)
-                {
-                    return (ref byte fromI, ref byte toI) =>
-                    {
-                        unsafe
-                        {
-                            var listResult = collectionMetadata.Creator(1);
-                            collectionMetadata.Adder(listResult, ref fromI);
-                            Unsafe.As<byte, object>(ref toI) = listResult;
-                        }
-                    };
-                }
-
-                return (ref byte fromI, ref byte toI) =>
-                {
-                    unsafe
-                    {
-                        if (Unsafe.As<byte, object>(ref fromI) == null)
-                        {
-                            var listResult = collectionMetadata.Creator(0);
-                            Unsafe.As<byte, object>(ref toI) = listResult;
-                        }
-                        else
-                        {
-                            var listResult = collectionMetadata.Creator(1);
-                            collectionMetadata.Adder(listResult, ref fromI);
-                            Unsafe.As<byte, object>(ref toI) = listResult;
-                        }
-                    }
-                };
-            }
-
-            if (GetConverter(from, toList) is { } itemConversion)
-            {
-                if (!toList.IsValueType)
-                {
-                    return (ref byte fromI, ref byte toI) =>
-                    {
-                        unsafe
-                        {
-                            object? toItem = null;
-                            itemConversion(ref fromI, ref Unsafe.As<object, byte>(ref toItem));
-                            if (toItem == null)
-                            {
-                                var listResult = collectionMetadata.Creator(0);
-                                Unsafe.As<byte, object>(ref toI) = listResult;
-                            }
-                            else
-                            {
-                                var listResult = collectionMetadata.Creator(1);
-                                collectionMetadata.Adder(listResult, ref Unsafe.As<object, byte>(ref toItem));
-                                Unsafe.As<byte, object>(ref toI) = listResult;
-                            }
-                        }
-                    };
-                }
-
-                if (!RawData.MethodTableOf(toList).ContainsGCPointers)
-                {
-                    return (ref byte fromI, ref byte toI) =>
-                    {
-                        unsafe
-                        {
-                            Int128 toItem = default;
-                            itemConversion(ref fromI, ref Unsafe.As<Int128, byte>(ref toItem));
-                            var listResult = collectionMetadata.Creator(1);
-                            collectionMetadata.Adder(listResult, ref Unsafe.As<Int128, byte>(ref toItem));
-                            Unsafe.As<byte, object>(ref toI) = listResult;
-                        }
-                    };
-                }
-
-                throw new NotSupportedException("Cannot convert from " + from.ToSimpleName() + " to " +
-                                                to.ToSimpleName());
-            }
+                object? array = null;
+                convertToArray(ref fromI, ref Unsafe.As<object, byte>(ref array));
+                RawData.BuildListOutOfArray(ref Unsafe.As<object, byte>(ref array),
+                    ref Unsafe.As<byte, byte>(ref toI), listType);
+            };
         }
 
         if (from == typeof(byte))
@@ -957,7 +885,7 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
 
         if (!methodTable.ContainsGCPointers)
         {
-            switch (methodTable.BaseSize)
+            switch (RawData.GetSizeAndAlign(type).Size)
             {
                 case 1:
                     return static (ref byte from, ref byte to) => { to = from; };
@@ -978,7 +906,7 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
                     };
                 default:
                 {
-                    var size = methodTable.BaseSize;
+                    var size = RawData.GetSizeAndAlign(type).Size;
                     return (ref byte from, ref byte to) => { Unsafe.CopyBlock(ref to, ref from, size); };
                 }
             }

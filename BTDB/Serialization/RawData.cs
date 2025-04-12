@@ -181,6 +181,11 @@ public sealed class RawData
             return Combine(GetSizeAndAlign(arguments[0]), GetSizeAndAlign(arguments[1]), GetSizeAndAlign(arguments[2]));
         }
 
+        if (type == typeof(decimal))
+        {
+            return (16, 8);
+        }
+
         if (type == typeof(long) || type == typeof(ulong) || type == typeof(double))
         {
             return (8, 8);
@@ -201,8 +206,24 @@ public sealed class RawData
             return (1, 1);
         }
 
-        var size = MethodTableOf(type).BaseSize;
+        // from type make Array<type> because it has always ComponentSize
+        var size = MethodTableOf(type.MakeArrayType()).ComponentSize;
         return (size, size);
+    }
+
+    public static int GetArrayLength(ref byte array)
+    {
+        return Unsafe.As<byte, Array>(ref array).Length;
+    }
+
+    public static void BuildListOutOfArray(ref byte array, ref byte list, Type listType)
+    {
+        var res = new List<object>();
+        SetMethodTable(res, listType);
+        var length = GetArrayLength(ref array);
+        Unsafe.As<byte, object>(ref Ref(res, (uint)Unsafe.SizeOf<object>())) = Unsafe.As<byte, object>(ref array);
+        Unsafe.As<byte, int>(ref Ref(res, (uint)Unsafe.SizeOf<object>() * 2)) = length;
+        Unsafe.As<byte, object>(ref list) = res;
     }
 
     static (uint Size, uint Align) Combine((uint Size, uint Align) f1, (uint Size, uint Align) f2)
