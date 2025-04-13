@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 
@@ -73,14 +74,21 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
 
         if (to.IsArray && to.IsSZArray)
         {
-            var elementType = to.GetElementType()!;
+            var toItemType = to.GetElementType()!;
+            if (from.IsArray && from.IsSZArray)
+            {
+                var converter1 = CreateArrayToArrayConverter(from, to, toItemType);
+                if (converter1 != null) return converter1;
+            }
+
+            if (from.IsArray) return null;
             ref readonly var mt = ref RawData.MethodTableOf(to);
             var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-            if (GetConverter(from, elementType) is { } itemConversion)
+            if (GetConverter(from, toItemType) is { } itemConversion)
             {
                 return (ref byte fromI, ref byte toI) =>
                 {
-                    var res = Array.CreateInstance(elementType, 1);
+                    var res = Array.CreateInstance(toItemType, 1);
                     itemConversion(ref fromI, ref RawData.Ref(res, offset));
                     Unsafe.As<byte, object>(ref toI) = res;
                 };
@@ -858,6 +866,41 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
             return static (ref byte from, ref byte to) =>
             {
                 Unsafe.As<byte, ByteBuffer>(ref to) = ByteBuffer.NewAsync(Unsafe.As<byte, byte[]>(ref from));
+            };
+        }
+
+        return null;
+    }
+
+    Converter? CreateArrayToArrayConverter(Type from, Type to, Type toItemType)
+    {
+        var fromItemType = from.GetElementType()!;
+        if (GetConverter(fromItemType, toItemType) is { } conv)
+        {
+            return (ref byte fromI, ref byte toI) =>
+            {
+                var fromArray = Unsafe.As<byte, Array>(ref fromI);
+                if (fromArray == null)
+                {
+                    Unsafe.As<byte, object>(ref toI) = null;
+                    return;
+                }
+
+                var len = fromArray.Length;
+                var toArray = Array.CreateInstance(toItemType, len);
+                ref readonly var fromMt = ref RawData.MethodTableOf(from);
+                ref readonly var toMt = ref RawData.MethodTableOf(to);
+                var fromOffset = fromMt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var toOffset = toMt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                for (var i = 0; i < len; i++)
+                {
+                    conv(ref RawData.Ref(fromArray, fromOffset),
+                        ref RawData.Ref(toArray, toOffset));
+                    fromOffset += fromMt.ComponentSize;
+                    toOffset += toMt.ComponentSize;
+                }
+
+                Unsafe.As<byte, object>(ref toI) = toArray;
             };
         }
 

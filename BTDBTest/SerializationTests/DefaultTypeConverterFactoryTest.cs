@@ -5,6 +5,7 @@ using BTDB;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.Serialization;
+using Microsoft.Extensions.Primitives;
 using Xunit;
 
 namespace BTDBTest.SerializationTests;
@@ -297,5 +298,22 @@ public class DefaultTypeConverterFactoryTest
     {
         var factory = new DefaultTypeConverterFactory();
         CheckConverter(factory, ("A", 42, "B"), ("A", 42, "B"));
+    }
+
+    [Fact]
+    public void RegisterCustomConvertorWorks()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        factory.RegisterConverter((in StringValues from, out string to) => { to = from.ToString(); });
+        CheckConverter(factory, new StringValues(["Hello", "World"]), "Hello,World");
+    }
+
+    [Fact]
+    public void ArrayToArrayWorks()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        CheckConverter(factory, new[] { 1, 2, 3 }, new[] { 1u, 2u, 3u });
+        CheckConverter(factory, new[] { (Half)1.0f, (Half)2.0f, (Half)3.0f }, new[] { "1", "2", "3" });
+        CheckConverter(factory, (byte[])null, (int[])null);
     }
 }
