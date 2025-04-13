@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using BTDB.Buffer;
 using BTDB.Encrypted;
-using BTDB.IL;
 
 namespace BTDB.Serialization;
 
@@ -872,7 +872,7 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
         };
     }
 
-    Converter? CreateAssign(Type type)
+    public static Converter? CreateAssign(Type type)
     {
         ref readonly var methodTable = ref RawData.MethodTableOf(type);
         if (!methodTable.IsValueType)
@@ -883,9 +883,10 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
             };
         }
 
+        var size = RawData.GetSizeAndAlign(type).Size;
         if (!methodTable.ContainsGCPointers)
         {
-            switch (RawData.GetSizeAndAlign(type).Size)
+            switch (size)
             {
                 case 1:
                     return static (ref byte from, ref byte to) => { to = from; };
@@ -904,41 +905,17 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
                     {
                         Unsafe.As<byte, ulong>(ref to) = Unsafe.As<byte, ulong>(ref from);
                     };
+                case 16:
+                    return (ref byte from, ref byte to) => { Unsafe.CopyBlock(ref to, ref from, 16); };
                 default:
                 {
-                    var size = RawData.GetSizeAndAlign(type).Size;
-                    return (ref byte from, ref byte to) => { Unsafe.CopyBlock(ref to, ref from, size); };
+                    var size2 = size;
+                    return (ref byte from, ref byte to) => { Unsafe.CopyBlock(ref to, ref from, size2); };
                 }
             }
         }
 
-        if (type.SpecializationOf(typeof(ValueTuple<,>)) is { } valueTuple2)
-        {
-            var typeParams = valueTuple2.GetGenericArguments();
-            var offsets = RawData.GetOffsets(typeParams[0], typeParams[1]);
-            var convertor1 = CreateAssign(typeParams[0]);
-            if (convertor1 == null) return null;
-            var convertor2 = CreateAssign(typeParams[1]);
-            if (convertor2 == null) return null;
-            return (ref byte from, ref byte to) =>
-            {
-                convertor1(ref Unsafe.AddByteOffset(ref from, offsets.Item1),
-                    ref Unsafe.AddByteOffset(ref to, offsets.Item1));
-                convertor2(ref Unsafe.AddByteOffset(ref from, offsets.Item2),
-                    ref Unsafe.AddByteOffset(ref to, offsets.Item2));
-            };
-        }
-
-        return null;
-    }
-
-    private static void ConvertEnumToInt(ref byte from, ref byte to)
-    {
-        to = from;
-    }
-
-    private static void ConvertIntToEnum(ref byte from, ref byte to)
-    {
-        to = from;
+        var size3 = size;
+        return (ref byte from, ref byte to) => { RawData.BulkMoveWithWriteBarrier(ref to, ref from, size3); };
     }
 }

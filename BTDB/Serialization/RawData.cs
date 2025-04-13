@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.IL;
@@ -202,6 +203,7 @@ public sealed class RawData
         }
 
         if (type == typeof(byte) || type == typeof(sbyte) || type == typeof(bool))
+
         {
             return (1, 1);
         }
@@ -254,4 +256,16 @@ public sealed class RawData
             return (0, Align(sa1.Size, sa2.Align));
         }
     }
+
+    public static readonly BulkMoveWithWriteBarrierDelegate BulkMoveWithWriteBarrier;
+
+    static RawData()
+    {
+        // Rewrite without reflection after this is implemented https://github.com/dotnet/runtime/issues/90081
+        var method =
+            typeof(System.Buffer).GetMethod("BulkMoveWithWriteBarrier", BindingFlags.NonPublic | BindingFlags.Static);
+        BulkMoveWithWriteBarrier = method!.CreateDelegate<BulkMoveWithWriteBarrierDelegate>();
+    }
+
+    public delegate void BulkMoveWithWriteBarrierDelegate(ref byte destination, ref byte source, nuint byteCount);
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using BTDB;
+using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.Serialization;
 using Xunit;
@@ -215,7 +216,6 @@ public class DefaultTypeConverterFactoryTest
         CheckConverter(factory, new Version(1, 2, 3, 4), "1.2.3.4");
         CheckConverter(factory, Guid.Parse("9e251065-0873-49bc-8fd9-266cc9aa39d3"),
             "9e251065-0873-49bc-8fd9-266cc9aa39d3");
-        CheckConverter(factory, (EncryptedString)"Hello", "Hello");
     }
 
     [Fact]
@@ -274,5 +274,28 @@ public class DefaultTypeConverterFactoryTest
         CheckConverter(factory, 42, (IList<Half>)new List<Half> { (Half)42 });
         CheckConverter(factory, "Hello", (IList<string>)new List<string> { "Hello" });
         CheckConverter(factory, "Hello", (IList<object>)new List<object> { "Hello" });
+    }
+
+    [Fact]
+    public void ToEncryptedStringWorks()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        CheckConverter(factory, "Hello", (EncryptedString)"Hello");
+        CheckConverter(factory, (EncryptedString)"Hello", "Hello");
+    }
+
+    [Fact]
+    public void FromByteArrayToByteBufferWorks()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        CheckConverter(factory, new byte[] { 1, 2, 3 }, ByteBuffer.NewAsync(new byte[] { 1, 2, 3 }));
+        CheckConverter(factory, ByteBuffer.NewAsync(new byte[] { 1, 2, 3 }), new byte[] { 1, 2, 3 });
+    }
+
+    [Fact]
+    public void AssignStructWithRefsWorks()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        CheckConverter(factory, ("A", 42, "B"), ("A", 42, "B"));
     }
 }
