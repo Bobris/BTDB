@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.6.3
+
 ### Fixed
 
 Compactor should never run synchronously after disposing writing transaction.
