@@ -1117,7 +1117,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 return new(tr);
             }
 
-            var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
+            var tcs = new TaskCompletionSource<IKeyValueDBTransaction>(TaskCreationOptions
+                .RunContinuationsAsynchronously);
             _writeWaitingQueue.Enqueue(tcs);
             return new(tcs.Task);
         }
@@ -1765,7 +1766,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         while (true)
         {
             var iterationTimeOut = DateTime.UtcNow + TimeSpan.FromMilliseconds(50);
-            using (var tr = await StartWritingTransaction())
+            using (var tr = await StartWritingTransaction().ConfigureAwait(false))
             {
                 var newRoot = ((BTreeKeyValueDBTransaction)tr).BTreeRoot;
                 var cursor = newRoot!.CreateCursor();
@@ -1796,7 +1797,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellation);
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellation).ConfigureAwait(false);
         }
     }
 

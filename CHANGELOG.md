@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Compactor should never run synchronously after disposing writing transaction.
+
 ## 33.6.2
 
 ## 33.6.1

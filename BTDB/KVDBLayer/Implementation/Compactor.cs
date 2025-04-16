@@ -178,7 +178,9 @@ class Compactor
                 _newPositionMap = new();
                 var pvlFileId = CompactOnePureValueFileIteration(ref toRemoveFileIds);
                 btreesCorrectInTransactionId =
-                    await _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap, pvlFileId);
+                    await _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap, pvlFileId)
+                        .ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(10), _cancellation).ConfigureAwait(false);
                 pvlCreated++;
                 (totalWaste, maxInOneFile) = CalcTotalWaste();
                 if (pvlCreated >= 20)
