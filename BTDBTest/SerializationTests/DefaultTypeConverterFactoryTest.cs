@@ -316,4 +316,24 @@ public class DefaultTypeConverterFactoryTest
         CheckConverter(factory, new[] { (Half)1.0f, (Half)2.0f, (Half)3.0f }, new[] { "1", "2", "3" });
         CheckConverter(factory, (byte[])null, (int[])null);
     }
+
+    [Fact(Skip = "Not implemented yet")]
+    public void BoxingScalarValuesWorks()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        CheckConverter(factory, (byte)42, (object)(byte)42);
+        CheckConverter(factory, (sbyte)42, (object)(sbyte)42);
+        CheckConverter(factory, (short)42, (object)(short)42);
+        CheckConverter(factory, (ushort)42, (object)(ushort)42);
+        CheckConverter(factory, (int)42, (object)(int)42);
+        CheckConverter(factory, (uint)42, (object)(uint)42);
+        CheckConverter(factory, (long)42, (object)(long)42);
+        CheckConverter(factory, (ulong)42, (object)(ulong)42);
+        CheckConverter(factory, (Half)42, (object)(Half)42);
+        CheckConverter(factory, (float)42, (object)(float)42);
+        CheckConverter(factory, (double)42, (object)(double)42);
+        CheckConverter(factory, (decimal)42, (object)(decimal)42);
+        CheckConverter(factory, true, (object)true);
+        CheckConverter(factory, false, (object)false);
+    }
 }

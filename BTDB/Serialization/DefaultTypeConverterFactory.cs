@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 
@@ -720,6 +719,11 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
 
         if (to == typeof(object) && !from.IsValueType) return CreateAssign(to);
 
+        if (to == typeof(object))
+        {
+            return CreateBoxing(from);
+        }
+
         if (to == typeof(bool))
         {
             if (from == typeof(int))
@@ -870,6 +874,21 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
         }
 
         return null;
+    }
+
+    static Converter? CreateBoxing(Type from)
+    {
+        if (Nullable.GetUnderlyingType(from) is { } underFrom)
+        {
+            return null;
+        }
+
+        var assigner = CreateAssign(from);
+        return (ref byte fromI, ref byte toI) =>
+        {
+            // allocate uninitialized object of from type
+            var o = Activator.CreateInstance(from);
+        };
     }
 
     Converter? CreateArrayToArrayConverter(Type from, Type to, Type toItemType)
