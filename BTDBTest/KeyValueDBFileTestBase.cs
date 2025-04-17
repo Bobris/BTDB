@@ -549,7 +549,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
     }
 
     [Fact]
-    public void BigCompaction()
+    public async Task BigCompaction()
     {
         using var fileCollection = new InMemoryFileCollection();
         var logger = new LoggerMock();
@@ -597,12 +597,12 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
             tr.Commit();
         }
 
-        db.Compact(CancellationToken.None);
+        await db.Compact(CancellationToken.None);
         Assert.Equal(93u, logger.MarkedForDeleteCount);
         Assert.Equal(
             "Compactor didn't removed all waste (2375267), because it created 20 PVL files already. Remaining waste left to next compaction.",
             logger.LastWarning);
-        db.Compact(CancellationToken.None);
+        await db.Compact(CancellationToken.None);
         Assert.Equal(174u, logger.MarkedForDeleteCount);
         Assert.Equal(
             "Compactor didn't removed all waste (1859507), because it created 20 PVL files already. Remaining waste left to next compaction.",
@@ -671,7 +671,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
     }
 
     [Fact]
-    public void CompactorEvenWithLossOfNotFlushedDataWillNotAnyData()
+    public async Task CompactorEvenWithLossOfNotFlushedDataWillNotAnyData()
     {
         using var fc = new InMemoryFileCollection();
         {
@@ -688,7 +688,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
                 cursor.CreateOrUpdateKeyValue(new byte[40], new byte[560]);
                 tr.Commit();
             }
-            db.Compact(CancellationToken.None);
+            await db.Compact(CancellationToken.None);
 
             {
                 using var tr = db.StartTransaction();
@@ -698,7 +698,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
                 cursor.CreateOrUpdateKeyValue(new byte[10], new byte[100]);
                 tr.Commit();
             }
-            db.Compact(CancellationToken.None);
+            await db.Compact(CancellationToken.None);
             fc.SimulateDataLossOfNotFlushedData();
         }
         {
