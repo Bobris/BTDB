@@ -317,7 +317,7 @@ public class DefaultTypeConverterFactoryTest
         CheckConverter(factory, (byte[])null, (int[])null);
     }
 
-    [Fact(Skip = "Not implemented yet")]
+    [Fact]
     public void BoxingScalarValuesWorks()
     {
         var factory = new DefaultTypeConverterFactory();
@@ -335,5 +335,6 @@ public class DefaultTypeConverterFactoryTest
         CheckConverter(factory, (decimal)42, (object)(decimal)42);
         CheckConverter(factory, true, (object)true);
         CheckConverter(factory, false, (object)false);
+        CheckConverter(factory, ("Hello", "World"), (object)("Hello", "World"));
     }
 }

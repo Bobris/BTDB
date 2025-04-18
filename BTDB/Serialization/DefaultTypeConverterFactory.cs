@@ -884,10 +884,16 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
         }
 
         var assigner = CreateAssign(from);
+        if (assigner == null)
+        {
+            return null;
+        }
+
         return (ref byte fromI, ref byte toI) =>
         {
-            // allocate uninitialized object of from type
             var o = Activator.CreateInstance(from);
+            assigner(ref fromI, ref RawData.Ref(o, (uint)Unsafe.SizeOf<nuint>()));
+            Unsafe.As<byte, object>(ref toI) = o;
         };
     }
 
