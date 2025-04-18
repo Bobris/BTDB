@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using BTDB.Buffer;
 using BTDB.Encrypted;
+using BTDB.IL;
 
 namespace BTDB.Serialization;
 
@@ -25,6 +26,32 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
         if (to.IsEnum)
         {
             return GetConverter(from, Enum.GetUnderlyingType(to));
+        }
+
+        if (to == typeof(object) && !from.IsValueType) return CreateAssign(to);
+
+        if (to == typeof(object))
+        {
+            return CreateBoxing(from);
+        }
+
+        if (from == typeof(object))
+        {
+            if (!to.IsValueType)
+            {
+                return (ref byte fromI, ref byte toI) =>
+                {
+                    var r = Unsafe.As<byte, object>(ref fromI);
+                    if (r != null)
+                    {
+                        if (!to.IsAssignableFrom(r.GetType())) r = null;
+                    }
+
+                    Unsafe.As<byte, object>(ref toI) = r;
+                };
+            }
+
+            return CreateUnboxing(to);
         }
 
         if (Nullable.GetUnderlyingType(to) == from)
@@ -717,13 +744,6 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
             };
         }
 
-        if (to == typeof(object) && !from.IsValueType) return CreateAssign(to);
-
-        if (to == typeof(object))
-        {
-            return CreateBoxing(from);
-        }
-
         if (to == typeof(bool))
         {
             if (from == typeof(int))
@@ -876,25 +896,101 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
         return null;
     }
 
+    Converter? CreateUnboxing(Type to)
+    {
+        if (Nullable.GetUnderlyingType(to) is { } underTo)
+        {
+            var offset = RawData.Align(1, RawData.GetSizeAndAlign(underTo).Align);
+            var assigner = CreateAssign(underTo);
+            if (assigner == null)
+            {
+                return null;
+            }
+
+            return (ref byte fromI, ref byte toI) =>
+            {
+                var o = Unsafe.As<byte, object>(ref fromI);
+                if (o == null)
+                {
+                    toI = 0; // this should not be needed because it should be already initialized to null
+                    return;
+                }
+
+                if (underTo != o.GetType())
+                {
+                    throw new InvalidCastException(
+                        $"Cannot unbox {o.GetType().ToSimpleName()} to {underTo.ToSimpleName()}");
+                }
+
+                assigner(ref RawData.Ref(o, (uint)Unsafe.SizeOf<nuint>()), ref Unsafe.AddByteOffset(ref toI, offset));
+                toI = 1;
+            };
+        }
+        else
+        {
+            var assigner = CreateAssign(to);
+            if (assigner == null)
+            {
+                return null;
+            }
+
+            return (ref byte fromI, ref byte toI) =>
+            {
+                var o = Unsafe.As<byte, object>(ref fromI);
+                if (o == null)
+                {
+                    return;
+                }
+
+                if (to != o.GetType())
+                {
+                    throw new InvalidCastException($"Cannot unbox {o.GetType().ToSimpleName()} to {to.ToSimpleName()}");
+                }
+
+                assigner(ref RawData.Ref(o, (uint)Unsafe.SizeOf<nuint>()), ref toI);
+            };
+        }
+    }
+
     static Converter? CreateBoxing(Type from)
     {
         if (Nullable.GetUnderlyingType(from) is { } underFrom)
         {
-            return null;
-        }
+            var offset = RawData.Align(1, RawData.GetSizeAndAlign(underFrom).Align);
+            var assigner = CreateAssign(underFrom);
+            if (assigner == null)
+            {
+                return null;
+            }
 
-        var assigner = CreateAssign(from);
-        if (assigner == null)
-        {
-            return null;
-        }
+            return (ref byte fromI, ref byte toI) =>
+            {
+                if (fromI == 0)
+                {
+                    Unsafe.As<byte, object>(ref toI) = null;
+                    return;
+                }
 
-        return (ref byte fromI, ref byte toI) =>
+                var o = Activator.CreateInstance(underFrom);
+                assigner(ref Unsafe.AddByteOffset(ref fromI, offset), ref RawData.Ref(o, (uint)Unsafe.SizeOf<nuint>()));
+                Unsafe.As<byte, object>(ref toI) = o;
+            };
+        }
+        else
         {
-            var o = Activator.CreateInstance(from);
-            assigner(ref fromI, ref RawData.Ref(o, (uint)Unsafe.SizeOf<nuint>()));
-            Unsafe.As<byte, object>(ref toI) = o;
-        };
+            var assigner = CreateAssign(from);
+            if (assigner == null)
+            {
+                return null;
+            }
+
+            return (ref byte fromI, ref byte toI) =>
+            {
+                var o = Activator.CreateInstance(from);
+                assigner(ref fromI, ref RawData.Ref(o, (uint)Unsafe.SizeOf<nuint>()));
+                Unsafe.As<byte, object>(ref toI) = o;
+            };
+        }
     }
 
     Converter? CreateArrayToArrayConverter(Type from, Type to, Type toItemType)

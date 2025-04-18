@@ -337,4 +337,65 @@ public class DefaultTypeConverterFactoryTest
         CheckConverter(factory, false, (object)false);
         CheckConverter(factory, ("Hello", "World"), (object)("Hello", "World"));
     }
+
+    [Fact]
+    public void BoxingNullableWorks()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        CheckConverter(factory, (byte?)42, (object)(byte)42);
+        CheckConverter(factory, (sbyte?)42, (object)(sbyte)42);
+        CheckConverter(factory, (short?)42, (object)(short)42);
+        CheckConverter(factory, (ushort?)42, (object)(ushort)42);
+        CheckConverter(factory, (int?)42, (object)(int)42);
+        CheckConverter(factory, (uint?)42, (object)(uint)42);
+        CheckConverter(factory, (long?)42, (object)(long)42);
+        CheckConverter(factory, (ulong?)42, (object)(ulong)42);
+        CheckConverter(factory, (Half?)42, (object)(Half)42);
+        CheckConverter(factory, (float?)42, (object)(float)42);
+        CheckConverter(factory, (double?)42, (object)(double)42);
+        CheckConverter(factory, (decimal?)42, (object)(decimal)42);
+        CheckConverter(factory, (byte?)null, (object)null);
+        CheckConverter(factory, (sbyte?)null, (object)null);
+        CheckConverter(factory, (short?)null, (object)null);
+        CheckConverter(factory, (ushort?)null, (object)null);
+        CheckConverter(factory, (decimal?)null, (object)null);
+    }
+
+    [Fact]
+    public void UnboxingScalarValuesWorks()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        CheckConverter(factory, (object)(byte)42, (byte)42);
+        CheckConverter(factory, (object)(sbyte)42, (sbyte)42);
+        CheckConverter(factory, (object)(short)42, (short)42);
+        CheckConverter(factory, (object)(ushort)42, (ushort)42);
+        CheckConverter(factory, (object)(int)42, (int)42);
+        CheckConverter(factory, (object)(uint)42, (uint)42);
+        CheckConverter(factory, (object)(long)42, (long)42);
+        CheckConverter(factory, (object)(ulong)42, (ulong)42);
+        CheckConverter(factory, (object)(Half)42, (Half)42);
+        CheckConverter(factory, (object)(float)42, (float)42);
+        CheckConverter(factory, (object)(double)42, (double)42);
+        CheckConverter(factory, (object)(decimal)42, (decimal)42);
+        CheckConverter(factory, (object)true, true);
+        CheckConverter(factory, (object)false, false);
+        CheckConverter(factory, (object)("Hello", "World"), ("Hello", "World"));
+    }
+
+    [Fact]
+    public void UnboxingNullableWorks()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        CheckConverter(factory, (object)(byte)42, (byte?)42);
+        CheckConverter(factory, (object)(sbyte)42, (sbyte?)42);
+        CheckConverter(factory, (object)(short)42, (short?)42);
+        CheckConverter(factory, (object)null, (ushort?)null);
+    }
+
+    [Fact]
+    public void WhenUnboxingTypeMustMatchExactly()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        Assert.Throws<InvalidCastException>(() => CheckConverter(factory, (object)(short)42, (ulong)42));
+    }
 }
