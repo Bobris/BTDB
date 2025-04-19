@@ -14,7 +14,9 @@ public interface IFieldHandler
     void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx);
     void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue);
 
-    NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx);
+    void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx);
+
+    bool DoesNeedFreeContent();
 
     // typeHandler is preferred FieldHandler for type could be null if unknown
     IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger);

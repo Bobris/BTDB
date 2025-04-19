@@ -39,7 +39,7 @@ public class TableInfo
     readonly ConcurrentDictionary<uint, ObjectLoader> _loaders = new();
     readonly ConcurrentDictionary<uint, ObjectLoader> _skippers = new();
 
-    readonly ConcurrentDictionary<uint, Tuple<NeedsFreeContent, ObjectFreeContent>> _freeContent = new();
+    readonly ConcurrentDictionary<uint, Tuple<bool, ObjectFreeContent>> _freeContent = new();
 
     readonly ConcurrentDictionary<uint, bool> _freeContentNeedDetectionInProgress = new();
 
@@ -523,32 +523,30 @@ public class TableInfo
         return method.Create();
     }
 
-    internal NeedsFreeContent IsFreeContentNeeded(uint version)
+    internal bool IsFreeContentNeeded(uint version)
     {
-        if (_freeContentRequired) return NeedsFreeContent.Yes;
+        if (_freeContentRequired) return true;
         if (_freeContent.TryGetValue(version, out var freeContent))
             return freeContent.Item1;
         if (_freeContentNeedDetectionInProgress.ContainsKey(version))
-            return NeedsFreeContent.No; //if needed is reported by the other detection in progress
+            return false; //if needed is reported by the other detection in progress
         _freeContentNeedDetectionInProgress[version] = true;
         var result = GetFreeContent(version).Item1;
         _freeContentNeedDetectionInProgress.TryRemove(version);
         return result;
     }
 
-    internal Tuple<NeedsFreeContent, ObjectFreeContent> GetFreeContent(uint version)
+    internal Tuple<bool, ObjectFreeContent> GetFreeContent(uint version)
     {
         return _freeContent.GetOrAdd(version, CreateFreeContent);
     }
 
-    Tuple<NeedsFreeContent, ObjectFreeContent> CreateFreeContent(uint version)
+    Tuple<bool, ObjectFreeContent> CreateFreeContent(uint version)
     {
         var method = ILBuilder.Instance.NewMethod<ObjectFreeContent>($"FreeContent_{Name}_{version}");
         var ilGenerator = method.Generator;
-        var tableVersionInfo = TableVersions.GetOrAdd(version,
-            (ver, tableInfo) =>
-                tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
-        var needsFreeContent = NeedsFreeContent.No;
+        var tableVersionInfo = TableVersions.GetOrAdd(version, static (ver, tableInfo) =>
+            tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
         var anyNeedsCtx = tableVersionInfo.NeedsCtx();
         if (anyNeedsCtx)
         {
@@ -560,16 +558,16 @@ public class TableInfo
                 .Stloc(0);
         }
 
+        var doesNeedFreeContent = false;
         for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
         {
             var srcFieldInfo = tableVersionInfo[fi];
-            Extensions.UpdateNeedsFreeContent(
-                srcFieldInfo.Handler!.FreeContent(ilGenerator, il => il.Ldarg(2), il => il.Ldloc(0)),
-                ref needsFreeContent);
+            doesNeedFreeContent |= srcFieldInfo.Handler!.DoesNeedFreeContent();
+            srcFieldInfo.Handler!.FreeContent(ilGenerator, il => il.Ldarg(2), il => il.Ldloc(0));
         }
 
         ilGenerator.Ret();
-        return Tuple.Create(needsFreeContent, method.Create());
+        return Tuple.Create(doesNeedFreeContent, method.Create());
     }
 
     static string GetPersistentName(PropertyInfo p)

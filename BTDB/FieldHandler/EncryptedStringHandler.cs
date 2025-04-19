@@ -49,18 +49,21 @@ public class EncryptedStringHandler : IFieldHandler
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
-        if (HandledType() == type || DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(EncryptedString), type) == null)
+        if (HandledType() == type ||
+            DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(EncryptedString), type) == null)
         {
             return this;
         }
+
         return new ConvertingHandler(this, type);
     }
 
-    public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
     {
         Skip(ilGenerator, pushReader, pushCtx);
-        return NeedsFreeContent.No;
     }
+
+    public bool DoesNeedFreeContent() => false;
 
     public class ConvertingHandler : IFieldHandler
     {
@@ -102,9 +105,13 @@ public class EncryptedStringHandler : IFieldHandler
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
         }
 
-        public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+            Action<IILGen> pushValue)
         {
-            _fieldHandler.Save(ilGenerator, pushWriter, pushCtx, il => il.Do(pushValue).Do(DefaultTypeConvertorGenerator.Instance.GenerateConversion(_type, _fieldHandler.HandledType())!));
+            _fieldHandler.Save(ilGenerator, pushWriter, pushCtx,
+                il => il.Do(pushValue)
+                    .Do(DefaultTypeConvertorGenerator.Instance.GenerateConversion(_type,
+                        _fieldHandler.HandledType())!));
         }
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
@@ -117,19 +124,22 @@ public class EncryptedStringHandler : IFieldHandler
             throw new InvalidOperationException();
         }
 
-        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
-            return NeedsFreeContent.No;
         }
+
+        public bool DoesNeedFreeContent() => false;
     }
 
     public IFieldHandler SpecializeSaveForType(Type type)
     {
-        if (HandledType() == type || DefaultTypeConvertorGenerator.Instance.GenerateConversion(type, typeof(EncryptedString)) == null)
+        if (HandledType() == type ||
+            DefaultTypeConvertorGenerator.Instance.GenerateConversion(type, typeof(EncryptedString)) == null)
         {
             return this;
         }
+
         return new ConvertingHandler(this, type);
     }
 }

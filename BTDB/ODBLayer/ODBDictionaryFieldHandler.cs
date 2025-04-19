@@ -260,13 +260,9 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         yield return _valuesHandler;
     }
 
-    public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
     {
-        var fakeMethod = ILBuilder.Instance.NewMethod<Action>("Relation_fake");
-        var fakeGenerator = fakeMethod.Generator;
-        if (_keysHandler.FreeContent(fakeGenerator, _ => { }, _ => { }) == NeedsFreeContent.Yes)
-            throw new BTDBException("Not supported 'free content' in IDictionary key");
-        if (_valuesHandler.FreeContent(fakeGenerator, _ => { }, _ => { }) == NeedsFreeContent.No)
+        if (!_valuesHandler.DoesNeedFreeContent())
         {
             ilGenerator
                 .Do(pushCtx)
@@ -295,7 +291,14 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
                 //ODBDictionary.DoFreeContent(IReaderCtx ctx, ulong id, int cfgId)
                 .Call(instanceType.GetMethod(nameof(ODBDictionary<int, int>.DoFreeContent))!);
         }
+    }
 
-        return NeedsFreeContent.Yes;
+    public bool DoesNeedFreeContent()
+    {
+        if (_keysHandler.DoesNeedFreeContent())
+            throw new BTDBException("Not supported 'free content' in IDictionary key");
+        // it does not matter if value handler does need free content, run it because of validation
+        _ = _valuesHandler.DoesNeedFreeContent();
+        return true;
     }
 }

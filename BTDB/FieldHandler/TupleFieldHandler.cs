@@ -303,15 +303,17 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
         return _fieldHandlers;
     }
 
-    public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
     {
-        var needsFreeContent = NeedsFreeContent.No;
         foreach (var f in _fieldHandlers)
         {
             ilGenerator
-                .GenerateFreeContent(f, pushReader, pushCtx, ref needsFreeContent);
+                .GenerateFreeContent(f, pushReader, pushCtx);
         }
+    }
 
-        return needsFreeContent;
+    public bool DoesNeedFreeContent()
+    {
+        return _fieldHandlers.Any(handler => handler.DoesNeedFreeContent());
     }
 }

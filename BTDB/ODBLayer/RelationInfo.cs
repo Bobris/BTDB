@@ -1632,15 +1632,14 @@ public class RelationInfo
 
         var relationVersionInfo = _relationVersions[version];
         var needGenerateFreeFor = 0;
-        var fakeMethod = ILBuilder.Instance.NewMethod<Action>("Relation_fake");
-        var fakeGenerator = fakeMethod.Generator;
         var valueFields = relationVersionInfo!.Fields.ToArray();
         for (var i = 0; i < valueFields.Length; i++)
         {
             if (valueFields[i].Computed) continue;
-            var needsFreeContent = valueFields[i].Handler!.FreeContent(fakeGenerator, _ => { }, _ => { });
-            if (needsFreeContent != NeedsFreeContent.No)
+            if (valueFields[i].Handler!.DoesNeedFreeContent())
+            {
                 needGenerateFreeFor = i + 1;
+            }
         }
 
         if (needGenerateFreeFor == 0)
@@ -1731,7 +1730,7 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
                     return;
                 var tableVersion = reader.ReadVUInt32();
                 var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
-                if (freeContentTuple.Item1 != NeedsFreeContent.No)
+                if (freeContentTuple.Item1)
                 {
                     freeContentTuple.Item2(Transaction, null, ref reader, _freeDictionaries);
                 }

@@ -81,6 +81,7 @@ public class ByteArrayFieldHandler : IFieldHandler
         {
             return new ByteBufferHandler(this);
         }
+
         if (typeof(ReadOnlyMemory<byte>) == type)
         {
             return new ReadOnlyMemoryHandler(this);
@@ -89,11 +90,12 @@ public class ByteArrayFieldHandler : IFieldHandler
         return this;
     }
 
-    public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         Skip(ilGenerator, pushReader, pushCtx);
-        return NeedsFreeContent.No;
     }
+
+    public bool DoesNeedFreeContent() => false;
 
     class ByteBufferHandler : IFieldHandler
     {
@@ -148,11 +150,12 @@ public class ByteArrayFieldHandler : IFieldHandler
             throw new InvalidOperationException();
         }
 
-        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
-            return NeedsFreeContent.No;
         }
+
+        public bool DoesNeedFreeContent() => false;
     }
 
     class ReadOnlyMemoryHandler : IFieldHandler
@@ -198,6 +201,8 @@ public class ByteArrayFieldHandler : IFieldHandler
             _fieldHandler.SaveReadOnlyMemory(ilGenerator, pushWriter, pushValue);
         }
 
+        public bool DoesNeedFreeContent() => false;
+
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             throw new InvalidOperationException();
@@ -208,10 +213,9 @@ public class ByteArrayFieldHandler : IFieldHandler
             throw new InvalidOperationException();
         }
 
-        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
-            return NeedsFreeContent.No;
         }
 
         public bool DoesPreferLoadAsMemory() => true;
@@ -223,6 +227,7 @@ public class ByteArrayFieldHandler : IFieldHandler
         {
             return new ByteBufferHandler(this);
         }
+
         if (typeof(ReadOnlyMemory<byte>) == type)
         {
             return new ReadOnlyMemoryHandler(this);

@@ -300,9 +300,8 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
         yield return _valuesHandler;
     }
 
-    public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
     {
-        var needsFreeContent = NeedsFreeContent.No;
         var localCount = ilGenerator.DeclareLocal(typeof(uint));
         var finish = ilGenerator.DefineLabel();
         var next = ilGenerator.DefineLabel();
@@ -322,10 +321,14 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Sub()
             .ConvU4()
             .Stloc(localCount)
-            .GenerateFreeContent(_keysHandler, pushReader, pushCtx, ref needsFreeContent)
-            .GenerateFreeContent(_valuesHandler, pushReader, pushCtx, ref needsFreeContent)
+            .GenerateFreeContent(_keysHandler, pushReader, pushCtx)
+            .GenerateFreeContent(_valuesHandler, pushReader, pushCtx)
             .Br(next)
             .Mark(finish);
-        return needsFreeContent;
+    }
+
+    public bool DoesNeedFreeContent()
+    {
+        return _keysHandler.DoesNeedFreeContent() || _valuesHandler.DoesNeedFreeContent();
     }
 }

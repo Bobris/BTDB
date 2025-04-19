@@ -195,9 +195,13 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
         yield return _itemHandler;
     }
 
-    public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         Skip(ilGenerator, pushReader, pushCtx);
-        return NeedsFreeContent.No;
+    }
+
+    public bool DoesNeedFreeContent()
+    {
+        return false;
     }
 }

@@ -60,9 +60,9 @@ public static class Extensions
     }
 
     public static IILGen GenerateFreeContent(this IILGen ilGenerator, IFieldHandler fieldHandler,
-        Action<IILGen> pushReader, Action<IILGen>? pushCtx, ref NeedsFreeContent needsFreeContent)
+        Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
-        UpdateNeedsFreeContent(fieldHandler.FreeContent(ilGenerator, pushReader, pushCtx), ref needsFreeContent);
+        fieldHandler.FreeContent(ilGenerator, pushReader, pushCtx);
         return ilGenerator;
     }
 

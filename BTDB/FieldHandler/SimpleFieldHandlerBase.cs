@@ -63,13 +63,18 @@ public class SimpleFieldHandlerBase : IFieldHandler
         {
             return this;
         }
+
         return new ConvertingHandler(this, type);
     }
 
-    public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         Skip(ilGenerator, pushReader, pushCtx);
-        return NeedsFreeContent.No;
+    }
+
+    public bool DoesNeedFreeContent()
+    {
+        return false;
     }
 
     public class ConvertingHandler : IFieldHandler
@@ -112,9 +117,13 @@ public class SimpleFieldHandlerBase : IFieldHandler
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
         }
 
-        public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx,
+            Action<IILGen> pushValue)
         {
-            _fieldHandler.Save(ilGenerator, pushWriter, pushCtx, il => il.Do(pushValue).Do(DefaultTypeConvertorGenerator.Instance.GenerateConversion(_type, _fieldHandler.HandledType())!));
+            _fieldHandler.Save(ilGenerator, pushWriter, pushCtx,
+                il => il.Do(pushValue)
+                    .Do(DefaultTypeConvertorGenerator.Instance.GenerateConversion(_type,
+                        _fieldHandler.HandledType())!));
         }
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
@@ -127,10 +136,14 @@ public class SimpleFieldHandlerBase : IFieldHandler
             return this;
         }
 
-        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
-            return NeedsFreeContent.No;
+        }
+
+        public bool DoesNeedFreeContent()
+        {
+            return false;
         }
     }
 
@@ -140,6 +153,7 @@ public class SimpleFieldHandlerBase : IFieldHandler
         {
             return this;
         }
+
         return new ConvertingHandler(this, type);
     }
 }

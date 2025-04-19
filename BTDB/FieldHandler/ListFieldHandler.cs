@@ -265,12 +265,11 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
         yield return _itemsHandler;
     }
 
-    public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
     {
         var localCount = ilGenerator.DeclareLocal(typeof(uint));
         var finish = ilGenerator.DefineLabel();
         var next = ilGenerator.DefineLabel();
-        var needsFreeContent = NeedsFreeContent.No;
         ilGenerator
             .Do(pushCtx)
             .Do(pushReader)
@@ -287,9 +286,13 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             .Sub()
             .ConvU4()
             .Stloc(localCount)
-            .GenerateFreeContent(_itemsHandler, pushReader, pushCtx, ref needsFreeContent)
+            .GenerateFreeContent(_itemsHandler, pushReader, pushCtx)
             .Br(next)
             .Mark(finish);
-        return needsFreeContent;
+    }
+
+    public bool DoesNeedFreeContent()
+    {
+        return _itemsHandler.DoesNeedFreeContent();
     }
 }

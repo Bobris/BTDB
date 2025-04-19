@@ -232,18 +232,20 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
         yield return _keysHandler;
     }
 
-    public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
     {
-        var fakeMethod = ILBuilder.Instance.NewMethod<Action>("Relation_fake");
-        var fakeGenerator = fakeMethod.Generator;
-        if (_keysHandler.FreeContent(fakeGenerator, _ => { }, _ => { }) == NeedsFreeContent.Yes)
-            throw new BTDBException("Not supported 'free content' in IOrderedSet");
         ilGenerator
             .Do(pushCtx)
             .Castclass(typeof(IDBReaderCtx))
             .Do(pushReader)
             .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
             .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
-        return NeedsFreeContent.Yes;
+    }
+
+    public bool DoesNeedFreeContent()
+    {
+        if (_keysHandler.DoesNeedFreeContent())
+            throw new BTDBException("Not supported 'free content' in IOrderedSet");
+        return true;
     }
 }

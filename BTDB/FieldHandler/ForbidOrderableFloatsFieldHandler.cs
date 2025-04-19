@@ -7,7 +7,7 @@ public class ForbidOrderableFloatsFieldHandler : IFieldHandler
 {
     public string Name => "ForbidOrderableFloats";
     public byte[]? Configuration => null;
-    
+
     public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
     {
         if ((options & FieldHandlerOptions.Orderable) == 0) return false;
@@ -38,10 +38,16 @@ public class ForbidOrderableFloatsFieldHandler : IFieldHandler
         throw new NotSupportedException();
     }
 
-    public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         throw new NotSupportedException();
     }
+
+    public bool DoesNeedFreeContent()
+    {
+        throw new NotSupportedException();
+    }
+
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
