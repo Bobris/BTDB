@@ -312,8 +312,8 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
         }
     }
 
-    public bool DoesNeedFreeContent()
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {
-        return _fieldHandlers.Any(handler => handler.DoesNeedFreeContent());
+        return _fieldHandlers.Any(handler => handler.DoesNeedFreeContent(visitedTypes));
     }
 }

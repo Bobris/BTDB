@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BTDB.Encrypted;
 using BTDB.IL;
 
@@ -63,10 +64,7 @@ public class OrderedEncryptedStringHandler : IFieldHandler
         Skip(ilGenerator, pushReader, pushCtx);
     }
 
-    public bool DoesNeedFreeContent()
-    {
-        return false;
-    }
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
 
     public class ConvertingHandler : IFieldHandler
     {
@@ -92,10 +90,7 @@ public class OrderedEncryptedStringHandler : IFieldHandler
             return _type;
         }
 
-        public bool NeedsCtx()
-        {
-            return true;
-        }
+        public bool NeedsCtx() => true;
 
         public void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
@@ -132,10 +127,7 @@ public class OrderedEncryptedStringHandler : IFieldHandler
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
         }
 
-        public bool DoesNeedFreeContent()
-        {
-            return false;
-        }
+        public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
     }
 
     public IFieldHandler SpecializeSaveForType(Type type)

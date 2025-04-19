@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BTDB.Buffer;
 using BTDB.IL;
 using BTDB.StreamLayer;
@@ -95,7 +96,7 @@ public class ByteArrayFieldHandler : IFieldHandler
         Skip(ilGenerator, pushReader, pushCtx);
     }
 
-    public bool DoesNeedFreeContent() => false;
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
 
     class ByteBufferHandler : IFieldHandler
     {
@@ -155,7 +156,7 @@ public class ByteArrayFieldHandler : IFieldHandler
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
         }
 
-        public bool DoesNeedFreeContent() => false;
+        public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
     }
 
     class ReadOnlyMemoryHandler : IFieldHandler
@@ -201,7 +202,7 @@ public class ByteArrayFieldHandler : IFieldHandler
             _fieldHandler.SaveReadOnlyMemory(ilGenerator, pushWriter, pushValue);
         }
 
-        public bool DoesNeedFreeContent() => false;
+        public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {

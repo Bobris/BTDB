@@ -341,7 +341,7 @@ public class EnumFieldHandler : IFieldHandler
         Skip(ilGenerator, pushReader, pushCtx);
     }
 
-    public bool DoesNeedFreeContent() => false;
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
 
     public override string ToString()
     {

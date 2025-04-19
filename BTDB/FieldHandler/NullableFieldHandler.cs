@@ -200,7 +200,7 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
         Skip(ilGenerator, pushReader, pushCtx);
     }
 
-    public bool DoesNeedFreeContent()
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {
         return false;
     }

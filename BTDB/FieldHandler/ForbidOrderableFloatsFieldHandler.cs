@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BTDB.IL;
 
 namespace BTDB.FieldHandler;
@@ -43,11 +44,10 @@ public class ForbidOrderableFloatsFieldHandler : IFieldHandler
         throw new NotSupportedException();
     }
 
-    public bool DoesNeedFreeContent()
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {
         throw new NotSupportedException();
     }
-
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {

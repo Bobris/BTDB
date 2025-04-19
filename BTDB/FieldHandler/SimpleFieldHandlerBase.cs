@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Reflection;
 using BTDB.IL;
 
@@ -72,10 +73,7 @@ public class SimpleFieldHandlerBase : IFieldHandler
         Skip(ilGenerator, pushReader, pushCtx);
     }
 
-    public bool DoesNeedFreeContent()
-    {
-        return false;
-    }
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
 
     public class ConvertingHandler : IFieldHandler
     {
@@ -141,10 +139,7 @@ public class SimpleFieldHandlerBase : IFieldHandler
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
         }
 
-        public bool DoesNeedFreeContent()
-        {
-            return false;
-        }
+        public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
     }
 
     public IFieldHandler SpecializeSaveForType(Type type)

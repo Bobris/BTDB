@@ -267,8 +267,8 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
             .Mark(finish);
     }
 
-    public bool DoesNeedFreeContent()
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {
-        return _itemsHandler.DoesNeedFreeContent();
+        return _itemsHandler.DoesNeedFreeContent(visitedTypes);
     }
 }

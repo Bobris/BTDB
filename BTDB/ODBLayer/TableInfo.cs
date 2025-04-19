@@ -559,10 +559,11 @@ public class TableInfo
         }
 
         var doesNeedFreeContent = false;
+        var visitedTypes = new HashSet<Type>();
         for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
         {
             var srcFieldInfo = tableVersionInfo[fi];
-            doesNeedFreeContent |= srcFieldInfo.Handler!.DoesNeedFreeContent();
+            doesNeedFreeContent |= srcFieldInfo.Handler!.DoesNeedFreeContent(visitedTypes);
             srcFieldInfo.Handler!.FreeContent(ilGenerator, il => il.Ldarg(2), il => il.Ldloc(0));
         }
 

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using BTDB.IL;
 
 namespace BTDB.FieldHandler;
@@ -16,7 +17,7 @@ public interface IFieldHandler
 
     void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx);
 
-    bool DoesNeedFreeContent();
+    bool DoesNeedFreeContent(HashSet<Type> visitedTypes);
 
     // typeHandler is preferred FieldHandler for type could be null if unknown
     IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger);

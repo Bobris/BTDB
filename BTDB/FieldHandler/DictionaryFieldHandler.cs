@@ -327,8 +327,8 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Mark(finish);
     }
 
-    public bool DoesNeedFreeContent()
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {
-        return _keysHandler.DoesNeedFreeContent() || _valuesHandler.DoesNeedFreeContent();
+        return _keysHandler.DoesNeedFreeContent(visitedTypes) || _valuesHandler.DoesNeedFreeContent(visitedTypes);
     }
 }

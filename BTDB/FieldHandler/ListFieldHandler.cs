@@ -291,8 +291,8 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             .Mark(finish);
     }
 
-    public bool DoesNeedFreeContent()
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {
-        return _itemsHandler.DoesNeedFreeContent();
+        return _itemsHandler.DoesNeedFreeContent(visitedTypes);
     }
 }

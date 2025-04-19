@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BTDB.Encrypted;
 using BTDB.IL;
 
@@ -63,7 +64,7 @@ public class EncryptedStringHandler : IFieldHandler
         Skip(ilGenerator, pushReader, pushCtx);
     }
 
-    public bool DoesNeedFreeContent() => false;
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
 
     public class ConvertingHandler : IFieldHandler
     {
@@ -129,7 +130,7 @@ public class EncryptedStringHandler : IFieldHandler
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
         }
 
-        public bool DoesNeedFreeContent() => false;
+        public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
     }
 
     public IFieldHandler SpecializeSaveForType(Type type)

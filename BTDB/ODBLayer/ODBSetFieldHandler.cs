@@ -242,9 +242,9 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
             .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
     }
 
-    public bool DoesNeedFreeContent()
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {
-        if (_keysHandler.DoesNeedFreeContent())
+        if (_keysHandler.DoesNeedFreeContent(visitedTypes))
             throw new BTDBException("Not supported 'free content' in IOrderedSet");
         return true;
     }

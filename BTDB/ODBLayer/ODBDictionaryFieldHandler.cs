@@ -262,7 +262,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
 
     public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
     {
-        if (!_valuesHandler.DoesNeedFreeContent())
+        if (!_valuesHandler.DoesNeedFreeContent(new()))
         {
             ilGenerator
                 .Do(pushCtx)
@@ -293,12 +293,12 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         }
     }
 
-    public bool DoesNeedFreeContent()
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {
-        if (_keysHandler.DoesNeedFreeContent())
+        if (_keysHandler.DoesNeedFreeContent(visitedTypes))
             throw new BTDBException("Not supported 'free content' in IDictionary key");
         // it does not matter if value handler does need free content, run it because of validation
-        _ = _valuesHandler.DoesNeedFreeContent();
+        _ = _valuesHandler.DoesNeedFreeContent(visitedTypes);
         return true;
     }
 }

@@ -1633,10 +1633,11 @@ public class RelationInfo
         var relationVersionInfo = _relationVersions[version];
         var needGenerateFreeFor = 0;
         var valueFields = relationVersionInfo!.Fields.ToArray();
+        var visitedTypes = new HashSet<Type>();
         for (var i = 0; i < valueFields.Length; i++)
         {
             if (valueFields[i].Computed) continue;
-            if (valueFields[i].Handler!.DoesNeedFreeContent())
+            if (valueFields[i].Handler!.DoesNeedFreeContent(visitedTypes))
             {
                 needGenerateFreeFor = i + 1;
             }

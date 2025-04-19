@@ -209,7 +209,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
             .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.FreeContentInNativeObject))!);
     }
 
-    public bool DoesNeedFreeContent()
+    public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {
         var type = HandledType();
         if (type == typeof(object))
@@ -220,11 +220,11 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
         {
             foreach (var st in _objectDb.GetPolymorphicTypes(type))
             {
-                if (UpdateNeedsFreeContent(st)) return true;
+                if (UpdateNeedsFreeContent(st, visitedTypes)) return true;
             }
 
             if (!type.IsInterface && !type.IsAbstract)
-                if (UpdateNeedsFreeContent(type))
+                if (UpdateNeedsFreeContent(type, visitedTypes))
                     return true;
         }
 
@@ -232,20 +232,17 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
     }
 
 
-    static ThreadLocal<HashSet<Type>> StackOverflowProtection { get; } = new(() => new());
-
-    bool UpdateNeedsFreeContent(Type type)
+    bool UpdateNeedsFreeContent(Type type, HashSet<Type> visitedTypes)
     {
         if (type.IsValueType) return false;
         //decides upon current version  (null for object types never stored in DB)
         var tableInfo = ((ObjectDB)_objectDb).TablesInfo.FindByType(type);
         if (tableInfo == null)
         {
-            if (StackOverflowProtection.Value!.Contains(type)) return false;
-            StackOverflowProtection.Value.Add(type);
+            if (!visitedTypes.Add(type)) return false;
             try
             {
-                if (type.GetCustomAttribute(typeof(RequireContentFreeAttribute)) != null)
+                if (type.GetCustomAttribute<RequireContentFreeAttribute>() != null)
                 {
                     return true;
                 }
@@ -259,20 +256,18 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
                 }
 
                 var props = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                var fields = new StructList<TableFieldInfo>();
-                fields.Reserve((uint)props.Length);
                 foreach (var pi in props)
                 {
                     if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
                     if (pi.GetIndexParameters().Length != 0) continue;
                     var fieldInfo = TableFieldInfo.Build(Name, pi, _objectDb.FieldHandlerFactory,
                         FieldHandlerOptions.None, pi.GetCustomAttribute<PrimaryKeyAttribute>()?.InKeyValue ?? false);
-                    if (fieldInfo.Handler!.DoesNeedFreeContent()) return true;
+                    if (fieldInfo.Handler!.DoesNeedFreeContent(visitedTypes)) return true;
                 }
             }
             finally
             {
-                StackOverflowProtection.Value.Remove(type);
+                visitedTypes.Remove(type);
             }
 
             return false;
