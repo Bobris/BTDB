@@ -543,32 +543,41 @@ public class TableInfo
 
     Tuple<bool, ObjectFreeContent> CreateFreeContent(uint version)
     {
-        var method = ILBuilder.Instance.NewMethod<ObjectFreeContent>($"FreeContent_{Name}_{version}");
-        var ilGenerator = method.Generator;
         var tableVersionInfo = TableVersions.GetOrAdd(version, static (ver, tableInfo) =>
             tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
         var anyNeedsCtx = tableVersionInfo.NeedsCtx();
-        if (anyNeedsCtx)
-        {
-            ilGenerator.DeclareLocal(typeof(IReaderCtx));
-            ilGenerator
-                .Ldarg(0)
-                .Ldarg(3)
-                .Newobj(() => new DBReaderWithFreeInfoCtx(null, null))
-                .Stloc(0);
-        }
 
         var doesNeedFreeContent = false;
         var visitedTypes = new HashSet<Type>();
+        var handlerList = new List<IFieldHandler>();
         for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
         {
             var srcFieldInfo = tableVersionInfo[fi];
             doesNeedFreeContent |= srcFieldInfo.Handler!.DoesNeedFreeContent(visitedTypes);
-            srcFieldInfo.Handler!.FreeContent(ilGenerator, il => il.Ldarg(2), il => il.Ldloc(0));
+            handlerList.Add(srcFieldInfo.Handler);
         }
 
-        ilGenerator.Ret();
-        return Tuple.Create(doesNeedFreeContent, method.Create());
+        var handlers = handlerList.ToArray();
+        return anyNeedsCtx
+            ? Tuple.Create(doesNeedFreeContent, (ObjectFreeContent)((IInternalObjectDBTransaction transaction,
+                DBObjectMetadata? metadata,
+                ref MemReader reader, IList<ulong> dictIds) =>
+            {
+                var ctx = new DBReaderWithFreeInfoCtx(transaction, dictIds);
+                foreach (var handler in handlers)
+                {
+                    handler.FreeContent(ref reader, ctx);
+                }
+            }))
+            : Tuple.Create(doesNeedFreeContent, (ObjectFreeContent)((IInternalObjectDBTransaction transaction,
+                DBObjectMetadata? metadata,
+                ref MemReader reader, IList<ulong> dictIds) =>
+            {
+                foreach (var handler in handlers)
+                {
+                    handler.FreeContent(ref reader, null);
+                }
+            }));
     }
 
     static string GetPersistentName(PropertyInfo p)

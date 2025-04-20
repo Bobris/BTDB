@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -204,6 +207,11 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             .Call(instanceType.GetMethod(nameof(ODBDictionary<int, int>.DoSave))!);
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        reader.SkipVUInt64();
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (_type != type)
@@ -260,45 +268,43 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         yield return _valuesHandler;
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    [SkipLocalsInit]
+    public unsafe void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
-        if (!_valuesHandler.DoesNeedFreeContent(new()))
-        {
-            ilGenerator
-                .Do(pushCtx)
-                .Castclass(typeof(IDBReaderCtx))
-                .Do(pushReader)
-                .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
-                .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
-        }
-        else
-        {
-            var genericArguments = _type!.GetGenericArguments();
-            var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
+        if (_valuesHandlerDoesNeedFreeContent == null) throw new BTDBException("FreeContent not initialized");
 
-            var dictId = ilGenerator.DeclareLocal(typeof(ulong));
-            ilGenerator
-                .Do(pushCtx)
-                .Castclass(typeof(IDBReaderCtx))
-                .Do(pushReader)
-                .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
-                .Stloc(dictId)
-                .Ldloc(dictId)
-                .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul))
-                .Do(pushCtx)
-                .Ldloc(dictId)
-                .LdcI4(GetConfigurationId(_type))
-                //ODBDictionary.DoFreeContent(IReaderCtx ctx, ulong id, int cfgId)
-                .Call(instanceType.GetMethod(nameof(ODBDictionary<int, int>.DoFreeContent))!);
+        var dictId = reader.ReadVUInt64();
+        ctx!.RegisterDict(dictId);
+        if (_valuesHandlerDoesNeedFreeContent == true)
+        {
+            var len = PackUnpack.LengthVUInt(dictId);
+            Span<byte> prefix = stackalloc byte[ObjectDB.AllDictionariesPrefixLen + (int)len];
+            MemoryMarshal.GetReference(prefix) = ObjectDB.AllDictionariesPrefixByte;
+            PackUnpack.UnsafePackVUInt(
+                ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(prefix),
+                    ObjectDB.AllDictionariesPrefixLen), dictId, len);
+
+            Span<byte> buffer = stackalloc byte[4096];
+            using var cursor = ((DBReaderCtx)ctx).GetTransaction()!.KeyValueDBTransaction.CreateCursor();
+            while (cursor.FindNextKey(prefix))
+            {
+                var valueSpan = cursor.GetValueSpan(ref buffer);
+                fixed (void* _ = valueSpan)
+                {
+                    var valueReader = MemReader.CreateFromPinnedSpan(valueSpan);
+                    _valuesHandler.FreeContent(ref valueReader, ctx);
+                }
+            }
         }
     }
+
+    bool? _valuesHandlerDoesNeedFreeContent;
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)
     {
         if (_keysHandler.DoesNeedFreeContent(visitedTypes))
             throw new BTDBException("Not supported 'free content' in IDictionary key");
-        // it does not matter if value handler does need free content, run it because of validation
-        _ = _valuesHandler.DoesNeedFreeContent(visitedTypes);
+        _valuesHandlerDoesNeedFreeContent = _valuesHandler.DoesNeedFreeContent(visitedTypes);
         return true;
     }
 }

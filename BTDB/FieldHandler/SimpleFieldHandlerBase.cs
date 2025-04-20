@@ -2,8 +2,11 @@
 using System.Collections.Generic;
 using System.Reflection;
 using BTDB.IL;
+using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
+
+public delegate void SkipReaderCtxFunc(ref MemReader reader, IReaderCtx? ctx);
 
 public class SimpleFieldHandlerBase : IFieldHandler
 {
@@ -11,13 +14,16 @@ public class SimpleFieldHandlerBase : IFieldHandler
     readonly MethodInfo _loader;
     readonly MethodInfo _skipper;
     readonly MethodInfo _saver;
+    readonly SkipReaderCtxFunc _skipReader;
 
-    public SimpleFieldHandlerBase(string name, MethodInfo loader, MethodInfo skipper, MethodInfo saver)
+    public SimpleFieldHandlerBase(string name, MethodInfo loader, MethodInfo skipper, MethodInfo saver,
+        SkipReaderCtxFunc skipReader)
     {
         _name = name;
         _loader = loader;
         _skipper = skipper;
         _saver = saver;
+        _skipReader = skipReader;
     }
 
     public string Name => _name;
@@ -58,6 +64,11 @@ public class SimpleFieldHandlerBase : IFieldHandler
         ilGenerator.Call(_saver);
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        _skipReader(ref reader, ctx);
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (HandledType() == type || !IsCompatibleWith(type, FieldHandlerOptions.None))
@@ -71,6 +82,11 @@ public class SimpleFieldHandlerBase : IFieldHandler
     public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         Skip(ilGenerator, pushReader, pushCtx);
+    }
+
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
+    {
+        _skipReader(ref reader, ctx);
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
@@ -124,6 +140,11 @@ public class SimpleFieldHandlerBase : IFieldHandler
                         _fieldHandler.HandledType())!));
         }
 
+        public void Skip(ref MemReader reader, IReaderCtx? ctx)
+        {
+            _fieldHandler.Skip(ref reader, ctx);
+        }
+
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             return this;
@@ -137,6 +158,11 @@ public class SimpleFieldHandlerBase : IFieldHandler
         public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
+        }
+
+        public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
+        {
+            _fieldHandler.Skip(ref reader, ctx);
         }
 
         public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;

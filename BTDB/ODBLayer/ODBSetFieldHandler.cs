@@ -186,6 +186,11 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
             .Call(instanceType.GetMethod(nameof(ODBSet<int>.DoSave))!);
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        reader.SkipVUInt64();
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (_type != type)
@@ -240,6 +245,11 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
             .Do(pushReader)
             .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
             .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
+    }
+
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
+    {
+        ctx!.RegisterDict(reader.ReadVUInt64());
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)

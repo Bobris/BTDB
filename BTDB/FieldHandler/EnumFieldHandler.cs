@@ -301,6 +301,18 @@ public class EnumFieldHandler : IFieldHandler
         }
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        if (_signed)
+        {
+            reader.SkipVInt64();
+        }
+        else
+        {
+            reader.SkipVUInt64();
+        }
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (typeHandler == this) return this;
@@ -336,9 +348,16 @@ public class EnumFieldHandler : IFieldHandler
         return IsCompatibleWith(type);
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
-        Skip(ilGenerator, pushReader, pushCtx);
+        if (_signed)
+        {
+            reader.SkipVInt64();
+        }
+        else
+        {
+            reader.SkipVUInt64();
+        }
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;

@@ -53,19 +53,6 @@ public static class Extensions
         return ilGenerator;
     }
 
-    public static void UpdateNeedsFreeContent(NeedsFreeContent partial, ref NeedsFreeContent accumulatedValue)
-    {
-        if ((int)partial > (int)accumulatedValue)
-            accumulatedValue = partial;
-    }
-
-    public static IILGen GenerateFreeContent(this IILGen ilGenerator, IFieldHandler fieldHandler,
-        Action<IILGen> pushReader, Action<IILGen>? pushCtx)
-    {
-        fieldHandler.FreeContent(ilGenerator, pushReader, pushCtx);
-        return ilGenerator;
-    }
-
     public static void RegisterFieldHandlers(IEnumerable<IFieldHandler?> fieldHandlers, object owner)
     {
         var visited = new HashSet<IFieldHandler>();

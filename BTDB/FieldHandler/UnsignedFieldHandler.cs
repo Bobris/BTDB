@@ -8,7 +8,8 @@ public class UnsignedFieldHandler : SimpleFieldHandlerBase
     public UnsignedFieldHandler() : base("Unsigned",
         typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!,
         typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!,
-        typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt64))!)
+        typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt64))!,
+        (ref MemReader reader, IReaderCtx? ctx) => reader.SkipVUInt64())
     {
     }
 

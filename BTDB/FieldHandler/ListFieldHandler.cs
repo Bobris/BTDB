@@ -211,6 +211,19 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             .Mark(realFinish);
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        if (ctx!.SkipObject(ref reader))
+        {
+            var count = reader.ReadVUInt32();
+            while (count != 0)
+            {
+                count--;
+                _itemsHandler.Skip(ref reader, ctx);
+            }
+        }
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (_type == type) return this;
@@ -265,30 +278,16 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
         yield return _itemsHandler;
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
-        var localCount = ilGenerator.DeclareLocal(typeof(uint));
-        var finish = ilGenerator.DefineLabel();
-        var next = ilGenerator.DefineLabel();
-        ilGenerator
-            .Do(pushCtx)
-            .Do(pushReader)
-            .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.SkipObject))!)
-            .Brfalse(finish)
-            .Do(pushReader)
-            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
-            .Stloc(localCount)
-            .Mark(next)
-            .Ldloc(localCount)
-            .Brfalse(finish)
-            .Ldloc(localCount)
-            .LdcI4(1)
-            .Sub()
-            .ConvU4()
-            .Stloc(localCount)
-            .GenerateFreeContent(_itemsHandler, pushReader, pushCtx)
-            .Br(next)
-            .Mark(finish);
+        if (ctx!.SkipObject(ref reader))
+        {
+            var count = reader.ReadVUInt32();
+            for (var i = 0; i != count; i++)
+            {
+                _itemsHandler.FreeContent(ref reader, ctx);
+            }
+        }
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)

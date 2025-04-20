@@ -79,54 +79,6 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         writer.WriteVUInt64(goodDict._id);
     }
 
-    public static void DoFreeContent(IReaderCtx ctx, ulong id, int cfgId)
-    {
-        var readerCtx = (DBReaderCtx)ctx;
-        var tr = readerCtx.GetTransaction();
-        var dict = new ODBDictionary<TKey, TValue>(tr!, ODBDictionaryConfiguration.Get(cfgId), id);
-        dict.FreeContent(ctx, cfgId);
-    }
-
-    [SkipLocalsInit]
-    unsafe void FreeContent(IReaderCtx readerCtx, int cfgId)
-    {
-        var config = ODBDictionaryConfiguration.Get(cfgId);
-        var ctx = (DBReaderWithFreeInfoCtx)readerCtx;
-
-        if (config.FreeContent == null)
-        {
-            var method = ILBuilder.Instance.NewMethod<FreeContentFun>($"IDictFinder_Cfg_{cfgId}");
-            var ilGenerator = method.Generator;
-
-            var readerLoc = ilGenerator.DeclareLocal(typeof(IReaderCtx));
-            ilGenerator
-                .Ldarg(0)
-                .Ldarg(2)
-                // ReSharper disable once ObjectCreationAsStatement
-                .Newobj(() => new DBReaderWithFreeInfoCtx(null, null))
-                .Stloc(readerLoc);
-
-            var readerOrCtx = _valueHandler.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(readerLoc)) : null;
-            _valueHandler.FreeContent(ilGenerator, il => il.Ldarg(1), readerOrCtx);
-            ilGenerator.Ret();
-            config.FreeContent = method.Create();
-        }
-
-        var findIDictAction = (FreeContentFun)config.FreeContent;
-
-        Span<byte> buffer = stackalloc byte[4096];
-        using var cursor = _keyValueTr.CreateCursor();
-        while (cursor.FindNextKey(_prefix))
-        {
-            var valueSpan = cursor.GetValueSpan(ref buffer);
-            fixed (void* _ = valueSpan)
-            {
-                var valueReader = MemReader.CreateFromPinnedSpan(valueSpan);
-                findIDictAction(ctx.GetTransaction()!, ref valueReader, ctx.DictIds);
-            }
-        }
-    }
-
     IEnumerator IEnumerable.GetEnumerator()
     {
         return GetEnumerator();

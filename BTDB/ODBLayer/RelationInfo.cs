@@ -1627,9 +1627,6 @@ public class RelationInfo
 
     FreeContentFun CreateIDictFinder(uint version)
     {
-        var method = ILBuilder.Instance.NewMethod<FreeContentFun>($"Relation{Name}_IDictFinder");
-        var ilGenerator = method.Generator;
-
         var relationVersionInfo = _relationVersions[version];
         var needGenerateFreeFor = 0;
         var valueFields = relationVersionInfo!.Fields.ToArray();
@@ -1650,24 +1647,17 @@ public class RelationInfo
 
         _needImplementFreeContent = true;
 
-        if (relationVersionInfo.NeedsCtx())
-        {
-            ilGenerator.DeclareLocal(typeof(IReaderCtx)); //loc 0
-            ilGenerator
-                .Ldarg(0)
-                .Ldarg(2)
-                .Newobj(() => new DBReaderWithFreeInfoCtx(null, null))
-                .Stloc(0);
-        }
+        var handlers = valueFields.Take(needGenerateFreeFor).Where(tfi => !tfi.Computed).Select(tfi => tfi.Handler)
+            .ToArray();
 
-        for (var i = 0; i < needGenerateFreeFor; i++)
+        return (IInternalObjectDBTransaction transaction, ref MemReader reader, IList<ulong> ids) =>
         {
-            if (valueFields[i].Computed) continue;
-            valueFields[i].Handler!.FreeContent(ilGenerator, il => il.Ldarg(1), il => il.Ldloc(0));
-        }
-
-        ilGenerator.Ret();
-        return method.Create();
+            var ctx = new DBReaderWithFreeInfoCtx(transaction, ids);
+            foreach (var handler in handlers)
+            {
+                handler.FreeContent(ref reader, ctx);
+            }
+        };
     }
 
     void CalculatePrefix()

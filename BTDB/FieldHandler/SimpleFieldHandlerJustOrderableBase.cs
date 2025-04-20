@@ -5,8 +5,9 @@ namespace BTDB.FieldHandler;
 
 public class SimpleFieldHandlerJustOrderableBase : SimpleFieldHandlerBase
 {
-    public SimpleFieldHandlerJustOrderableBase(string name, MethodInfo loader, MethodInfo skipper, MethodInfo saver)
-        : base(name, loader, skipper, saver)
+    public SimpleFieldHandlerJustOrderableBase(string name, MethodInfo loader, MethodInfo skipper, MethodInfo saver,
+        SkipReaderCtxFunc skipReader)
+        : base(name, loader, skipper, saver, skipReader)
     {
     }
 

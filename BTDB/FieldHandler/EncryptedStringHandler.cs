@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using BTDB.Encrypted;
 using BTDB.IL;
+using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
 
@@ -48,6 +49,11 @@ public class EncryptedStringHandler : IFieldHandler
         ilGenerator.Callvirt(typeof(IWriterCtx).GetMethod(nameof(IWriterCtx.WriteEncryptedString))!);
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        ctx!.SkipEncryptedString(ref reader);
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (HandledType() == type ||
@@ -59,9 +65,9 @@ public class EncryptedStringHandler : IFieldHandler
         return new ConvertingHandler(this, type);
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
-        Skip(ilGenerator, pushReader, pushCtx);
+        ctx!.SkipEncryptedString(ref reader);
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
@@ -115,6 +121,11 @@ public class EncryptedStringHandler : IFieldHandler
                         _fieldHandler.HandledType())!));
         }
 
+        public void Skip(ref MemReader reader, IReaderCtx? ctx)
+        {
+            ctx!.SkipEncryptedString(ref reader);
+        }
+
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             throw new InvalidOperationException();
@@ -125,9 +136,9 @@ public class EncryptedStringHandler : IFieldHandler
             throw new InvalidOperationException();
         }
 
-        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+        public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
         {
-            _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
+            ctx!.SkipEncryptedString(ref reader);
         }
 
         public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;

@@ -140,6 +140,14 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
         ilGenerator.Mark(finish);
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        if (reader.ReadBool())
+        {
+            _itemHandler.Skip(ref reader, ctx);
+        }
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (_type == type) return this;
@@ -195,9 +203,12 @@ public class NullableFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldH
         yield return _itemHandler;
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
-        Skip(ilGenerator, pushReader, pushCtx);
+        if (reader.ReadBool())
+        {
+            _itemHandler.Skip(ref reader, ctx);
+        }
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using BTDB.Encrypted;
 using BTDB.IL;
+using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
 
@@ -48,6 +49,11 @@ public class OrderedEncryptedStringHandler : IFieldHandler
         ilGenerator.Callvirt(typeof(IWriterCtx).GetMethod(nameof(IWriterCtx.WriteOrderedEncryptedString))!);
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        ctx!.SkipOrderedEncryptedString(ref reader);
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (HandledType() == type ||
@@ -62,6 +68,11 @@ public class OrderedEncryptedStringHandler : IFieldHandler
     public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
     {
         Skip(ilGenerator, pushReader, pushCtx);
+    }
+
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
+    {
+        ctx!.SkipOrderedEncryptedString(ref reader);
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
@@ -112,6 +123,11 @@ public class OrderedEncryptedStringHandler : IFieldHandler
                         _fieldHandler.HandledType())!));
         }
 
+        public void Skip(ref MemReader reader, IReaderCtx? ctx)
+        {
+            _fieldHandler.Skip(ref reader, ctx);
+        }
+
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             throw new InvalidOperationException();
@@ -125,6 +141,11 @@ public class OrderedEncryptedStringHandler : IFieldHandler
         public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
+        }
+
+        public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
+        {
+            ctx!.SkipOrderedEncryptedString(ref reader);
         }
 
         public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;

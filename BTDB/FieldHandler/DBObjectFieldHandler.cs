@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Threading;
-using BTDB.Collections;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -169,6 +167,11 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
             .Callvirt(typeof(IWriterCtx).GetMethod(nameof(IWriterCtx.WriteNativeObject))!);
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        ctx!.SkipNativeObject(ref reader);
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         var needType = Unwrap(type);
@@ -201,12 +204,9 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
         ilGenerator.Newobj(typeof(DBIndirect<>).MakeGenericType(_type!).GetDefaultConstructor()!);
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
-        ilGenerator
-            .Do(pushCtx)
-            .Do(pushReader)
-            .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.FreeContentInNativeObject))!);
+        ctx!.FreeContentInNativeObject(ref reader);
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)

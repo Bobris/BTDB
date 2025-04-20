@@ -180,6 +180,15 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
             .EndTry();
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        var count = reader.ReadVUInt32();
+        for (var i = 0; i < count; i++)
+        {
+            _itemsHandler.Skip(ref reader, ctx);
+        }
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (_type == type) return this;
@@ -245,26 +254,13 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
         yield return _itemsHandler;
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
-        var localCount = ilGenerator.DeclareLocal(typeof(uint));
-        var finish = ilGenerator.DefineLabel();
-        var next = ilGenerator.DefineLabel();
-        ilGenerator
-            .Do(pushReader)
-            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
-            .Stloc(localCount)
-            .Mark(next)
-            .Ldloc(localCount)
-            .Brfalse(finish)
-            .Ldloc(localCount)
-            .LdcI4(1)
-            .Sub()
-            .ConvU4()
-            .Stloc(localCount)
-            .GenerateFreeContent(_itemsHandler, pushReader, pushCtx)
-            .Br(next)
-            .Mark(finish);
+        var count = reader.ReadVUInt32();
+        for (var i = 0; i < count; i++)
+        {
+            _itemsHandler.FreeContent(ref reader, ctx);
+        }
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)

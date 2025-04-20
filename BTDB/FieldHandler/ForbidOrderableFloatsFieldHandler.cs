@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BTDB.IL;
+using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
 
@@ -39,7 +40,12 @@ public class ForbidOrderableFloatsFieldHandler : IFieldHandler
         throw new NotSupportedException();
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        throw new NotSupportedException();
+    }
+
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
         throw new NotSupportedException();
     }

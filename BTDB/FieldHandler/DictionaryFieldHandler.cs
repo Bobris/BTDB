@@ -226,6 +226,19 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Mark(realFinish);
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        if (ctx!.SkipObject(ref reader))
+        {
+            var count = reader.ReadVUInt32();
+            for (var i = 0; i < count; i++)
+            {
+                _keysHandler.Skip(ref reader, ctx);
+                _valuesHandler.Skip(ref reader, ctx);
+            }
+        }
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (_type == type) return this;
@@ -300,31 +313,17 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
         yield return _valuesHandler;
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
-        var localCount = ilGenerator.DeclareLocal(typeof(uint));
-        var finish = ilGenerator.DefineLabel();
-        var next = ilGenerator.DefineLabel();
-        ilGenerator
-            .Do(pushCtx)
-            .Do(pushReader)
-            .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.SkipObject))!)
-            .Brfalse(finish)
-            .Do(pushReader)
-            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt32))!)
-            .Stloc(localCount)
-            .Mark(next)
-            .Ldloc(localCount)
-            .Brfalse(finish)
-            .Ldloc(localCount)
-            .LdcI4(1)
-            .Sub()
-            .ConvU4()
-            .Stloc(localCount)
-            .GenerateFreeContent(_keysHandler, pushReader, pushCtx)
-            .GenerateFreeContent(_valuesHandler, pushReader, pushCtx)
-            .Br(next)
-            .Mark(finish);
+        if (ctx!.SkipObject(ref reader))
+        {
+            var count = reader.ReadVUInt32();
+            for (var i = 0; i < count; i++)
+            {
+                _keysHandler.FreeContent(ref reader, ctx);
+                _valuesHandler.FreeContent(ref reader, ctx);
+            }
+        }
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes)

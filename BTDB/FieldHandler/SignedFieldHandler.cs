@@ -8,7 +8,8 @@ public class SignedFieldHandler : SimpleFieldHandlerBase
     public SignedFieldHandler() : base("Signed",
         typeof(MemReader).GetMethod(nameof(MemReader.ReadVInt64))!,
         typeof(MemReader).GetMethod(nameof(MemReader.SkipVInt64))!,
-        typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVInt64))!)
+        typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVInt64))!,
+        (ref MemReader reader, IReaderCtx? ctx) => reader.SkipVInt64())
     {
     }
 

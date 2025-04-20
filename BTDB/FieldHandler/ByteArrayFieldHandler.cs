@@ -60,6 +60,11 @@ public class ByteArrayFieldHandler : IFieldHandler
         ilGenerator.Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteArray), new[] { typeof(byte[]) })!);
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        reader.SkipByteArray();
+    }
+
     protected virtual void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushValue)
     {
         pushWriter(ilGenerator);
@@ -91,9 +96,9 @@ public class ByteArrayFieldHandler : IFieldHandler
         return this;
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
-        Skip(ilGenerator, pushReader, pushCtx);
+        reader.SkipByteArray();
     }
 
     public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
@@ -141,6 +146,11 @@ public class ByteArrayFieldHandler : IFieldHandler
             _fieldHandler.SaveByteBuffer(ilGenerator, pushWriter, pushValue);
         }
 
+        public void Skip(ref MemReader reader, IReaderCtx? ctx)
+        {
+            reader.SkipByteArray();
+        }
+
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             throw new InvalidOperationException();
@@ -151,9 +161,9 @@ public class ByteArrayFieldHandler : IFieldHandler
             throw new InvalidOperationException();
         }
 
-        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
+        public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
         {
-            _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
+            reader.SkipByteArray();
         }
 
         public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
@@ -202,6 +212,16 @@ public class ByteArrayFieldHandler : IFieldHandler
             _fieldHandler.SaveReadOnlyMemory(ilGenerator, pushWriter, pushValue);
         }
 
+        public void Skip(ref MemReader reader, IReaderCtx? ctx)
+        {
+            reader.SkipByteArray();
+        }
+
+        public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
+        {
+            reader.SkipByteArray();
+        }
+
         public bool DoesNeedFreeContent(HashSet<Type> visitedTypes) => false;
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
@@ -212,11 +232,6 @@ public class ByteArrayFieldHandler : IFieldHandler
         public IFieldHandler SpecializeSaveForType(Type type)
         {
             throw new InvalidOperationException();
-        }
-
-        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
-        {
-            _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
         }
 
         public bool DoesPreferLoadAsMemory() => true;

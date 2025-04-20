@@ -220,6 +220,14 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
         }
     }
 
+    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        foreach (var f in _fieldHandlers)
+        {
+            f.Skip(ref reader, ctx);
+        }
+    }
+
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
     {
         if (_type == type) return this;
@@ -303,12 +311,11 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
         return _fieldHandlers;
     }
 
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+    public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
     {
         foreach (var f in _fieldHandlers)
         {
-            ilGenerator
-                .GenerateFreeContent(f, pushReader, pushCtx);
+            f.FreeContent(ref reader, ctx);
         }
     }
 
