@@ -2390,7 +2390,7 @@ public class BTreeImpl12
                     newValues[0] = _newChildNode;
                     newValues = newValues.Slice(2);
                     NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(idx - splitPos + 1), newValues);
-                    stack[(uint)stackIdx].Set(newNode, (byte)(idx - splitPos + (rightInsert ? 1 : 0)));
+                    stack[(uint)stackIdx].Set(newNode2, (byte)(idx - splitPos + (rightInsert ? 1 : 0)));
                     NodeUtils12.RecalcRecursiveChildrenCount(newNode);
                     NodeUtils12.RecalcRecursiveChildrenCount(newNode2);
                     _newChildNode = newNode;
