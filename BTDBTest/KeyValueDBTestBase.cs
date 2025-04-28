@@ -463,20 +463,32 @@ public abstract class KeyValueDBTestBase
     public void AdvancedFindPreviousAndNextKeyWorks()
     {
         using var db = NewKeyValueDB();
-        var key = new byte[2];
+        var key = new byte[3];
         const int keysCreated = 10000;
         using (var tr = db.StartTransaction())
         {
             using var cursor = tr.CreateCursor();
+            var order = new int[keysCreated];
             for (var i = 0; i < keysCreated; i++)
             {
-                key[0] = (byte)(i / 256);
-                key[1] = (byte)(i % 256);
+                order[i] = i;
+            }
+
+            var random = new Random(0);
+            random.Shuffle(order);
+
+            for (var i = 0; i < keysCreated; i++)
+            {
+                FillKeyByIndex(order[i]);
                 cursor.CreateKey(key);
+                var j = order.Take(i).Count(ii => ii < order[i]);
+                Assert.Equal(j, cursor.GetKeyIndex());
             }
 
             tr.Commit();
         }
+
+        FillKeyByIndex(keysCreated - 1);
 
         using (var tr = db.StartTransaction())
         {
@@ -500,6 +512,13 @@ public abstract class KeyValueDBTestBase
 
             Assert.False(cursor.FindNextKey(new()));
             Assert.Equal(-1, cursor.GetKeyIndex());
+        }
+
+        void FillKeyByIndex(int i)
+        {
+            key[0] = (byte)(i / 256 / 256);
+            key[1] = (byte)(i / 256 % 256);
+            key[2] = (byte)(i % 256);
         }
     }
 
