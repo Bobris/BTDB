@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.6.4
+
 ### Fixed
 
 Fixed seemingly random wrong iteration when inserting new values in parallel.
