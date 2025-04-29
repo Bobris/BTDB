@@ -18,7 +18,7 @@ public class DefaultFieldHandlerLogger : IFieldHandlerLogger
     {
         if (target != null)
         {
-            _loggerFunction.Invoke("Cannot load " + source + " into " + target);
+            _loggerFunction.Invoke("Cannot load " + source.HandledType() + " into " + target.HandledType());
         }
         else if (sourceType != null)
         {
@@ -28,7 +28,7 @@ public class DefaultFieldHandlerLogger : IFieldHandlerLogger
         }
         else
         {
-            _loggerFunction.Invoke("Cannot load " + source + " into " + targetType.ToSimpleName());
+            _loggerFunction.Invoke("Cannot load " + source.HandledType() + " into " + targetType.ToSimpleName());
         }
     }
 }
