@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.7.0
+
 ### Improve
 
 Better error message for handler type incompatibility.
