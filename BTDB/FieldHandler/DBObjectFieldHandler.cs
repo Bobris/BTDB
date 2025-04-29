@@ -281,4 +281,9 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
         if (_type != null)
             (owner as ObjectDB)?.RegisterType(_type, false);
     }
+
+    public override string ToString()
+    {
+        return $"DBObjectFieldHandler<{_typeName ?? "null"},{_type?.ToSimpleName() ?? "null"}>";
+    }
 }
