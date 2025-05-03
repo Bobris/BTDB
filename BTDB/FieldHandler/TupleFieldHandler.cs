@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using BTDB.Collections;
 using BTDB.IL;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
@@ -220,12 +221,22 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
         }
     }
 
+    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new NotImplementedException();
+    }
+
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
     {
         foreach (var f in _fieldHandlers)
         {
             f.Skip(ref reader, ctx);
         }
+    }
+
+    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new NotImplementedException();
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)

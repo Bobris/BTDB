@@ -7,6 +7,7 @@ using BTDB.StreamLayer;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using BTDB.Serialization;
 
 namespace BTDB.FieldHandler;
 
@@ -301,6 +302,28 @@ public class EnumFieldHandler : IFieldHandler
         }
     }
 
+    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        var loadType = _signed ? typeof(long) : typeof(ulong);
+        if (asType == loadType)
+        {
+            if (_signed)
+            {
+                return static (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+                {
+                    Unsafe.As<byte, long>(ref value) = reader.ReadVInt64();
+                };
+            }
+
+            return static (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, ulong>(ref value) = reader.ReadVUInt64();
+            };
+        }
+
+        return this.BuildConvertingLoader(loadType, asType, typeConverterFactory);
+    }
+
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
     {
         if (_signed)
@@ -311,6 +334,96 @@ public class EnumFieldHandler : IFieldHandler
         {
             reader.SkipVUInt64();
         }
+    }
+
+    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (asType.IsEnum)
+        {
+            var underlying = Enum.GetUnderlyingType(asType);
+            if (underlying == typeof(byte) && !_signed)
+            {
+                return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+                {
+                    writer.WriteVUInt32(Unsafe.As<byte, byte>(ref value));
+                };
+            }
+
+            if (underlying == typeof(ushort) && !_signed)
+            {
+                return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+                {
+                    writer.WriteVUInt32(Unsafe.As<byte, ushort>(ref value));
+                };
+            }
+
+            if (underlying == typeof(uint) && !_signed)
+            {
+                return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+                {
+                    writer.WriteVUInt32(Unsafe.As<byte, uint>(ref value));
+                };
+            }
+
+            if (underlying == typeof(ulong) && !_signed)
+            {
+                return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+                {
+                    writer.WriteVUInt64(Unsafe.As<byte, ulong>(ref value));
+                };
+            }
+
+            if (underlying == typeof(sbyte) && _signed)
+            {
+                return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+                {
+                    writer.WriteVInt32(Unsafe.As<byte, sbyte>(ref value));
+                };
+            }
+
+            if (underlying == typeof(short) && _signed)
+            {
+                return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+                {
+                    writer.WriteVInt32(Unsafe.As<byte, short>(ref value));
+                };
+            }
+
+            if (underlying == typeof(int) && _signed)
+            {
+                return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+                {
+                    writer.WriteVInt32(Unsafe.As<byte, int>(ref value));
+                };
+            }
+
+            if (underlying == typeof(long) && _signed)
+            {
+                return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+                {
+                    writer.WriteVInt64(Unsafe.As<byte, long>(ref value));
+                };
+            }
+        }
+
+        var saveType = _signed ? typeof(long) : typeof(ulong);
+        if (asType == saveType)
+        {
+            if (_signed)
+            {
+                return (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+                {
+                    writer.WriteVInt64(Unsafe.As<byte, long>(ref value));
+                };
+            }
+
+            return (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteVUInt64(Unsafe.As<byte, ulong>(ref value));
+            };
+        }
+
+        return this.BuildConvertingSaver(asType, saveType, typeConverterFactory);
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
@@ -324,14 +437,14 @@ public class EnumFieldHandler : IFieldHandler
 
         if (typeHandler == null && type.IsEnum)
         {
-            enumTypeHandler = new EnumFieldHandler(type);
+            enumTypeHandler = new(type);
             typeHandler = enumTypeHandler;
         }
 
         if (enumTypeHandler != null && _signed == enumTypeHandler._signed)
         {
             if (new EnumConfiguration(Configuration).IsBinaryRepresentationSubsetOf(
-                    new EnumConfiguration(enumTypeHandler.Configuration)))
+                    new(enumTypeHandler.Configuration)))
                 return typeHandler;
         }
 

@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using BTDB.IL;
+using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
@@ -52,7 +54,7 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
         _type = type;
         _isSet = type.InheritsOrImplements(typeof(ISet<>));
         _itemsHandler = itemSpecialized;
-        Configuration = Array.Empty<byte>();
+        Configuration = [];
     }
 
     public static string HandlerName => "List";
@@ -74,9 +76,9 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
 
     public Type HandledType()
     {
-        if (_isSet)
-            return _type ??= typeof(ISet<>).MakeGenericType(_itemsHandler.HandledType());
-        return _type ??= typeof(IList<>).MakeGenericType(_itemsHandler.HandledType());
+        return _type ??= _isSet
+            ? typeof(ISet<>).MakeGenericType(_itemsHandler.HandledType()!)
+            : typeof(IList<>).MakeGenericType(_itemsHandler.HandledType()!);
     }
 
     public bool NeedsCtx()
@@ -211,6 +213,67 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             .Mark(realFinish);
     }
 
+    ref struct ListItemLoaderCtx
+    {
+        internal nint StoragePtr;
+        internal object Object;
+        internal FieldHandlerLoad ItemLoader;
+        internal unsafe delegate*<object, ref byte, void> Adder;
+        internal IReaderCtx Ctx;
+        internal ref MemReader Reader;
+    }
+
+    public unsafe FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        var collectionMetadata = ReflectionMetadata.FindCollectionByType(asType!);
+        if (collectionMetadata == null)
+            throw new BTDBException("Cannot find collection metadata for " + _type.ToSimpleName());
+        var itemLoad = _itemsHandler.Load(collectionMetadata.ElementKeyType, typeConverterFactory);
+        var itemStackAllocator = ReflectionMetadata.FindStackAllocatorByType(collectionMetadata.ElementKeyType);
+
+        return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+        {
+            if (ctx!.ReadObject(ref reader, out var obj))
+            {
+                var count = reader.ReadVUInt32();
+                obj = collectionMetadata!.Creator(count);
+                ctx.RegisterObject(obj);
+                var loaderCtx = new ListItemLoaderCtx
+                {
+                    Adder = collectionMetadata.Adder,
+                    ItemLoader = itemLoad,
+                    Object = obj,
+                    Ctx = ctx,
+                    Reader = ref reader,
+                };
+                for (var i = 0; i != count; i++)
+                {
+                    itemStackAllocator(ref Unsafe.As<ListItemLoaderCtx, byte>(ref loaderCtx), ref loaderCtx.StoragePtr,
+                        &Nested);
+
+                    static void Nested(ref byte value)
+                    {
+                        ref var context = ref Unsafe.As<byte, ListItemLoaderCtx>(ref value);
+                        context.ItemLoader(ref context.Reader, context.Ctx,
+                            ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        context.Adder(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                    }
+                }
+
+                ctx.ReadObjectDone(ref reader);
+            }
+            else
+            {
+                if (obj == null || !asType!.IsAssignableFrom(obj.GetType()))
+                {
+                    obj = null;
+                }
+            }
+
+            Unsafe.As<byte, object?>(ref value) = obj;
+        };
+    }
+
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
     {
         if (ctx!.SkipObject(ref reader))
@@ -222,6 +285,60 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
                 _itemsHandler.Skip(ref reader, ctx);
             }
         }
+    }
+
+    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (!IsCompatibleWith(asType))
+            throw new InvalidOperationException("ListFieldHandler cannot save " + asType.ToSimpleName());
+        var itemType = asType.GenericTypeArguments[0];
+        var hashSetType = typeof(HashSet<>).MakeGenericType(itemType);
+        var listType = typeof(List<>).MakeGenericType(itemType);
+        var saveItem = _itemsHandler.Save(itemType, typeConverterFactory);
+        var layout = RawData.GetHashSetEntriesLayout(itemType);
+        return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+        {
+            var obj = Unsafe.As<byte, object>(ref value);
+            if (ctx!.WriteObject(ref writer, obj))
+            {
+                var objType = obj.GetType();
+                if (listType.IsAssignableFrom(objType))
+                {
+                    var count = (uint)Unsafe.As<ICollection>(obj).Count;
+                    writer.WriteVUInt32(count);
+                    obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
+                    }
+                }
+                else if (hashSetType.IsAssignableFrom(objType))
+                {
+                    var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj,
+                        RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                    writer.WriteVUInt32(count);
+                    obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    if (offsetDelta != layout.Size)
+                        throw new BTDBException("Invalid HashSet layout " + offsetDelta + " != " + layout.Size);
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + 4)) < -1)
+                        {
+                            continue;
+                        }
+
+                        saveItem(ref writer, ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                    }
+                }
+                else throw new BTDBException("Cannot save type " + objType.ToSimpleName());
+            }
+        };
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
@@ -250,7 +367,8 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             return this;
         }
 
-        return new ListFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, itemSpecialized);
+        return new ListFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type,
+            itemSpecialized);
     }
 
     public IFieldHandler SpecializeSaveForType(Type type)
@@ -270,7 +388,8 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             return this;
         }
 
-        return new ListFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, itemSpecialized);
+        return new ListFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type,
+            itemSpecialized);
     }
 
     public IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers()

@@ -7,6 +7,7 @@ using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
@@ -207,9 +208,19 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             .Call(instanceType.GetMethod(nameof(ODBDictionary<int, int>.DoSave))!);
     }
 
+    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new NotImplementedException();
+    }
+
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
     {
         reader.SkipVUInt64();
+    }
+
+    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new NotImplementedException();
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)

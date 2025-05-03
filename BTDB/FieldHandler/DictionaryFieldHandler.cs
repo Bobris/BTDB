@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using BTDB.IL;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
@@ -226,6 +227,11 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Mark(realFinish);
     }
 
+    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new NotImplementedException();
+    }
+
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
     {
         if (ctx!.SkipObject(ref reader))
@@ -237,6 +243,11 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
                 _valuesHandler.Skip(ref reader, ctx);
             }
         }
+    }
+
+    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new NotImplementedException();
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)

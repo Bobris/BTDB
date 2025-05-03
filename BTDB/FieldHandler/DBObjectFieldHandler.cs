@@ -2,9 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
@@ -25,7 +27,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
         if (_type.IsInterface || _type.IsAbstract)
         {
             _typeName = null;
-            _configuration = Array.Empty<byte>();
+            _configuration = [];
         }
         else
         {
@@ -167,9 +169,73 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
             .Callvirt(typeof(IWriterCtx).GetMethod(nameof(IWriterCtx.WriteNativeObject))!);
     }
 
+    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        var needType = Unwrap(asType);
+        if (needType != asType)
+        {
+            var indirectType = typeof(DBIndirect<>).MakeGenericType(_type!);
+            return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+            {
+                var oid = reader.ReadVInt64();
+                var res = new DBIndirect<object>(((IDBReaderCtx)ctx!).GetTransaction(), (ulong)oid);
+                RawData.SetMethodTable(res, indirectType);
+                Unsafe.As<byte, object>(ref value) = res;
+            };
+        }
+
+        if (asType == typeof(object))
+        {
+            return static (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+            {
+                Unsafe.As<byte, object>(ref value) = ctx!.ReadNativeObject(ref reader);
+            };
+        }
+
+        return this.BuildConvertingLoader(typeof(object), asType, typeConverterFactory);
+    }
+
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
     {
         ctx!.SkipNativeObject(ref reader);
+    }
+
+    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        var needType = Unwrap(asType);
+        if (needType != asType)
+        {
+            return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+            {
+                var obj = Unsafe.As<byte, object>(ref value);
+                if (obj is IDBIndirect { Transaction: not null } ind)
+                {
+                    if (((IDBWriterCtx)ctx!).GetTransaction() != ind.Transaction)
+                    {
+                        throw new BTDBException("Transaction does not match when saving non-materialized IIndirect");
+                    }
+                    writer.WriteVInt64((long)ind.Oid);
+                    return;
+                }
+
+                if (obj is IIndirect ind2)
+                {
+                    ctx!.WriteNativeObjectPreventInline(ref writer, ind2.ValueAsObject);
+                    return;
+                }
+                ctx!.WriteNativeObjectPreventInline(ref writer, obj);
+            };
+        }
+
+        if (asType == typeof(object) || !asType.IsValueType)
+        {
+            return static (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+            {
+                ctx!.WriteNativeObject(ref writer, Unsafe.As<byte, object>(ref value));
+            };
+        }
+
+        return this.BuildConvertingSaver(asType, typeof(object), typeConverterFactory);
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)

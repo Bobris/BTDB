@@ -1,5 +1,6 @@
 namespace BTDB.Encrypted;
 
+// EncryptedString must have the same layout as string
 public struct EncryptedString
 {
     public static implicit operator EncryptedString(string? secret) => new EncryptedString { Secret = secret };

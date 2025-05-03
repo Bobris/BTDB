@@ -10,6 +10,7 @@ using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IOC;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
@@ -27,33 +28,33 @@ public class ObjectDB : IObjectDB
         new Dictionary<Type, Func<IObjectDBTransaction, IRelation>>();
 
     bool _dispose;
-    internal static readonly byte[] TableNamesPrefix = { 0, 0 }; // Index Table => Name
+    internal static readonly byte[] TableNamesPrefix = [0, 0]; // Index Table => Name
     const int TableNamesPrefixLen = 2;
-    internal static readonly byte[] TableVersionsPrefix = { 0, 1 }; // Index Table, Version => TableVersionInfo
+    internal static readonly byte[] TableVersionsPrefix = [0, 1]; // Index Table, Version => TableVersionInfo
     const uint TableVersionsPrefixLen = 2;
-    internal static readonly byte[] TableSingletonsPrefix = { 0, 2 }; // Index Table => singleton oid
+    internal static readonly byte[] TableSingletonsPrefix = [0, 2]; // Index Table => singleton oid
     internal const uint TableSingletonsPrefixLen = 2;
 
     internal static readonly byte[]
         LastDictIdKey =
-            { 0, 3 }; //  => Last Dictionary Index - only for backward compatibility newly stored in Ulong[1]
+            [0, 3]; //  => Last Dictionary Index - only for backward compatibility newly stored in Ulong[1]
 
-    internal static readonly byte[] RelationNamesPrefix = { 0, 4 }; // Name => Index Relation
+    internal static readonly byte[] RelationNamesPrefix = [0, 4]; // Name => Index Relation
     const int RelationNamesPrefixLen = 2;
-    internal static readonly byte[] RelationVersionsPrefix = { 0, 5 }; // Index Relation, version number => metadata
-    internal static readonly byte[] AllObjectsPrefix = { 1 }; // oid => Index Table, version number, Value
+    internal static readonly byte[] RelationVersionsPrefix = [0, 5]; // Index Relation, version number => metadata
+    internal static readonly byte[] AllObjectsPrefix = [1]; // oid => Index Table, version number, Value
     internal const int AllObjectsPrefixLen = 1;
-    internal static readonly byte[] AllDictionariesPrefix = { 2 }; // Index Dictionary, Key => Value
+    internal static readonly byte[] AllDictionariesPrefix = [2]; // Index Dictionary, Key => Value
     internal const int AllDictionariesPrefixLen = 1;
 
     internal static readonly byte[]
-        AllRelationsPKPrefix = { 3 }; // Index Relation, Primary Key => version number, Value (without primary key)
+        AllRelationsPKPrefix = [3]; // Index Relation, Primary Key => version number, Value (without primary key)
 
     internal static readonly byte[]
         AllRelationsSKPrefix =
-        {
+        [
             4
-        }; // Index Relation, Secondary Key Index, Secondary Key, primary key fields not present in secondary key => {}
+        ]; // Index Relation, Secondary Key Index, Secondary Key, primary key fields not present in secondary key => {}
 
     internal const byte AllObjectsPrefixByte = 1;
     internal const byte AllDictionariesPrefixByte = 2;
@@ -69,6 +70,7 @@ public class ObjectDB : IObjectDB
     {
         FieldHandlerFactory = new DefaultODBFieldHandlerFactory(this);
         TypeConvertorGenerator = DefaultTypeConvertorGenerator.Instance;
+        TypeConverterFactory = new DefaultTypeConverterFactory();
     }
 
     /// Use only for tests of upgrade compatibility in same process, never use in production code
@@ -379,6 +381,9 @@ public class ObjectDB : IObjectDB
     }
 
     public ITypeConvertorGenerator TypeConvertorGenerator { get; set; }
+
+    public ITypeConverterFactory TypeConverterFactory { get; set; }
+
     public IFieldHandlerFactory FieldHandlerFactory { get; set; }
     public IFieldHandlerLogger? FieldHandlerLogger { get; set; }
 

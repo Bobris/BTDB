@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using BTDB.IL;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
@@ -73,5 +75,57 @@ public static class Extensions
                 }
             }
         }
+    }
+
+    public static FieldHandlerLoad BuildConvertingLoader(this IFieldHandler handler, Type fromType, Type toType,
+        ITypeConverterFactory typeConverterFactory)
+    {
+        var converter = typeConverterFactory.GetConverter(fromType, toType);
+        if (converter == null)
+        {
+            throw new NotSupportedException(
+                $"Cannot load {handler.Name} and convert {fromType.ToSimpleName()} to {toType.ToSimpleName()}");
+        }
+
+        var loader = handler.Load(fromType, typeConverterFactory);
+        if (fromType.IsValueType && !RawData.MethodTableOf(fromType).ContainsGCPointers &&
+            RawData.GetSizeAndAlign(fromType).Size <= 16)
+        {
+            return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+            {
+                Int128 temp = 0;
+                loader(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref temp));
+                converter(ref Unsafe.As<Int128, byte>(ref temp), ref value);
+            };
+        }
+
+        throw new NotImplementedException("TODO loading convertor from " + fromType.ToSimpleName() + " to " +
+                                          toType.ToSimpleName());
+    }
+
+    public static FieldHandlerSave BuildConvertingSaver(this IFieldHandler fieldHandler, Type from, Type to,
+        ITypeConverterFactory typeConverterFactory)
+    {
+        var converter = typeConverterFactory.GetConverter(from, to);
+        if (converter == null)
+        {
+            throw new NotSupportedException(
+                $"Cannot save {fieldHandler.Name} and convert {from.ToSimpleName()} to {to.ToSimpleName()}");
+        }
+
+        var saver = fieldHandler.Save(to, typeConverterFactory);
+        if (from.IsValueType && !RawData.MethodTableOf(to).ContainsGCPointers &&
+            RawData.GetSizeAndAlign(to).Size <= 16)
+        {
+            return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+            {
+                Int128 temp = 0;
+                converter(ref value, ref Unsafe.As<Int128, byte>(ref temp));
+                saver(ref writer, ctx, ref Unsafe.As<Int128, byte>(ref temp));
+            };
+        }
+
+        throw new NotImplementedException("TODO saving convertor from " + from.ToSimpleName() + " to " +
+                                          to.ToSimpleName());
     }
 }

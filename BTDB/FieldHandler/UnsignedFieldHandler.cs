@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
@@ -9,7 +10,15 @@ public class UnsignedFieldHandler : SimpleFieldHandlerBase
         typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!,
         typeof(MemReader).GetMethod(nameof(MemReader.SkipVUInt64))!,
         typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt64))!,
-        (ref MemReader reader, IReaderCtx? ctx) => reader.SkipVUInt64())
+        (ref MemReader reader, IReaderCtx? _) => reader.SkipVUInt64(),
+        (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+        {
+            Unsafe.As<byte, ulong>(ref value) = reader.ReadVUInt64();
+        },
+        (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+        {
+            writer.WriteVUInt64(Unsafe.As<byte, ulong>(ref value));
+        })
     {
     }
 

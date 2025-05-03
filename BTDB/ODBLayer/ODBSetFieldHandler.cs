@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
@@ -186,9 +187,19 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
             .Call(instanceType.GetMethod(nameof(ODBSet<int>.DoSave))!);
     }
 
+    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new NotImplementedException();
+    }
+
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
     {
         reader.SkipVUInt64();
+    }
+
+    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new NotImplementedException();
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
@@ -235,16 +246,6 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
     public IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers()
     {
         yield return _keysHandler;
-    }
-
-    public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
-    {
-        ilGenerator
-            .Do(pushCtx)
-            .Castclass(typeof(IDBReaderCtx))
-            .Do(pushReader)
-            .Call(typeof(MemReader).GetMethod(nameof(MemReader.ReadVUInt64))!)
-            .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
     }
 
     public void FreeContent(ref MemReader reader, IReaderCtx? ctx)

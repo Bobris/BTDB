@@ -4,7 +4,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
 
-public class DBIndirect<T> : IIndirect<T> where T : class
+public class DBIndirect<T> : IDBIndirect, IIndirect<T> where T : class
 {
     IObjectDBTransaction? _transaction;
     readonly ulong _oid;
@@ -34,6 +34,7 @@ public class DBIndirect<T> : IIndirect<T> where T : class
                 _value = _transaction.Get(_oid) as T;
                 _transaction = null;
             }
+
             return _value;
         }
         set
@@ -43,11 +44,11 @@ public class DBIndirect<T> : IIndirect<T> where T : class
         }
     }
 
-    [NotStored]
-    public ulong Oid => _oid;
+    [NotStored] public ulong Oid => _oid;
 
-    [NotStored]
-    public object? ValueAsObject => _value;
+    [NotStored] public object? ValueAsObject => _value;
+
+    [NotStored] public IObjectDBTransaction? Transaction => _transaction;
 
     public static void SaveImpl(ref MemWriter writer, IWriterCtx writerCtx, object obj)
     {
@@ -59,6 +60,7 @@ public class DBIndirect<T> : IIndirect<T> where T : class
                 {
                     throw new BTDBException("Transaction does not match when saving nonmaterialized IIndirect");
                 }
+
                 writer.WriteVInt64((long)ind._oid);
                 return;
             }
@@ -69,6 +71,7 @@ public class DBIndirect<T> : IIndirect<T> where T : class
             writerCtx.WriteNativeObjectPreventInline(ref writer, ind2.Value);
             return;
         }
+
         writerCtx.WriteNativeObjectPreventInline(ref writer, obj);
     }
 

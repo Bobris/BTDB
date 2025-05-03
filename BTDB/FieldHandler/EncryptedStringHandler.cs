@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using BTDB.Encrypted;
 using BTDB.IL;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
@@ -49,9 +51,35 @@ public class EncryptedStringHandler : IFieldHandler
         ilGenerator.Callvirt(typeof(IWriterCtx).GetMethod(nameof(IWriterCtx.WriteEncryptedString))!);
     }
 
+    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (asType == typeof(EncryptedString) || asType == typeof(string))
+        {
+            return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+            {
+                Unsafe.As<byte, EncryptedString>(ref value) = ctx!.ReadEncryptedString(ref reader);
+            };
+        }
+
+        return this.BuildConvertingLoader(typeof(EncryptedString), asType, typeConverterFactory);
+    }
+
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
     {
         ctx!.SkipEncryptedString(ref reader);
+    }
+
+    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (asType == typeof(EncryptedString) || asType == typeof(string))
+        {
+            return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+            {
+                ctx!.WriteEncryptedString(ref writer, Unsafe.As<byte, EncryptedString>(ref value));
+            };
+        }
+
+        return this.BuildConvertingSaver(asType, typeof(EncryptedString), typeConverterFactory);
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
@@ -121,9 +149,19 @@ public class EncryptedStringHandler : IFieldHandler
                         _fieldHandler.HandledType())!));
         }
 
+        public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+        {
+            throw new InvalidOperationException();
+        }
+
         public void Skip(ref MemReader reader, IReaderCtx? ctx)
         {
             ctx!.SkipEncryptedString(ref reader);
+        }
+
+        public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+        {
+            throw new InvalidOperationException();
         }
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)

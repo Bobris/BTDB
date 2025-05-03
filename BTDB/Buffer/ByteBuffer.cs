@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace BTDB.Buffer;
 
-public struct ByteBuffer: IEquatable<ByteBuffer>
+public struct ByteBuffer : IEquatable<ByteBuffer>
 {
     public readonly bool Equals(ByteBuffer other)
     {
@@ -41,9 +41,9 @@ public struct ByteBuffer: IEquatable<ByteBuffer>
         return NewAsync(buffer.ToArray());
     }
 
-    public static ByteBuffer NewAsync(byte[] buffer)
+    public static ByteBuffer NewAsync(byte[]? buffer)
     {
-        return new ByteBuffer(buffer, 0, buffer.Length);
+        return new ByteBuffer(buffer, 0, buffer?.Length ?? 0);
     }
 
     public static ByteBuffer NewAsync(byte[]? buffer, int offset, int length)

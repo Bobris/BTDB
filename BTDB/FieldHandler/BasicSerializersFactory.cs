@@ -1,7 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using BTDB.EventStoreLayer;
 using BTDB.StreamLayer;
+using Microsoft.Extensions.Primitives;
 
 namespace BTDB.FieldHandler;
 
@@ -15,27 +18,65 @@ public static class BasicSerializersFactory
             typeof(MemReader).GetMethod(nameof(MemReader.ReadStringOrdered))!,
             typeof(MemReader).GetMethod(nameof(MemReader.SkipStringOrdered))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteStringOrdered))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.SkipStringOrdered());
+            (ref MemReader reader, IReaderCtx? _) => reader.SkipStringOrdered(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, string>(ref value) = reader.ReadStringOrdered();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteStringOrdered(Unsafe.As<byte, string>(ref value));
+            }
+        );
         Add(fh, des, "String",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadString))!,
             typeof(MemReader).GetMethod(nameof(MemReader.SkipString))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteString))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.SkipString());
+            (ref MemReader reader, IReaderCtx? _) => reader.SkipString(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, string>(ref value) = reader.ReadString();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteString(Unsafe.As<byte, string>(ref value));
+            });
         Add(fh, des, "UInt8",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadUInt8))!,
             typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteUInt8))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.Skip1Byte());
+            (ref MemReader reader, IReaderCtx? _) => reader.Skip1Byte(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, byte>(ref value) = reader.ReadUInt8();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteUInt8(Unsafe.As<byte, byte>(ref value));
+            });
         AddJustOrderable(fh, "Int8Orderable",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadInt8Ordered))!,
             typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteInt8Ordered))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.Skip1Byte());
+            (ref MemReader reader, IReaderCtx? _) => reader.Skip1Byte()
+            , (ref MemReader reader, IReaderCtx? _, ref byte value) => { Unsafe.As<byte, sbyte>(ref value) = reader.ReadInt8Ordered(); },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteInt8Ordered(Unsafe.As<byte, sbyte>(ref value));
+            });
         Add(fh, des, "Int8",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadInt8))!,
             typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteInt8))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.Skip1Byte());
+            (ref MemReader reader, IReaderCtx? _) => reader.Skip1Byte(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, sbyte>(ref value) = reader.ReadInt8();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteInt8(Unsafe.As<byte, sbyte>(ref value));
+            });
         fh.Add(new SignedFieldHandler());
         fh.Add(new UnsignedFieldHandler());
         AddDescriptor(des, "VInt16",
@@ -66,43 +107,107 @@ public static class BasicSerializersFactory
             typeof(MemReader).GetMethod(nameof(MemReader.ReadBool))!,
             typeof(MemReader).GetMethod(nameof(MemReader.Skip1Byte))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteBool))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.Skip1Byte());
+            (ref MemReader reader, IReaderCtx? _) => reader.Skip1Byte(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, bool>(ref value) = reader.ReadBool();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteBool(Unsafe.As<byte, bool>(ref value));
+            });
         fh.Add(new ForbidOrderableFloatsFieldHandler());
         Add(fh, des, "Single",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadSingle))!,
             typeof(MemReader).GetMethod(nameof(MemReader.Skip4Bytes))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteSingle))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.Skip4Bytes());
+            (ref MemReader reader, IReaderCtx? _) => reader.Skip4Bytes(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, float>(ref value) = reader.ReadSingle();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteSingle(Unsafe.As<byte, float>(ref value));
+            });
         Add(fh, des, "Double",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadDouble))!,
             typeof(MemReader).GetMethod(nameof(MemReader.Skip8Bytes))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteDouble))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.Skip8Bytes());
+            (ref MemReader reader, IReaderCtx? _) => reader.Skip8Bytes(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, double>(ref value) = reader.ReadDouble();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteDouble(Unsafe.As<byte, double>(ref value));
+            });
         Add(fh, des, "Decimal",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadDecimal))!,
             typeof(MemReader).GetMethod(nameof(MemReader.SkipDecimal))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteDecimal))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.SkipDecimal());
+            (ref MemReader reader, IReaderCtx? _) => reader.SkipDecimal(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, decimal>(ref value) = reader.ReadDecimal();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteDecimal(Unsafe.As<byte, decimal>(ref value));
+            });
         AddJustOrderable(fh, "DateTime",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadDateTime))!,
             typeof(MemReader).GetMethod(nameof(MemReader.Skip8Bytes))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteDateTimeForbidUnspecifiedKind))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.Skip8Bytes());
+            (ref MemReader reader, IReaderCtx? _) => reader.Skip8Bytes(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, DateTime>(ref value) = reader.ReadDateTime();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteDateTimeForbidUnspecifiedKind(Unsafe.As<byte, DateTime>(ref value));
+            });
         Add(fh, des, "DateTime",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadDateTime))!,
             typeof(MemReader).GetMethod(nameof(MemReader.Skip8Bytes))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteDateTime))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.Skip8Bytes());
+            (ref MemReader reader, IReaderCtx? _) => reader.Skip8Bytes(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, DateTime>(ref value) = reader.ReadDateTime();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteDateTime(Unsafe.As<byte, DateTime>(ref value));
+            });
         Add(fh, des, "TimeSpan",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadTimeSpan))!,
             typeof(MemReader).GetMethod(nameof(MemReader.SkipVInt64))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteTimeSpan))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.SkipVInt64());
+            (ref MemReader reader, IReaderCtx? _) => reader.SkipVInt64(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, TimeSpan>(ref value) = reader.ReadTimeSpan();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteTimeSpan(Unsafe.As<byte, TimeSpan>(ref value));
+            });
         Add(fh, des, "Guid",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadGuid))!,
             typeof(MemReader).GetMethod(nameof(MemReader.SkipGuid))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteGuid))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.SkipGuid());
+            (ref MemReader reader, IReaderCtx? _) => reader.SkipGuid(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, Guid>(ref value) = reader.ReadGuid();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteGuid(Unsafe.As<byte, Guid>(ref value));
+            });
         fh.Add(new ByteArrayLastFieldHandler());
         fh.Add(new ByteArrayFieldHandler());
         des.Add(new ByteArrayTypeDescriptor());
@@ -110,12 +215,28 @@ public static class BasicSerializersFactory
             typeof(MemReader).GetMethod(nameof(MemReader.ReadIPAddress))!,
             typeof(MemReader).GetMethod(nameof(MemReader.SkipIPAddress))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteIPAddress))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.SkipIPAddress());
+            (ref MemReader reader, IReaderCtx? _) => reader.SkipIPAddress(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, System.Net.IPAddress>(ref value) = reader.ReadIPAddress();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteIPAddress(Unsafe.As<byte, System.Net.IPAddress>(ref value));
+            });
         Add(fh, des, "Version",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadVersion))!,
             typeof(MemReader).GetMethod(nameof(MemReader.SkipVersion))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVersion))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.SkipVersion());
+            (ref MemReader reader, IReaderCtx? _) => reader.SkipVersion(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, Version>(ref value) = reader.ReadVersion();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteVersion(Unsafe.As<byte, Version>(ref value));
+            });
         fh.Add(new OrderedEncryptedStringHandler());
         fh.Add(new EncryptedStringHandler());
         des.Add(new EncryptedStringDescriptor());
@@ -123,21 +244,38 @@ public static class BasicSerializersFactory
             typeof(MemReader).GetMethod(nameof(MemReader.ReadDateTimeOffset))!,
             typeof(MemReader).GetMethod(nameof(MemReader.SkipDateTimeOffset))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteDateTimeOffset))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.SkipDateTimeOffset());
+            (ref MemReader reader, IReaderCtx? _) => reader.SkipDateTimeOffset(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, DateTimeOffset>(ref value) = reader.ReadDateTimeOffset();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteDateTimeOffset(Unsafe.As<byte, DateTimeOffset>(ref value));
+            });
         Add(fh, des, "StringValues",
             typeof(MemReader).GetMethod(nameof(MemReader.ReadStringValues))!,
             typeof(MemReader).GetMethod(nameof(MemReader.SkipStringValues))!,
             typeof(MemWriter).GetMethod(nameof(MemWriter.WriteStringValues))!,
-            (ref MemReader reader, IReaderCtx? ctx) => reader.SkipStringValues());
+            (ref MemReader reader, IReaderCtx? _) => reader.SkipStringValues(),
+            (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, StringValues>(ref value) = reader.ReadStringValues();
+            },
+            (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteStringValues(Unsafe.As<byte, StringValues>(ref value));
+            });
         FieldHandlers = fh.ToArray();
         TypeDescriptors = des.ToArray();
     }
 
     static void AddJustOrderable(ICollection<IFieldHandler> fh, string name, MethodInfo readMethodInfo,
-        MethodInfo skipMethodInfo, MethodInfo writeMethodInfo, SkipReaderCtxFunc skipReader)
+        MethodInfo skipMethodInfo, MethodInfo writeMethodInfo, SkipReaderCtxFunc skipReader,
+        FieldHandlerLoad loaderReader, FieldHandlerSave saverWriter)
     {
         fh.Add(new SimpleFieldHandlerJustOrderableBase(name, readMethodInfo, skipMethodInfo, writeMethodInfo,
-            skipReader));
+            skipReader, loaderReader, saverWriter));
     }
 
     static void AddDescriptor(ICollection<ITypeDescriptor> des, string name, MethodInfo readMethodInfo,
@@ -147,9 +285,11 @@ public static class BasicSerializersFactory
     }
 
     static void Add(ICollection<IFieldHandler> fh, ICollection<ITypeDescriptor> des, string name,
-        MethodInfo readMethodInfo, MethodInfo skipMethodInfo, MethodInfo writeMethodInfo, SkipReaderCtxFunc skipReader)
+        MethodInfo readMethodInfo, MethodInfo skipMethodInfo, MethodInfo writeMethodInfo, SkipReaderCtxFunc skipReader,
+        FieldHandlerLoad loaderReader, FieldHandlerSave saverWriter)
     {
-        fh.Add(new SimpleFieldHandlerBase(name, readMethodInfo, skipMethodInfo, writeMethodInfo, skipReader));
+        fh.Add(new SimpleFieldHandlerBase(name, readMethodInfo, skipMethodInfo, writeMethodInfo, skipReader,
+            loaderReader, saverWriter));
         des.Add(new SimpleTypeDescriptor(name, readMethodInfo, skipMethodInfo, writeMethodInfo));
     }
 

@@ -6,7 +6,7 @@ namespace BTDB.FieldHandler;
 public interface IReaderCtx
 {
     // Returns true if actual content needs to be deserialized
-    bool ReadObject(ref MemReader reader, out object @object);
+    bool ReadObject(ref MemReader reader, out object? @object);
 
     // Register last deserialized object
     void RegisterObject(object @object);

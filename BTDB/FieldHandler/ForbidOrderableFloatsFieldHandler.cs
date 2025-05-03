@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BTDB.IL;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
@@ -40,7 +41,17 @@ public class ForbidOrderableFloatsFieldHandler : IFieldHandler
         throw new NotSupportedException();
     }
 
+    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new NotSupportedException();
+    }
+
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        throw new NotSupportedException();
+    }
+
+    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
     {
         throw new NotSupportedException();
     }
