@@ -320,6 +320,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         WriteStartOfNewTransactionLogFile();
                         _fileWithTransactionLog!.HardFlush();
                         _fileWithTransactionLog.Truncate();
+                        // reinitialize MemWriter because it could be garbage after Truncate
+                        _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
                         UpdateTransactionLogInBTreeRoot(_lastCommitted);
                     }
 
@@ -1264,6 +1266,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
                 _writerWithTransactionLog.Flush();
                 _fileWithTransactionLog!.Truncate();
+                // Reinitialize MemWriter because its content could be invalid due to truncation
+                _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
             }
 
             lock (_writeLock)
