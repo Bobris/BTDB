@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.7.1
+
 ### Fixed
 
 Crash when using OnDiskMemoryMappedFileCollection with BTreeKeyValueDB.
