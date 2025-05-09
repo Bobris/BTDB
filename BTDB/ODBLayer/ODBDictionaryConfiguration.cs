@@ -6,7 +6,7 @@ namespace BTDB.ODBLayer;
 
 public class ODBDictionaryConfiguration
 {
-    static ODBDictionaryConfiguration[] _instances = Array.Empty<ODBDictionaryConfiguration>();
+    static ODBDictionaryConfiguration[] _instances = [];
 
     internal static int Register(IFieldHandler keyHandler, Type keyType, IFieldHandler? valueHandler, Type? valueType)
     {

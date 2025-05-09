@@ -408,7 +408,7 @@ public class KeyValueSpeedTest
 
     public interface IBtdbTestTable : IRelation<BtdbTest>
     {
-        IEnumerator<BtdbTest> FindByName(ulong companyId, string testName);
+        IEnumerable<BtdbTest> FindByName(ulong companyId, string testName);
     }
 
     void CreateBtdbTestInserts(int count)
@@ -454,10 +454,10 @@ public class KeyValueSpeedTest
         //CreateTestDB(9999999);
         //OpenDBSpeedTest();
         //CheckDBTest(9999999);
-        //HugeTest();
+        HugeTest();
         //DoWork5(false);
         //DoWork5(true);
         //DoWork5ReadCheck();
-        CreateBtdbTestInserts(10000000);
+        //CreateBtdbTestInserts(10000000);
     }
 }

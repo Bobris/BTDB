@@ -25,7 +25,7 @@ static class Program
         //new RxSpeedTest().Run();
         //new ComplexServiceTest().Run();
         //new KeyValueSpeedTest(KVType.Managed, false, true).Run();
-        //new KeyValueSpeedTest(KVType.BTree, false, true).Run();
+        new KeyValueSpeedTest(KVType.BTree, false, true).Run();
         //new EventStorageSpeedTestAwaitable().Run();
         //new EventStorageSpeedTestDisruptor().Run();
         //new EventStorageSpeedTest().Run();
@@ -52,6 +52,6 @@ static class Program
         //Console.CancelKeyPress += delegate { cts.Cancel(); };
         //new AutoSplitSizeTest().Run("/tmp/db", cts.Token);
         //BenchmarkRunner.Run<BenchLockTest>();
-        new GatherSpeedTest().Run();
+        //new GatherSpeedTest().Run();
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
+using BTDB;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.EventStore2Layer;
@@ -98,14 +99,13 @@ namespace BTDBTest
             personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" });
             personSimpleTable.Insert(new PersonSimple { TenantId = 2, Email = "nospam@nospam.cz", Name = "Boris" });
             var ex =
-                Assert.Throws<BTDBException>(
-                    () =>
-                        personSimpleTable.Insert(new PersonSimple
-                        {
-                            TenantId = 1,
-                            Email = "nospam@nospam.cz",
-                            Name = "Boris"
-                        }));
+                Assert.Throws<BTDBException>(() =>
+                    personSimpleTable.Insert(new PersonSimple
+                    {
+                        TenantId = 1,
+                        Email = "nospam@nospam.cz",
+                        Name = "Boris"
+                    }));
             Assert.Contains("duplicate", ex.Message);
             tr.Commit();
         }
@@ -2091,7 +2091,7 @@ namespace BTDBTest
                 var rule1 = new DeliveryRuleV1 { Id = 11, Status = 300 };
                 ruleTable.Insert(rule1);
 
-                var rule2 = new DeliveryRuleV1 { Id = 12, Status = 200, Activities = new[] { new Activity() } };
+                var rule2 = new DeliveryRuleV1 { Id = 12, Status = 200, Activities = [new()] };
                 ruleTable.Insert(rule2);
 
                 tr.Commit();
@@ -3053,7 +3053,8 @@ namespace BTDBTest
 
         public interface IContentVersionTable : IRelation<ContentVersion>
         {
-            IEnumerable<ContentVersion> ListByState(ulong companyId, ulong contentId, ContentVersionState state, AdvancedEnumeratorParam<uint> param);
+            IEnumerable<ContentVersion> ListByState(ulong companyId, ulong contentId, ContentVersionState state,
+                AdvancedEnumeratorParam<uint> param);
         }
 
         [Fact]
@@ -3061,10 +3062,13 @@ namespace BTDBTest
         {
             using var tr = _db.StartTransaction();
             var table = tr.GetRelation<IContentVersionTable>();
-            table.Upsert(new ContentVersion(){CompanyId = 1, ContentId = 2, State = ContentVersionState.Published, Version = 501});
-            table.Upsert(new ContentVersion(){CompanyId = 1, ContentId = 2, State = ContentVersionState.Published, Version = 502});
+            table.Upsert(new ContentVersion()
+                { CompanyId = 1, ContentId = 2, State = ContentVersionState.Published, Version = 501 });
+            table.Upsert(new ContentVersion()
+                { CompanyId = 1, ContentId = 2, State = ContentVersionState.Published, Version = 502 });
             int count = 0;
-            var enumerator = table.ListByState(1,2, ContentVersionState.Published, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Descending));
+            var enumerator = table.ListByState(1, 2, ContentVersionState.Published,
+                new AdvancedEnumeratorParam<uint>(EnumerationOrder.Descending));
             foreach (var contentVersion in enumerator)
             {
                 count++;
@@ -3073,7 +3077,6 @@ namespace BTDBTest
             }
 
             Assert.Equal(2, count);
-
         }
 
         [Fact]
@@ -3168,12 +3171,13 @@ namespace BTDBTest
 
         public class PspApiPackageForDistribution
         {
-            [PrimaryKey(Order = 1)]
-            public ulong CompanyId { get; set; }
+            [PrimaryKey(Order = 1)] public ulong CompanyId { get; set; }
+
             [PrimaryKey(Order = 2)]
             [SecondaryKey("ServiceProviderId", Order = 1)]
             [SecondaryKey("PackageId", Order = 1)]
             public ulong ServiceProviderId { get; set; }
+
             [PrimaryKey(Order = 3)]
             [SecondaryKey("PackageId", Order = 2)]
             [SecondaryKey("ServiceProviderId", Order = 3)]
@@ -3186,7 +3190,8 @@ namespace BTDBTest
 
         public interface IPspApiPackageForDistributionTable : IRelation<PspApiPackageForDistribution>
         {
-            IOrderedDictionaryEnumerator<DateTime, PspApiPackageForDistribution> ListByServiceProviderId(ulong serviceProviderId, AdvancedEnumeratorParam<DateTime> param);
+            IOrderedDictionaryEnumerator<DateTime, PspApiPackageForDistribution> ListByServiceProviderId(
+                ulong serviceProviderId, AdvancedEnumeratorParam<DateTime> param);
         }
 
         [Fact]
@@ -3207,17 +3212,18 @@ namespace BTDBTest
                 CompanyId = 1,
                 ServiceProviderId = 1,
                 PackageId = "2",
-                CreatedAt = now  // should not be found
+                CreatedAt = now // should not be found
             });
             rel.Upsert(new PspApiPackageForDistribution
             {
                 CompanyId = 1,
                 ServiceProviderId = 1,
                 PackageId = "3",
-                CreatedAt = now.AddSeconds(1)  // should be found
+                CreatedAt = now.AddSeconds(1) // should be found
             });
 
-            using var enumerator = rel.ListByServiceProviderId(1, new(EnumerationOrder.Ascending, now, KeyProposition.Excluded, default, KeyProposition.Ignored));
+            using var enumerator = rel.ListByServiceProviderId(1,
+                new(EnumerationOrder.Ascending, now, KeyProposition.Excluded, default, KeyProposition.Ignored));
             Assert.Equal(1u, enumerator.Count);
         }
 
@@ -3245,7 +3251,8 @@ namespace BTDBTest
                 CreatedAt = time2
             });
 
-            using var enumerator = rel.ListByServiceProviderId(1, new(EnumerationOrder.Ascending, time2, KeyProposition.Excluded, default, KeyProposition.Ignored));
+            using var enumerator = rel.ListByServiceProviderId(1,
+                new(EnumerationOrder.Ascending, time2, KeyProposition.Excluded, default, KeyProposition.Ignored));
             Assert.Equal(0u, enumerator.Count);
         }
     }

@@ -5,6 +5,7 @@ using BTDB.ODBLayer;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using BTDB;
 using Xunit;
 
 namespace BTDBTest;
@@ -74,6 +75,7 @@ public class FindUnusedKeysTest : IDisposable
         Assert.False(string.IsNullOrEmpty(FindLeaks()));
     }
 
+    [Generate]
     public class IndirectDuty
     {
         public IIndirect<ODBIteratorTest.Duty> Duty { get; set; }
@@ -90,6 +92,7 @@ public class FindUnusedKeysTest : IDisposable
             duty.Duty.Value = new ODBIteratorTest.Duty { Name = "Read" };
             tr.Commit();
         }
+
         using (var tr = _db.StartTransaction())
         {
             var duty = tr.Singleton<IndirectDuty>();
@@ -99,12 +102,14 @@ public class FindUnusedKeysTest : IDisposable
             tr.Store(duty);
             tr.Commit();
         }
+
         if (deleteCorrectly)
             AssertNoLeaksInDb();
         else
             AssertLeaksInDb();
     }
 
+    [Generate]
     public class Directory
     {
         public IDictionary<string, ODBIteratorTest.JobMap> Dir { get; set; }
@@ -129,6 +134,7 @@ public class FindUnusedKeysTest : IDisposable
                 visitor.ImportAllKeys(tr);
                 visitor.Iterate(tr);
             }
+
             var report = DumpUnseenKeys(visitor, "\r\n");
             this.Assent(report);
 
@@ -138,6 +144,7 @@ public class FindUnusedKeysTest : IDisposable
                 tr.Commit();
             }
         }
+
         ReopenDb();
 
         AssertNoLeaksInDb();
@@ -154,7 +161,11 @@ public class FindUnusedKeysTest : IDisposable
         using (var tr = _db.StartTransaction())
         {
             var sports = tr.Singleton<Directory>();
-            sports.Dir[sport] = new ODBIteratorTest.JobMap { Jobs = new Dictionary<ulong, ODBIteratorTest.Job> { [0] = new ODBIteratorTest.Job { Duty = new ODBIteratorTest.Duty { Name = activity } } } };
+            sports.Dir[sport] = new ODBIteratorTest.JobMap
+            {
+                Jobs = new Dictionary<ulong, ODBIteratorTest.Job>
+                    { [0] = new ODBIteratorTest.Job { Duty = new ODBIteratorTest.Duty { Name = activity } } }
+            };
             tr.Commit();
         }
     }
@@ -171,6 +182,7 @@ public class FindUnusedKeysTest : IDisposable
             jobs.Jobs.Remove(1);
             tr.Commit();
         }
+
         AssertNoLeaksInDb();
     }
 
@@ -186,6 +198,7 @@ public class FindUnusedKeysTest : IDisposable
             builder.Append(" Value len:");
             builder.Append(unseenKey.ValueSize);
         }
+
         return builder.ToString();
     }
 

@@ -99,6 +99,16 @@ public static class Extensions
             };
         }
 
+        if (!fromType.IsValueType)
+        {
+            return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+            {
+                object temp = null!;
+                loader(ref reader, ctx, ref Unsafe.As<object, byte>(ref temp));
+                converter(ref Unsafe.As<object, byte>(ref temp), ref value);
+            };
+        }
+
         throw new NotImplementedException("TODO loading convertor from " + fromType.ToSimpleName() + " to " +
                                           toType.ToSimpleName());
     }
@@ -122,6 +132,16 @@ public static class Extensions
                 Int128 temp = 0;
                 converter(ref value, ref Unsafe.As<Int128, byte>(ref temp));
                 saver(ref writer, ctx, ref Unsafe.As<Int128, byte>(ref temp));
+            };
+        }
+
+        if (!from.IsValueType)
+        {
+            return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+            {
+                object temp = null!;
+                converter(ref value, ref Unsafe.As<object, byte>(ref temp));
+                saver(ref writer, ctx, ref Unsafe.As<object, byte>(ref temp));
             };
         }
 

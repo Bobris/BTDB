@@ -12,55 +12,37 @@ static file class CollectionRegistrations
     {
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
-            Type = typeof(global::System.Collections.Generic.IList<string>),
-            ElementKeyType = typeof(string),
+            Type = typeof(global::System.Collections.Generic.IDictionary<int, global::System.Collections.Generic.IList<string>>),
+            ElementKeyType = typeof(int),
+            ElementValueType = typeof(global::System.Collections.Generic.IList<string>),
             Creator = &Create1,
-            Adder = &Add1
+            AdderKeyValue = &Add1
         });
 
         static object Create1(uint capacity)
         {
-            return new global::System.Collections.Generic.List<string>((int)capacity);
-        }
-
-        static void Add1(object c, ref byte value)
-        {
-            Unsafe.As<global::System.Collections.Generic.List<string>>(c).Add(Unsafe.As<byte, string>(ref value));
-        }
-
-        BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
-        {
-            Type = typeof(global::System.Collections.Generic.IDictionary<int, global::System.Collections.Generic.IList<string>>),
-            ElementKeyType = typeof(int),
-            ElementValueType = typeof(global::System.Collections.Generic.IList<string>),
-            Creator = &Create2,
-            AdderKeyValue = &Add2
-        });
-
-        static object Create2(uint capacity)
-        {
             return new global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.IList<string>>((int)capacity);
         }
 
-        static void Add2(object c, ref byte key, ref byte value)
+        static void Add1(object c, ref byte key, ref byte value)
         {
             Unsafe.As<global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.IList<string>>>(c).Add(Unsafe.As<byte, int>(ref key), Unsafe.As<byte, global::System.Collections.Generic.IList<string>>(ref value));
         }
 
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
-            Type = typeof(global::System.Collections.Generic.IReadOnlyList<string>),
+            Type = typeof(global::System.Collections.Generic.IList<string>),
             ElementKeyType = typeof(string),
-            Creator = &Create3,
-            Adder = &Add3
+            Creator = &Create2,
+            Adder = &Add2
         });
 
-        static object Create3(uint capacity)
+        static object Create2(uint capacity)
         {
             return new global::System.Collections.Generic.List<string>((int)capacity);
         }
 
-        static void Add3(object c, ref byte value)
+        static void Add2(object c, ref byte value)
         {
             Unsafe.As<global::System.Collections.Generic.List<string>>(c).Add(Unsafe.As<byte, string>(ref value));
         }
@@ -70,18 +52,36 @@ static file class CollectionRegistrations
             Type = typeof(global::System.Collections.Generic.IReadOnlyDictionary<int, global::System.Collections.Generic.IReadOnlyList<string>>),
             ElementKeyType = typeof(int),
             ElementValueType = typeof(global::System.Collections.Generic.IReadOnlyList<string>),
-            Creator = &Create4,
-            AdderKeyValue = &Add4
+            Creator = &Create3,
+            AdderKeyValue = &Add3
         });
 
-        static object Create4(uint capacity)
+        static object Create3(uint capacity)
         {
             return new global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.IReadOnlyList<string>>((int)capacity);
         }
 
-        static void Add4(object c, ref byte key, ref byte value)
+        static void Add3(object c, ref byte key, ref byte value)
         {
             Unsafe.As<global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.IReadOnlyList<string>>>(c).Add(Unsafe.As<byte, int>(ref key), Unsafe.As<byte, global::System.Collections.Generic.IReadOnlyList<string>>(ref value));
+        }
+
+        BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
+        {
+            Type = typeof(global::System.Collections.Generic.IReadOnlyList<string>),
+            ElementKeyType = typeof(string),
+            Creator = &Create4,
+            Adder = &Add4
+        });
+
+        static object Create4(uint capacity)
+        {
+            return new global::System.Collections.Generic.List<string>((int)capacity);
+        }
+
+        static void Add4(object c, ref byte value)
+        {
+            Unsafe.As<global::System.Collections.Generic.List<string>>(c).Add(Unsafe.As<byte, string>(ref value));
         }
 
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()

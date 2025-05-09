@@ -189,6 +189,19 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             .Castclass(_type);
     }
 
+    public FieldHandlerInit Init()
+    {
+        var genericArguments = _type!.GetGenericArguments();
+        var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
+        var configuration = ODBDictionaryConfiguration.Get(_configurationId);
+        return (IReaderCtx? ctx, ref byte value) =>
+        {
+            // TODO: Create source generator for this
+            Unsafe.As<byte, object>(ref value) =
+                Activator.CreateInstance(instanceType, ((IDBReaderCtx)ctx!).GetTransaction(), configuration);
+        };
+    }
+
     public void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         ilGenerator
@@ -210,7 +223,20 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
 
     public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
     {
-        throw new NotImplementedException();
+        if (!IsCompatibleWithStatic(asType, FieldHandlerOptions.None))
+            throw new BTDBException("Type " + asType.ToSimpleName() +
+                                    " is not compatible with ODBDictionaryFieldHandler");
+        var genericArguments = asType!.GetGenericArguments();
+        var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
+        var configurationId = GetConfigurationId(asType);
+        var configuration = ODBDictionaryConfiguration.Get(configurationId);
+        return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+        {
+            var dictId = reader.ReadVUInt64();
+            // TODO: Create source generator for this
+            Unsafe.As<byte, object>(ref value) =
+                Activator.CreateInstance(instanceType, ((IDBReaderCtx)ctx!).GetTransaction(), configuration, dictId);
+        };
     }
 
     public void Skip(ref MemReader reader, IReaderCtx? ctx)

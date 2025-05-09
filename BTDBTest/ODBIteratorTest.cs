@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Assent;
+using BTDB;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
@@ -467,6 +468,7 @@ public class ODBIteratorTest : IDisposable
         public int Type { get; set; }
     }
 
+    [Generate]
     public class ObjectWfd1
     {
         public Rule1 A { get; set; }
@@ -474,6 +476,7 @@ public class ODBIteratorTest : IDisposable
         public Rule1 C { get; set; }
     }
 
+    [Generate]
     public class ObjectWfd2
     {
         public Rule2 A { get; set; }

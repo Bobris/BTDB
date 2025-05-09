@@ -1,11 +1,5 @@
-using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using BTDB.Buffer;
-using BTDB.Collections;
 using BTDB.EventStore2Layer;
 using BTDB.EventStoreLayer;
 using BTDB.KVDBLayer;

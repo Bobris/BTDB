@@ -10,17 +10,8 @@ static file class StackAllocationRegistrations
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
-        BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof(int), &Allocate1);
+        BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof((string, string)), &Allocate1);
         static void Allocate1(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
-            {
-                int value;
-                ptr = (nint)(&value);
-                chain(ref ctx);
-                ptr = 0;
-            }
-
-        BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof((string, string)), &Allocate2);
-        static void Allocate2(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
             {
                 (string, string) value;
                 ptr = (nint)(&value);
@@ -28,8 +19,8 @@ static file class StackAllocationRegistrations
                 ptr = 0;
             }
 
-        BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof((string, int)), &Allocate3);
-        static void Allocate3(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
+        BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof((string, int)), &Allocate2);
+        static void Allocate2(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
             {
                 (string, int) value;
                 ptr = (nint)(&value);

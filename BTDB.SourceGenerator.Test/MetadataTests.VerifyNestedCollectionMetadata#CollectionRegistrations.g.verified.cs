@@ -12,39 +12,39 @@ static file class CollectionRegistrations
     {
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
-            Type = typeof(global::System.Collections.Generic.List<string>),
-            ElementKeyType = typeof(string),
+            Type = typeof(global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.List<string>>),
+            ElementKeyType = typeof(int),
+            ElementValueType = typeof(global::System.Collections.Generic.List<string>),
             Creator = &Create1,
-            Adder = &Add1
+            AdderKeyValue = &Add1
         });
 
         static object Create1(uint capacity)
         {
-            return new global::System.Collections.Generic.List<string>((int)capacity);
+            return new global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.List<string>>((int)capacity);
         }
 
-        static void Add1(object c, ref byte value)
+        static void Add1(object c, ref byte key, ref byte value)
         {
-            Unsafe.As<global::System.Collections.Generic.List<string>>(c).Add(Unsafe.As<byte, string>(ref value));
+            Unsafe.As<global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.List<string>>>(c).Add(Unsafe.As<byte, int>(ref key), Unsafe.As<byte, global::System.Collections.Generic.List<string>>(ref value));
         }
 
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
-            Type = typeof(global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.List<string>>),
-            ElementKeyType = typeof(int),
-            ElementValueType = typeof(global::System.Collections.Generic.List<string>),
+            Type = typeof(global::System.Collections.Generic.List<string>),
+            ElementKeyType = typeof(string),
             Creator = &Create2,
-            AdderKeyValue = &Add2
+            Adder = &Add2
         });
 
         static object Create2(uint capacity)
         {
-            return new global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.List<string>>((int)capacity);
+            return new global::System.Collections.Generic.List<string>((int)capacity);
         }
 
-        static void Add2(object c, ref byte key, ref byte value)
+        static void Add2(object c, ref byte value)
         {
-            Unsafe.As<global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.List<string>>>(c).Add(Unsafe.As<byte, int>(ref key), Unsafe.As<byte, global::System.Collections.Generic.List<string>>(ref value));
+            Unsafe.As<global::System.Collections.Generic.List<string>>(c).Add(Unsafe.As<byte, string>(ref value));
         }
     }
 }

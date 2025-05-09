@@ -312,4 +312,38 @@ public class RelationTests : GeneratorTestsBase
 
             """);
     }
+
+    [Fact]
+    public Task VerifyItAutomaticallyGeneratesMetadataForMemberTypes()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class DeliveryRuleV1
+            {
+                public DeliveryRuleV1()
+                {
+                    Status = 100;
+                }
+
+                public IList<Activity> Activities { get; set; }
+
+                [PrimaryKey(1)] public ulong Id { get; set; }
+
+                public int Status { get; set; }
+            }
+
+            public interface IDeliveryRuleTable : IRelation<DeliveryRuleV1>
+            {
+                void Insert(DeliveryRuleV1 job);
+            }
+
+            public class Activity
+            {
+                public ulong Id { get; set; }
+            }
+            """);
+    }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using BTDB;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -534,6 +535,7 @@ public class ObjectDbTableFreeContentTest : IDisposable
         public IIndirect<RawData> Data { get; set; }
     }
 
+    [Generate]
     public class RawData
     {
         public byte[] Data { get; set; }
@@ -656,6 +658,7 @@ public class ObjectDbTableFreeContentTest : IDisposable
         AssertNoLeaksInDb();
     }
 
+    [Generate]
     public interface INodes
     {
     }
@@ -928,6 +931,7 @@ public class ObjectDbTableFreeContentTest : IDisposable
         }
     }
 
+    [Generate]
     public class NodesBase
     {
     }

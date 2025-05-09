@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using Assent;
+using BTDB;
 using BTDB.Allocators;
 using BTDB.Buffer;
 using BTDB.Encrypted;
@@ -22,6 +23,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     IObjectDB _db;
     LeakDetectorWrapperAllocator _allocator;
 
+    [Generate]
     public class Person : IEquatable<Person>
     {
         public string Name { get; set; }
@@ -49,6 +51,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         [NotStored] public uint Age { get; set; }
     }
 
+    [Generate]
     public class PersonNew
     {
         public string Name { get; set; }
@@ -56,6 +59,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public ulong Age { get; set; }
     }
 
+    [Generate]
     public class Tree
     {
         public Tree Left { get; set; }
@@ -63,6 +67,8 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public string Content { get; set; }
     }
 
+    [Generate]
+    [PersistedName("Empty")] // to force generating metadata even though it is empty
     public class Empty
     {
     }
@@ -503,6 +509,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         Item2
     }
 
+    [Generate]
     public class VariousFieldTypes
     {
         public string StringField { get; set; }
@@ -622,6 +629,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         Assert.Equal("pAsSwOrD", o.EncryptedStringField);
     }
 
+    [Generate]
     public class Root
     {
         public IList<Person> Persons { get; set; }
@@ -649,6 +657,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class VariousLists
     {
         public IList<int> IntList { get; set; }
@@ -742,6 +751,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class InlineDictionary
     {
         public Dictionary<int, string> Int2String { get; set; }
@@ -808,6 +818,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class InlineList
     {
         public List<int> IntList { get; set; }
@@ -874,6 +885,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class SimpleDictionary
     {
         public IDictionary<int, string> Int2String { get; set; }
@@ -932,6 +944,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class SimpleOrderedDictionary
     {
         public IOrderedDictionary<int, string> Int2String { get; set; }
@@ -1001,6 +1014,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class SimpleOrderedSet
     {
         public IOrderedSet<int> IntSet { get; set; }
@@ -1064,6 +1078,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class ComplexDictionary
     {
         public IDictionary<string, Person> String2Person { get; set; }
@@ -1133,6 +1148,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class ByteArrayDictionary
     {
         public IDictionary<byte[], byte[]> Bytes2Bytes { get; set; }
@@ -1181,21 +1197,25 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         Item3
     }
 
+    [Generate]
     public class CTestEnum
     {
         public TestEnum E { get; set; }
     }
 
+    [Generate]
     public class CTestNullableEnum
     {
         public TestEnum? E { get; set; }
     }
 
+    [Generate]
     public class CTestEnumUlong
     {
         public TestEnumUlong E { get; set; }
     }
 
+    [Generate]
     public class CTestEnumEx
     {
         public TestEnumEx E { get; set; }
@@ -1339,6 +1359,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class ListOfInlinePersons
     {
         public List<Person> InlinePersons { get; set; }
@@ -1369,6 +1390,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class PersonWithPrivateAge
     {
         public string Name { get; set; }
@@ -1421,6 +1443,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class IndirectTree
     {
         public IIndirect<IndirectTree> Parent { get; set; }
@@ -1482,6 +1505,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class TwoComplexDictionary
     {
         public IDictionary<string, Person> String2Person { get; set; }
@@ -1519,11 +1543,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class ObjectWithDictString2ListOfUInt64
     {
         public IDictionary<string, List<ulong>> Dict { get; set; }
     }
 
+    [Generate]
     public class Object2WithDictString2ListOfUInt64
     {
         public IDictionary<string, List<ulong>> Dict { get; set; }
@@ -1550,11 +1576,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class ObjectWithDictInt2String
     {
         public IDictionary<int, string> Dict { get; set; }
     }
 
+    [Generate]
     public class Object2WithDictInt2String
     {
         public IDictionary<int, string> Dict { get; set; }
@@ -1718,6 +1746,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public IDictionary<CC1V2T3, long> Dict2 { get; set; }
     }
 
+    [Generate]
     public class CC1V2T1
     {
         public IDictionary<ulong, CC1V2T2> Dict { get; set; }
@@ -1750,6 +1779,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class IndirectValueDict
     {
         public IDictionary<int, IIndirect<Person>> Dict { get; set; }
@@ -1785,7 +1815,8 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
-    class WithIndirect
+    [Generate]
+    public class WithIndirect
     {
         public IIndirect<Person> Indirect { get; set; }
     }
@@ -1942,6 +1973,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public Rule1 C { get; set; }
     }
 
+    [Generate]
     public class ObjectWfd2
     {
         public Rule2 A { get; set; }
@@ -1987,11 +2019,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         B
     }
 
+    [Generate]
     public class ComplexMap
     {
         public IOrderedDictionary<ulong, IDictionary<MapEnum, int>> Items { get; set; }
     }
 
+    [Generate]
     public class ComplexMapEx
     {
         public IOrderedDictionary<ulong, IDictionary<MapEnumEx, int>> Items { get; set; }
@@ -2021,6 +2055,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class SimpleWithIndexer
     {
         public string OddName { get; set; }
@@ -2077,6 +2112,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class DictWithComplexCompoundKey
     {
         public IOrderedDictionary<LogId, string> Items { get; set; }
@@ -2132,6 +2168,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         [PersistedName("Item2")] ItemB
     }
 
+    [Generate]
     public class CTestRenamedEnum
     {
         [PersistedName("E")] public TestRenamedEnum EE { get; set; }
@@ -2171,11 +2208,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public Guid Guid { get; set; }
     }
 
+    [Generate]
     public class UlongGuidMap
     {
         public IOrderedDictionary<UlongGuidKey, string> Items { get; set; }
     }
 
+    [Generate]
     public class GuidMap
     {
         public IOrderedDictionary<Guid, string> Items { get; set; }
@@ -2437,6 +2476,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public string En { get; set; }
     }
 
+    [Generate]
     public class ConversionItemsNew
     {
         public IDictionary<ulong, ConversionItemNew> Items { get; set; }
@@ -2518,6 +2558,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public string Name { get; set; }
     }
 
+    [Generate]
     public class EmailAtttachments
     {
         public IOrderedDictionary<Key, IIndirect<Value>> Attachments { get; set; }
@@ -2554,6 +2595,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public string Email { get; set; }
     }
 
+    [Generate]
     public class ItemsDict
     {
         public IOrderedDictionary<UserKey, ulong> Items { get; set; }
@@ -2677,6 +2719,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         B = 2,
     }
 
+    [Generate]
     public class WithState1
     {
         public StateV1 State { get; set; }
@@ -2689,6 +2732,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         B2 = 2,
     }
 
+    [Generate]
     public class WithState2
     {
         public StateV2 State { get; set; }
@@ -2715,6 +2759,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class WithNullable
     {
         public int? FieldInt { get; set; }
@@ -2739,6 +2784,8 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
+    [PersistedName("WithNullableUpgraded")] // Just to force generation of metadata even though it is empty
     public class WithNullableUpgraded
     {
     }
@@ -2913,6 +2960,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public int I { get; set; }
     }
 
+    [Generate]
     public class RootWithoutObj
     {
         public int I { get; set; }
@@ -2951,6 +2999,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public int I { get; set; }
     }
 
+    [Generate]
     public class RootObj
     {
         public IFace? O { get; set; }

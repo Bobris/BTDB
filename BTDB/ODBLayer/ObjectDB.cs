@@ -375,6 +375,9 @@ public class ObjectDB : IObjectDB
         public IFieldHandlerFactory FieldHandlerFactory => _objectDB.FieldHandlerFactory;
 
         public ITypeConvertorGenerator TypeConvertorGenerator => _objectDB.TypeConvertorGenerator;
+
+        public ITypeConverterFactory TypeConverterFactory => _objectDB.TypeConverterFactory;
+
         public IContainer? Container => _objectDB.ActualOptions.Container;
         public DBOptions ActualOptions => _objectDB.ActualOptions;
         public IFieldHandlerLogger? FieldHandlerLogger => _objectDB.FieldHandlerLogger;

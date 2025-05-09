@@ -1,6 +1,7 @@
 ﻿using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System;
+using BTDB;
 using Xunit;
 
 namespace BTDBTest;
@@ -10,22 +11,26 @@ public class TypeRegistrationTest : IDisposable
     IKeyValueDB _lowDb;
     IObjectDB _db;
 
+    [Generate]
     public class Parent
     {
         public IChild Child { get; set; }
     }
 
+    [Generate]
     public class ParentOldVersion
     {
         public Child Child { get; set; }
     }
 
+    [Generate]
     public class ParentNewVersion
     {
         public IChild Child { get; set; }
         public ulong Something { get; set; }
     }
 
+    [Generate]
     public interface IChild
     {
         ulong Id { get; set; }
@@ -39,7 +44,6 @@ public class TypeRegistrationTest : IDisposable
     public class DerivedChild : Child
     {
     }
-
 
     public TypeRegistrationTest()
     {
@@ -74,6 +78,7 @@ public class TypeRegistrationTest : IDisposable
             oid = tr.Store(new Parent { Child = new DerivedChild { Id = 1 } });
             tr.Commit();
         }
+
         ReopenDb();
         _db.RegisterType(typeof(ParentNewVersion), "Parent");
         _db.RegisterType(typeof(DerivedChild));
@@ -96,6 +101,7 @@ public class TypeRegistrationTest : IDisposable
             oid = tr.Store(new ParentOldVersion { Child = new DerivedChild { Id = 1 } });
             tr.Commit();
         }
+
         ReopenDb();
         _db.RegisterType(typeof(ParentNewVersion), "Parent");
         _db.RegisterType(typeof(DerivedChild));

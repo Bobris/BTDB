@@ -258,4 +258,100 @@ public class MetadataTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyDerivedClassWithoutNewFieldsHasMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public interface IChild
+            {
+                ulong Id { get; set; }
+            }
+
+            public class Child : IChild
+            {
+                public ulong Id { get; set; }
+            }
+
+            public class DerivedChild : Child
+            {
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyIIndirectPropertyIsCorrectlyGenerated()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public BTDB.FieldHandler.IIndirect<Person> Friend { get; set; }
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyNestedValueInIDictionaryIsRegistered()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            namespace BTDBTest;
+
+            public class ObjectDbEventSerializeTest
+            {
+                public class Item
+                {
+                    public ulong Id { get; set; }
+                    public string Name { get; set; }
+                }
+
+                public class ObjWithIDictionary
+                {
+                    [PrimaryKey(1)] public uint TenantId { get; set; }
+
+                    public IDictionary<ulong, Item> Dict { get; set; }
+                }
+
+                public interface IObjWithIDictionaryTable : IRelation<ObjWithIDictionary>
+                {
+                }
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyNestedEmptyClassStillGenerateMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace BTDBTest;
+
+            public class ObjInObjV2
+            {
+            }
+
+            public class RowObjInObjV2
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                public ObjInObjV2 OO { get; set; }
+            }
+
+            public interface IRowObjInObjV2Table : IRelation<RowObjInObjV2>
+            {
+            }
+            """);
+    }
 }

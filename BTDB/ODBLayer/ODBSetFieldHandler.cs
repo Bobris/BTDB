@@ -61,14 +61,22 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
     void CreateConfiguration()
     {
         HandledType();
-        var keyAndValueTypes = _type!.GetGenericArguments();
-        _configurationId = ODBDictionaryConfiguration.Register(_keysHandler, keyAndValueTypes[0], null, null);
-        var cfg = ODBDictionaryConfiguration.Get(_configurationId);
+        _configurationId = GetConfigurationId(_type!);
+    }
+
+    int GetConfigurationId(Type type)
+    {
+        var keyAndValueTypes = type.GetGenericArguments();
+        var configurationId =
+            ODBDictionaryConfiguration.Register(_keysHandler, keyAndValueTypes[0], null, null);
+        var cfg = ODBDictionaryConfiguration.Get(configurationId);
         lock (cfg)
         {
             cfg.KeyReader ??= CreateReader(_keysHandler, keyAndValueTypes[0]);
             cfg.KeyWriter ??= CreateWriter(_keysHandler, keyAndValueTypes[0]);
         }
+
+        return configurationId;
     }
 
     object CreateWriter(IFieldHandler fieldHandler, Type realType)
@@ -168,6 +176,19 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
             .Castclass(_type);
     }
 
+    public FieldHandlerInit Init()
+    {
+        var genericArguments = _type!.GetGenericArguments();
+        var instanceType = typeof(ODBSet<>).MakeGenericType(genericArguments);
+        var configuration = ODBDictionaryConfiguration.Get(_configurationId);
+        return (IReaderCtx? ctx, ref byte value) =>
+        {
+            // TODO: Create source generator for this
+            Unsafe.As<byte, object>(ref value) =
+                Activator.CreateInstance(instanceType, ((IDBReaderCtx)ctx!).GetTransaction(), configuration);
+        };
+    }
+
     public void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
         ilGenerator
@@ -189,7 +210,20 @@ public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHan
 
     public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
     {
-        throw new NotImplementedException();
+        if (!IsCompatibleWithStatic(asType, FieldHandlerOptions.None))
+            throw new BTDBException("Type " + asType.ToSimpleName() +
+                                    " is not compatible with ODBSetFieldHandler");
+        var genericArguments = asType!.GetGenericArguments();
+        var instanceType = typeof(ODBSet<>).MakeGenericType(genericArguments);
+        var configurationId = GetConfigurationId(asType);
+        var configuration = ODBDictionaryConfiguration.Get(configurationId);
+        return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+        {
+            var dictId = reader.ReadVUInt64();
+            // TODO: Create source generator for this
+            Unsafe.As<byte, object>(ref value) =
+                Activator.CreateInstance(instanceType, ((IDBReaderCtx)ctx!).GetTransaction(), configuration, dictId);
+        };
     }
 
     public void Skip(ref MemReader reader, IReaderCtx? ctx)

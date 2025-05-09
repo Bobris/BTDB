@@ -160,6 +160,11 @@ public static class EmitHelpers
         if (type == typeof(decimal)) return "decimal";
         if (type == typeof(nint)) return "nint";
         if (type == typeof(nuint)) return "nuint";
+        if (type.DeclaringType != null)
+        {
+            return type.DeclaringType.ToSimpleName() + "." + type.Name;
+        }
+
         if (string.IsNullOrEmpty(type.Namespace)) return type.Name;
         return type.Namespace + "." + type.Name;
     }

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.Serialization;
 using BTDB.StreamLayer;
 
@@ -227,9 +228,83 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
             .Mark(realFinish);
     }
 
-    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    ref struct DictionaryKeyValueLoaderCtx
     {
-        throw new NotImplementedException();
+        internal nint KeyStoragePtr;
+        internal nint ValueStoragePtr;
+        internal object Object;
+        internal FieldHandlerLoad KeyLoader;
+        internal FieldHandlerLoad ValueLoader;
+        internal unsafe delegate*<object, ref byte, ref byte, void> Adder;
+        internal IReaderCtx Ctx;
+        internal ref MemReader Reader;
+        internal unsafe delegate*<ref byte, ref IntPtr, delegate*<ref byte, void>, void> ValueStackAllocator;
+    }
+
+    public unsafe FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        var collectionMetadata = ReflectionMetadata.FindCollectionByType(asType!);
+        if (collectionMetadata == null)
+            throw new BTDBException("Cannot find collection metadata for " + _type.ToSimpleName());
+        var keyLoad = _keysHandler.Load(collectionMetadata.ElementKeyType, typeConverterFactory);
+        var keyStackAllocator = ReflectionMetadata.FindStackAllocatorByType(collectionMetadata.ElementKeyType);
+        var valueLoad = _valuesHandler.Load(collectionMetadata.ElementValueType!, typeConverterFactory);
+        var valueStackAllocator =
+            ReflectionMetadata.FindStackAllocatorByType(collectionMetadata.ElementValueType!);
+
+        return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+        {
+            if (ctx!.ReadObject(ref reader, out var obj))
+            {
+                var count = reader.ReadVUInt32();
+                obj = collectionMetadata!.Creator(count);
+                ctx.RegisterObject(obj);
+                var loaderCtx = new DictionaryKeyValueLoaderCtx
+                {
+                    Adder = collectionMetadata.AdderKeyValue,
+                    KeyLoader = keyLoad,
+                    ValueLoader = valueLoad,
+                    Object = obj,
+                    Ctx = ctx,
+                    Reader = ref reader,
+                    ValueStackAllocator = valueStackAllocator,
+                };
+                for (var i = 0; i != count; i++)
+                {
+                    keyStackAllocator(ref Unsafe.As<DictionaryKeyValueLoaderCtx, byte>(ref loaderCtx),
+                        ref loaderCtx.KeyStoragePtr,
+                        &NestedValue);
+
+                    static void NestedValue(ref byte value)
+                    {
+                        ref var context = ref Unsafe.As<byte, DictionaryKeyValueLoaderCtx>(ref value);
+                        context.ValueStackAllocator(ref value, ref context.ValueStoragePtr, &Nested);
+                    }
+
+                    static void Nested(ref byte value)
+                    {
+                        ref var context = ref Unsafe.As<byte, DictionaryKeyValueLoaderCtx>(ref value);
+                        context.KeyLoader(ref context.Reader, context.Ctx,
+                            ref Unsafe.AsRef<byte>((void*)context.KeyStoragePtr));
+                        context.ValueLoader(ref context.Reader, context.Ctx,
+                            ref Unsafe.AsRef<byte>((void*)context.ValueStoragePtr));
+                        context.Adder(context.Object, ref Unsafe.AsRef<byte>((void*)context.KeyStoragePtr),
+                            ref Unsafe.AsRef<byte>((void*)context.ValueStoragePtr));
+                    }
+                }
+
+                ctx.ReadObjectDone(ref reader);
+            }
+            else
+            {
+                if (obj == null || !asType!.IsAssignableFrom(obj.GetType()))
+                {
+                    obj = null;
+                }
+            }
+
+            Unsafe.As<byte, object?>(ref value) = obj;
+        };
     }
 
     public void Skip(ref MemReader reader, IReaderCtx? ctx)

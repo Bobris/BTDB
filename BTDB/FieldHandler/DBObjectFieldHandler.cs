@@ -214,6 +214,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
                     {
                         throw new BTDBException("Transaction does not match when saving non-materialized IIndirect");
                     }
+
                     writer.WriteVInt64((long)ind.Oid);
                     return;
                 }
@@ -223,6 +224,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
                     ctx!.WriteNativeObjectPreventInline(ref writer, ind2.ValueAsObject);
                     return;
                 }
+
                 ctx!.WriteNativeObjectPreventInline(ref writer, obj);
             };
         }
@@ -268,6 +270,17 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
     public void Init(IILGen ilGenerator, Action<IILGen> pushReaderCtx)
     {
         ilGenerator.Newobj(typeof(DBIndirect<>).MakeGenericType(_type!).GetDefaultConstructor()!);
+    }
+
+    public FieldHandlerInit Init()
+    {
+        var indirectType = typeof(DBIndirect<>).MakeGenericType(_type!);
+        return (IReaderCtx? _, ref byte value) =>
+        {
+            var res = new DBIndirect<object>();
+            RawData.SetMethodTable(res, indirectType);
+            Unsafe.As<byte, object>(ref value) = res;
+        };
     }
 
     public void FreeContent(ref MemReader reader, IReaderCtx? ctx)
