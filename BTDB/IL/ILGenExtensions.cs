@@ -54,6 +54,7 @@ public static class ILGenExtensions
                     il.Emit(OpCodes.Ldc_I4, value);
                 break;
         }
+
         return il;
     }
 
@@ -98,6 +99,7 @@ public static class ILGenExtensions
                     il.Emit(OpCodes.Ldarg, parameterIndex);
                 break;
         }
+
         return il;
     }
 
@@ -195,6 +197,7 @@ public static class ILGenExtensions
                     il.Emit(OpCodes.Stloc, localVariableIndex);
                 break;
         }
+
         return il;
     }
 
@@ -229,6 +232,7 @@ public static class ILGenExtensions
                     il.Emit(OpCodes.Ldloc, localVariableIndex);
                 break;
         }
+
         return il;
     }
 
@@ -545,6 +549,35 @@ public static class ILGenExtensions
         return il;
     }
 
+    public static IILGen Stind(this IILGen il, Type itemType)
+    {
+        if (itemType == typeof(int))
+            il.Emit(OpCodes.Stind_I4);
+        else if (itemType == typeof(short))
+            il.Emit(OpCodes.Stind_I2);
+        else if (itemType == typeof(sbyte))
+            il.Emit(OpCodes.Stind_I1);
+        else if (itemType == typeof(long))
+            il.Emit(OpCodes.Stind_I8);
+        else if (itemType == typeof(ushort))
+            il.Emit(OpCodes.Stind_I2);
+        else if (itemType == typeof(byte))
+            il.Emit(OpCodes.Stind_I1);
+        else if (itemType == typeof(uint))
+            il.Emit(OpCodes.Stind_I4);
+        else if (itemType == typeof(ulong))
+            il.Emit(OpCodes.Stind_I8);
+        else if (itemType == typeof(float))
+            il.Emit(OpCodes.Stind_R4);
+        else if (itemType == typeof(double))
+            il.Emit(OpCodes.Stind_R8);
+        else if (!itemType.IsValueType)
+            il.Emit(OpCodes.Stind_Ref);
+        else
+            il.Emit(OpCodes.Stobj, itemType);
+        return il;
+    }
+
     public static IILGen Ldind(this IILGen il, Type itemType)
     {
         if (itemType == typeof(int))
@@ -561,6 +594,8 @@ public static class ILGenExtensions
             il.Emit(OpCodes.Ldind_U1);
         else if (itemType == typeof(uint))
             il.Emit(OpCodes.Ldind_U4);
+        else if (itemType == typeof(ulong))
+            il.Emit(OpCodes.Ldind_I8);
         else if (itemType == typeof(float))
             il.Emit(OpCodes.Ldind_R4);
         else if (itemType == typeof(double))
@@ -568,7 +603,7 @@ public static class ILGenExtensions
         else if (!itemType.IsValueType)
             il.Emit(OpCodes.Ldind_Ref);
         else
-            throw new ArgumentOutOfRangeException(nameof(itemType));
+            il.Emit(OpCodes.Ldobj, itemType);
         return il;
     }
 
@@ -620,6 +655,7 @@ public static class ILGenExtensions
         {
             return il.Callvirt(((PropertyInfo)newExpression.Member).GetAnyGetMethod()!);
         }
+
         var methodInfo = ((MethodCallExpression)expression.Body).Method;
         return il.Callvirt(methodInfo);
     }
@@ -630,6 +666,7 @@ public static class ILGenExtensions
         {
             return il.Call(newExpression.Constructor);
         }
+
         var methodInfo = ((MethodCallExpression)expression.Body).Method;
         return il.Call(methodInfo);
     }
@@ -645,6 +682,7 @@ public static class ILGenExtensions
         {
             return il.Call(newExpression.Constructor);
         }
+
         var methodInfo = ((MethodCallExpression)expression.Body).Method;
         return il.Call(methodInfo);
     }
@@ -741,6 +779,7 @@ public static class ILGenExtensions
             default:
                 throw new ArgumentException($"{value} is not supported.", nameof(value));
         }
+
         return il;
     }
 

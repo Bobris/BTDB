@@ -14,8 +14,8 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
 {
     readonly IInternalObjectDBTransaction _tr;
     readonly IFieldHandler _keyHandler;
-    readonly ReaderFun<TKey> _keyReader;
-    readonly WriterFun<TKey> _keyWriter;
+    readonly RefReaderFun _keyReader;
+    readonly RefWriterFun _keyWriter;
     readonly IKeyValueDBTransaction _keyValueTr;
     readonly ulong _id;
     readonly byte[] _prefix;
@@ -34,8 +34,8 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
             ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(prefix.AsSpan()),
                 ObjectDB.AllDictionariesPrefixLen), id, len);
         _prefix = prefix;
-        _keyReader = ((ReaderFun<TKey>)config.KeyReader)!;
-        _keyWriter = ((WriterFun<TKey>)config.KeyWriter)!;
+        _keyReader = config.KeyReader!;
+        _keyWriter = config.KeyWriter!;
         _keyValueTr = _tr.KeyValueDBTransaction;
         _count = -1;
     }
@@ -197,9 +197,7 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
     ReadOnlySpan<byte> KeyToByteArray(TKey key, ref MemWriter writer)
     {
         writer.WriteBlock(_prefix);
-        IWriterCtx ctx = null;
-        if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
-        _keyWriter(key, ref writer, ctx);
+        _keyWriter(ref writer, _tr, ref Unsafe.As<TKey, byte>(ref key));
         return writer.GetScopedSpanAndReset();
     }
 
@@ -208,13 +206,14 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
     {
         Span<byte> buffer = stackalloc byte[2048];
         var keySpan = cursor.GetKeySpan(ref buffer)[_prefix.Length..];
+        TKey result = default;
         fixed (byte* _ = keySpan)
         {
             var reader = MemReader.CreateFromPinnedSpan(keySpan);
-            IReaderCtx ctx = null;
-            if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr);
-            return _keyReader(ref reader, ctx);
+            _keyReader(ref reader, _tr, ref Unsafe.As<TKey, byte>(ref result));
         }
+
+        return result;
     }
 
     [SkipLocalsInit]

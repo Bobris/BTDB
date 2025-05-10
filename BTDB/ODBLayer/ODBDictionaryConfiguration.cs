@@ -41,14 +41,14 @@ public class ODBDictionaryConfiguration
         if (keyType != KeyType) return false;
         if (valueType != ValueType) return false;
         if (KeyHandler.Name != keyHandler.Name) return false;
-        if (!(KeyHandler.Configuration ?? Array.Empty<byte>()).AsSpan()
-            .SequenceEqual((keyHandler.Configuration ?? Array.Empty<byte>()).AsSpan())) return false;
+        if (!(KeyHandler.Configuration ?? []).AsSpan()
+            .SequenceEqual((keyHandler.Configuration ?? []).AsSpan())) return false;
         if (valueHandler == ValueHandler) return true;
         if (valueHandler != null && ValueHandler == null) return false;
         if (valueHandler == null && ValueHandler != null) return false;
         if (valueHandler!.Name != ValueHandler.Name) return false;
-        return (ValueHandler.Configuration ?? Array.Empty<byte>()).AsSpan()
-            .SequenceEqual((valueHandler!.Configuration ?? Array.Empty<byte>()).AsSpan());
+        return (ValueHandler.Configuration ?? []).AsSpan()
+            .SequenceEqual((valueHandler!.Configuration ?? []).AsSpan());
     }
 
     ODBDictionaryConfiguration(IFieldHandler keyHandler, Type keyType, IFieldHandler? valueHandler, Type? valueType)
@@ -65,15 +65,13 @@ public class ODBDictionaryConfiguration
     public Type? ValueType { get; }
     public IFieldHandler? ValueHandler { get; }
 
-    public object? KeyReader { get; set; }
-    public object? KeyWriter { get; set; }
-    public object? ValueReader { get; set; }
-    public object? ValueWriter { get; set; }
-
-    public object? FreeContent { get; set; }
+    public RefReaderFun? KeyReader { get; set; }
+    public RefWriterFun? KeyWriter { get; set; }
+    public RefReaderFun? ValueReader { get; set; }
+    public RefWriterFun? ValueWriter { get; set; }
 
     internal static void Reset()
     {
-        _instances = Array.Empty<ODBDictionaryConfiguration>();
+        _instances = [];
     }
 }

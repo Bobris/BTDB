@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
@@ -91,27 +93,71 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         return configurationId;
     }
 
-    object CreateWriter(IFieldHandler fieldHandler, Type realType)
+    RefWriterFun CreateWriter(IFieldHandler fieldHandler, Type realType)
     {
-        //Action<T, ref SpanWriter, IWriterCtx>
-        var delegateType = typeof(WriterFun<>).MakeGenericType(realType);
-        var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Writer", delegateType);
+        var needsCtx = fieldHandler.NeedsCtx();
+        var dm = ILBuilder.Instance.NewMethod<RefWriterFun>(fieldHandler.Name + "Writer");
         var ilGenerator = dm.Generator;
-        fieldHandler.Save(ilGenerator, il => il.Ldarg(1), il => il.Ldarg(2),
-            il => il.Ldarg(0).Do(_typeConvertGenerator.GenerateConversion(realType, fieldHandler.HandledType())!));
+        var miAs = typeof(Unsafe)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Single(m =>
+                m.Name == nameof(Unsafe.As)
+                && m.IsGenericMethodDefinition
+                && m.GetGenericArguments().Length == 2).MakeGenericMethod(typeof(byte), realType);
+        var generateConversion = _typeConvertGenerator.GenerateConversion(realType, fieldHandler.HandledType()!)!;
+        if (needsCtx)
+        {
+            var localWriterCtx = ilGenerator.DeclareLocal(typeof(IWriterCtx));
+            ilGenerator
+                .Ldarg(1)
+                .Newobj(() => new DBWriterCtx(null!))
+                .Stloc(localWriterCtx);
+            fieldHandler.Save(ilGenerator, il => il.Ldarg(0), il => il.Ldloc(localWriterCtx),
+                il => il.Ldarg(2).Call(miAs).Ldind(realType).Do(generateConversion));
+        }
+        else
+        {
+            fieldHandler.Save(ilGenerator, il => il.Ldarg(0), il => il.Ldnull(),
+                il => il.Ldarg(2).Call(miAs).Ldind(realType).Do(generateConversion));
+        }
+
         ilGenerator.Ret();
         return dm.Create();
     }
 
-    object CreateReader(IFieldHandler fieldHandler, Type realType)
+    RefReaderFun CreateReader(IFieldHandler fieldHandler, Type realType)
     {
-        //Func<ref MemReader, IReaderCtx, T>
-        var delegateType = typeof(ReaderFun<>).MakeGenericType(realType);
-        var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Reader", delegateType);
+        var needsCtx = fieldHandler.NeedsCtx();
+        var dm = ILBuilder.Instance.NewMethod<RefReaderFun>(fieldHandler.Name + "Reader");
         var ilGenerator = dm.Generator;
-        fieldHandler.Load(ilGenerator, il => il.Ldarg(0), il => il.Ldarg(1));
+        var localValue = ilGenerator.DeclareLocal(realType);
+        if (needsCtx)
+        {
+            var localReaderCtx = ilGenerator.DeclareLocal(typeof(IReaderCtx));
+            ilGenerator
+                .Ldarg(1)
+                .Newobj(() => new DBReaderCtx(null!))
+                .Stloc(localReaderCtx);
+            fieldHandler.Load(ilGenerator, il => il.Ldarg(0), il => il.Ldloc(localReaderCtx));
+        }
+        else
+        {
+            fieldHandler.Load(ilGenerator, il => il.Ldarg(0), il => il.Ldnull());
+        }
+
+        var miAs = typeof(Unsafe)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Single(m =>
+                m.Name == nameof(Unsafe.As)
+                && m.IsGenericMethodDefinition
+                && m.GetGenericArguments().Length == 2).MakeGenericMethod(typeof(byte), realType);
         ilGenerator
-            .Do(_typeConvertGenerator.GenerateConversion(fieldHandler.HandledType(), realType)!)
+            .Do(_typeConvertGenerator.GenerateConversion(fieldHandler.HandledType()!, realType)!)
+            .Stloc(localValue)
+            .Ldarg(2)
+            .Call(miAs)
+            .Ldloc(localValue)
+            .Stind(realType)
             .Ret();
         return dm.Create();
     }
