@@ -13,6 +13,8 @@ public delegate void FieldHandlerSave(ref MemWriter writer, IWriterCtx? ctx, ref
 public interface IFieldHandler
 {
     const bool UseNoEmit = false;
+    const bool UseNoEmitForKeyValue = false;
+
     string Name { get; }
     byte[]? Configuration { get; }
     bool IsCompatibleWith(Type type, FieldHandlerOptions options);

@@ -1,6 +1,8 @@
 using System;
+using System.Runtime.CompilerServices;
 using BTDB.Buffer;
 using BTDB.IL;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler;
@@ -59,5 +61,63 @@ public class ByteArrayLastFieldHandler : ByteArrayFieldHandler
     {
         if ((options & FieldHandlerOptions.AtEndOfStream) == 0) return false;
         return base.IsCompatibleWith(type, options);
+    }
+
+    public override FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (asType == typeof(byte[]))
+        {
+            return static (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, byte[]>(ref value) = reader.ReadByteArrayRawTillEof();
+            };
+        }
+
+        if (asType == typeof(ByteBuffer))
+        {
+            return static (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, ByteBuffer>(ref value) = ByteBuffer.NewAsync(reader.ReadByteArrayRawTillEof()!);
+            };
+        }
+
+        if (asType == typeof(ReadOnlyMemory<byte>))
+        {
+            return static (ref MemReader reader, IReaderCtx? _, ref byte value) =>
+            {
+                Unsafe.As<byte, ReadOnlyMemory<byte>>(ref value) = reader.ReadByteArrayRawTillEofAsMemory();
+            };
+        }
+
+        return this.BuildConvertingLoader(typeof(byte[]), asType, typeConverterFactory);
+    }
+
+    public override FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (asType == typeof(byte[]))
+        {
+            return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteByteArrayRaw(Unsafe.As<byte, byte[]>(ref value));
+            };
+        }
+
+        if (asType == typeof(ByteBuffer))
+        {
+            return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteBlock(Unsafe.As<byte, ByteBuffer>(ref value));
+            };
+        }
+
+        if (asType == typeof(ReadOnlyMemory<byte>))
+        {
+            return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
+            {
+                writer.WriteBlock(Unsafe.As<byte, ReadOnlyMemory<byte>>(ref value));
+            };
+        }
+
+        return this.BuildConvertingSaver(typeof(byte[]), asType, typeConverterFactory);
     }
 }

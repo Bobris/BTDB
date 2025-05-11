@@ -21,7 +21,22 @@ public delegate void RefWriterFun(ref MemWriter writer, IInternalObjectDBTransac
 
 delegate void FreeContentFun(IInternalObjectDBTransaction transaction, ref MemReader reader, IList<ulong> dictIds);
 
-public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQuerySizeDictionary<TKey>, IAmLazyDBObject
+public delegate void IterateFun(ref byte key, ref byte value);
+
+public interface IInternalODBDictionary
+{
+    ulong DictId { get; }
+
+    // Actually type is IDictionary<TKey, TValue>, but I need it non-generic
+    void Upsert(IDictionary? pairs);
+
+    int Count { get; }
+
+    void Iterate(IterateFun iterateFun);
+}
+
+public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQuerySizeDictionary<TKey>,
+    IInternalODBDictionary, IAmLazyDBObject
 {
     readonly IInternalObjectDBTransaction _tr;
 
@@ -142,6 +157,17 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             }
 
             return _count;
+        }
+    }
+
+    public void Iterate(IterateFun iterateFun)
+    {
+        using var cursor = _keyValueTr.CreateCursor();
+        while (cursor.FindNextKey(_prefix))
+        {
+            var key = CurrentToKey(cursor);
+            var value = DeserializeValue(cursor);
+            iterateFun(ref Unsafe.As<TKey, byte>(ref key), ref Unsafe.As<TValue, byte>(ref value));
         }
     }
 
@@ -792,5 +818,26 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
     public IOrderedDictionaryEnumerator<TKey, TValue> GetAdvancedEnumerator(AdvancedEnumeratorParam<TKey> param)
     {
         return new AdvancedEnumerator<TKey, TValue>(this, param);
+    }
+
+    public ulong DictId => _id;
+
+    public void Upsert(IDictionary? pairs)
+    {
+        if (pairs == null) return;
+        if (pairs is IDictionary<TKey, TValue> genericPairs)
+        {
+            foreach (var pair in genericPairs)
+            {
+                this[pair.Key] = pair.Value;
+            }
+        }
+        else
+        {
+            foreach (DictionaryEntry pair in pairs)
+            {
+                this[(TKey)pair.Key!] = (TValue)pair.Value!;
+            }
+        }
     }
 }

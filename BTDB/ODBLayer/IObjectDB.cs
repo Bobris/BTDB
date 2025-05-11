@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 
 namespace BTDB.ODBLayer;
 
@@ -28,6 +29,7 @@ public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
     Type TypeByName(string name);
 
     new ITypeConvertorGenerator TypeConvertorGenerator { get; set; }
+    new ITypeConverterFactory TypeConverterFactory { get; set; }
 
     new IFieldHandlerFactory FieldHandlerFactory { get; set; }
 

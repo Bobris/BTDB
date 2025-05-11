@@ -62,7 +62,7 @@ public class ByteArrayFieldHandler : IFieldHandler
         ilGenerator.Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteByteArray), new[] { typeof(byte[]) })!);
     }
 
-    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    public virtual FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
     {
         if (asType == typeof(byte[]))
         {
@@ -96,7 +96,7 @@ public class ByteArrayFieldHandler : IFieldHandler
         reader.SkipByteArray();
     }
 
-    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    public virtual FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
     {
         if (asType == typeof(byte[]))
         {
@@ -118,7 +118,7 @@ public class ByteArrayFieldHandler : IFieldHandler
         {
             return static (ref MemWriter writer, IWriterCtx? _, ref byte value) =>
             {
-                writer.WriteByteArray(Unsafe.As<byte, ReadOnlyMemory<byte>>(ref value).Span.ToArray());
+                writer.WriteByteArray(Unsafe.As<byte, ReadOnlyMemory<byte>>(ref value));
             };
         }
 

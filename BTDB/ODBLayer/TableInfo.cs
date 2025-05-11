@@ -578,13 +578,24 @@ public class TableInfo
             }
 
             var loadersArray = loaders.ToArray();
-            return (IInternalObjectDBTransaction transaction, DBObjectMetadata metadata, ref MemReader reader,
-                object value) =>
+            if (anyNeedsCtx)
             {
-                var ctx = anyNeedsCtx ? new DBReaderCtx(transaction) : null;
+                return (IInternalObjectDBTransaction transaction, DBObjectMetadata _, ref MemReader reader,
+                    object value) =>
+                {
+                    var ctx = new DBReaderCtx(transaction);
+                    foreach (var loadFunc in loadersArray)
+                    {
+                        loadFunc(value, ref reader, ctx);
+                    }
+                };
+            }
+
+            return (IInternalObjectDBTransaction _, DBObjectMetadata _, ref MemReader reader, object value) =>
+            {
                 foreach (var loadFunc in loadersArray)
                 {
-                    loadFunc(value, ref reader, ctx);
+                    loadFunc(value, ref reader, null);
                 }
             };
         }

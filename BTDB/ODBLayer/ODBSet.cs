@@ -10,10 +10,17 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
 
-public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLazyDBObject
+public interface IInternalODBSet
+{
+    ulong DictId { get; }
+
+    // Actually type is IEnumerable<TKey>, but I need it non-generic
+    void Upsert(IEnumerable? list);
+}
+
+public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInternalODBSet, IAmLazyDBObject
 {
     readonly IInternalObjectDBTransaction _tr;
-    readonly IFieldHandler _keyHandler;
     readonly RefReaderFun _keyReader;
     readonly RefWriterFun _keyWriter;
     readonly IKeyValueDBTransaction _keyValueTr;
@@ -25,7 +32,6 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
     public ODBSet(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config, ulong id)
     {
         _tr = tr;
-        _keyHandler = config.KeyHandler;
         _id = id;
         var len = PackUnpack.LengthVUInt(id);
         var prefix = new byte[ObjectDB.AllDictionariesPrefixLen + len];
@@ -554,5 +560,26 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IAmLa
     public IEnumerable<TKey> GetAdvancedEnumerator(AdvancedEnumeratorParam<TKey> param)
     {
         return new AdvancedEnumerator(this, param);
+    }
+
+    public ulong DictId => _id;
+
+    public void Upsert(IEnumerable? list)
+    {
+        if (list == null) return;
+        if (list is IEnumerable<TKey> listOfKey)
+        {
+            foreach (var key in listOfKey)
+            {
+                Add(key);
+            }
+        }
+        else
+        {
+            foreach (TKey key in list)
+            {
+                Add(key);
+            }
+        }
     }
 }

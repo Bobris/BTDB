@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Assent;
 using BTDB;
@@ -13,6 +14,7 @@ using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.Serialization;
 using Xunit;
 
 namespace BTDBTest;
@@ -2482,6 +2484,28 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public IDictionary<ulong, ConversionItemNew> Items { get; set; }
     }
 
+    public class EnumToStringTypeConverterFactory : DefaultTypeConverterFactory
+    {
+        public override Converter? GetConverter(Type from, Type to)
+        {
+            if (from.IsEnum && to == typeof(string))
+            {
+                var cfg = new EnumFieldHandler.EnumConfiguration(from);
+                if (cfg.Flags)
+                    return null; // Flags are hard :-)
+                var convToUlong = base.GetConverter(from, typeof(ulong));
+                return (ref byte fromI, ref byte toI) =>
+                {
+                    ulong fromUlong = 0;
+                    convToUlong(ref fromI, ref Unsafe.As<ulong, byte>(ref fromUlong));
+                    Unsafe.As<byte, string>(ref toI) = cfg.Names[Array.IndexOf(cfg.Values, fromUlong)];
+                };
+            }
+
+            return base.GetConverter(from, to);
+        }
+    }
+
     public class EnumToStringTypeConvertorGenerator : DefaultTypeConvertorGenerator
     {
         public override Action<IILGen> GenerateConversion(Type from, Type to)
@@ -2540,6 +2564,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 
         ReopenDb(true);
         _db.TypeConvertorGenerator = new EnumToStringTypeConvertorGenerator();
+        _db.TypeConverterFactory = new EnumToStringTypeConverterFactory();
         _db.RegisterType(typeof(ConversionItemsNew), "ConversionItems");
         _db.RegisterType(typeof(ConversionItemNew), "ConversionItem");
 

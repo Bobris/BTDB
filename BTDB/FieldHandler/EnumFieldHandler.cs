@@ -321,6 +321,12 @@ public class EnumFieldHandler : IFieldHandler
             };
         }
 
+        // First convert it to my enum type
+        if (asType != HandledType())
+        {
+            return this.BuildConvertingLoader(HandledType(), asType, typeConverterFactory);
+        }
+
         return this.BuildConvertingLoader(loadType, asType, typeConverterFactory);
     }
 

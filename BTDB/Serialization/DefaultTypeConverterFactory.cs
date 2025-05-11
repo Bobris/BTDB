@@ -6,6 +6,7 @@ using System.Runtime.Serialization;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.IL;
+using BTDB.ODBLayer;
 
 namespace BTDB.Serialization;
 
@@ -13,7 +14,7 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
 {
     readonly Dictionary<(Type From, Type To), Converter> _converters = new();
 
-    public Converter? GetConverter(Type from, Type to)
+    public virtual Converter? GetConverter(Type from, Type to)
     {
         if (from == to) return CreateAssign(from);
         if (_converters.TryGetValue((from, to), out var converter))
@@ -137,6 +138,12 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
                 RawData.BuildListOutOfArray(ref Unsafe.As<object, byte>(ref array),
                     ref Unsafe.As<byte, byte>(ref toI), listType);
             };
+        }
+
+        if (from.IsGenericType && to.IsGenericType && from.GetGenericTypeDefinition() == typeof(IDictionary<,>) &&
+            to.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+        {
+            return GetIDictionary2DictionaryConverter(from, to);
         }
 
         if (from == typeof(byte))
@@ -893,6 +900,64 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
             };
         }
 
+        return null;
+    }
+
+    unsafe Converter? GetIDictionary2DictionaryConverter(Type from, Type to)
+    {
+        var fromKVType = from.GenericTypeArguments;
+        var toKVType = to.GenericTypeArguments;
+        var toCollectionMetadata = ReflectionMetadata.FindCollectionByType(to);
+        if (toCollectionMetadata == null) return null;
+        var fromAsDictionaryType = typeof(Dictionary<,>).MakeGenericType(fromKVType);
+        var layout = RawData.GetDictionaryEntriesLayout(fromKVType[0], fromKVType[1]);
+        if (fromKVType[0] == toKVType[0] && fromKVType[1] == toKVType[1])
+        {
+            return (ref byte fromI, ref byte toI) =>
+            {
+                var fromObject = Unsafe.As<byte, object>(ref fromI);
+                if (fromObject == null)
+                {
+                    Unsafe.As<byte, object>(ref toI) = null;
+                    return;
+                }
+
+                if (fromObject is IInternalODBDictionary fromODBDictionary)
+                {
+                    var result = toCollectionMetadata.Creator((uint)fromODBDictionary.Count);
+                    fromODBDictionary.Iterate((ref byte key, ref byte value) =>
+                    {
+                        toCollectionMetadata.AdderKeyValue(result, ref key, ref value);
+                    });
+                    Unsafe.As<byte, object>(ref toI) = result;
+                }
+                else if (fromObject.GetType().IsAssignableTo(fromAsDictionaryType))
+                {
+                    var count = Unsafe.As<byte, int>(ref RawData.Ref(fromObject,
+                        RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                    var result = toCollectionMetadata.Creator((uint)count);
+                    var obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(fromObject));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + 4)) < -1)
+                        {
+                            continue;
+                        }
+
+                        toCollectionMetadata.AdderKeyValue(result,
+                            ref RawData.Ref(obj, offset + layout.OffsetKey),
+                            ref RawData.Ref(obj, offset + layout.OffsetValue));
+                    }
+
+                    Unsafe.As<byte, object>(ref toI) = result;
+                }
+            };
+        }
+
+        // Todo: Key/Value type converting converter
         return null;
     }
 
