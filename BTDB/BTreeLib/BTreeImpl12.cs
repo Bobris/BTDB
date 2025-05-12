@@ -2586,7 +2586,7 @@ public class BTreeImpl12
         }
     }
 
-    internal static void FastIterate(int deepness, IntPtr top, ref StructList<CursorItem> stack, ref Span<byte> buffer,
+    internal static bool FastIterate(int deepness, IntPtr top, ref StructList<CursorItem> stack, ref Span<byte> buffer,
         ref long keyIndex, CursorIterateCallback callback)
     {
         if (deepness == stack.Count)
@@ -2618,7 +2618,11 @@ public class BTreeImpl12
                     }
 
                     key.CopyTo(buffer[prefixSpan.Length..]);
-                    callback.Invoke(keyIndex, buffer[..(prefixSpan.Length + key.Length)]);
+                    if (callback.Invoke(keyIndex, buffer[..(prefixSpan.Length + key.Length)]))
+                    {
+                        return true;
+                    }
+
                     keyIndex++;
                 }
             }
@@ -2640,7 +2644,11 @@ public class BTreeImpl12
                     }
 
                     key.CopyTo(buffer[prefixSpan.Length..]);
-                    callback.Invoke(keyIndex, buffer[..(prefixSpan.Length + key.Length)]);
+                    if (callback.Invoke(keyIndex, buffer[..(prefixSpan.Length + key.Length)]))
+                    {
+                        return true;
+                    }
+
                     keyIndex++;
                 }
             }
@@ -2650,11 +2658,15 @@ public class BTreeImpl12
             var children = NodeUtils12.GetBranchValuePtrs(top);
             for (var i = (int)stack[deepness]._posInNode; i < children.Length; i++, stack[deepness]._posInNode++)
             {
-                FastIterate(deepness + 1, children[i], ref stack, ref buffer, ref keyIndex, callback);
+                if (FastIterate(deepness + 1, children[i], ref stack, ref buffer, ref keyIndex, callback))
+                {
+                    return true;
+                }
             }
         }
 
         stack.Pop();
+        return false;
     }
 
     static int NewSize(int size, int existingSize)

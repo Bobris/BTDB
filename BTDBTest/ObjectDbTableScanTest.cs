@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.KVDBLayer;
@@ -878,7 +876,7 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         var r = new Random(1);
         for (var i = 0u; i < 1000u; i++)
         {
-            var batches = r.Next(1, 2);
+            var batches = r.Next(3, 5);
             for (var j = 0u; j < batches; j++)
             {
                 var messages = r.Next(1, 1);
@@ -906,6 +904,13 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
             var record = res[(int)i];
             Assert.Equal(i + 1000000, record.CompanyId);
         }
+
+        res.Clear();
+        t.GatherByRecipient(res, 0, 50, Constraint.Unsigned.Exact(1000001), Constraint.String.Exact("a"));
+        Assert.Equal(2, res.Count);
+        res.Clear();
+        t.GatherByRecipient(res, 0, 50, Constraint.Unsigned.Exact(1000001), Constraint.String.Contains("a"));
+        Assert.Equal(3, res.Count);
     }
 
     public class ObjWithGuid
