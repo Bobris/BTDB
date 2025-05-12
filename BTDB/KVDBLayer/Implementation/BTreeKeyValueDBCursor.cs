@@ -580,6 +580,9 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         _modificationForbidden = true;
         try
         {
+            if (!_cursor!.IsValid())
+                if (!FindFirstKey([]))
+                    return;
             if (_keyIndex == -1) _keyIndex = _cursor!.CalcIndex();
             _cursor!.FastIterate(ref buffer, ref _keyIndex, callback);
         }

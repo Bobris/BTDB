@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Fast Gather was not really fast in many cases.
+
 ## 33.7.1
 
 ### Fixed

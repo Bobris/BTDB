@@ -372,6 +372,7 @@ class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T :
             i++;
         }
 
+        if (!_cursor!.FindFirstKey(writer.GetSpan())) return 0;
         startIteration:
         var count = 0UL;
         _cursor!.FastIterate(ref buf, (index, key) =>

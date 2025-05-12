@@ -540,10 +540,15 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public void FastIterate(ref Span<byte> buffer, CursorIterateCallback callback)
     {
-        ObjectDisposedException.ThrowIf(Disposed, this);
         _modificationForbidden = true;
         try
         {
+            if (_keyIndex < 0 && !FindFirstKey([]))
+            {
+                return;
+            }
+
+            EnsureValidCursor();
             _transaction!._btreeRoot!.FastIterate(ref _stack, ref _keyIndex, ref buffer, callback);
         }
         finally

@@ -201,7 +201,7 @@ class BTreeRoot : IBTreeRootNode
         _rootNode?.CalcBTreeStats(stats, depth);
     }
 
-    public void FastIterate(int deepness, ref StructList<NodeIdxPair> stack, ref long keyIndex,
+    public bool FastIterate(int deepness, ref StructList<NodeIdxPair> stack, ref long keyIndex,
         CursorIterateCallback callback)
     {
         throw new ArgumentException();
@@ -301,8 +301,7 @@ class BTreeRoot : IBTreeRootNode
     public void FastIterate(ref StructList<NodeIdxPair> stack, ref long keyIndex, ref Span<byte> buffer,
         CursorIterateCallback callback)
     {
-        if (_rootNode == null) return;
-        _rootNode.FastIterate(0, ref stack, ref keyIndex, callback);
+        _rootNode?.FastIterate(0, ref stack, ref keyIndex, callback);
     }
 
     IBTreeNode BuildTreeNode(long keyCount, Func<BTreeLeafMember> memberGenerator)
