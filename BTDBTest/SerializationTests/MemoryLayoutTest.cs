@@ -1,0 +1,73 @@
+using System;
+using System.Runtime.CompilerServices;
+using BTDB.Serialization;
+using Xunit;
+
+namespace BTDBTest.SerializationTests;
+
+public class MemoryLayoutTest
+{
+    // This clones layout of Dictionary<TKey, TValue>.Entry
+    struct DictionaryEntry<TKey, TValue> where TKey : notnull
+    {
+        public uint hashCode;
+        public int next;
+        public TKey key;
+        public TValue value;
+    }
+
+    (uint OffsetNext, uint OffsetKey, uint OffsetValue, uint Size) GetDictionaryEntryLayout<TKey, TValue>()
+    {
+        DictionaryEntry<TKey, TValue> entry = default;
+        var offsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictionaryEntry<TKey, TValue>, byte>(ref entry),
+            ref Unsafe.As<int, byte>(ref entry.next));
+        var offsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictionaryEntry<TKey, TValue>, byte>(ref entry),
+            ref Unsafe.As<TKey, byte>(ref entry.key));
+        var offsetValue = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictionaryEntry<TKey, TValue>, byte>(ref entry),
+            ref Unsafe.As<TValue, byte>(ref entry.value));
+        var size = (uint)Unsafe.SizeOf<DictionaryEntry<TKey, TValue>>();
+        return (offsetNext, offsetKey, offsetValue, size);
+    }
+
+    void CheckGetDictionaryEntryLayout<TKey, TValue>()
+    {
+        var (offsetNext, offsetKey, offsetValue, size) = GetDictionaryEntryLayout<TKey, TValue>();
+        var (calcNext, calcKey, calcValue, calcSize) = RawData.GetDictionaryEntriesLayout(typeof(TKey), typeof(TValue));
+        Assert.Equal(offsetNext, calcNext);
+        Assert.Equal(offsetKey, calcKey);
+        Assert.Equal(offsetValue, calcValue);
+        Assert.Equal(size, calcSize);
+    }
+
+    struct RefAndInt
+    {
+        object Obj;
+        int Int;
+    }
+
+    [Fact]
+    public void VerifyGetDictionaryEntriesLayout()
+    {
+        CheckGetDictionaryEntryLayout<int, int>();
+        CheckGetDictionaryEntryLayout<string, int>();
+        CheckGetDictionaryEntryLayout<int, string>();
+        CheckGetDictionaryEntryLayout<string, string>();
+        CheckGetDictionaryEntryLayout<int, long>();
+        CheckGetDictionaryEntryLayout<long, int>();
+        CheckGetDictionaryEntryLayout<long, long>();
+        CheckGetDictionaryEntryLayout<string, long>();
+        CheckGetDictionaryEntryLayout<long, string>();
+        CheckGetDictionaryEntryLayout<byte, byte>();
+        CheckGetDictionaryEntryLayout<byte, Int128>();
+        CheckGetDictionaryEntryLayout<Int128, byte>();
+        CheckGetDictionaryEntryLayout<Int128, Int128>();
+        CheckGetDictionaryEntryLayout<Int128, string>();
+        CheckGetDictionaryEntryLayout<string, Int128>();
+        CheckGetDictionaryEntryLayout<string, byte>();
+        CheckGetDictionaryEntryLayout<byte, string>();
+        CheckGetDictionaryEntryLayout<byte, long>();
+        CheckGetDictionaryEntryLayout<long, byte>();
+        CheckGetDictionaryEntryLayout<byte, RefAndInt>();
+        CheckGetDictionaryEntryLayout<RefAndInt, byte>();
+    }
+}

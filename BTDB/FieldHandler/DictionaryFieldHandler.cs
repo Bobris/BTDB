@@ -322,7 +322,44 @@ public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFiel
 
     public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
     {
-        throw new NotImplementedException();
+        if (!IsCompatibleWith(asType))
+            throw new InvalidOperationException("DictionaryFieldHandler cannot save " + asType.ToSimpleName());
+        var keyType = asType.GenericTypeArguments[0];
+        var valueType = asType.GenericTypeArguments[1];
+        var dictType = typeof(Dictionary<,>).MakeGenericType(asType.GenericTypeArguments);
+        var saveKey = _keysHandler.Save(keyType, typeConverterFactory);
+        var saveValue = _valuesHandler.Save(valueType, typeConverterFactory);
+        var layout = RawData.GetDictionaryEntriesLayout(keyType, valueType);
+        return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+        {
+            var obj = Unsafe.As<byte, object>(ref value);
+            if (ctx!.WriteObject(ref writer, obj))
+            {
+                var objType = obj.GetType();
+                if (dictType.IsAssignableFrom(objType))
+                {
+                    var count = Unsafe.As<byte, int>(ref RawData.Ref(obj,
+                        RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                    writer.WriteVUInt32((uint)count);
+                    if (count == 0) return;
+                    obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
+                        {
+                            continue;
+                        }
+
+                        saveKey(ref writer, ctx, ref RawData.Ref(obj, offset + layout.OffsetKey));
+                        saveValue(ref writer, ctx, ref RawData.Ref(obj, offset + layout.OffsetValue));
+                    }
+                }
+                else throw new BTDBException("Cannot save type " + objType.ToSimpleName());
+            }
+        };
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)

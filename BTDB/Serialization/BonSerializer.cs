@@ -494,7 +494,7 @@ public class BonSerializerFactory : ISerializerFactory
                     var offsetDelta = mt.ComponentSize;
                     for (var i = 0; i < count; i++, offset += offsetDelta)
                     {
-                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + 4)) < -1)
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
                         {
                             continue;
                         }

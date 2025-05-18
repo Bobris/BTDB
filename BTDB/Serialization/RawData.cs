@@ -124,14 +124,70 @@ public sealed class RawData
         return (Align(8, sa.Align), sa.Size);
     }
 
-    public static (uint OffsetKey, uint OffsetValue, uint Size) GetDictionaryEntriesLayout(Type keyType, Type valueType)
+    public static (uint OffsetNext, uint OffsetKey, uint OffsetValue, uint Size) GetDictionaryEntriesLayout(
+        Type keyType, Type valueType)
     {
         var saKey = GetSizeAndAlign(keyType);
         var saValue = GetSizeAndAlign(valueType);
         var sa = Combine((8, 4), saKey, saValue);
-        var offsetKey = Align(8, sa.Align);
-        var offsetValue = Align(offsetKey + saKey.Size, saValue.Align);
-        return (offsetKey, offsetValue, sa.Size);
+        if (!keyType.IsValueType)
+        {
+            if (!valueType.IsValueType || saValue.Align == 8)
+            {
+                // TKey, TValue, uint, int
+                var offsetValue = Align(saKey.Size, saValue.Align);
+                var offsetNext = Align(offsetValue + saValue.Size, 4) + 4;
+                return (offsetNext, 0u, offsetValue, sa.Size);
+            }
+            else
+            {
+                // TKey, uint, int, TValue
+                var offsetNext = Align(saKey.Size, 4) + 4;
+                var offsetValue = Align(offsetNext + 4, saValue.Align);
+                return (offsetNext, 0u, offsetValue, sa.Size);
+            }
+        }
+
+        if (!valueType.IsValueType)
+        {
+            if (saKey.Align == 8)
+            {
+                // TValue, TKey, uint, int
+                var offsetKey = Align(saValue.Size, saKey.Align);
+                var offsetNext = Align(offsetKey + saKey.Size, 4) + 4;
+                return (offsetNext, offsetKey, 0u, sa.Size);
+            }
+            else
+            {
+                // TValue, uint, int, TKey
+                var offsetNext = Align(saValue.Size, 4) + 4;
+                var offsetKey = Align(offsetNext + 4, saKey.Align);
+                return (offsetNext, offsetKey, 0u, Align(offsetKey + saKey.Size, sa.Align));
+            }
+        }
+        else
+        {
+            if (keyType != typeof(Int128) && keyType != typeof(UInt128) && saKey is { Size: > 8, Align: >= 8 } &&
+                saValue is { Align: < 8, Size: <= 8 })
+            {
+                // uint, int, TValue, TKey
+                var offsetValue = Align(8, saValue.Align);
+                var offsetKey = Align(offsetValue + saValue.Size, saKey.Align);
+                return (4, offsetKey, offsetValue, sa.Size);
+            }
+            else
+            {
+                // uint, int, TKey, TValue
+                var offsetKey = Align(8, saKey.Align);
+                var offsetValue = Align(offsetKey + saKey.Size, saValue.Align);
+                return (4, offsetKey, offsetValue, sa.Size);
+            }
+        }
+    }
+
+    public static bool IsRefOrContainsRef(Type type)
+    {
+        return !type.IsValueType || MethodTableOf(type).ContainsGCPointers;
     }
 
     public static uint CombineAlign(uint align1, uint align2)
@@ -210,7 +266,14 @@ public sealed class RawData
 
         // from type make Array<type> because it has always ComponentSize
         var size = MethodTableOf(type.MakeArrayType()).ComponentSize;
-        return (size, size);
+        var alignment = size;
+        if (alignment > 16) alignment = 16;
+        if (size == 16 && MethodTableOf(type).ContainsGCPointers)
+        {
+            alignment = 8;
+        }
+
+        return (size, alignment);
     }
 
     public static int GetArrayLength(ref byte array)
