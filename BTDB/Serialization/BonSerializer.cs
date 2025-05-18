@@ -381,13 +381,16 @@ public class BonSerializerFactory : ISerializerFactory
                 }
 
                 var count = Unsafe.As<byte, int>(ref RawData.Ref(obj, (uint)Unsafe.SizeOf<nint>()));
-                ref readonly var mt = ref RawData.MethodTableRef(obj);
-                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                var offsetDelta = mt.ComponentSize;
                 AsCtx(ref ctx).Builder.StartArray();
-                for (var i = 0; i < count; i++, offset += offsetDelta)
+                if (count != 0)
                 {
-                    elementTypeSerializer(ref ctx, ref RawData.Ref(obj, offset));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        elementTypeSerializer(ref ctx, ref RawData.Ref(obj, offset));
+                    }
                 }
 
                 AsCtx(ref ctx).Builder.FinishArray();
@@ -408,14 +411,17 @@ public class BonSerializerFactory : ISerializerFactory
                 }
 
                 var count = Unsafe.As<ICollection>(obj).Count;
-                obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
-                ref readonly var mt = ref RawData.MethodTableRef(obj);
-                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                var offsetDelta = mt.ComponentSize;
                 AsCtx(ref ctx).Builder.StartArray();
-                for (var i = 0; i < count; i++, offset += offsetDelta)
+                if (count != 0)
                 {
-                    elementTypeSerializer(ref ctx, ref RawData.Ref(obj, offset));
+                    obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        elementTypeSerializer(ref ctx, ref RawData.Ref(obj, offset));
+                    }
                 }
 
                 AsCtx(ref ctx).Builder.FinishArray();
@@ -438,20 +444,23 @@ public class BonSerializerFactory : ISerializerFactory
 
                 var count = Unsafe.As<byte, int>(ref RawData.Ref(obj,
                     RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8)));
-                obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
-                ref readonly var mt = ref RawData.MethodTableRef(obj);
-                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                var offsetDelta = mt.ComponentSize;
-                Debug.Assert(offsetDelta == layout.Size);
                 AsCtx(ref ctx).Builder.StartArray();
-                for (var i = 0; i < count; i++, offset += offsetDelta)
+                if (count != 0)
                 {
-                    if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + 4)) < -1)
+                    obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    Debug.Assert(offsetDelta == layout.Size);
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
                     {
-                        continue;
-                    }
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + 4)) < -1)
+                        {
+                            continue;
+                        }
 
-                    elementTypeSerializer(ref ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                        elementTypeSerializer(ref ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                    }
                 }
 
                 AsCtx(ref ctx).Builder.FinishArray();
@@ -476,20 +485,23 @@ public class BonSerializerFactory : ISerializerFactory
 
                 var count = Unsafe.As<byte, int>(ref RawData.Ref(obj,
                     RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
-                obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
-                ref readonly var mt = ref RawData.MethodTableRef(obj);
-                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                var offsetDelta = mt.ComponentSize;
                 AsCtx(ref ctx).Builder.StartDictionary();
-                for (var i = 0; i < count; i++, offset += offsetDelta)
+                if (count != 0)
                 {
-                    if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + 4)) < -1)
+                    obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
                     {
-                        continue;
-                    }
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + 4)) < -1)
+                        {
+                            continue;
+                        }
 
-                    keyTypeSerializer(ref ctx, ref RawData.Ref(obj, offset + layout.OffsetKey));
-                    valueTypeSerializer(ref ctx, ref RawData.Ref(obj, offset + layout.OffsetValue));
+                        keyTypeSerializer(ref ctx, ref RawData.Ref(obj, offset + layout.OffsetKey));
+                        valueTypeSerializer(ref ctx, ref RawData.Ref(obj, offset + layout.OffsetValue));
+                    }
                 }
 
                 AsCtx(ref ctx).Builder.FinishDictionary();
