@@ -10,12 +10,18 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
 
+public delegate void IterateItemFun(ref byte item);
+
 public interface IInternalODBSet
 {
     ulong DictId { get; }
 
     // Actually type is IEnumerable<TKey>, but I need it non-generic
     void Upsert(IEnumerable? list);
+
+    int Count { get; }
+
+    void Iterate(IterateItemFun iterateItemFun);
 }
 
 public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInternalODBSet, IAmLazyDBObject
@@ -186,6 +192,16 @@ public class ODBSet<TKey> : IOrderedSet<TKey>, IQuerySizeDictionary<TKey>, IInte
             }
 
             return _count;
+        }
+    }
+
+    public void Iterate(IterateItemFun iterateItemFun)
+    {
+        using var cursor = _keyValueTr.CreateCursor();
+        while (cursor.FindNextKey(_prefix))
+        {
+            var key = CurrentToKey(cursor);
+            iterateItemFun(ref Unsafe.As<TKey, byte>(ref key));
         }
     }
 

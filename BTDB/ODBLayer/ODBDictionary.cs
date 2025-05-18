@@ -21,7 +21,7 @@ public delegate void RefWriterFun(ref MemWriter writer, IInternalObjectDBTransac
 
 delegate void FreeContentFun(IInternalObjectDBTransaction transaction, ref MemReader reader, IList<ulong> dictIds);
 
-public delegate void IterateFun(ref byte key, ref byte value);
+public delegate void IterateKeyValueFun(ref byte key, ref byte value);
 
 public interface IInternalODBDictionary
 {
@@ -32,7 +32,7 @@ public interface IInternalODBDictionary
 
     int Count { get; }
 
-    void Iterate(IterateFun iterateFun);
+    void Iterate(IterateKeyValueFun iterateKeyValueFun);
 }
 
 public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQuerySizeDictionary<TKey>,
@@ -160,14 +160,14 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         }
     }
 
-    public void Iterate(IterateFun iterateFun)
+    public void Iterate(IterateKeyValueFun iterateKeyValueFun)
     {
         using var cursor = _keyValueTr.CreateCursor();
         while (cursor.FindNextKey(_prefix))
         {
             var key = CurrentToKey(cursor);
             var value = DeserializeValue(cursor);
-            iterateFun(ref Unsafe.As<TKey, byte>(ref key), ref Unsafe.As<TValue, byte>(ref value));
+            iterateKeyValueFun(ref Unsafe.As<TKey, byte>(ref key), ref Unsafe.As<TValue, byte>(ref value));
         }
     }
 
