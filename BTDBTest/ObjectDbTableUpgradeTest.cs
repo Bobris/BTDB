@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Principal;
+using BTDB;
 using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -1061,6 +1062,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
         }
     }
 
+    [Generate]
     public interface IFace
     {
         int I { get; set; }

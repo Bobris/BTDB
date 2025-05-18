@@ -2726,6 +2726,7 @@ namespace BTDBTest
             public IInnerInterface Inner { get; set; }
         }
 
+        [Generate]
         public interface IInnerInterface;
 
         public class PersonPrivateConstructor
@@ -3260,6 +3261,7 @@ namespace BTDBTest
 
 namespace Imp1
 {
+    [PersistedName("InnerImplementation1")]
     public class InnerImplementation : ObjectDbTableTest.IInnerInterface
     {
     }
@@ -3267,6 +3269,7 @@ namespace Imp1
 
 namespace Imp2
 {
+    [PersistedName("InnerImplementation2")]
     public class InnerImplementation : ObjectDbTableTest.IInnerInterface
     {
     }

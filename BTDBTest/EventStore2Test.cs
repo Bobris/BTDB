@@ -8,6 +8,7 @@ using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System.Linq;
+using BTDB;
 using BTDB.Encrypted;
 using BTDB.StreamLayer;
 
@@ -907,6 +908,7 @@ public class EventStore2Test
         Assert.Equal("pass", ev.Secret);
     }
 
+    [Generate]
     public class ObjectWithIDictionary
     {
         public IDictionary<ulong, string> Items { get; set; }

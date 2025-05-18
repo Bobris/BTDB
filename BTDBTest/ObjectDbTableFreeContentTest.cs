@@ -932,6 +932,7 @@ public class ObjectDbTableFreeContentTest : IDisposable
     }
 
     [Generate]
+    [PersistedName("NodesBase")]
     public class NodesBase
     {
     }

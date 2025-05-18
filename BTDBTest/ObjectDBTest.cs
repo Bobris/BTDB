@@ -47,6 +47,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public class PersonWithNonStoredProperty
     {
         public string Name { get; set; }
@@ -1726,11 +1727,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         Item1 = 0
     }
 
+    [Generate]
     public class CC1V1T2
     {
         public IDictionary<CC1V1T3, long> Dict2 { get; set; }
     }
 
+    [Generate]
     public class CC1V1T1
     {
         public IDictionary<ulong, CC1V1T2> Dict { get; set; }
@@ -1743,6 +1746,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         Item3 = 2
     }
 
+    [Generate]
     public class CC1V2T2
     {
         public IDictionary<CC1V2T3, long> Dict2 { get; set; }
@@ -1968,6 +1972,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public int Type { get; set; }
     }
 
+    [Generate]
     public class ObjectWfd1
     {
         public Rule1 A { get; set; }
@@ -2467,6 +2472,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public MyEnum En { get; set; }
     }
 
+    [Generate]
     public class ConversionItemsOld
     {
         public IDictionary<ulong, ConversionItemOld> Items { get; set; }
@@ -2979,6 +2985,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public Obj? Ref { get; set; }
     }
 
+    [Generate]
     public class RootWithObj
     {
         public Obj O { get; set; }
@@ -3014,6 +3021,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Generate]
     public interface IFace
     {
         int I { get; set; }

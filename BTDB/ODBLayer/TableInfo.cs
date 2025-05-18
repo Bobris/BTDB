@@ -268,46 +268,168 @@ public class TableInfo
         NeedStoreSingletonOid = false;
     }
 
-    void CreateSaver()
+    delegate void SaveFunc(object obj, ref MemWriter writer, IWriterCtx? ctx);
+
+    ref struct FieldSaverCtx
     {
-        var method = ILBuilder.Instance
-            .NewMethod<ObjectSaver>(
-                $"Saver_{Name}");
-        var ilGenerator = method.Generator;
-        ilGenerator.DeclareLocal(ClientType!);
-        ilGenerator
-            .Ldarg(3)
-            .Castclass(ClientType)
-            .Stloc(0);
+        internal nint StoragePtr;
+        internal object Object;
+        internal FieldHandlerSave Saver;
+        internal IWriterCtx? Ctx;
+        internal ref MemWriter Writer;
+        internal unsafe delegate*<object, ref byte, void> Getter;
+    }
+
+    unsafe void CreateSaver()
+    {
         var anyNeedsCtx = ClientTableVersionInfo!.NeedsCtx();
-        if (anyNeedsCtx)
+#pragma warning disable CS0162 // Unreachable code detected
+        if (IFieldHandler.UseNoEmit)
         {
-            ilGenerator.DeclareLocal(typeof(IWriterCtx));
-            ilGenerator
-                .Ldarg(0)
-                .Newobj(() => new DBWriterCtx(null))
-                .Stloc(1);
-        }
-
-        var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-        for (var i = 0; i < ClientTableVersionInfo.FieldCount; i++)
-        {
-            var field = ClientTableVersionInfo[i];
-            var getter = props.First(p => GetPersistentName(p) == field.Name).GetAnyGetMethod();
-            var handler = field.Handler!.SpecializeSaveForType(getter!.ReturnType);
-            var writerOrCtx = handler.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
-            handler.Save(ilGenerator, il => il.Ldarg(2), writerOrCtx, il =>
+            var metadata = ReflectionMetadata.FindByType(ClientType!);
+            if (metadata == null)
+                throw new BTDBException("Type " + ClientType.ToSimpleName() + " does not have [Generate] attribute");
+            var savers = new SaveFunc[ClientTableVersionInfo.FieldCount];
+            for (var i = 0; i < ClientTableVersionInfo.FieldCount; i++)
             {
-                il.Ldloc(0).Callvirt(getter);
-                _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
-                    handler.HandledType())!(il);
-            });
-        }
+                var field = ClientTableVersionInfo[i];
+                var fieldInfo = metadata.Fields.FirstOrDefault(p => p.Name == field.Name);
+                if (fieldInfo == null || fieldInfo.PropRefGetter == null && fieldInfo.ByteOffset == null)
+                {
+                    throw new InvalidOperationException($"Cannot get field metadata for {field.Name} in " +
+                                                        ClientType.ToSimpleName());
+                }
 
-        ilGenerator
-            .Ret();
-        var saver = method.Create();
-        Interlocked.CompareExchange(ref _saver, saver, null);
+                var saver = field.Handler!.Save(fieldInfo.Type,
+                    _tableInfoResolver.TypeConverterFactory);
+                if (fieldInfo.PropRefGetter == null)
+                {
+                    var offset = fieldInfo.ByteOffset!.Value;
+                    savers[i] = (object obj, ref MemWriter writer, IWriterCtx? ctx) =>
+                    {
+                        saver(ref writer, ctx, ref RawData.Ref(obj, offset));
+                    };
+                    continue;
+                }
+
+                var getter = fieldInfo.PropRefGetter;
+                if (!fieldInfo.Type.IsValueType)
+                {
+                    savers[i] = (object obj, ref MemWriter writer, IWriterCtx? ctx) =>
+                    {
+                        object? value = null;
+                        getter(obj, ref Unsafe.As<object, byte>(ref value));
+                        saver(ref writer, ctx, ref Unsafe.As<object, byte>(ref value));
+                    };
+                    continue;
+                }
+
+                if (!RawData.MethodTableOf(fieldInfo.Type).ContainsGCPointers &&
+                    RawData.GetSizeAndAlign(fieldInfo.Type).Size <= 16)
+                {
+                    savers[i] = (object obj, ref MemWriter writer, IWriterCtx? ctx) =>
+                    {
+                        Int128 value = 0;
+                        getter(obj, ref Unsafe.As<Int128, byte>(ref value));
+                        saver(ref writer, ctx, ref Unsafe.As<Int128, byte>(ref value));
+                    };
+                    continue;
+                }
+
+                var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldInfo.Type);
+                if (stackAllocator == null)
+                    throw new InvalidOperationException($"Cannot find stack allocator for {fieldInfo.Type}");
+                savers[i] = (object obj, ref MemWriter writer, IWriterCtx? ctx) =>
+                {
+                    FieldSaverCtx fieldSaverCtx = new FieldSaverCtx()
+                    {
+                        Object = obj,
+                        Saver = saver,
+                        Getter = getter,
+                        Ctx = ctx,
+                        Writer = writer
+                    };
+
+                    stackAllocator(ref Unsafe.As<FieldSaverCtx, byte>(ref fieldSaverCtx),
+                        ref fieldSaverCtx.StoragePtr, &Nested);
+
+                    static void Nested(ref byte value)
+                    {
+                        ref var context = ref Unsafe.As<byte, FieldSaverCtx>(ref value);
+                        context.Getter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        context.Saver(ref context.Writer, context.Ctx,
+                            ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                    }
+                };
+            }
+
+            if (anyNeedsCtx)
+            {
+                var saver = (ObjectSaver)((IInternalObjectDBTransaction transaction, DBObjectMetadata? _,
+                    ref MemWriter writer, object value) =>
+                {
+                    var ctx = new DBWriterCtx(transaction);
+                    foreach (var saver in savers)
+                    {
+                        saver(value, ref writer, ctx);
+                    }
+                });
+                Interlocked.CompareExchange(ref _saver, saver, null);
+            }
+            else
+            {
+                var saver = (ObjectSaver)((IInternalObjectDBTransaction _, DBObjectMetadata? _,
+                    ref MemWriter writer, object value) =>
+                {
+                    foreach (var saver in savers)
+                    {
+                        saver(value, ref writer, null);
+                    }
+                });
+                Interlocked.CompareExchange(ref _saver, saver, null);
+            }
+        }
+        else
+        {
+            var method = ILBuilder.Instance
+                .NewMethod<ObjectSaver>(
+                    $"Saver_{Name}");
+            var ilGenerator = method.Generator;
+            ilGenerator.DeclareLocal(ClientType!);
+            ilGenerator
+                .Ldarg(3)
+                .Castclass(ClientType)
+                .Stloc(0);
+            if (anyNeedsCtx)
+            {
+                ilGenerator.DeclareLocal(typeof(IWriterCtx));
+                ilGenerator
+                    .Ldarg(0)
+                    .Newobj(() => new DBWriterCtx(null))
+                    .Stloc(1);
+            }
+
+            var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            for (var i = 0; i < ClientTableVersionInfo.FieldCount; i++)
+            {
+                var field = ClientTableVersionInfo[i];
+                var getter = props.First(p => GetPersistentName(p) == field.Name).GetAnyGetMethod();
+                var handler = field.Handler!.SpecializeSaveForType(getter!.ReturnType);
+                var writerOrCtx = handler.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
+                handler.Save(ilGenerator, il => il.Ldarg(2), writerOrCtx, il =>
+                {
+                    il.Ldloc(0).Callvirt(getter);
+                    _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
+                        handler.HandledType())!(il);
+                });
+            }
+
+            ilGenerator
+                .Ret();
+            var saver = method.Create();
+            Interlocked.CompareExchange(ref _saver, saver, null);
+        }
+#pragma warning restore CS0162 // Unreachable code detected
     }
 
     internal void EnsureClientTypeVersion()

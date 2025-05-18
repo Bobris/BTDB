@@ -343,6 +343,7 @@ public class ODBIteratorTest : IDisposable
         Item2
     }
 
+    [Generate]
     public class VariousFieldTypes
     {
         public string StringField { get; set; }
@@ -417,6 +418,7 @@ public class ODBIteratorTest : IDisposable
         }
     }
 
+    [Generate]
     public class VariousLists
     {
         public IList<int> IntList { get; set; }
@@ -439,6 +441,7 @@ public class ODBIteratorTest : IDisposable
         IterateWithApprove();
     }
 
+    [Generate]
     public class InlineDictionary
     {
         public Dictionary<int, string> Int2String { get; set; }
