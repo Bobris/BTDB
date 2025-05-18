@@ -399,12 +399,11 @@ public class TableInfo
     unsafe ObjectLoader CreateLoader(uint version)
     {
         EnsureClientTypeVersion();
-        var tableVersionInfo = TableVersions.GetOrAdd(version,
-            (ver, tableInfo) =>
-                tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
+        var tableVersionInfo = TableVersions.GetOrAdd(version, static (ver, tableInfo) =>
+            tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
         var clientTableVersionInfo = ClientTableVersionInfo;
         var anyNeedsCtx = tableVersionInfo.NeedsCtx() || clientTableVersionInfo!.NeedsCtx();
-        StructList<LoadFunc> loaders = new();
+        StructList<LoadFunc> loaders;
 
 #pragma warning disable CS0162 // Unreachable code detected
         if (IFieldHandler.UseNoEmit)
@@ -708,32 +707,35 @@ public class TableInfo
 
     ObjectLoader CreateSkipper(uint version)
     {
-        var method = ILBuilder.Instance
-            .NewMethod<ObjectLoader>(
-                $"Skipper_{Name}_{version}");
-        var ilGenerator = method.Generator;
         var tableVersionInfo = TableVersions.GetOrAdd(version, static (ver, tableInfo) =>
             tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
         var anyNeedsCtx = tableVersionInfo.NeedsCtx();
-        IILLocal? ctxLocal = null;
-        if (anyNeedsCtx)
-        {
-            ctxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
-            ilGenerator
-                .Ldarg(0)
-                .Newobj(() => new DBReaderCtx(null))
-                .Stloc(ctxLocal);
-        }
-
+        var handlers = new IFieldHandler[tableVersionInfo.FieldCount];
         for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
         {
-            var srcFieldInfo = tableVersionInfo[fi];
-            var readerOrCtx = srcFieldInfo.Handler!.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(ctxLocal!)) : null;
-            srcFieldInfo.Handler.Skip(ilGenerator, il => il.Ldarg(2), readerOrCtx);
+            handlers[fi] = tableVersionInfo[fi].Handler;
         }
 
-        ilGenerator.Ret();
-        return method.Create();
+        if (anyNeedsCtx)
+        {
+            return (IInternalObjectDBTransaction transaction, DBObjectMetadata _, ref MemReader reader,
+                object _) =>
+            {
+                var ctx = new DBReaderCtx(transaction);
+                foreach (var handler in handlers)
+                {
+                    handler.Skip(ref reader, ctx);
+                }
+            };
+        }
+
+        return (IInternalObjectDBTransaction _, DBObjectMetadata _, ref MemReader reader, object _) =>
+        {
+            foreach (var handler in handlers)
+            {
+                handler.Skip(ref reader, null);
+            }
+        };
     }
 
     internal bool IsFreeContentNeeded(uint version)
