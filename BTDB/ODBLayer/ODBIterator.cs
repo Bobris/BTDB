@@ -29,7 +29,6 @@ public class ODBIterator
     readonly HashSet<ulong> _visitedOids;
     readonly HashSet<TableIdVersionId> _usedTableVersions;
     readonly Dictionary<TableIdVersionId, TableVersionInfo> _tableVersionInfos;
-    readonly Dictionary<IFieldHandler, SkipperFun> _skippers;
 
     readonly Dictionary<IFieldHandler, LoaderFun> _loaders;
 
@@ -53,7 +52,6 @@ public class ODBIterator
         _usedTableVersions = new();
         _tableVersionInfos = new();
 
-        _skippers = new(ReferenceEqualityComparer<IFieldHandler>.Instance);
         _loaders = new(ReferenceEqualityComparer<IFieldHandler>.Instance);
     }
 
@@ -657,18 +655,7 @@ public class ODBIterator
         {
             if (skipping || _visitor == null)
             {
-                if (!_skippers.TryGetValue(handler, out var skipper))
-                {
-                    var meth =
-                        ILBuilder.Instance.NewMethod<SkipperFun>("Skip" + handler.Name);
-                    var il = meth.Generator;
-                    handler.Skip(il, il2 => il2.Ldarg(0), null);
-                    il.Ret();
-                    skipper = meth.Create();
-                    _skippers.Add(handler, skipper);
-                }
-
-                skipper(ref reader);
+                handler.Skip(ref reader, null);
             }
             else
             {
