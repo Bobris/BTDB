@@ -525,15 +525,15 @@ public class TableInfo
             tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo.Id, ver, tableInfo.Name), this);
         var clientTableVersionInfo = ClientTableVersionInfo;
         var anyNeedsCtx = tableVersionInfo.NeedsCtx() || clientTableVersionInfo!.NeedsCtx();
-        StructList<LoadFunc> loaders;
 
 #pragma warning disable CS0162 // Unreachable code detected
         if (IFieldHandler.UseNoEmit)
         {
-            var metadata = ReflectionMetadata.FindByType(_clientType);
+            var metadata = ReflectionMetadata.FindByType(ClientType!);
             if (metadata == null)
                 throw new BTDBException("Type " + _clientType.ToSimpleName() + " does not have [Generate] attribute");
             var fieldsMetadata = metadata.Fields;
+            var loaders = new StructList<LoadFunc>();
             var setFields = new HashSet<string>();
             for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
@@ -555,7 +555,7 @@ public class TableInfo
                             srcFieldInfo.Handler!.Load(fieldInfo.Type, _tableInfoResolver.TypeConverterFactory);
                         if (fieldInfo.PropRefSetter == null)
                         {
-                            var offset = fieldInfo.ByteOffset.Value;
+                            var offset = fieldInfo.ByteOffset!.Value;
                             loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
                             {
                                 handlerLoad(ref reader, ctx, ref RawData.Ref(obj, offset));
