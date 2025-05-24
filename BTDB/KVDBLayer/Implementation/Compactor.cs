@@ -383,15 +383,15 @@ class Compactor
                 totalSize += fc.GetSize(key);
         }
 
-        // there should be ideally not much more than 8 splits
-        // Minimum size of split is 16MB
+        // there should be ideally not much more than 6 splits
+        // Minimum size of split is 32MB
         // Maximum size of split is 1GB
-        var oneSplitIn64OfGiga = (uint)(totalSize / 8 / (1024ul * 1024 * 1024 / 64));
-        if (oneSplitIn64OfGiga > 63) oneSplitIn64OfGiga = 64;
-        else if (oneSplitIn64OfGiga <= 1) oneSplitIn64OfGiga = 1;
-        else oneSplitIn64OfGiga = NextPowerOfTwo(oneSplitIn64OfGiga);
+        var oneSplitIn32OfGiga = (uint)(totalSize / 6 / (1024ul * 1024 * 1024 / 32));
+        if (oneSplitIn32OfGiga >= 32) oneSplitIn32OfGiga = 32;
+        else if (oneSplitIn32OfGiga <= 1) oneSplitIn32OfGiga = 1;
+        else oneSplitIn32OfGiga = NextPowerOfTwo(oneSplitIn32OfGiga);
 
-        return oneSplitIn64OfGiga * (1024u * 1024 * 1024 / 64);
+        return oneSplitIn32OfGiga * (1024u * 1024 * 1024 / 32);
 
         static uint NextPowerOfTwo(uint input)
         {
