@@ -7,14 +7,37 @@ using System.Runtime.CompilerServices;
 [CompilerGenerated]
 static file class CollectionRegistrations
 {
+    struct DictEntry<TKey, TValue>
+    {
+        public uint HashCode;
+        public int Next;
+        public TKey Key;
+        public TValue Value;
+    }
+
+    struct HashSetEntry<T>
+    {
+        public uint HashCode;
+        public int Next;
+        public T Value;
+    }
+
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        DictEntry<int,global::System.Collections.Generic.IList<string>> e1 = new();
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(global::System.Collections.Generic.IDictionary<int, global::System.Collections.Generic.IList<string>>),
             ElementKeyType = typeof(int),
             ElementValueType = typeof(global::System.Collections.Generic.IList<string>),
+            OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<int,global::System.Collections.Generic.IList<string>>, byte>(ref e1),
+                ref Unsafe.As<int, byte>(ref e1.Next)),
+            OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<int,global::System.Collections.Generic.IList<string>>, byte>(ref e1),
+                ref Unsafe.As<int, byte>(ref e1.Key)),
+            OffsetValue = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<int,global::System.Collections.Generic.IList<string>>, byte>(ref e1),
+                ref Unsafe.As<global::System.Collections.Generic.IList<string>, byte>(ref e1.Value)),
+            SizeOfEntry = (uint)Unsafe.SizeOf<DictEntry<int,global::System.Collections.Generic.IList<string>>>(),
             Creator = &Create1,
             AdderKeyValue = &Add1
         });
@@ -29,10 +52,16 @@ static file class CollectionRegistrations
             Unsafe.As<global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.IList<string>>>(c).Add(Unsafe.As<byte, int>(ref key), Unsafe.As<byte, global::System.Collections.Generic.IList<string>>(ref value));
         }
 
+        HashSetEntry<string> e2 = new();
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(global::System.Collections.Generic.IList<string>),
             ElementKeyType = typeof(string),
+            OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<string>, byte>(ref e2),
+                ref Unsafe.As<int, byte>(ref e2.Next)),
+            OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<string>, byte>(ref e2),
+                ref Unsafe.As<string, byte>(ref e2.Value)),
+            SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<string>>(),
             Creator = &Create2,
             Adder = &Add2
         });
@@ -47,11 +76,19 @@ static file class CollectionRegistrations
             Unsafe.As<global::System.Collections.Generic.List<string>>(c).Add(Unsafe.As<byte, string>(ref value));
         }
 
+        DictEntry<int,global::System.Collections.Generic.IReadOnlyList<string>> e3 = new();
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(global::System.Collections.Generic.IReadOnlyDictionary<int, global::System.Collections.Generic.IReadOnlyList<string>>),
             ElementKeyType = typeof(int),
             ElementValueType = typeof(global::System.Collections.Generic.IReadOnlyList<string>),
+            OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<int,global::System.Collections.Generic.IReadOnlyList<string>>, byte>(ref e3),
+                ref Unsafe.As<int, byte>(ref e3.Next)),
+            OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<int,global::System.Collections.Generic.IReadOnlyList<string>>, byte>(ref e3),
+                ref Unsafe.As<int, byte>(ref e3.Key)),
+            OffsetValue = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<int,global::System.Collections.Generic.IReadOnlyList<string>>, byte>(ref e3),
+                ref Unsafe.As<global::System.Collections.Generic.IReadOnlyList<string>, byte>(ref e3.Value)),
+            SizeOfEntry = (uint)Unsafe.SizeOf<DictEntry<int,global::System.Collections.Generic.IReadOnlyList<string>>>(),
             Creator = &Create3,
             AdderKeyValue = &Add3
         });
@@ -66,10 +103,16 @@ static file class CollectionRegistrations
             Unsafe.As<global::System.Collections.Generic.Dictionary<int, global::System.Collections.Generic.IReadOnlyList<string>>>(c).Add(Unsafe.As<byte, int>(ref key), Unsafe.As<byte, global::System.Collections.Generic.IReadOnlyList<string>>(ref value));
         }
 
+        HashSetEntry<string> e4 = new();
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(global::System.Collections.Generic.IReadOnlyList<string>),
             ElementKeyType = typeof(string),
+            OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<string>, byte>(ref e4),
+                ref Unsafe.As<int, byte>(ref e4.Next)),
+            OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<string>, byte>(ref e4),
+                ref Unsafe.As<string, byte>(ref e4.Value)),
+            SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<string>>(),
             Creator = &Create4,
             Adder = &Add4
         });
@@ -84,10 +127,16 @@ static file class CollectionRegistrations
             Unsafe.As<global::System.Collections.Generic.List<string>>(c).Add(Unsafe.As<byte, string>(ref value));
         }
 
+        HashSetEntry<string> e5 = new();
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(global::System.Collections.Generic.IEnumerable<string>),
             ElementKeyType = typeof(string),
+            OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<string>, byte>(ref e5),
+                ref Unsafe.As<int, byte>(ref e5.Next)),
+            OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<string>, byte>(ref e5),
+                ref Unsafe.As<string, byte>(ref e5.Value)),
+            SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<string>>(),
             Creator = &Create5,
             Adder = &Add5
         });
@@ -102,10 +151,16 @@ static file class CollectionRegistrations
             Unsafe.As<global::System.Collections.Generic.List<string>>(c).Add(Unsafe.As<byte, string>(ref value));
         }
 
+        HashSetEntry<string> e6 = new();
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(global::System.Collections.Generic.ISet<string>),
             ElementKeyType = typeof(string),
+            OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<string>, byte>(ref e6),
+                ref Unsafe.As<int, byte>(ref e6.Next)),
+            OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<string>, byte>(ref e6),
+                ref Unsafe.As<string, byte>(ref e6.Value)),
+            SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<string>>(),
             Creator = &Create6,
             Adder = &Add6
         });
@@ -120,10 +175,16 @@ static file class CollectionRegistrations
             Unsafe.As<global::System.Collections.Generic.HashSet<string>>(c).Add(Unsafe.As<byte, string>(ref value));
         }
 
+        HashSetEntry<string> e7 = new();
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(global::System.Collections.Generic.IReadOnlySet<string>),
             ElementKeyType = typeof(string),
+            OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<string>, byte>(ref e7),
+                ref Unsafe.As<int, byte>(ref e7.Next)),
+            OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<string>, byte>(ref e7),
+                ref Unsafe.As<string, byte>(ref e7.Value)),
+            SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<string>>(),
             Creator = &Create7,
             Adder = &Add7
         });

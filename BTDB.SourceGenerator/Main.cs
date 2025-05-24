@@ -1195,6 +1195,21 @@ public class SourceGenerator : IIncrementalGenerator
             [CompilerGenerated]
             static file class CollectionRegistrations
             {
+                struct DictEntry<TKey, TValue>
+                {
+                    public uint HashCode;
+                    public int Next;
+                    public TKey Key;
+                    public TValue Value;
+                }
+
+                struct HashSetEntry<T>
+                {
+                    public uint HashCode;
+                    public int Next;
+                    public T Value;
+                }
+
                 [ModuleInitializer]
                 internal static unsafe void Register4BTDB()
                 {
@@ -1208,11 +1223,19 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 factoryCode.Append($$"""
 
+                            DictEntry<{{collection.KeyType}},{{collection.ValueType}}> e{{idx}} = new();
                             BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
                             {
                                 Type = typeof({{collection.FullName}}),
                                 ElementKeyType = typeof({{collection.KeyType}}),
                                 ElementValueType = typeof({{collection.ValueType}}),
+                                OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>, byte>(ref e{{idx}}),
+                                    ref Unsafe.As<int, byte>(ref e{{idx}}.Next)),
+                                OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>, byte>(ref e{{idx}}),
+                                    ref Unsafe.As<{{collection.KeyType}}, byte>(ref e{{idx}}.Key)),
+                                OffsetValue = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>, byte>(ref e{{idx}}),
+                                    ref Unsafe.As<{{collection.ValueType}}, byte>(ref e{{idx}}.Value)),
+                                SizeOfEntry = (uint)Unsafe.SizeOf<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>>(),
                                 Creator = &Create{{idx}},
                                 AdderKeyValue = &Add{{idx}}
                             });
@@ -1234,10 +1257,16 @@ public class SourceGenerator : IIncrementalGenerator
                 // language=c#
                 factoryCode.Append($$"""
 
+                            HashSetEntry<{{collection.KeyType}}> e{{idx}} = new();
                             BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
                             {
                                 Type = typeof({{collection.FullName}}),
                                 ElementKeyType = typeof({{collection.KeyType}}),
+                                OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<{{collection.KeyType}}>, byte>(ref e{{idx}}),
+                                    ref Unsafe.As<int, byte>(ref e{{idx}}.Next)),
+                                OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<{{collection.KeyType}}>, byte>(ref e{{idx}}),
+                                    ref Unsafe.As<{{collection.KeyType}}, byte>(ref e{{idx}}.Value)),
+                                SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<{{collection.KeyType}}>>(),
                                 Creator = &Create{{idx}},
                                 Adder = &Add{{idx}}
                             });

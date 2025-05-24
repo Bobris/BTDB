@@ -280,7 +280,7 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
                         throw new BTDBException("Invalid HashSet layout " + offsetDelta + " != " + layout.Size);
                     for (var i = 0; i < count; i++, offset += offsetDelta)
                     {
-                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + 4)) < -1)
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
                         {
                             continue;
                         }

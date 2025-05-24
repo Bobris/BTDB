@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 
 namespace BTDB.Serialization;
 
@@ -118,71 +119,40 @@ public sealed class RawData
         public byte Value;
     }
 
-    public static (uint Offset, uint Size) GetHashSetEntriesLayout(Type memberType)
+    public static (uint OffsetNext, uint Offset, uint Size) GetHashSetEntriesLayout(Type memberType)
     {
-        var sa = Combine((8, 4), GetSizeAndAlign(memberType));
-        return (Align(8, sa.Align), sa.Size);
+        var type1 = typeof(HashSet<>).MakeGenericType(memberType);
+        if (ReflectionMetadata.FindCollectionByType(type1) is { } metadata)
+        {
+            return (metadata.OffsetNext, metadata.OffsetKey, metadata.SizeOfEntry);
+        }
+
+        var type2 = typeof(ISet<>).MakeGenericType(memberType);
+        if (ReflectionMetadata.FindCollectionByType(type2) is { } metadata2)
+        {
+            return (metadata2.OffsetNext, metadata2.OffsetKey, metadata2.SizeOfEntry);
+        }
+
+        throw new BTDBException("Cannot find metadata for HashSet<" + memberType.ToSimpleName() + ">");
     }
 
     public static (uint OffsetNext, uint OffsetKey, uint OffsetValue, uint Size) GetDictionaryEntriesLayout(
         Type keyType, Type valueType)
     {
-        var saKey = GetSizeAndAlign(keyType);
-        var saValue = GetSizeAndAlign(valueType);
-        var sa = Combine((8, 4), saKey, saValue);
-        if (!keyType.IsValueType)
+        var type1 = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
+        if (ReflectionMetadata.FindCollectionByType(type1) is { } metadata)
         {
-            if (!valueType.IsValueType || saValue.Align == 8)
-            {
-                // TKey, TValue, uint, int
-                var offsetValue = Align(saKey.Size, saValue.Align);
-                var offsetNext = Align(offsetValue + saValue.Size, 4) + 4;
-                return (offsetNext, 0u, offsetValue, sa.Size);
-            }
-            else
-            {
-                // TKey, uint, int, TValue
-                var offsetNext = Align(saKey.Size, 4) + 4;
-                var offsetValue = Align(offsetNext + 4, saValue.Align);
-                return (offsetNext, 0u, offsetValue, sa.Size);
-            }
+            return (metadata.OffsetNext, metadata.OffsetKey, metadata.OffsetValue, metadata.SizeOfEntry);
         }
 
-        if (!valueType.IsValueType)
+        var type2 = typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
+        if (ReflectionMetadata.FindCollectionByType(type2) is { } metadata2)
         {
-            if (saKey.Align == 8)
-            {
-                // TValue, TKey, uint, int
-                var offsetKey = Align(saValue.Size, saKey.Align);
-                var offsetNext = Align(offsetKey + saKey.Size, 4) + 4;
-                return (offsetNext, offsetKey, 0u, sa.Size);
-            }
-            else
-            {
-                // TValue, uint, int, TKey
-                var offsetNext = Align(saValue.Size, 4) + 4;
-                var offsetKey = Align(offsetNext + 4, saKey.Align);
-                return (offsetNext, offsetKey, 0u, Align(offsetKey + saKey.Size, sa.Align));
-            }
+            return (metadata2.OffsetNext, metadata2.OffsetKey, metadata2.OffsetValue, metadata2.SizeOfEntry);
         }
-        else
-        {
-            if (keyType != typeof(Int128) && keyType != typeof(UInt128) && saKey is { Size: > 8, Align: >= 8 } &&
-                saValue is { Align: < 8, Size: <= 8 })
-            {
-                // uint, int, TValue, TKey
-                var offsetValue = Align(8, saValue.Align);
-                var offsetKey = Align(offsetValue + saValue.Size, saKey.Align);
-                return (4, offsetKey, offsetValue, sa.Size);
-            }
-            else
-            {
-                // uint, int, TKey, TValue
-                var offsetKey = Align(8, saKey.Align);
-                var offsetValue = Align(offsetKey + saKey.Size, saValue.Align);
-                return (4, offsetKey, offsetValue, sa.Size);
-            }
-        }
+
+        throw new BTDBException("Cannot find metadata for Dictionary<" + keyType.ToSimpleName() + ", " +
+                                valueType.ToSimpleName() + ">");
     }
 
     public static bool IsRefOrContainsRef(Type type)

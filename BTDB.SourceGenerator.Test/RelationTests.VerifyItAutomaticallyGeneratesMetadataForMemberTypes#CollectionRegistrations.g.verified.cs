@@ -7,13 +7,34 @@ using System.Runtime.CompilerServices;
 [CompilerGenerated]
 static file class CollectionRegistrations
 {
+    struct DictEntry<TKey, TValue>
+    {
+        public uint HashCode;
+        public int Next;
+        public TKey Key;
+        public TValue Value;
+    }
+
+    struct HashSetEntry<T>
+    {
+        public uint HashCode;
+        public int Next;
+        public T Value;
+    }
+
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        HashSetEntry<global::Activity> e1 = new();
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(global::System.Collections.Generic.IList<global::Activity>),
             ElementKeyType = typeof(global::Activity),
+            OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<global::Activity>, byte>(ref e1),
+                ref Unsafe.As<int, byte>(ref e1.Next)),
+            OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<global::Activity>, byte>(ref e1),
+                ref Unsafe.As<global::Activity, byte>(ref e1.Value)),
+            SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<global::Activity>>(),
             Creator = &Create1,
             Adder = &Add1
         });

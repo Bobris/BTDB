@@ -7,14 +7,37 @@ using System.Runtime.CompilerServices;
 [CompilerGenerated]
 static file class CollectionRegistrations
 {
+    struct DictEntry<TKey, TValue>
+    {
+        public uint HashCode;
+        public int Next;
+        public TKey Key;
+        public TValue Value;
+    }
+
+    struct HashSetEntry<T>
+    {
+        public uint HashCode;
+        public int Next;
+        public T Value;
+    }
+
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        DictEntry<ulong,global::BTDBTest.ObjectDbEventSerializeTest.Item> e1 = new();
         BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(global::System.Collections.Generic.IDictionary<ulong, global::BTDBTest.ObjectDbEventSerializeTest.Item>),
             ElementKeyType = typeof(ulong),
             ElementValueType = typeof(global::BTDBTest.ObjectDbEventSerializeTest.Item),
+            OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<ulong,global::BTDBTest.ObjectDbEventSerializeTest.Item>, byte>(ref e1),
+                ref Unsafe.As<int, byte>(ref e1.Next)),
+            OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<ulong,global::BTDBTest.ObjectDbEventSerializeTest.Item>, byte>(ref e1),
+                ref Unsafe.As<ulong, byte>(ref e1.Key)),
+            OffsetValue = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<ulong,global::BTDBTest.ObjectDbEventSerializeTest.Item>, byte>(ref e1),
+                ref Unsafe.As<global::BTDBTest.ObjectDbEventSerializeTest.Item, byte>(ref e1.Value)),
+            SizeOfEntry = (uint)Unsafe.SizeOf<DictEntry<ulong,global::BTDBTest.ObjectDbEventSerializeTest.Item>>(),
             Creator = &Create1,
             AdderKeyValue = &Add1
         });

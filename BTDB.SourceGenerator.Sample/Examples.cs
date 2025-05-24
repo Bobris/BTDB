@@ -13,7 +13,7 @@ unsafe
 {
     var builder = new ContainerBuilder();
 //builder.RegisterType<Klass>();
-    builder.AutoRegisterTypes().Where(t=>!t.InheritsOrImplements(typeof(I3rdPartyInterface))).AsSelf();
+    builder.AutoRegisterTypes().Where(t => !t.InheritsOrImplements(typeof(I3rdPartyInterface))).AsSelf();
     builder.RegisterType<Class3rdPartyWithKeyedDependency>().AsSelf();
     builder.RegisterType<K3rdPartyDependencyWrong>().As<I3rdPartyInterface>();
     builder.RegisterType<K3rdPartyDependency>().Named<I3rdPartyInterface>("Key1");
@@ -27,11 +27,19 @@ unsafe
     }
 
     {
+        DictEntry<int, string> e1 = new();
         ReflectionMetadata.RegisterCollection(new()
         {
             Type = typeof(Dictionary<int, string>),
             ElementKeyType = typeof(int),
             ElementValueType = typeof(string),
+            OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<int, string>, byte>(ref e1),
+                ref Unsafe.As<int, byte>(ref e1.Next)),
+            OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<int, string>, byte>(ref e1),
+                ref Unsafe.As<int, byte>(ref e1.Key)),
+            OffsetValue = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictEntry<int, string>, byte>(ref e1),
+                ref Unsafe.As<string, byte>(ref e1.Value)),
+            SizeOfEntry = (uint)Unsafe.SizeOf<DictEntry<int, string>>(),
             Creator = &Create1,
             AdderKeyValue = &Add1
         });
@@ -156,3 +164,10 @@ public class K3rdPartyDependencyWrong : I3rdPartyInterface
     public string Name => "K3rdPartyDependencyWrong";
 }
 
+public struct DictEntry<TKey, TValue>
+{
+    public uint HashCode;
+    public int Next;
+    public TKey Key;
+    public TValue Value;
+}
