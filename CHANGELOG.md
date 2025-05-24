@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Changed
+
+Automatic split size minimum is now 32MB, and it chooses higher value sooner.
+
 ## 33.6.5
 
 ### Fixed
