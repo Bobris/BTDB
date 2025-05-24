@@ -18,7 +18,7 @@ public class MemoryLayoutTest
         public TValue value;
     }
 
-    (uint OffsetNext, uint OffsetKey, uint OffsetValue, uint Size) GetDictionaryEntryLayout<TKey, TValue>()
+    static (uint OffsetNext, uint OffsetKey, uint OffsetValue, uint Size) GetDictionaryEntryLayout<TKey, TValue>()
     {
         DictionaryEntry<TKey, TValue> entry = default;
         var offsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<DictionaryEntry<TKey, TValue>, byte>(ref entry),
