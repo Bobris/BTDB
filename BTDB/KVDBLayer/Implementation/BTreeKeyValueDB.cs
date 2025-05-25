@@ -334,11 +334,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
                 if (_fileIdWithTransactionLog != 0)
                 {
-                    if (_writerWithTransactionLog.Controller == null)
-                    {
-                        _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
-                        _writerWithTransactionLog = new(_fileWithTransactionLog!.GetAppenderWriter());
-                    }
+                    _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
+                    _writerWithTransactionLog = new(_fileWithTransactionLog!.GetAppenderWriter());
 
                     if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
                     {
