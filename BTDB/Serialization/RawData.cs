@@ -121,24 +121,27 @@ public sealed class RawData
 
     public static (uint OffsetNext, uint Offset, uint Size) GetHashSetEntriesLayout(Type memberType)
     {
-        var type1 = typeof(HashSet<>).MakeGenericType(memberType);
-        if (ReflectionMetadata.FindCollectionByType(type1) is { } metadata)
+        if (!memberType.IsValueType)
+        {
+            return (12, 0, 16);
+        }
+
+        if (ReflectionMetadata.FindCollectionByElementType(memberType) is { } metadata)
         {
             return (metadata.OffsetNext, metadata.OffsetKey, metadata.SizeOfEntry);
         }
 
-        var type2 = typeof(ISet<>).MakeGenericType(memberType);
-        if (ReflectionMetadata.FindCollectionByType(type2) is { } metadata2)
-        {
-            return (metadata2.OffsetNext, metadata2.OffsetKey, metadata2.SizeOfEntry);
-        }
-
-        throw new BTDBException("Cannot find metadata for HashSet<" + memberType.ToSimpleName() + ">");
+        throw new BTDBException("Cannot find metadata for Collection<" + memberType.ToSimpleName() + ">");
     }
 
     public static (uint OffsetNext, uint OffsetKey, uint OffsetValue, uint Size) GetDictionaryEntriesLayout(
         Type keyType, Type valueType)
     {
+        if (!keyType.IsValueType && !valueType.IsValueType)
+        {
+            return (20, 0, 8, 24);
+        }
+
         var type1 = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
         if (ReflectionMetadata.FindCollectionByType(type1) is { } metadata)
         {

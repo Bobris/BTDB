@@ -15,6 +15,7 @@ public static class ReflectionMetadata
     static readonly SpanByteNoRemoveDictionary<ClassMetadata> NameToMetadata = new();
 
     static readonly RefDictionary<nint, CollectionMetadata> CollectionToMetadata = new();
+    static readonly RefDictionary<nint, CollectionMetadata> CollectionToMetadataByElementType = new();
 
     //value type is actually delegate*<ref byte, ref nint, delegate*<ref byte, void>, void> but C# does not support it so replaced by simple pointer
     static readonly RefDictionary<nint, nint> StackAllocators = new();
@@ -79,12 +80,25 @@ public static class ReflectionMetadata
         return null;
     }
 
+    public static CollectionMetadata? FindCollectionByElementType(Type elementType)
+    {
+        var handle = elementType.TypeHandle.Value;
+        if (CollectionToMetadataByElementType.TryGetValueSeqLock(handle, out var metadata, ref _lock))
+            return metadata;
+        return null;
+    }
+
     public static void RegisterCollection(CollectionMetadata metadata)
     {
         _lock.StartWrite();
         try
         {
             CollectionToMetadata.TryAdd(metadata.Type.TypeHandle.Value, metadata);
+            if (metadata.ElementValueType == null)
+            {
+                CollectionToMetadataByElementType.TryAdd(metadata.Type.GetGenericArguments()[0].TypeHandle.Value,
+                    metadata);
+            }
         }
         finally
         {
