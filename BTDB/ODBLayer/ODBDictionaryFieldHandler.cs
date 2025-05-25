@@ -289,16 +289,18 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             .Castclass(_type);
     }
 
-    public FieldHandlerInit Init()
+    public unsafe FieldHandlerInit Init()
     {
-        var genericArguments = _type!.GetGenericArguments();
-        var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
         var configuration = ODBDictionaryConfiguration.Get(GetOrCreateConfigurationId());
+        var collectionMetadata = ReflectionMetadata.FindCollectionByType(_type);
+        if (collectionMetadata == null)
+            throw new BTDBException("Cannot find collection metadata for " + _type.ToSimpleName());
+        var creator = collectionMetadata.ODBCreator;
         return (IReaderCtx? ctx, ref byte value) =>
         {
-            // TODO: Create source generator for this
+            var transaction = ((IDBReaderCtx)ctx!).GetTransaction();
             Unsafe.As<byte, object>(ref value) =
-                Activator.CreateInstance(instanceType, ((IDBReaderCtx)ctx!).GetTransaction(), configuration);
+                creator(transaction, configuration, transaction.AllocateDictionaryId());
         };
     }
 
@@ -321,7 +323,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             .Call(instanceType.GetMethod(nameof(ODBDictionary<int, int>.DoSave))!);
     }
 
-    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    public unsafe FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
     {
         if (IsCompatibleWithStatic(asType, FieldHandlerOptions.None))
         {
@@ -329,13 +331,15 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
             var configurationId = GetConfigurationId(asType, typeConverterFactory);
             var configuration = ODBDictionaryConfiguration.Get(configurationId);
+            var collectionMetadata = ReflectionMetadata.FindCollectionByType(asType);
+            if (collectionMetadata == null)
+                throw new BTDBException("Cannot find collection metadata for " + asType.ToSimpleName());
+            var creator = collectionMetadata.ODBCreator;
             return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
             {
                 var dictId = reader.ReadVUInt64();
-                // TODO: Create source generator for this
-                Unsafe.As<byte, object>(ref value) =
-                    Activator.CreateInstance(instanceType, ((IDBReaderCtx)ctx!).GetTransaction(), configuration,
-                        dictId);
+                Unsafe.As<byte, object>(ref value) = creator(((IDBReaderCtx)ctx!).GetTransaction(), configuration,
+                    dictId);
             };
         }
 
@@ -356,15 +360,17 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         reader.SkipVUInt64();
     }
 
-    public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
+    public unsafe FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
     {
         if (!IsCompatibleWithCore(asType))
             throw new BTDBException("Type " + asType.ToSimpleName() +
                                     " is not compatible with ODBDictionaryFieldHandler.Save");
-        var genericArguments = _type!.GetGenericArguments();
-        var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
         var configurationId = GetConfigurationId(asType, typeConverterFactory);
         var configuration = ODBDictionaryConfiguration.Get(configurationId);
+        var collectionMetadata = ReflectionMetadata.FindCollectionByType(asType);
+        if (collectionMetadata == null)
+            throw new BTDBException("Cannot find collection metadata for " + asType.ToSimpleName());
+        var creator = collectionMetadata.ODBCreator;
         return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
         {
             var writerCtx = (IDBWriterCtx)ctx!;
@@ -375,10 +381,9 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
                 return;
             }
 
-            var dictId = writerCtx.GetTransaction().AllocateDictionaryId();
-            // TODO: Create source generator for this
-            goodDict = (IInternalODBDictionary)Activator.CreateInstance(instanceType, writerCtx.GetTransaction(),
-                configuration, dictId)!;
+            var transaction = writerCtx.GetTransaction();
+            var dictId = transaction.AllocateDictionaryId();
+            goodDict = (IInternalODBDictionary)creator(transaction, configuration, dictId);
             goodDict.Upsert(dictionary);
             writer.WriteVUInt64(dictId);
         };

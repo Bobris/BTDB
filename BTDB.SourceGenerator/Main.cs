@@ -878,6 +878,7 @@ public class SourceGenerator : IIncrementalGenerator
                 "global::System.Collections.Generic.ISet<", "global::System.Collections.Generic.HashSet<",
                 "global::System.Collections.Generic.IReadOnlySet<", "global::System.Collections.Generic.HashSet<",
                 "global::System.Collections.Generic.IEnumerable<", "global::System.Collections.Generic.List<",
+                "global::BTDB.ODBLayer.IOrderedSet<", "global::System.Collections.Generic.HashSet<"
             ];
             string? instance = null;
             for (var i = 0; i < collectionToInstance.Length; i += 2)
@@ -905,6 +906,8 @@ public class SourceGenerator : IIncrementalGenerator
                     "global::System.Collections.Generic.Dictionary<", "global::System.Collections.Generic.Dictionary<",
                     "global::System.Collections.Generic.IDictionary<", "global::System.Collections.Generic.Dictionary<",
                     "global::System.Collections.Generic.IReadOnlyDictionary<",
+                    "global::System.Collections.Generic.Dictionary<",
+                    "global::BTDB.ODBLayer.IOrderedDictionary<",
                     "global::System.Collections.Generic.Dictionary<",
                 ];
                 instance = null;
@@ -1237,7 +1240,8 @@ public class SourceGenerator : IIncrementalGenerator
                                     ref Unsafe.As<{{collection.ValueType}}, byte>(ref e{{idx}}.Value)),
                                 SizeOfEntry = (uint)Unsafe.SizeOf<DictEntry<{{collection.KeyType}},{{collection.ValueType}}>>(),
                                 Creator = &Create{{idx}},
-                                AdderKeyValue = &Add{{idx}}
+                                AdderKeyValue = &Add{{idx}},
+                                ODBCreator = &ODBCreate{{idx}}
                             });
 
                             static object Create{{idx}}(uint capacity)
@@ -1248,6 +1252,11 @@ public class SourceGenerator : IIncrementalGenerator
                             static void Add{{idx}}(object c, ref byte key, ref byte value)
                             {
                                 Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref key), Unsafe.As<byte, {{collection.ValueType}}>(ref value));
+                            }
+
+                            static object ODBCreate{{idx}}(BTDB.ODBLayer.IInternalObjectDBTransaction tr, BTDB.ODBLayer.ODBDictionaryConfiguration config, ulong id)
+                            {
+                                return new BTDB.ODBLayer.ODBDictionary<{{collection.KeyType}}, {{collection.ValueType}}>(tr, config, id);
                             }
 
                     """);
@@ -1268,7 +1277,8 @@ public class SourceGenerator : IIncrementalGenerator
                                     ref Unsafe.As<{{collection.KeyType}}, byte>(ref e{{idx}}.Value)),
                                 SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<{{collection.KeyType}}>>(),
                                 Creator = &Create{{idx}},
-                                Adder = &Add{{idx}}
+                                Adder = &Add{{idx}},
+                                ODBCreator = &ODBCreate{{idx}}
                             });
 
                             static object Create{{idx}}(uint capacity)
@@ -1279,6 +1289,11 @@ public class SourceGenerator : IIncrementalGenerator
                             static void Add{{idx}}(object c, ref byte value)
                             {
                                 Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref value));
+                            }
+
+                            static object ODBCreate{{idx}}(BTDB.ODBLayer.IInternalObjectDBTransaction tr, BTDB.ODBLayer.ODBDictionaryConfiguration config, ulong id)
+                            {
+                                return new BTDB.ODBLayer.ODBSet<{{collection.KeyType}}>(tr, config, id);
                             }
 
                     """);

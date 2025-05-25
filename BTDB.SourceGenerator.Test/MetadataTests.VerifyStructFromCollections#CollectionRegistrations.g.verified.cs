@@ -39,7 +39,8 @@ static file class CollectionRegistrations
                 ref Unsafe.As<(string, string), byte>(ref e1.Value)),
             SizeOfEntry = (uint)Unsafe.SizeOf<DictEntry<int,(string, string)>>(),
             Creator = &Create1,
-            AdderKeyValue = &Add1
+            AdderKeyValue = &Add1,
+            ODBCreator = &ODBCreate1
         });
 
         static object Create1(uint capacity)
@@ -50,6 +51,11 @@ static file class CollectionRegistrations
         static void Add1(object c, ref byte key, ref byte value)
         {
             Unsafe.As<global::System.Collections.Generic.Dictionary<int, (string, string)>>(c).Add(Unsafe.As<byte, int>(ref key), Unsafe.As<byte, (string, string)>(ref value));
+        }
+
+        static object ODBCreate1(BTDB.ODBLayer.IInternalObjectDBTransaction tr, BTDB.ODBLayer.ODBDictionaryConfiguration config, ulong id)
+        {
+            return new BTDB.ODBLayer.ODBDictionary<int, (string, string)>(tr, config, id);
         }
 
         HashSetEntry<(string, int)> e2 = new();
@@ -63,7 +69,8 @@ static file class CollectionRegistrations
                 ref Unsafe.As<(string, int), byte>(ref e2.Value)),
             SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<(string, int)>>(),
             Creator = &Create2,
-            Adder = &Add2
+            Adder = &Add2,
+            ODBCreator = &ODBCreate2
         });
 
         static object Create2(uint capacity)
@@ -74,6 +81,11 @@ static file class CollectionRegistrations
         static void Add2(object c, ref byte value)
         {
             Unsafe.As<global::System.Collections.Generic.HashSet<(string, int)>>(c).Add(Unsafe.As<byte, (string, int)>(ref value));
+        }
+
+        static object ODBCreate2(BTDB.ODBLayer.IInternalObjectDBTransaction tr, BTDB.ODBLayer.ODBDictionaryConfiguration config, ulong id)
+        {
+            return new BTDB.ODBLayer.ODBSet<(string, int)>(tr, config, id);
         }
     }
 }

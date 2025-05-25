@@ -39,7 +39,8 @@ static file class CollectionRegistrations
                 ref Unsafe.As<global::BTDBTest.ObjectDbEventSerializeTest.Item, byte>(ref e1.Value)),
             SizeOfEntry = (uint)Unsafe.SizeOf<DictEntry<ulong,global::BTDBTest.ObjectDbEventSerializeTest.Item>>(),
             Creator = &Create1,
-            AdderKeyValue = &Add1
+            AdderKeyValue = &Add1,
+            ODBCreator = &ODBCreate1
         });
 
         static object Create1(uint capacity)
@@ -50,6 +51,11 @@ static file class CollectionRegistrations
         static void Add1(object c, ref byte key, ref byte value)
         {
             Unsafe.As<global::System.Collections.Generic.Dictionary<ulong, global::BTDBTest.ObjectDbEventSerializeTest.Item>>(c).Add(Unsafe.As<byte, ulong>(ref key), Unsafe.As<byte, global::BTDBTest.ObjectDbEventSerializeTest.Item>(ref value));
+        }
+
+        static object ODBCreate1(BTDB.ODBLayer.IInternalObjectDBTransaction tr, BTDB.ODBLayer.ODBDictionaryConfiguration config, ulong id)
+        {
+            return new BTDB.ODBLayer.ODBDictionary<ulong, global::BTDBTest.ObjectDbEventSerializeTest.Item>(tr, config, id);
         }
     }
 }

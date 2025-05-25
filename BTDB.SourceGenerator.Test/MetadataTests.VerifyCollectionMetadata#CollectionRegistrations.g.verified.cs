@@ -36,7 +36,8 @@ static file class CollectionRegistrations
                 ref Unsafe.As<global::TestNamespace.Person, byte>(ref e1.Value)),
             SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<global::TestNamespace.Person>>(),
             Creator = &Create1,
-            Adder = &Add1
+            Adder = &Add1,
+            ODBCreator = &ODBCreate1
         });
 
         static object Create1(uint capacity)
@@ -47,6 +48,11 @@ static file class CollectionRegistrations
         static void Add1(object c, ref byte value)
         {
             Unsafe.As<global::System.Collections.Generic.List<global::TestNamespace.Person>>(c).Add(Unsafe.As<byte, global::TestNamespace.Person>(ref value));
+        }
+
+        static object ODBCreate1(BTDB.ODBLayer.IInternalObjectDBTransaction tr, BTDB.ODBLayer.ODBDictionaryConfiguration config, ulong id)
+        {
+            return new BTDB.ODBLayer.ODBSet<global::TestNamespace.Person>(tr, config, id);
         }
     }
 }
