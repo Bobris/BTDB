@@ -1040,4 +1040,39 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal(5, t.ScanById(Constraint.ListString.Contains("d")).Count());
         Assert.Equal(6, t.ScanById(Constraint<List<string>>.Any).Count());
     }
+
+    public class ObjWithIndexedListUlong
+    {
+        [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+        [PrimaryKey(2)]
+        [SecondaryKey("Ulongs", Order = 1)]
+        public List<ulong> Ulongs { get; set; }
+    }
+
+    public interface IObjectWithIndexedListUlongTable : IRelation<ObjWithIndexedListUlong>
+    {
+        IEnumerable<ObjWithIndexedListUlong> ScanById(Constraint<ulong> tenantId, Constraint<List<ulong>> ulongs);
+        IEnumerable<ObjWithIndexedListUlong> ScanByUlongs(Constraint<List<ulong>> ulongs);
+    }
+
+    [Fact]
+    public void ConstraintListUlongContainsWorks()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IObjectWithIndexedListUlongTable>();
+        t.Upsert(new() { TenantId = 0, Ulongs = [] });
+        t.Upsert(new() { TenantId = 1, Ulongs = [1] });
+        t.Upsert(new() { TenantId = 2, Ulongs = [1, 2] });
+        t.Upsert(new() { TenantId = 3, Ulongs = [2, 3, 4] });
+        t.Upsert(new() { TenantId = 3, Ulongs = [2, 2, 3, 4] });
+        t.Upsert(new() { TenantId = 3, Ulongs = [1, 2, 3, 4, 5] });
+        Assert.Equal(6, t.ScanById(Constraint<ulong>.Any, Constraint<List<ulong>>.Any).Count());
+        Assert.Equal(3, t.ScanById(Constraint<ulong>.Any, Constraint.ListUlong.StartsWith(1)).Count());
+        Assert.Equal(2, t.ScanById(Constraint.Exact<ulong>(3), Constraint.ListUlong.StartsWith(2)).Count());
+        Assert.Empty(t.ScanById(Constraint.Exact<ulong>(3), Constraint.ListUlong.StartsWith(999)));
+        Assert.Equal(3, t.ScanByUlongs(Constraint.ListUlong.StartsWith(1)).Count());
+        Assert.Equal(2, t.ScanByUlongs(Constraint.ListUlong.StartsWith(2)).Count());
+        Assert.Empty(t.ScanByUlongs(Constraint.ListUlong.StartsWith(5)));
+    }
 }

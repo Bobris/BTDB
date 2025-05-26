@@ -21,6 +21,8 @@
 - `StringValues` from Microsoft.Extensions.Primitives
 - `List<string>` (orderable `Constraint<List<string>>`/`Constraint.ListString`, order is by number of elements, then by
   length of element[0], then it is not important)
+- `List<ulong>` (orderable `Constraint<List<ulong>>`/`Constraint.ListUlong`, order is by number of elements, then by
+  value of element[0], then it is not important)
 
 ## Complex types
 

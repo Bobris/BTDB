@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Constraint StartsWith for List<ulong>.
+
 ## 33.7.3
 
 ### Changed
