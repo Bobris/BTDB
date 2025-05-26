@@ -149,6 +149,10 @@ public abstract class Constraint<T> : IConstraint
         {
             Any = new ConstraintListStringAny<T>();
         }
+        else if (typeof(T) == typeof(List<ulong>) || typeof(T) == typeof(IList<ulong>))
+        {
+            Any = new ConstraintListUlongAny<T>();
+        }
         else
         {
             Any = new ConstraintNotImplemented<T>();
@@ -164,6 +168,20 @@ public class ConstraintListStringAny<T> : ConstraintAny<T>
         for (var i = 0; i < count; i++)
         {
             reader.SkipString();
+        }
+
+        return IConstraint.MatchResult.Yes;
+    }
+}
+
+public class ConstraintListUlongAny<T> : ConstraintAny<T>
+{
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
+    {
+        var count = reader.ReadVUInt32();
+        for (var i = 0; i < count; i++)
+        {
+            reader.SkipVUInt64();
         }
 
         return IConstraint.MatchResult.Yes;
@@ -592,9 +610,72 @@ public static partial class Constraint
         public static Constraint<List<string>> Contains(string value) => new ConstraintListStringContains(value);
     }
 
+    public static partial class ListUlong
+    {
+        public static Constraint<List<ulong>> StartsWith(ulong value) =>
+            new ConstraintListUlongStartsWith(value);
+    }
+
     public static partial class Guid
     {
         public static Constraint<System.Guid> Exact(System.Guid value) => new ConstraintGuidExact(value);
+    }
+}
+
+public class ConstraintListUlongStartsWith : Constraint<List<ulong>>
+{
+    readonly ulong _value;
+    int _ofs;
+    int _len;
+
+    public ConstraintListUlongStartsWith(ulong value)
+    {
+        _value = value;
+    }
+
+    public override bool IsSimpleExact() => false;
+
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
+    {
+        _ofs = (int)buffer.GetCurrentPosition();
+        buffer.WriteVUInt64(_value);
+        _len = (int)buffer.GetCurrentPosition() - _ofs;
+        return IConstraint.MatchType.NoPrefix;
+    }
+
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
+    {
+    }
+
+    public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        var count = reader.ReadVUInt32();
+        if (count == 0) return IConstraint.MatchResult.No;
+        var val = buffer.AsReadOnlySpan(_ofs, _len);
+        return reader.CheckMagic(val) ? IConstraint.MatchResult.Yes : IConstraint.MatchResult.No;
+    }
+
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
+    {
+        var res = false;
+        var count = reader.ReadVUInt32();
+        if (count == 0) return IConstraint.MatchResult.No;
+        var val = buffer.AsReadOnlySpan(_ofs, _len);
+        if (reader.CheckMagic(val))
+        {
+            res = true;
+        }
+        else
+        {
+            reader.SkipVUInt64();
+        }
+
+        for (var i = 1; i < count; i++)
+        {
+            reader.SkipVUInt64();
+        }
+
+        return res ? IConstraint.MatchResult.Yes : IConstraint.MatchResult.No;
     }
 }
 
