@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Disabled one useless warning in source generated code.
+
 ## 33.8.0
 
 ### Added
