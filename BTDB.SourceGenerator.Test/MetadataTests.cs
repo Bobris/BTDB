@@ -354,4 +354,30 @@ public class MetadataTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyOnlyPublicInterfacesAreRegistered()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public interface IPublicInterface
+            {
+                string PublicProperty { get; set; }
+            }
+
+            internal interface IInternalInterface
+            {
+                string InternalProperty { get; set; }
+            }
+
+            public class Person : IPublicInterface, IInternalInterface
+            {
+                public string PublicProperty { get; set; } = "";
+                public string InternalProperty { get; set; } = "";
+            }
+            """);
+    }
 }

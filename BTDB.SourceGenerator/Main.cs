@@ -462,7 +462,8 @@ public class SourceGenerator : IIncrementalGenerator
 
         var persistedName = ExtractPersistedName(symbol);
 
-        var implements = symbol.AllInterfaces.Select(s => new TypeRef(s)).ToArray();
+        var implements = symbol.AllInterfaces.Where(s => s.DeclaredAccessibility == Accessibility.Public)
+            .Select(s => new TypeRef(s)).ToArray();
 
         var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
         foreach (var (name, type, resultType, ifaceName) in symbol.AllInterfaces.SelectMany(
@@ -1165,8 +1166,8 @@ public class SourceGenerator : IIncrementalGenerator
                         BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof({{@struct.FullName}}), &Allocate{{idx}});
                         static void Allocate{{idx}}(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
                             {
-                                {{@struct.FullName}} value;
-                                ptr = (nint)(&value);
+                                {{@struct.FullName}} value = default;
+                                ptr = (nint)Unsafe.AsPointer(ref value);
                                 chain(ref ctx);
                                 ptr = 0;
                             }
