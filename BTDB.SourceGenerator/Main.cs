@@ -56,7 +56,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 .Symbol is not INamedTypeSymbol symb)
                             return null!;
                         var constructorParametersExpression = attributeSyntax.ArgumentList!.Arguments
-                            .FirstOrDefault(a => a.NameEquals?.Name?.Identifier.ValueText == "ConstructorParameters")
+                            .FirstOrDefault(a => a.NameEquals?.Name.Identifier.ValueText == "ConstructorParameters")
                             ?.Expression;
                         INamedTypeSymbol[]? constructorParameters = null;
                         if (constructorParametersExpression is not null)
@@ -466,7 +466,7 @@ public class SourceGenerator : IIncrementalGenerator
             .Select(s => new TypeRef(s)).ToArray();
 
         var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
-        foreach (var (name, type, resultType, ifaceName) in symbol.AllInterfaces.SelectMany(
+        foreach (var (name, _, _, ifaceName) in symbol.AllInterfaces.SelectMany(
                      DetectDispatcherInfo))
         {
             var m = symbol.GetMembers().OfType<IMethodSymbol>().FirstOrDefault(m =>
@@ -527,16 +527,20 @@ public class SourceGenerator : IIncrementalGenerator
         if (constructorParameters != null && constructor == null) return null;
 
         var parameters = constructor?.Parameters.Select(p => new ParameterInfo(p.Name,
-                                 p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                 DetectDependencyName(p),
-                                 p.Type.IsReferenceType,
-                                 p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
-                                 p.HasExplicitDefaultValue
-                                     ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue,
-                                         new(p.Type))
-                                     : null))
-                             .ToArray() ??
-                         [];
+                p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                DetectDependencyName(p),
+                p.Type.IsReferenceType,
+                p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
+                p.HasExplicitDefaultValue
+                    ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue,
+                        new(p.Type))
+                    : null))
+            .ToArray();
+
+        if (hasDefaultConstructor && parameters == null)
+        {
+            parameters = [];
+        }
 
         var parentDeclarations = EquatableArray<string>.Empty;
         if (isPartial)
@@ -589,7 +593,7 @@ public class SourceGenerator : IIncrementalGenerator
             .ToArray();
         var fields = GetAllMembersIncludingBase(symbol)
             .OfType<IFieldSymbol>()
-            .Where(f => !f.IsStatic)
+            .Where(f => !f.IsStatic && SerializableType(f.Type))
             .Where(f =>
                 f.DeclaredAccessibility == Accessibility.Public &&
                 !HasDependencyAttribute(f) &&
@@ -603,7 +607,7 @@ public class SourceGenerator : IIncrementalGenerator
                 ExtractIndexInfo(f.GetAttributes())))
             .Concat(GetAllMembersIncludingBase(symbol)
                 .OfType<IPropertySymbol>()
-                .Where(p => !p.IsStatic)
+                .Where(p => !p.IsStatic && SerializableType(p.Type))
                 .Where(p =>
                     !HasDependencyAttribute(p) &&
                     p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
@@ -657,9 +661,19 @@ public class SourceGenerator : IIncrementalGenerator
                     !HasDependencyAttribute(p) &&
                     p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
                     p.SetMethod is not null && p.GetMethod is not null)
-                .Select(p => p.Type));
+                .Select(p => p.Type)).ToList();
 
-        GatherCollections(model, fieldTypes, collections, nested, processed);
+        if (fieldTypes.Any(t => !SerializableType(t)))
+        {
+            fields = [];
+        }
+        else
+        {
+            GatherCollections(model, fieldTypes, collections, nested, processed);
+        }
+
+        // No IOC and no metadata => no generation
+        if (fields.Length == 0 && parameters == null) return null;
 
         var privateConstructor =
             constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected ||
@@ -682,6 +696,13 @@ public class SourceGenerator : IIncrementalGenerator
             parameters,
             propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, collections.ToArray(),
             nested.ToArray(), null);
+    }
+
+    static bool SerializableType(ITypeSymbol typeSymbol)
+    {
+        if (typeSymbol.TypeKind is TypeKind.Delegate or TypeKind.Error or TypeKind.Pointer or TypeKind.FunctionPointer)
+            return false;
+        return true;
     }
 
     static bool HasDependencyAttribute(ISymbol p)
@@ -791,8 +812,6 @@ public class SourceGenerator : IIncrementalGenerator
 
                 return uint.Parse(literalExpressionSyntax.ToString());
             }
-
-            return null;
         }
 
         return null;
@@ -821,8 +840,6 @@ public class SourceGenerator : IIncrementalGenerator
 
                 return uint.Parse(literalExpressionSyntax.ToString());
             }
-
-            return null;
         }
 
         return null;
@@ -845,8 +862,6 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 return false;
             }
-
-            return null;
         }
 
         return null;
@@ -1388,7 +1403,7 @@ public class SourceGenerator : IIncrementalGenerator
         var parametersCode = new StringBuilder();
         var parameterIndex = 0;
 
-        foreach (var (name, type, _, _, _, _) in generationInfo.ConstructorParameters)
+        foreach (var (name, type, _, _, _, _) in generationInfo.ConstructorParameters!)
         {
             var normalizeType = NormalizeType(type);
             if (parameterIndex > 0) parametersCode.Append(", ");
@@ -1473,104 +1488,107 @@ public class SourceGenerator : IIncrementalGenerator
         var additionalDeclarations = new StringBuilder();
         var parameterIndex = 0;
 
-        foreach (var (name, type, keyCode, isReference, optional, defaultValue) in generationInfo
-                     .ConstructorParameters)
+        if (generationInfo.ConstructorParameters != null)
         {
-            var normalizeType = NormalizeType(type);
-            if (parameterIndex > 0) parametersCode.Append(", ");
-            factoryCode.Append(
-                $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizeType}), ");
-            if (keyCode != null)
+            foreach (var (name, type, keyCode, isReference, optional, defaultValue) in generationInfo
+                         .ConstructorParameters)
             {
-                factoryCode.Append(keyCode);
-            }
-            else
-            {
-                factoryCode.Append("\"");
-                factoryCode.Append(name);
-                factoryCode.Append("\"");
-            }
-
-            factoryCode.Append(");");
-            factoryCode.Append("\n            ");
-            if (!optional)
-            {
+                var normalizeType = NormalizeType(type);
+                if (parameterIndex > 0) parametersCode.Append(", ");
                 factoryCode.Append(
-                    $"if (f{parameterIndex} == null) throw new global::System.ArgumentException(\"Cannot resolve {normalizeType.Replace("global::", "")} {name} parameter of {generationInfo.FullName.Replace("global::", "")}\");");
-                factoryCode.Append("\n            ");
-                parametersCode.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"({normalizeType})(");
-                parametersCode.Append($"f{parameterIndex}(container2, ctx2))");
-            }
-            else
-            {
-                parametersCode.Append($"f{parameterIndex} != null ? ");
-                parametersCode.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"(({normalizeType})");
-                parametersCode.Append($"f{parameterIndex}(container2, ctx2)) : " +
-                                      (defaultValue ?? $"default({normalizeType})"));
-            }
-
-            parameterIndex++;
-        }
-
-        foreach (var propertyInfo in generationInfo.Properties)
-        {
-            var name = propertyInfo.Name;
-            var normalizedType = NormalizeType(propertyInfo.Type);
-            var dependencyName = propertyInfo.DependencyName ?? "\"" + name + "\"";
-            var isReference = propertyInfo.IsReference;
-            var optional = propertyInfo.Optional;
-            factoryCode.Append(
-                $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizedType}), {dependencyName});");
-            factoryCode.Append("\n            ");
-            if (!optional)
-            {
-                factoryCode.Append(
-                    $"if (f{parameterIndex} == null) throw new global::System.ArgumentException(\"Cannot resolve {normalizedType.Replace("global::", "")} {name} property of {generationInfo.FullName.Replace("global::", "")}\");");
-                factoryCode.Append("\n            ");
-            }
-
-            if (optional)
-            {
-                propertyCode.Append($"if (f{parameterIndex} != null) ");
-            }
-
-            if (propertyInfo.IsComplex)
-            {
-                if (propertyInfo.IsFieldBased)
+                    $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizeType}), ");
+                if (keyCode != null)
                 {
-                    // language=c#
-                    additionalDeclarations.Append($"""
-                            [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{propertyInfo.BackingName}")]
-                            extern static ref {propertyInfo.Type} FieldRef{propertyInfo.Name}({generationInfo.FullName} @this);
-
-                        """);
-                    propertyCode.Append($"FieldRef{name}(res) = ");
-                    propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
-                    propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
+                    factoryCode.Append(keyCode);
                 }
                 else
                 {
-                    // language=c#
-                    additionalDeclarations.Append($"""
-                            [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{propertyInfo.BackingName}")]
-                            extern static void MethodSetter{name}({generationInfo.FullName} @this, {normalizedType} value);
-
-                        """);
-                    propertyCode.Append($"MethodSetter{name}(res, ");
-                    propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
-                    propertyCode.Append($"f{parameterIndex}(container2, ctx2)));");
+                    factoryCode.Append("\"");
+                    factoryCode.Append(name);
+                    factoryCode.Append("\"");
                 }
+
+                factoryCode.Append(");");
+                factoryCode.Append("\n            ");
+                if (!optional)
+                {
+                    factoryCode.Append(
+                        $"if (f{parameterIndex} == null) throw new global::System.ArgumentException(\"Cannot resolve {normalizeType.Replace("global::", "")} {name} parameter of {generationInfo.FullName.Replace("global::", "")}\");");
+                    factoryCode.Append("\n            ");
+                    parametersCode.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"({normalizeType})(");
+                    parametersCode.Append($"f{parameterIndex}(container2, ctx2))");
+                }
+                else
+                {
+                    parametersCode.Append($"f{parameterIndex} != null ? ");
+                    parametersCode.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"(({normalizeType})");
+                    parametersCode.Append($"f{parameterIndex}(container2, ctx2)) : " +
+                                          (defaultValue ?? $"default({normalizeType})"));
+                }
+
+                parameterIndex++;
             }
-            else
+
+            foreach (var propertyInfo in generationInfo.Properties)
             {
-                propertyCode.Append($"res.{name} = ");
-                propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
-                propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
+                var name = propertyInfo.Name;
+                var normalizedType = NormalizeType(propertyInfo.Type);
+                var dependencyName = propertyInfo.DependencyName ?? "\"" + name + "\"";
+                var isReference = propertyInfo.IsReference;
+                var optional = propertyInfo.Optional;
+                factoryCode.Append(
+                    $"var f{parameterIndex} = container.CreateFactory(ctx, typeof({normalizedType}), {dependencyName});");
+                factoryCode.Append("\n            ");
+                if (!optional)
+                {
+                    factoryCode.Append(
+                        $"if (f{parameterIndex} == null) throw new global::System.ArgumentException(\"Cannot resolve {normalizedType.Replace("global::", "")} {name} property of {generationInfo.FullName.Replace("global::", "")}\");");
+                    factoryCode.Append("\n            ");
+                }
+
+                if (optional)
+                {
+                    propertyCode.Append($"if (f{parameterIndex} != null) ");
+                }
+
+                if (propertyInfo.IsComplex)
+                {
+                    if (propertyInfo.IsFieldBased)
+                    {
+                        // language=c#
+                        additionalDeclarations.Append($"""
+                                [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{propertyInfo.BackingName}")]
+                                extern static ref {propertyInfo.Type} FieldRef{propertyInfo.Name}({generationInfo.FullName} @this);
+
+                            """);
+                        propertyCode.Append($"FieldRef{name}(res) = ");
+                        propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
+                        propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
+                    }
+                    else
+                    {
+                        // language=c#
+                        additionalDeclarations.Append($"""
+                                [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{propertyInfo.BackingName}")]
+                                extern static void MethodSetter{name}({generationInfo.FullName} @this, {normalizedType} value);
+
+                            """);
+                        propertyCode.Append($"MethodSetter{name}(res, ");
+                        propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
+                        propertyCode.Append($"f{parameterIndex}(container2, ctx2)));");
+                    }
+                }
+                else
+                {
+                    propertyCode.Append($"res.{name} = ");
+                    propertyCode.Append(isReference ? $"Unsafe.As<{normalizedType}>(" : $"({normalizedType})(");
+                    propertyCode.Append($"f{parameterIndex}(container2, ctx2));");
+                }
+
+                propertyCode.Append("\n                ");
+
+                parameterIndex++;
             }
-
-            propertyCode.Append("\n                ");
-
-            parameterIndex++;
         }
 
         var declarations = new StringBuilder();
@@ -1752,6 +1770,26 @@ public class SourceGenerator : IIncrementalGenerator
                 """);
         }
 
+        var registerFactoryCode = "";
+        if (generationInfo.ConstructorParameters != null)
+        {
+            registerFactoryCode = $$"""
+                        global::BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), (container, ctx) =>
+                        {
+                            {{factoryCode}}return (container2, ctx2) =>
+                            {
+                                var res = {{(generationInfo.PrivateConstructor ? "Constr" : "new " + generationInfo.FullName)}}({{parametersCode}});
+                                {{propertyCode}}return res;
+                            };
+                        });{{metadataCode}}{{dispatchers}}
+
+                """;
+        }
+        else
+        {
+            registerFactoryCode = metadataCode.ToString() + dispatchers;
+        }
+
         // language=c#
         var code = $$"""
             // <auto-generated/>
@@ -1762,15 +1800,7 @@ public class SourceGenerator : IIncrementalGenerator
             {{declarations}}    [ModuleInitializer]
                 internal static unsafe void Register4BTDB()
                 {
-                    global::BTDB.IOC.IContainer.RegisterFactory(typeof({{generationInfo.FullName}}), (container, ctx) =>
-                    {
-                        {{factoryCode}}return (container2, ctx2) =>
-                        {
-                            var res = {{(generationInfo.PrivateConstructor ? "Constr" : "new " + generationInfo.FullName)}}({{parametersCode}});
-                            {{propertyCode}}return res;
-                        };
-                    });{{metadataCode}}{{dispatchers}}
-                }
+            {{registerFactoryCode}}    }
             {{(generationInfo.IsPartial ? new('}', generationInfo.ParentDeclarations.Count) : "}")}}
 
             """;
@@ -1867,7 +1897,7 @@ record GenerationInfo(
     bool PrivateConstructor, // or has required fields
     bool HasDefaultConstructor,
     bool ForceMetadata,
-    EquatableArray<ParameterInfo> ConstructorParameters,
+    EquatableArray<ParameterInfo>? ConstructorParameters,
     EquatableArray<PropertyInfo> Properties,
     EquatableArray<string> ParentDeclarations,
     EquatableArray<DispatcherInfo> Dispatchers,

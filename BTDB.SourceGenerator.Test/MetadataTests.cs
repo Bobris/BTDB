@@ -380,4 +380,21 @@ public class MetadataTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyFuncDelegatesDoNotGenerateMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public string Name { get; set; } = "";
+                public Func<string, (int, int)> MyFunc { get; set; } = null!;
+                public Action<(string, int)> MyAction { get; set; } = null!;
+            }
+            """);
+    }
 }

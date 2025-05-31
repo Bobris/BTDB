@@ -30,9 +30,15 @@ public readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IEnume
         _array = array;
     }
 
+    /// Allow implicit conversion from T[]? to EquatableArray<T>?
+    public static implicit operator EquatableArray<T>?(T[]? array)
+    {
+        if (array == null) return null;
+        return new(array);
+    }
+
     /// Allow implicit conversion from T[] to EquatableArray<T>
     public static implicit operator EquatableArray<T>(T[] array)
-
     {
         return new(array);
     }

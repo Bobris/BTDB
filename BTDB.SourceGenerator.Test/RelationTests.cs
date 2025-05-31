@@ -292,7 +292,7 @@ public class RelationTests : GeneratorTestsBase
                 public string Queue { get; set; }
 
                 [PrimaryKey(3)]
-                public Guid ItemId { get; set; }
+                public System.Guid ItemId { get; set; }
 
                 [SecondaryKey(nameof(LockDeadline), IncludePrimaryKeyOrder = 2, Order = 3)]
                 public int Priority { get; set; }
@@ -302,7 +302,7 @@ public class RelationTests : GeneratorTestsBase
                 /// after deadline work item is available to other worker.
                 /// </summary>
                 [SecondaryKey(nameof(LockDeadline), Order = 4)]
-                public DateTime LockDeadline { get; set; }
+                public System.DateTime LockDeadline { get; set; }
             }
 
 

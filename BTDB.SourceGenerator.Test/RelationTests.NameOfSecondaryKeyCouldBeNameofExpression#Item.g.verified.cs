@@ -14,11 +14,11 @@ static file class ItemRegistration
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Queue>k__BackingField")]
     extern static ref string Field2(global::Item @this);
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ItemId>k__BackingField")]
-    extern static ref Guid Field3(global::Item @this);
+    extern static ref global::System.Guid Field3(global::Item @this);
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Priority>k__BackingField")]
     extern static ref int Field4(global::Item @this);
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LockDeadline>k__BackingField")]
-    extern static ref DateTime Field5(global::Item @this);
+    extern static ref global::System.DateTime Field5(global::Item @this);
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -54,7 +54,7 @@ static file class ItemRegistration
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "ItemId",
-                Type = typeof(Guid),
+                Type = typeof(global::System.Guid),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field3(dummy)),
             },
             new global::BTDB.Serialization.FieldMetadata
@@ -66,7 +66,7 @@ static file class ItemRegistration
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "LockDeadline",
-                Type = typeof(DateTime),
+                Type = typeof(global::System.DateTime),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field5(dummy)),
             },
         };

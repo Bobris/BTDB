@@ -724,4 +724,21 @@ public class IOCTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyConstructorWithSelfDependency()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class SelfDependency
+            {
+                public SelfDependency(SelfDependency self)
+                {
+                }
+            }
+            """);
+    }
 }

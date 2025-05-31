@@ -9,11 +9,11 @@ using System.Runtime.CompilerServices;
 //           PrimaryIndex: 1
 // Field: Queue string reference
 //           PrimaryIndex: 2
-// Field: ItemId Guid reference
+// Field: ItemId global::System.Guid
 //           PrimaryIndex: 3
 // Field: Priority int
 //           SecondaryIndex LockDeadline: 3 IncludePrimaryKeyOrder 2
-// Field: LockDeadline DateTime reference
+// Field: LockDeadline global::System.DateTime
 //           SecondaryIndex LockDeadline: 4
 [CompilerGenerated]
 static file class IItemTableRegistration
