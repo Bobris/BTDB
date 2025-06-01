@@ -397,4 +397,38 @@ public class MetadataTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyTaskTypeDoNotGenerateMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Threading.Tasks;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public string Name { get; set; } = "";
+                public Task<string> MyTask { get; set; } = null!;
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyValueTaskTypeDoNotGenerateMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Threading.Tasks;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public string Name { get; set; } = "";
+                public ValueTask<string> MyValueTask { get; set; } = default;
+            }
+            """);
+    }
 }

@@ -702,6 +702,10 @@ public class SourceGenerator : IIncrementalGenerator
     {
         if (typeSymbol.TypeKind is TypeKind.Delegate or TypeKind.Error or TypeKind.Pointer or TypeKind.FunctionPointer)
             return false;
+        if (typeSymbol.Name == "Task" && typeSymbol.InNamespace("System", "Threading", "Tasks"))
+            return false;
+        if (typeSymbol.Name == "ValueTask" && typeSymbol.InNamespace("System", "Threading", "Tasks"))
+            return false;
         return true;
     }
 
