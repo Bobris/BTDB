@@ -5,7 +5,7 @@
         <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
         <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
         <LangVersion>latest</LangVersion>
-        <Version>33.6.7</Version>
+        <Version>33.6.8</Version>
         <Authors>Boris Letocha, Lubos Karasek</Authors>
         <Nullable>enable</Nullable>
     </PropertyGroup>
