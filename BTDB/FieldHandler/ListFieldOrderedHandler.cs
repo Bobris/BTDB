@@ -143,6 +143,8 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
     public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
     {
         var finish = ilGenerator.DefineLabel();
+        var trueFinish = ilGenerator.DefineLabel();
+        var notNull = ilGenerator.DefineLabel();
         var next = ilGenerator.DefineLabel();
         var localValue = ilGenerator.DeclareLocal(_type!);
         var typeAsICollection = _type.GetInterface("ICollection`1");
@@ -153,6 +155,14 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
         ilGenerator
             .Do(pushValue)
             .Stloc(localValue)
+            .Ldloc(localValue)
+            .Brtrue(notNull)
+            .Do(pushWriter)
+            .LdcI4(0)
+            .ConvU4()
+            .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt32))!)
+            .Br(trueFinish)
+            .Mark(notNull)
             .Do(pushWriter)
             .Ldloc(localValue)
             .Callvirt(typeAsICollection!.GetProperty("Count")!.GetGetMethod()!)
@@ -177,7 +187,8 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
             .Finally()
             .Ldloc(localEnumerator)
             .Callvirt(() => default(IDisposable).Dispose())
-            .EndTry();
+            .EndTry()
+            .Mark(trueFinish);
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
