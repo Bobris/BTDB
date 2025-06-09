@@ -232,9 +232,13 @@ public sealed class RawData
         }
 
         if (type == typeof(byte) || type == typeof(sbyte) || type == typeof(bool))
-
         {
             return (1, 1);
+        }
+
+        if (type == typeof(Guid))
+        {
+            return (16, 4);
         }
 
         // from type make Array<type> because it has always ComponentSize

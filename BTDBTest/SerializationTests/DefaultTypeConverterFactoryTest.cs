@@ -225,6 +225,8 @@ public class DefaultTypeConverterFactoryTest
         var factory = new DefaultTypeConverterFactory();
         CheckConverter(factory, (byte?)42, (sbyte)42);
         CheckConverter(factory, (long?)123456, 123456);
+        CheckConverter(factory, (Guid?)Guid.Parse("9e251065-0873-49bc-8fd9-266cc9aa39d3"),
+            Guid.Parse("9e251065-0873-49bc-8fd9-266cc9aa39d3"));
     }
 
     [Fact]
@@ -235,6 +237,8 @@ public class DefaultTypeConverterFactoryTest
         CheckConverter(factory, (float)42, (double?)42);
         CheckConverter(factory, (double)42, (double?)42);
         CheckConverter(factory, (decimal)42, (decimal?)42);
+        CheckConverter(factory, Guid.Parse("9e251065-0873-49bc-8fd9-266cc9aa39d3"),
+            (Guid?)Guid.Parse("9e251065-0873-49bc-8fd9-266cc9aa39d3"));
     }
 
     [Fact]

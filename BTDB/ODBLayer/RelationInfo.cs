@@ -13,6 +13,7 @@ using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.IOC;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 using Extensions = BTDB.FieldHandler.Extensions;
 
@@ -152,125 +153,273 @@ public class RelationInfo
             return res;
         }
 
-        RelationLoaderFunc CreatePkLoader(Type instanceType, ReadOnlySpan<TableFieldInfo> fields, string loaderName,
+        delegate void LoadFunc(object obj, ref MemReader reader, IReaderCtx? ctx);
+
+        ref struct FieldLoaderCtx
+        {
+            internal nint StoragePtr;
+            internal object Object;
+            internal FieldHandlerLoad Loader;
+            internal IReaderCtx? Ctx;
+            internal ref MemReader Reader;
+
+            internal unsafe delegate*<object, ref byte, void> Setter;
+            //internal FieldHandlerInit Init;
+        }
+
+        unsafe RelationLoaderFunc CreatePkLoader(Type instanceType, ReadOnlySpan<TableFieldInfo> fields,
+            string loaderName,
             out bool primaryKeyIsEnough, out bool loadAsMemory)
         {
-            loadAsMemory = false;
-            var thatType = typeof(Func<>).MakeGenericType(instanceType);
-            var method = ILBuilder.Instance.NewMethod(
-                loaderName, typeof(RelationLoaderFunc), typeof(Func<object>));
-            var ilGenerator = method.Generator;
-            var container = _owner._relationInfoResolver.Container;
-            object that = null;
-            if (container != null)
+#pragma warning disable CS0162 // Unreachable code detected
+            if (IFieldHandler.UseNoEmitForRelations)
             {
-                that = container.ResolveOptional(thatType);
-            }
-
-            ilGenerator.DeclareLocal(instanceType);
-            if (that == null)
-            {
-                var defaultConstructor = instanceType.GetDefaultConstructor();
-                if (defaultConstructor == null)
+                loadAsMemory = false;
+                var thatType = typeof(Func<>).MakeGenericType(instanceType);
+                var container = _owner._relationInfoResolver.Container;
+                Func<object> that = null;
+                var metadata = ReflectionMetadata.FindByType(instanceType);
+                if (metadata == null)
                 {
-                    ilGenerator
-                        .Ldtoken(instanceType)
-                        .Call(() => Type.GetTypeFromHandle(new()))
-                        .Call(() => RuntimeHelpers.GetUninitializedObject(null));
+                    throw new BTDBException(
+                        $"Cannot create loader for {instanceType.ToSimpleName()}. It is not registered in BTDB.");
+                }
+
+                if (container != null)
+                {
+                    var tempThat = container.ResolveOptional(thatType);
+                    that = Unsafe.As<object?, Func<object>?>(ref tempThat);
+                }
+
+                that ??= () => metadata.Creator();
+
+                var usedFields = 0;
+                StructList<LoadFunc> loaders = new();
+                var anyNeedsCtx = false;
+                foreach (var srcFieldInfo in fields)
+                {
+                    var field = metadata.Fields.FirstOrDefault(f => f.Name == srcFieldInfo.Name);
+                    anyNeedsCtx |= srcFieldInfo.Handler!.NeedsCtx();
+                    if (field != null)
+                    {
+                        usedFields++;
+                        var fieldType = field.Type;
+
+                        var handlerLoad =
+                            srcFieldInfo.Handler.Load(fieldType, _owner._relationInfoResolver.TypeConverterFactory);
+                        if (field.PropRefSetter == null)
+                        {
+                            var offset = field.ByteOffset!.Value;
+                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            {
+                                handlerLoad(ref reader, ctx, ref RawData.Ref(obj, offset));
+                            });
+                            continue;
+                        }
+
+                        var propRefSetter = field.PropRefSetter;
+                        if (!fieldType.IsValueType)
+                        {
+                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            {
+                                object? value = null;
+                                handlerLoad(ref reader, ctx, ref Unsafe.As<object, byte>(ref value));
+                                propRefSetter(obj, ref Unsafe.As<object, byte>(ref value));
+                            });
+                            continue;
+                        }
+
+                        if (!RawData.MethodTableOf(fieldType).ContainsGCPointers &&
+                            RawData.GetSizeAndAlign(fieldType).Size <= 16)
+                        {
+                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            {
+                                Int128 value = 0;
+                                handlerLoad(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref value));
+                                propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
+                            });
+                        }
+
+                        var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
+                        loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                        {
+                            var fieldLoaderCtx = new FieldLoaderCtx
+                            {
+                                Object = obj,
+                                Loader = handlerLoad,
+                                Setter = propRefSetter,
+                                Ctx = ctx,
+                                Reader = reader
+                            };
+
+                            stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
+                                ref fieldLoaderCtx.StoragePtr, &Nested);
+
+                            static void Nested(ref byte value)
+                            {
+                                ref var context = ref Unsafe.As<byte, FieldLoaderCtx>(ref value);
+                                context.Loader(ref context.Reader, context.Ctx,
+                                    ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                                context.Setter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                            }
+                        });
+                        continue;
+                    }
+
+                    loaders.Add((object _, ref MemReader reader, IReaderCtx? ctx) =>
+                    {
+                        srcFieldInfo.Handler!.Skip(ref reader, ctx);
+                    });
+                }
+
+                primaryKeyIsEnough = metadata.Fields.Length == usedFields;
+                var loadersArray = loaders.ToArray();
+                if (anyNeedsCtx)
+                {
+                    return (IInternalObjectDBTransaction transaction, ref MemReader reader) =>
+                    {
+                        var res = that();
+                        var ctx = new DBReaderCtx(transaction);
+                        foreach (var loader in loadersArray)
+                        {
+                            loader(res, ref reader, ctx);
+                        }
+
+                        return res;
+                    };
+                }
+
+                return (IInternalObjectDBTransaction _, ref MemReader reader) =>
+                {
+                    var res = that();
+                    foreach (var t in loadersArray)
+                    {
+                        t(res, ref reader, null);
+                    }
+
+                    return res;
+                };
+            }
+            else
+            {
+                loadAsMemory = false;
+                var thatType = typeof(Func<>).MakeGenericType(instanceType);
+                var method = ILBuilder.Instance.NewMethod(
+                    loaderName, typeof(RelationLoaderFunc), typeof(Func<object>));
+                var ilGenerator = method.Generator;
+                var container = _owner._relationInfoResolver.Container;
+                object that = null;
+                if (container != null)
+                {
+                    that = container.ResolveOptional(thatType);
+                }
+
+                ilGenerator.DeclareLocal(instanceType);
+                if (that == null)
+                {
+                    var defaultConstructor = instanceType.GetDefaultConstructor();
+                    if (defaultConstructor == null)
+                    {
+                        ilGenerator
+                            .Ldtoken(instanceType)
+                            .Call(() => Type.GetTypeFromHandle(new()))
+                            .Call(() => RuntimeHelpers.GetUninitializedObject(null));
+                    }
+                    else
+                    {
+                        ilGenerator
+                            .Newobj(defaultConstructor);
+                    }
                 }
                 else
                 {
                     ilGenerator
-                        .Newobj(defaultConstructor);
+                        .Ldarg(0)
+                        .Callvirt(thatType.GetMethod(nameof(Func<object>.Invoke))!);
                 }
-            }
-            else
-            {
+
                 ilGenerator
-                    .Ldarg(0)
-                    .Callvirt(thatType.GetMethod(nameof(Func<object>.Invoke))!);
-            }
+                    .Stloc(0);
 
-            ilGenerator
-                .Stloc(0);
-
-            var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?)>();
-            var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
-                                                   BindingFlags.Instance).Where(pi =>
-                pi.GetCustomAttribute<NotStoredAttribute>(true) == null &&
-                pi.GetIndexParameters().Length == 0).ToList();
-            var usedFields = 0;
-            foreach (var srcFieldInfo in fields)
-            {
-                var fieldInfo = props.FirstOrDefault(p => GetPersistentName(p) == srcFieldInfo.Name);
-                if (fieldInfo != null)
+                var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?)>();
+                var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
+                                                       BindingFlags.Instance).Where(pi =>
+                    pi.GetCustomAttribute<NotStoredAttribute>(true) == null &&
+                    pi.GetIndexParameters().Length == 0).ToList();
+                var usedFields = 0;
+                foreach (var srcFieldInfo in fields)
                 {
-                    usedFields++;
-                    var setterMethod = fieldInfo.GetAnySetMethod();
-                    var fieldType = setterMethod!.GetParameters()[0].ParameterType;
-                    var specializedSrcHandler =
-                        srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null,
-                            _owner._relationInfoResolver.FieldHandlerLogger);
-                    loadAsMemory |= specializedSrcHandler.DoesPreferLoadAsMemory();
-                    var willLoad = specializedSrcHandler.HandledType();
-                    var converterGenerator =
-                        _owner._relationInfoResolver.TypeConvertorGenerator
-                            .GenerateConversion(willLoad!, fieldType);
-                    if (converterGenerator != null)
+                    var fieldInfo = props.FirstOrDefault(p => GetPersistentName(p) == srcFieldInfo.Name);
+                    if (fieldInfo != null)
                     {
-                        loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod));
+                        usedFields++;
+                        var setterMethod = fieldInfo.GetAnySetMethod();
+                        var fieldType = setterMethod!.GetParameters()[0].ParameterType;
+                        var specializedSrcHandler =
+                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null,
+                                _owner._relationInfoResolver.FieldHandlerLogger);
+                        loadAsMemory |= specializedSrcHandler.DoesPreferLoadAsMemory();
+                        var willLoad = specializedSrcHandler.HandledType();
+                        var converterGenerator =
+                            _owner._relationInfoResolver.TypeConvertorGenerator
+                                .GenerateConversion(willLoad!, fieldType);
+                        if (converterGenerator != null)
+                        {
+                            loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod));
+                            continue;
+                        }
+
+                        _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
+                            specializedSrcHandler, fieldType, null);
+                    }
+
+                    loadInstructions.Add((srcFieldInfo.Handler!, null, null));
+                }
+
+                primaryKeyIsEnough = props.Count == usedFields;
+                // Remove useless skips from end
+                while (loadInstructions is { Count: > 0, Last.Item2: null })
+                {
+                    loadInstructions.RemoveAt(^1);
+                }
+
+                var anyNeedsCtx = false;
+                for (var i = 0; i < loadInstructions.Count; i++)
+                {
+                    if (!loadInstructions[i].Item1.NeedsCtx()) continue;
+                    anyNeedsCtx = true;
+                    break;
+                }
+
+                if (anyNeedsCtx)
+                {
+                    ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                    ilGenerator
+                        .Ldarg(1)
+                        .Newobj(() => new DBReaderCtx(null))
+                        .Stloc(1);
+                }
+
+                for (var i = 0; i < loadInstructions.Count; i++)
+                {
+                    ref var loadInstruction = ref loadInstructions[i];
+                    var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
+                    if (loadInstruction.Item2 != null)
+                    {
+                        ilGenerator.Ldloc(0);
+                        loadInstruction.Item1.Load(ilGenerator, il => il.Ldarg(2), readerOrCtx);
+                        loadInstruction.Item2(ilGenerator);
+                        ilGenerator.Call(loadInstruction.Item3!);
                         continue;
                     }
 
-                    _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
-                        specializedSrcHandler, fieldType, null);
+                    loadInstruction.Item1.Skip(ilGenerator, il => il.Ldarg(2), readerOrCtx);
                 }
 
-                loadInstructions.Add((srcFieldInfo.Handler!, null, null));
+                ilGenerator.Ldloc(0).Ret();
+                return (RelationLoaderFunc)method.Create(that);
             }
-
-            primaryKeyIsEnough = props.Count == usedFields;
-            // Remove useless skips from end
-            while (loadInstructions is { Count: > 0, Last.Item2: null })
-            {
-                loadInstructions.RemoveAt(^1);
-            }
-
-            var anyNeedsCtx = false;
-            for (var i = 0; i < loadInstructions.Count; i++)
-            {
-                if (!loadInstructions[i].Item1.NeedsCtx()) continue;
-                anyNeedsCtx = true;
-                break;
-            }
-
-            if (anyNeedsCtx)
-            {
-                ilGenerator.DeclareLocal(typeof(IReaderCtx));
-                ilGenerator
-                    .Ldarg(1)
-                    .Newobj(() => new DBReaderCtx(null))
-                    .Stloc(1);
-            }
-
-            for (var i = 0; i < loadInstructions.Count; i++)
-            {
-                ref var loadInstruction = ref loadInstructions[i];
-                var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
-                if (loadInstruction.Item2 != null)
-                {
-                    ilGenerator.Ldloc(0);
-                    loadInstruction.Item1.Load(ilGenerator, il => il.Ldarg(2), readerOrCtx);
-                    loadInstruction.Item2(ilGenerator);
-                    ilGenerator.Call(loadInstruction.Item3!);
-                    continue;
-                }
-
-                loadInstruction.Item1.Skip(ilGenerator, il => il.Ldarg(2), readerOrCtx);
-            }
-
-            ilGenerator.Ldloc(0).Ret();
-            return (RelationLoaderFunc)method.Create(that);
+#pragma warning restore CS0162 // Unreachable code detected
         }
 
         RelationLoader CreateLoader(Type instanceType,
