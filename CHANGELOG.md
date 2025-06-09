@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Secondary key upgrade could now introduce List<> field (till now it crashes with null reference exception).
+
 ## 33.8.3
 
 ## 33.8.2

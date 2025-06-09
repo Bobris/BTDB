@@ -1115,4 +1115,45 @@ public class ObjectDbTableUpgradeTest : IDisposable
             Assert.Throws<BTDBException>(() => t.First());
         }
     }
+
+    public class JobV4
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        [SecondaryKey("List", Order = 1)] public List<string> List { get; set; }
+
+        public string? Name { get; set; }
+    }
+
+    public interface IJobTable4 : IRelation<JobV4>
+    {
+        JobV4 FindByListOrDefault(List<string> list);
+    }
+
+    [Fact]
+    public void CanIntroduceNewListInUpgrade()
+    {
+        _db.RegisterType(typeof(JobV1), "Job");
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IJobTable1>("Job");
+            var jobTable = creator(tr);
+            var job1 = new JobV1 { Id = 11, Name = "A" };
+            jobTable.Insert(job1);
+            tr.Commit();
+        }
+
+        ReopenDb();
+        _db.RegisterType(typeof(JobV4), "Job");
+
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IJobTable4>("Job");
+            var jobTable = creator(tr);
+            Assert.Single(jobTable);
+
+            var j = jobTable.FindByListOrDefault([]);
+            Assert.Equal("A", j.Name);
+        }
+    }
 }
