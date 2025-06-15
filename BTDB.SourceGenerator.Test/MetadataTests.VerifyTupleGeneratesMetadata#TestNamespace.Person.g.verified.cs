@@ -11,10 +11,10 @@ static file class PersonRegistration
 {
     [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
     extern static global::TestNamespace.Person Creator();
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "Age")]
-    extern static ref int Field1(global::TestNamespace.Person @this);
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Name>k__BackingField")]
-    extern static ref string Field2(global::TestNamespace.Person @this);
+    extern static ref string Field1(global::TestNamespace.Person @this);
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<MyTuple>k__BackingField")]
+    extern static ref global::System.Tuple<int, string> Field2(global::TestNamespace.Person @this);
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -36,14 +36,14 @@ static file class PersonRegistration
         metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
-                Name = "Years",
-                Type = typeof(int),
+                Name = "Name",
+                Type = typeof(string),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
             },
             new global::BTDB.Serialization.FieldMetadata
             {
-                Name = "Name",
-                Type = typeof(string),
+                Name = "MyTuple",
+                Type = typeof(global::System.Tuple<int, string>),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
             },
         ];

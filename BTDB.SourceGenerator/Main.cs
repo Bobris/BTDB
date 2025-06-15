@@ -449,8 +449,10 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (processed == null)
         {
-            processed = new HashSet<string>();
-            processed.Add(symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+            processed =
+            [
+                symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            ];
         }
         else
         {
@@ -974,7 +976,7 @@ public class SourceGenerator : IIncrementalGenerator
                             false,
                             true, true, EquatableArray<ParameterInfo>.Empty, EquatableArray<PropertyInfo>.Empty,
                             EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
-                            EquatableArray<FieldsInfo>.Empty,
+                            DetectValueTupleFields(namedTypeSymbol),
                             EquatableArray<TypeRef>.Empty, EquatableArray<CollectionInfo>.Empty,
                             EquatableArray<GenerationInfo>.Empty, null);
                         nested.Add(gi);
@@ -990,6 +992,25 @@ public class SourceGenerator : IIncrementalGenerator
                 }
             }
         }
+    }
+
+    static EquatableArray<FieldsInfo> DetectValueTupleFields(INamedTypeSymbol namedTypeSymbol)
+    {
+        if (namedTypeSymbol.Name != "ValueTuple")
+            return EquatableArray<FieldsInfo>.Empty;
+        if (namedTypeSymbol.TypeArguments.Length == 0)
+            return EquatableArray<FieldsInfo>.Empty;
+        var fields = new List<FieldsInfo>();
+        for (var i = 0; i < namedTypeSymbol.TypeArguments.Length; i++)
+        {
+            var type = namedTypeSymbol.TypeArguments[i];
+            var name = "Item" + (i + 1);
+            fields.Add(new(name, type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                null, type.IsReferenceType, name, null, null, false,
+                "", EquatableArray<IndexInfo>.Empty));
+        }
+
+        return new(fields.ToArray());
     }
 
     static IEnumerable<ISymbol> GetAllMembersIncludingBase(INamedTypeSymbol symbol)
@@ -1051,17 +1072,17 @@ public class SourceGenerator : IIncrementalGenerator
                 a.AttributeClass is { Name: AttributeName } attr &&
                 attr.InBTDBNamespace()))
         {
-            return Array.Empty<DispatcherInfo>();
+            return [];
         }
 
         if (symbol is not { Kind: SymbolKind.NamedType, TypeKind: TypeKind.Interface })
         {
-            return Array.Empty<DispatcherInfo>();
+            return [];
         }
 
         if (symbol.DeclaredAccessibility == Accessibility.Private)
         {
-            return Array.Empty<DispatcherInfo>();
+            return [];
         }
 
         var builder = new List<DispatcherInfo>();
@@ -1088,7 +1109,7 @@ public class SourceGenerator : IIncrementalGenerator
             }
         }
 
-        return builder.Count == 0 ? Array.Empty<DispatcherInfo>() : builder.ToArray();
+        return builder.Count == 0 ? [] : builder.ToArray();
     }
 
     static bool IsObject(ITypeSymbol type)
@@ -1171,12 +1192,33 @@ public class SourceGenerator : IIncrementalGenerator
             [CompilerGenerated]
             static file class StackAllocationRegistrations
             {
+            """);
+
+        var idx = 0;
+        foreach (var @struct in structs)
+        {
+            idx++;
+            if (@struct.Fields.Count > 0)
+            {
+                factoryCode.Append($$"""
+
+                        struct ValueTuple{{idx}}
+                        {
+                    {{string.Join("\n", @struct.Fields.Select(f => $"       public {f.Type} {f.Name};"))}}
+                        }
+
+                    """);
+            }
+        }
+
+        factoryCode.Append($$"""
+
                 [ModuleInitializer]
                 internal static unsafe void Register4BTDB()
                 {
             """);
 
-        var idx = 0;
+        idx = 0;
         foreach (var @struct in structs)
         {
             idx++;
@@ -1192,10 +1234,43 @@ public class SourceGenerator : IIncrementalGenerator
                             }
 
                 """);
+            if (@struct.Fields.Count > 0)
+            {
+                factoryCode.Append($$"""
+
+                            ValueTuple{{idx}} valueTuple{{idx}} = new();
+                            BTDB.Serialization.ReflectionMetadata.Register(new()
+                            {
+                                Type = typeof({{@struct.FullName}}),
+                                Name = "{{@struct.Name}}",
+                                Fields =
+                                [
+                    """);
+                foreach (var field in @struct.Fields)
+                {
+                    factoryCode.Append($$"""
+
+                                        new()
+                                        {
+                                            Name = "{{field.Name}}",
+                                            Type = typeof({{field.Type}}),
+                                            ByteOffset = (uint)Unsafe.ByteOffset(ref Unsafe.As<ValueTuple{{idx}}, byte>(ref valueTuple{{idx}}),
+                                                ref Unsafe.As<{{field.Type}}, byte>(ref valueTuple{{idx}}.{{field.Name}})),
+                                        },
+                        """);
+                }
+
+                factoryCode.Append($$"""
+
+                                ]
+                            });
+                    """);
+            }
         }
 
         // language=c#
         factoryCode.Append("""
+
                 }
             }
 
@@ -1480,6 +1555,7 @@ public class SourceGenerator : IIncrementalGenerator
     static void GenerateClassFactory(SourceProductionContext context, GenerationInfo generationInfo)
     {
         var namespaceLine = "";
+        var isTuple = generationInfo is { Namespace: "System", Name: "Tuple" };
         if (generationInfo.Namespace != null)
         {
             // language=c#
@@ -1610,6 +1686,18 @@ public class SourceGenerator : IIncrementalGenerator
             declarations.Append($"static file class {generationInfo.Name}Registration\n{{\n");
         }
 
+        if (isTuple)
+        {
+            declarations.Append($$"""
+                    class TupleStunt
+                    {
+                {{string.Join("\n", generationInfo.ConstructorParameters!.Value.Select((f, i) => $"        public {f.Type} Item{i + 1};"))}}
+                    }
+
+
+                """);
+        }
+
         if (generationInfo.PrivateConstructor)
         {
             var constructorParameters = new StringBuilder();
@@ -1674,84 +1762,104 @@ public class SourceGenerator : IIncrementalGenerator
 
                         metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Where(i => i.FullyQualifiedName.StartsWith("global::", StringComparison.Ordinal)).Select(i => $"typeof({i.FullyQualifiedName})"))}}];
                         metadata.Creator = &Creator;
-                        var dummy = Unsafe.As<{{generationInfo.FullName}}>(metadata);
-                        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-                        {
+                        var dummy = Unsafe.As<{{(isTuple ? "TupleStunt" : generationInfo.FullName)}}>(metadata);
+                        metadata.Fields = [
 
                 """);
             var fieldIndex = 0;
-            foreach (var field in generationInfo.Fields)
+            if (isTuple)
             {
-                var normalizedType = NormalizeType(field.Type);
-                fieldIndex++;
-                // language=c#
-                metadataCode.Append($$"""
-                                new global::BTDB.Serialization.FieldMetadata
+                foreach (var field in generationInfo.ConstructorParameters!)
+                {
+                    var normalizedType = NormalizeType(field.Type);
+                    fieldIndex++;
+                    // language=c#
+                    metadataCode.Append($$"""
+                                    new global::BTDB.Serialization.FieldMetadata
+                                    {
+                                        Name = "Item{{fieldIndex}}",
+                                        Type = typeof({{normalizedType}}),
+                                        ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref dummy.Item{{fieldIndex}}),
+                                    },
+
+                        """);
+                }
+            }
+            else
+            {
+                foreach (var field in generationInfo.Fields)
+                {
+                    var normalizedType = NormalizeType(field.Type);
+                    fieldIndex++;
+                    // language=c#
+                    metadataCode.Append($$"""
+                                    new global::BTDB.Serialization.FieldMetadata
+                                    {
+                                        Name = "{{field.StoredName ?? field.Name}}",
+                                        Type = typeof({{normalizedType}}),
+
+                        """);
+                    if (field.BackingName != null)
+                    {
+                        // language=c#
+                        declarations.Append($"""
+                                [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
+                                extern static ref {normalizedType} Field{fieldIndex}({field.OwnerFullName} @this);
+
+                            """);
+                        // language=c#
+                        metadataCode.Append($"""
+                                            ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field{fieldIndex}(dummy)),
+
+                            """);
+                    }
+
+                    if (field is { GetterName: not null })
+                    {
+                        // language=c#
+                        declarations.Append($$"""
+                                [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
+                                extern static {{normalizedType}} Getter{{fieldIndex}}({{field.OwnerFullName}} @this);
+                                static void GenGetter{{fieldIndex}}(object @this, ref byte value)
                                 {
-                                    Name = "{{field.StoredName ?? field.Name}}",
-                                    Type = typeof({{normalizedType}}),
+                                    Unsafe.As<byte, {{normalizedType}}>(ref value) = Getter{{fieldIndex}}(Unsafe.As<{{field.OwnerFullName}}>(@this));
+                                }
 
-                    """);
-                if (field.BackingName != null)
-                {
+                            """);
+                        // language=c#
+                        metadataCode.Append($"""
+                                            PropRefGetter = &GenGetter{fieldIndex},
+
+                            """);
+                    }
+
+                    if (field is { SetterName: not null })
+                    {
+                        // language=c#
+                        declarations.Append($$"""
+                                [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
+                                extern static void Setter{{fieldIndex}}({{field.OwnerFullName}} @this, {{normalizedType}} value);
+                                static void GenSetter{{fieldIndex}}(object @this, ref byte value)
+                                {
+                                    Setter{{fieldIndex}}(Unsafe.As<{{field.OwnerFullName}}>(@this), Unsafe.As<byte, {{normalizedType}}>(ref value));
+                                }
+
+                            """);
+                        // language=c#
+                        metadataCode.Append($"""
+                                            PropRefSetter = &GenSetter{fieldIndex},
+
+                            """);
+                    }
+
                     // language=c#
-                    declarations.Append($"""
-                            [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
-                            extern static ref {normalizedType} Field{fieldIndex}({field.OwnerFullName} @this);
-
-                        """);
-                    // language=c#
-                    metadataCode.Append($"""
-                                        ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field{fieldIndex}(dummy)),
-
-                        """);
+                    metadataCode.Append("            },\n");
                 }
-
-                if (field is { GetterName: not null })
-                {
-                    // language=c#
-                    declarations.Append($$"""
-                            [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
-                            extern static {{normalizedType}} Getter{{fieldIndex}}({{field.OwnerFullName}} @this);
-                            static void GenGetter{{fieldIndex}}(object @this, ref byte value)
-                            {
-                                Unsafe.As<byte, {{normalizedType}}>(ref value) = Getter{{fieldIndex}}(Unsafe.As<{{field.OwnerFullName}}>(@this));
-                            }
-
-                        """);
-                    // language=c#
-                    metadataCode.Append($"""
-                                        PropRefGetter = &GenGetter{fieldIndex},
-
-                        """);
-                }
-
-                if (field is { SetterName: not null })
-                {
-                    // language=c#
-                    declarations.Append($$"""
-                            [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
-                            extern static void Setter{{fieldIndex}}({{field.OwnerFullName}} @this, {{normalizedType}} value);
-                            static void GenSetter{{fieldIndex}}(object @this, ref byte value)
-                            {
-                                Setter{{fieldIndex}}(Unsafe.As<{{field.OwnerFullName}}>(@this), Unsafe.As<byte, {{normalizedType}}>(ref value));
-                            }
-
-                        """);
-                    // language=c#
-                    metadataCode.Append($"""
-                                        PropRefSetter = &GenSetter{fieldIndex},
-
-                        """);
-                }
-
-                // language=c#
-                metadataCode.Append("            },\n");
             }
 
             // language=c#
             metadataCode.Append($$"""
-                        };
+                        ];
                         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
                 """);
         }
@@ -1810,7 +1918,7 @@ public class SourceGenerator : IIncrementalGenerator
             """;
 
         context.AddSource(
-            $"{generationInfo.FullName.Replace("global::", "").Replace("<", "[").Replace(">", "]")}.g.cs",
+            $"{generationInfo.FullName.Replace("global::", "").Replace("<", "[").Replace(">", "]").Replace(" ", "")}.g.cs",
             SourceText.From(code, Encoding.UTF8));
     }
 

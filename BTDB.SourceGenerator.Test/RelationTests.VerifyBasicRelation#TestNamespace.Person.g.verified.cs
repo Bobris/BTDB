@@ -35,8 +35,7 @@ static file class PersonRegistration
         metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::TestNamespace.Person>(metadata);
-        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-        {
+        metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "ParentId",
@@ -55,7 +54,7 @@ static file class PersonRegistration
                 Type = typeof(string),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field3(dummy)),
             },
-        };
+        ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

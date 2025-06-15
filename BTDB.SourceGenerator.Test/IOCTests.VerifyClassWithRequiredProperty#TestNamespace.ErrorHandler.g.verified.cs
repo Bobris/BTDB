@@ -33,15 +33,14 @@ static file class ErrorHandlerRegistration
         metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::TestNamespace.ErrorHandler>(metadata);
-        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-        {
+        metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "Prop",
                 Type = typeof(int),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
             },
-        };
+        ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

@@ -33,15 +33,14 @@ static file class DynamicEventWrapperRegistration
         metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::DynamicEventWrapper>(metadata);
-        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-        {
+        metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "DynamicEvent",
                 Type = typeof(object),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
             },
-        };
+        ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

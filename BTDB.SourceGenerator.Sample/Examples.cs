@@ -46,8 +46,67 @@ unsafe
         ReflectionMetadata.RegisterStackAllocator(typeof((int, string)), &AllocateValueType);
     }
 
+    {
+        TupleIntString value = new();
+        ReflectionMetadata.Register(new()
+        {
+            Type = typeof(Tuple<int, string>),
+            Creator = &Create2,
+            Name = "Tuple<int,string>",
+            Namespace = "System",
+            Fields =
+            [
+                new()
+                {
+                    Name = "Item1",
+                    Type = typeof(int),
+                    ByteOffset = RawData.CalcOffset(value, ref value.Item1),
+                },
+                new()
+                {
+                    Name = "Item2",
+                    Type = typeof(string),
+                    ByteOffset = RawData.CalcOffset(value, ref value.Item2),
+                }
+            ]
+        });
+    }
+
+    {
+        ValueTupleIntString value = new();
+        ReflectionMetadata.Register(new()
+        {
+            Type = typeof(ValueTuple<int, string>),
+            Name = "ValueTuple<int,string>",
+            Namespace = "System",
+            Fields =
+            [
+                new()
+                {
+                    Name = "Item1",
+                    Type = typeof(int),
+                    ByteOffset = (uint)Unsafe.ByteOffset(ref Unsafe.As<ValueTupleIntString, byte>(ref value),
+                        ref Unsafe.As<int, byte>(ref value.Item1)),
+                },
+                new()
+                {
+                    Name = "Item2",
+                    Type = typeof(string),
+                    ByteOffset = (uint)Unsafe.ByteOffset(ref Unsafe.As<ValueTupleIntString, byte>(ref value),
+                        ref Unsafe.As<string, byte>(ref value.Item2)),
+                }
+            ]
+        });
+    }
+
+
     MyCtx myCtx = default;
     AllocateValueType(ref Unsafe.As<MyCtx, byte>(ref myCtx), ref myCtx.Ptr, &WorkWithAllocatedValueType);
+
+    static object Create2()
+    {
+        return new Tuple<int, string>(default, default!);
+    }
 
     static object Create1(uint capacity)
     {
@@ -170,4 +229,16 @@ public struct DictEntry<TKey, TValue>
     public int Next;
     public TKey Key;
     public TValue Value;
+}
+
+public class TupleIntString
+{
+    public int Item1;
+    public string Item2;
+}
+
+public struct ValueTupleIntString
+{
+    public int Item1;
+    public string Item2;
 }

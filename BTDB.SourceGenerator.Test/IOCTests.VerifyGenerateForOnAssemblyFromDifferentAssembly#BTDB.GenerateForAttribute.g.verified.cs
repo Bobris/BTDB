@@ -45,8 +45,7 @@ static file class GenerateForAttributeRegistration
         metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::BTDB.GenerateForAttribute>(metadata);
-        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-        {
+        metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "ConstructorParameters",
@@ -54,7 +53,7 @@ static file class GenerateForAttributeRegistration
                 PropRefGetter = &GenGetter1,
                 PropRefSetter = &GenSetter1,
             },
-        };
+        ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

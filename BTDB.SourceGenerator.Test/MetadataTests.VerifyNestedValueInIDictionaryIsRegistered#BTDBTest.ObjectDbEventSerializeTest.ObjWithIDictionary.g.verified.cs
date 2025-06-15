@@ -33,8 +33,7 @@ static file class ObjWithIDictionaryRegistration
         metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::BTDBTest.ObjectDbEventSerializeTest.ObjWithIDictionary>(metadata);
-        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-        {
+        metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "TenantId",
@@ -47,7 +46,7 @@ static file class ObjWithIDictionaryRegistration
                 Type = typeof(global::System.Collections.Generic.IDictionary<ulong, global::BTDBTest.ObjectDbEventSerializeTest.Item>),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
             },
-        };
+        ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

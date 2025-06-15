@@ -31,15 +31,14 @@ static file class ChildRegistration
         metadata.Implements = [typeof(global::TestNamespace.IChild)];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::TestNamespace.Child>(metadata);
-        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-        {
+        metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "Id",
                 Type = typeof(ulong),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
             },
-        };
+        ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

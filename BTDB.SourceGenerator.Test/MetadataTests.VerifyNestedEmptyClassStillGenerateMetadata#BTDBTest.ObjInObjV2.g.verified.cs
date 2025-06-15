@@ -29,9 +29,8 @@ static file class ObjInObjV2Registration
         metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::BTDBTest.ObjInObjV2>(metadata);
-        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-        {
-        };
+        metadata.Fields = [
+        ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

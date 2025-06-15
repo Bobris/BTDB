@@ -33,8 +33,7 @@ static file class RowObjInObjV2Registration
         metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::BTDBTest.RowObjInObjV2>(metadata);
-        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-        {
+        metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "Id",
@@ -47,7 +46,7 @@ static file class RowObjInObjV2Registration
                 Type = typeof(global::BTDBTest.ObjInObjV2),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
             },
-        };
+        ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

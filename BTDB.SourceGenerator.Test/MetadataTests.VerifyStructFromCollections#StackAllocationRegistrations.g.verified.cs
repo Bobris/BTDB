@@ -7,6 +7,18 @@ using System.Runtime.CompilerServices;
 [CompilerGenerated]
 static file class StackAllocationRegistrations
 {
+    struct ValueTuple1
+    {
+       public string Item1;
+       public string Item2;
+    }
+
+    struct ValueTuple2
+    {
+       public string Item1;
+       public int Item2;
+    }
+
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -19,6 +31,29 @@ static file class StackAllocationRegistrations
                 ptr = 0;
             }
 
+        ValueTuple1 valueTuple1 = new();
+        BTDB.Serialization.ReflectionMetadata.Register(new()
+        {
+            Type = typeof((string, string)),
+            Name = "ValueTuple",
+            Fields =
+            [
+                new()
+                {
+                    Name = "Item1",
+                    Type = typeof(string),
+                    ByteOffset = (uint)Unsafe.ByteOffset(ref Unsafe.As<ValueTuple1, byte>(ref valueTuple1),
+                        ref Unsafe.As<string, byte>(ref valueTuple1.Item1)),
+                },
+                new()
+                {
+                    Name = "Item2",
+                    Type = typeof(string),
+                    ByteOffset = (uint)Unsafe.ByteOffset(ref Unsafe.As<ValueTuple1, byte>(ref valueTuple1),
+                        ref Unsafe.As<string, byte>(ref valueTuple1.Item2)),
+                },
+            ]
+        });
         BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof((string, int)), &Allocate2);
         static void Allocate2(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
             {
@@ -27,5 +62,29 @@ static file class StackAllocationRegistrations
                 chain(ref ctx);
                 ptr = 0;
             }
+
+        ValueTuple2 valueTuple2 = new();
+        BTDB.Serialization.ReflectionMetadata.Register(new()
+        {
+            Type = typeof((string, int)),
+            Name = "ValueTuple",
+            Fields =
+            [
+                new()
+                {
+                    Name = "Item1",
+                    Type = typeof(string),
+                    ByteOffset = (uint)Unsafe.ByteOffset(ref Unsafe.As<ValueTuple2, byte>(ref valueTuple2),
+                        ref Unsafe.As<string, byte>(ref valueTuple2.Item1)),
+                },
+                new()
+                {
+                    Name = "Item2",
+                    Type = typeof(int),
+                    ByteOffset = (uint)Unsafe.ByteOffset(ref Unsafe.As<ValueTuple2, byte>(ref valueTuple2),
+                        ref Unsafe.As<int, byte>(ref valueTuple2.Item2)),
+                },
+            ]
+        });
     }
 }

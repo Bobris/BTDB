@@ -431,4 +431,36 @@ public class MetadataTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyValueTupleGeneratesMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public string Name { get; set; } = "";
+                public (int, string) MyTuple { get; set; } = default;
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyTupleGeneratesMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public string Name { get; set; } = "";
+                public System.Tuple<int, string> MyTuple { get; set; } = default!;
+            }
+            """);
+    }
 }

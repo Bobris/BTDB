@@ -37,8 +37,7 @@ static file class ItemRegistration
         metadata.Implements = [];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::Item>(metadata);
-        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-        {
+        metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "CompanyId",
@@ -69,7 +68,7 @@ static file class ItemRegistration
                 Type = typeof(global::System.DateTime),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field5(dummy)),
             },
-        };
+        ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

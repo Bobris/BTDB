@@ -31,15 +31,14 @@ static file class RecordSealedGeneratedRegistration
         metadata.Implements = [typeof(global::System.IEquatable<global::TestNamespace.RecordSealedGenerated>)];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::TestNamespace.RecordSealedGenerated>(metadata);
-        metadata.Fields = new global::BTDB.Serialization.FieldMetadata[]
-        {
+        metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "Name",
                 Type = typeof(string),
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
             },
-        };
+        ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }
