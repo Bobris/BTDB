@@ -463,4 +463,20 @@ public class MetadataTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyNullableItemInCollectionGeneratesMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public List<int?> NullableInts;
+            }
+            """);
+    }
 }

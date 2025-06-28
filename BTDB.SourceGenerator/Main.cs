@@ -1358,40 +1358,69 @@ public class SourceGenerator : IIncrementalGenerator
             }
             else
             {
-                // language=c#
-                factoryCode.Append($$"""
+                if (collection.KeyType.EndsWith("?"))
+                {
+                    // language=c#
+                    factoryCode.Append($$"""
 
-                            HashSetEntry<{{collection.KeyType}}> e{{idx}} = new();
-                            BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
-                            {
-                                Type = typeof({{collection.FullName}}),
-                                ElementKeyType = typeof({{collection.KeyType}}),
-                                OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<{{collection.KeyType}}>, byte>(ref e{{idx}}),
-                                    ref Unsafe.As<int, byte>(ref e{{idx}}.Next)),
-                                OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<{{collection.KeyType}}>, byte>(ref e{{idx}}),
-                                    ref Unsafe.As<{{collection.KeyType}}, byte>(ref e{{idx}}.Value)),
-                                SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<{{collection.KeyType}}>>(),
-                                Creator = &Create{{idx}},
-                                Adder = &Add{{idx}},
-                                ODBCreator = &ODBCreate{{idx}}
-                            });
+                                HashSetEntry<{{collection.KeyType}}> e{{idx}} = new();
+                                BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
+                                {
+                                    Type = typeof({{collection.FullName}}),
+                                    ElementKeyType = typeof({{collection.KeyType}}),
+                                    Creator = &Create{{idx}},
+                                    Adder = &Add{{idx}},
+                                });
 
-                            static object Create{{idx}}(uint capacity)
-                            {
-                                return new {{collection.InstantiableFullName}}((int)capacity);
-                            }
+                                static object Create{{idx}}(uint capacity)
+                                {
+                                    return new {{collection.InstantiableFullName}}((int)capacity);
+                                }
 
-                            static void Add{{idx}}(object c, ref byte value)
-                            {
-                                Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref value));
-                            }
+                                static void Add{{idx}}(object c, ref byte value)
+                                {
+                                    Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref value));
+                                }
 
-                            static object ODBCreate{{idx}}(BTDB.ODBLayer.IInternalObjectDBTransaction tr, BTDB.ODBLayer.ODBDictionaryConfiguration config, ulong id)
-                            {
-                                return new BTDB.ODBLayer.ODBSet<{{collection.KeyType}}>(tr, config, id);
-                            }
+                        """);
+                }
+                else
+                {
+                    // language=c#
+                    factoryCode.Append($$"""
 
-                    """);
+                                HashSetEntry<{{collection.KeyType}}> e{{idx}} = new();
+                                BTDB.Serialization.ReflectionMetadata.RegisterCollection(new()
+                                {
+                                    Type = typeof({{collection.FullName}}),
+                                    ElementKeyType = typeof({{collection.KeyType}}),
+                                    OffsetNext = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<{{collection.KeyType}}>, byte>(ref e{{idx}}),
+                                        ref Unsafe.As<int, byte>(ref e{{idx}}.Next)),
+                                    OffsetKey = (uint)Unsafe.ByteOffset(ref Unsafe.As<HashSetEntry<{{collection.KeyType}}>, byte>(ref e{{idx}}),
+                                        ref Unsafe.As<{{collection.KeyType}}, byte>(ref e{{idx}}.Value)),
+                                    SizeOfEntry = (uint)Unsafe.SizeOf<HashSetEntry<{{collection.KeyType}}>>(),
+                                    Creator = &Create{{idx}},
+                                    Adder = &Add{{idx}},
+                                    ODBCreator = &ODBCreate{{idx}}
+                                });
+
+                                static object Create{{idx}}(uint capacity)
+                                {
+                                    return new {{collection.InstantiableFullName}}((int)capacity);
+                                }
+
+                                static void Add{{idx}}(object c, ref byte value)
+                                {
+                                    Unsafe.As<{{collection.InstantiableFullName}}>(c).Add(Unsafe.As<byte, {{collection.KeyType}}>(ref value));
+                                }
+
+                                static object ODBCreate{{idx}}(BTDB.ODBLayer.IInternalObjectDBTransaction tr, BTDB.ODBLayer.ODBDictionaryConfiguration config, ulong id)
+                                {
+                                    return new BTDB.ODBLayer.ODBSet<{{collection.KeyType}}>(tr, config, id);
+                                }
+
+                        """);
+                }
             }
         }
 
