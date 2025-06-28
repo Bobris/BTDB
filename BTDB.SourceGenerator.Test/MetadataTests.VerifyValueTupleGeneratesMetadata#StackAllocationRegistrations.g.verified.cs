@@ -18,12 +18,12 @@ static file class StackAllocationRegistrations
     {
         BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof((int, string)), &Allocate1);
         static void Allocate1(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
-            {
-                (int, string) value = default;
-                ptr = (nint)Unsafe.AsPointer(ref value);
-                chain(ref ctx);
-                ptr = 0;
-            }
+        {
+            (int, string) value = default;
+            ptr = (nint)Unsafe.AsPointer(ref value);
+            chain(ref ctx);
+            ptr = 0;
+        }
 
         ValueTuple1 valueTuple1 = new();
         BTDB.Serialization.ReflectionMetadata.Register(new()

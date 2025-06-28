@@ -1226,12 +1226,12 @@ public class SourceGenerator : IIncrementalGenerator
 
                         BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof({{@struct.FullName}}), &Allocate{{idx}});
                         static void Allocate{{idx}}(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
-                            {
-                                {{@struct.FullName}} value = default;
-                                ptr = (nint)Unsafe.AsPointer(ref value);
-                                chain(ref ctx);
-                                ptr = 0;
-                            }
+                        {
+                            {{@struct.FullName}} value = default;
+                            ptr = (nint)Unsafe.AsPointer(ref value);
+                            chain(ref ctx);
+                            ptr = 0;
+                        }
 
                 """);
             if (@struct.Fields.Count > 0)

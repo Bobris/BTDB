@@ -12,12 +12,12 @@ static file class StackAllocationRegistrations
     {
         BTDB.Serialization.ReflectionMetadata.RegisterStackAllocator(typeof(int?), &Allocate1);
         static void Allocate1(ref byte ctx, ref nint ptr, delegate*<ref byte, void> chain)
-            {
-                int? value = default;
-                ptr = (nint)Unsafe.AsPointer(ref value);
-                chain(ref ctx);
-                ptr = 0;
-            }
+        {
+            int? value = default;
+            ptr = (nint)Unsafe.AsPointer(ref value);
+            chain(ref ctx);
+            ptr = 0;
+        }
 
     }
 }
