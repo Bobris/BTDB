@@ -152,17 +152,86 @@ public class SourceGenerator : IIncrementalGenerator
                                 ((InterfaceDeclarationSyntax)syntaxContext.Node).Identifier.GetLocation());
                             // Get all methods
                             var methods = symbol.GetMembers().OfType<IMethodSymbol>().ToArray();
+                            var variantsGenerationInfos = new List<GenerationInfo>();
                             foreach (var method in methods)
                             {
-                                if (method.ReturnType.TypeKind == TypeKind.Interface)
+                                var methodReturnType = method.ReturnType as INamedTypeSymbol;
+                                if (methodReturnType is { TypeKind: TypeKind.Interface })
                                 {
                                     // Check is return type is IEnumerator<>
-                                    if (method.ReturnType.OriginalDefinition.SpecialType ==
+                                    if (methodReturnType.OriginalDefinition.SpecialType ==
                                         SpecialType.System_Collections_Generic_IEnumerator_T)
                                     {
                                         return GenerationError("BTDB0009",
                                             "Cannot use IEnumerator<> as return type in " + method.Name,
                                             method.Locations[0]);
+                                    }
+
+                                    if (methodReturnType.OriginalDefinition.SpecialType ==
+                                        SpecialType.System_Collections_Generic_IEnumerable_T)
+                                    {
+                                        // extract type argument
+                                        var typeArgument = (methodReturnType as INamedTypeSymbol)?.TypeArguments
+                                            .FirstOrDefault();
+                                        if (typeArgument != null &&
+                                            !SymbolEqualityComparer.Default.Equals(typeArgument, relationType) &&
+                                            SerializableType(typeArgument))
+                                        {
+                                            var variantInfo = GenerationInfoForClass(
+                                                (INamedTypeSymbol)typeArgument, null, false,
+                                                null, semanticModel, [], [], false);
+                                            if (variantInfo != null)
+                                            {
+                                                variantsGenerationInfos.Add(variantInfo);
+                                            }
+                                        }
+                                    }
+                                    // If return type is BTDB.ODBLayer.IOrderedDictionaryEnumerator<,>
+                                    else if (methodReturnType.OriginalDefinition.Name ==
+                                             "IOrderedDictionaryEnumerator" &&
+                                             methodReturnType.OriginalDefinition.InODBLayerNamespace() &&
+                                             methodReturnType.TypeArguments.Length == 2)
+                                    {
+                                        var valueType = methodReturnType.TypeArguments[1];
+                                        if (SerializableType(valueType))
+                                        {
+                                            var variantInfo = GenerationInfoForClass(
+                                                (INamedTypeSymbol)valueType, null, false,
+                                                null, semanticModel, [], [], false);
+                                            if (variantInfo != null) variantsGenerationInfos.Add(variantInfo);
+                                        }
+                                    }
+                                }
+                                else if (method.Name.StartsWith("FindBy") ||
+                                         method.Name.StartsWith("FirstBy"))
+                                {
+                                    if (methodReturnType != null && SerializableType(methodReturnType))
+                                    {
+                                        var variantInfo = GenerationInfoForClass(
+                                            (INamedTypeSymbol)methodReturnType, null, false,
+                                            null, semanticModel, [], [], false);
+                                        if (variantInfo != null) variantsGenerationInfos.Add(variantInfo);
+                                    }
+                                }
+                                else if (method.Name.StartsWith("GatherBy"))
+                                {
+                                    // Extract type argument from first parameter which must implement ICollection<>
+                                    if (method.Parameters.Length > 0 &&
+                                        method.Parameters[0].Type is INamedTypeSymbol
+                                        {
+                                            TypeKind: TypeKind.Interface,
+                                            OriginalDefinition.SpecialType: SpecialType
+                                                .System_Collections_Generic_ICollection_T
+                                        } collectionType)
+                                    {
+                                        var typeArgument = collectionType.TypeArguments.FirstOrDefault();
+                                        if (typeArgument != null && SerializableType(typeArgument))
+                                        {
+                                            var variantInfo = GenerationInfoForClass(
+                                                (INamedTypeSymbol)typeArgument, null, false,
+                                                null, semanticModel, [], [], false);
+                                            if (variantInfo != null) variantsGenerationInfos.Add(variantInfo);
+                                        }
                                     }
                                 }
                             }
@@ -173,7 +242,11 @@ public class SourceGenerator : IIncrementalGenerator
                                 symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), persistedName, false,
                                 false, false, false,
                                 [], [], [], [], generationInfo.Fields,
-                                [new(relationType)], [], [generationInfo, ..generationInfo.Nested], null);
+                                [new(relationType)], [],
+                                [
+                                    generationInfo, ..generationInfo.Nested, ..variantsGenerationInfos,
+                                    ..variantsGenerationInfos.SelectMany(g => g.Nested)
+                                ], null);
                         }
                         else
                         {

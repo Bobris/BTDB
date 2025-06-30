@@ -346,4 +346,37 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyVariantsAreRegistered()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+            using System.Collections.Generic;
+
+            public class Test
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                public string Name { get; set; }
+                public int Age { get; set; }
+            }
+
+            public class JustAge
+            {
+                public int Age { get; set; }
+            }
+
+            public class JustName
+            {
+                public string Name { get; set; }
+            }
+
+            public interface IVariantTestTable : IRelation<Test>
+            {
+                JustAge FindById(ulong id);
+                ulong GatherById(ICollection<JustName> items, long skip, long take, Constraint<ulong> id);
+            }
+            """);
+    }
 }
