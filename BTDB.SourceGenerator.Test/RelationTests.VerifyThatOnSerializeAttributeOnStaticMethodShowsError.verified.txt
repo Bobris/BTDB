@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    [OnSerialize]
+    public static void Serialize()
+                       ^^^^^^^^^
+    {
+*/
+ : (7,23)-(7,32),
+      Message: Method Serialize with OnSerializeAttribute cannot be static in global::Test,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0010,
+        Title: Method Serialize with OnSerializeAttribute cannot be static in global::Test,
+        MessageFormat: Method Serialize with OnSerializeAttribute cannot be static in global::Test,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

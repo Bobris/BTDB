@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    [OnSerialize]
+    public void Serialize(int a)
+                ^^^^^^^^^
+    {
+*/
+ : (7,16)-(7,25),
+      Message: Method Serialize with OnSerializeAttribute must not have parameters in global::Test,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0012,
+        Title: Method Serialize with OnSerializeAttribute must not have parameters in global::Test,
+        MessageFormat: Method Serialize with OnSerializeAttribute must not have parameters in global::Test,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

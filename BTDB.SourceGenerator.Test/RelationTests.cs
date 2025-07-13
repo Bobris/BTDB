@@ -379,4 +379,102 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyThatOnSerializeAttributeOnStaticMethodShowsError()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Test
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+
+                [OnSerialize]
+                public static void Serialize()
+                {
+                }
+            }
+
+            public interface ITestTable : IRelation<Test>
+            {
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyThatOnSerializeAttributeOnNonVoidMethodShowsError()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Test
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+
+                [OnSerialize]
+                public int Serialize()
+                {
+                    return 42;
+                }
+            }
+
+            public interface ITestTable : IRelation<Test>
+            {
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyThatOnSerializeAttributeOnMethodWithParametersShowsError()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Test
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+
+                [OnSerialize]
+                public void Serialize(int a)
+                {
+                }
+            }
+
+            public interface ITestTable : IRelation<Test>
+            {
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyThatOnSerializeAttributeIsProperlyGenerated()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Test
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+
+                [OnSerialize]
+                public void MethodA()
+                {
+                }
+
+                [OnSerialize]
+                void MethodB()
+                {
+                }
+            }
+
+            public interface ITestTable : IRelation<Test>
+            {
+            }
+            """);
+    }
 }

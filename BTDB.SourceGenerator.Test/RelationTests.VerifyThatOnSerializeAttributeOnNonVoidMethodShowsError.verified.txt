@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    [OnSerialize]
+    public int Serialize()
+               ^^^^^^^^^
+    {
+*/
+ : (7,15)-(7,24),
+      Message: Method Serialize with OnSerializeAttribute must return void in global::Test,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0011,
+        Title: Method Serialize with OnSerializeAttribute must return void in global::Test,
+        MessageFormat: Method Serialize with OnSerializeAttribute must return void in global::Test,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

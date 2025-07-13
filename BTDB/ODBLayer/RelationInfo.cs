@@ -1351,34 +1351,56 @@ public class RelationInfo
 
     RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName, bool forPrimaryKey)
     {
-        var method = ILBuilder.Instance.NewMethod<RelationSaver>(saverName);
-        var ilGenerator = method.Generator;
-        StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType, (ushort)ilGenerator.DeclareLocal(ClientType).Index);
-        var result = ilGenerator.DeclareLocal(typeof(int));
-        ilGenerator
-            .LdcI4(0)
-            .Stloc(result);
-        if (forPrimaryKey)
+#pragma warning disable CS0162 // Unreachable code detected
+        if (IFieldHandler.UseNoEmitForRelations)
         {
-            foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
-                                                             BindingFlags.NonPublic))
-            {
-                if (methodInfo.GetCustomAttribute<OnSerializeAttribute>() == null) continue;
-                if (methodInfo.GetParameters().Length != 0)
-                    throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
-                                            " must have zero parameters.");
-                if (methodInfo.ReturnType != typeof(void))
-                    throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
-                                            " must return void.");
-                ilGenerator.Ldloc(0).Callvirt(methodInfo);
-            }
-        }
+            var metadata = ReflectionMetadata.FindByType(ClientType);
+            if (metadata == null)
+                throw new BTDBException($"Cannot find metadata for type {ClientType.ToSimpleName()}");
 
-        CreateSaverIl(ilGenerator, fields,
-            il => il.Ldloc(0), il => il.Ldarg(1), il => il.Ldarg(0), forPrimaryKey ? (il => il.Stloc(result)) : null);
-        ilGenerator.Ldloc(result);
-        ilGenerator.Ret();
-        return method.Create();
+            return (IInternalObjectDBTransaction transaction, ref MemWriter writer, object value) =>
+            {
+                var result = 0;
+
+                return result;
+            };
+        }
+        else
+        {
+            var method = ILBuilder.Instance.NewMethod<RelationSaver>(saverName);
+            var ilGenerator = method.Generator;
+            StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType,
+                (ushort)ilGenerator.DeclareLocal(ClientType).Index);
+            var result = ilGenerator.DeclareLocal(typeof(int));
+            ilGenerator
+                .LdcI4(0)
+                .Stloc(result);
+            if (forPrimaryKey)
+            {
+                foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
+                                                                 BindingFlags.NonPublic))
+                {
+                    if (methodInfo.GetCustomAttribute<OnSerializeAttribute>() == null) continue;
+                    if (methodInfo.GetParameters().Length != 0)
+                        throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." +
+                                                methodInfo.Name +
+                                                " must have zero parameters.");
+                    if (methodInfo.ReturnType != typeof(void))
+                        throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." +
+                                                methodInfo.Name +
+                                                " must return void.");
+                    ilGenerator.Ldloc(0).Callvirt(methodInfo);
+                }
+            }
+
+            CreateSaverIl(ilGenerator, fields,
+                il => il.Ldloc(0), il => il.Ldarg(1), il => il.Ldarg(0),
+                forPrimaryKey ? (il => il.Stloc(result)) : null);
+            ilGenerator.Ldloc(result);
+            ilGenerator.Ret();
+            return method.Create();
+        }
+#pragma warning restore CS0162 // Unreachable code detected
     }
 
     static bool SecondaryIndexHasSameDefinition(ReadOnlySpan<TableFieldInfo> currFields,

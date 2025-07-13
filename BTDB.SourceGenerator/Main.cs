@@ -15,6 +15,7 @@ public class SourceGenerator : IIncrementalGenerator
 {
     const string AttributeName = "GenerateAttribute";
     const string GenerateForName = "GenerateForAttribute";
+    const string OnSerializeAttributeName = "OnSerializeAttribute";
     const string CovariantRelationInterfaceName = "ICovariantRelation";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -67,7 +68,7 @@ public class SourceGenerator : IIncrementalGenerator
                                     "Must use CollectionExpression syntax for ConstructorParameters", null, false,
                                     false,
                                     false, false, [], [],
-                                    [], [], [], [], [], [],
+                                    [], [], [], [], [], [], [],
                                     constructorParametersExpression.GetLocation());
                             }
 
@@ -126,7 +127,7 @@ public class SourceGenerator : IIncrementalGenerator
                             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false, false,
                             false,
                             parameters, [new PropertyInfo("", returnType, null, true, false, false, false, null)], [],
-                            [], [],
+                            [], [], [],
                             [], [], [], null);
                     }
 
@@ -241,7 +242,7 @@ public class SourceGenerator : IIncrementalGenerator
                             return new(GenerationType.RelationIface, namespaceName, interfaceName,
                                 symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), persistedName, false,
                                 false, false, false,
-                                [], [], [], [], generationInfo.Fields,
+                                [], [], [], [], generationInfo.Fields, [],
                                 [new(relationType)], [],
                                 [
                                     generationInfo, ..generationInfo.Nested, ..variantsGenerationInfos,
@@ -262,7 +263,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 false, false,
                                 [],
                                 [], [],
-                                dispatchers, [],
+                                dispatchers, [], [],
                                 [], [],
                                 [], null);
                         }
@@ -347,7 +348,7 @@ public class SourceGenerator : IIncrementalGenerator
                 catch (Exception e)
                 {
                     return new(GenerationType.Error, null, "BTDB0000", e.StackTrace, null, false, false, false, false,
-                        [], [], [], [], [], [], [], [], syntaxContext.Node.GetLocation());
+                        [], [], [], [], [], [], [], [], [], syntaxContext.Node.GetLocation());
                 }
             }).Where(i => i != null);
         gen = gen.SelectMany((g, _) => g!.Nested.IsEmpty ? Enumerable.Repeat(g, 1) : [g, ..g.Nested])!;
@@ -488,7 +489,7 @@ public class SourceGenerator : IIncrementalGenerator
     static GenerationInfo GenerationError(string code, string message, Location location)
     {
         return new(GenerationType.Error, null, code, message, null, false, false, false, false, [],
-            [], [], [], [], [], [], [], location);
+            [], [], [], [], [], [], [], [], location);
     }
 
     static bool IsICovariantRelation(INamedTypeSymbol typeSymbol)
@@ -747,6 +748,44 @@ public class SourceGenerator : IIncrementalGenerator
             GatherCollections(model, fieldTypes, collections, nested, processed);
         }
 
+        var methods = new List<MethodInfo>();
+
+        foreach (var methodSymbol in GetAllMembersIncludingBase(symbol).OfType<IMethodSymbol>().Where(m => m
+                     .GetAttributes().Any(a =>
+                         a.AttributeClass?.Name == OnSerializeAttributeName && a.AttributeClass.InODBLayerNamespace())))
+        {
+            if (methodSymbol.IsStatic)
+            {
+                nested.Add(GenerationError("BTDB0010",
+                    "Method " + methodSymbol.Name + " with OnSerializeAttribute cannot be static in " +
+                    symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    methodSymbol.Locations[0]));
+                continue;
+            }
+
+            if (!methodSymbol.ReturnsVoid)
+            {
+                nested.Add(GenerationError("BTDB0011",
+                    "Method " + methodSymbol.Name + " with OnSerializeAttribute must return void in " +
+                    symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    methodSymbol.Locations[0]));
+                continue;
+            }
+
+            if (!methodSymbol.Parameters.IsEmpty)
+            {
+                nested.Add(GenerationError("BTDB0012",
+                    "Method " + methodSymbol.Name + " with OnSerializeAttribute must not have parameters in " +
+                    symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    methodSymbol.Locations[0]));
+                continue;
+            }
+
+            methods.Add(new(methodSymbol.Name,
+                methodSymbol.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                [], methodSymbol.DeclaredAccessibility is Accessibility.Public, Purpose.OnSerialize));
+        }
+
         // No IOC and no metadata => no generation
         if (fields.Length == 0 && parameters == null) return null;
 
@@ -769,7 +808,8 @@ public class SourceGenerator : IIncrementalGenerator
             hasDefaultConstructor,
             forceMetadata,
             parameters,
-            propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, implements, collections.ToArray(),
+            propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, methods.ToArray(), implements,
+            collections.ToArray(),
             nested.ToArray(), null);
     }
 
@@ -1047,11 +1087,11 @@ public class SourceGenerator : IIncrementalGenerator
                             namedTypeSymbol.Name,
                             namedTypeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false,
                             false,
-                            true, true, EquatableArray<ParameterInfo>.Empty, EquatableArray<PropertyInfo>.Empty,
-                            EquatableArray<string>.Empty, EquatableArray<DispatcherInfo>.Empty,
-                            DetectValueTupleFields(namedTypeSymbol),
-                            EquatableArray<TypeRef>.Empty, EquatableArray<CollectionInfo>.Empty,
-                            EquatableArray<GenerationInfo>.Empty, null);
+                            true, true, [], [],
+                            [], [],
+                            DetectValueTupleFields(namedTypeSymbol), [],
+                            [], [],
+                            [], null);
                         nested.Add(gi);
                     }
                     else if (namedTypeSymbol is { IsReferenceType: true, TypeKind: TypeKind.Class } &&
@@ -1960,10 +2000,57 @@ public class SourceGenerator : IIncrementalGenerator
             }
 
             // language=c#
-            metadataCode.Append($$"""
+            metadataCode.Append("""
                         ];
-                        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
+
                 """);
+
+            var methodIndex = 0;
+            if (generationInfo.Methods.FirstOrDefault(m => m.Purpose == Purpose.OnSerialize) != null)
+            {
+                // language=c#
+                metadataCode.Append("""
+                            metadata.OnSerialize = &OnSerialize;
+                            static void OnSerialize(object @this)
+                            {
+
+                    """);
+
+                foreach (var m in generationInfo.Methods.Where(m => m.Purpose == Purpose.OnSerialize))
+                {
+                    if (m.IsPublic)
+                    {
+                        metadataCode.Append($"""
+                                        Unsafe.As<{generationInfo.FullName}>(@this).{m.Name}();
+
+                            """);
+                    }
+                    else
+                    {
+                        methodIndex++;
+                        // language=c#
+                        declarations.Append($"""
+                                [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
+                                extern static void OnSerialize{methodIndex}({generationInfo.FullName} @this);
+
+                            """);
+                        // language=c#
+                        metadataCode.Append($"""
+                                        OnSerialize{methodIndex}(Unsafe.As<{generationInfo.FullName}>(@this));
+
+                            """);
+                    }
+                }
+
+                // language=c#
+                metadataCode.Append("""
+                            }
+
+                    """);
+            }
+
+            // language=c#
+            metadataCode.Append("        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);");
         }
 
         var dispatchers = new StringBuilder();
@@ -2116,6 +2203,7 @@ record GenerationInfo(
     EquatableArray<string> ParentDeclarations,
     EquatableArray<DispatcherInfo> Dispatchers,
     EquatableArray<FieldsInfo> Fields,
+    EquatableArray<MethodInfo> Methods,
     EquatableArray<TypeRef> Implements,
     EquatableArray<CollectionInfo> CollectionInfos,
     EquatableArray<GenerationInfo> Nested,
@@ -2188,6 +2276,19 @@ record FieldsInfo(
     bool ReadOnly,
     string OwnerFullName,
     EquatableArray<IndexInfo> Indexes);
+
+enum Purpose
+{
+    None = 0,
+    OnSerialize = 1,
+}
+
+record MethodInfo(
+    string Name,
+    string? ResultType,
+    EquatableArray<ParameterInfo> Parameters,
+    bool IsPublic,
+    Purpose Purpose = Purpose.None);
 
 // Name == null for primary key, InKeyValue could be true only for primary key, IncludePrimaryKeyOrder is used only for secondary key
 record IndexInfo(string? Name, uint Order, bool InKeyValue, uint IncludePrimaryKeyOrder);
