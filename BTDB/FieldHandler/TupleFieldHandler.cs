@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using BTDB.Collections;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.Serialization;
 using BTDB.StreamLayer;
 
@@ -221,9 +222,91 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
         }
     }
 
-    public FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
+    public unsafe FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
     {
-        throw new NotImplementedException();
+        if (IsCompatibleWith(asType))
+        {
+            var metadata = ReflectionMetadata.FindByType(asType);
+            if (metadata == null)
+            {
+                throw new BTDBException("Cannot load " + asType.ToSimpleName() +
+                                        " as it is not registered in ReflectionMetadata");
+            }
+
+            if (asType.IsValueType)
+            {
+                var loaders = new StructList<FieldHandlerLoad>();
+                for (var i = 0; i < _fieldHandlers.Count; i++)
+                {
+                    var fieldHandler = _fieldHandlers[i];
+                    if (i >= metadata.Fields.Length)
+                    {
+                        loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte _) =>
+                        {
+                            fieldHandler.Skip(ref reader, ctx);
+                        });
+                        continue;
+                    }
+
+                    var field = metadata.Fields[i];
+                    var loader = fieldHandler.Load(field.Type, typeConverterFactory);
+                    var offset = field.ByteOffset!.Value;
+                    loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+                    {
+                        loader(ref reader, ctx,
+                            ref Unsafe.AddByteOffset(ref value, offset));
+                    });
+                }
+
+                var loadersArray = loaders.ToArray();
+                return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+                {
+                    foreach (var fieldHandlerLoad in loadersArray)
+                    {
+                        fieldHandlerLoad(ref reader, ctx, ref value);
+                    }
+                };
+            }
+            else
+            {
+                var creator = metadata.Creator;
+                var loaders = new StructList<FieldHandlerLoad>();
+                for (var i = 0; i < _fieldHandlers.Count; i++)
+                {
+                    var fieldHandler = _fieldHandlers[i];
+                    if (i >= metadata.Fields.Length)
+                    {
+                        loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte _) =>
+                        {
+                            fieldHandler.Skip(ref reader, ctx);
+                        });
+                        continue;
+                    }
+
+                    var field = metadata.Fields[i];
+                    var loader = fieldHandler.Load(field.Type, typeConverterFactory);
+                    var offset = field.ByteOffset!.Value;
+                    loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+                    {
+                        loader(ref reader, ctx,
+                            ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
+                    });
+                }
+
+                var loadersArray = loaders.ToArray();
+                return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+                {
+                    var tuple = creator();
+                    Unsafe.As<byte, object>(ref value) = tuple;
+                    foreach (var fieldHandlerLoad in loadersArray)
+                    {
+                        fieldHandlerLoad(ref reader, ctx, ref value);
+                    }
+                };
+            }
+        }
+
+        return this.BuildConvertingLoader(HandledType(), asType, typeConverterFactory);
     }
 
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
