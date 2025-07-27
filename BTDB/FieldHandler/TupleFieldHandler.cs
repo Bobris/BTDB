@@ -319,7 +319,68 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
 
     public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
     {
-        throw new NotImplementedException();
+        if (HandledType() == asType)
+        {
+            var metadata = ReflectionMetadata.FindByType(asType);
+            if (metadata == null)
+            {
+                throw new BTDBException("Cannot save " + asType.ToSimpleName() +
+                                        " as it is not registered in ReflectionMetadata");
+            }
+
+            if (asType.IsValueType)
+            {
+                var savers = new StructList<FieldHandlerSave>();
+                for (var i = 0; i < _fieldHandlers.Count; i++)
+                {
+                    var fieldHandler = _fieldHandlers[i];
+                    var field = metadata.Fields[i];
+                    var saver = fieldHandler.Save(field.Type, typeConverterFactory);
+                    var offset = field.ByteOffset!.Value;
+                    savers.Add((ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+                    {
+                        saver(ref writer, ctx,
+                            ref Unsafe.AddByteOffset(ref value, offset));
+                    });
+                }
+
+                var saversArray = savers.ToArray();
+                return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+                {
+                    foreach (var fieldHandlerSave in saversArray)
+                    {
+                        fieldHandlerSave(ref writer, ctx, ref value);
+                    }
+                };
+            }
+            else
+            {
+                var savers = new StructList<FieldHandlerSave>();
+                for (var i = 0; i < _fieldHandlers.Count; i++)
+                {
+                    var fieldHandler = _fieldHandlers[i];
+                    var field = metadata.Fields[i];
+                    var saver = fieldHandler.Save(field.Type, typeConverterFactory);
+                    var offset = field.ByteOffset!.Value;
+                    savers.Add((ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+                    {
+                        saver(ref writer, ctx,
+                            ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
+                    });
+                }
+
+                var saversArray = savers.ToArray();
+                return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+                {
+                    foreach (var fieldHandlerSave in saversArray)
+                    {
+                        fieldHandlerSave(ref writer, ctx, ref value);
+                    }
+                };
+            }
+        }
+
+        return this.BuildConvertingSaver(asType, HandledType(), typeConverterFactory);
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)

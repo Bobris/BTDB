@@ -308,4 +308,10 @@ public sealed class RawData
     }
 
     public delegate void BulkMoveWithWriteBarrierDelegate(ref byte destination, ref byte source, nuint byteCount);
+
+    public static bool FitsInInt128(Type type)
+    {
+        return !RawData.MethodTableOf(type).ContainsGCPointers &&
+               RawData.GetSizeAndAlign(type).Size <= 16;
+    }
 }

@@ -25,6 +25,8 @@ delegate object RelationLoaderFunc(IInternalObjectDBTransaction transaction, ref
 
 delegate int RelationSaver(IInternalObjectDBTransaction transaction, ref MemWriter writer, object value);
 
+delegate void RelationSaverItem(ref MemWriter writer, IWriterCtx? writerCtx, object? value, ref int offsetInKeyValue);
+
 delegate bool RelationBeforeRemove(IInternalObjectDBTransaction transaction, IContainer container, object value);
 
 public class RelationInfo
@@ -43,6 +45,17 @@ public class RelationInfo
     bool _hasInKeyValue;
 
     internal StructList<ItemLoaderInfo> ItemLoaderInfos;
+
+    ref struct FieldSaverCtx
+    {
+        internal nint StoragePtr;
+        internal object Object;
+        internal FieldHandlerSave Saver;
+        internal IWriterCtx? Ctx;
+        internal ref MemWriter Writer;
+
+        internal unsafe delegate*<object, ref byte, void> Getter;
+    }
 
     public class ItemLoaderInfo
     {
@@ -229,8 +242,7 @@ public class RelationInfo
                             continue;
                         }
 
-                        if (!RawData.MethodTableOf(fieldType).ContainsGCPointers &&
-                            RawData.GetSizeAndAlign(fieldType).Size <= 16)
+                        if (RawData.FitsInInt128(fieldType))
                         {
                             loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
                             {
@@ -1015,6 +1027,87 @@ public class RelationInfo
     internal RelationBeforeRemove? BeforeRemove => _beforeRemove;
     internal bool HasInKeyValue => _hasInKeyValue;
 
+    unsafe void CreateSaverItems(ref StructList<RelationSaverItem> saveInstructions, ClassMetadata metadata,
+        ReadOnlySpan<TableFieldInfo> fields, bool forPrimaryKey)
+    {
+        var wasInKeyValueField = false;
+        foreach (var field in fields)
+        {
+            if (field.InKeyValue && forPrimaryKey)
+            {
+                if (!wasInKeyValueField)
+                {
+                    wasInKeyValueField = true;
+                    saveInstructions.Add((ref MemWriter writer, IWriterCtx? _, object? _, ref int keyValue) =>
+                        {
+                            keyValue = (int)writer.NoControllerGetCurrentPosition();
+                        }
+                    );
+                }
+            }
+
+            var fieldInfo = metadata.Fields.First(f => f.Name == field.Name);
+            var saver = field.Handler!.Save(fieldInfo.Type, _relationInfoResolver.TypeConverterFactory);
+            var propRefGetter = fieldInfo.PropRefGetter;
+            if (propRefGetter != null)
+            {
+                var fieldType = fieldInfo.Type;
+                if (!fieldType.IsValueType)
+                {
+                    saveInstructions.Add((ref MemWriter writer, IWriterCtx? ctx, object? value, ref int _) =>
+                    {
+                        object? val = null;
+                        propRefGetter(value, ref Unsafe.As<object, byte>(ref val));
+                        saver(ref writer, ctx, ref Unsafe.As<object, byte>(ref val));
+                    });
+                }
+                else if (RawData.FitsInInt128(fieldType))
+                {
+                    saveInstructions.Add((ref MemWriter writer, IWriterCtx? ctx, object? value, ref int _) =>
+                    {
+                        Int128 val = default;
+                        propRefGetter(value, ref Unsafe.As<Int128, byte>(ref val));
+                        saver(ref writer, ctx, ref Unsafe.As<Int128, byte>(ref val));
+                    });
+                }
+                else
+                {
+                    var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
+                    saveInstructions.Add((ref MemWriter writer, IWriterCtx? ctx, object? value, ref int _) =>
+                    {
+                        var fieldSaverCtx = new FieldSaverCtx
+                        {
+                            Object = value!,
+                            Saver = saver,
+                            Getter = propRefGetter,
+                            Ctx = ctx,
+                            Writer = writer
+                        };
+
+                        stackAllocator(ref Unsafe.As<FieldSaverCtx, byte>(ref fieldSaverCtx),
+                            ref fieldSaverCtx.StoragePtr, &Nested);
+
+                        static void Nested(ref byte value)
+                        {
+                            ref var context = ref Unsafe.As<byte, FieldSaverCtx>(ref value);
+                            context.Getter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                            context.Saver(ref context.Writer, context.Ctx,
+                                ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        }
+                    });
+                }
+            }
+            else
+            {
+                var offset = fieldInfo.ByteOffset!.Value;
+                saveInstructions.Add((ref MemWriter writer, IWriterCtx? ctx, object? value, ref int _) =>
+                {
+                    saver(ref writer, ctx, ref RawData.Ref(value, offset));
+                });
+            }
+        }
+    }
+
     void CreateSaverIl(IILGen ilGen, ReadOnlySpan<TableFieldInfo> fields,
         Action<IILGen> pushInstance,
         Action<IILGen> pushWriter, Action<IILGen> pushTransaction, Action<IILGen>? pushLenOfKey)
@@ -1349,7 +1442,7 @@ public class RelationInfo
         return method.Create();
     }
 
-    RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName, bool forPrimaryKey)
+    unsafe RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName, bool forPrimaryKey)
     {
 #pragma warning disable CS0162 // Unreachable code detected
         if (IFieldHandler.UseNoEmitForRelations)
@@ -1358,9 +1451,40 @@ public class RelationInfo
             if (metadata == null)
                 throw new BTDBException($"Cannot find metadata for type {ClientType.ToSimpleName()}");
 
+            var onSerialize = metadata.OnSerialize;
+            if (!forPrimaryKey) onSerialize = null;
+
+            var anyNeedsCtx = false;
+            foreach (var field in fields)
+            {
+                if (field.Handler!.NeedsCtx())
+                {
+                    anyNeedsCtx = true;
+                    break;
+                }
+            }
+
+            StructList<RelationSaverItem> saveInstructions = new();
+            CreateSaverItems(ref saveInstructions, metadata, fields, forPrimaryKey);
+            var saveInstructionsArray = saveInstructions.ToArray();
             return (IInternalObjectDBTransaction transaction, ref MemWriter writer, object value) =>
             {
                 var result = 0;
+                if (onSerialize != null)
+                {
+                    onSerialize(value);
+                }
+
+                IWriterCtx? writerCtx = null;
+                if (anyNeedsCtx)
+                {
+                    writerCtx = new DBWriterCtx(transaction);
+                }
+
+                foreach (var relationSaverItem in saveInstructionsArray)
+                {
+                    relationSaverItem(ref writer, writerCtx, value, ref result);
+                }
 
                 return result;
             };
