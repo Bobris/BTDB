@@ -1612,28 +1612,6 @@ public class RelationInfo
         }
     }
 
-    public static IEnumerable<PropertyInfo> GetProperties(Type interfaceType)
-    {
-        if (IsIgnoredType(interfaceType)) yield break;
-        var properties = interfaceType.GetProperties(BindingFlags.Instance | BindingFlags.Public);
-        foreach (var property in properties)
-        {
-            if (property.Name == nameof(IRelation.BtdbInternalNextInChain)) continue;
-            yield return property;
-        }
-
-        foreach (var iface in interfaceType.GetInterfaces())
-        {
-            if (IsIgnoredType(iface)) continue;
-            var inheritedProperties = iface.GetProperties(BindingFlags.Instance | BindingFlags.Public);
-            foreach (var property in inheritedProperties)
-            {
-                if (property.Name == nameof(IRelation.BtdbInternalNextInChain)) continue;
-                yield return property;
-            }
-        }
-    }
-
     FreeContentFun GetIDictFinder(uint version)
     {
         FreeContentFun? res;
