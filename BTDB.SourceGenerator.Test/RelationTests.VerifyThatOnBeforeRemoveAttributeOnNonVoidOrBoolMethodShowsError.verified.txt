@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    [OnBeforeRemove]
+    public int MethodA()
+               ^^^^^^^
+    {
+*/
+ : (7,15)-(7,22),
+      Message: Method MethodA with OnBeforeRemoveAttribute must return bool or void in global::Test,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0014,
+        Title: Method MethodA with OnBeforeRemoveAttribute must return bool or void in global::Test,
+        MessageFormat: Method MethodA with OnBeforeRemoveAttribute must return bool or void in global::Test,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

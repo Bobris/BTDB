@@ -477,4 +477,51 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyThatOnBeforeRemoveAttributeOnStaticMethodShowsError()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Test
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+
+                [OnBeforeRemove]
+                static public void MethodA()
+                {
+                }
+            }
+
+            public interface ITestTable : IRelation<Test>
+            {
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyThatOnBeforeRemoveAttributeOnNonVoidOrBoolMethodShowsError()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Test
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+
+                [OnBeforeRemove]
+                public int MethodA()
+                {
+                    return 42;
+                }
+            }
+
+            public interface ITestTable : IRelation<Test>
+            {
+            }
+            """);
+    }
 }

@@ -16,6 +16,7 @@ public class SourceGenerator : IIncrementalGenerator
     const string AttributeName = "GenerateAttribute";
     const string GenerateForName = "GenerateForAttribute";
     const string OnSerializeAttributeName = "OnSerializeAttribute";
+    const string OnBeforeRemoveAttributeName = "OnBeforeRemoveAttribute";
     const string CovariantRelationInterfaceName = "ICovariantRelation";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -784,6 +785,41 @@ public class SourceGenerator : IIncrementalGenerator
             methods.Add(new(methodSymbol.Name,
                 methodSymbol.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 [], methodSymbol.DeclaredAccessibility is Accessibility.Public, Purpose.OnSerialize));
+        }
+
+        foreach (var methodSymbol in GetAllMembersIncludingBase(symbol).OfType<IMethodSymbol>().Where(m => m
+                     .GetAttributes().Any(a =>
+                         a.AttributeClass?.Name == OnBeforeRemoveAttributeName &&
+                         a.AttributeClass.InODBLayerNamespace())))
+        {
+            if (methodSymbol.IsStatic)
+            {
+                nested.Add(GenerationError("BTDB0013",
+                    "Method " + methodSymbol.Name + " with OnBeforeRemoveAttribute cannot be static in " +
+                    symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    methodSymbol.Locations[0]));
+                continue;
+            }
+
+            if (!methodSymbol.ReturnsVoid && methodSymbol.ReturnType.SpecialType != SpecialType.System_Boolean)
+            {
+                nested.Add(GenerationError("BTDB0014",
+                    "Method " + methodSymbol.Name + " with OnBeforeRemoveAttribute must return bool or void in " +
+                    symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    methodSymbol.Locations[0]));
+                continue;
+            }
+
+            methods.Add(new(methodSymbol.Name,
+                methodSymbol.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                methodSymbol.Parameters.Select(p => new ParameterInfo(p.Name,
+                    p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    DetectDependencyName(p),
+                    p.Type.IsReferenceType,
+                    p.NullableAnnotation == NullableAnnotation.Annotated, p.HasExplicitDefaultValue
+                        ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue, new(p.Type))
+                        : null)).ToArray(),
+                methodSymbol.DeclaredAccessibility is Accessibility.Public, Purpose.OnBeforeRemove));
         }
 
         // No IOC and no metadata => no generation
@@ -2281,6 +2317,7 @@ enum Purpose
 {
     None = 0,
     OnSerialize = 1,
+    OnBeforeRemove = 2,
 }
 
 record MethodInfo(

@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    [OnBeforeRemove]
+    static public void MethodA()
+                       ^^^^^^^
+    {
+*/
+ : (7,23)-(7,30),
+      Message: Method MethodA with OnBeforeRemoveAttribute cannot be static in global::Test,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0013,
+        Title: Method MethodA with OnBeforeRemoveAttribute cannot be static in global::Test,
+        MessageFormat: Method MethodA with OnBeforeRemoveAttribute cannot be static in global::Test,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

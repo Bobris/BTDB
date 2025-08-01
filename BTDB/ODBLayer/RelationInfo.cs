@@ -27,7 +27,7 @@ delegate int RelationSaver(IInternalObjectDBTransaction transaction, ref MemWrit
 
 delegate void RelationSaverItem(ref MemWriter writer, IWriterCtx? writerCtx, object? value, ref int offsetInKeyValue);
 
-delegate bool RelationBeforeRemove(IInternalObjectDBTransaction transaction, IContainer container, object value);
+public delegate bool RelationBeforeRemove(IInternalObjectDBTransaction transaction, IContainer container, object value);
 
 public class RelationInfo
 {
