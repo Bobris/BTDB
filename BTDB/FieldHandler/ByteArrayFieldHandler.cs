@@ -91,7 +91,7 @@ public class ByteArrayFieldHandler : IFieldHandler
         return this.BuildConvertingLoader(typeof(byte[]), asType, typeConverterFactory);
     }
 
-    public void Skip(ref MemReader reader, IReaderCtx? ctx)
+    public virtual void Skip(ref MemReader reader, IReaderCtx? ctx)
     {
         reader.SkipByteArray();
     }

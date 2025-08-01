@@ -32,6 +32,12 @@ public class ByteArrayLastFieldHandler : ByteArrayFieldHandler
 
     public override void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
     {
+        // Nothing needed it is last field anyway
+    }
+
+    public override void Skip(ref MemReader reader, IReaderCtx? ctx)
+    {
+        // Nothing needed it is last field anyway
     }
 
     public override void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx,
