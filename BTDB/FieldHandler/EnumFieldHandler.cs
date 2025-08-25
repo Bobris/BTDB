@@ -179,27 +179,6 @@ public class EnumFieldHandler : IFieldHandler
                 return result;
             }
         }
-
-        public bool IsSubsetOf(EnumConfiguration targetCfg)
-        {
-            if (_flags != targetCfg._flags) return false;
-            var targetDict =
-                targetCfg.Names.Zip(targetCfg.Values, (k, v) => new KeyValuePair<string, ulong>(k, v))
-                    .ToDictionary(p => p.Key, p => p.Value);
-            for (var i = 0; i < _names.Length; i++)
-            {
-                if (!targetDict.TryGetValue(_names[i], out var targetValue)) return false;
-                if (_values[i] != targetValue) return false;
-            }
-
-            return true;
-        }
-
-        public bool IsBinaryRepresentationSubsetOf(EnumConfiguration targetCfg)
-        {
-            var targetSet = targetCfg.Values.ToHashSet();
-            return _values.All(v => targetSet.Contains(v));
-        }
     }
 
     public EnumFieldHandler(Type enumType)
@@ -449,9 +428,7 @@ public class EnumFieldHandler : IFieldHandler
 
         if (enumTypeHandler != null && _signed == enumTypeHandler._signed)
         {
-            if (new EnumConfiguration(Configuration).IsBinaryRepresentationSubsetOf(
-                    new(enumTypeHandler.Configuration)))
-                return typeHandler;
+            return typeHandler;
         }
 
         return this;

@@ -787,11 +787,7 @@ public class RelationInfo
             return true;
         if (newHandledType!.IsEnum && previousHandledType!.IsEnum)
         {
-            var prevEnumCfg =
-                new EnumFieldHandler.EnumConfiguration(((EnumFieldHandler)previousHandler).Configuration);
-            var newEnumCfg = new EnumFieldHandler.EnumConfiguration(((EnumFieldHandler)newHandler).Configuration);
-
-            return prevEnumCfg.IsBinaryRepresentationSubsetOf(newEnumCfg);
+            return true;
         }
 
         return false;

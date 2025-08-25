@@ -1,1 +1,0 @@
-Cannot load System.Collections.Generic.IDictionary<Enum\[One_1_Two_2\],long> into System.Collections.Generic.Dictionary<BTDBTest.ObjectDbTableUpgradeTest.SimpleEnumV3,int>
