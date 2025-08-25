@@ -230,7 +230,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
     }
 
     [Fact]
-    public void UpgradePrimaryKeyWithIncompatibleEnumNotWork()
+    public void UpgradePrimaryKeyEvenWithIncompatibleEnumsDoesWork()
     {
         using (var tr = _db.StartTransaction())
         {
@@ -245,9 +245,10 @@ public class ObjectDbTableUpgradeTest : IDisposable
         ReopenDb();
         using (var tr = _db.StartTransaction())
         {
-            var ex = Assert.Throws<BTDBException>(() =>
-                tr.InitRelation<ITableWithEnumInKeyV3>("EnumWithItemInKeyIncompatible"));
-            Assert.Contains("Field 'Key'", ex.Message);
+            var creator = tr.InitRelation<ITableWithEnumInKeyV3>("EnumWithItemInKeyIncompatible");
+            var table = creator(tr);
+            Assert.Single(table);
+            Assert.Equal(1, (int)table.First().Key);
         }
     }
 
@@ -471,8 +472,8 @@ public class ObjectDbTableUpgradeTest : IDisposable
         {
             var creator = tr.InitRelation<IEnumsInKeys2Table>("Enums");
             var eTable = creator(tr);
-            Assert.Null(eTable.First().E);
-            Assert.Equal(1, eTable.Count);
+            Assert.NotNull(eTable.First().E);
+            Assert.Single(eTable);
             var e = new EnumsInKeys2 { Id = 1, E = new Dictionary<SimpleEnumV3, int> { { SimpleEnumV3.Four, 1 } } };
             eTable.Upsert(e);
             tr.Commit();
@@ -484,7 +485,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
         {
             var creator = tr.InitRelation<IEnumsInKeys1Table>("Enums");
             var eTable = creator(tr);
-            Assert.Equal(1, eTable.Count);
+            Assert.Single(eTable);
         }
 
         ApproveFieldHandlerLoggerMessages();

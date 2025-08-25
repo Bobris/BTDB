@@ -19,11 +19,11 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
     public DefaultTypeConvertorGenerator()
     {
         var convConvertibleTypes = new[]
-                                       {
-                                               typeof (byte), typeof (sbyte), typeof (ushort), typeof (short),
-                                               typeof (uint), typeof (int), typeof (ulong), typeof (long),
-                                               typeof (float), typeof (double)
-                                           };
+        {
+            typeof(byte), typeof(sbyte), typeof(ushort), typeof(short),
+            typeof(uint), typeof(int), typeof(ulong), typeof(long),
+            typeof(float), typeof(double)
+        };
         AddConversions(convConvertibleTypes, typeof(long), ilg => ilg.ConvI8());
         AddConversions(convConvertibleTypes, typeof(ulong), ilg => ilg.ConvU8());
         AddConversions(convConvertibleTypes, typeof(int), ilg => ilg.ConvI4());
@@ -63,6 +63,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
         {
             return i => i.Castclass(to);
         }
+
         if (from == typeof(object) && !to.IsValueType)
         {
             return i => i.Isinst(to);
@@ -72,6 +73,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
         {
             return generator;
         }
+
         if (from.IsEnum && to.IsEnum) return GenerateEnum2EnumConversion(from, to);
         if (Nullable.GetUnderlyingType(to) == from)
         {
@@ -79,6 +81,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
             _conversions.TryAdd((from, to), res);
             return res;
         }
+
         if (Nullable.GetUnderlyingType(to) is { } underTo && GenerateConversion(from, underTo) is { } conv)
         {
             Action<IILGen> res = il =>
@@ -89,12 +92,14 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
             _conversions.TryAdd((from, to), res);
             return res;
         }
+
         if (Nullable.GetUnderlyingType(from) == to)
         {
             var res = GenerateFromNullableConversion(from);
             _conversions.TryAdd((from, to), res);
             return res;
         }
+
         if (Nullable.GetUnderlyingType(from) is { } underFrom && GenerateConversion(underFrom, to) is { } conv2)
         {
             Action<IILGen> res = il =>
@@ -105,6 +110,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
             _conversions.TryAdd((from, to), res);
             return res;
         }
+
         var toIList = to.SpecializationOf(typeof(IList<>));
         if (toIList is { } && GenerateConversion(from, toIList.GenericTypeArguments[0]) is { } itemConversion)
         {
@@ -157,6 +163,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
                 }
             };
         }
+
         var toDict = to.IsGenericType && to.GetGenericTypeDefinition() == typeof(Dictionary<,>);
         var fromIDict = from.IsGenericType && from.GetGenericTypeDefinition() == typeof(IDictionary<,>);
         if (fromIDict && toDict)
@@ -226,10 +233,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
 
     Action<IILGen> GenerateToNullableConversion(Type from, Type to)
     {
-        return il =>
-        {
-            il.Newobj(to.GetConstructor(new[] { from })!);
-        };
+        return il => { il.Newobj(to.GetConstructor(new[] { from })!); };
     }
 
     Action<IILGen> GenerateFromNullableConversion(Type from)
@@ -246,13 +250,7 @@ public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
 
     Action<IILGen>? GenerateEnum2EnumConversion(Type from, Type to)
     {
-        var fromcfg = new EnumFieldHandler.EnumConfiguration(from);
-        var tocfg = new EnumFieldHandler.EnumConfiguration(to);
-        if (fromcfg.IsSubsetOf(tocfg))
-        {
-            return GenerateConversion(from.GetEnumUnderlyingType(), to.GetEnumUnderlyingType());
-        }
-        return null;
+        return GenerateConversion(from.GetEnumUnderlyingType(), to.GetEnumUnderlyingType());
     }
 
     public static string Convert2String(double value)

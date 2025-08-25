@@ -312,15 +312,13 @@ public class EnumFieldHandler : IFieldHandler
 
         if (typeHandler == null && type.IsEnum)
         {
-            enumTypeHandler = new EnumFieldHandler(type);
+            enumTypeHandler = new(type);
             typeHandler = enumTypeHandler;
         }
 
         if (enumTypeHandler != null && _signed == enumTypeHandler._signed)
         {
-            if (new EnumConfiguration(Configuration).IsBinaryRepresentationSubsetOf(
-                    new EnumConfiguration(enumTypeHandler.Configuration)))
-                return typeHandler;
+            return typeHandler;
         }
 
         return this;
