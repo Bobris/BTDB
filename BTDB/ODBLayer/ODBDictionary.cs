@@ -11,10 +11,6 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
 
-public delegate T ReaderFun<out T>(ref MemReader reader, IReaderCtx? ctx);
-
-public delegate void WriterFun<in T>(T value, ref MemWriter writer, IWriterCtx? ctx);
-
 public delegate void RefReaderFun(ref MemReader reader, IInternalObjectDBTransaction transaction, ref byte value);
 
 public delegate void RefWriterFun(ref MemWriter writer, IInternalObjectDBTransaction transaction, ref byte value);

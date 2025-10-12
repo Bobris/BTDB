@@ -967,7 +967,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
     bool _seekNeeded;
     readonly bool _ascending;
     readonly byte[] _keyBytes;
-    protected ReaderFun<TKey>? KeyReader;
+    protected RefReaderFun? KeyReader;
 
     public RelationAdvancedOrderedEnumerator(IRelationDbManipulator manipulator, EnumerationOrder order,
         KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
@@ -1064,7 +1064,7 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
             var advancedEnumParamField = primaryKeyFields.Span[prefixFieldCount];
             if (advancedEnumParamField.Handler!.NeedsCtx())
                 throw new BTDBException("Not supported.");
-            KeyReader = (ReaderFun<TKey>)manipulator.RelationInfo
+            KeyReader = manipulator.RelationInfo
                 .GetSimpleLoader(new RelationInfo.SimpleLoaderType(advancedEnumParamField.Handler, typeof(TKey)));
         }
     }
@@ -1171,7 +1171,8 @@ public class RelationAdvancedOrderedEnumerator<TKey, TValue> : IOrderedDictionar
         fixed (void* _ = keySpan)
         {
             var reader = MemReader.CreateFromPinnedSpan(keySpan);
-            key = KeyReader!(ref reader, null);
+            key = default;
+            KeyReader!(ref reader, _tr, ref Unsafe.As<TKey, byte>(ref key));
         }
 
         return true;
@@ -1207,7 +1208,7 @@ public class RelationAdvancedOrderedSecondaryKeyEnumerator<TKey, TValue> :
         var advancedEnumParamField = secKeyFields[prefixFieldCount];
         if (advancedEnumParamField.Handler!.NeedsCtx())
             throw new BTDBException("Not supported.");
-        KeyReader = (ReaderFun<TKey>)manipulator.RelationInfo
+        KeyReader = manipulator.RelationInfo
             .GetSimpleLoader(new(advancedEnumParamField.Handler, typeof(TKey)));
     }
 

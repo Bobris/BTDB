@@ -619,9 +619,7 @@ public class RelationInfo
         }
     }
 
-    readonly
-        ConcurrentDictionary<SimpleLoaderType, object> //object is of type Action<AbstractBufferedReader, IReaderCtx, (object or value type same as in conc. dic. key)>
-        _simpleLoader = new();
+    readonly ConcurrentDictionary<SimpleLoaderType, RefReaderFun> _simpleLoader = new();
 
     internal readonly List<ulong> FreeContentOldDict = new();
     internal readonly List<ulong> FreeContentNewDict = new();
@@ -1826,23 +1824,26 @@ public class RelationInfo
         CopyFromPos(ilGenerator, pushReader, memoPositionLoc, pushWriter);
     }
 
-    public object GetSimpleLoader(SimpleLoaderType handler)
+    public RefReaderFun GetSimpleLoader(SimpleLoaderType handler)
     {
         return _simpleLoader.GetOrAdd(handler, CreateSimpleLoader);
     }
 
-    object CreateSimpleLoader(SimpleLoaderType loaderType)
+    RefReaderFun CreateSimpleLoader(SimpleLoaderType loaderType)
     {
-        var delegateType = typeof(ReaderFun<>).MakeGenericType(loaderType.RealType);
-        var dm = ILBuilder.Instance.NewMethod(loaderType.FieldHandler.Name + "SimpleReader", delegateType);
-        var ilGenerator = dm.Generator;
-        loaderType.FieldHandler.Load(ilGenerator, il => il.Ldarg(0), il => il.Ldarg(1));
-        ilGenerator
-            .Do(_relationInfoResolver.TypeConvertorGenerator.GenerateConversion(
-                loaderType.FieldHandler.HandledType()!,
-                loaderType.RealType)!)
-            .Ret();
-        return dm.Create();
+        var loader = loaderType.FieldHandler.Load(loaderType.RealType, _relationInfoResolver.TypeConverterFactory);
+        if (loaderType.FieldHandler.NeedsCtx())
+        {
+            return (ref MemReader reader, IInternalObjectDBTransaction transaction, ref byte value) =>
+            {
+                loader(ref reader, new DBReaderCtx(transaction), ref value);
+            };
+        }
+
+        return (ref MemReader reader, IInternalObjectDBTransaction transaction, ref byte value) =>
+        {
+            loader(ref reader, null, ref value);
+        };
     }
 
     static string GetPersistentName(PropertyInfo p)
