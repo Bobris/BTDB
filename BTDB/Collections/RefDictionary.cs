@@ -177,6 +177,14 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         }
     }
 
+    public void Clear()
+    {
+        _buckets.AsSpan().Clear();
+        _entries.AsSpan().Clear();
+        _count = 0;
+        _freeList = -1;
+    }
+
     public bool Remove(TKey key)
     {
         if (key == null) HashHelpers.ThrowKeyArgumentNullException();
