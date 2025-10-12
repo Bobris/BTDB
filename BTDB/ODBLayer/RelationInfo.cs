@@ -177,7 +177,7 @@ public class RelationInfo
             internal ref MemReader Reader;
 
             internal unsafe delegate*<object, ref byte, void> Setter;
-            //internal FieldHandlerInit Init;
+            internal FieldHandlerInit Init;
         }
 
         unsafe RelationLoaderFunc CreatePkLoader(Type instanceType, ReadOnlySpan<TableFieldInfo> fields,
@@ -434,158 +434,347 @@ public class RelationInfo
 #pragma warning restore CS0162 // Unreachable code detected
         }
 
-        RelationLoader CreateLoader(Type instanceType,
+        unsafe RelationLoader CreateLoader(Type instanceType,
             ReadOnlySpan<TableFieldInfo> fields, string loaderName)
         {
-            var method = ILBuilder.Instance.NewMethod<RelationLoader>(loaderName);
-            var ilGenerator = method.Generator;
-            ilGenerator.DeclareLocal(instanceType);
-            ilGenerator
-                .Ldarg(2)
-                .Castclass(instanceType)
-                .Stloc(0);
-
-            var instanceTableFieldInfos = new StructList<TableFieldInfo>();
-            var loadInstructions =
-                new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?, bool Init, Type ToType)>();
-            var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
-                                                   BindingFlags.Instance);
-            var persistentNameToPropertyInfo = new RefDictionary<string, PropertyInfo>();
-
-            var publicFields = instanceType.GetFields(BindingFlags.Public | BindingFlags.Instance);
-            foreach (var field in publicFields)
+#pragma warning disable CS0162 // Unreachable code detected
+            if (IFieldHandler.UseNoEmitForRelations)
             {
-                if (field.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
-                throw new BTDBException(
-                    $"Public field {instanceType.ToSimpleName()}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
-            }
-
-            foreach (var pi in props)
-            {
-                if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
-                if (pi.GetIndexParameters().Length != 0) continue;
-                var tfi = TableFieldInfo.Build(_owner.Name, pi, _owner._relationInfoResolver.FieldHandlerFactory,
-                    FieldHandlerOptions.None, false);
-                instanceTableFieldInfos.Add(tfi);
-                persistentNameToPropertyInfo.GetOrAddValueRef(tfi.Name) = pi;
-            }
-
-            foreach (var srcFieldInfo in fields)
-            {
-                var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
-                if (fieldInfo != null)
+                var metadata = ReflectionMetadata.FindByType(instanceType);
+                if (metadata == null)
                 {
+                    throw new BTDBException(
+                        $"Cannot create loader for {instanceType.ToSimpleName()}. It is not registered in BTDB.");
+                }
+
+                var anyNeedsCtx = false;
+                var loadedProps = new HashSet<string>();
+                StructList<LoadFunc> loaders = [];
+                foreach (var srcFieldInfo in fields)
+                {
+                    var isPrimaryKeyField = false;
                     foreach (var pkField in _pkFields.Span)
                     {
                         if (pkField.Name != srcFieldInfo.Name) continue;
-                        fieldInfo = null;
+                        loadedProps.Add(srcFieldInfo.Name);
+                        isPrimaryKeyField = true;
                         break;
                     }
-                }
 
-                if (fieldInfo != null)
-                {
-                    var setterMethod = fieldInfo.GetAnySetMethod();
-                    var fieldType = setterMethod!.GetParameters()[0].ParameterType;
-                    var specializedSrcHandler =
-                        srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null,
-                            _owner._relationInfoResolver.FieldHandlerLogger);
-                    var willLoad = specializedSrcHandler.HandledType();
-                    var converterGenerator =
-                        _owner._relationInfoResolver.TypeConvertorGenerator
-                            .GenerateConversion(willLoad!, fieldType);
-                    if (converterGenerator != null)
+                    if (isPrimaryKeyField) continue;
+
+                    var field = metadata.Fields.FirstOrDefault(f => f.Name == srcFieldInfo.Name);
+                    anyNeedsCtx |= srcFieldInfo.Handler!.NeedsCtx();
+                    if (field != null)
                     {
-                        for (var i = 0; i < instanceTableFieldInfos.Count; i++)
+                        loadedProps.Add(srcFieldInfo.Name);
+                        var fieldType = field.Type;
+
+                        var handlerLoad =
+                            srcFieldInfo.Handler.Load(fieldType, _owner._relationInfoResolver.TypeConverterFactory);
+                        if (field.PropRefSetter == null)
                         {
-                            if (instanceTableFieldInfos[i].Name != srcFieldInfo.Name) continue;
-                            instanceTableFieldInfos.RemoveAt(i);
-                            break;
+                            var offset = field.ByteOffset!.Value;
+                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            {
+                                handlerLoad(ref reader, ctx, ref RawData.Ref(obj, offset));
+                            });
+                            continue;
                         }
 
-                        loadInstructions.Add(
-                            (specializedSrcHandler, converterGenerator, setterMethod, false, fieldType));
+                        var propRefSetter = field.PropRefSetter;
+                        if (!fieldType.IsValueType)
+                        {
+                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            {
+                                object? value = null;
+                                handlerLoad(ref reader, ctx, ref Unsafe.As<object, byte>(ref value));
+                                propRefSetter(obj, ref Unsafe.As<object, byte>(ref value));
+                            });
+                            continue;
+                        }
+
+                        if (RawData.FitsInInt128(fieldType))
+                        {
+                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            {
+                                Int128 value = 0;
+                                handlerLoad(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref value));
+                                propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
+                            });
+                        }
+
+                        var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
+                        loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                        {
+                            var fieldLoaderCtx = new FieldLoaderCtx
+                            {
+                                Object = obj,
+                                Loader = handlerLoad,
+                                Setter = propRefSetter,
+                                Ctx = ctx,
+                                Reader = reader
+                            };
+
+                            stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
+                                ref fieldLoaderCtx.StoragePtr, &Nested);
+
+                            static void Nested(ref byte value)
+                            {
+                                ref var context = ref Unsafe.As<byte, FieldLoaderCtx>(ref value);
+                                context.Loader(ref context.Reader, context.Ctx,
+                                    ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                                context.Setter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                            }
+                        });
                         continue;
                     }
 
-                    _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
-                        specializedSrcHandler, fieldType, null);
+                    loaders.Add((object _, ref MemReader reader, IReaderCtx? ctx) =>
+                    {
+                        srcFieldInfo.Handler!.Skip(ref reader, ctx);
+                    });
                 }
 
-                loadInstructions.Add((srcFieldInfo.Handler!, null, null, false, null));
-            }
-
-            // Remove useless skips from end
-            while (loadInstructions is { Count: > 0, Last.Item2: null })
-            {
-                loadInstructions.RemoveAt(^1);
-            }
-
-            foreach (var srcFieldInfo in instanceTableFieldInfos)
-            {
-                var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
-                if (iFieldHandlerWithInit == null) continue;
-                var specializedSrcHandler = srcFieldInfo.Handler;
-                var willLoad = specializedSrcHandler.HandledType();
-                var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
-                var setterMethod = fieldInfo.GetAnySetMethod();
-                var toType = setterMethod!.GetParameters()[0].ParameterType;
-                var converterGenerator =
-                    _owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad!,
-                        toType);
-                if (converterGenerator == null) continue;
-                if (!iFieldHandlerWithInit.NeedInit()) continue;
-                loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod, true, toType));
-            }
-
-            var anyNeedsCtx = false;
-            for (var i = 0; i < loadInstructions.Count; i++)
-            {
-                if (!loadInstructions[i].Item1.NeedsCtx()) continue;
-                anyNeedsCtx = true;
-                break;
-            }
-
-            if (anyNeedsCtx)
-            {
-                ilGenerator.DeclareLocal(typeof(IReaderCtx));
-                ilGenerator
-                    .Ldarg(0)
-                    .Newobj(() => new DBReaderCtx(null))
-                    .Stloc(1);
-            }
-
-            for (var i = 0; i < loadInstructions.Count; i++)
-            {
-                ref var loadInstruction = ref loadInstructions[i];
-                var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
-                if (loadInstruction.Item2 != null)
+                foreach (var metadataField in metadata.Fields)
                 {
-                    var loc = ilGenerator.DeclareLocal(loadInstruction.ToType);
-                    if (loadInstruction.Init)
+                    if (loadedProps.Contains(metadataField.Name)) continue;
+                    var iFieldHandlerWithInit = _owner._relationInfoResolver.FieldHandlerFactory.CreateFromType(
+                        metadataField.Type,
+                        FieldHandlerOptions.None) as IFieldHandlerWithInit;
+                    if (iFieldHandlerWithInit == null) continue;
+                    if (!iFieldHandlerWithInit.NeedInit()) continue;
+                    var init = iFieldHandlerWithInit.Init();
+                    anyNeedsCtx |= ((IFieldHandler)iFieldHandlerWithInit).NeedsCtx();
+                    if (metadataField.PropRefSetter == null)
                     {
-                        ((IFieldHandlerWithInit)loadInstruction.Item1).Init(ilGenerator, readerOrCtx);
-                    }
-                    else
-                    {
-                        loadInstruction.Item1.Load(ilGenerator, il => il.Ldarg(1), readerOrCtx);
+                        var offset = metadataField.ByteOffset!.Value;
+                        loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                        {
+                            init(ctx, ref RawData.Ref(obj, offset));
+                        });
+                        continue;
                     }
 
-                    loadInstruction.Item2(ilGenerator);
-                    ilGenerator
-                        .Stloc(loc)
-                        .Ldloc(0)
-                        .Ldloc(loc)
-                        .Call(loadInstruction.Item3!);
-                    continue;
+                    var propRefSetter = metadataField.PropRefSetter;
+                    if (!metadataField.Type.IsValueType)
+                    {
+                        loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                        {
+                            object? value = null;
+                            init(ctx, ref Unsafe.As<object, byte>(ref value));
+                            propRefSetter(obj, ref Unsafe.As<object, byte>(ref value));
+                        });
+                        continue;
+                    }
+
+                    if (RawData.FitsInInt128(metadataField.Type))
+                    {
+                        loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                        {
+                            Int128 value = 0;
+                            init(ctx, ref Unsafe.As<Int128, byte>(ref value));
+                            propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
+                        });
+                    }
+
+                    var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(metadataField.Type);
+                    loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                    {
+                        var fieldLoaderCtx = new FieldLoaderCtx
+                        {
+                            Object = obj,
+                            Init = init,
+                            Setter = propRefSetter,
+                            Ctx = ctx
+                        };
+
+                        stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
+                            ref fieldLoaderCtx.StoragePtr, &Nested);
+
+                        static void Nested(ref byte value)
+                        {
+                            ref var context = ref Unsafe.As<byte, FieldLoaderCtx>(ref value);
+                            context.Init(context.Ctx, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                            context.Setter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        }
+                    });
                 }
 
-                loadInstruction.Item1.Skip(ilGenerator, il => il.Ldarg(1), readerOrCtx);
-            }
+                var loadersArray = loaders.ToArray();
+                if (anyNeedsCtx)
+                {
+                    return (IInternalObjectDBTransaction transaction, ref MemReader reader, object value) =>
+                    {
+                        var ctx = new DBReaderCtx(transaction);
+                        foreach (var loader in loadersArray)
+                        {
+                            loader(value, ref reader, ctx);
+                        }
+                    };
+                }
 
-            ilGenerator.Ret();
-            return method.Create();
+                return (IInternalObjectDBTransaction _, ref MemReader reader, object value) =>
+                {
+                    foreach (var t in loadersArray)
+                    {
+                        t(value, ref reader, null);
+                    }
+                };
+            }
+            else
+            {
+                var method = ILBuilder.Instance.NewMethod<RelationLoader>(loaderName);
+                var ilGenerator = method.Generator;
+                ilGenerator.DeclareLocal(instanceType);
+                ilGenerator
+                    .Ldarg(2)
+                    .Castclass(instanceType)
+                    .Stloc(0);
+
+                var instanceTableFieldInfos = new StructList<TableFieldInfo>();
+                var loadInstructions =
+                    new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?, bool Init, Type ToType)>();
+                var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
+                                                       BindingFlags.Instance);
+                var persistentNameToPropertyInfo = new RefDictionary<string, PropertyInfo>();
+
+                var publicFields = instanceType.GetFields(BindingFlags.Public | BindingFlags.Instance);
+                foreach (var field in publicFields)
+                {
+                    if (field.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
+                    throw new BTDBException(
+                        $"Public field {instanceType.ToSimpleName()}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
+                }
+
+                foreach (var pi in props)
+                {
+                    if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
+                    if (pi.GetIndexParameters().Length != 0) continue;
+                    var tfi = TableFieldInfo.Build(_owner.Name, pi, _owner._relationInfoResolver.FieldHandlerFactory,
+                        FieldHandlerOptions.None, false);
+                    instanceTableFieldInfos.Add(tfi);
+                    persistentNameToPropertyInfo.GetOrAddValueRef(tfi.Name) = pi;
+                }
+
+                foreach (var srcFieldInfo in fields)
+                {
+                    var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
+                    if (fieldInfo != null)
+                    {
+                        foreach (var pkField in _pkFields.Span)
+                        {
+                            if (pkField.Name != srcFieldInfo.Name) continue;
+                            fieldInfo = null;
+                            break;
+                        }
+                    }
+
+                    if (fieldInfo != null)
+                    {
+                        var setterMethod = fieldInfo.GetAnySetMethod();
+                        var fieldType = setterMethod!.GetParameters()[0].ParameterType;
+                        var specializedSrcHandler =
+                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null,
+                                _owner._relationInfoResolver.FieldHandlerLogger);
+                        var willLoad = specializedSrcHandler.HandledType();
+                        var converterGenerator =
+                            _owner._relationInfoResolver.TypeConvertorGenerator
+                                .GenerateConversion(willLoad!, fieldType);
+                        if (converterGenerator != null)
+                        {
+                            for (var i = 0; i < instanceTableFieldInfos.Count; i++)
+                            {
+                                if (instanceTableFieldInfos[i].Name != srcFieldInfo.Name) continue;
+                                instanceTableFieldInfos.RemoveAt(i);
+                                break;
+                            }
+
+                            loadInstructions.Add(
+                                (specializedSrcHandler, converterGenerator, setterMethod, false, fieldType));
+                            continue;
+                        }
+
+                        _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
+                            specializedSrcHandler, fieldType, null);
+                    }
+
+                    loadInstructions.Add((srcFieldInfo.Handler!, null, null, false, null));
+                }
+
+                // Remove useless skips from end
+                while (loadInstructions is { Count: > 0, Last.Item2: null })
+                {
+                    loadInstructions.RemoveAt(^1);
+                }
+
+                foreach (var srcFieldInfo in instanceTableFieldInfos)
+                {
+                    var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
+                    if (iFieldHandlerWithInit == null) continue;
+                    var specializedSrcHandler = srcFieldInfo.Handler;
+                    var willLoad = specializedSrcHandler.HandledType();
+                    var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
+                    var setterMethod = fieldInfo.GetAnySetMethod();
+                    var toType = setterMethod!.GetParameters()[0].ParameterType;
+                    var converterGenerator =
+                        _owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad!,
+                            toType);
+                    if (converterGenerator == null) continue;
+                    if (!iFieldHandlerWithInit.NeedInit()) continue;
+                    loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod, true, toType));
+                }
+
+                var anyNeedsCtx = false;
+                for (var i = 0; i < loadInstructions.Count; i++)
+                {
+                    if (!loadInstructions[i].Item1.NeedsCtx()) continue;
+                    anyNeedsCtx = true;
+                    break;
+                }
+
+                if (anyNeedsCtx)
+                {
+                    ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                    ilGenerator
+                        .Ldarg(0)
+                        .Newobj(() => new DBReaderCtx(null))
+                        .Stloc(1);
+                }
+
+                for (var i = 0; i < loadInstructions.Count; i++)
+                {
+                    ref var loadInstruction = ref loadInstructions[i];
+                    var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
+                    if (loadInstruction.Item2 != null)
+                    {
+                        var loc = ilGenerator.DeclareLocal(loadInstruction.ToType);
+                        if (loadInstruction.Init)
+                        {
+                            ((IFieldHandlerWithInit)loadInstruction.Item1).Init(ilGenerator, readerOrCtx);
+                        }
+                        else
+                        {
+                            loadInstruction.Item1.Load(ilGenerator, il => il.Ldarg(1), readerOrCtx);
+                        }
+
+                        loadInstruction.Item2(ilGenerator);
+                        ilGenerator
+                            .Stloc(loc)
+                            .Ldloc(0)
+                            .Ldloc(loc)
+                            .Call(loadInstruction.Item3!);
+                        continue;
+                    }
+
+                    loadInstruction.Item1.Skip(ilGenerator, il => il.Ldarg(1), readerOrCtx);
+                }
+
+                ilGenerator.Ret();
+                return method.Create();
+            }
         }
+#pragma warning restore CS0162 // Unreachable code detected
     }
 
     FreeContentFun?[] _valueIDictFinders = Array.Empty<FreeContentFun?>();

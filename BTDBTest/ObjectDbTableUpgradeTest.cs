@@ -8,6 +8,7 @@ using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.Serialization;
 using Xunit;
 
 namespace BTDBTest;
@@ -865,6 +866,23 @@ public class ObjectDbTableUpgradeTest : IDisposable
         public static ObjChild Convert2ObjChild(Obj value) => new() { Num = value.Num, Child = 42 };
     }
 
+    public class MyObjToObjChildTypeConverterFactory : DefaultTypeConverterFactory
+    {
+        public override Converter? GetConverter(Type from, Type to)
+        {
+            if (from == typeof(Obj) && to == typeof(ObjChild))
+            {
+                return (ref byte fromI, ref byte toI) =>
+                {
+                    Unsafe.As<byte, ObjChild>(ref toI) = MyObjToObjChildTypeConvertorGenerator.Convert2ObjChild(
+                        Unsafe.As<byte, Obj>(ref fromI));
+                };
+            }
+
+            return base.GetConverter(from, to);
+        }
+    }
+
     [Fact]
     public void InlineChildObjPreserveDataWithCustomConvertor()
     {
@@ -883,13 +901,14 @@ public class ObjectDbTableUpgradeTest : IDisposable
         ReopenDb();
 
         _db.TypeConvertorGenerator = new MyObjToObjChildTypeConvertorGenerator();
+        _db.TypeConverterFactory = new MyObjToObjChildTypeConverterFactory();
         _db.RegisterType(typeof(Obj));
         _db.RegisterType(typeof(ObjChild));
         using (var tr = _db.StartTransaction())
         {
             var creator = tr.InitRelation<IS2ObjV2Table>("T");
             var table = creator(tr);
-            Assert.Equal(1, table.Count);
+            Assert.Single(table);
 
             Assert.Equal(2, table.First().O.Num);
             Assert.Equal(42, table.First().O.Child);

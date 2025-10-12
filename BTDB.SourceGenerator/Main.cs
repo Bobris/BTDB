@@ -1049,7 +1049,8 @@ public class SourceGenerator : IIncrementalGenerator
                 "global::System.Collections.Generic.ISet<", "global::System.Collections.Generic.HashSet<",
                 "global::System.Collections.Generic.IReadOnlySet<", "global::System.Collections.Generic.HashSet<",
                 "global::System.Collections.Generic.IEnumerable<", "global::System.Collections.Generic.List<",
-                "global::BTDB.ODBLayer.IOrderedSet<", "global::System.Collections.Generic.HashSet<"
+                "global::BTDB.ODBLayer.IOrderedSet<", "global::System.Collections.Generic.HashSet<",
+                "global::BTDB.ODBLayer.OrderedSet<", "global::System.Collections.Generic.HashSet<"
             ];
             string? instance = null;
             for (var i = 0; i < collectionToInstance.Length; i += 2)

@@ -479,4 +479,21 @@ public class MetadataTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyOrderedSetIntIsRegistered()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Person
+            {
+                public OrderedSet<int> OrderedSetOfInts { get; set; }
+            }
+            """);
+    }
 }

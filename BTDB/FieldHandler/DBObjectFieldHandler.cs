@@ -192,6 +192,11 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
             };
         }
 
+        if (_type != null && !asType.IsAssignableFrom(_type))
+        {
+            return this.BuildConvertingLoader(_type, asType, typeConverterFactory);
+        }
+
         return this.BuildConvertingLoader(typeof(object), asType, typeConverterFactory);
     }
 

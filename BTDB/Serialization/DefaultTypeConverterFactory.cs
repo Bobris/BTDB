@@ -113,11 +113,29 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
             var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
             if (GetConverter(from, toItemType) is { } itemConversion)
             {
+                if (from.IsValueType)
+                {
+                    return (ref byte fromI, ref byte toI) =>
+                    {
+                        var res = Array.CreateInstance(toItemType, 1);
+                        itemConversion(ref fromI, ref RawData.Ref(res, offset));
+                        Unsafe.As<byte, object>(ref toI) = res;
+                    };
+                }
+
                 return (ref byte fromI, ref byte toI) =>
                 {
-                    var res = Array.CreateInstance(toItemType, 1);
-                    itemConversion(ref fromI, ref RawData.Ref(res, offset));
-                    Unsafe.As<byte, object>(ref toI) = res;
+                    if (Unsafe.As<byte, object>(ref fromI) == null)
+                    {
+                        var res = Array.CreateInstance(toItemType, 0);
+                        Unsafe.As<byte, object>(ref toI) = res;
+                    }
+                    else
+                    {
+                        var res = Array.CreateInstance(toItemType, 1);
+                        itemConversion(ref fromI, ref RawData.Ref(res, offset));
+                        Unsafe.As<byte, object>(ref toI) = res;
+                    }
                 };
             }
         }

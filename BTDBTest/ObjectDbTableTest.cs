@@ -597,7 +597,7 @@ namespace BTDBTest
             Assert.True(orderedEnumeratorAgeOnly.NextKey(out age));
             Assert.Equal(129u, age);
 
-            Assert.Equal((uint[]) [28u, 29u, 28u, 128u, 129u], personTable.Select(p => p.Age).ToList());
+            Assert.Equal((uint[])[28u, 29u, 28u, 128u, 129u], personTable.Select(p => p.Age).ToList());
 
             using var orderedById =
                 personTable.ListById(2, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
@@ -670,7 +670,7 @@ namespace BTDBTest
                 Assert.Equal(28u, p.Age);
 
                 var enumerator = personTable.FindByAge(1, 28);
-                Assert.Equal((string[]) ["Boris", "Lubos"], enumerator.Select(p => p.Name).ToArray());
+                Assert.Equal((string[])["Boris", "Lubos"], enumerator.Select(p => p.Name).ToArray());
 
                 Assert.True(personTable.RemoveById(1, 2));
                 tr.Commit();
@@ -729,7 +729,7 @@ namespace BTDBTest
                 var jobTable = creator(tr);
                 var en = jobTable.ListByPrioritizedName(2,
                     new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending));
-                Assert.Equal((string[]) ["Sleep"], en.Select(j => j.Name).ToArray());
+                Assert.Equal((string[])["Sleep"], en.Select(j => j.Name).ToArray());
             }
 
             using (var tr = _db.StartTransaction())
@@ -795,12 +795,12 @@ namespace BTDBTest
 
             var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending));
 
-            Assert.Equal((string[]) ["Sleep", "Code", "Bicycle"], en.Select(j => j.Name).ToArray());
+            Assert.Equal((string[])["Sleep", "Code", "Bicycle"], en.Select(j => j.Name).ToArray());
 
             en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
                 "B", KeyProposition.Included,
                 "C", KeyProposition.Included));
-            Assert.Equal((string[]) ["Bicycle"], en.Select(j => j.Name).ToArray());
+            Assert.Equal((string[])["Bicycle"], en.Select(j => j.Name).ToArray());
         }
 
         [Fact]
@@ -965,7 +965,7 @@ namespace BTDBTest
                 1, KeyProposition.Included,
                 1 + 1, KeyProposition.Excluded));
 
-            Assert.Equal((string[]) ["First 1", "Second 1"], en.Select(r => r.Name).ToArray());
+            Assert.Equal((string[])["First 1", "Second 1"], en.Select(r => r.Name).ToArray());
 
             using var oen = rooms.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Descending));
             Assert.Equal(3u, oen.Count);
@@ -2800,7 +2800,7 @@ namespace BTDBTest
         {
             [PrimaryKey(1)] public ulong TenantId { get; set; }
 
-            // DON'T DO THIS IN YOUR CODE !!! Either use IList<T>, List<T> for inline storage or IOrderedSet<T> for externaly stored T
+            // DON'T DO THIS IN YOUR CODE !!! Either use IList<T>, List<T>, HashSet<T> for inline storage or IOrderedSet<T> for externaly stored T
             public OrderedSet<int> Ordered { get; set; }
         }
 
