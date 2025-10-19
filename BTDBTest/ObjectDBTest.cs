@@ -2514,7 +2514,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 
     public class EnumToStringTypeConvertorGenerator : DefaultTypeConvertorGenerator
     {
-        public override Action<IILGen> GenerateConversion(Type from, Type to)
+        public override Action<IILGen>? GenerateConversion(Type from, Type to)
         {
             if (from.IsEnum && to == typeof(string))
             {

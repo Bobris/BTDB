@@ -12,6 +12,8 @@ namespace BTDB.Serialization;
 
 public class DefaultTypeConverterFactory : ITypeConverterFactory
 {
+    public static ITypeConverterFactory Instance = new DefaultTypeConverterFactory();
+
     readonly Dictionary<(Type From, Type To), Converter> _converters = new();
 
     public virtual Converter? GetConverter(Type from, Type to)

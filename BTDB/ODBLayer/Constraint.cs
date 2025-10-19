@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
@@ -522,47 +523,9 @@ public static partial class Constraint
     public static partial class Enum<T> where T : Enum
     {
         public static readonly bool IsSigned = SignedFieldHandler.IsCompatibleWith(typeof(T).GetEnumUnderlyingType());
-        public static readonly Func<T, long>? ToLong;
-        public static readonly Func<long, T>? FromLong;
-        public static readonly Func<T, ulong>? ToUlong;
-        public static readonly Func<ulong, T>? FromUlong;
-
-        static Enum()
-        {
-            if (IsSigned)
-            {
-                var b = ILBuilder.Instance.NewMethod<Func<T, long>>("ToLong" + typeof(T).FullName);
-                b.Generator
-                    .Ldarg(0)
-                    .ConvI8()
-                    .Ret();
-                ToLong = b.Create();
-                var b2 = ILBuilder.Instance.NewMethod<Func<long, T>>("FromLong" + typeof(T).FullName);
-                b2.Generator.Ldarg(0);
-                DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(long),
-                    typeof(T).GetEnumUnderlyingType())!(b2.Generator);
-                b2.Generator.Ret();
-                FromLong = b2.Create();
-            }
-            else
-            {
-                var b = ILBuilder.Instance.NewMethod<Func<T, ulong>>("ToUlong" + typeof(T).FullName);
-                b.Generator
-                    .Ldarg(0)
-                    .ConvU8()
-                    .Ret();
-                ToUlong = b.Create();
-                var b2 = ILBuilder.Instance.NewMethod<Func<ulong, T>>("FromUlong" + typeof(T).FullName);
-                b2.Generator.Ldarg(0);
-                DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(ulong),
-                    typeof(T).GetEnumUnderlyingType())!(b2.Generator);
-                b2.Generator.Ret();
-                FromUlong = b2.Create();
-            }
-        }
 
         public static Constraint<T> Exact(T value) =>
-            IsSigned ? new ConstraintSignedEnumExact<T>(value) : new ConstraintUnsignedEnumExact<T>(value);
+            IsSigned ? new ConstraintSignedEnumExact<T>(ref value) : new ConstraintUnsignedEnumExact<T>(ref value);
 
         public static Constraint<T> Predicate(Predicate<T> predicate) =>
             IsSigned
@@ -1317,7 +1280,11 @@ public class ConstraintSignedEnumExact<T> : ConstraintExact<T> where T : Enum
 {
     readonly long _value;
 
-    public ConstraintSignedEnumExact(T value) => _value = Constraint.Enum<T>.ToLong!(value);
+    public ConstraintSignedEnumExact(ref T value)
+    {
+        DefaultTypeConverterFactory.Instance.GetConverter(typeof(T), typeof(long))!.Invoke(
+            ref Unsafe.As<T, byte>(ref value), ref Unsafe.As<long, byte>(ref _value));
+    }
 
     protected override void WriteExactValue(ref MemWriter writer)
     {
@@ -1334,7 +1301,11 @@ public class ConstraintUnsignedEnumExact<T> : ConstraintExact<T> where T : Enum
 {
     readonly ulong _value;
 
-    public ConstraintUnsignedEnumExact(T value) => _value = Constraint.Enum<T>.ToUlong!(value);
+    public ConstraintUnsignedEnumExact(ref T value)
+    {
+        DefaultTypeConverterFactory.Instance.GetConverter(typeof(T), typeof(ulong))!.Invoke(
+            ref Unsafe.As<T, byte>(ref value), ref Unsafe.As<ulong, byte>(ref _value));
+    }
 
     protected override void WriteExactValue(ref MemWriter writer)
     {
@@ -1368,19 +1339,31 @@ public class ConstraintUnsignedAny<T> : ConstraintAny<T>
 public class ConstraintSignedEnumPredicate<T> : ConstraintNoPrefix<T> where T : Enum
 {
     readonly Predicate<T> _predicate;
+    static readonly Converter Long2T = DefaultTypeConverterFactory.Instance.GetConverter(typeof(long), typeof(T))!;
 
     public ConstraintSignedEnumPredicate(Predicate<T> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer) =>
-        AsMatchResult(_predicate(Constraint.Enum<T>.FromLong!(reader.ReadVInt64())));
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
+    {
+        T enumValue = default;
+        var value = reader.ReadVInt64();
+        Long2T(ref Unsafe.As<long, byte>(ref value), ref Unsafe.As<T, byte>(ref enumValue));
+        return AsMatchResult(_predicate(enumValue));
+    }
 }
 
 public class ConstraintUnsignedEnumPredicate<T> : ConstraintNoPrefix<T> where T : Enum
 {
     readonly Predicate<T> _predicate;
+    static readonly Converter Ulong2T = DefaultTypeConverterFactory.Instance.GetConverter(typeof(ulong), typeof(T))!;
 
     public ConstraintUnsignedEnumPredicate(Predicate<T> predicate) => _predicate = predicate;
 
-    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer) =>
-        AsMatchResult(_predicate(Constraint.Enum<T>.FromUlong!(reader.ReadVUInt64())));
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
+    {
+        T enumValue = default;
+        var value = reader.ReadVUInt64();
+        Ulong2T(ref Unsafe.As<ulong, byte>(ref value), ref Unsafe.As<T, byte>(ref enumValue));
+        return AsMatchResult(_predicate(enumValue));
+    }
 }
