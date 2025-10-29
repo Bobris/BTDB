@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using BTDB.Buffer;
+using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
@@ -77,6 +80,74 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
     public bool AnyOpNeedsCtx()
     {
         return false;
+    }
+
+    public Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (targetType == typeof(byte[]))
+        {
+            return static (ref MemReader reader, ITypeBinaryDeserializerContext? _, ref byte value) =>
+            {
+                Unsafe.As<byte, byte[]>(ref value) = reader.ReadByteArray();
+            };
+        }
+
+        if (targetType == typeof(ByteBuffer))
+        {
+            return static (ref MemReader reader, ITypeBinaryDeserializerContext? _, ref byte value) =>
+            {
+                Unsafe.As<byte, ByteBuffer>(ref value) = ByteBuffer.NewAsync(reader.ReadByteArray()!);
+            };
+        }
+
+        if (targetType == typeof(ReadOnlyMemory<byte>))
+        {
+            return static (ref MemReader reader, ITypeBinaryDeserializerContext? _, ref byte value) =>
+            {
+                Unsafe.As<byte, ReadOnlyMemory<byte>>(ref value) = reader.ReadByteArrayAsMemory();
+            };
+        }
+
+        return this.BuildConvertingLoader(typeof(byte[]), targetType, typeConverterFactory);
+    }
+
+    public void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx)
+    {
+        reader.SkipByteArray();
+    }
+
+    public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (targetType == typeof(byte[]))
+        {
+            return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+            {
+                writer.WriteByteArray(Unsafe.As<byte, byte[]>(ref value));
+            };
+        }
+
+        if (targetType == typeof(ByteBuffer))
+        {
+            return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+            {
+                writer.WriteByteArray(Unsafe.As<byte, ByteBuffer>(ref value));
+            };
+        }
+
+        if (targetType == typeof(ReadOnlyMemory<byte>))
+        {
+            return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+            {
+                writer.WriteByteArray(Unsafe.As<byte, ReadOnlyMemory<byte>>(ref value));
+            };
+        }
+
+        return this.BuildConvertingSaver(typeof(byte[]), targetType, typeConverterFactory);
+    }
+
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        return null;
     }
 
     public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,

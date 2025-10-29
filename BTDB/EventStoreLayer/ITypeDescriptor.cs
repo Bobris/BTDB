@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using BTDB.IL;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
@@ -20,6 +21,11 @@ public interface ITypeDescriptor : IEquatable<ITypeDescriptor>
     Type? GetPreferredType(Type targetType);
 
     bool AnyOpNeedsCtx();
+
+    Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory);
+    void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx);
+    Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory);
+    Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory);
 
     // ctx is ITypeBinaryDeserializerContext
     void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,

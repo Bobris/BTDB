@@ -224,89 +224,85 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
 
     public unsafe FieldHandlerLoad Load(Type asType, ITypeConverterFactory typeConverterFactory)
     {
-        if (IsCompatibleWith(asType))
+        if (!IsCompatibleWith(asType)) return this.BuildConvertingLoader(HandledType(), asType, typeConverterFactory);
+        var metadata = ReflectionMetadata.FindByType(asType);
+        if (metadata == null)
         {
-            var metadata = ReflectionMetadata.FindByType(asType);
-            if (metadata == null)
-            {
-                throw new BTDBException("Cannot load " + asType.ToSimpleName() +
-                                        " as it is not registered in ReflectionMetadata");
-            }
-
-            if (asType.IsValueType)
-            {
-                var loaders = new StructList<FieldHandlerLoad>();
-                for (var i = 0; i < _fieldHandlers.Count; i++)
-                {
-                    var fieldHandler = _fieldHandlers[i];
-                    if (i >= metadata.Fields.Length)
-                    {
-                        loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte _) =>
-                        {
-                            fieldHandler.Skip(ref reader, ctx);
-                        });
-                        continue;
-                    }
-
-                    var field = metadata.Fields[i];
-                    var loader = fieldHandler.Load(field.Type, typeConverterFactory);
-                    var offset = field.ByteOffset!.Value;
-                    loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
-                    {
-                        loader(ref reader, ctx,
-                            ref Unsafe.AddByteOffset(ref value, offset));
-                    });
-                }
-
-                var loadersArray = loaders.ToArray();
-                return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
-                {
-                    foreach (var fieldHandlerLoad in loadersArray)
-                    {
-                        fieldHandlerLoad(ref reader, ctx, ref value);
-                    }
-                };
-            }
-            else
-            {
-                var creator = metadata.Creator;
-                var loaders = new StructList<FieldHandlerLoad>();
-                for (var i = 0; i < _fieldHandlers.Count; i++)
-                {
-                    var fieldHandler = _fieldHandlers[i];
-                    if (i >= metadata.Fields.Length)
-                    {
-                        loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte _) =>
-                        {
-                            fieldHandler.Skip(ref reader, ctx);
-                        });
-                        continue;
-                    }
-
-                    var field = metadata.Fields[i];
-                    var loader = fieldHandler.Load(field.Type, typeConverterFactory);
-                    var offset = field.ByteOffset!.Value;
-                    loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
-                    {
-                        loader(ref reader, ctx,
-                            ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
-                    });
-                }
-
-                var loadersArray = loaders.ToArray();
-                return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
-                {
-                    var tuple = creator();
-                    Unsafe.As<byte, object>(ref value) = tuple;
-                    foreach (var fieldHandlerLoad in loadersArray)
-                    {
-                        fieldHandlerLoad(ref reader, ctx, ref value);
-                    }
-                };
-            }
+            throw new BTDBException("Cannot load " + asType.ToSimpleName() +
+                                    " as it is not registered in ReflectionMetadata");
         }
 
-        return this.BuildConvertingLoader(HandledType(), asType, typeConverterFactory);
+        if (asType.IsValueType)
+        {
+            var loaders = new StructList<FieldHandlerLoad>();
+            for (var i = 0; i < _fieldHandlers.Count; i++)
+            {
+                var fieldHandler = _fieldHandlers[i];
+                if (i >= metadata.Fields.Length)
+                {
+                    loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte _) =>
+                    {
+                        fieldHandler.Skip(ref reader, ctx);
+                    });
+                    continue;
+                }
+
+                var field = metadata.Fields[i];
+                var loader = fieldHandler.Load(field.Type, typeConverterFactory);
+                var offset = field.ByteOffset!.Value;
+                loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+                {
+                    loader(ref reader, ctx,
+                        ref Unsafe.AddByteOffset(ref value, offset));
+                });
+            }
+
+            var loadersArray = loaders.ToArray();
+            return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+            {
+                foreach (var fieldHandlerLoad in loadersArray)
+                {
+                    fieldHandlerLoad(ref reader, ctx, ref value);
+                }
+            };
+        }
+        else
+        {
+            var creator = metadata.Creator;
+            var loaders = new StructList<FieldHandlerLoad>();
+            for (var i = 0; i < _fieldHandlers.Count; i++)
+            {
+                var fieldHandler = _fieldHandlers[i];
+                if (i >= metadata.Fields.Length)
+                {
+                    loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte _) =>
+                    {
+                        fieldHandler.Skip(ref reader, ctx);
+                    });
+                    continue;
+                }
+
+                var field = metadata.Fields[i];
+                var loader = fieldHandler.Load(field.Type, typeConverterFactory);
+                var offset = field.ByteOffset!.Value;
+                loaders.Add((ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+                {
+                    loader(ref reader, ctx,
+                        ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
+                });
+            }
+
+            var loadersArray = loaders.ToArray();
+            return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+            {
+                var tuple = creator();
+                Unsafe.As<byte, object>(ref value) = tuple;
+                foreach (var fieldHandlerLoad in loadersArray)
+                {
+                    fieldHandlerLoad(ref reader, ctx, ref value);
+                }
+            };
+        }
     }
 
     public void Skip(ref MemReader reader, IReaderCtx? ctx)
@@ -319,68 +315,64 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
 
     public FieldHandlerSave Save(Type asType, ITypeConverterFactory typeConverterFactory)
     {
-        if (HandledType() == asType)
+        if (HandledType() != asType) return this.BuildConvertingSaver(asType, HandledType(), typeConverterFactory);
+        var metadata = ReflectionMetadata.FindByType(asType);
+        if (metadata == null)
         {
-            var metadata = ReflectionMetadata.FindByType(asType);
-            if (metadata == null)
-            {
-                throw new BTDBException("Cannot save " + asType.ToSimpleName() +
-                                        " as it is not registered in ReflectionMetadata");
-            }
-
-            if (asType.IsValueType)
-            {
-                var savers = new StructList<FieldHandlerSave>();
-                for (var i = 0; i < _fieldHandlers.Count; i++)
-                {
-                    var fieldHandler = _fieldHandlers[i];
-                    var field = metadata.Fields[i];
-                    var saver = fieldHandler.Save(field.Type, typeConverterFactory);
-                    var offset = field.ByteOffset!.Value;
-                    savers.Add((ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
-                    {
-                        saver(ref writer, ctx,
-                            ref Unsafe.AddByteOffset(ref value, offset));
-                    });
-                }
-
-                var saversArray = savers.ToArray();
-                return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
-                {
-                    foreach (var fieldHandlerSave in saversArray)
-                    {
-                        fieldHandlerSave(ref writer, ctx, ref value);
-                    }
-                };
-            }
-            else
-            {
-                var savers = new StructList<FieldHandlerSave>();
-                for (var i = 0; i < _fieldHandlers.Count; i++)
-                {
-                    var fieldHandler = _fieldHandlers[i];
-                    var field = metadata.Fields[i];
-                    var saver = fieldHandler.Save(field.Type, typeConverterFactory);
-                    var offset = field.ByteOffset!.Value;
-                    savers.Add((ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
-                    {
-                        saver(ref writer, ctx,
-                            ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
-                    });
-                }
-
-                var saversArray = savers.ToArray();
-                return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
-                {
-                    foreach (var fieldHandlerSave in saversArray)
-                    {
-                        fieldHandlerSave(ref writer, ctx, ref value);
-                    }
-                };
-            }
+            throw new BTDBException("Cannot save " + asType.ToSimpleName() +
+                                    " as it is not registered in ReflectionMetadata");
         }
 
-        return this.BuildConvertingSaver(asType, HandledType(), typeConverterFactory);
+        if (asType.IsValueType)
+        {
+            var savers = new StructList<FieldHandlerSave>();
+            for (var i = 0; i < _fieldHandlers.Count; i++)
+            {
+                var fieldHandler = _fieldHandlers[i];
+                var field = metadata.Fields[i];
+                var saver = fieldHandler.Save(field.Type, typeConverterFactory);
+                var offset = field.ByteOffset!.Value;
+                savers.Add((ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+                {
+                    saver(ref writer, ctx,
+                        ref Unsafe.AddByteOffset(ref value, offset));
+                });
+            }
+
+            var saversArray = savers.ToArray();
+            return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+            {
+                foreach (var fieldHandlerSave in saversArray)
+                {
+                    fieldHandlerSave(ref writer, ctx, ref value);
+                }
+            };
+        }
+        else
+        {
+            var savers = new StructList<FieldHandlerSave>();
+            for (var i = 0; i < _fieldHandlers.Count; i++)
+            {
+                var fieldHandler = _fieldHandlers[i];
+                var field = metadata.Fields[i];
+                var saver = fieldHandler.Save(field.Type, typeConverterFactory);
+                var offset = field.ByteOffset!.Value;
+                savers.Add((ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+                {
+                    saver(ref writer, ctx,
+                        ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
+                });
+            }
+
+            var saversArray = savers.ToArray();
+            return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+            {
+                foreach (var fieldHandlerSave in saversArray)
+                {
+                    fieldHandlerSave(ref writer, ctx, ref value);
+                }
+            };
+        }
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)

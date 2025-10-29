@@ -13,6 +13,14 @@ using BTDB.Encrypted;
 
 namespace BTDB.EventStoreLayer;
 
+public delegate void Layer2Loader(ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value);
+
+public delegate void Layer2Skipper(ref MemReader reader, ITypeBinaryDeserializerContext? ctx);
+
+public delegate void Layer2Saver(ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value);
+
+public delegate void Layer2NewDescriptor(IDescriptorSerializerLiteContext ctx, ref byte value);
+
 public delegate object Layer1Loader(ref MemReader reader, ITypeBinaryDeserializerContext? ctx,
     ITypeSerializersId2LoaderMapping mapping, ITypeDescriptor descriptor);
 
@@ -136,6 +144,7 @@ public class TypeSerializers : ITypeSerializers
             {
                 throw new BTDBException("Lazy DB object serialization is forbidden. Type: " + type.ToSimpleName());
             }
+
             if (!type.IsSubclassOf(typeof(Delegate)))
             {
                 if (type.IsGenericType)

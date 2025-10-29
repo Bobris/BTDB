@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
@@ -112,6 +114,80 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public bool AnyOpNeedsCtx()
     {
         return !_itemDescriptor!.StoredInline || _itemDescriptor.AnyOpNeedsCtx();
+    }
+
+    public Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        var underlyingType = Nullable.GetUnderlyingType(targetType);
+        if (underlyingType == null)
+        {
+            return this.BuildConvertingLoader(GetPreferredType(), targetType, typeConverterFactory);
+        }
+
+        var itemLoader = _itemDescriptor!.GenerateLoadEx(underlyingType, typeConverterFactory);
+        var offset = RawData.Align(1, RawData.GetSizeAndAlign(underlyingType).Align);
+
+        return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+        {
+            if (reader.ReadBool())
+            {
+                value = 1;
+                itemLoader(ref reader, ctx, ref Unsafe.AddByteOffset(ref value, offset));
+            }
+            else
+            {
+                value = 0;
+            }
+        };
+    }
+
+    public void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx)
+    {
+        if (reader.ReadBool())
+        {
+            _itemDescriptor!.Skip(ref reader, ctx);
+        }
+    }
+
+    public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        var underlyingType = Nullable.GetUnderlyingType(targetType);
+        if (underlyingType == null)
+        {
+            return this.BuildConvertingSaver(targetType, GetPreferredType(), typeConverterFactory);
+        }
+
+        var itemSaver = _itemDescriptor!.GenerateSaveEx(underlyingType, typeConverterFactory);
+        var offset = RawData.Align(1, RawData.GetSizeAndAlign(underlyingType).Align);
+        return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+        {
+            if (value != 0)
+            {
+                writer.WriteBool(true);
+                itemSaver(ref writer, ctx, ref Unsafe.AddByteOffset(ref value, offset));
+            }
+            else
+            {
+                writer.WriteBool(false);
+            }
+        };
+    }
+
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (_itemDescriptor!.Sealed) return null;
+        if (GetPreferredType() != targetType) throw new ArgumentOutOfRangeException(nameof(targetType));
+        var nestedNewDescriptor =
+            _itemDescriptor.GenerateNewDescriptorEx(_itemDescriptor!.GetPreferredType()!, typeConverterFactory);
+        if (nestedNewDescriptor == null) return null;
+        var offset = RawData.Align(1, RawData.GetSizeAndAlign(_itemDescriptor!.GetPreferredType()!).Align);
+        return (IDescriptorSerializerLiteContext? ctx, ref byte value) =>
+        {
+            if (value != 0)
+            {
+                nestedNewDescriptor(ctx, ref Unsafe.AddByteOffset(ref value, offset));
+            }
+        };
     }
 
     public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,

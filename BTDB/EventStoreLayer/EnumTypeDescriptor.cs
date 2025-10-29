@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
@@ -275,6 +277,142 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public bool AnyOpNeedsCtx()
     {
         return false;
+    }
+
+    public Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        var loadType = _signed ? typeof(long) : typeof(ulong);
+        if (targetType == loadType)
+        {
+            if (_signed)
+            {
+                return static (ref MemReader reader, ITypeBinaryDeserializerContext? _, ref byte value) =>
+                {
+                    Unsafe.As<byte, long>(ref value) = reader.ReadVInt64();
+                };
+            }
+
+            return static (ref MemReader reader, ITypeBinaryDeserializerContext? _, ref byte value) =>
+            {
+                Unsafe.As<byte, ulong>(ref value) = reader.ReadVUInt64();
+            };
+        }
+
+        // First convert it to my enum type
+        var preferredType = GetPreferredType();
+        if (preferredType != null && targetType != preferredType)
+        {
+            return this.BuildConvertingLoader(preferredType, targetType, typeConverterFactory);
+        }
+
+        return this.BuildConvertingLoader(loadType, targetType, typeConverterFactory);
+    }
+
+    public void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx)
+    {
+        if (_signed)
+        {
+            reader.SkipVInt64();
+        }
+        else
+        {
+            reader.SkipVUInt64();
+        }
+    }
+
+    public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (targetType.IsEnum)
+        {
+            var underlying = Enum.GetUnderlyingType(targetType);
+            if (underlying == typeof(byte) && !_signed)
+            {
+                return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+                {
+                    writer.WriteVUInt32(Unsafe.As<byte, byte>(ref value));
+                };
+            }
+
+            if (underlying == typeof(ushort) && !_signed)
+            {
+                return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+                {
+                    writer.WriteVUInt32(Unsafe.As<byte, ushort>(ref value));
+                };
+            }
+
+            if (underlying == typeof(uint) && !_signed)
+            {
+                return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+                {
+                    writer.WriteVUInt32(Unsafe.As<byte, uint>(ref value));
+                };
+            }
+
+            if (underlying == typeof(ulong) && !_signed)
+            {
+                return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+                {
+                    writer.WriteVUInt64(Unsafe.As<byte, ulong>(ref value));
+                };
+            }
+
+            if (underlying == typeof(sbyte) && _signed)
+            {
+                return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+                {
+                    writer.WriteVInt32(Unsafe.As<byte, sbyte>(ref value));
+                };
+            }
+
+            if (underlying == typeof(short) && _signed)
+            {
+                return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+                {
+                    writer.WriteVInt32(Unsafe.As<byte, short>(ref value));
+                };
+            }
+
+            if (underlying == typeof(int) && _signed)
+            {
+                return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+                {
+                    writer.WriteVInt32(Unsafe.As<byte, int>(ref value));
+                };
+            }
+
+            if (underlying == typeof(long) && _signed)
+            {
+                return static (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+                {
+                    writer.WriteVInt64(Unsafe.As<byte, long>(ref value));
+                };
+            }
+        }
+
+        var saveType = _signed ? typeof(long) : typeof(ulong);
+        if (targetType == saveType)
+        {
+            if (_signed)
+            {
+                return (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+                {
+                    writer.WriteVInt64(Unsafe.As<byte, long>(ref value));
+                };
+            }
+
+            return (ref MemWriter writer, ITypeBinarySerializerContext? _, ref byte value) =>
+            {
+                writer.WriteVUInt64(Unsafe.As<byte, ulong>(ref value));
+            };
+        }
+
+        return this.BuildConvertingSaver(targetType, saveType, typeConverterFactory);
+    }
+
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        return null;
     }
 
     public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,

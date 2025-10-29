@@ -1,9 +1,12 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Text;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.Serialization;
+using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
 
@@ -15,6 +18,34 @@ public static class TypeDescriptorExtensions
         descriptor.BuildHumanReadableFullName(sb,
             new(ReferenceEqualityComparer<ITypeDescriptor>.Instance), 0);
         return sb.ToString();
+    }
+
+    public static Layer2Saver GenerateSaveEx(this ITypeDescriptor descriptor, Type targetType,
+        ITypeConverterFactory typeConverterFactory)
+    {
+        if (descriptor.StoredInline)
+        {
+            return descriptor.GenerateSave(targetType, typeConverterFactory);
+        }
+
+        return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+        {
+            ctx!.StoreObject(ref writer, Unsafe.As<byte, object>(ref value));
+        };
+    }
+
+    public static Layer2NewDescriptor? GenerateNewDescriptorEx(this ITypeDescriptor descriptor, Type targetType,
+        ITypeConverterFactory typeConverterFactory)
+    {
+        if (descriptor.StoredInline)
+        {
+            return descriptor.GenerateNewDescriptor(targetType, typeConverterFactory);
+        }
+
+        return (IDescriptorSerializerLiteContext ctx, ref byte value) =>
+        {
+            ctx.StoreNewDescriptors(Unsafe.As<byte, object>(ref value));
+        };
     }
 
     public static void GenerateSaveEx(this ITypeDescriptor descriptor, IILGen ilGenerator,
@@ -49,6 +80,63 @@ public static class TypeDescriptorExtensions
                 .Do(pushReader)
                 .Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext
                     .SkipObject))!);
+        }
+    }
+
+    public static Layer2Loader GenerateLoadEx(this ITypeDescriptor descriptor, Type targetType,
+        ITypeConverterFactory typeConverterFactory)
+    {
+        if (descriptor.StoredInline)
+        {
+            return descriptor.GenerateLoad(targetType, typeConverterFactory);
+        }
+        else
+        {
+            if (targetType == typeof(object))
+                return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+                {
+                    var obj = ctx!.LoadObject(ref reader);
+                    Unsafe.As<byte, object>(ref value) = obj;
+                };
+            var origType = descriptor.GetPreferredType()!;
+            var converter = typeConverterFactory.GetConverter(origType, targetType);
+            if (converter != null)
+            {
+                return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+                {
+                    var obj = ctx!.LoadObject(ref reader);
+                    if (obj != null)
+                    {
+                        if (!origType.IsAssignableFrom(obj.GetType()))
+                        {
+                            throw new BTDBException("Cannot assign " + obj.GetType().ToSimpleName() + " to " +
+                                                    origType.ToSimpleName());
+                        }
+                    }
+
+                    converter(ref Unsafe.As<object, byte>(ref obj), ref value);
+                };
+            }
+
+            if (targetType.IsValueType)
+            {
+                throw new BTDBException("Cannot load " + origType.ToSimpleName() + " as " + targetType.ToSimpleName());
+            }
+
+            return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+            {
+                var obj = ctx!.LoadObject(ref reader);
+                if (obj != null)
+                {
+                    if (!targetType.IsAssignableFrom(obj.GetType()))
+                    {
+                        throw new BTDBException("Cannot assign " + obj.GetType().ToSimpleName() + " to " +
+                                                targetType.ToSimpleName());
+                    }
+                }
+
+                Unsafe.As<byte, object>(ref value) = obj;
+            };
         }
     }
 

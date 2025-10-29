@@ -5,7 +5,7 @@ namespace BTDB.EventStoreLayer;
 
 public interface ITypeBinaryDeserializerContext
 {
-    object LoadObject(ref MemReader reader);
+    object? LoadObject(ref MemReader reader);
     void AddBackRef(object obj);
     void SkipObject(ref MemReader reader);
     EncryptedString LoadEncryptedString(ref MemReader reader);

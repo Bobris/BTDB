@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using BTDB.Encrypted;
+using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.Serialization;
+using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
 
@@ -65,6 +69,42 @@ public class EncryptedStringDescriptor : ITypeDescriptor
         Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
 
     public bool AnyOpNeedsCtx() => true;
+
+    public Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (targetType == typeof(EncryptedString) || targetType == typeof(string))
+        {
+            return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+            {
+                Unsafe.As<byte, EncryptedString>(ref value) = ctx!.LoadEncryptedString(ref reader);
+            };
+        }
+
+        return this.BuildConvertingLoader(typeof(EncryptedString), targetType, typeConverterFactory);
+    }
+
+    public void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx)
+    {
+        ctx!.SkipEncryptedString(ref reader);
+    }
+
+    public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (targetType == typeof(EncryptedString) || targetType == typeof(string))
+        {
+            return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+            {
+                ctx!.StoreEncryptedString(ref writer, Unsafe.As<byte, EncryptedString>(ref value));
+            };
+        }
+
+        return this.BuildConvertingSaver(targetType, typeof(EncryptedString), typeConverterFactory);
+    }
+
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        return null;
+    }
 
     public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
         Action<IILGen> pushDescriptor, Type targetType)

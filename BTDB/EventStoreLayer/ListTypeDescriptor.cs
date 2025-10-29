@@ -2,9 +2,12 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
@@ -116,6 +119,188 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public bool AnyOpNeedsCtx()
     {
         return !_itemDescriptor!.StoredInline || _itemDescriptor.AnyOpNeedsCtx();
+    }
+
+    ref struct ListItemLoaderCtx
+    {
+        internal nint StoragePtr;
+        internal object Object;
+        internal Layer2Loader ItemLoader;
+        internal unsafe delegate*<object, ref byte, void> Adder;
+        internal ITypeBinaryDeserializerContext Ctx;
+        internal ref MemReader Reader;
+    }
+
+    public unsafe Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        var collectionMetadata = ReflectionMetadata.FindCollectionByType(targetType!);
+        if (collectionMetadata == null)
+            throw new BTDBException("Cannot find collection metadata for " + _type.ToSimpleName());
+        var itemLoad = _itemDescriptor!.GenerateLoadEx(collectionMetadata.ElementKeyType, typeConverterFactory);
+        var itemStackAllocator = ReflectionMetadata.FindStackAllocatorByType(collectionMetadata.ElementKeyType);
+
+        return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+        {
+            var count = reader.ReadVUInt32();
+            if (count == 0)
+            {
+                Unsafe.As<byte, object?>(ref value) = null;
+                return;
+            }
+
+            count--;
+            var obj = collectionMetadata!.Creator(count);
+            var loaderCtx = new ListItemLoaderCtx
+            {
+                Adder = collectionMetadata.Adder,
+                ItemLoader = itemLoad,
+                Object = obj,
+                Ctx = ctx,
+                Reader = ref reader,
+            };
+            for (var i = 0; i != count; i++)
+            {
+                itemStackAllocator(ref Unsafe.As<ListItemLoaderCtx, byte>(ref loaderCtx), ref loaderCtx.StoragePtr,
+                    &Nested);
+
+                static void Nested(ref byte value)
+                {
+                    ref var context = ref Unsafe.As<byte, ListItemLoaderCtx>(ref value);
+                    context.ItemLoader(ref context.Reader, context.Ctx,
+                        ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                    context.Adder(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                }
+            }
+
+            Unsafe.As<byte, object?>(ref value) = obj;
+        };
+    }
+
+    public void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx)
+    {
+        var count = reader.ReadVUInt32();
+        if (count == 0) return;
+        count--;
+        for (var i = 0u; i != count; i++)
+        {
+            _itemDescriptor!.Skip(ref reader, ctx);
+        }
+    }
+
+    public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        var itemType = targetType.GenericTypeArguments[0];
+        var hashSetType = typeof(HashSet<>).MakeGenericType(itemType);
+        var listType = typeof(List<>).MakeGenericType(itemType);
+        var saveItem = _itemDescriptor!.GenerateSaveEx(itemType, typeConverterFactory);
+        var layout = RawData.GetHashSetEntriesLayout(itemType);
+        return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+        {
+            var obj = Unsafe.As<byte, object>(ref value);
+            if (obj == null)
+            {
+                writer.WriteByteZero();
+                return;
+            }
+
+            var objType = obj.GetType();
+            if (listType.IsAssignableFrom(objType))
+            {
+                var count = (uint)Unsafe.As<ICollection>(obj).Count;
+                writer.WriteVUInt32(count + 1);
+                obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
+                ref readonly var mt = ref RawData.MethodTableRef(obj);
+                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var offsetDelta = mt.ComponentSize;
+                for (var i = 0; i < count; i++, offset += offsetDelta)
+                {
+                    saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
+                }
+            }
+            else if (hashSetType.IsAssignableFrom(objType))
+            {
+                var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj,
+                    RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                writer.WriteVUInt32(count + 1);
+                if (count != 0)
+                {
+                    obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    if (offsetDelta != layout.Size)
+                        throw new BTDBException("Invalid HashSet layout " + offsetDelta + " != " + layout.Size);
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
+                        {
+                            continue;
+                        }
+
+                        saveItem(ref writer, ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                    }
+                }
+            }
+            else throw new BTDBException("Cannot save type " + objType.ToSimpleName());
+        };
+    }
+
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (_itemDescriptor!.Sealed) return null;
+        if (GetPreferredType() != targetType) throw new ArgumentOutOfRangeException(nameof(targetType));
+        var itemType = targetType.GenericTypeArguments[0];
+        var nestedNewDescriptor = _itemDescriptor!.GenerateNewDescriptorEx(itemType, typeConverterFactory);
+        if (nestedNewDescriptor == null) return null;
+        var hashSetType = typeof(HashSet<>).MakeGenericType(itemType);
+        var listType = typeof(List<>).MakeGenericType(itemType);
+        var layout = RawData.GetHashSetEntriesLayout(itemType);
+        return (IDescriptorSerializerLiteContext? ctx, ref byte value) =>
+        {
+            var obj = Unsafe.As<byte, object>(ref value);
+            if (obj == null)
+            {
+                return;
+            }
+
+            var objType = obj.GetType();
+            if (listType.IsAssignableFrom(objType))
+            {
+                var count = (uint)Unsafe.As<ICollection>(obj).Count;
+                obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
+                ref readonly var mt = ref RawData.MethodTableRef(obj);
+                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var offsetDelta = mt.ComponentSize;
+                for (var i = 0; i < count; i++, offset += offsetDelta)
+                {
+                    nestedNewDescriptor(ctx, ref RawData.Ref(obj, offset));
+                }
+            }
+            else if (hashSetType.IsAssignableFrom(objType))
+            {
+                var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj,
+                    RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                if (count != 0)
+                {
+                    obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    if (offsetDelta != layout.Size)
+                        throw new BTDBException("Invalid HashSet layout " + offsetDelta + " != " + layout.Size);
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
+                        {
+                            continue;
+                        }
+
+                        nestedNewDescriptor(ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                    }
+                }
+            }
+            else throw new BTDBException("Cannot iterate new descriptors for type " + objType.ToSimpleName());
+        };
     }
 
     static Type GetInterface(Type type) => type.GetInterface("ICollection`1") ?? type;
@@ -256,9 +441,8 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             var typeAsICollection = isConcreteImplementation ? type : typeof(ICollection<>).MakeGenericType(itemType);
             var getEnumeratorMethod = isConcreteImplementation
                 ? typeAsICollection.GetMethods()
-                    .Single(
-                        m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType &&
-                             m.GetParameters().Length == 0)
+                    .Single(m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType &&
+                                 m.GetParameters().Length == 0)
                 : typeAsICollection.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
             var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
             var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();

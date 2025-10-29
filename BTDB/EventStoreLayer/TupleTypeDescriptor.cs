@@ -4,10 +4,13 @@ using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using System.Text;
 using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer;
@@ -150,6 +153,229 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         return !_itemDescriptors.All(p => p.StoredInline) ||
                _itemDescriptors.Any(p => p.AnyOpNeedsCtx());
+    }
+
+    public static bool IsCompatibleWith(Type type)
+    {
+        if (!type.IsGenericType) return false;
+        return type.InheritsOrImplements(typeof(ITuple));
+    }
+
+    public unsafe Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (!IsCompatibleWith(targetType))
+            return this.BuildConvertingLoader(GetPreferredType()!, targetType, typeConverterFactory);
+        var metadata = ReflectionMetadata.FindByType(targetType);
+        if (metadata == null)
+        {
+            throw new BTDBException("Cannot load " + targetType.ToSimpleName() +
+                                    " as it is not registered in ReflectionMetadata");
+        }
+
+        if (targetType.IsValueType)
+        {
+            var loaders = new StructList<Layer2Loader>();
+            for (var i = 0; i < _itemDescriptors.Count; i++)
+            {
+                var fieldHandler = _itemDescriptors[i];
+                if (i >= metadata.Fields.Length)
+                {
+                    loaders.Add((ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte _) =>
+                    {
+                        fieldHandler.Skip(ref reader, ctx);
+                    });
+                    continue;
+                }
+
+                var field = metadata.Fields[i];
+                var loader = fieldHandler.GenerateLoadEx(field.Type, typeConverterFactory);
+                var offset = field.ByteOffset!.Value;
+                loaders.Add((ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+                {
+                    loader(ref reader, ctx,
+                        ref Unsafe.AddByteOffset(ref value, offset));
+                });
+            }
+
+            var loadersArray = loaders.ToArray();
+            return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+            {
+                foreach (var fieldHandlerLoad in loadersArray)
+                {
+                    fieldHandlerLoad(ref reader, ctx, ref value);
+                }
+            };
+        }
+        else
+        {
+            var creator = metadata.Creator;
+            var loaders = new StructList<Layer2Loader>();
+            for (var i = 0; i < _itemDescriptors.Count; i++)
+            {
+                var fieldHandler = _itemDescriptors[i];
+                if (i >= metadata.Fields.Length)
+                {
+                    loaders.Add((ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte _) =>
+                    {
+                        fieldHandler.Skip(ref reader, ctx);
+                    });
+                    continue;
+                }
+
+                var field = metadata.Fields[i];
+                var loader = fieldHandler.GenerateLoadEx(field.Type, typeConverterFactory);
+                var offset = field.ByteOffset!.Value;
+                loaders.Add((ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+                {
+                    loader(ref reader, ctx,
+                        ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
+                });
+            }
+
+            var loadersArray = loaders.ToArray();
+            return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+            {
+                var tuple = creator();
+                Unsafe.As<byte, object>(ref value) = tuple;
+                foreach (var fieldHandlerLoad in loadersArray)
+                {
+                    fieldHandlerLoad(ref reader, ctx, ref value);
+                }
+            };
+        }
+    }
+
+    public void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx)
+    {
+        foreach (var itemDescriptor in _itemDescriptors)
+        {
+            itemDescriptor.Skip(ref reader, ctx);
+        }
+    }
+
+    public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (GetPreferredType() != targetType)
+            return this.BuildConvertingSaver(targetType, GetPreferredType()!, typeConverterFactory);
+        var metadata = ReflectionMetadata.FindByType(targetType);
+        if (metadata == null)
+        {
+            throw new BTDBException("Cannot save " + targetType.ToSimpleName() +
+                                    " as it is not registered in ReflectionMetadata");
+        }
+
+        if (targetType.IsValueType)
+        {
+            var savers = new StructList<Layer2Saver>();
+            for (var i = 0; i < _itemDescriptors.Count; i++)
+            {
+                var fieldHandler = _itemDescriptors[i];
+                var field = metadata.Fields[i];
+                var saver = fieldHandler.GenerateSaveEx(field.Type, typeConverterFactory);
+                var offset = field.ByteOffset!.Value;
+                savers.Add((ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+                {
+                    saver(ref writer, ctx,
+                        ref Unsafe.AddByteOffset(ref value, offset));
+                });
+            }
+
+            var saversArray = savers.ToArray();
+            return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+            {
+                foreach (var fieldHandlerSave in saversArray)
+                {
+                    fieldHandlerSave(ref writer, ctx, ref value);
+                }
+            };
+        }
+        else
+        {
+            var savers = new StructList<Layer2Saver>();
+            for (var i = 0; i < _itemDescriptors.Count; i++)
+            {
+                var fieldHandler = _itemDescriptors[i];
+                var field = metadata.Fields[i];
+                var saver = fieldHandler.GenerateSaveEx(field.Type, typeConverterFactory);
+                var offset = field.ByteOffset!.Value;
+                savers.Add((ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+                {
+                    saver(ref writer, ctx,
+                        ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
+                });
+            }
+
+            var saversArray = savers.ToArray();
+            return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+            {
+                foreach (var fieldHandlerSave in saversArray)
+                {
+                    fieldHandlerSave(ref writer, ctx, ref value);
+                }
+            };
+        }
+    }
+
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (_itemDescriptors.All(d => d.Sealed)) return null;
+        var metadata = ReflectionMetadata.FindByType(targetType);
+        if (metadata == null)
+        {
+            throw new BTDBException("Cannot save " + targetType.ToSimpleName() +
+                                    " as it is not registered in ReflectionMetadata");
+        }
+
+        if (targetType.IsValueType)
+        {
+            var newDescriptors = new StructList<Layer2NewDescriptor>();
+            for (var i = 0; i < _itemDescriptors.Count; i++)
+            {
+                var fieldHandler = _itemDescriptors[i];
+                var field = metadata.Fields[i];
+                var newDescriptorEx = fieldHandler.GenerateNewDescriptorEx(field.Type, typeConverterFactory);
+                if (newDescriptorEx == null) continue;
+                var offset = field.ByteOffset!.Value;
+                newDescriptors.Add((IDescriptorSerializerLiteContext ctx, ref byte value) =>
+                {
+                    newDescriptorEx(ctx, ref Unsafe.AddByteOffset(ref value, offset));
+                });
+            }
+
+            var newDescriptorArray = newDescriptors.ToArray();
+            return (IDescriptorSerializerLiteContext ctx, ref byte value) =>
+            {
+                foreach (var newDescriptor in newDescriptorArray)
+                {
+                    newDescriptor(ctx, ref value);
+                }
+            };
+        }
+        else
+        {
+            var newDescriptors = new StructList<Layer2NewDescriptor>();
+            for (var i = 0; i < _itemDescriptors.Count; i++)
+            {
+                var fieldHandler = _itemDescriptors[i];
+                var field = metadata.Fields[i];
+                var newDescriptorEx = fieldHandler.GenerateNewDescriptorEx(field.Type, typeConverterFactory);
+                if (newDescriptorEx == null) continue;
+                var offset = field.ByteOffset!.Value;
+                newDescriptors.Add((IDescriptorSerializerLiteContext ctx, ref byte value) =>
+                {
+                    newDescriptorEx(ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
+                });
+            }
+
+            var newDescriptorArray = newDescriptors.ToArray();
+            return (IDescriptorSerializerLiteContext ctx, ref byte value) =>
+            {
+                foreach (var newDescriptor in newDescriptorArray)
+                {
+                    newDescriptor(ctx, ref value);
+                }
+            };
+        }
     }
 
     public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Text;
 using BTDB.EventStoreLayer;
 using BTDB.IL;
+using BTDB.Serialization;
+using BTDB.StreamLayer;
 
 namespace BTDB.EventStore2Layer;
 
@@ -54,6 +56,26 @@ class PlaceHolderDescriptor : ITypeDescriptor
     }
 
     public bool AnyOpNeedsCtx()
+    {
+        throw new InvalidOperationException();
+    }
+
+    public EventStoreLayer.Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new InvalidOperationException();
+    }
+
+    public void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx)
+    {
+        throw new InvalidOperationException();
+    }
+
+    public Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        throw new InvalidOperationException();
+    }
+
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
         throw new InvalidOperationException();
     }

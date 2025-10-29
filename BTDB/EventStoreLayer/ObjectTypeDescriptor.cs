@@ -13,6 +13,7 @@ using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 
 namespace BTDB.EventStoreLayer;
 
@@ -207,6 +208,334 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public bool AnyOpNeedsCtx()
     {
         return !_fields.All(p => p.Value.StoredInline) || _fields.Any(p => p.Value.AnyOpNeedsCtx());
+    }
+
+    delegate void LoadFunc(object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx);
+
+    ref struct FieldLoaderCtx
+    {
+        internal nint StoragePtr;
+        internal object Object;
+        internal Layer2Loader Loader;
+        internal ITypeBinaryDeserializerContext? Ctx;
+        internal ref MemReader Reader;
+
+        internal unsafe delegate*<object, ref byte, void> Setter;
+    }
+
+    public unsafe Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        var myType = GetPreferredType();
+        if (myType == null)
+        {
+            throw new BTDBException("Cannot deserialize unknown type " + Name);
+        }
+
+        if (targetType != typeof(object) && !targetType.IsAssignableFrom(myType))
+            return this.BuildConvertingLoader(myType, targetType, typeConverterFactory);
+
+        var metadata = ReflectionMetadata.FindByType(myType);
+        if (metadata == null)
+        {
+            throw new BTDBException(
+                $"Cannot create loader for {myType.ToSimpleName()}. It is not registered in BTDB.");
+        }
+
+        var creator = metadata.Creator;
+        StructList<LoadFunc> loaders = new();
+
+        foreach (var srcFieldInfo in _fields)
+        {
+            var field = metadata.Fields.FirstOrDefault(f => f.Name == srcFieldInfo.Key);
+            if (field != null)
+            {
+                var fieldType = field.Type;
+
+                var handlerLoad = srcFieldInfo.Value.GenerateLoadEx(fieldType, typeConverterFactory);
+                if (field.PropRefSetter == null)
+                {
+                    var offset = field.ByteOffset!.Value;
+                    loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
+                    {
+                        handlerLoad(ref reader, ctx, ref RawData.Ref(obj, offset));
+                    });
+                    continue;
+                }
+
+                var propRefSetter = field.PropRefSetter;
+                if (!fieldType.IsValueType)
+                {
+                    loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
+                    {
+                        object? value = null;
+                        handlerLoad(ref reader, ctx, ref Unsafe.As<object, byte>(ref value));
+                        propRefSetter(obj, ref Unsafe.As<object, byte>(ref value));
+                    });
+                    continue;
+                }
+
+                if (RawData.FitsInInt128(fieldType))
+                {
+                    loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
+                    {
+                        Int128 value = 0;
+                        handlerLoad(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref value));
+                        propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
+                    });
+                }
+
+                var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
+                loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
+                {
+                    var fieldLoaderCtx = new FieldLoaderCtx
+                    {
+                        Object = obj,
+                        Loader = handlerLoad,
+                        Setter = propRefSetter,
+                        Ctx = ctx,
+                        Reader = reader
+                    };
+
+                    stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
+                        ref fieldLoaderCtx.StoragePtr, &Nested);
+
+                    static void Nested(ref byte value)
+                    {
+                        ref var context = ref Unsafe.As<byte, FieldLoaderCtx>(ref value);
+                        context.Loader(ref context.Reader, context.Ctx,
+                            ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        context.Setter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                    }
+                });
+                continue;
+            }
+
+            loaders.Add((object _, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
+            {
+                srcFieldInfo.Value.Skip(ref reader, ctx);
+            });
+        }
+
+        var loadersArray = loaders.ToArray();
+
+        return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+        {
+            var obj = creator();
+            ctx?.AddBackRef(obj);
+            foreach (var loadFunc in loadersArray)
+            {
+                loadFunc(obj, ref reader, ctx);
+            }
+
+            Unsafe.As<byte, object>(ref value) = obj;
+        };
+    }
+
+    public void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx)
+    {
+        // objects are actually never skipped, they are just not stored
+        ctx!.SkipObject(ref reader);
+    }
+
+    delegate void SaverItem(ref MemWriter writer, ITypeBinarySerializerContext? ctx, object? value);
+
+    ref struct FieldSaverCtx
+    {
+        internal nint StoragePtr;
+        internal object Object;
+        internal Layer2Saver Saver;
+        internal ITypeBinarySerializerContext? Ctx;
+        internal ref MemWriter Writer;
+
+        internal unsafe delegate*<object, ref byte, void> Getter;
+    }
+
+    public unsafe Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory)
+    {
+        if (GetPreferredType() != targetType)
+        {
+            throw new ArgumentException(
+                $"value type {targetType.ToSimpleName()} does not match my type {GetPreferredType().ToSimpleName()}");
+        }
+
+        var metadata = ReflectionMetadata.FindByType(targetType);
+        if (metadata == null)
+        {
+            throw new BTDBException(
+                $"Cannot create saver for {targetType.ToSimpleName()}. It is not registered in BTDB.");
+        }
+
+        StructList<SaverItem> saveInstructions = new();
+        foreach (var field in _fields)
+        {
+            var fieldInfo = metadata.Fields.First(f => f.Name == field.Key);
+            var saver = field.Value.GenerateSaveEx(fieldInfo.Type, typeConverterFactory);
+            var propRefGetter = fieldInfo.PropRefGetter;
+            if (propRefGetter != null)
+            {
+                var fieldType = fieldInfo.Type;
+                if (!fieldType.IsValueType)
+                {
+                    saveInstructions.Add((ref MemWriter writer, ITypeBinarySerializerContext? ctx, object? value) =>
+                    {
+                        object? val = null;
+                        propRefGetter(value, ref Unsafe.As<object, byte>(ref val));
+                        saver(ref writer, ctx, ref Unsafe.As<object, byte>(ref val));
+                    });
+                }
+                else if (RawData.FitsInInt128(fieldType))
+                {
+                    saveInstructions.Add((ref MemWriter writer, ITypeBinarySerializerContext? ctx, object? value) =>
+                    {
+                        Int128 val = default;
+                        propRefGetter(value, ref Unsafe.As<Int128, byte>(ref val));
+                        saver(ref writer, ctx, ref Unsafe.As<Int128, byte>(ref val));
+                    });
+                }
+                else
+                {
+                    var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
+                    saveInstructions.Add((ref MemWriter writer, ITypeBinarySerializerContext? ctx, object? value) =>
+                    {
+                        var fieldSaverCtx = new FieldSaverCtx
+                        {
+                            Object = value!,
+                            Saver = saver,
+                            Getter = propRefGetter,
+                            Ctx = ctx,
+                            Writer = writer
+                        };
+
+                        stackAllocator(ref Unsafe.As<FieldSaverCtx, byte>(ref fieldSaverCtx),
+                            ref fieldSaverCtx.StoragePtr, &Nested);
+
+                        static void Nested(ref byte value)
+                        {
+                            ref var context = ref Unsafe.As<byte, FieldSaverCtx>(ref value);
+                            context.Getter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                            context.Saver(ref context.Writer, context.Ctx,
+                                ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        }
+                    });
+                }
+            }
+            else
+            {
+                var offset = fieldInfo.ByteOffset!.Value;
+                saveInstructions.Add((ref MemWriter writer, ITypeBinarySerializerContext? ctx, object? value) =>
+                {
+                    saver(ref writer, ctx, ref RawData.Ref(value, offset));
+                });
+            }
+        }
+
+        var saveInstructionsArray = saveInstructions.ToArray();
+        return (ref MemWriter writer, ITypeBinarySerializerContext? ctx, ref byte value) =>
+        {
+            foreach (var saverItem in saveInstructionsArray)
+            {
+                saverItem(ref writer, ctx, Unsafe.As<byte, object>(ref value));
+            }
+        };
+    }
+
+    delegate void NewDescriptorItem(IDescriptorSerializerLiteContext ctx, object? value);
+
+    ref struct FieldNewDescriptorCtx
+    {
+        internal nint StoragePtr;
+        internal object Object;
+        internal Layer2NewDescriptor NewDescriptor;
+        internal IDescriptorSerializerLiteContext Ctx;
+
+        internal unsafe delegate*<object, ref byte, void> Getter;
+    }
+
+    public unsafe Layer2NewDescriptor? GenerateNewDescriptor(Type targetType,
+        ITypeConverterFactory typeConverterFactory)
+    {
+        if (_fields.Select(p => p.Value).All(d => d.Sealed)) return null;
+        if (GetPreferredType() != targetType)
+        {
+            throw new ArgumentException(
+                $"value type {targetType.ToSimpleName()} does not match my type {GetPreferredType().ToSimpleName()}");
+        }
+
+        var metadata = ReflectionMetadata.FindByType(targetType);
+        if (metadata == null)
+        {
+            throw new BTDBException(
+                $"Cannot create saver for {targetType.ToSimpleName()}. It is not registered in BTDB.");
+        }
+
+        StructList<NewDescriptorItem> newDescriptorItems = new();
+        foreach (var field in _fields)
+        {
+            var fieldInfo = metadata.Fields.First(f => f.Name == field.Key);
+            var newDescriptor = field.Value.GenerateNewDescriptorEx(fieldInfo.Type, typeConverterFactory);
+            if (newDescriptor == null) continue;
+            var propRefGetter = fieldInfo.PropRefGetter;
+            if (propRefGetter != null)
+            {
+                var fieldType = fieldInfo.Type;
+                if (!fieldType.IsValueType)
+                {
+                    newDescriptorItems.Add((ctx, value) =>
+                    {
+                        object? val = null;
+                        propRefGetter(value, ref Unsafe.As<object, byte>(ref val));
+                        newDescriptor(ctx, ref Unsafe.As<object, byte>(ref val));
+                    });
+                }
+                else if (RawData.FitsInInt128(fieldType))
+                {
+                    newDescriptorItems.Add((ctx, value) =>
+                    {
+                        Int128 val = default;
+                        propRefGetter(value, ref Unsafe.As<Int128, byte>(ref val));
+                        newDescriptor(ctx, ref Unsafe.As<Int128, byte>(ref val));
+                    });
+                }
+                else
+                {
+                    var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
+                    newDescriptorItems.Add((ctx, value) =>
+                    {
+                        var fieldSaverCtx = new FieldNewDescriptorCtx
+                        {
+                            Object = value!,
+                            NewDescriptor = newDescriptor,
+                            Getter = propRefGetter,
+                            Ctx = ctx
+                        };
+
+                        stackAllocator(ref Unsafe.As<FieldNewDescriptorCtx, byte>(ref fieldSaverCtx),
+                            ref fieldSaverCtx.StoragePtr, &Nested);
+
+                        static void Nested(ref byte value)
+                        {
+                            ref var context = ref Unsafe.As<byte, FieldNewDescriptorCtx>(ref value);
+                            context.Getter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                            context.NewDescriptor(context.Ctx, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        }
+                    });
+                }
+            }
+            else
+            {
+                var offset = fieldInfo.ByteOffset!.Value;
+                newDescriptorItems.Add((ctx, value) => { newDescriptor(ctx, ref RawData.Ref(value, offset)); });
+            }
+        }
+
+        var newDescriptorFunctions = newDescriptorItems.ToArray();
+        return (IDescriptorSerializerLiteContext ctx, ref byte value) =>
+        {
+            foreach (var item in newDescriptorFunctions)
+            {
+                item(ctx, Unsafe.As<byte, object>(ref value));
+            }
+        };
     }
 
     public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
