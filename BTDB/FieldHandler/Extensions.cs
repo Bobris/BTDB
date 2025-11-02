@@ -4,6 +4,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using BTDB.EventStoreLayer;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.Serialization;
 using BTDB.StreamLayer;
 
@@ -84,7 +85,7 @@ public static class Extensions
         var converter = typeConverterFactory.GetConverter(fromType, toType);
         if (converter == null)
         {
-            throw new NotSupportedException(
+            throw new BTDBException(
                 $"Cannot load {descriptor.Name} and convert {fromType.ToSimpleName()} to {toType.ToSimpleName()}");
         }
 

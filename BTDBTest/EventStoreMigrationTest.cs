@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTDB;
 using BTDB.Encrypted;
 using BTDB.EventStore2Layer;
 using BTDB.EventStoreLayer;
@@ -15,6 +16,7 @@ public class EventStoreMigrationTest
         public string Field { get; set; }
     }
 
+    [Generate]
     public class EventRoot
     {
         public List<Item> Items { get; set; }
@@ -82,6 +84,7 @@ public class EventStoreMigrationTest
         public string Field2 { get; set; }
     }
 
+    [Generate]
     public class EventRoot2
     {
         public List<Item2> Items { get; set; }
@@ -112,6 +115,7 @@ public class EventStoreMigrationTest
         Assert.True(deserializer.Deserialize(out obj2, data));
     }
 
+    [Generate]
     public class EventDictListRoot
     {
         public IDictionary<ulong, IList<Item>> Items { get; set; }
@@ -141,6 +145,7 @@ public class EventStoreMigrationTest
         One = 1
     }
 
+    [Generate]
     public class EventRootEn
     {
         public List<ItemEn> Items { get; set; }
@@ -152,6 +157,7 @@ public class EventStoreMigrationTest
         Two = 2
     }
 
+    [Generate]
     public class EventRootEn2
     {
         public List<ItemEn2> Items { get; set; }

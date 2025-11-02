@@ -226,9 +226,32 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public unsafe Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
         var myType = GetPreferredType();
-        if (myType == null)
+        if (myType == null && targetType != typeof(object))
         {
             throw new BTDBException("Cannot deserialize unknown type " + Name);
+        }
+
+        if (myType == null)
+        {
+            var genericLoaders = new Layer2Loader[_fields.Count];
+            for (int i = 0; i < _fields.Count; i++)
+            {
+                genericLoaders[i] = _fields[i].Value.GenerateLoadEx(typeof(object), typeConverterFactory);
+            }
+
+            return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+            {
+                var obj = new DynamicObject(this);
+                ctx?.AddBackRef(obj);
+                for (var i = 0; i < _fields.Count; i++)
+                {
+                    object? val = null;
+                    genericLoaders[i](ref reader, ctx, ref Unsafe.As<object, byte>(ref val));
+                    obj.SetFieldByIdxFast(i, val);
+                }
+
+                Unsafe.As<byte, object>(ref value) = obj;
+            };
         }
 
         if (targetType != typeof(object) && !targetType.IsAssignableFrom(myType))
@@ -251,62 +274,72 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             {
                 var fieldType = field.Type;
 
-                var handlerLoad = srcFieldInfo.Value.GenerateLoadEx(fieldType, typeConverterFactory);
-                if (field.PropRefSetter == null)
+                try
                 {
-                    var offset = field.ByteOffset!.Value;
-                    loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
+                    var handlerLoad = srcFieldInfo.Value.GenerateLoadEx(fieldType, typeConverterFactory);
+                    if (field.PropRefSetter == null)
                     {
-                        handlerLoad(ref reader, ctx, ref RawData.Ref(obj, offset));
-                    });
-                    continue;
-                }
-
-                var propRefSetter = field.PropRefSetter;
-                if (!fieldType.IsValueType)
-                {
-                    loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
-                    {
-                        object? value = null;
-                        handlerLoad(ref reader, ctx, ref Unsafe.As<object, byte>(ref value));
-                        propRefSetter(obj, ref Unsafe.As<object, byte>(ref value));
-                    });
-                    continue;
-                }
-
-                if (RawData.FitsInInt128(fieldType))
-                {
-                    loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
-                    {
-                        Int128 value = 0;
-                        handlerLoad(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref value));
-                        propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
-                    });
-                }
-
-                var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
-                loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
-                {
-                    var fieldLoaderCtx = new FieldLoaderCtx
-                    {
-                        Object = obj,
-                        Loader = handlerLoad,
-                        Setter = propRefSetter,
-                        Ctx = ctx,
-                        Reader = reader
-                    };
-
-                    stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
-                        ref fieldLoaderCtx.StoragePtr, &Nested);
-
-                    static void Nested(ref byte value)
-                    {
-                        ref var context = ref Unsafe.As<byte, FieldLoaderCtx>(ref value);
-                        context.Loader(ref context.Reader, context.Ctx,
-                            ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
-                        context.Setter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        var offset = field.ByteOffset!.Value;
+                        loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
+                        {
+                            handlerLoad(ref reader, ctx, ref RawData.Ref(obj, offset));
+                        });
+                        continue;
                     }
-                });
+
+                    var propRefSetter = field.PropRefSetter;
+                    if (!fieldType.IsValueType)
+                    {
+                        loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
+                        {
+                            object? value = null;
+                            handlerLoad(ref reader, ctx, ref Unsafe.As<object, byte>(ref value));
+                            propRefSetter(obj, ref Unsafe.As<object, byte>(ref value));
+                        });
+                        continue;
+                    }
+
+                    if (RawData.FitsInInt128(fieldType))
+                    {
+                        loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
+                        {
+                            Int128 value = 0;
+                            handlerLoad(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref value));
+                            propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
+                        });
+                    }
+
+                    var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
+                    loaders.Add((object obj, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
+                    {
+                        var fieldLoaderCtx = new FieldLoaderCtx
+                        {
+                            Object = obj,
+                            Loader = handlerLoad,
+                            Setter = propRefSetter,
+                            Ctx = ctx,
+                            Reader = reader
+                        };
+
+                        stackAllocator(ref Unsafe.As<FieldLoaderCtx, byte>(ref fieldLoaderCtx),
+                            ref fieldLoaderCtx.StoragePtr, &Nested);
+
+                        static void Nested(ref byte value)
+                        {
+                            ref var context = ref Unsafe.As<byte, FieldLoaderCtx>(ref value);
+                            context.Loader(ref context.Reader, context.Ctx,
+                                ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                            context.Setter(context.Object, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        }
+                    });
+                }
+                catch (BTDBException e)
+                {
+                    throw new BTDBException(
+                        $"Cannot create loader for field {srcFieldInfo.Key} of type {Name}. " + e.Message,
+                        e);
+                }
+
                 continue;
             }
 
@@ -673,12 +706,12 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     public class DynamicObject : IDynamicMetaObjectProvider, IKnowDescriptor, IEnumerable<KeyValuePair<string, object>>
     {
         readonly ObjectTypeDescriptor _ownerDescriptor;
-        readonly object[] _fieldValues;
+        readonly object?[] _fieldValues;
 
         public DynamicObject(ObjectTypeDescriptor ownerDescriptor)
         {
             _ownerDescriptor = ownerDescriptor;
-            _fieldValues = new object[_ownerDescriptor._fields.Count];
+            _fieldValues = new object?[_ownerDescriptor._fields.Count];
         }
 
         DynamicMetaObject IDynamicMetaObjectProvider.GetMetaObject(Expression parameter)
@@ -686,7 +719,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             return new DynamicDictionaryMetaObject(parameter, this);
         }
 
-        public void SetFieldByIdxFast(int idx, object value)
+        public void SetFieldByIdxFast(int idx, object? value)
         {
             _fieldValues[idx] = value;
         }

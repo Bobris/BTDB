@@ -496,4 +496,41 @@ public class MetadataTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyGenericClassMetadataGeneration()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            namespace TestNamespace;
+
+            [BTDB.GenerateFor(typeof(GenericClass<System.Enum>))]
+            public class GenericClass<T>
+            {
+                public T Value { get; set; }
+                public List<T> Values { get; set; }
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyGenericClassWithConstrainsMetadataGeneration()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            namespace TestNamespace;
+
+            public interface ISomeType { }
+
+            public class SomeType : ISomeType { }
+
+            [BTDB.GenerateFor(typeof(GenericClass<SomeType>))]
+            public class GenericClass<T> where T : ISomeType, new()
+            {
+                public T Value { get; set; }
+            }
+            """);
+    }
 }

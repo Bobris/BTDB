@@ -133,9 +133,63 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public unsafe Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
+        if (targetType == typeof(object))
+        {
+            var genericItemLoad = _itemDescriptor!.GenerateLoadEx(typeof(object), typeConverterFactory);
+            return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+            {
+                var count = reader.ReadVUInt32();
+                if (count == 0)
+                {
+                    Unsafe.As<byte, object?>(ref value) = null;
+                    return;
+                }
+
+                count--;
+                var obj = new ListWithDescriptor<object?>((int)count, this);
+                while (count-- != 0)
+                {
+                    object? item = null;
+                    genericItemLoad(ref reader, ctx,
+                        ref Unsafe.As<object?, byte>(ref item));
+                    obj.Add(item);
+                }
+
+                Unsafe.As<byte, object?>(ref value) = obj;
+            };
+        }
+
         var collectionMetadata = ReflectionMetadata.FindCollectionByType(targetType!);
         if (collectionMetadata == null)
-            throw new BTDBException("Cannot find collection metadata for " + _type.ToSimpleName());
+        {
+            var itemType = targetType.IsArray ? targetType.GetElementType()! : targetType.GenericTypeArguments[0];
+            var ienumerableType = typeof(IEnumerable<>).MakeGenericType(itemType);
+            collectionMetadata = ReflectionMetadata.FindCollectionByType(ienumerableType);
+            if (collectionMetadata == null)
+            {
+                var ilistType = typeof(IList<>).MakeGenericType(itemType);
+                collectionMetadata = ReflectionMetadata.FindCollectionByType(ilistType);
+                if (collectionMetadata == null)
+                {
+                    var listType = typeof(List<>).MakeGenericType(itemType);
+                    collectionMetadata = ReflectionMetadata.FindCollectionByType(listType);
+                    if (collectionMetadata == null)
+                    {
+                        var isetType = typeof(ISet<>).MakeGenericType(itemType);
+                        collectionMetadata = ReflectionMetadata.FindCollectionByType(isetType);
+                        if (collectionMetadata == null)
+                        {
+                            var hashsetType = typeof(HashSet<>).MakeGenericType(itemType);
+                            collectionMetadata = ReflectionMetadata.FindCollectionByType(hashsetType);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (collectionMetadata == null)
+            throw new BTDBException("Cannot find collection metadata for " + targetType.ToSimpleName());
+
         var itemLoad = _itemDescriptor!.GenerateLoadEx(collectionMetadata.ElementKeyType, typeConverterFactory);
         var itemStackAllocator = ReflectionMetadata.FindStackAllocatorByType(collectionMetadata.ElementKeyType);
 

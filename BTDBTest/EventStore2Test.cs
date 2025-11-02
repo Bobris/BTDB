@@ -10,6 +10,7 @@ using BTDB.ODBLayer;
 using System.Linq;
 using BTDB;
 using BTDB.Encrypted;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDBTest;
@@ -92,6 +93,7 @@ public class EventStore2Test
         Alive = 1
     }
 
+    [Generate]
     public class ObjectWithEnum : IEquatable<ObjectWithEnum>
     {
         public StateEnum State { get; set; }
@@ -126,6 +128,7 @@ public class EventStore2Test
         Assert.Equal(obj, obj2);
     }
 
+    [Generate]
     public class ObjectWithList : IEquatable<ObjectWithList>
     {
         public List<int> Items { get; set; }
@@ -159,6 +162,7 @@ public class EventStore2Test
         public override int GetHashCode() => Items?.GetHashCode() ?? 0;
     }
 
+    [Generate]
     public class ObjectWithIList : IEquatable<ObjectWithIList>
     {
         public IList<int>? Items { get; set; }
@@ -192,6 +196,7 @@ public class EventStore2Test
         public override int GetHashCode() => Items?.GetHashCode() ?? 0;
     }
 
+    [Generate]
     public class ObjectWithIList2 : IEquatable<ObjectWithIList2>
     {
         public IList<ObjectDbTest.Person>? Items { get; set; }
@@ -335,6 +340,7 @@ public class EventStore2Test
         var data2 = serializer.Serialize(out hasMetadata, obj);
     }
 
+    [Generate]
     public class ObjectWithDictionaryOfSimpleType : IEquatable<ObjectWithDictionaryOfSimpleType>
     {
         public IDictionary<int, string> Items { get; set; }
@@ -402,6 +408,7 @@ public class EventStore2Test
         Assert.Equal("Ahoj", obj2.Items[1].ToString());
     }
 
+    [Generate]
     public class EventWithIIndirect
     {
         public string Name { get; set; }
@@ -448,6 +455,7 @@ public class EventStore2Test
         Assert.Equal("c", ev.C);
     }
 
+    [Generate]
     public class EventWithUser
     {
         public User User { get; set; }
@@ -471,6 +479,7 @@ public class EventStore2Test
         Assert.True(deserializer.Deserialize(out obj2, data));
     }
 
+    [Generate]
     public class DtoWithNotStored
     {
         public string Name { get; set; }
@@ -493,6 +502,7 @@ public class EventStore2Test
         Assert.Equal(0, ((DtoWithNotStored)obj2).Skip);
     }
 
+    [Generate]
     public class DtoWithObject
     {
         public object Something { get; set; }
@@ -514,6 +524,7 @@ public class EventStore2Test
         Assert.Equal(1.2, ((DtoWithObject)obj2).Something);
     }
 
+    [Generate]
     public class PureArray
     {
         public string[] A { get; set; }
@@ -640,11 +651,13 @@ public class EventStore2Test
         Employed = 1
     }
 
+    [Generate]
     public class EventWithEnum
     {
         public WorkStatus Status { get; set; }
     }
 
+    [Generate]
     public class EventWithInt
     {
         public int Status { get; set; }
@@ -722,9 +735,13 @@ public class EventStore2Test
         object readed;
         //Assert.True(deserializer.Deserialize(out readed, data));
         var e = Assert.Throws<BTDBException>(() => deserializer.Deserialize(out readed, data));
-        Assert.Contains("Deserialization of type " + typeof(EventWithInt).FullName, e.Message);
+        if (e.Message.StartsWith("Deserialization"))
+            Assert.Contains("Deserialization of type " + typeof(EventWithInt).FullName, e.Message);
+        else
+            Assert.Contains("Cannot load String and convert string to int", e.Message);
     }
 
+    [Generate]
     public class EventWithNullable
     {
         public ulong EventId { get; set; }
@@ -805,6 +822,7 @@ public class EventStore2Test
         Assert.Equal(input2, obj2);
     }
 
+    [Generate]
     public class ObjectWithMultipleReferences
     {
         public object Reference1 { get; set; }
@@ -834,6 +852,7 @@ public class EventStore2Test
         }
     }
 
+    [Generate]
     public class ComplexObject
     {
         public ComplexObject Obj { get; set; }
@@ -844,6 +863,7 @@ public class EventStore2Test
         public int Int { get; set; }
     }
 
+    [Generate]
     public class EventWithDeepDictWithComplexObject
     {
         public ulong EventId { get; set; }
@@ -879,6 +899,7 @@ public class EventStore2Test
         Assert.Equal(1ul, ev.Prop.First().Key);
     }
 
+    [Generate]
     public class EventWithEncryptedString
     {
         public EncryptedString Secret { get; set; }
@@ -900,7 +921,7 @@ public class EventStore2Test
         serializer.ProcessMetadataLog(meta);
         var data = serializer.Serialize(out _, obj);
 
-        var deserializer = new EventDeserializer(null, null, cipher);
+        var deserializer = new EventDeserializer(null, null, null, cipher);
         Assert.False(deserializer.Deserialize(out var obj2, data));
         deserializer.ProcessMetadataLog(meta);
         Assert.True(deserializer.Deserialize(out obj2, data));
@@ -953,6 +974,7 @@ public class EventStore2Test
         Assert.Equal(obj.Items, ((ObjectWithIDictionary)obj2).Items);
     }
 
+    [Generate]
     public class SomeSets
     {
         public ISet<string> A { get; set; }
@@ -1041,6 +1063,12 @@ public class EventStore2Test
         Assert.Equivalent(obj, obj2);
     }
 
+    [Generate]
+    public class RegisterHelper
+    {
+        public IDictionary<ulong, ICollection<ulong>>? V1;
+    }
+
     [Fact]
     public void DictionaryWithSomeNullArrayAsValue()
     {
@@ -1085,6 +1113,8 @@ public class EventStore2Test
         Assert.Equal(testBaseClass.TestData, result.TestData);
     }
 
+    [GenerateFor(typeof(GenClass<int>))]
+    [GenerateFor(typeof(GenClass<(int, string)>))]
     public class GenClass<T>
     {
         public T Member { get; set; }
@@ -1155,6 +1185,7 @@ public class EventStore2Test
         Assert.Equal(obj, obj2);
     }
 
+    [Generate]
     public class ObjectWithGenericType : IEquatable<ObjectWithGenericType>
     {
         public GenericType<SomeTypeA> TypeA { get; set; }
@@ -1287,12 +1318,15 @@ public class EventStore2Test
         }
     }
 
-    class TestClassWithBaseClass : TestBaseClass
+    [Generate]
+    [PersistedName("TestClassWithBaseClass")]
+    public class TestClassWithBaseClass : TestBaseClass
     {
         [NotStored] public string TestData => Data;
     }
 
-    class TestBaseClass
+    [Generate]
+    public class TestBaseClass
     {
         public string Data { get; private set; }
 
@@ -1302,6 +1336,7 @@ public class EventStore2Test
         }
     }
 
+    [Generate]
     public class Obj
     {
         public int Num { get; set; }
@@ -1317,6 +1352,7 @@ public class EventStore2Test
         public Obj O { get; set; }
     }
 
+    [Generate]
     public class EObjV2
     {
         [PrimaryKey(1)] public ulong Id { get; set; }
@@ -1338,8 +1374,13 @@ public class EventStore2Test
         serializer.ProcessMetadataLog(meta);
         var data = serializer.Serialize(out _, value);
 
+        var converterFactory = new DefaultTypeConverterFactory();
+        converterFactory.RegisterConverter((in Obj i, out ObjChild o) =>
+        {
+            o = MyObjToObjChildTypeConvertorGenerator.Convert2ObjChild(i);
+        });
         var deserializer = new EventDeserializer(new OverloadableTypeMapper(typeof(EObjV2), "EObj"),
-            new MyObjToObjChildTypeConvertorGenerator());
+            converterFactory, new MyObjToObjChildTypeConvertorGenerator());
         deserializer.ProcessMetadataLog(meta);
         deserializer.Deserialize(out var deserializedObj, data);
 
@@ -1348,6 +1389,7 @@ public class EventStore2Test
         Assert.Equal(42, valueV2.O.Child);
     }
 
+    [Generate]
     public interface IContent
     {
         public ulong ContentId { get; set; }
@@ -1379,6 +1421,7 @@ public class EventStore2Test
         }
     }
 
+    [Generate]
     public class ClassWithIEnumerable : IEquatable<ClassWithIEnumerable>
     {
         public IEnumerable<IContent> Items { get; set; }
@@ -1445,6 +1488,8 @@ public class EventStore2Test
     {
     }
 
+    [GenerateFor(typeof(DynamicValueWrapper<Enum>))]
+    [GenerateFor(typeof(DynamicValueWrapper<Money>))]
     public class DynamicValueWrapper<TValueType> : IDynamicValue
     {
         public TValueType Value { get; set; }
@@ -1464,6 +1509,7 @@ public class EventStore2Test
         public string Code { get; init; }
     }
 
+    [Generate]
     public class Root
     {
         public List<IDynamicValue> R { get; set; }

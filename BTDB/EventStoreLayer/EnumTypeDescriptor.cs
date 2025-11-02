@@ -298,8 +298,24 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             };
         }
 
-        // First convert it to my enum type
         var preferredType = GetPreferredType();
+        if (preferredType == null && targetType == typeof(object))
+        {
+            if (_signed)
+            {
+                return (ref MemReader reader, ITypeBinaryDeserializerContext? _, ref byte value) =>
+                {
+                    Unsafe.As<byte, object>(ref value) = new DynamicEnum(reader.ReadVInt64(), this);
+                };
+            }
+
+            return (ref MemReader reader, ITypeBinaryDeserializerContext? _, ref byte value) =>
+            {
+                Unsafe.As<byte, object>(ref value) = new DynamicEnum(reader.ReadVUInt64(), this);
+            };
+        }
+
+        // First, convert it to my enum type
         if (preferredType != null && targetType != preferredType)
         {
             return this.BuildConvertingLoader(preferredType, targetType, typeConverterFactory);

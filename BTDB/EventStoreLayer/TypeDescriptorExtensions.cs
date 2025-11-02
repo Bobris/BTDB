@@ -100,7 +100,7 @@ public static class TypeDescriptorExtensions
                 };
             var origType = descriptor.GetPreferredType()!;
             var converter = typeConverterFactory.GetConverter(origType, targetType);
-            if (converter != null)
+            if (converter != null && origType != targetType)
             {
                 return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
                 {
@@ -110,7 +110,7 @@ public static class TypeDescriptorExtensions
                         if (!origType.IsAssignableFrom(obj.GetType()))
                         {
                             throw new BTDBException("Cannot assign " + obj.GetType().ToSimpleName() + " to " +
-                                                    origType.ToSimpleName());
+                                                    origType.ToSimpleName() + " as " + targetType.ToSimpleName());
                         }
                     }
 

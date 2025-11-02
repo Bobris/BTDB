@@ -9,6 +9,8 @@ using Sample3rdPartyLib;
 
 [assembly: GenerateFor(typeof(Class3rdPartyWithKeyedDependency))]
 
+DynamicValueWrapperRegistration.Register4BTDB();
+
 unsafe
 {
     var builder = new ContainerBuilder();
@@ -241,4 +243,46 @@ public struct ValueTupleIntString
 {
     public int Item1;
     public string Item2;
+}
+
+public interface IDynamicValue
+{
+}
+
+public class DynamicValueWrapper<TValueType> : IDynamicValue
+{
+    public TValueType Value { get; set; }
+}
+
+static file class DynamicValueWrapperRegistration
+{
+    class Accessor<T1>
+    {
+        [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+        public static extern DynamicValueWrapper<T1> Creator();
+
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Value>k__BackingField")]
+        public static extern ref T1 Field1(DynamicValueWrapper<T1> @this);
+    }
+
+    internal static unsafe void Register4BTDB()
+    {
+        var metadata = new ClassMetadata();
+        metadata.Name = "DynamicValueWrapper<System.Enum>";
+        metadata.Type = typeof(DynamicValueWrapper<Enum>);
+        metadata.Namespace = "BTDBTest";
+        metadata.Implements = [typeof(IDynamicValue)];
+        metadata.Creator = &Accessor<Enum>.Creator;
+        var dummy = Unsafe.As<DynamicValueWrapper<Enum>>(metadata);
+        metadata.Fields =
+        [
+            new()
+            {
+                Name = "Value",
+                Type = typeof(Enum),
+                ByteOffset = RawData.CalcOffset(dummy, ref Accessor<Enum>.Field1(dummy)),
+            },
+        ];
+        ReflectionMetadata.Register(metadata);
+    }
 }

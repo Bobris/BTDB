@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using BTDB.Buffer;
 using BTDB.Collections;
@@ -11,6 +12,7 @@ using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStore2Layer;
@@ -20,22 +22,24 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
     public const int ReservedBuildinTypes = 50;
 
     readonly Dictionary<object, DeserializerTypeInfo> _typeOrDescriptor2Info =
-        new Dictionary<object, DeserializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
+        new(ReferenceEqualityComparer<object>.Instance);
 
     StructList<DeserializerTypeInfo?> _id2Info;
     StructList<DeserializerTypeInfo?> _id2InfoNew;
 
     readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld =
-        new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+        new(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
     StructList<object> _visited;
     readonly object _lock = new object();
     readonly ISymmetricCipher _symmetricCipher;
+    public readonly ITypeConverterFactory ConverterFactory;
 
-    public EventDeserializer(ITypeNameMapper? typeNameMapper = null,
+    public EventDeserializer(ITypeNameMapper? typeNameMapper = null, ITypeConverterFactory? typeConverterFactory = null,
         ITypeConvertorGenerator? typeConvertorGenerator = null, ISymmetricCipher? symmetricCipher = null)
     {
         TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
+        ConverterFactory = typeConverterFactory ?? new DefaultTypeConverterFactory();
         ConvertorGenerator = typeConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
         _symmetricCipher = symmetricCipher ?? new InvalidSymmetricCipher();
         _id2Info.Reserve(ReservedBuildinTypes + 10);
@@ -215,30 +219,49 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
 
     Layer2Loader LoaderFactory(ITypeDescriptor descriptor)
     {
-        var loadAsType = LoadAsType(descriptor);
-        var methodBuilder = ILBuilder.Instance.NewMethod<Layer2Loader>("DeserializerFor" + descriptor.Name);
-        var il = methodBuilder.Generator;
-        try
+        if (IFieldHandler.UseNoEmitForDescriptors)
+#pragma warning disable CS0162 // Unreachable code detected
         {
-            descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(2),
-                loadAsType);
+            var loadAsType = LoadAsType(descriptor);
+            var loader = loadAsType == typeof(object)
+                ? descriptor.GenerateLoad(loadAsType, ConverterFactory)
+                : descriptor
+                    .BuildConvertingLoader(loadAsType, typeof(object), ConverterFactory);
+            return (ref MemReader reader, ITypeBinaryDeserializerContext ctx, ITypeDescriptor typeDescriptor) =>
+            {
+                object res = null;
+                loader(ref reader, ctx, ref Unsafe.As<object, byte>(ref res));
+                return res;
+            };
         }
-        catch (BTDBException ex)
+        else
         {
-            throw new BTDBException("Deserialization of type " + loadAsType.FullName, ex);
-        }
+            var loadAsType = LoadAsType(descriptor);
+            var methodBuilder = ILBuilder.Instance.NewMethod<Layer2Loader>("DeserializerFor" + descriptor.Name);
+            var il = methodBuilder.Generator;
+            try
+            {
+                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(2),
+                    loadAsType);
+            }
+            catch (BTDBException ex)
+            {
+                throw new BTDBException("Deserialization of type " + loadAsType.FullName, ex);
+            }
 
-        if (loadAsType.IsValueType)
-        {
-            il.Box(loadAsType);
-        }
-        else if (loadAsType != typeof(object))
-        {
-            il.Castclass(typeof(object));
-        }
+            if (loadAsType.IsValueType)
+            {
+                il.Box(loadAsType);
+            }
+            else if (loadAsType != typeof(object))
+            {
+                il.Castclass(typeof(object));
+            }
 
-        il.Ret();
-        return methodBuilder.Create();
+            il.Ret();
+            return methodBuilder.Create();
+        }
+#pragma warning restore CS0162 // Unreachable code detected
     }
 
     public unsafe bool Deserialize(out object? @object, ByteBuffer buffer)

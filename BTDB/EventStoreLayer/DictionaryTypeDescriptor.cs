@@ -146,6 +146,36 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public unsafe Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory)
     {
+        if (targetType == typeof(object))
+        {
+            var genericKeyLoad = _keyDescriptor!.GenerateLoadEx(typeof(object), typeConverterFactory);
+            var genericValueLoad = _valueDescriptor!.GenerateLoadEx(typeof(object), typeConverterFactory);
+            return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+            {
+                var count = reader.ReadVUInt32();
+                if (count == 0)
+                {
+                    Unsafe.As<byte, object?>(ref value) = null;
+                    return;
+                }
+
+                count--;
+                var obj = new DictionaryWithDescriptor<object, object?>((int)count, this);
+                while (count-- != 0)
+                {
+                    object? key = null;
+                    object? val = null;
+                    genericKeyLoad(ref reader, ctx,
+                        ref Unsafe.As<object?, byte>(ref key));
+                    genericValueLoad(ref reader, ctx,
+                        ref Unsafe.As<object?, byte>(ref val));
+                    if (key != null) obj[key!] = val;
+                }
+
+                Unsafe.As<byte, object?>(ref value) = obj;
+            };
+        }
+
         var collectionMetadata = ReflectionMetadata.FindCollectionByType(targetType);
         if (collectionMetadata == null)
             throw new BTDBException("Cannot find collection metadata for " + _type.ToSimpleName());

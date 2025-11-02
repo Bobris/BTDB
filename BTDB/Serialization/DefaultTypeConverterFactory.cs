@@ -21,15 +21,6 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
         if (from == to) return CreateAssign(from);
         if (_converters.TryGetValue((from, to), out var converter))
             return converter;
-        if (from.IsEnum)
-        {
-            return GetConverter(from.GetEnumUnderlyingType(), to);
-        }
-
-        if (to.IsEnum)
-        {
-            return GetConverter(from, Enum.GetUnderlyingType(to));
-        }
 
         if (to == typeof(object) && !from.IsValueType) return CreateAssign(to);
 
@@ -55,6 +46,16 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
             }
 
             return CreateUnboxing(to);
+        }
+
+        if (from.IsEnum)
+        {
+            return GetConverter(from.GetEnumUnderlyingType(), to);
+        }
+
+        if (to.IsEnum)
+        {
+            return GetConverter(from, Enum.GetUnderlyingType(to));
         }
 
         if (Nullable.GetUnderlyingType(to) == from)

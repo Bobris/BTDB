@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using BTDB;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
@@ -211,6 +212,7 @@ public class EventStoreTest
 
 #pragma warning disable 659
 
+    [Generate]
     public class User : IEquatable<User>
     {
         public string Name { get; set; }
@@ -915,12 +917,13 @@ public class EventStoreTest
         Assert.Equal("o", ev[11]);
     }
 
+    [Generate]
     public class StrangeVisibilities
     {
-        public string A { get; internal set; }
-        public string B { get; private set; }
-        public string C { internal get; set; }
-        public string D { private get; set; }
+        public string? A { get; internal set; }
+        public string? B { get; private set; }
+        public string? C { internal get; set; }
+        public string? D { private get; set; }
     }
 
     [Fact]

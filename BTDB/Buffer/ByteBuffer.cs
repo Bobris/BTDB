@@ -164,7 +164,7 @@ public struct ByteBuffer : IEquatable<ByteBuffer>
         return a.AsSyncReadOnlySpan().SequenceEqual(b.AsSyncReadOnlySpan());
     }
 
-    public static bool operator !=(ByteBuffer a, ByteBuffer b)
+    public static bool operator !=(in ByteBuffer a, in ByteBuffer b)
     {
         return !(a == b);
     }

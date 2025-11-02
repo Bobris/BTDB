@@ -69,7 +69,7 @@ public class SourceGenerator : IIncrementalGenerator
                                     "Must use CollectionExpression syntax for ConstructorParameters", null, false,
                                     false,
                                     false, false, [], [],
-                                    [], [], [], [], [], [], [],
+                                    [], [], [], [], [], [], [], [],
                                     constructorParametersExpression.GetLocation());
                             }
 
@@ -129,7 +129,7 @@ public class SourceGenerator : IIncrementalGenerator
                             false,
                             parameters, [new PropertyInfo("", returnType, null, true, false, false, false, null)], [],
                             [], [], [],
-                            [], [], [], null);
+                            [], [], [], [], null);
                     }
 
                     if (syntaxContext.Node is InterfaceDeclarationSyntax)
@@ -173,7 +173,7 @@ public class SourceGenerator : IIncrementalGenerator
                                         SpecialType.System_Collections_Generic_IEnumerable_T)
                                     {
                                         // extract type argument
-                                        var typeArgument = (methodReturnType as INamedTypeSymbol)?.TypeArguments
+                                        var typeArgument = methodReturnType.TypeArguments
                                             .FirstOrDefault();
                                         if (typeArgument != null &&
                                             !SymbolEqualityComparer.Default.Equals(typeArgument, relationType) &&
@@ -244,7 +244,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), persistedName, false,
                                 false, false, false,
                                 [], [], [], [], generationInfo.Fields, [],
-                                [new(relationType)], [],
+                                [new(relationType)], [], [],
                                 [
                                     generationInfo, ..generationInfo.Nested, ..variantsGenerationInfos,
                                     ..variantsGenerationInfos.SelectMany(g => g.Nested)
@@ -265,7 +265,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 [],
                                 [], [],
                                 dispatchers, [], [],
-                                [], [],
+                                [], [], [],
                                 [], null);
                         }
                     }
@@ -349,7 +349,7 @@ public class SourceGenerator : IIncrementalGenerator
                 catch (Exception e)
                 {
                     return new(GenerationType.Error, null, "BTDB0000", e.StackTrace, null, false, false, false, false,
-                        [], [], [], [], [], [], [], [], [], syntaxContext.Node.GetLocation());
+                        [], [], [], [], [], [], [], [], [], [], syntaxContext.Node.GetLocation());
                 }
             }).Where(i => i != null);
         gen = gen.SelectMany((g, _) => g!.Nested.IsEmpty ? Enumerable.Repeat(g, 1) : [g, ..g.Nested])!;
@@ -490,7 +490,7 @@ public class SourceGenerator : IIncrementalGenerator
     static GenerationInfo GenerationError(string code, string message, Location location)
     {
         return new(GenerationType.Error, null, code, message, null, false, false, false, false, [],
-            [], [], [], [], [], [], [], [], location);
+            [], [], [], [], [], [], [], [], [], location);
     }
 
     static bool IsICovariantRelation(INamedTypeSymbol typeSymbol)
@@ -677,7 +677,7 @@ public class SourceGenerator : IIncrementalGenerator
                 f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
                 || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
             .Select(f => new FieldsInfo(f.Name,
-                f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), GenericTypeFrom(f.Type),
                 ExtractPersistedName(f),
                 f.Type.IsReferenceType, f.Name, null, null, false,
                 f.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
@@ -715,6 +715,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                     return new FieldsInfo(p.Name,
                         p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        GenericTypeFrom(p.OriginalDefinition.Type),
                         ExtractPersistedName(p),
                         p.Type.IsReferenceType,
                         backingName, getterName, setterName, isReadOnly,
@@ -747,6 +748,16 @@ public class SourceGenerator : IIncrementalGenerator
         else
         {
             GatherCollections(model, fieldTypes, collections, nested, processed);
+        }
+
+        var genericParameters = symbol.TypeParameters.Zip(symbol.TypeArguments, (p, a) => (p, a)).Select(p =>
+            new GenericParameter(p.p.Name, new(p.a),
+                p.p.HasReferenceTypeConstraint, p.p.HasValueTypeConstraint, p.p.HasConstructorConstraint,
+                p.p.ConstraintTypes.Select(pp => new TypeRef(pp)).ToArray())).ToArray();
+
+        if (namespaceName == "System" && className == "Tuple")
+        {
+            genericParameters = [];
         }
 
         var methods = new List<MethodInfo>();
@@ -845,8 +856,38 @@ public class SourceGenerator : IIncrementalGenerator
             forceMetadata,
             parameters,
             propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, methods.ToArray(), implements,
-            collections.ToArray(),
+            collections.ToArray(), genericParameters,
             nested.ToArray(), null);
+    }
+
+    static string GenericTypeFrom(ITypeSymbol argType)
+    {
+        if (argType.TypeKind == TypeKind.TypeParameter)
+        {
+            return argType.Name;
+        }
+
+        if (argType.TypeKind == TypeKind.Array)
+        {
+            return GenericTypeFrom(((IArrayTypeSymbol)argType).ElementType) + "[]";
+        }
+
+        if (argType is INamedTypeSymbol { IsGenericType: true } namedTypeSymbol)
+        {
+            var genericArgs = string.Join(", ",
+                namedTypeSymbol.TypeArguments.Select(GenericTypeFrom));
+            if (namedTypeSymbol is { IsTupleType: true, IsValueType: true })
+            {
+                return "(" + genericArgs + ")";
+            }
+
+            var genericName = namedTypeSymbol.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            genericName = genericName.Substring(0, genericName.IndexOf('<'));
+            return
+                $"{genericName}<{genericArgs}>";
+        }
+
+        return argType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
     }
 
     static bool SerializableType(ITypeSymbol typeSymbol)
@@ -1127,7 +1168,7 @@ public class SourceGenerator : IIncrementalGenerator
                             true, true, [], [],
                             [], [],
                             DetectValueTupleFields(namedTypeSymbol), [],
-                            [], [],
+                            [], [], [],
                             [], null);
                         nested.Add(gi);
                     }
@@ -1155,7 +1196,7 @@ public class SourceGenerator : IIncrementalGenerator
         {
             var type = namedTypeSymbol.TypeArguments[i];
             var name = "Item" + (i + 1);
-            fields.Add(new(name, type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            fields.Add(new(name, type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), GenericTypeFrom(type),
                 null, type.IsReferenceType, name, null, null, false,
                 "", EquatableArray<IndexInfo>.Empty));
         }
@@ -1897,35 +1938,69 @@ public class SourceGenerator : IIncrementalGenerator
         declarations.Append(additionalDeclarations);
 
         var metadataCode = new StringBuilder();
-
+        var nameWithGeneric = "";
         if (generationInfo.Fields.Count != 0 || generationInfo.PersistedName != null || generationInfo.ForceMetadata)
         {
-            if (generationInfo.HasDefaultConstructor)
+            if (!generationInfo.GenericParameters.IsEmpty)
             {
+                nameWithGeneric =
+                    $"{generationInfo.FullName.Substring(0, generationInfo.FullName.IndexOf('<'))}<{string.Join(", ", generationInfo.GenericParameters.Select(p => p.Name))}>";
                 // language=c#
-                declarations.Append($"""
-                        [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
-                        extern static {generationInfo.FullName} Creator();
+                declarations.Append($$"""
+                        public class Activator<{{string.Join(", ", generationInfo.GenericParameters.Select(p => p.Name))}}>{{GenericConstrains(generationInfo)}}
+                        {
 
                     """);
+                if (generationInfo.HasDefaultConstructor)
+                {
+                    // language=c#
+                    declarations.Append($"""
+                                [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+                                extern public static {nameWithGeneric} Creator();
+
+                        """);
+                }
+                else
+                {
+                    // language=c#
+                    declarations.Append($$"""
+                                public static object Creator()
+                                {
+                                    return RuntimeHelpers.GetUninitializedObject(typeof({{generationInfo.FullName}}));
+                                }
+
+                        """);
+                }
             }
             else
             {
-                // language=c#
-                declarations.Append($$"""
-                        static object Creator()
-                        {
-                            return RuntimeHelpers.GetUninitializedObject(typeof({{generationInfo.FullName}}));
-                        }
+                if (generationInfo.HasDefaultConstructor)
+                {
+                    // language=c#
+                    declarations.Append($"""
+                            [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+                            extern static {generationInfo.FullName} Creator();
 
-                    """);
+                        """);
+                }
+                else
+                {
+                    // language=c#
+                    declarations.Append($$"""
+                            static object Creator()
+                            {
+                                return RuntimeHelpers.GetUninitializedObject(typeof({{generationInfo.FullName}}));
+                            }
+
+                        """);
+                }
             }
 
             // language=c#
             metadataCode.Append($"""
 
                         var metadata = new global::BTDB.Serialization.ClassMetadata();
-                        metadata.Name = "{generationInfo.Name}";
+                        metadata.Name = "{generationInfo.Name}{GenericParams(generationInfo)}";
                         metadata.Type = typeof({generationInfo.FullName});
                         metadata.Namespace = "{generationInfo.Namespace ?? ""}";
                 """);
@@ -1940,7 +2015,7 @@ public class SourceGenerator : IIncrementalGenerator
             metadataCode.Append($$"""
 
                         metadata.Implements = [{{string.Join(", ", generationInfo.Implements.Where(i => i.FullyQualifiedName.StartsWith("global::", StringComparison.Ordinal)).Select(i => $"typeof({i.FullyQualifiedName})"))}}];
-                        metadata.Creator = &Creator;
+                        metadata.Creator = &{{ActivatorName(generationInfo)}}Creator;
                         var dummy = Unsafe.As<{{(isTuple ? "TupleStunt" : generationInfo.FullName)}}>(metadata);
                         metadata.Fields = [
 
@@ -1980,53 +2055,100 @@ public class SourceGenerator : IIncrementalGenerator
                         """);
                     if (field.BackingName != null)
                     {
-                        // language=c#
-                        declarations.Append($"""
-                                [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
-                                extern static ref {normalizedType} Field{fieldIndex}({field.OwnerFullName} @this);
+                        if (generationInfo.GenericParameters.IsEmpty)
+                        {
+                            // language=c#
+                            declarations.Append($"""
+                                    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
+                                    extern static ref {normalizedType} Field{fieldIndex}({field.OwnerFullName} @this);
 
-                            """);
+                                """);
+                        }
+                        else
+                        {
+                            // language=c#
+                            declarations.Append($"""
+                                        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{field.BackingName}")]
+                                        extern public static ref {NormalizeType(field.GenericType)} Field{fieldIndex}({nameWithGeneric} @this);
+
+                                """);
+                        }
+
                         // language=c#
                         metadataCode.Append($"""
-                                            ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field{fieldIndex}(dummy)),
+                                            ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref {ActivatorName(generationInfo)}Field{fieldIndex}(dummy)),
 
                             """);
                     }
 
                     if (field is { GetterName: not null })
                     {
-                        // language=c#
-                        declarations.Append($$"""
-                                [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
-                                extern static {{normalizedType}} Getter{{fieldIndex}}({{field.OwnerFullName}} @this);
-                                static void GenGetter{{fieldIndex}}(object @this, ref byte value)
-                                {
-                                    Unsafe.As<byte, {{normalizedType}}>(ref value) = Getter{{fieldIndex}}(Unsafe.As<{{field.OwnerFullName}}>(@this));
-                                }
+                        if (generationInfo.GenericParameters.IsEmpty)
+                        {
+                            // language=c#
+                            declarations.Append($$"""
+                                    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
+                                    extern static {{normalizedType}} Getter{{fieldIndex}}({{field.OwnerFullName}} @this);
+                                    static void GenGetter{{fieldIndex}}(object @this, ref byte value)
+                                    {
+                                        Unsafe.As<byte, {{normalizedType}}>(ref value) = Getter{{fieldIndex}}(Unsafe.As<{{field.OwnerFullName}}>(@this));
+                                    }
 
-                            """);
+                                """);
+                        }
+                        else
+                        {
+                            // language=c#
+                            declarations.Append($$"""
+                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
+                                        extern public static {{NormalizeType(field.GenericType)}} Getter{{fieldIndex}}({{nameWithGeneric}} @this);
+                                        public static void GenGetter{{fieldIndex}}(object @this, ref byte value)
+                                        {
+                                            Unsafe.As<byte, {{NormalizeType(field.GenericType)}}>(ref value) = Getter{{fieldIndex}}(Unsafe.As<{{nameWithGeneric}}>(@this));
+                                        }
+
+                                """);
+                        }
+
                         // language=c#
                         metadataCode.Append($"""
-                                            PropRefGetter = &GenGetter{fieldIndex},
+                                            PropRefGetter = &{ActivatorName(generationInfo)}GenGetter{fieldIndex},
 
                             """);
                     }
 
                     if (field is { SetterName: not null })
                     {
-                        // language=c#
-                        declarations.Append($$"""
-                                [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
-                                extern static void Setter{{fieldIndex}}({{field.OwnerFullName}} @this, {{normalizedType}} value);
-                                static void GenSetter{{fieldIndex}}(object @this, ref byte value)
-                                {
-                                    Setter{{fieldIndex}}(Unsafe.As<{{field.OwnerFullName}}>(@this), Unsafe.As<byte, {{normalizedType}}>(ref value));
-                                }
+                        if (generationInfo.GenericParameters.IsEmpty)
+                        {
+                            // language=c#
+                            declarations.Append($$"""
+                                    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
+                                    extern static void Setter{{fieldIndex}}({{field.OwnerFullName}} @this, {{normalizedType}} value);
+                                    static void GenSetter{{fieldIndex}}(object @this, ref byte value)
+                                    {
+                                        Setter{{fieldIndex}}(Unsafe.As<{{field.OwnerFullName}}>(@this), Unsafe.As<byte, {{normalizedType}}>(ref value));
+                                    }
 
-                            """);
+                                """);
+                        }
+                        else
+                        {
+                            // language=c#
+                            declarations.Append($$"""
+                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
+                                        extern public static void Setter{{fieldIndex}}({{nameWithGeneric}} @this, {{normalizedType}} value);
+                                        public static void GenSetter{{fieldIndex}}(object @this, ref byte value)
+                                        {
+                                            Setter{{fieldIndex}}(Unsafe.As<{{nameWithGeneric}}>(@this), Unsafe.As<byte, {{NormalizeType(field.GenericType)}}>(ref value));
+                                        }
+
+                                """);
+                        }
+
                         // language=c#
                         metadataCode.Append($"""
-                                            PropRefSetter = &GenSetter{fieldIndex},
+                                            PropRefSetter = &{ActivatorName(generationInfo)}GenSetter{fieldIndex},
 
                             """);
                     }
@@ -2065,15 +2187,28 @@ public class SourceGenerator : IIncrementalGenerator
                     else
                     {
                         methodIndex++;
-                        // language=c#
-                        declarations.Append($"""
-                                [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
-                                extern static void OnSerialize{methodIndex}({generationInfo.FullName} @this);
+                        if (generationInfo.GenericParameters.IsEmpty)
+                        {
+                            // language=c#
+                            declarations.Append($"""
+                                    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
+                                    extern static void OnSerialize{methodIndex}({generationInfo.FullName} @this);
 
-                            """);
+                                """);
+                        }
+                        else
+                        {
+                            // language=c#
+                            declarations.Append($"""
+                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
+                                        extern static void OnSerialize{methodIndex}({nameWithGeneric} @this);
+
+                                """);
+                        }
+
                         // language=c#
                         metadataCode.Append($"""
-                                        OnSerialize{methodIndex}(Unsafe.As<{generationInfo.FullName}>(@this));
+                                        {ActivatorName(generationInfo)}OnSerialize{methodIndex}(Unsafe.As<{generationInfo.FullName}>(@this));
 
                             """);
                     }
@@ -2088,6 +2223,15 @@ public class SourceGenerator : IIncrementalGenerator
 
             // language=c#
             metadataCode.Append("        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);");
+
+            if (!generationInfo.GenericParameters.IsEmpty)
+            {
+                // language=c#
+                declarations.Append("""
+                        }
+
+                    """);
+            }
         }
 
         var dispatchers = new StringBuilder();
@@ -2148,11 +2292,58 @@ public class SourceGenerator : IIncrementalGenerator
             SourceText.From(code, Encoding.UTF8));
     }
 
+    static string GenericConstrains(GenerationInfo generationInfo)
+    {
+        if (!generationInfo.GenericParameters.Any(SomeConstraint)) return "";
+
+        return
+            $" where {string.Join(", ", generationInfo.GenericParameters.Where(SomeConstraint).Select(p => $"{p.Name}: " + string.Join(", ", EnumerateConstraints(p))))}";
+    }
+
+    static IEnumerable<string> EnumerateConstraints(GenericParameter genericParameter)
+    {
+        if (genericParameter.IsClassConstraint) yield return "class";
+        if (genericParameter.IsStructConstraint) yield return "struct";
+        foreach (var constraint in
+                 genericParameter.SpecificTypeConstraints.Where(t => t.TypeKind != TypeKind.Interface))
+        {
+            yield return constraint.FullyQualifiedName;
+        }
+
+        foreach (var constraint in
+                 genericParameter.SpecificTypeConstraints.Where(t => t.TypeKind == TypeKind.Interface))
+        {
+            yield return constraint.FullyQualifiedName;
+        }
+
+        if (genericParameter.IsNewConstraint) yield return "new()";
+    }
+
+    static bool SomeConstraint(GenericParameter arg)
+    {
+        return arg.IsClassConstraint || arg.IsNewConstraint || arg.IsStructConstraint ||
+               arg.SpecificTypeConstraints.Count > 0;
+    }
+
+    static string GenericParams(GenerationInfo generationInfo)
+    {
+        if (generationInfo.GenericParameters.IsEmpty) return "";
+        return
+            $"<{string.Join(", ", generationInfo.GenericParameters.Select(p => p.Value.FullyQualifiedName.Replace("global::", "")))}>";
+    }
+
+    static string ActivatorName(GenerationInfo generationInfo)
+    {
+        if (generationInfo.GenericParameters.IsEmpty) return "";
+        return
+            $"Activator<{string.Join(", ", generationInfo.GenericParameters.Select(p => p.Value.FullyQualifiedName))}>.";
+    }
+
     static void GenerateRelationInterfaceFactory(SourceProductionContext context, GenerationInfo generationInfo)
     {
         var code = new StringBuilder();
         // language=c#
-        code.Append($"""
+        code.Append("""
             // <auto-generated/>
             #pragma warning disable 612,618
             #nullable enable
@@ -2243,6 +2434,7 @@ record GenerationInfo(
     EquatableArray<MethodInfo> Methods,
     EquatableArray<TypeRef> Implements,
     EquatableArray<CollectionInfo> CollectionInfos,
+    EquatableArray<GenericParameter> GenericParameters,
     EquatableArray<GenerationInfo> Nested,
     Location? Location
 )
@@ -2284,6 +2476,14 @@ record CollectionInfo(
     }
 }
 
+record GenericParameter(
+    string Name,
+    TypeRef Value,
+    bool IsClassConstraint,
+    bool IsStructConstraint,
+    bool IsNewConstraint,
+    EquatableArray<TypeRef> SpecificTypeConstraints);
+
 record ParameterInfo(
     string Name,
     string Type,
@@ -2305,6 +2505,7 @@ record PropertyInfo(
 record FieldsInfo(
     string Name,
     string Type,
+    string GenericType,
     string? StoredName,
     bool IsReference,
     string? BackingName,
