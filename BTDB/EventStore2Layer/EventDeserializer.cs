@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.Encrypted;
@@ -31,7 +32,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         new(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
     StructList<object> _visited;
-    readonly object _lock = new object();
+    readonly Lock _lock = new();
     readonly ISymmetricCipher _symmetricCipher;
     public readonly ITypeConverterFactory ConverterFactory;
 

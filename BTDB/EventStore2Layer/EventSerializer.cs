@@ -11,6 +11,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using BTDB.Collections;
 using BTDB.Encrypted;
+using BTDB.Serialization;
 
 namespace BTDB.EventStore2Layer;
 
@@ -38,16 +39,18 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
             .Instance);
 
     readonly ISymmetricCipher _symmetricCipher;
+    public readonly ITypeConverterFactory ConverterFactory;
 
     readonly bool _useInputDescriptors;
     readonly bool _forbidSerializationOfLazyDBObjects;
     bool _newTypeFound;
 
-    public EventSerializer(ITypeNameMapper? typeNameMapper = null,
+    public EventSerializer(ITypeNameMapper? typeNameMapper = null, ITypeConverterFactory? typeConverterFactory = null,
         ITypeConvertorGenerator? typeConvertorGenerator = null, ISymmetricCipher? symmetricCipher = null,
         bool useInputDescriptors = true, bool forbidSerializationOfLazyDBObjects = false)
     {
         TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
+        ConverterFactory = typeConverterFactory ?? new DefaultTypeConverterFactory();
         ConvertorGenerator = typeConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
         _useInputDescriptors = useInputDescriptors;
         _forbidSerializationOfLazyDBObjects = forbidSerializationOfLazyDBObjects;
@@ -78,19 +81,34 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
 
     Layer1ComplexSaver BuildComplexSaver(ITypeDescriptor descriptor, Type type)
     {
-        var method =
-            ILBuilder.Instance.NewMethod<Layer1ComplexSaver>(descriptor.Name + "Saver" + type.ToSimpleName());
-        var il = method.Generator;
-        descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
+        if (IFieldHandler.UseNoEmitForDescriptors)
+#pragma warning disable CS0162 // Unreachable code detected
         {
-            ilgen.Ldarg(2);
-            if (type != typeof(object))
+            var saver = typeof(object) == type
+                ? descriptor.GenerateSave(type, ConverterFactory)
+                : descriptor.BuildConvertingSaver(typeof(object), type, ConverterFactory);
+            return (ref MemWriter writer, ITypeBinarySerializerContext ctx, object value) =>
             {
-                ilgen.UnboxAny(type);
-            }
-        }, type);
-        il.Ret();
-        return method.Create();
+                saver(ref writer, ctx, ref Unsafe.As<object, byte>(ref value));
+            };
+        }
+        else
+        {
+            var method =
+                ILBuilder.Instance.NewMethod<Layer1ComplexSaver>(descriptor.Name + "Saver" + type.ToSimpleName());
+            var il = method.Generator;
+            descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
+            {
+                ilgen.Ldarg(2);
+                if (type != typeof(object))
+                {
+                    ilgen.UnboxAny(type);
+                }
+            }, type);
+            il.Ret();
+            return method.Create();
+        }
+#pragma warning restore CS0162 // Unreachable code detected
     }
 
     Action<object, IDescriptorSerializerLiteContext> BuildNestedObjGatherer(ITypeDescriptor descriptor, Type type)

@@ -707,6 +707,7 @@ public class EventStore2Test
         Assert.Equal(readedEvem.Status, (int)original.Status);
     }
 
+    [Generate]
     public class EventWithString
     {
         public string Status { get; set; }
@@ -912,7 +913,7 @@ public class EventStore2Test
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
             28, 29, 30, 31
         ]);
-        var serializer = new EventSerializer(null, null, cipher);
+        var serializer = new EventSerializer(null, null, null, cipher);
         var obj = new EventWithEncryptedString
         {
             Secret = "pass"
@@ -1067,6 +1068,11 @@ public class EventStore2Test
     public class RegisterHelper
     {
         public IDictionary<ulong, ICollection<ulong>>? V1;
+        public Dictionary<ulong, ulong[]>? V2;
+        public Dictionary<ulong, IList<ulong>>? V3;
+        public List<bool>? V4;
+        public Dictionary<int, List<bool>>? V5;
+        public Dictionary<int, IList<bool>>? V6;
     }
 
     [Fact]
@@ -1347,6 +1353,7 @@ public class EventStore2Test
         public int Child { get; set; }
     }
 
+    [Generate]
     public class EObj
     {
         public Obj O { get; set; }
