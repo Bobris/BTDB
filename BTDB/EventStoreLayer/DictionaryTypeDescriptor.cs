@@ -285,6 +285,17 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     saveValue(ref writer, ctx, ref RawData.Ref(obj, offset + layout.OffsetValue));
                 }
             }
+            else if (obj is IInternalODBDictionary fromODBDictionary)
+            {
+                writer.WriteVUInt32((uint)fromODBDictionary.Count + 1);
+                var localWriter = writer;
+                fromODBDictionary.Iterate((ref byte key, ref byte value) =>
+                {
+                    saveKey(ref localWriter, ctx, ref key);
+                    saveValue(ref localWriter, ctx, ref value);
+                });
+                writer = localWriter;
+            }
             else throw new BTDBException("Cannot save " + objType.ToSimpleName() + " as " + dictType.ToSimpleName());
         };
     }
