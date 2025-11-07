@@ -101,7 +101,7 @@ public class EncryptedStringDescriptor : ITypeDescriptor
         return this.BuildConvertingSaver(targetType, typeof(EncryptedString), typeConverterFactory);
     }
 
-    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory, bool forbidSerializationOfLazyDBObjects)
     {
         return null;
     }

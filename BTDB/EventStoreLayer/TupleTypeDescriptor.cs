@@ -316,7 +316,8 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         }
     }
 
-    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory,
+        bool forbidSerializationOfLazyDBObjects)
     {
         if (_itemDescriptors.All(d => d.Sealed)) return null;
         var metadata = ReflectionMetadata.FindByType(targetType);
@@ -333,7 +334,8 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             {
                 var fieldHandler = _itemDescriptors[i];
                 var field = metadata.Fields[i];
-                var newDescriptorEx = fieldHandler.GenerateNewDescriptorEx(field.Type, typeConverterFactory);
+                var newDescriptorEx = fieldHandler.GenerateNewDescriptorEx(field.Type, typeConverterFactory,
+                    forbidSerializationOfLazyDBObjects);
                 if (newDescriptorEx == null) continue;
                 var offset = field.ByteOffset!.Value;
                 newDescriptors.Add((IDescriptorSerializerLiteContext ctx, ref byte value) =>
@@ -358,7 +360,8 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             {
                 var fieldHandler = _itemDescriptors[i];
                 var field = metadata.Fields[i];
-                var newDescriptorEx = fieldHandler.GenerateNewDescriptorEx(field.Type, typeConverterFactory);
+                var newDescriptorEx = fieldHandler.GenerateNewDescriptorEx(field.Type, typeConverterFactory,
+                    forbidSerializationOfLazyDBObjects);
                 if (newDescriptorEx == null) continue;
                 var offset = field.ByteOffset!.Value;
                 newDescriptors.Add((IDescriptorSerializerLiteContext ctx, ref byte value) =>

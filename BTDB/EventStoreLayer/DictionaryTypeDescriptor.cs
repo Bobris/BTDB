@@ -300,14 +300,18 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         };
     }
 
-    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory,
+        bool forbidSerializationOfLazyDBObjects)
     {
         if (_keyDescriptor!.Sealed && _valueDescriptor!.Sealed) return null;
         var keyType = targetType.GenericTypeArguments[0];
         var valueType = targetType.GenericTypeArguments[1];
         var dictType = typeof(Dictionary<,>).MakeGenericType(targetType.GenericTypeArguments);
-        var saveKey = _keyDescriptor!.GenerateNewDescriptorEx(keyType, typeConverterFactory);
-        var saveValue = _valueDescriptor!.GenerateNewDescriptorEx(valueType, typeConverterFactory);
+        var saveKey =
+            _keyDescriptor!.GenerateNewDescriptorEx(keyType, typeConverterFactory, forbidSerializationOfLazyDBObjects);
+        var saveValue =
+            _valueDescriptor!.GenerateNewDescriptorEx(valueType, typeConverterFactory,
+                forbidSerializationOfLazyDBObjects);
         var layout = RawData.GetDictionaryEntriesLayout(keyType, valueType);
         return (IDescriptorSerializerLiteContext ctx, ref byte value) =>
         {
@@ -337,6 +341,20 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     saveKey?.Invoke(ctx, ref RawData.Ref(obj, offset + layout.OffsetKey));
                     saveValue?.Invoke(ctx, ref RawData.Ref(obj, offset + layout.OffsetValue));
                 }
+            }
+            else if (obj is IInternalODBDictionary fromODBDictionary)
+            {
+                if (forbidSerializationOfLazyDBObjects)
+                {
+                    throw new BTDBException(
+                        "Lazy DB object serialization is forbidden. Type: " + objType.ToSimpleName());
+                }
+
+                fromODBDictionary.Iterate((ref byte key, ref byte value) =>
+                {
+                    saveKey?.Invoke(ctx, ref key);
+                    saveValue?.Invoke(ctx, ref value);
+                });
             }
             else throw new BTDBException("Cannot save " + objType.ToSimpleName() + " as " + dictType.ToSimpleName());
         };

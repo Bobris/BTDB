@@ -173,12 +173,14 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         };
     }
 
-    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory,
+        bool forbidSerializationOfLazyDBObjects)
     {
         if (_itemDescriptor!.Sealed) return null;
         if (GetPreferredType() != targetType) throw new ArgumentOutOfRangeException(nameof(targetType));
         var nestedNewDescriptor =
-            _itemDescriptor.GenerateNewDescriptorEx(_itemDescriptor!.GetPreferredType()!, typeConverterFactory);
+            _itemDescriptor.GenerateNewDescriptorEx(_itemDescriptor!.GetPreferredType()!, typeConverterFactory,
+                forbidSerializationOfLazyDBObjects);
         if (nestedNewDescriptor == null) return null;
         var offset = RawData.Align(1, RawData.GetSizeAndAlign(_itemDescriptor!.GetPreferredType()!).Align);
         return (IDescriptorSerializerLiteContext? ctx, ref byte value) =>

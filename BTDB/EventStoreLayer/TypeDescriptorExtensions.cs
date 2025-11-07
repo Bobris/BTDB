@@ -35,11 +35,12 @@ public static class TypeDescriptorExtensions
     }
 
     public static Layer2NewDescriptor? GenerateNewDescriptorEx(this ITypeDescriptor descriptor, Type targetType,
-        ITypeConverterFactory typeConverterFactory)
+        ITypeConverterFactory typeConverterFactory, bool forbidSerializationOfLazyDBObjects)
     {
         if (descriptor.StoredInline)
         {
-            return descriptor.GenerateNewDescriptor(targetType, typeConverterFactory);
+            return descriptor.GenerateNewDescriptor(targetType, typeConverterFactory,
+                forbidSerializationOfLazyDBObjects);
         }
 
         return (IDescriptorSerializerLiteContext ctx, ref byte value) =>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using BTDB;
 using BTDB.EventStoreLayer;
 using BTDB.StreamLayer;
 using Xunit;
@@ -94,7 +95,8 @@ public class EventLayerAndMappingIntegrationTest
         }
     }
 
-    class Event
+    [Generate]
+    public class Event
     {
         public IList<EventItem> Items { get; set; }
     }

@@ -426,7 +426,8 @@ class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         return this.BuildConvertingSaver(targetType, saveType, typeConverterFactory);
     }
 
-    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory,
+        bool forbidSerializationOfLazyDBObjects)
     {
         return null;
     }

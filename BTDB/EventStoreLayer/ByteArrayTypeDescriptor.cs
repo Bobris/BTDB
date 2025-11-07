@@ -145,7 +145,8 @@ public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
         return this.BuildConvertingSaver(typeof(byte[]), targetType, typeConverterFactory);
     }
 
-    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory,
+        bool forbidSerializationOfLazyDBObjects)
     {
         return null;
     }

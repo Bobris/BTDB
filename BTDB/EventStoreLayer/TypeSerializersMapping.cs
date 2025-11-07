@@ -191,7 +191,8 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
             throw new InvalidOperationException();
         }
 
-        public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+        public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory,
+            bool forbidSerializationOfLazyDBObjects)
         {
             throw new InvalidOperationException();
         }

@@ -326,13 +326,16 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         };
     }
 
-    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory)
+    public Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory,
+        bool forbidSerializationOfLazyDBObjects)
     {
         if (_itemDescriptor!.Sealed) return null;
-        if (GetPreferredType() != targetType) throw new ArgumentOutOfRangeException(nameof(targetType));
-        var itemType = targetType.GenericTypeArguments[0];
-        var nestedNewDescriptor = _itemDescriptor!.GenerateNewDescriptorEx(itemType, typeConverterFactory);
+        var itemType = targetType.IsSZArray ? targetType.GetElementType()! : targetType.GenericTypeArguments[0];
+        var nestedNewDescriptor =
+            _itemDescriptor!.GenerateNewDescriptorEx(itemType, typeConverterFactory,
+                forbidSerializationOfLazyDBObjects);
         if (nestedNewDescriptor == null) return null;
+        var arrayType = itemType.MakeArrayType();
         var hashSetType = typeof(HashSet<>).MakeGenericType(itemType);
         var listType = typeof(List<>).MakeGenericType(itemType);
         var layout = RawData.GetHashSetEntriesLayout(itemType);
@@ -345,7 +348,18 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             }
 
             var objType = obj.GetType();
-            if (listType.IsAssignableFrom(objType))
+            if (arrayType.IsAssignableFrom(objType))
+            {
+                var count = (uint)RawData.GetArrayLength(ref value);
+                ref readonly var mt = ref RawData.MethodTableRef(obj);
+                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var offsetDelta = mt.ComponentSize;
+                for (var i = 0; i < count; i++, offset += offsetDelta)
+                {
+                    nestedNewDescriptor(ctx, ref RawData.Ref(obj, offset));
+                }
+            }
+            else if (listType.IsAssignableFrom(objType))
             {
                 var count = (uint)Unsafe.As<ICollection>(obj).Count;
                 obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
@@ -378,6 +392,19 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
                         nestedNewDescriptor(ctx, ref RawData.Ref(obj, offset + layout.Offset));
                     }
+                }
+            }
+            else if (objType.IsGenericType && objType.Name == "<>z__ReadOnlyArray`1" &&
+                     objType.GenericTypeArguments[0] == itemType)
+            {
+                obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
+                var count = (uint)RawData.GetArrayLength(ref Unsafe.As<object, byte>(ref obj));
+                ref readonly var mt = ref RawData.MethodTableRef(obj);
+                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var offsetDelta = mt.ComponentSize;
+                for (var i = 0; i < count; i++, offset += offsetDelta)
+                {
+                    nestedNewDescriptor(ctx, ref RawData.Ref(obj, offset));
                 }
             }
             else throw new BTDBException("Cannot iterate new descriptors for type " + objType.ToSimpleName());

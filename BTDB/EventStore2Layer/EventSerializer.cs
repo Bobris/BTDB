@@ -111,7 +111,17 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
 #pragma warning restore CS0162 // Unreachable code detected
     }
 
-    Action<object, IDescriptorSerializerLiteContext> BuildNestedObjGatherer(ITypeDescriptor descriptor, Type type)
+    struct ObjectSerializerCtx
+    {
+        internal nint StoragePtr;
+        internal IDescriptorSerializerLiteContext Ctx;
+        internal object Obj;
+        internal Layer2NewDescriptor OriginalGenerator;
+        internal Converter UnboxConverter;
+    }
+
+    unsafe Action<object, IDescriptorSerializerLiteContext> BuildNestedObjGatherer(ITypeDescriptor descriptor,
+        Type type)
     {
         Action<object, IDescriptorSerializerLiteContext> res;
         if (type != typeof(object))
@@ -120,20 +130,67 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
                 return res;
         }
 
-        var gen = descriptor.BuildNewDescriptorGenerator();
-        if (gen == null)
+        if (IFieldHandler.UseNoEmitForDescriptors)
+#pragma warning disable CS0162 // Unreachable code detected
         {
-            res = (obj, ctx) => { };
+            var newDescriptor =
+                descriptor.GenerateNewDescriptor(type, ConverterFactory, _forbidSerializationOfLazyDBObjects);
+            if (newDescriptor == null)
+            {
+                res = (obj, ctx) => { };
+            }
+            else
+            {
+                if (type.IsValueType)
+                {
+                    var unbox = ConverterFactory.GetConverter(typeof(object), type);
+                    var originalGenerator = newDescriptor;
+                    var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(type);
+                    res = (obj, ctx) =>
+                    {
+                        ObjectSerializerCtx context;
+                        context.StoragePtr = 0;
+                        context.Ctx = ctx;
+                        context.Obj = obj;
+                        context.OriginalGenerator = originalGenerator;
+                        context.UnboxConverter = unbox;
+
+                        stackAllocator(ref Unsafe.As<ObjectSerializerCtx, byte>(ref context), ref context.StoragePtr,
+                            &Nested);
+
+                        static void Nested(ref byte value)
+                        {
+                            ref var context = ref Unsafe.As<byte, ObjectSerializerCtx>(ref value);
+                            context.UnboxConverter(ref Unsafe.As<object, byte>(ref context.Obj),
+                                ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                            context.OriginalGenerator(context.Ctx, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        }
+                    };
+                }
+                else
+                {
+                    res = (obj, ctx) => { newDescriptor(ctx, ref Unsafe.As<object, byte>(ref obj)); };
+                }
+            }
         }
         else
         {
-            var method =
-                ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>(
-                    "GatherAllObjectsForTypeExtraction_" + descriptor.Name + "_For_" + type.ToSimpleName());
-            var il = method.Generator;
-            gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), type);
-            il.Ret();
-            res = method.Create();
+            var gen = descriptor.BuildNewDescriptorGenerator();
+            if (gen == null)
+            {
+                res = (obj, ctx) => { };
+            }
+            else
+            {
+                var method =
+                    ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>(
+                        "GatherAllObjectsForTypeExtraction_" + descriptor.Name + "_For_" + type.ToSimpleName());
+                var il = method.Generator;
+                gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), type);
+                il.Ret();
+                res = method.Create();
+            }
+#pragma warning restore CS0162 // Unreachable code detected
         }
 
         if (type != typeof(object)) _gathererCache[type] = res;

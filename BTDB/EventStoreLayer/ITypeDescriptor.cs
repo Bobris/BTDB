@@ -25,7 +25,9 @@ public interface ITypeDescriptor : IEquatable<ITypeDescriptor>
     Layer2Loader GenerateLoad(Type targetType, ITypeConverterFactory typeConverterFactory);
     void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx);
     Layer2Saver GenerateSave(Type targetType, ITypeConverterFactory typeConverterFactory);
-    Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory);
+
+    Layer2NewDescriptor? GenerateNewDescriptor(Type targetType, ITypeConverterFactory typeConverterFactory,
+        bool forbidSerializationOfLazyDBObjects);
 
     // ctx is ITypeBinaryDeserializerContext
     void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,

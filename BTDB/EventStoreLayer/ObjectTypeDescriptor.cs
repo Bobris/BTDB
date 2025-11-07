@@ -485,7 +485,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     }
 
     public unsafe Layer2NewDescriptor? GenerateNewDescriptor(Type targetType,
-        ITypeConverterFactory typeConverterFactory)
+        ITypeConverterFactory typeConverterFactory, bool forbidSerializationOfLazyDBObjects)
     {
         if (_fields.Select(p => p.Value).All(d => d.Sealed)) return null;
         if (GetPreferredType() != targetType)
@@ -505,7 +505,8 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         foreach (var field in _fields)
         {
             var fieldInfo = metadata.Fields.First(f => f.Name == field.Key);
-            var newDescriptor = field.Value.GenerateNewDescriptorEx(fieldInfo.Type, typeConverterFactory);
+            var newDescriptor = field.Value.GenerateNewDescriptorEx(fieldInfo.Type, typeConverterFactory,
+                forbidSerializationOfLazyDBObjects);
             if (newDescriptor == null) continue;
             var propRefGetter = fieldInfo.PropRefGetter;
             if (propRefGetter != null)
