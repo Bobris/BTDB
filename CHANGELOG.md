@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.6.9
+
 ### Backported
 
 Enums compatibility is now not checked at all in serialization.
