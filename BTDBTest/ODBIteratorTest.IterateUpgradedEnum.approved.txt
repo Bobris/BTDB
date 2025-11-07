@@ -1,0 +1,11 @@
+Relation EnumWithItemInKey
+Used key: 03 01 81 Value len:1
+BeginKey
+StartField Key
+ScalarObj Eins
+ScalarStr Eins
+EndField
+EndKey
+BeginValue
+EndValue
+EndRelation

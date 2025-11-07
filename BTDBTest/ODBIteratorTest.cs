@@ -777,4 +777,61 @@ public class ODBIteratorTest : IDisposable
 
         IterateWithApprove();
     }
+
+    public enum SimpleEnum
+    {
+        One = 1,
+        Two = 2
+    }
+
+    public enum SimpleEnumV2
+    {
+        Eins = 1,
+        Zwei = 2,
+    }
+
+    public class ItemWithEnumInKey
+    {
+        [PrimaryKey] public SimpleEnum Key { get; set; }
+    }
+
+    public class ItemWithEnumInKeyV2
+    {
+        [PrimaryKey] public SimpleEnumV2 Key { get; set; }
+    }
+
+    public interface ITableWithEnumInKey : IRelation<ItemWithEnumInKey>
+    {
+        void Insert(ItemWithEnumInKey person);
+    }
+
+    public interface ITableWithEnumInKeyV2 : IRelation<ItemWithEnumInKeyV2>
+    {
+        ItemWithEnumInKeyV2? FindById(SimpleEnumV2 key);
+    }
+
+    [Fact]
+    public void IterateUpgradedEnum()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<ITableWithEnumInKey>("EnumWithItemInKey");
+            var table = creator(tr);
+
+            table.Insert(new ItemWithEnumInKey { Key = SimpleEnum.One });
+
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<ITableWithEnumInKeyV2>("EnumWithItemInKey");
+            var table = creator(tr);
+            // This will commit change in metadata, so iterate will print Eins instead of One
+            tr.Commit();
+        }
+
+        IterateWithApprove();
+    }
 }
