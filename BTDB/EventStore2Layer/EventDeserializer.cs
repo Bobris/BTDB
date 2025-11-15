@@ -56,7 +56,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
             _typeOrDescriptor2Info[predefinedType] = infoForType;
             _id2Info.Add(infoForType);
 
-            _typeOrDescriptor2Info.TryAdd(predefinedType.GetPreferredType(), infoForType);
+            _typeOrDescriptor2Info.TryAdd(predefinedType.GetPreferredType()!, infoForType);
             var descriptorMultipleNativeTypes = predefinedType as ITypeDescriptorMultipleNativeTypes;
             if (descriptorMultipleNativeTypes == null) continue;
             foreach (var type in descriptorMultipleNativeTypes.GetNativeTypes())

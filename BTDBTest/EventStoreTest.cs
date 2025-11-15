@@ -309,6 +309,7 @@ public class EventStoreTest
     }
 
 #pragma warning disable 659
+    [Generate]
     public class UserEvent : IEquatable<UserEvent>
     {
         public long Id { get; set; }
@@ -354,7 +355,7 @@ public class EventStoreTest
         var appender = manager.AppendToStore(file);
         var user = new User { Name = "A", Age = 1 };
         var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
-        appender.Store(null, new object[] { userEvent });
+        appender.Store(null, [userEvent]);
 
         manager = new EventStoreManager();
         var reader = manager.OpenReadOnlyStore(file);
@@ -364,6 +365,7 @@ public class EventStoreTest
         Assert.Same(readUserEvent.User1, readUserEvent.User2);
     }
 
+    [Generate]
     public class UserEventMore : IEquatable<UserEventMore>
     {
         public long Id { get; set; }
@@ -506,6 +508,7 @@ public class EventStoreTest
         Assert.Equal(ApplicationsRenamedType.First, readApplicationInfo.Type);
     }
 
+    [Generate]
     public class UserEventList : IEquatable<UserEventList>
     {
         public long Id { get; set; }
@@ -549,7 +552,7 @@ public class EventStoreTest
         var appender = manager.AppendToStore(file);
         var userA = new User { Name = "A", Age = 1 };
         var userB = new User { Name = "B", Age = 2 };
-        var userEvent = new UserEventList { Id = 10, List = new List<User> { userA, userB, userA } };
+        var userEvent = new UserEventList { Id = 10, List = new() { userA, userB, userA } };
         appender.Store(null, new object[] { userEvent });
 
         manager = new EventStoreManager();
@@ -562,6 +565,7 @@ public class EventStoreTest
         Assert.Null(readUserEvent.User1);
     }
 
+    [Generate]
     public class UserEventDictionary : IEquatable<UserEventDictionary>
     {
         public long Id { get; set; }
@@ -621,6 +625,7 @@ public class EventStoreTest
         Assert.Equal(readUserEvent, userEvent);
     }
 
+    [Generate]
     public class ErrorInfo
     {
         public IDictionary<string, IList<ErrorInfo>> PropertyErrors { get; set; }
@@ -752,6 +757,7 @@ public class EventStoreTest
         appender.Store(null, new object[] { e1 });
     }
 
+    [Generate]
     public class UsersIList
     {
         public IList<User> Users { get; set; }
@@ -1153,6 +1159,8 @@ public class EventStoreTest
     {
     }
 
+    [GenerateFor(typeof(DynamicValueWrapper<Enum>))]
+    [GenerateFor(typeof(DynamicValueWrapper<Money>))]
     public class DynamicValueWrapper<TValueType> : IDynamicValue
     {
         public TValueType Value { get; set; }
@@ -1172,6 +1180,7 @@ public class EventStoreTest
         public string Code { get; init; }
     }
 
+    [Generate]
     public class Root
     {
         public List<IDynamicValue> R { get; set; }
@@ -1203,26 +1212,27 @@ public class EventStoreTest
         var usd = new Currency() { Code = "USD", MinorToAmountRatio = 100 };
         var obj = new Root()
         {
-            R = new List<IDynamicValue>()
-            {
-                new DynamicValueWrapper<Enum>() { Value = Test1.A },
-                new DynamicValueWrapper<Money>()
+            R =
+            [
+                new DynamicValueWrapper<Enum> { Value = Test1.A },
+                new DynamicValueWrapper<Money>
                 {
-                    Value = new Money()
+                    Value = new()
                     {
                         MinorValue = 10000,
                         Currency = usd
                     }
                 },
-                new DynamicValueWrapper<Money>()
+
+                new DynamicValueWrapper<Money>
                 {
-                    Value = new Money()
+                    Value = new()
                     {
                         MinorValue = 61000,
                         Currency = usd
                     }
                 }
-            }
+            ]
         };
 
         var obj2 = SerializationInternal<Root>(obj);

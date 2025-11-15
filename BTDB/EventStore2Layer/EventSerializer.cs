@@ -143,7 +143,7 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
             {
                 if (type.IsValueType)
                 {
-                    var unbox = ConverterFactory.GetConverter(typeof(object), type);
+                    var unbox = ConverterFactory.GetConverter(typeof(object), type)!;
                     var originalGenerator = newDescriptor;
                     var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(type);
                     res = (obj, ctx) =>

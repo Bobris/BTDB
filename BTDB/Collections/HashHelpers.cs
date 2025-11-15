@@ -4,6 +4,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace BTDB.Collections;
@@ -25,24 +26,28 @@ static class HashHelpers
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
+    [DoesNotReturn]
     internal static void ThrowInvalidOperationException_ConcurrentOperationsNotSupported()
     {
         throw new InvalidOperationException("Concurrent Operations Not Supported");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
+    [DoesNotReturn]
     internal static void ThrowKeyArgumentNullException()
     {
         throw new ArgumentNullException("key");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
+    [DoesNotReturn]
     internal static void ThrowCapacityArgumentOutOfRangeException()
     {
         throw new ArgumentOutOfRangeException("capacity");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
+    [DoesNotReturn]
     internal static bool ThrowNotSupportedException()
     {
         throw new NotSupportedException();

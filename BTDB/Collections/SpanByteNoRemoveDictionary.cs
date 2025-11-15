@@ -138,7 +138,7 @@ public class SpanByteNoRemoveDictionary<TValue> : IReadOnlyCollection<KeyValuePa
             collisionCount++;
         }
 
-        value = default;
+        value = default!;
         return false;
     }
 
@@ -179,7 +179,7 @@ public class SpanByteNoRemoveDictionary<TValue> : IReadOnlyCollection<KeyValuePa
             }
 
             if (seqLock.RetryRead(ref seqCounter)) goto retry;
-            value = default;
+            value = default!;
             return false;
         }
         catch

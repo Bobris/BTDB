@@ -2137,7 +2137,7 @@ public class SourceGenerator : IIncrementalGenerator
                             // language=c#
                             declarations.Append($$"""
                                         [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
-                                        extern public static void Setter{{fieldIndex}}({{nameWithGeneric}} @this, {{normalizedType}} value);
+                                        extern public static void Setter{{fieldIndex}}({{nameWithGeneric}} @this, {{NormalizeType(field.GenericType)}} value);
                                         public static void GenSetter{{fieldIndex}}(object @this, ref byte value)
                                         {
                                             Setter{{fieldIndex}}(Unsafe.As<{{nameWithGeneric}}>(@this), Unsafe.As<byte, {{NormalizeType(field.GenericType)}}>(ref value));

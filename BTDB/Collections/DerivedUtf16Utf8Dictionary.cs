@@ -56,7 +56,7 @@ public readonly struct DerivedUtf16Utf8Dictionary<TDerivedValue, TValue>
             return true;
         }
 
-        value = default;
+        value = default!;
         return false;
     }
 
@@ -69,7 +69,7 @@ public readonly struct DerivedUtf16Utf8Dictionary<TDerivedValue, TValue>
             return true;
         }
 
-        value = default;
+        value = default!;
         return false;
     }
 }

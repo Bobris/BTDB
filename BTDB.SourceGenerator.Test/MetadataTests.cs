@@ -515,6 +515,34 @@ public class MetadataTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyGenericClassWithComplexGetterSetterMetadataGeneration()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            namespace TestNamespace;
+
+            [BTDB.GenerateFor(typeof(GenericClass<System.Enum>))]
+            public class GenericClass<T>
+            {
+                public T Value
+                {
+                    get
+                    {
+                        Console.WriteLine("Hello");
+                        return default(T)!;
+                    }
+                    set
+                    {
+                        Console.WriteLine("World" + value);
+                    }
+                }
+            }
+
+            """);
+    }
+
+    [Fact]
     public Task VerifyGenericClassWithConstrainsMetadataGeneration()
     {
         // language=cs

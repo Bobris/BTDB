@@ -21,17 +21,17 @@ public static class ByteStructs
     {
         internal Key20(ByteBuffer value)
         {
-            V1 = PackUnpack.UnpackUInt64LE(value.Buffer, value.Offset);
-            V2 = PackUnpack.UnpackUInt64LE(value.Buffer, value.Offset + 8);
-            V3 = PackUnpack.UnpackUInt32LE(value.Buffer, value.Offset + 16);
+            V1 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset);
+            V2 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset + 8);
+            V3 = PackUnpack.UnpackUInt32LE(value.Buffer!, value.Offset + 16);
         }
 
         internal void FillBuffer(ByteBuffer buf)
         {
             var o = buf.Offset;
-            PackUnpack.PackUInt64LE(buf.Buffer, o, V1);
-            PackUnpack.PackUInt64LE(buf.Buffer, o + 8, V2);
-            PackUnpack.PackUInt32LE(buf.Buffer, o + 16, V3);
+            PackUnpack.PackUInt64LE(buf.Buffer!, o, V1);
+            PackUnpack.PackUInt64LE(buf.Buffer!, o + 8, V2);
+            PackUnpack.PackUInt32LE(buf.Buffer!, o + 16, V3);
         }
 
         internal readonly ulong V1;
@@ -56,19 +56,19 @@ public static class ByteStructs
     {
         internal Key32(ByteBuffer value)
         {
-            V1 = PackUnpack.UnpackUInt64LE(value.Buffer, value.Offset);
-            V2 = PackUnpack.UnpackUInt64LE(value.Buffer, value.Offset + 8);
-            V3 = PackUnpack.UnpackUInt64LE(value.Buffer, value.Offset + 16);
-            V4 = PackUnpack.UnpackUInt64LE(value.Buffer, value.Offset + 23);
+            V1 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset);
+            V2 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset + 8);
+            V3 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset + 16);
+            V4 = PackUnpack.UnpackUInt64LE(value.Buffer!, value.Offset + 23);
         }
 
         internal void FillBuffer(ByteBuffer buf)
         {
             var o = buf.Offset;
-            PackUnpack.PackUInt64LE(buf.Buffer, o, V1);
-            PackUnpack.PackUInt64LE(buf.Buffer, o + 8, V2);
-            PackUnpack.PackUInt64LE(buf.Buffer, o + 16, V3);
-            PackUnpack.PackUInt64LE(buf.Buffer, o + 24, V4);
+            PackUnpack.PackUInt64LE(buf.Buffer!, o, V1);
+            PackUnpack.PackUInt64LE(buf.Buffer!, o + 8, V2);
+            PackUnpack.PackUInt64LE(buf.Buffer!, o + 16, V3);
+            PackUnpack.PackUInt64LE(buf.Buffer!, o + 24, V4);
         }
 
         internal readonly ulong V1;

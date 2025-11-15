@@ -9,6 +9,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using BTDB;
 using BTDB.Encrypted;
 using Microsoft.Extensions.Primitives;
 using Xunit;
@@ -408,6 +409,12 @@ public class TypeSerializersTest
         Assert.Equal(value[0].StringField, obj[0].StringField);
     }
 
+    [Generate]
+    public class RegistrationHelper
+    {
+        public Dictionary<int, SimpleDto> A;
+    }
+
     [Fact]
     public void CanDeserializeDictionaryToDynamic()
     {
@@ -454,6 +461,7 @@ public class TypeSerializersTest
         Assert.Equal(1, obj.IntField);
     }
 
+    [Generate]
     public class ClassWithIDict : IEquatable<ClassWithIDict>
     {
         public IDictionary<Guid, IList<SimpleDto>> Dict { get; set; }
@@ -595,6 +603,7 @@ public class TypeSerializersTest
         });
     }
 
+    [Generate]
     public class ClassWithBoxedIEnumerable
     {
         public object? Value { get; set; }
@@ -690,6 +699,7 @@ public class TypeSerializersTest
         public int Child { get; set; }
     }
 
+    [Generate]
     public class EObj
     {
         public Obj O { get; set; }
@@ -730,6 +740,7 @@ public class TypeSerializersTest
         _mapping = _ts.CreateMapping();
     }
 
+    [Generate]
     public class ClassWithTupleInList
     {
         public IList<(ulong Id, InnerClass)> Items { get; set; }

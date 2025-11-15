@@ -15,7 +15,7 @@ public class SnappyTest
         var r = SnappyCompress.Compress(t, s);
         Assert.Equal(7, r);
         var d = SnappyDecompress.Decompress(ByteBuffer.NewSync(t, 0, r));
-        Assert.Equal(s, d.ToArraySegment());
+        Assert.Equal(s, d.AsSyncReadOnlySpan());
     }
 
     [Theory]
@@ -87,7 +87,7 @@ public class SnappyTest
         var compressed = new byte[(long)source.Length * 6 / 5 + 32];
         var compressedLength = SnappyCompress.Compress(compressed, source);
         var decompressed = SnappyDecompress.Decompress(ByteBuffer.NewSync(compressed, 0, compressedLength));
-        Assert.Equal(source, decompressed.ToArraySegment());
+        Assert.Equal(source, decompressed.AsSyncReadOnlySpan());
         compressed = new byte[compressedLength / 2];
         Assert.Equal(-1, SnappyCompress.Compress(compressed, source));
     }

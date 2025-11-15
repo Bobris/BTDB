@@ -9,7 +9,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Threading;
 using BTDB.Encrypted;
+using BTDB.Serialization;
 
 namespace BTDB.EventStoreLayer;
 
@@ -34,35 +36,34 @@ public class TypeSerializers : ITypeSerializers
 
     readonly
         ConcurrentDictionary<ITypeDescriptor, Layer1Loader> _loaders =
-            new ConcurrentDictionary<ITypeDescriptor, Layer1Loader>(ReferenceEqualityComparer<ITypeDescriptor>
+            new(ReferenceEqualityComparer<ITypeDescriptor>
                 .Instance);
 
     readonly ConcurrentDictionary<(ITypeDescriptor, Type), Action<object, IDescriptorSerializerLiteContext>>
-        _newDescriptorSavers =
-            new ConcurrentDictionary<(ITypeDescriptor, Type), Action<object, IDescriptorSerializerLiteContext>>();
+        _newDescriptorSavers = new();
 
     readonly ConcurrentDictionary<ITypeDescriptor, bool> _descriptorSet =
-        new ConcurrentDictionary<ITypeDescriptor, bool>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+        new(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
-    ConcurrentDictionary<Type, ITypeDescriptor> _type2DescriptorMap =
-        new ConcurrentDictionary<Type, ITypeDescriptor>(ReferenceEqualityComparer<Type>.Instance);
+    ConcurrentDictionary<Type, ITypeDescriptor?> _type2DescriptorMap = new(ReferenceEqualityComparer<Type>.Instance);
 
-    readonly object _buildTypeLock = new object();
+    readonly Lock _buildTypeLock = new();
 
-    readonly ConcurrentDictionary<(ITypeDescriptor, Type), Layer1SimpleSaver> _simpleSavers =
-        new ConcurrentDictionary<(ITypeDescriptor, Type), Layer1SimpleSaver>();
+    readonly ConcurrentDictionary<(ITypeDescriptor, Type), Layer1SimpleSaver> _simpleSavers = new();
 
     readonly ConcurrentDictionary<(ITypeDescriptor, Type), Layer1ComplexSaver>
-        _complexSavers = new ConcurrentDictionary<(ITypeDescriptor, Type), Layer1ComplexSaver>();
+        _complexSavers = new();
 
     readonly Func<ITypeDescriptor, Layer1Loader> _loaderFactoryAction;
 
-    readonly Func<Type, ITypeDescriptor> _buildFromTypeAction;
+    readonly Func<Type, ITypeDescriptor?> _buildFromTypeAction;
     readonly ISymmetricCipher _symmetricCipher;
+    readonly ITypeConverterFactory _convertorFactory;
 
     public TypeSerializers(ITypeNameMapper? typeNameMapper = null, TypeSerializersOptions? options = null)
     {
         ConvertorGenerator = options?.ConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
+        _convertorFactory = options?.ConvertorFactory ?? new DefaultTypeConverterFactory();
         _typeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
         ForgotAllTypesAndSerializers();
         _loaderFactoryAction = LoaderFactory;
@@ -103,7 +104,7 @@ public class TypeSerializers : ITypeSerializers
 
     ITypeDescriptor? BuildFromType(Type type)
     {
-        ITypeDescriptor result;
+        ITypeDescriptor? result;
         lock (_buildTypeLock)
         {
             var buildFromTypeCtx = new BuildFromTypeCtx(this, _type2DescriptorMap, Options);
@@ -121,10 +122,10 @@ public class TypeSerializers : ITypeSerializers
         readonly TypeSerializers _typeSerializers;
         readonly ConcurrentDictionary<Type, ITypeDescriptor> _type2DescriptorMap;
         readonly TypeSerializersOptions _typeSerializersOptions;
-        readonly Dictionary<Type, ITypeDescriptor> _temporaryMap = new Dictionary<Type, ITypeDescriptor>();
+        readonly Dictionary<Type, ITypeDescriptor> _temporaryMap = new();
 
         readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remap =
-            new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+            new(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
         public BuildFromTypeCtx(TypeSerializers typeSerializers,
             ConcurrentDictionary<Type, ITypeDescriptor> type2DescriptorMap,
@@ -277,7 +278,7 @@ public class TypeSerializers : ITypeSerializers
 
         _descriptorSet.Clear();
         _type2DescriptorMap =
-            new ConcurrentDictionary<Type, ITypeDescriptor>(EnumDefaultTypes(),
+            new(EnumDefaultTypes(),
                 ReferenceEqualityComparer<Type>.Instance);
     }
 
@@ -285,12 +286,12 @@ public class TypeSerializers : ITypeSerializers
     {
         foreach (var predefinedType in BasicSerializersFactory.TypeDescriptors)
         {
-            yield return new KeyValuePair<Type, ITypeDescriptor>(predefinedType.GetPreferredType(), predefinedType);
+            yield return new(predefinedType.GetPreferredType(), predefinedType);
             var descriptorMultipleNativeTypes = predefinedType as ITypeDescriptorMultipleNativeTypes;
             if (descriptorMultipleNativeTypes == null) continue;
             foreach (var type in descriptorMultipleNativeTypes.GetNativeTypes())
             {
-                yield return new KeyValuePair<Type, ITypeDescriptor>(type, predefinedType);
+                yield return new(type, predefinedType);
             }
         }
     }
@@ -302,7 +303,7 @@ public class TypeSerializers : ITypeSerializers
 
     Layer1Loader LoaderFactory(ITypeDescriptor descriptor)
     {
-        Type loadAsType = null;
+        Type? loadAsType = null;
         try
         {
             loadAsType = LoadAsType(descriptor);
@@ -373,7 +374,7 @@ public class TypeSerializers : ITypeSerializers
     class DeserializerCtx : ITypeBinaryDeserializerContext
     {
         readonly ITypeSerializersId2LoaderMapping _mapping;
-        readonly List<object> _backRefs = new List<object>();
+        readonly List<object> _backRefs = new();
 
         public DeserializerCtx(ITypeSerializersId2LoaderMapping mapping)
         {
@@ -499,29 +500,79 @@ public class TypeSerializers : ITypeSerializers
         return _newDescriptorSavers.GetOrAdd((descriptor, preciseType), NewDescriptorSaverFactory);
     }
 
-    static Action<object, IDescriptorSerializerLiteContext>? NewDescriptorSaverFactory(
+    struct ObjectSerializerCtx
+    {
+        internal nint StoragePtr;
+        internal IDescriptorSerializerLiteContext Ctx;
+        internal object Obj;
+        internal Layer2NewDescriptor OriginalGenerator;
+        internal Converter UnboxConverter;
+    }
+
+    unsafe Action<object, IDescriptorSerializerLiteContext>? NewDescriptorSaverFactory(
         (ITypeDescriptor descriptor, Type type) pair)
     {
-        var gen = pair.descriptor.BuildNewDescriptorGenerator();
-        if (gen == null)
+        if (IFieldHandler.UseNoEmitForDescriptors)
+#pragma warning disable CS0162 // Unreachable code detected
         {
-            return null;
-        }
-
-        var method =
-            ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>(
-                "GatherAllObjectsForTypeExtraction_" + pair.descriptor.Name);
-        var il = method.Generator;
-        gen.GenerateTypeIterator(il, ilgen =>
-        {
-            ilgen.Ldarg(0);
+            var newDescriptor =
+                pair.descriptor.GenerateNewDescriptor(pair.type, _convertorFactory,
+                    Options.ForbidSerializeLazyDBObjects);
+            if (newDescriptor == null)
+                return null;
             if (pair.type.IsValueType)
             {
-                ilgen.UnboxAny(pair.type);
+                var unbox = _convertorFactory.GetConverter(typeof(object), pair.type)!;
+                var originalGenerator = newDescriptor;
+                var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(pair.type);
+                return (obj, ctx) =>
+                {
+                    ObjectSerializerCtx context;
+                    context.StoragePtr = 0;
+                    context.Ctx = ctx;
+                    context.Obj = obj;
+                    context.OriginalGenerator = originalGenerator;
+                    context.UnboxConverter = unbox;
+
+                    stackAllocator(ref Unsafe.As<ObjectSerializerCtx, byte>(ref context), ref context.StoragePtr,
+                        &Nested);
+
+                    static void Nested(ref byte value)
+                    {
+                        ref var context = ref Unsafe.As<byte, ObjectSerializerCtx>(ref value);
+                        context.UnboxConverter(ref Unsafe.As<object, byte>(ref context.Obj),
+                            ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                        context.OriginalGenerator(context.Ctx, ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                    }
+                };
             }
-        }, ilgen => ilgen.Ldarg(1), pair.type);
-        il.Ret();
-        return method.Create();
+
+            return (obj, ctx) => { newDescriptor(ctx, ref Unsafe.As<object, byte>(ref obj)); };
+        }
+        else
+        {
+            var gen = pair.descriptor.BuildNewDescriptorGenerator();
+            if (gen == null)
+            {
+                return null;
+            }
+
+            var method =
+                ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>(
+                    "GatherAllObjectsForTypeExtraction_" + pair.descriptor.Name);
+            var il = method.Generator;
+            gen.GenerateTypeIterator(il, ilgen =>
+            {
+                ilgen.Ldarg(0);
+                if (pair.type.IsValueType)
+                {
+                    ilgen.UnboxAny(pair.type);
+                }
+            }, ilgen => ilgen.Ldarg(1), pair.type);
+            il.Ret();
+            return method.Create();
+        }
+#pragma warning restore CS0162 // Unreachable code detected
     }
 
     public ITypeSerializersMapping CreateMapping()

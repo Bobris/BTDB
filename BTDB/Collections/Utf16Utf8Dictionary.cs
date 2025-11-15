@@ -217,7 +217,7 @@ public class Utf16Utf8Dictionary<TValue>
             }
         }
 
-        value = default;
+        value = default!;
         return false;
     }
 
@@ -234,7 +234,7 @@ public class Utf16Utf8Dictionary<TValue>
             }
         }
 
-        value = default;
+        value = default!;
         return false;
     }
 

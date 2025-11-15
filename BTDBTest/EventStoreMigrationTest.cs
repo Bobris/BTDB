@@ -319,6 +319,11 @@ public class EventStoreMigrationTest
         Assert.Null(obj2.A.Secret);
     }
 
+    [Generate]
+    public class RegistrationHelper
+    {
+        public DBIndirect<ItemBase> A;
+    }
 
     public abstract class ItemBase
     {
@@ -330,11 +335,13 @@ public class EventStoreMigrationTest
         public int B { get; set; }
     }
 
+    [Generate]
     public class EventDictIndirectAbstract
     {
         public IDictionary<ulong, IIndirect<ItemBase>> Items { get; set; }
     }
 
+    [Generate]
     public class EventDictAbstract
     {
         public IDictionary<ulong, ItemBase> Items { get; set; }

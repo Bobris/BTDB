@@ -1,11 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
         <LangVersion>latest</LangVersion>
         <NoWarn>1701;1702;1720</NoWarn>
         <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-        <Nullable>annotations</Nullable>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Assent" Version="2.3.2"/>

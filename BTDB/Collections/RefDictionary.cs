@@ -1,4 +1,4 @@
-// Idea taken from DictionarySlim in .NetCore with following license:
+// Idea taken from DictionarySlim in .NetCore with the following license:
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
@@ -12,10 +12,12 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using BTDB.Locks;
 
+// ReSharper disable ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+
 namespace BTDB.Collections;
 
 /// <summary>
-/// RefDictionaryTKey, TValue> is similar to Dictionary<TKey, TValue> but optimized in three ways:
+/// RefDictionary<TKey, TValue> is similar to Dictionary<TKey, TValue> but optimized in three ways:
 /// 1) It allows access to the value by ref replacing the common TryGetValue and Add pattern.
 /// 2) It does not store the hash code (assumes it is cheap to equate values).
 /// 3) It does not accept an equality comparer (assumes Object.GetHashCode() and Object.Equals() or overridden implementation are cheap and sufficient).
@@ -27,14 +29,14 @@ namespace BTDB.Collections;
 public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TValue>> where TKey : IEquatable<TKey>
 {
     // We want to initialize without allocating arrays. We also want to avoid null checks.
-    // Array.Empty would give divide by zero in modulo operation. So we use static one element arrays.
-    // The first add will cause a resize replacing these with real arrays of power of 2 elements.
+    // Array.Empty would give divide by zero in a modulo operation. So we use static one element arrays.
+    // The first adding will cause a resize replacing these with real arrays of power of 2 elements.
     // Arrays are wrapped in a class to avoid being duplicated for each <TKey, TValue>
     static readonly Entry[] InitialEntries = new Entry[1];
 
     int _count;
 
-    // 0-based index into _entries of head of free chain: -1 means empty
+    // 0-based index into _entries of the head of the free chain: -1 means empty
     int _freeList = -1;
 
     // 1-based index into _entries; 0 means empty
@@ -43,21 +45,22 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
 
     TValue _fake;
 
-    [DebuggerDisplay("({key}, {value})->{next}")]
+    [DebuggerDisplay("({Key}, {Value})->{Next}")]
     struct Entry
     {
-        public TKey key;
+        public TKey Key;
 
-        public TValue value;
+        public TValue Value;
 
-        // 0-based index of next entry in chain: -1 means end of chain
+        // 0-based index of the next entry in the chain: -1 means end of the chain
         // also encodes whether this entry _itself_ is part of the free list by changing sign and subtracting 3,
-        // so -2 means end of free list, -3 means index 0 but on free list, -4 means index 1 but on free list, etc.
-        public int next;
+        // so -2 means end of a free list, -3 means index 0 but on free list, -4 means index 1 but on free list, etc.
+        public int Next;
     }
 
     public RefDictionary()
     {
+        _fake = default!;
         _buckets = HashHelpers.RefDictionarySizeOneIntArray;
         _entries = InitialEntries;
     }
@@ -69,6 +72,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         if (capacity < 2)
             capacity = 2;
         capacity = HashHelpers.PowerOf2(capacity);
+        _fake = default!;
         _buckets = new int[capacity];
         _entries = new Entry[capacity];
     }
@@ -84,9 +88,9 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var collisionCount = 0;
         for (var i = _buckets[key.GetHashCode() & (_buckets.Length - 1)] - 1;
              (uint)i < (uint)entries.Length;
-             i = entries[i].next)
+             i = entries[i].Next)
         {
-            if (key.Equals(entries[i].key))
+            if (key.Equals(entries[i].Key))
                 return true;
             if (collisionCount == entries.Length)
             {
@@ -108,11 +112,11 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var collisionCount = 0;
         for (var i = _buckets[key.GetHashCode() & (_buckets.Length - 1)] - 1;
              (uint)i < (uint)entries.Length;
-             i = entries[i].next)
+             i = entries[i].Next)
         {
-            if (key.Equals(entries[i].key))
+            if (key.Equals(entries[i].Key))
             {
-                value = entries[i].value;
+                value = entries[i].Value;
                 return true;
             }
 
@@ -126,7 +130,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
             collisionCount++;
         }
 
-        value = default;
+        value = default!;
         return false;
     }
 
@@ -142,11 +146,11 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
             var collisionCount = 0;
             for (var i = _buckets[hash & (_buckets.Length - 1)] - 1;
                  (uint)i < (uint)entries.Length;
-                 i = entries[i].next)
+                 i = entries[i].Next)
             {
-                if (key.Equals(entries[i].key))
+                if (key.Equals(entries[i].Key))
                 {
-                    value = entries[i].value;
+                    value = entries[i].Value;
                     if (seqLock.RetryRead(ref seqCounter)) goto retry;
                     return true;
                 }
@@ -167,7 +171,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
             }
 
             if (seqLock.RetryRead(ref seqCounter)) goto retry;
-            value = default;
+            value = default!;
             return false;
         }
         catch
@@ -197,22 +201,22 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         while (entryIndex != -1)
         {
             ref var candidate = ref entries[entryIndex];
-            if (candidate.key.Equals(key))
+            if (candidate.Key.Equals(key))
             {
                 if (lastIndex != -1)
                 {
                     // Fixup preceding element in chain to point to next (if any)
-                    entries[lastIndex].next = candidate.next;
+                    entries[lastIndex].Next = candidate.Next;
                 }
                 else
                 {
                     // Fixup bucket to new head (if any)
-                    _buckets[bucketIndex] = candidate.next + 1;
+                    _buckets[bucketIndex] = candidate.Next + 1;
                 }
 
                 entries[entryIndex] = default;
 
-                entries[entryIndex].next = -3 - _freeList; // New head of free list
+                entries[entryIndex].Next = -3 - _freeList; // New head of free list
                 _freeList = entryIndex;
 
                 _count--;
@@ -220,7 +224,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
             }
 
             lastIndex = entryIndex;
-            entryIndex = candidate.next;
+            entryIndex = candidate.Next;
 
             if (collisionCount == entries.Length)
             {
@@ -244,10 +248,10 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
         for (var i = _buckets[bucketIndex] - 1;
              (uint)i < (uint)entries.Length;
-             i = entries[i].next)
+             i = entries[i].Next)
         {
-            if (key.Equals(entries[i].key))
-                return ref entries[i].value;
+            if (key.Equals(entries[i].Key))
+                return ref entries[i].Value!;
             if (collisionCount == entries.Length)
             {
                 // The chain of entries forms a loop; which means a concurrent update has happened.
@@ -258,7 +262,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
             collisionCount++;
         }
 
-        return ref _fake;
+        return ref _fake!;
     }
 
     public ref TValue GetOrFakeValueRef(TKey key, out bool found)
@@ -269,12 +273,12 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
         for (var i = _buckets[bucketIndex] - 1;
              (uint)i < (uint)entries.Length;
-             i = entries[i].next)
+             i = entries[i].Next)
         {
-            if (key.Equals(entries[i].key))
+            if (key.Equals(entries[i].Key))
             {
                 found = true;
-                return ref entries[i].value;
+                return ref entries[i].Value;
             }
 
             if (collisionCount == entries.Length)
@@ -300,10 +304,10 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
         for (var i = _buckets[bucketIndex] - 1;
              (uint)i < (uint)entries.Length;
-             i = entries[i].next)
+             i = entries[i].Next)
         {
-            if (key.Equals(entries[i].key))
-                return ref entries[i].value;
+            if (key.Equals(entries[i].Key))
+                return ref entries[i].Value;
             if (collisionCount == entries.Length)
             {
                 // The chain of entries forms a loop; which means a concurrent update has happened.
@@ -325,9 +329,9 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
         for (var i = _buckets[bucketIndex] - 1;
              (uint)i < (uint)entries.Length;
-             i = entries[i].next)
+             i = entries[i].Next)
         {
-            if (key.Equals(entries[i].key))
+            if (key.Equals(entries[i].Key))
                 return false;
             if (collisionCount == entries.Length)
             {
@@ -351,7 +355,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         if (_freeList != -1)
         {
             entryIndex = _freeList;
-            _freeList = -3 - entries[_freeList].next;
+            _freeList = -3 - entries[_freeList].Next;
         }
         else
         {
@@ -365,18 +369,18 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
             entryIndex = _count;
         }
 
-        entries[entryIndex].key = key;
-        entries[entryIndex].next = _buckets[bucketIndex] - 1;
+        entries[entryIndex].Key = key;
+        entries[entryIndex].Next = _buckets[bucketIndex] - 1;
         _buckets[bucketIndex] = entryIndex + 1;
         _count++;
-        return ref entries[entryIndex].value;
+        return ref entries[entryIndex].Value;
     }
 
     Entry[] Resize()
     {
         var count = _count;
         var newSize = _entries.Length * 2;
-        if ((uint)newSize > (uint)int.MaxValue) // uint cast handles overflow
+        if ((uint)newSize > int.MaxValue) // uint cast handles overflow
             throw new InvalidOperationException("Capacity overflow");
 
         var entries = new Entry[newSize];
@@ -385,8 +389,8 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         var newBuckets = new int[entries.Length];
         while (count-- > 0)
         {
-            var bucketIndex = entries[count].key.GetHashCode() & (newBuckets.Length - 1);
-            entries[count].next = newBuckets[bucketIndex] - 1;
+            var bucketIndex = entries[count].Key.GetHashCode() & (newBuckets.Length - 1);
+            entries[count].Next = newBuckets[bucketIndex] - 1;
             newBuckets[bucketIndex] = count + 1;
         }
 
@@ -398,8 +402,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
 
     public void CopyTo(KeyValuePair<TKey, TValue>[] array, int index)
     {
-        if (array == null)
-            throw new ArgumentNullException("array");
+        ArgumentNullException.ThrowIfNull(array);
         // Let the runtime validate the index
 
         var entries = _entries;
@@ -408,19 +411,19 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
         while (count > 0)
         {
             var entry = entries[i];
-            if (entry.next > -2) // part of free list?
+            if (entry.Next > -2) // part of the free list?
             {
                 count--;
                 array[index++] = new KeyValuePair<TKey, TValue>(
-                    entry.key,
-                    entry.value);
+                    entry.Key,
+                    entry.Value);
             }
 
             i++;
         }
     }
 
-    public Enumerator GetEnumerator() => new Enumerator(this); // avoid boxing
+    public Enumerator GetEnumerator() => new(this); // avoid boxing
 
     IEnumerator<KeyValuePair<TKey, TValue>> IEnumerable<KeyValuePair<TKey, TValue>>.GetEnumerator() =>
         new Enumerator(this);
@@ -452,12 +455,12 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
 
             _count--;
 
-            while (_dictionary._entries[_index].next < -1)
+            while (_dictionary._entries[_index].Next < -1)
                 _index++;
 
             _current = new KeyValuePair<TKey, TValue>(
-                _dictionary._entries[_index].key,
-                _dictionary._entries[_index++].value);
+                _dictionary._entries[_index].Key,
+                _dictionary._entries[_index++].Value);
             return true;
         }
 
@@ -479,40 +482,30 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
 
     public ref readonly TKey KeyRef(uint index)
     {
-        return ref _entries[(int)index].key;
+        return ref _entries[(int)index].Key;
     }
 
 
     // Key should not be mutated in way it will change its hash
     public ref TKey DangerousKeyRef(uint index)
     {
-        return ref _entries[(int)index].key;
+        return ref _entries[(int)index].Key;
     }
 
     public ref TValue ValueRef(uint index)
     {
-        return ref _entries[(int)index].value;
+        return ref _entries[(int)index].Value;
     }
 
-    public IndexEnumerator Index
+    public IndexEnumerator Index => new(this);
+
+    public readonly struct IndexEnumerator(RefDictionary<TKey, TValue> owner) : IEnumerable<uint>
     {
-        get => new IndexEnumerator(this);
-    }
+        public FastEnumerator GetEnumerator() => new FastEnumerator(owner);
 
-    public struct IndexEnumerator : IEnumerable<uint>
-    {
-        RefDictionary<TKey, TValue> _owner;
+        IEnumerator IEnumerable.GetEnumerator() => new FastEnumerator(owner);
 
-        public IndexEnumerator(RefDictionary<TKey, TValue> owner)
-        {
-            _owner = owner;
-        }
-
-        public FastEnumerator GetEnumerator() => new FastEnumerator(_owner);
-
-        IEnumerator IEnumerable.GetEnumerator() => new FastEnumerator(_owner);
-
-        IEnumerator<uint> IEnumerable<uint>.GetEnumerator() => new FastEnumerator(_owner);
+        IEnumerator<uint> IEnumerable<uint>.GetEnumerator() => new FastEnumerator(owner);
 
         public struct FastEnumerator : IEnumerator<uint>
         {
@@ -538,7 +531,7 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
 
                 _count--;
 
-                while (_dictionary._entries[_index].next < -1)
+                while (_dictionary._entries[_index].Next < -1)
                     _index++;
 
                 _current = (uint)_index++;
@@ -562,18 +555,11 @@ public class RefDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey
     }
 }
 
-sealed class RefDictionaryDebugView<K, V> where K : IEquatable<K>
+sealed class RefDictionaryDebugView<K, V>(RefDictionary<K, V> dictionary)
+    where K : IEquatable<K>
 {
-    readonly RefDictionary<K, V> _dictionary;
-
-    public RefDictionaryDebugView(RefDictionary<K, V> dictionary)
-    {
-        _dictionary = dictionary ?? throw new ArgumentNullException(nameof(dictionary));
-    }
+    readonly RefDictionary<K, V> _dictionary = dictionary ?? throw new ArgumentNullException(nameof(dictionary));
 
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-    public KeyValuePair<K, V>[] Items
-    {
-        get { return _dictionary.ToArray(); }
-    }
+    public KeyValuePair<K, V>[] Items => _dictionary.ToArray();
 }

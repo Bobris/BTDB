@@ -684,7 +684,7 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
 
     public InfoForType GetInfoFromObject(object obj, out TypeSerializers typeSerializers)
     {
-        InfoForType infoForType;
+        InfoForType? infoForType;
         if (obj is IKnowDescriptor iKnowDescriptor)
         {
             var descriptor = iKnowDescriptor.GetDescriptor();

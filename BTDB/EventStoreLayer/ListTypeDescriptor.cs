@@ -51,7 +51,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         Name = $"List<{_itemDescriptor.Name}>";
     }
 
-    public bool Equals(ITypeDescriptor other)
+    public bool Equals(ITypeDescriptor? other)
     {
         return Equals(other, null);
     }
@@ -86,10 +86,10 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         text.Append("List<");
         _itemDescriptor!.BuildHumanReadableFullName(text, stack, indent);
-        text.Append(">");
+        text.Append('>');
     }
 
-    public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
+    public bool Equals(ITypeDescriptor? other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
     {
         if (ReferenceEquals(this, other)) return true;
         if (other is not ListTypeDescriptor o) return false;
@@ -127,7 +127,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         internal object Object;
         internal Layer2Loader ItemLoader;
         internal unsafe delegate*<object, ref byte, void> Adder;
-        internal ITypeBinaryDeserializerContext Ctx;
+        internal ITypeBinaryDeserializerContext? Ctx;
         internal ref MemReader Reader;
     }
 
@@ -339,9 +339,9 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         var hashSetType = typeof(HashSet<>).MakeGenericType(itemType);
         var listType = typeof(List<>).MakeGenericType(itemType);
         var layout = RawData.GetHashSetEntriesLayout(itemType);
-        return (IDescriptorSerializerLiteContext? ctx, ref byte value) =>
+        return (ctx, ref value) =>
         {
-            var obj = Unsafe.As<byte, object>(ref value);
+            var obj = Unsafe.As<byte, object?>(ref value);
             if (obj == null)
             {
                 return;
@@ -453,8 +453,8 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Brfalse(loadFinished)
                 .Ldloc(localArray)
                 .Ldloc(localIndex);
-            _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
-                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType,
+            _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor)!.NestedType(0)), itemType,
                 _convertGenerator);
             ilGenerator
                 .Stelem(itemType)
@@ -504,8 +504,8 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Sub()
                 .Stloc(localCount)
                 .Ldloc(localList);
-            _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
-                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType,
+            _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor)!.NestedType(0)), itemType,
                 _convertGenerator);
             ilGenerator
                 .Callvirt(listType.GetInterface("ICollection`1")!.GetMethod("Add")!)
@@ -574,7 +574,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                     {
                         il
                             .Ldloc(localEnumerator)
-                            .Callvirt(() => default(IEnumerator).MoveNext());
+                            .Callvirt(() => default(IEnumerator)!.MoveNext());
                     }
                 })
                 .Brfalse(finish)
@@ -617,7 +617,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                         il.Ldloc(localEnumerator);
                     }
                 })
-                .Callvirt(() => default(IDisposable).Dispose())
+                .Callvirt(() => default(IDisposable)!.Dispose())
                 .EndTry();
         }
     }
@@ -629,7 +629,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
     {
-        InitFromItemDescriptor(map(_itemDescriptor));
+        InitFromItemDescriptor(map(_itemDescriptor!));
     }
 
     public bool Sealed { get; private set; }
@@ -655,7 +655,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         nestedDescriptorWriter(ref writer, _itemDescriptor!);
     }
 
-    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+    public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx,
         Action<IILGen> pushValue, Type valueType)
     {
         var notnull = ilGenerator.DefineLabel();
@@ -677,7 +677,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             .Mark(notnull)
             .Do(pushWriter)
             .Ldloc(localCollection)
-            .Callvirt(typeAsICollection!.GetProperty(nameof(ICollection.Count))!.GetGetMethod()!)
+            .Callvirt(typeAsICollection.GetProperty(nameof(ICollection.Count))!.GetGetMethod()!)
             .LdcI4(1)
             .Add()
             .Call(typeof(MemWriter).GetMethod(nameof(MemWriter.WriteVUInt32))!);
@@ -713,7 +713,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 .Finally()
                 .Ldloca(localEnumerator)
                 .Constrained(typeAsIEnumerator)
-                .Callvirt(() => default(IDisposable).Dispose())
+                .Callvirt(() => default(IDisposable)!.Dispose())
                 .EndTry()
                 .Br(completeFinish);
         }

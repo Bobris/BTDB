@@ -18,19 +18,19 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
     // 0-based index into _entries of head of free chain: -1 means empty
     int _freeList = -1;
 
-    int UsageHead = -1;
-    int UsageTail = -1;
+    int _usageHead = -1;
+    int _usageTail = -1;
 
     // 1-based index into _entries; 0 means empty
     int[] _buckets;
     Entry[] _entries;
 
-    int _usedBytes = 0;
-    int _freeBytes = 0;
+    int _usedBytes;
+    int _freeBytes;
 
     byte[] _bytes = Array.Empty<byte>();
 
-    [DebuggerDisplay("({Key}, {Value})->{Next} P:{UsagePrev} N:{UsageNext}")]
+    [DebuggerDisplay("({Offset}|{Length}, {Value})->{Next} P:{UsagePrev} N:{UsageNext}")]
     struct Entry
     {
         public int Hash;
@@ -100,12 +100,12 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
             if (Equal(key, hash, entries[i]))
             {
                 value = entries[i].Value;
-                if (UsageHead != i)
+                if (_usageHead != i)
                 {
-                    if (UsageTail == i)
+                    if (_usageTail == i)
                     {
-                        UsageTail = entries[i].UsagePrev;
-                        entries[UsageTail].UsageNext = -1;
+                        _usageTail = entries[i].UsagePrev;
+                        entries[_usageTail].UsageNext = -1;
                     }
                     else
                     {
@@ -114,9 +114,9 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
                     }
 
                     entries[i].UsagePrev = -1;
-                    entries[i].UsageNext = UsageHead;
-                    entries[UsageHead].UsagePrev = i;
-                    UsageHead = i;
+                    entries[i].UsageNext = _usageHead;
+                    entries[_usageHead].UsagePrev = i;
+                    _usageHead = i;
                 }
 
                 return true;
@@ -132,7 +132,7 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
             collisionCount++;
         }
 
-        value = default;
+        value = default!;
         return false;
     }
 
@@ -151,11 +151,11 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
             if (Equal(key, hash, candidate))
             {
                 _freeBytes += candidate.Length;
-                if (UsageHead == entryIndex)
+                if (_usageHead == entryIndex)
                 {
-                    UsageHead = candidate.UsageNext;
-                    if (UsageHead != -1)
-                        entries[UsageHead].UsagePrev = -1;
+                    _usageHead = candidate.UsageNext;
+                    if (_usageHead != -1)
+                        entries[_usageHead].UsagePrev = -1;
                 }
                 else
                 {
@@ -164,8 +164,8 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
                         entries[candidate.UsageNext].UsagePrev = candidate.UsagePrev;
                 }
 
-                if (UsageTail == entryIndex)
-                    UsageTail = candidate.UsagePrev;
+                if (_usageTail == entryIndex)
+                    _usageTail = candidate.UsagePrev;
                 if (lastIndex != -1)
                 {
                     // Fixup preceding element in chain to point to next (if any)
@@ -217,12 +217,12 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
         {
             if (Equal(key, hash, entries[i]))
             {
-                if (UsageHead != i)
+                if (_usageHead != i)
                 {
-                    if (UsageTail == i)
+                    if (_usageTail == i)
                     {
-                        UsageTail = entries[i].UsagePrev;
-                        entries[UsageTail].UsageNext = -1;
+                        _usageTail = entries[i].UsagePrev;
+                        entries[_usageTail].UsageNext = -1;
                     }
                     else
                     {
@@ -231,9 +231,9 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
                     }
 
                     entries[i].UsagePrev = -1;
-                    entries[i].UsageNext = UsageHead;
-                    entries[UsageHead].UsagePrev = i;
-                    UsageHead = i;
+                    entries[i].UsageNext = _usageHead;
+                    entries[_usageHead].UsagePrev = i;
+                    _usageHead = i;
                 }
 
                 added = false;
@@ -260,8 +260,8 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
         Array.Clear(_entries, 0, _count);
         _count = 0;
         _freeList = -1;
-        UsageHead = -1;
-        UsageTail = -1;
+        _usageHead = -1;
+        _usageTail = -1;
         _usedBytes = 0;
         _freeBytes = 0;
     }
@@ -291,7 +291,7 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
             }
             else
             {
-                entryIndex = UsageTail;
+                entryIndex = _usageTail;
                 var oldhash = entries[entryIndex].Hash;
                 var oldbucketIndex = oldhash & (_buckets.Length - 1);
                 var oldentryIndex = _buckets[oldbucketIndex] - 1;
@@ -304,8 +304,8 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
                     if (oldentryIndex == entryIndex)
                     {
                         // there are always at least two entries, so this is always valid
-                        UsageTail = candidate.UsagePrev;
-                        entries[UsageTail].UsageNext = -1;
+                        _usageTail = candidate.UsagePrev;
+                        entries[_usageTail].UsageNext = -1;
                         if (lastIndex != -1)
                         {
                             // Fixup preceding element in chain to point to next (if any)
@@ -375,12 +375,12 @@ public class SpanByteLruCache<TValue> : IReadOnlyCollection<KeyValuePair<byte[],
         _usedBytes += key.Length;
         entry.Next = _buckets[bucketIndex] - 1;
         entry.UsagePrev = -1;
-        entry.UsageNext = UsageHead;
-        if (UsageHead != -1)
-            entries[UsageHead].UsagePrev = entryIndex;
-        UsageHead = entryIndex;
-        if (UsageTail == -1)
-            UsageTail = entryIndex;
+        entry.UsageNext = _usageHead;
+        if (_usageHead != -1)
+            entries[_usageHead].UsagePrev = entryIndex;
+        _usageHead = entryIndex;
+        if (_usageTail == -1)
+            _usageTail = entryIndex;
         _buckets[bucketIndex] = entryIndex + 1;
         _count++;
         return ref entry.Value;

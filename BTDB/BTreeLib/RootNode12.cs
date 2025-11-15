@@ -44,7 +44,7 @@ class RootNode12 : IRootNode
             TransactionId = TransactionId,
             TrLogFileId = TrLogFileId,
             TrLogOffset = TrLogOffset,
-            _ulongs = (ulong[])_ulongs?.Clone()
+            _ulongs = (ulong[]?)_ulongs?.Clone()
         };
         if (Writable)
             TransactionId++;
@@ -63,7 +63,7 @@ class RootNode12 : IRootNode
             TransactionId = TransactionId + 1,
             TrLogFileId = TrLogFileId,
             TrLogOffset = TrLogOffset,
-            _ulongs = (ulong[])_ulongs?.Clone()
+            _ulongs = (ulong[]?)_ulongs?.Clone()
         };
         NodeUtils12.Reference(Root);
         return node;
@@ -92,7 +92,7 @@ class RootNode12 : IRootNode
             throw new InvalidOperationException("Only writable root node could be reverted");
         var oldRoot = Root;
         Root = ((RootNode12)snapshot).Root;
-        _ulongs = (ulong[])((RootNode12)snapshot)._ulongs?.Clone();
+        _ulongs = (ulong[]?)((RootNode12)snapshot)._ulongs?.Clone();
         CommitUlong = ((RootNode12)snapshot).CommitUlong;
         TransactionId = ((RootNode12)snapshot).TransactionId;
         TrLogFileId = ((RootNode12)snapshot).TrLogFileId;
