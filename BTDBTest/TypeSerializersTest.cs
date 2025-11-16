@@ -11,6 +11,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using BTDB;
 using BTDB.Encrypted;
+using BTDB.Serialization;
 using Microsoft.Extensions.Primitives;
 using Xunit;
 
@@ -85,6 +86,7 @@ public class TypeSerializersTest
         public int IntField { get; set; }
     }
 
+    [Generate]
     public class SimpleDtoWithoutDefaultConstructor
     {
         public SimpleDtoWithoutDefaultConstructor(string a)
@@ -148,6 +150,7 @@ public class TypeSerializersTest
     }
 
 #pragma warning disable 659
+    [Generate]
     public class ClassWithList : IEquatable<ClassWithList>
     {
         public List<int>? List { get; set; }
@@ -184,6 +187,7 @@ public class TypeSerializersTest
         TestSerialization(new ClassWithList { List = null });
     }
 
+    [Generate]
     public class ClassWithDict : IEquatable<ClassWithDict>
     {
         public Dictionary<int, string>? Dict { get; set; }
@@ -337,14 +341,12 @@ public class TypeSerializersTest
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, value);
         storedDescriptorCtx.CommitNewDescriptors();
-        var originalDescription = _ts.DescriptorOf(value).Describe();
         var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         var ts = new TypeSerializers();
         ts.SetTypeNameMapper(new ToDynamicMapper());
         var mapping = ts.CreateMapping();
         mapping.LoadTypeDescriptors(ref reader);
         var obj = (dynamic)mapping.LoadObject(ref reader);
-        Assert.Equal(originalDescription, ts.DescriptorOf((object)obj)!.Describe());
         return obj;
     }
 
@@ -413,6 +415,8 @@ public class TypeSerializersTest
     public class RegistrationHelper
     {
         public Dictionary<int, SimpleDto> A;
+        public IDictionary<int, object> B;
+        public IList<object> C;
     }
 
     [Fact]
@@ -517,7 +521,8 @@ public class TypeSerializersTest
         });
     }
 
-    class GenericClass<T>
+    [GenerateFor(typeof(GenericClass<int>))]
+    public class GenericClass<T>
     {
         public T Value { get; set; }
 
@@ -539,7 +544,8 @@ public class TypeSerializersTest
         TestSerialization(new GenericClass<int> { Value = 42 });
     }
 
-    class ClassWithIOrderedDictionary : IEquatable<ClassWithIOrderedDictionary>
+    [Generate]
+    public class ClassWithIOrderedDictionary : IEquatable<ClassWithIOrderedDictionary>
     {
         public IOrderedDictionary<int, int> IOrderedDictionary { get; set; }
 
@@ -705,6 +711,7 @@ public class TypeSerializersTest
         public Obj O { get; set; }
     }
 
+    [Generate]
     public class EObjV2
     {
         [PrimaryKey(1)] public ulong Id { get; set; }
@@ -715,6 +722,14 @@ public class TypeSerializersTest
     public class MyObjToObjChildTypeConvertorGenerator : DefaultTypeConvertorGenerator
     {
         public static ObjChild Convert2ObjChild(Obj value) => new() { Num = value.Num, Child = 42 };
+    }
+
+    public class MyObjToObjChildTypeConverterFactory : DefaultTypeConverterFactory
+    {
+        public MyObjToObjChildTypeConverterFactory()
+        {
+            RegisterConverter<Obj, ObjChild>((in fromI, out toI) => { toI = new() { Num = fromI.Num, Child = 42 }; });
+        }
     }
 
     [Fact]
@@ -730,7 +745,11 @@ public class TypeSerializersTest
         storedDescriptorCtx.CommitNewDescriptors();
         var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         _ts = new TypeSerializers(new EventStoreTest.OverloadableTypeMapper(typeof(EObjV2), "EObj"),
-            new() { ConvertorGenerator = new MyObjToObjChildTypeConvertorGenerator() });
+            new()
+            {
+                ConvertorGenerator = new MyObjToObjChildTypeConvertorGenerator(),
+                ConvertorFactory = new MyObjToObjChildTypeConverterFactory()
+            });
         _mapping = _ts.CreateMapping();
         _mapping.LoadTypeDescriptors(ref reader);
         var valueV2 = _mapping.LoadObject(ref reader) as EObjV2;

@@ -237,7 +237,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         count--;
         for (var i = 0u; i != count; i++)
         {
-            _itemDescriptor!.Skip(ref reader, ctx);
+            _itemDescriptor!.SkipEx(ref reader, ctx);
         }
     }
 

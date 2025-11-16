@@ -241,8 +241,8 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         count--;
         for (var i = 0u; i != count; i++)
         {
-            _keyDescriptor!.Skip(ref reader, ctx);
-            _valueDescriptor!.Skip(ref reader, ctx);
+            _keyDescriptor!.SkipEx(ref reader, ctx);
+            _valueDescriptor!.SkipEx(ref reader, ctx);
         }
     }
 

@@ -145,7 +145,7 @@ class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         if (reader.ReadBool())
         {
-            _itemDescriptor!.Skip(ref reader, ctx);
+            _itemDescriptor!.SkipEx(ref reader, ctx);
         }
     }
 

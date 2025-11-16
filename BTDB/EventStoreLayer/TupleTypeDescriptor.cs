@@ -182,7 +182,7 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 {
                     loaders.Add((ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte _) =>
                     {
-                        fieldHandler.Skip(ref reader, ctx);
+                        fieldHandler.SkipEx(ref reader, ctx);
                     });
                     continue;
                 }
@@ -217,7 +217,7 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 {
                     loaders.Add((ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte _) =>
                     {
-                        fieldHandler.Skip(ref reader, ctx);
+                        fieldHandler.SkipEx(ref reader, ctx);
                     });
                     continue;
                 }
@@ -249,7 +249,7 @@ public class TupleTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         foreach (var itemDescriptor in _itemDescriptors)
         {
-            itemDescriptor.Skip(ref reader, ctx);
+            itemDescriptor.SkipEx(ref reader, ctx);
         }
     }
 

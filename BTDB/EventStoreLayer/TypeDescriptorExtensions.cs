@@ -66,6 +66,18 @@ public static class TypeDescriptorExtensions
             }
         }
 
+        public void SkipEx(ref MemReader reader, ITypeBinaryDeserializerContext? ctx)
+        {
+            if (descriptor.StoredInline)
+            {
+                descriptor.Skip(ref reader, ctx);
+            }
+            else
+            {
+                ctx!.SkipObject(ref reader);
+            }
+        }
+
         public void GenerateSkipEx(IILGen ilGenerator,
             Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
@@ -129,8 +141,22 @@ public static class TypeDescriptorExtensions
                     var obj = ctx!.LoadObject(ref reader);
                     if (obj != null)
                     {
+                        again: ;
                         if (!targetType.IsInstanceOfType(obj))
                         {
+                            if (obj is IIndirect indirect)
+                            {
+                                obj = indirect.ValueAsObject;
+                                goto again;
+                            }
+
+                            var conv = typeConverterFactory.GetConverter(obj.GetType(), targetType);
+                            if (conv != null)
+                            {
+                                conv(ref Unsafe.As<object?, byte>(ref obj), ref value);
+                                return;
+                            }
+
                             throw new BTDBException("Cannot assign " + obj.GetType().ToSimpleName() + " to " +
                                                     targetType.ToSimpleName());
                         }

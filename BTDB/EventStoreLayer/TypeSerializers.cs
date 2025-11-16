@@ -312,53 +312,111 @@ public class TypeSerializers : ITypeSerializers
         {
         }
 
-        var methodBuilder = ILBuilder.Instance.NewMethod<Layer1Loader>("DeserializerFor" + descriptor.Name);
-        var il = methodBuilder.Generator;
-        if (descriptor.AnyOpNeedsCtx())
+#pragma warning disable CS0162 // Unreachable code detected
+        if (IFieldHandler.UseNoEmitForDescriptors)
         {
-            var localCtx = il.DeclareLocal(typeof(ITypeBinaryDeserializerContext), "ctx");
-            var haveCtx = il.DefineLabel();
-            il
-                .Ldarg(1)
-                .Dup()
-                .Stloc(localCtx)
-                .Brtrue(haveCtx)
-                .Ldarg(2)
-                // ReSharper disable once ObjectCreationAsStatement
-                .Newobj(() => new DeserializerCtx(null))
-                .Castclass(typeof(ITypeBinaryDeserializerContext))
-                .Stloc(localCtx)
-                .Mark(haveCtx);
-            if (loadAsType == null)
-                descriptor.GenerateSkip(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx));
+            if (descriptor.AnyOpNeedsCtx())
+            {
+                if (loadAsType == null)
+                {
+                    return (ref reader, ctx, mapping, typeDescriptor) =>
+                    {
+                        var localCtx = ctx ?? new DeserializerCtx(mapping);
+                        descriptor.Skip(ref reader, localCtx);
+                        return null!;
+                    };
+                }
+                else
+                {
+                    var loader = loadAsType == typeof(object)
+                        ? descriptor.GenerateLoad(loadAsType, _convertorFactory)
+                        : descriptor
+                            .BuildConvertingLoader(loadAsType, typeof(object), _convertorFactory);
+                    return (ref reader, ctx, mapping, typeDescriptor) =>
+                    {
+                        var localCtx = ctx ?? new DeserializerCtx(mapping);
+                        object res = null;
+                        loader(ref reader, localCtx, ref Unsafe.As<object, byte>(ref res));
+                        return res;
+                    };
+                }
+            }
             else
-                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx),
-                    ilGen => ilGen.Ldarg(3), loadAsType);
+            {
+                if (loadAsType == null)
+                {
+                    return (ref reader, ctx, mapping, typeDescriptor) =>
+                    {
+                        descriptor.Skip(ref reader, ctx);
+                        return null!;
+                    };
+                }
+                else
+                {
+                    var loader = loadAsType == typeof(object)
+                        ? descriptor.GenerateLoad(loadAsType, _convertorFactory)
+                        : descriptor
+                            .BuildConvertingLoader(loadAsType, typeof(object), _convertorFactory);
+                    return (ref reader, ctx, mapping, typeDescriptor) =>
+                    {
+                        object res = null;
+                        loader(ref reader, ctx, ref Unsafe.As<object, byte>(ref res));
+                        return res;
+                    };
+                }
+            }
         }
         else
         {
-            if (loadAsType == null)
-                descriptor.GenerateSkip(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1));
+            var methodBuilder = ILBuilder.Instance.NewMethod<Layer1Loader>("DeserializerFor" + descriptor.Name);
+            var il = methodBuilder.Generator;
+            if (descriptor.AnyOpNeedsCtx())
+            {
+                var localCtx = il.DeclareLocal(typeof(ITypeBinaryDeserializerContext), "ctx");
+                var haveCtx = il.DefineLabel();
+                il
+                    .Ldarg(1)
+                    .Dup()
+                    .Stloc(localCtx)
+                    .Brtrue(haveCtx)
+                    .Ldarg(2)
+                    // ReSharper disable once ObjectCreationAsStatement
+                    .Newobj(() => new DeserializerCtx(null))
+                    .Castclass(typeof(ITypeBinaryDeserializerContext))
+                    .Stloc(localCtx)
+                    .Mark(haveCtx);
+                if (loadAsType == null)
+                    descriptor.GenerateSkip(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx));
+                else
+                    descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx),
+                        ilGen => ilGen.Ldarg(3), loadAsType);
+            }
             else
-                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1),
-                    ilGen => ilGen.Ldarg(3), loadAsType);
-        }
+            {
+                if (loadAsType == null)
+                    descriptor.GenerateSkip(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1));
+                else
+                    descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1),
+                        ilGen => ilGen.Ldarg(3), loadAsType);
+            }
 
-        if (loadAsType == null)
-        {
-            il.Ldnull();
-        }
-        else if (loadAsType.IsValueType)
-        {
-            il.Box(loadAsType);
-        }
-        else if (loadAsType != typeof(object))
-        {
-            il.Castclass(typeof(object));
-        }
+            if (loadAsType == null)
+            {
+                il.Ldnull();
+            }
+            else if (loadAsType.IsValueType)
+            {
+                il.Box(loadAsType);
+            }
+            else if (loadAsType != typeof(object))
+            {
+                il.Castclass(typeof(object));
+            }
 
-        il.Ret();
-        return methodBuilder.Create();
+            il.Ret();
+            return methodBuilder.Create();
+        }
+#pragma warning restore CS0162 // Unreachable code detected
     }
 
     public Type LoadAsType(ITypeDescriptor descriptor)

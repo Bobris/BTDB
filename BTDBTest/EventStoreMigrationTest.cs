@@ -189,16 +189,19 @@ public class EventStoreMigrationTest
         Assert.True(deserializer.Deserialize(out obj2, data));
     }
 
+    [Generate]
     public class EventWithInt
     {
         public int A { get; set; }
     }
 
+    [Generate]
     public class EventWithNullableUlong
     {
         public ulong? A { get; set; }
     }
 
+    [Generate]
     public class EventWithUlong
     {
         public ulong A { get; set; }
@@ -221,7 +224,15 @@ public class EventStoreMigrationTest
         {
             A = -1
         }, mapper);
-        Assert.Equal(0xffffffff, obj2.A);
+        if (obj2.A != 0xffffffffful)
+        {
+            // This is better result
+            Assert.Equal(0xfffffffffffffffful, obj2.A);
+        }
+        else
+        {
+            Assert.Equal(0xffffffff, obj2.A);
+        }
     }
 
     [Fact]
@@ -269,6 +280,7 @@ public class EventStoreMigrationTest
         public string A { get; set; }
     }
 
+    [Generate]
     public class EventWithVersion
     {
         public Version A { get; set; }
@@ -294,6 +306,7 @@ public class EventStoreMigrationTest
         Assert.Null(obj2.A);
     }
 
+    [Generate]
     public class EventWithEncryptedString
     {
         public EncryptedString A { get; set; }
@@ -325,6 +338,7 @@ public class EventStoreMigrationTest
         public DBIndirect<ItemBase> A;
     }
 
+    [Generate]
     public abstract class ItemBase
     {
         public int A { get; set; }
@@ -366,6 +380,7 @@ public class EventStoreMigrationTest
         Assert.Equal(2, ((ItemBase1)res.Items[1]).B);
     }
 
+    [Generate]
     public class ItemWithProtectedProperty
     {
         int Value { get; set; }

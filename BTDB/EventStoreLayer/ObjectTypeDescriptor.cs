@@ -345,7 +345,7 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
             loaders.Add((object _, ref MemReader reader, ITypeBinaryDeserializerContext? ctx) =>
             {
-                srcFieldInfo.Value.Skip(ref reader, ctx);
+                srcFieldInfo.Value.SkipEx(ref reader, ctx);
             });
         }
 
@@ -366,8 +366,10 @@ public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
     public void Skip(ref MemReader reader, ITypeBinaryDeserializerContext? ctx)
     {
-        // objects are actually never skipped, they are just not stored
-        ctx!.SkipObject(ref reader);
+        foreach (var keyValuePair in _fields)
+        {
+            keyValuePair.Value.SkipEx(ref reader, ctx);
+        }
     }
 
     delegate void SaverItem(ref MemWriter writer, ITypeBinarySerializerContext? ctx, object? value);

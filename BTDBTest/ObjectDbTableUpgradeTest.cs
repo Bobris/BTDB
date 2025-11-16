@@ -868,18 +868,9 @@ public class ObjectDbTableUpgradeTest : IDisposable
 
     public class MyObjToObjChildTypeConverterFactory : DefaultTypeConverterFactory
     {
-        public override Converter? GetConverter(Type from, Type to)
+        public MyObjToObjChildTypeConverterFactory()
         {
-            if (from == typeof(Obj) && to == typeof(ObjChild))
-            {
-                return (ref byte fromI, ref byte toI) =>
-                {
-                    Unsafe.As<byte, ObjChild>(ref toI) = MyObjToObjChildTypeConvertorGenerator.Convert2ObjChild(
-                        Unsafe.As<byte, Obj>(ref fromI));
-                };
-            }
-
-            return base.GetConverter(from, to);
+            RegisterConverter<Obj, ObjChild>((in fromI, out toI) => { toI = new() { Num = fromI.Num, Child = 42 }; });
         }
     }
 

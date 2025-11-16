@@ -111,6 +111,17 @@ public static class Extensions
             };
         }
 
+        if (toType == typeof(object) && Nullable.GetUnderlyingType(fromType) == null)
+        {
+            // Let's blend boxing with loading
+            return (ref reader, ctx, ref value) =>
+            {
+                var temp = Activator.CreateInstance(fromType);
+                loader(ref reader, ctx, ref RawData.Ref(temp, (uint)Unsafe.SizeOf<nuint>()));
+                Unsafe.As<byte, object>(ref value) = temp;
+            };
+        }
+
         throw new NotImplementedException("TODO loading convertor from " + fromType.ToSimpleName() + " to " +
                                           toType.ToSimpleName());
     }
