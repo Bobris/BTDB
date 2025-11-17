@@ -541,7 +541,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             }
 
             var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, cursor, fullKeyBytes);
-            if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+            if (beforeRemove(_transaction, obj))
                 return false;
         }
         else
@@ -598,7 +598,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             }
 
             var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, cursor, keyBytes);
-            if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+            if (beforeRemove(_transaction, obj))
                 return false;
         }
 
@@ -647,7 +647,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             }
 
             var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, cursor, fullKeyBytes);
-            if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+            if (beforeRemove(_transaction, obj))
                 return false;
         }
         else
@@ -711,7 +711,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             if (beforeRemove != null)
             {
                 var obj = enumerator.Current!;
-                if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+                if (beforeRemove(_transaction, obj))
                     continue;
             }
 
@@ -765,7 +765,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             if (beforeRemove != null)
             {
                 var obj = enumerator.Current!;
-                if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+                if (beforeRemove(_transaction, obj))
                     continue;
             }
 
@@ -971,7 +971,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             if (beforeRemove != null)
             {
                 var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, cursor, fullKeyBytes);
-                if (beforeRemove(_transaction, _transaction.Owner.ActualOptions.Container!, obj))
+                if (beforeRemove(_transaction, obj))
                     continue;
             }
 

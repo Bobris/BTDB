@@ -27,7 +27,10 @@ delegate int RelationSaver(IInternalObjectDBTransaction transaction, ref MemWrit
 
 delegate void RelationSaverItem(ref MemWriter writer, IWriterCtx? writerCtx, object? value, ref int offsetInKeyValue);
 
-public delegate bool RelationBeforeRemove(IInternalObjectDBTransaction transaction, IContainer container, object value);
+public delegate bool RelationBeforeRemove(IInternalObjectDBTransaction transaction, object value);
+
+public delegate bool RelationBeforeRemoveWithContainer(IInternalObjectDBTransaction transaction, IContainer? container,
+    object value);
 
 public class RelationInfo
 {
@@ -852,7 +855,7 @@ public class RelationInfo
         {
             _relationVersions[LastPersistedVersion] = ClientRelationVersionInfo;
             ClientTypeVersion = LastPersistedVersion;
-            CreateCreatorLoadersAndSavers();
+            CreateCreatorLoadersAndSavers(tr.Owner.ActualOptions.Container);
             CheckSecondaryKeys(tr, ClientRelationVersionInfo);
         }
         else
@@ -861,7 +864,7 @@ public class RelationInfo
             _relationVersions[ClientTypeVersion] = ClientRelationVersionInfo;
             WriteRelationMetadata(tr);
 
-            CreateCreatorLoadersAndSavers();
+            CreateCreatorLoadersAndSavers(tr.Owner.ActualOptions.Container);
             if (LastPersistedVersion > 0)
             {
                 CheckThatPrimaryKeyHasNotChanged(tr, name, ClientRelationVersionInfo,
@@ -1178,7 +1181,7 @@ public class RelationInfo
 
     internal uint ClientTypeVersion { get; }
 
-    void CreateCreatorLoadersAndSavers()
+    void CreateCreatorLoadersAndSavers(IContainer? container)
     {
         StructList<TableFieldInfo> filteredFields = new();
         foreach (var tableFieldInfo in ClientRelationVersionInfo.Fields.Span)
@@ -1190,7 +1193,7 @@ public class RelationInfo
         _valueSaver = CreateSaver(filteredFields, $"RelationValueSaver_{Name}", false);
         _primaryKeysSaver = CreateSaver(ClientRelationVersionInfo.PrimaryKeyFields.Span,
             $"RelationKeySaver_{Name}", true);
-        _beforeRemove = CreateBeforeRemove($"RelationBeforeRemove_{Name}");
+        _beforeRemove = CreateBeforeRemove($"RelationBeforeRemove_{Name}", container);
         if (ClientRelationVersionInfo.SecondaryKeys.Count > 0)
         {
             _secondaryKeysSavers = new RelationSaver[ClientRelationVersionInfo.SecondaryKeys.Keys.Max() + 1];
@@ -1548,7 +1551,7 @@ public class RelationInfo
         }
     }
 
-    RelationBeforeRemove? CreateBeforeRemove(string functionName)
+    RelationBeforeRemove? CreateBeforeRemove(string functionName, IContainer? container)
     {
         var hasBeforeRemove = false;
         foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
@@ -1562,7 +1565,7 @@ public class RelationInfo
         }
 
         if (!hasBeforeRemove) return null;
-        var method = ILBuilder.Instance.NewMethod<RelationBeforeRemove>(functionName);
+        var method = ILBuilder.Instance.NewMethod<RelationBeforeRemoveWithContainer>(functionName);
         var ilGenerator = method.Generator;
         var clientTypeLoc = ilGenerator.DeclareLocal(ClientType);
         var resultLoc = ilGenerator.DeclareLocal(typeof(bool));
@@ -1622,7 +1625,9 @@ public class RelationInfo
         ilGenerator
             .Ldloc(resultLoc)
             .Ret();
-        return method.Create();
+        var resultWithContainer = method.Create();
+        return (transaction, value) =>
+            resultWithContainer(transaction, container, value);
     }
 
     unsafe RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName, bool forPrimaryKey)
