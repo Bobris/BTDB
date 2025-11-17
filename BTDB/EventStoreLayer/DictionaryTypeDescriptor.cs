@@ -89,7 +89,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         _keyDescriptor!.BuildHumanReadableFullName(text, stack, indent);
         text.Append(", ");
         _valueDescriptor!.BuildHumanReadableFullName(text, stack, indent);
-        text.Append(">");
+        text.Append('>');
     }
 
     public bool Equals(ITypeDescriptor other, Dictionary<ITypeDescriptor, ITypeDescriptor>? equalities)
@@ -150,7 +150,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         {
             var genericKeyLoad = _keyDescriptor!.GenerateLoadEx(typeof(object), typeConverterFactory);
             var genericValueLoad = _valueDescriptor!.GenerateLoadEx(typeof(object), typeConverterFactory);
-            return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+            return (ref reader, ctx, ref value) =>
             {
                 var count = reader.ReadVUInt32();
                 if (count == 0)
@@ -185,7 +185,7 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
         var valueStackAllocator =
             ReflectionMetadata.FindStackAllocatorByType(collectionMetadata.ElementValueType!);
 
-        return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+        return (ref reader, ctx, ref value) =>
         {
             var count = reader.ReadVUInt32();
             if (count == 0)
@@ -196,6 +196,8 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
             count--;
             var obj = collectionMetadata!.Creator(count);
+            if (_typeSerializers.PreserveDescriptors)
+                TypeSerializers.Object2DescriptorMap.Add(obj, this);
             var loaderCtx = new DictionaryKeyValueLoaderCtx
             {
                 Adder = collectionMetadata.AdderKeyValue,

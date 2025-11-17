@@ -200,7 +200,13 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
     public ITypeDescriptor? DescriptorOf(object? obj)
     {
         if (obj == null) return null;
-        if (_useInputDescriptors && obj is IKnowDescriptor knowDescriptor) return knowDescriptor.GetDescriptor();
+        if (_useInputDescriptors)
+        {
+            if (obj is IKnowDescriptor knowDescriptor) return knowDescriptor.GetDescriptor();
+            if (TypeSerializers.Object2DescriptorMap.TryGetValue(obj, out var descriptor))
+                return descriptor;
+        }
+
         if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out var info))
             return null;
         return info.Descriptor;
@@ -231,6 +237,8 @@ public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDesc
     {
         return descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name!) ?? typeof(object);
     }
+
+    public bool PreserveDescriptors => _useInputDescriptors;
 
     ITypeDescriptor NestedDescriptorReader(ref MemReader reader)
     {

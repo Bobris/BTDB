@@ -341,12 +341,14 @@ public class TypeSerializersTest
         storedDescriptorCtx.FinishNewDescriptors(ref writer);
         storedDescriptorCtx.StoreObject(ref writer, value);
         storedDescriptorCtx.CommitNewDescriptors();
+        var originalDescription = _ts.DescriptorOf(value).Describe();
         var reader = MemReader.CreateFromPinnedSpan(writer.GetSpan());
         var ts = new TypeSerializers();
         ts.SetTypeNameMapper(new ToDynamicMapper());
         var mapping = ts.CreateMapping();
         mapping.LoadTypeDescriptors(ref reader);
-        var obj = (dynamic)mapping.LoadObject(ref reader);
+        var obj = (dynamic)mapping.LoadObject(ref reader)!;
+        Assert.Equal(originalDescription, ts.DescriptorOf((object)obj)!.Describe());
         return obj;
     }
 

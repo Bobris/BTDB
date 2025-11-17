@@ -59,6 +59,7 @@ public class TypeSerializers : ITypeSerializers
     readonly Func<Type, ITypeDescriptor?> _buildFromTypeAction;
     readonly ISymmetricCipher _symmetricCipher;
     readonly ITypeConverterFactory _convertorFactory;
+    readonly bool _preserveDescriptors;
 
     public TypeSerializers(ITypeNameMapper? typeNameMapper = null, TypeSerializersOptions? options = null)
     {
@@ -68,6 +69,7 @@ public class TypeSerializers : ITypeSerializers
         ForgotAllTypesAndSerializers();
         _loaderFactoryAction = LoaderFactory;
         _buildFromTypeAction = BuildFromType;
+        _preserveDescriptors = options?.PreserveDescriptors ?? true;
         Options = options ?? TypeSerializersOptions.Default;
         _symmetricCipher = Options.SymmetricCipher ?? new InvalidSymmetricCipher();
     }
@@ -79,10 +81,18 @@ public class TypeSerializers : ITypeSerializers
         _typeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
     }
 
+    // Weak for Keys Dictionary is used here to avoid memory leak when object is not referenced anymore.
+    public static readonly ConditionalWeakTable<object, ITypeDescriptor> Object2DescriptorMap = new();
+
     public ITypeDescriptor? DescriptorOf(object? obj)
     {
         if (obj == null) return null;
-        if (obj is IKnowDescriptor knowDescriptor) return knowDescriptor.GetDescriptor();
+        if (_preserveDescriptors)
+        {
+            if (obj is IKnowDescriptor knowDescriptor) return knowDescriptor.GetDescriptor();
+            if (Object2DescriptorMap.TryGetValue(obj, out var descriptor)) return descriptor;
+        }
+
         return DescriptorOf(obj.GetType());
     }
 
@@ -429,6 +439,8 @@ public class TypeSerializers : ITypeSerializers
         return descriptor.GetPreferredType(targetType) ?? NameToType(descriptor.Name!) ?? typeof(object);
     }
 
+    public bool PreserveDescriptors => _preserveDescriptors;
+
     class DeserializerCtx : ITypeBinaryDeserializerContext
     {
         readonly ITypeSerializersId2LoaderMapping _mapping;
@@ -547,21 +559,33 @@ public class TypeSerializers : ITypeSerializers
         return _complexSavers.GetOrAdd((descriptor, type), NewComplexSaver);
     }
 
-    static Layer1ComplexSaver NewComplexSaver((ITypeDescriptor descriptor, Type type) v)
+    Layer1ComplexSaver NewComplexSaver((ITypeDescriptor descriptor, Type type) v)
     {
         var (descriptor, type) = v;
-        var method = ILBuilder.Instance.NewMethod<Layer1ComplexSaver>(descriptor.Name + "ComplexSaver");
-        var il = method.Generator;
-        descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
+#pragma warning disable CS0162 // Unreachable code detected
+        if (IFieldHandler.UseNoEmitForDescriptors)
         {
-            ilgen.Ldarg(2);
-            if (type != typeof(object))
+            var saver = typeof(object) == type
+                ? descriptor.GenerateSave(type, _convertorFactory)
+                : descriptor.BuildConvertingSaver(typeof(object), type, _convertorFactory);
+            return (ref writer, ctx, value) => { saver(ref writer, ctx, ref Unsafe.As<object, byte>(ref value)); };
+        }
+        else
+        {
+            var method = ILBuilder.Instance.NewMethod<Layer1ComplexSaver>(descriptor.Name + "ComplexSaver");
+            var il = method.Generator;
+            descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
             {
-                ilgen.UnboxAny(type);
-            }
-        }, type);
-        il.Ret();
-        return method.Create();
+                ilgen.Ldarg(2);
+                if (type != typeof(object))
+                {
+                    ilgen.UnboxAny(type);
+                }
+            }, type);
+            il.Ret();
+            return method.Create();
+        }
+#pragma warning restore CS0162 // Unreachable code detected
     }
 
     public Action<object, IDescriptorSerializerLiteContext>? GetNewDescriptorSaver(ITypeDescriptor descriptor,

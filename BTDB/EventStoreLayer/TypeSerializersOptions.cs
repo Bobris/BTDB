@@ -8,7 +8,8 @@ public class TypeSerializersOptions
 {
     public static TypeSerializersOptions Default { get; } = new TypeSerializersOptions
     {
-        IgnoreIIndirect = true
+        IgnoreIIndirect = true,
+        PreserveDescriptors = true
     };
 
     /// <summary>
@@ -25,4 +26,6 @@ public class TypeSerializersOptions
     public ITypeConverterFactory? ConvertorFactory { get; set; }
 
     public bool ForbidSerializeLazyDBObjects { get; set; }
+
+    public bool PreserveDescriptors { get; set; }
 }

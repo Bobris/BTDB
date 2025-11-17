@@ -204,6 +204,8 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
 
             count--;
             var obj = collectionMetadata!.Creator(count);
+            if (_typeSerializers.PreserveDescriptors)
+                TypeSerializers.Object2DescriptorMap.Add(obj, this);
             var loaderCtx = new ListItemLoaderCtx
             {
                 Adder = collectionMetadata.Adder,

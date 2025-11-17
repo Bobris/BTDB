@@ -68,11 +68,16 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         while (_id2Info.Count < ReservedBuildinTypes) _id2Info.Add(null);
     }
 
-    public ITypeDescriptor? DescriptorOf(object obj)
+    public ITypeDescriptor? DescriptorOf(object? obj)
     {
         if (obj == null) return null;
-        var knowDescriptor = obj as IKnowDescriptor;
-        if (knowDescriptor != null) return knowDescriptor.GetDescriptor();
+        if (PreserveDescriptors)
+        {
+            if (obj is IKnowDescriptor knowDescriptor) return knowDescriptor.GetDescriptor();
+            TypeSerializers.Object2DescriptorMap.TryGetValue(obj, out var descriptor);
+            if (descriptor != null) return descriptor;
+        }
+
         if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out var info))
             return null;
         return info.Descriptor;
@@ -104,6 +109,8 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
     {
         return descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
     }
+
+    public bool PreserveDescriptors { get; set; } = true;
 
     ITypeDescriptor NestedDescriptorReader(ref MemReader reader)
     {
