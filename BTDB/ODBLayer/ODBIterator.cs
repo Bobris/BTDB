@@ -9,6 +9,7 @@ using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
@@ -40,6 +41,7 @@ public class ODBIterator
     public IReadOnlyDictionary<uint, ODBIteratorRelationInfo> RelationId2Info => _relationId2Info;
     public IReadOnlyDictionary<TableIdVersionId, TableVersionInfo> TableVersionInfos => _tableVersionInfos;
     public bool SkipAlreadyVisitedOidChecks;
+    DefaultTypeConverterFactory _typeConverterFactory = new DefaultTypeConverterFactory();
 
     public ODBIterator(IObjectDBTransaction tr, IODBFastVisitor visitor)
     {
@@ -661,12 +663,26 @@ public class ODBIterator
             {
                 if (!_loaders.TryGetValue(handler, out var loader))
                 {
-                    var meth =
-                        ILBuilder.Instance.NewMethod<LoaderFun>("Load" + handler.Name);
-                    var il = meth.Generator;
-                    handler.Load(il, il2 => il2.Ldarg(0), null);
-                    il.Box(handler.HandledType()!).Ret();
-                    loader = meth.Create();
+                    if (IFieldHandler.UseNoEmit)
+                    {
+                        var rawLoader = handler.Load(typeof(object), _typeConverterFactory);
+                        loader = (ref memReader) =>
+                        {
+                            object? res = null;
+                            rawLoader(ref memReader, null, ref Unsafe.As<object?, byte>(ref res));
+                            return res;
+                        };
+                    }
+                    else
+                    {
+                        var meth =
+                            ILBuilder.Instance.NewMethod<LoaderFun>("Load" + handler.Name);
+                        var il = meth.Generator;
+                        handler.Load(il, il2 => il2.Ldarg(0), null);
+                        il.Box(handler.HandledType()!).Ret();
+                        loader = meth.Create();
+                    }
+
                     _loaders.Add(handler, loader);
                 }
 

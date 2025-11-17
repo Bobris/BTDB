@@ -11,7 +11,6 @@ using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.Serialization;
 using BTDB.StreamLayer;
-using Extensions = BTDB.FieldHandler.Extensions;
 
 namespace BTDB.ODBLayer;
 
@@ -305,17 +304,14 @@ public class TableInfo
                 if (fieldInfo.PropRefGetter == null)
                 {
                     var offset = fieldInfo.ByteOffset!.Value;
-                    savers[i] = (object obj, ref MemWriter writer, IWriterCtx? ctx) =>
-                    {
-                        saver(ref writer, ctx, ref RawData.Ref(obj, offset));
-                    };
+                    savers[i] = (obj, ref writer, ctx) => { saver(ref writer, ctx, ref RawData.Ref(obj, offset)); };
                     continue;
                 }
 
                 var getter = fieldInfo.PropRefGetter;
                 if (!fieldInfo.Type.IsValueType)
                 {
-                    savers[i] = (object obj, ref MemWriter writer, IWriterCtx? ctx) =>
+                    savers[i] = (obj, ref writer, ctx) =>
                     {
                         object? value = null;
                         getter(obj, ref Unsafe.As<object, byte>(ref value));
@@ -327,7 +323,7 @@ public class TableInfo
                 if (!RawData.MethodTableOf(fieldInfo.Type).ContainsGCPointers &&
                     RawData.GetSizeAndAlign(fieldInfo.Type).Size <= 16)
                 {
-                    savers[i] = (object obj, ref MemWriter writer, IWriterCtx? ctx) =>
+                    savers[i] = (obj, ref writer, ctx) =>
                     {
                         Int128 value = 0;
                         getter(obj, ref Unsafe.As<Int128, byte>(ref value));
@@ -339,9 +335,9 @@ public class TableInfo
                 var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldInfo.Type);
                 if (stackAllocator == null)
                     throw new InvalidOperationException($"Cannot find stack allocator for {fieldInfo.Type}");
-                savers[i] = (object obj, ref MemWriter writer, IWriterCtx? ctx) =>
+                savers[i] = (obj, ref writer, ctx) =>
                 {
-                    FieldSaverCtx fieldSaverCtx = new FieldSaverCtx()
+                    var fieldSaverCtx = new FieldSaverCtx
                     {
                         Object = obj,
                         Saver = saver,
@@ -365,8 +361,8 @@ public class TableInfo
 
             if (anyNeedsCtx)
             {
-                var saver = (ObjectSaver)((IInternalObjectDBTransaction transaction, DBObjectMetadata? _,
-                    ref MemWriter writer, object value) =>
+                var saver = (ObjectSaver)((transaction, _,
+                    ref writer, value) =>
                 {
                     var ctx = new DBWriterCtx(transaction);
                     foreach (var saver in savers)
@@ -378,8 +374,8 @@ public class TableInfo
             }
             else
             {
-                var saver = (ObjectSaver)((IInternalObjectDBTransaction _, DBObjectMetadata? _,
-                    ref MemWriter writer, object value) =>
+                var saver = (ObjectSaver)((_, _,
+                    ref writer, value) =>
                 {
                     foreach (var saver in savers)
                     {
@@ -391,9 +387,7 @@ public class TableInfo
         }
         else
         {
-            var method = ILBuilder.Instance
-                .NewMethod<ObjectSaver>(
-                    $"Saver_{Name}");
+            var method = ILBuilder.Instance.NewMethod<ObjectSaver>($"Saver_{Name}");
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType!);
             ilGenerator
@@ -556,7 +550,7 @@ public class TableInfo
                         if (fieldInfo.PropRefSetter == null)
                         {
                             var offset = fieldInfo.ByteOffset!.Value;
-                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            loaders.Add((obj, ref reader, ctx) =>
                             {
                                 handlerLoad(ref reader, ctx, ref RawData.Ref(obj, offset));
                             });
@@ -566,7 +560,7 @@ public class TableInfo
                         var propRefSetter = fieldInfo.PropRefSetter;
                         if (!fieldInfo.Type.IsValueType)
                         {
-                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            loaders.Add((obj, ref reader, ctx) =>
                             {
                                 object? value = null;
                                 handlerLoad(ref reader, ctx, ref Unsafe.As<object, byte>(ref value));
@@ -578,7 +572,7 @@ public class TableInfo
                         if (!RawData.MethodTableOf(fieldInfo.Type).ContainsGCPointers &&
                             RawData.GetSizeAndAlign(fieldInfo.Type).Size <= 16)
                         {
-                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            loaders.Add((obj, ref reader, ctx) =>
                             {
                                 Int128 value = 0;
                                 handlerLoad(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref value));
@@ -587,7 +581,7 @@ public class TableInfo
                         }
 
                         var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldInfo.Type);
-                        loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                        loaders.Add((obj, ref reader, ctx) =>
                         {
                             FieldLoaderCtx fieldLoaderCtx = new FieldLoaderCtx()
                             {
@@ -621,7 +615,7 @@ public class TableInfo
                 }
 
                 var handler = srcFieldInfo.Handler!;
-                loaders.Add((object _, ref MemReader reader, IReaderCtx? ctx) => { handler.Skip(ref reader, ctx); });
+                loaders.Add((_, ref reader, ctx) => { handler.Skip(ref reader, ctx); });
                 if (destFieldInfo != null) setFields.Remove(destFieldInfo.Name);
             }
 
@@ -645,16 +639,13 @@ public class TableInfo
                 if (propRefSetter == null)
                 {
                     var offset = fieldInfo.ByteOffset.Value;
-                    loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
-                    {
-                        init(ctx, ref RawData.Ref(obj, offset));
-                    });
+                    loaders.Add((obj, ref _, ctx) => { init(ctx, ref RawData.Ref(obj, offset)); });
                     continue;
                 }
 
                 if (!fieldInfo.Type.IsValueType)
                 {
-                    loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                    loaders.Add((obj, ref _, ctx) =>
                     {
                         object? value = null;
                         init(ctx, ref Unsafe.As<object, byte>(ref value));
@@ -666,7 +657,7 @@ public class TableInfo
                 if (!RawData.MethodTableOf(fieldInfo.Type).ContainsGCPointers &&
                     RawData.GetSizeAndAlign(fieldInfo.Type).Size <= 16)
                 {
-                    loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                    loaders.Add((obj, ref _, ctx) =>
                     {
                         Int128 value = 0;
                         init(ctx, ref Unsafe.As<Int128, byte>(ref value));
@@ -675,7 +666,7 @@ public class TableInfo
                 }
 
                 var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldInfo.Type);
-                loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                loaders.Add((obj, ref _, ctx) =>
                 {
                     FieldLoaderCtx fieldLoaderCtx = new FieldLoaderCtx()
                     {
@@ -701,8 +692,7 @@ public class TableInfo
             var loadersArray = loaders.ToArray();
             if (anyNeedsCtx)
             {
-                return (IInternalObjectDBTransaction transaction, DBObjectMetadata _, ref MemReader reader,
-                    object value) =>
+                return (transaction, _, ref reader, value) =>
                 {
                     var ctx = new DBReaderCtx(transaction);
                     foreach (var loadFunc in loadersArray)
@@ -712,7 +702,7 @@ public class TableInfo
                 };
             }
 
-            return (IInternalObjectDBTransaction _, DBObjectMetadata _, ref MemReader reader, object value) =>
+            return (_, _, ref reader, value) =>
             {
                 foreach (var loadFunc in loadersArray)
                 {
@@ -840,8 +830,7 @@ public class TableInfo
 
         if (anyNeedsCtx)
         {
-            return (IInternalObjectDBTransaction transaction, DBObjectMetadata _, ref MemReader reader,
-                object _) =>
+            return (transaction, _, ref reader, _) =>
             {
                 var ctx = new DBReaderCtx(transaction);
                 foreach (var handler in handlers)
@@ -851,7 +840,7 @@ public class TableInfo
             };
         }
 
-        return (IInternalObjectDBTransaction _, DBObjectMetadata _, ref MemReader reader, object _) =>
+        return (_, _, ref reader, _) =>
         {
             foreach (var handler in handlers)
             {
@@ -896,9 +885,8 @@ public class TableInfo
 
         var handlers = handlerList.ToArray();
         return anyNeedsCtx
-            ? Tuple.Create(doesNeedFreeContent, (ObjectFreeContent)((IInternalObjectDBTransaction transaction,
-                DBObjectMetadata? metadata,
-                ref MemReader reader, IList<ulong> dictIds) =>
+            ? Tuple.Create(doesNeedFreeContent, (ObjectFreeContent)((transaction, metadata,
+                ref reader, dictIds) =>
             {
                 var ctx = new DBReaderWithFreeInfoCtx(transaction, dictIds);
                 foreach (var handler in handlers)
@@ -906,9 +894,8 @@ public class TableInfo
                     handler.FreeContent(ref reader, ctx);
                 }
             }))
-            : Tuple.Create(doesNeedFreeContent, (ObjectFreeContent)((IInternalObjectDBTransaction transaction,
-                DBObjectMetadata? metadata,
-                ref MemReader reader, IList<ulong> dictIds) =>
+            : Tuple.Create(doesNeedFreeContent, (ObjectFreeContent)((transaction, metadata,
+                ref reader, dictIds) =>
             {
                 foreach (var handler in handlers)
                 {

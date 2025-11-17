@@ -1047,9 +1047,9 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
                 Owner.ActualOptions.Container?.ResolveOptional(
                     typeof(IRelationOnCreate<>).MakeGenericType(interfaceType));
             if (upgrader != null)
-                upgrader.GetType().GetMethod("OnCreate", BindingFlags.Instance | BindingFlags.Public,
-                        [typeof(IObjectDBTransaction), interfaceType])!
-                    .Invoke(upgrader, [this, factory(this)]);
+            {
+                ((IInternalRelationOnCreate)upgrader).InternalOnCreate(this, factory(this));
+            }
         }
 
         return factory;

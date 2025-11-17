@@ -224,7 +224,7 @@ public class EventStoreMigrationTest
         {
             A = -1
         }, mapper);
-        if (obj2.A != 0xffffffffful)
+        if (obj2.A != 0xfffffffful)
         {
             // This is better result
             Assert.Equal(0xfffffffffffffffful, obj2.A);

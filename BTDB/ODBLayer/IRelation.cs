@@ -24,8 +24,21 @@ public interface IRelation
     IRelation? BtdbInternalNextInChain { get; set; }
 }
 
+public interface IInternalRelationOnCreate
+{
+    void InternalOnCreate(IObjectDBTransaction transaction, IRelation relation);
+}
+
 [Generate]
-public interface IRelationOnCreate<T> where T : IRelation
+public interface IRelationOnCreate<in T> : IInternalRelationOnCreate where T : IRelation
 {
     void OnCreate(IObjectDBTransaction transaction, T creating);
+
+    void IInternalRelationOnCreate.InternalOnCreate(IObjectDBTransaction transaction, IRelation relation)
+    {
+        if (relation is T tRelation)
+        {
+            OnCreate(transaction, tRelation);
+        }
+    }
 }

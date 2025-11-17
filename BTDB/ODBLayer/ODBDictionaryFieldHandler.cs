@@ -111,17 +111,14 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             var saver = fieldHandler.Save(realType, typeConverterFactory ?? new DefaultTypeConverterFactory());
             if (needsCtx)
             {
-                return (ref MemWriter writer, IInternalObjectDBTransaction transaction, ref byte value) =>
+                return (ref writer, transaction, ref value) =>
                 {
                     var ctx = new DBWriterCtx(transaction);
                     saver(ref writer, ctx, ref value);
                 };
             }
 
-            return (ref MemWriter writer, IInternalObjectDBTransaction _, ref byte value) =>
-            {
-                saver(ref writer, null, ref value);
-            };
+            return (ref writer, _, ref value) => { saver(ref writer, null, ref value); };
         }
         else
         {
@@ -166,17 +163,14 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             var loader = fieldHandler.Load(realType, typeConverterFactory ?? new DefaultTypeConverterFactory());
             if (needsCtx)
             {
-                return (ref MemReader reader, IInternalObjectDBTransaction transaction, ref byte value) =>
+                return (ref reader, transaction, ref value) =>
                 {
                     var ctx = new DBReaderCtx(transaction);
                     loader(ref reader, ctx, ref value);
                 };
             }
 
-            return (ref MemReader reader, IInternalObjectDBTransaction _, ref byte value) =>
-            {
-                loader(ref reader, null, ref value);
-            };
+            return (ref reader, _, ref value) => { loader(ref reader, null, ref value); };
         }
         else
         {
@@ -296,7 +290,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         if (collectionMetadata == null)
             throw new BTDBException("Cannot find collection metadata for " + _type.ToSimpleName());
         var creator = collectionMetadata.ODBCreator;
-        return (IReaderCtx? ctx, ref byte value) =>
+        return (ctx, ref value) =>
         {
             var transaction = ((IDBReaderCtx)ctx!).GetTransaction();
             Unsafe.As<byte, object>(ref value) =
@@ -335,7 +329,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
             if (collectionMetadata == null)
                 throw new BTDBException("Cannot find collection metadata for " + asType.ToSimpleName());
             var creator = collectionMetadata.ODBCreator;
-            return (ref MemReader reader, IReaderCtx? ctx, ref byte value) =>
+            return (ref reader, ctx, ref value) =>
             {
                 var dictId = reader.ReadVUInt64();
                 Unsafe.As<byte, object>(ref value) = creator(((IDBReaderCtx)ctx!).GetTransaction(), configuration,
@@ -371,7 +365,7 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
         if (collectionMetadata == null)
             throw new BTDBException("Cannot find collection metadata for " + asType.ToSimpleName());
         var creator = collectionMetadata.ODBCreator;
-        return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
+        return (ref writer, ctx, ref value) =>
         {
             var writerCtx = (IDBWriterCtx)ctx!;
             var dictionary = Unsafe.As<byte, IDictionary>(ref value);
