@@ -511,23 +511,35 @@ public class TypeSerializers : ITypeSerializers
         return _simpleSavers.GetOrAdd((descriptor, type), NewSimpleSaver);
     }
 
-    static Layer1SimpleSaver? NewSimpleSaver((ITypeDescriptor descriptor, Type type) v)
+    Layer1SimpleSaver? NewSimpleSaver((ITypeDescriptor descriptor, Type type) v)
     {
         var (descriptor, type) = v;
         if (descriptor.AnyOpNeedsCtx()) return null;
-        var method =
-            ILBuilder.Instance.NewMethod<Layer1SimpleSaver>(descriptor.Name + "SimpleSaver");
-        var il = method.Generator;
-        descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), null, ilgen =>
+        if (IFieldHandler.UseNoEmitForDescriptors)
+#pragma warning disable CS0162 // Unreachable code detected
         {
-            ilgen.Ldarg(1);
-            if (type != typeof(object))
+            var saver = typeof(object) == type
+                ? descriptor.GenerateSave(type, _convertorFactory)
+                : descriptor.BuildConvertingSaver(typeof(object), type, _convertorFactory);
+            return (ref writer, value) => { saver(ref writer, null, ref Unsafe.As<object, byte>(ref value)); };
+        }
+        else
+        {
+            var method =
+                ILBuilder.Instance.NewMethod<Layer1SimpleSaver>(descriptor.Name + "SimpleSaver");
+            var il = method.Generator;
+            descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), null, ilgen =>
             {
-                ilgen.UnboxAny(type);
-            }
-        }, type);
-        il.Ret();
-        return method.Create();
+                ilgen.Ldarg(1);
+                if (type != typeof(object))
+                {
+                    ilgen.UnboxAny(type);
+                }
+            }, type);
+            il.Ret();
+            return method.Create();
+        }
+#pragma warning restore CS0162 // Unreachable code detected
     }
 
     public Layer1ComplexSaver GetComplexSaver(ITypeDescriptor descriptor, Type type)

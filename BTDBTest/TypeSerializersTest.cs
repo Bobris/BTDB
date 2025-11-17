@@ -452,6 +452,7 @@ public class TypeSerializersTest
         Assert.False(obj.Equals(AttributeTargets.Method));
     }
 
+    [Generate]
     public class SimpleDtoWithNullable
     {
         public int? IntField { get; set; }

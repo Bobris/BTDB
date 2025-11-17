@@ -275,6 +275,7 @@ public class EventStoreMigrationTest
         Assert.Equal(0ul, obj2.A);
     }
 
+    [Generate]
     public class EventWithString
     {
         public string A { get; set; }
