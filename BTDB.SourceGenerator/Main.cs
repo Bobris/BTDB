@@ -2165,7 +2165,7 @@ public class SourceGenerator : IIncrementalGenerator
                 """);
 
             var methodIndex = 0;
-            if (generationInfo.Methods.FirstOrDefault(m => m.Purpose == Purpose.OnSerialize) != null)
+            if (generationInfo.Methods.Any(m => m.Purpose == Purpose.OnSerialize))
             {
                 // language=c#
                 metadataCode.Append("""
@@ -2217,6 +2217,111 @@ public class SourceGenerator : IIncrementalGenerator
                 // language=c#
                 metadataCode.Append("""
                             }
+
+                    """);
+            }
+
+            methodIndex = 0;
+            if (generationInfo.Methods.Any(m => m.Purpose == Purpose.OnBeforeRemove))
+            {
+                // language=c#
+                metadataCode.Append("""
+                            metadata.OnBeforeRemoveFactory = container =>
+                            {
+
+                    """);
+                var methods = generationInfo.Methods.Where(m => m.Purpose == Purpose.OnBeforeRemove).ToArray();
+
+                var paramIocIndex = 0;
+                // if container needed
+                if (methods.Any(m => ContainsNonTransactionParameter(m.Parameters.AsSpan())))
+                {
+                    // language=c#
+                    metadataCode.Append("""
+                                    global::System.ArgumentNullException.ThrowIfNull(container);
+
+                        """);
+                    foreach (var methodInfo in methods)
+                    {
+                        foreach (var parameter in methodInfo.Parameters)
+                        {
+                            if (IsTransactionType(parameter.Type)) continue;
+
+                            var keyCode = parameter.KeyCode ?? '"' + parameter.Name + '"';
+                            // language=c#
+                            metadataCode.Append($"""
+                                            var f{paramIocIndex} = container.CreateFactory(new global::BTDB.IOC.CreateFactoryCtx(), typeof({NormalizeType(parameter.Type)}), {keyCode});
+
+                                """);
+                            if (!parameter.Optional)
+                            {
+                                // language=c#
+                                metadataCode.Append($"""
+                                                if (f{paramIocIndex} == null) throw new global::System.ArgumentException("Cannot resolve {NormalizeType(parameter.Type)} {parameter.Name} parameter of {generationInfo.FullName}.{methodInfo.Name}");
+
+                                    """);
+                            }
+
+                            paramIocIndex++;
+                        }
+                    }
+                }
+
+                // language=c#
+                metadataCode.Append($$"""
+                                return (transaction, value) =>
+                                {
+                                    var val = Unsafe.As<{{generationInfo.FullName}}>(value);
+                                    var res = false;
+
+                    """);
+                paramIocIndex = 0;
+
+                foreach (var m in methods)
+                {
+                    var maybeOr = m.ResultType == "void" ? "" : "res |= ";
+                    if (m.IsPublic)
+                    {
+                        metadataCode.Append($"""
+                                            {maybeOr}val.{m.Name}({OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex)});
+
+                            """);
+                    }
+                    else
+                    {
+                        methodIndex++;
+                        if (generationInfo.GenericParameters.IsEmpty)
+                        {
+                            // language=c#
+                            declarations.Append($"""
+                                    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
+                                    extern static void OnBeforeRemove{methodIndex}({generationInfo.FullName} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
+
+                                """);
+                        }
+                        else
+                        {
+                            // language=c#
+                            declarations.Append($"""
+                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
+                                        extern static void OnBeforeRemove{methodIndex}({nameWithGeneric} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
+
+                                """);
+                        }
+
+                        // language=c#
+                        metadataCode.Append($"""
+                                            {maybeOr}{ActivatorName(generationInfo)}OnBeforeRemove{methodIndex}(val{OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex, true)});
+
+                            """);
+                    }
+                }
+
+                // language=c#
+                metadataCode.Append("""
+                                    return res;
+                                };
+                            };
 
                     """);
             }
@@ -2290,6 +2395,62 @@ public class SourceGenerator : IIncrementalGenerator
         context.AddSource(
             $"{generationInfo.FullName.Replace("global::", "").Replace("<", "[").Replace(">", "]").Replace(" ", "")}.g.cs",
             SourceText.From(code, Encoding.UTF8));
+    }
+
+    static string OnBeforeRemoveDeclareParams(EquatableArray<ParameterInfo> parameters)
+    {
+        if (parameters.IsEmpty) return "";
+        return ", " + string.Join(", ", parameters.Select(p => $"{NormalizeType(p.Type)} {p.Name}"));
+    }
+
+    static string OnBeforeRemoveCallParams(EquatableArray<ParameterInfo> parameters, ref int paramIocIndex,
+        bool withFirstComma = false)
+    {
+        if (parameters.IsEmpty) return "";
+        var sb = new StringBuilder();
+        foreach (var parameter in parameters)
+        {
+            if (withFirstComma || sb.Length > 0) sb.Append(", ");
+            if (IsTransactionType(parameter.Type))
+            {
+                sb.Append("transaction");
+                continue;
+            }
+
+            var normalizeType = NormalizeType(parameter.Type);
+            var isReference = parameter.IsReference;
+            if (!parameter.Optional)
+            {
+                sb.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"({normalizeType})(");
+                sb.Append($"f{paramIocIndex}(container, null))!");
+            }
+            else
+            {
+                sb.Append($"f{paramIocIndex} != null ? ");
+                sb.Append(isReference ? $"Unsafe.As<{normalizeType}>(" : $"(({normalizeType})");
+                sb.Append($"f{paramIocIndex}(container, null)) : " +
+                          (parameter.DefaultValue ?? $"default({normalizeType})"));
+            }
+
+            paramIocIndex++;
+        }
+
+        return sb.ToString();
+    }
+
+    static bool ContainsNonTransactionParameter(ReadOnlySpan<ParameterInfo> parameters)
+    {
+        foreach (var parameter in parameters)
+        {
+            if (!IsTransactionType(parameter.Type)) return true;
+        }
+
+        return false;
+    }
+
+    static bool IsTransactionType(string type)
+    {
+        return type == "global::BTDB.ODBLayer.IObjectDBTransaction";
     }
 
     static string GenericConstrains(GenerationInfo generationInfo)

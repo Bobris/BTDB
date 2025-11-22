@@ -5,12 +5,12 @@ using BTDB.Collections;
 
 namespace BTDB.IOC;
 
-sealed class CreateFactoryCtx : ICreateFactoryCtx
+public sealed class CreateFactoryCtx : ICreateFactoryCtx
 {
     internal uint SingletonDeepness;
     internal bool VerifySingletons;
     internal int Enumerate = -1;
-    internal int MaxParams = 0;
+    int _maxParams;
 
     Dictionary<(Type, string?), int> _paramTypeToIndex = new();
 
@@ -24,7 +24,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
 
     public int GetParamSize()
     {
-        return MaxParams;
+        return _maxParams;
     }
 
     public bool HasResolvingCtx()
@@ -37,7 +37,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         if (_paramTypeToIndex.TryGetValue((paramType, name), out var idx)) return idx;
         idx = _paramTypeToIndex.Count;
         _paramTypeToIndex.Add((paramType, name), idx);
-        MaxParams = Math.Max(MaxParams, idx + 1);
+        _maxParams = Math.Max(_maxParams, idx + 1);
         return idx;
     }
 
@@ -94,7 +94,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         _lazyFactories.Add((type, Enumerate, new(_enumeratingIndexes.ToArray())), factory);
     }
 
-    public void PushResolving(CReg cReg)
+    internal void PushResolving(CReg cReg)
     {
         foreach (var reg in _resolvingStack)
         {
@@ -113,19 +113,19 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         _enumeratingStack.RemoveAt(^1);
     }
 
-    public StructList<CReg> BackupResolvingStack()
+    internal StructList<CReg> BackupResolvingStack()
     {
         var res = _resolvingStack;
         _resolvingStack = new StructList<CReg>();
         return res;
     }
 
-    public void RestoreResolvingStack(StructList<CReg> backup)
+    internal void RestoreResolvingStack(StructList<CReg> backup)
     {
         _resolvingStack = backup;
     }
 
-    public CReg Enumerating(CReg cReg)
+    internal CReg Enumerating(CReg cReg)
     {
         foreach (var (item1, item2) in _enumeratingIndexes)
         {
@@ -169,13 +169,13 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         Enumerate = enumerableBackup;
     }
 
-    public readonly record struct CtxRestorer(CreateFactoryCtx Ctx, Dictionary<(Type, string?), int> ParamTypeToIndex)
+    readonly record struct CtxRestorer(CreateFactoryCtx Ctx, Dictionary<(Type, string?), int> ParamTypeToIndex)
         : IDisposable
     {
         public void Dispose()
         {
             Ctx._paramTypeToIndex = ParamTypeToIndex;
-            if (ParamTypeToIndex.Count == 0) Ctx.MaxParams = 0;
+            if (ParamTypeToIndex.Count == 0) Ctx._maxParams = 0;
         }
     }
 
@@ -184,7 +184,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         return new CtxRestorer(this, _paramTypeToIndex.ToDictionary());
     }
 
-    public readonly record struct CtxEnumerableRestorer(
+    internal readonly record struct CtxEnumerableRestorer(
         CreateFactoryCtx Ctx,
         StructList<(CReg, int)> EnumeratingIndexes,
         int Enumerate)
@@ -197,7 +197,7 @@ sealed class CreateFactoryCtx : ICreateFactoryCtx
         }
     }
 
-    public CtxEnumerableRestorer EnumerableRestorer()
+    internal CtxEnumerableRestorer EnumerableRestorer()
     {
         var res = new CtxEnumerableRestorer(this, _enumeratingIndexes, Enumerate);
         _enumeratingIndexes = new();

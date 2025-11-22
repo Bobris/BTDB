@@ -524,4 +524,77 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyComplexOnBeforeRemove()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+            public interface I3rdPartyInterface { string Name { get; } }
+
+            public class Person
+            {
+                [PrimaryKey(1)] public string Name { get; set; }
+
+                [OnBeforeRemove]
+                public bool OnBeforeRemove()
+                {
+                    return true;
+                }
+
+                [OnBeforeRemove]
+                public bool SecondOnBeforeRemove(IObjectDBTransaction transaction)
+                {
+                    return true;
+                }
+
+                [OnBeforeRemove]
+                public bool ThirdOnBeforeRemove(I3rdPartyInterface dependency, I3rdPartyInterface? key1)
+                {
+                    return true;
+                }
+            }
+
+            public interface IPersonTable : IRelation<Person>
+            {
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyComplexPrivateOnBeforeRemove()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+            public interface I3rdPartyInterface { string Name { get; } }
+
+            public class Person
+            {
+                [PrimaryKey(1)] public string Name { get; set; }
+
+                [OnBeforeRemove]
+                bool OnBeforeRemove()
+                {
+                    return true;
+                }
+
+                [OnBeforeRemove]
+                bool SecondOnBeforeRemove(IObjectDBTransaction transaction)
+                {
+                    return true;
+                }
+
+                [OnBeforeRemove]
+                void ThirdOnBeforeRemove(I3rdPartyInterface dependency, I3rdPartyInterface? key1)
+                {
+                }
+            }
+
+            public interface IPersonTable : IRelation<Person>
+            {
+            }
+            """);
+    }
 }

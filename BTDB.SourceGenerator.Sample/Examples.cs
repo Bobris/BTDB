@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using BTDB;
 using BTDB.IL;
 using BTDB.IOC;
+using BTDB.ODBLayer;
 using BTDB.Serialization;
 using Sample3rdPartyLib;
 
@@ -283,6 +284,77 @@ static file class DynamicValueWrapperRegistration
                 ByteOffset = RawData.CalcOffset(dummy, ref Accessor<Enum>.Field1(dummy)),
             },
         ];
+        ReflectionMetadata.Register(metadata);
+    }
+}
+
+public class Person2
+{
+    [PrimaryKey(1)] public string Name { get; set; }
+
+    [OnBeforeRemove]
+    public bool OnBeforeRemove()
+    {
+        Console.WriteLine($"Person2 {Name} is being removed");
+        return true;
+    }
+
+    [OnBeforeRemove]
+    public bool SecondOnBeforeRemove(IObjectDBTransaction transaction)
+    {
+        Console.WriteLine($"In transaction {transaction.KeyValueDBTransaction.GetCommitUlong()}");
+        return true;
+    }
+
+    [OnBeforeRemove]
+    public bool ThirdOnBeforeRemove(I3rdPartyInterface dependency, I3rdPartyInterface? key1)
+    {
+        Console.WriteLine($"Dependency says: {dependency.Name}");
+        Console.WriteLine($"Key1 says: {key1.Name}");
+        return true;
+    }
+}
+
+static file class Person2Registration
+{
+    internal static unsafe void Register4BTDB()
+    {
+        var metadata = new ClassMetadata();
+        metadata.Name = "Person2";
+        metadata.Type = typeof(Person2);
+        metadata.Creator = metadata.Creator = &CreatePerson2;
+        static object CreatePerson2() => new Person2();
+        var dummy = Unsafe.As<DynamicValueWrapper<Enum>>(metadata);
+        metadata.Fields =
+        [
+            new()
+            {
+                Name = "Name",
+                Type = typeof(string),
+                ByteOffset = RawData.CalcOffset(dummy, ref dummy),
+            },
+        ];
+        metadata.OnBeforeRemoveFactory = container =>
+        {
+            global::System.ArgumentNullException.ThrowIfNull(container);
+            var f1 = container.CreateFactory(new global::BTDB.IOC.CreateFactoryCtx(),
+                typeof(global::Sample3rdPartyLib.I3rdPartyInterface), "dependency");
+            if (f1 == null)
+                throw new global::System.ArgumentException(
+                    "Cannot resolve I3rdPartyInterface dependency parameter of Person2.ThirdOnBeforeRemove");
+            var f2 = container.CreateFactory(new global::BTDB.IOC.CreateFactoryCtx(),
+                typeof(global::Sample3rdPartyLib.I3rdPartyInterface), "Key1");
+            return (transaction, value) =>
+            {
+                var val = Unsafe.As<Person2>(value);
+                var res = false;
+                res |= val.OnBeforeRemove();
+                res |= val.SecondOnBeforeRemove(transaction);
+                res |= val.ThirdOnBeforeRemove(Unsafe.As<I3rdPartyInterface>(f1(container, null))!,
+                    Unsafe.As<I3rdPartyInterface>(f2?.Invoke(container, null)));
+                return res;
+            };
+        };
         ReflectionMetadata.Register(metadata);
     }
 }
