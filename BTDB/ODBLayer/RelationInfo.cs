@@ -226,7 +226,7 @@ public class RelationInfo
                         if (field.PropRefSetter == null)
                         {
                             var offset = field.ByteOffset!.Value;
-                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            loaders.Add((obj, ref reader, ctx) =>
                             {
                                 handlerLoad(ref reader, ctx, ref RawData.Ref(obj, offset));
                             });
@@ -236,7 +236,7 @@ public class RelationInfo
                         var propRefSetter = field.PropRefSetter;
                         if (!fieldType.IsValueType)
                         {
-                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            loaders.Add((obj, ref reader, ctx) =>
                             {
                                 object? value = null;
                                 handlerLoad(ref reader, ctx, ref Unsafe.As<object, byte>(ref value));
@@ -247,7 +247,7 @@ public class RelationInfo
 
                         if (RawData.FitsInInt128(fieldType))
                         {
-                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            loaders.Add((obj, ref reader, ctx) =>
                             {
                                 Int128 value = 0;
                                 handlerLoad(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref value));
@@ -256,7 +256,7 @@ public class RelationInfo
                         }
 
                         var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
-                        loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                        loaders.Add((obj, ref reader, ctx) =>
                         {
                             var fieldLoaderCtx = new FieldLoaderCtx
                             {
@@ -281,7 +281,7 @@ public class RelationInfo
                         continue;
                     }
 
-                    loaders.Add((object _, ref MemReader reader, IReaderCtx? ctx) =>
+                    loaders.Add((_, ref reader, ctx) =>
                     {
                         srcFieldInfo.Handler!.Skip(ref reader, ctx);
                     });
@@ -291,7 +291,7 @@ public class RelationInfo
                 var loadersArray = loaders.ToArray();
                 if (anyNeedsCtx)
                 {
-                    return (IInternalObjectDBTransaction transaction, ref MemReader reader) =>
+                    return (transaction, ref reader) =>
                     {
                         var res = that();
                         var ctx = new DBReaderCtx(transaction);
@@ -304,7 +304,7 @@ public class RelationInfo
                     };
                 }
 
-                return (IInternalObjectDBTransaction _, ref MemReader reader) =>
+                return (_, ref reader) =>
                 {
                     var res = that();
                     foreach (var t in loadersArray)
@@ -478,7 +478,7 @@ public class RelationInfo
                         if (field.PropRefSetter == null)
                         {
                             var offset = field.ByteOffset!.Value;
-                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            loaders.Add((obj, ref reader, ctx) =>
                             {
                                 handlerLoad(ref reader, ctx, ref RawData.Ref(obj, offset));
                             });
@@ -488,7 +488,7 @@ public class RelationInfo
                         var propRefSetter = field.PropRefSetter;
                         if (!fieldType.IsValueType)
                         {
-                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            loaders.Add((obj, ref reader, ctx) =>
                             {
                                 object? value = null;
                                 handlerLoad(ref reader, ctx, ref Unsafe.As<object, byte>(ref value));
@@ -499,7 +499,7 @@ public class RelationInfo
 
                         if (RawData.FitsInInt128(fieldType))
                         {
-                            loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                            loaders.Add((obj, ref reader, ctx) =>
                             {
                                 Int128 value = 0;
                                 handlerLoad(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref value));
@@ -508,7 +508,7 @@ public class RelationInfo
                         }
 
                         var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
-                        loaders.Add((object obj, ref MemReader reader, IReaderCtx? ctx) =>
+                        loaders.Add((obj, ref reader, ctx) =>
                         {
                             var fieldLoaderCtx = new FieldLoaderCtx
                             {
@@ -533,7 +533,7 @@ public class RelationInfo
                         continue;
                     }
 
-                    loaders.Add((object _, ref MemReader reader, IReaderCtx? ctx) =>
+                    loaders.Add((_, ref reader, ctx) =>
                     {
                         srcFieldInfo.Handler!.Skip(ref reader, ctx);
                     });
@@ -552,7 +552,7 @@ public class RelationInfo
                     if (metadataField.PropRefSetter == null)
                     {
                         var offset = metadataField.ByteOffset!.Value;
-                        loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                        loaders.Add((obj, ref _, ctx) =>
                         {
                             init(ctx, ref RawData.Ref(obj, offset));
                         });
@@ -562,7 +562,7 @@ public class RelationInfo
                     var propRefSetter = metadataField.PropRefSetter;
                     if (!metadataField.Type.IsValueType)
                     {
-                        loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                        loaders.Add((obj, ref _, ctx) =>
                         {
                             object? value = null;
                             init(ctx, ref Unsafe.As<object, byte>(ref value));
@@ -573,7 +573,7 @@ public class RelationInfo
 
                     if (RawData.FitsInInt128(metadataField.Type))
                     {
-                        loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                        loaders.Add((obj, ref _, ctx) =>
                         {
                             Int128 value = 0;
                             init(ctx, ref Unsafe.As<Int128, byte>(ref value));
@@ -582,7 +582,7 @@ public class RelationInfo
                     }
 
                     var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(metadataField.Type);
-                    loaders.Add((object obj, ref MemReader _, IReaderCtx? ctx) =>
+                    loaders.Add((obj, ref _, ctx) =>
                     {
                         var fieldLoaderCtx = new FieldLoaderCtx
                         {
@@ -607,7 +607,7 @@ public class RelationInfo
                 var loadersArray = loaders.ToArray();
                 if (anyNeedsCtx)
                 {
-                    return (IInternalObjectDBTransaction transaction, ref MemReader reader, object value) =>
+                    return (transaction, ref reader, value) =>
                     {
                         var ctx = new DBReaderCtx(transaction);
                         foreach (var loader in loadersArray)
@@ -617,7 +617,7 @@ public class RelationInfo
                     };
                 }
 
-                return (IInternalObjectDBTransaction _, ref MemReader reader, object value) =>
+                return (_, ref reader, value) =>
                 {
                     foreach (var t in loadersArray)
                     {
@@ -1193,7 +1193,7 @@ public class RelationInfo
         _valueSaver = CreateSaver(filteredFields, $"RelationValueSaver_{Name}", false);
         _primaryKeysSaver = CreateSaver(ClientRelationVersionInfo.PrimaryKeyFields.Span,
             $"RelationKeySaver_{Name}", true);
-        _beforeRemove = CreateBeforeRemove($"RelationBeforeRemove_{Name}", container);
+        _beforeRemove = CreateBeforeRemove(container);
         if (ClientRelationVersionInfo.SecondaryKeys.Count > 0)
         {
             _secondaryKeysSavers = new RelationSaver[ClientRelationVersionInfo.SecondaryKeys.Keys.Max() + 1];
@@ -1224,7 +1224,7 @@ public class RelationInfo
                 if (!wasInKeyValueField)
                 {
                     wasInKeyValueField = true;
-                    saveInstructions.Add((ref MemWriter writer, IWriterCtx? _, object? _, ref int keyValue) =>
+                    saveInstructions.Add((ref writer, _, _, ref keyValue) =>
                         {
                             keyValue = (int)writer.NoControllerGetCurrentPosition();
                         }
@@ -1240,7 +1240,7 @@ public class RelationInfo
                 var fieldType = fieldInfo.Type;
                 if (!fieldType.IsValueType)
                 {
-                    saveInstructions.Add((ref MemWriter writer, IWriterCtx? ctx, object? value, ref int _) =>
+                    saveInstructions.Add((ref writer, ctx, value, ref _) =>
                     {
                         object? val = null;
                         propRefGetter(value, ref Unsafe.As<object, byte>(ref val));
@@ -1249,7 +1249,7 @@ public class RelationInfo
                 }
                 else if (RawData.FitsInInt128(fieldType))
                 {
-                    saveInstructions.Add((ref MemWriter writer, IWriterCtx? ctx, object? value, ref int _) =>
+                    saveInstructions.Add((ref writer, ctx, value, ref _) =>
                     {
                         Int128 val = default;
                         propRefGetter(value, ref Unsafe.As<Int128, byte>(ref val));
@@ -1259,7 +1259,7 @@ public class RelationInfo
                 else
                 {
                     var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
-                    saveInstructions.Add((ref MemWriter writer, IWriterCtx? ctx, object? value, ref int _) =>
+                    saveInstructions.Add((ref writer, ctx, value, ref _) =>
                     {
                         var fieldSaverCtx = new FieldSaverCtx
                         {
@@ -1286,7 +1286,7 @@ public class RelationInfo
             else
             {
                 var offset = fieldInfo.ByteOffset!.Value;
-                saveInstructions.Add((ref MemWriter writer, IWriterCtx? ctx, object? value, ref int _) =>
+                saveInstructions.Add((ref writer, ctx, value, ref _) =>
                 {
                     saver(ref writer, ctx, ref RawData.Ref(value, offset));
                 });
@@ -1551,83 +1551,11 @@ public class RelationInfo
         }
     }
 
-    RelationBeforeRemove? CreateBeforeRemove(string functionName, IContainer? container)
+    RelationBeforeRemove? CreateBeforeRemove(IContainer? container)
     {
-        var hasBeforeRemove = false;
-        foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
-                                                         BindingFlags.NonPublic))
-        {
-            if (methodInfo.GetCustomAttribute<OnBeforeRemoveAttribute>() == null) continue;
-            if (methodInfo.ReturnType != typeof(void) && methodInfo.ReturnType != typeof(bool))
-                throw new BTDBException("OnBeforeRemove method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
-                                        " must return void or bool.");
-            hasBeforeRemove = true;
-        }
-
-        if (!hasBeforeRemove) return null;
-        var method = ILBuilder.Instance.NewMethod<RelationBeforeRemoveWithContainer>(functionName);
-        var ilGenerator = method.Generator;
-        var clientTypeLoc = ilGenerator.DeclareLocal(ClientType);
-        var resultLoc = ilGenerator.DeclareLocal(typeof(bool));
-        StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType, (ushort)clientTypeLoc.Index);
-        ilGenerator
-            .LdcI4(0)
-            .Stloc(resultLoc);
-        foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
-                                                         BindingFlags.NonPublic))
-        {
-            if (methodInfo.GetCustomAttribute<OnBeforeRemoveAttribute>() == null) continue;
-            var parameters = methodInfo.GetParameters();
-            var paramLocs = new IILLocal[parameters.Length];
-            for (var i = 0; i < parameters.Length; i++)
-            {
-                var parameter = parameters[i];
-                if (parameter.ParameterType == typeof(IObjectDBTransaction)) continue;
-                paramLocs[i] = ilGenerator.DeclareLocal(parameter.ParameterType);
-                ilGenerator.Ldarg(1);
-                ilGenerator.Ldstr(parameter.Name!);
-                ilGenerator.Ldtoken(parameter.ParameterType);
-                ilGenerator.Call(() => Type.GetTypeFromHandle(new()));
-                ilGenerator.Callvirt(() => default(IContainer).ResolveNamed("", null));
-                ilGenerator.UnboxAny(parameter.ParameterType);
-                ilGenerator.Stloc(paramLocs[i]);
-            }
-
-            var withBoolResult = methodInfo.ReturnType == typeof(bool);
-            if (withBoolResult)
-            {
-                ilGenerator
-                    .Ldloc(resultLoc);
-            }
-
-            ilGenerator
-                .Ldloc(clientTypeLoc);
-            for (var i = 0; i < parameters.Length; i++)
-            {
-                var parameter = parameters[i];
-                if (parameter.ParameterType == typeof(IObjectDBTransaction))
-                {
-                    ilGenerator.Ldarg(0).Castclass(typeof(IObjectDBTransaction));
-                    continue;
-                }
-
-                ilGenerator.Ldloc(paramLocs[i]);
-            }
-
-            ilGenerator
-                .Call(methodInfo);
-            if (withBoolResult)
-            {
-                ilGenerator.Or().Stloc(resultLoc);
-            }
-        }
-
-        ilGenerator
-            .Ldloc(resultLoc)
-            .Ret();
-        var resultWithContainer = method.Create();
-        return (transaction, value) =>
-            resultWithContainer(transaction, container, value);
+        var metadata = ReflectionMetadata.FindByType(ClientType);
+        if (metadata == null) throw new BTDBException($"Cannot find metadata for {ClientType.FullName}");
+        return metadata.OnBeforeRemoveFactory?.Invoke(container);
     }
 
     unsafe RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName, bool forPrimaryKey)
@@ -1655,7 +1583,7 @@ public class RelationInfo
             StructList<RelationSaverItem> saveInstructions = new();
             CreateSaverItems(ref saveInstructions, metadata, fields, forPrimaryKey);
             var saveInstructionsArray = saveInstructions.ToArray();
-            return (IInternalObjectDBTransaction transaction, ref MemWriter writer, object value) =>
+            return (transaction, ref writer, value) =>
             {
                 var result = 0;
                 if (onSerialize != null)
@@ -2028,13 +1956,13 @@ public class RelationInfo
         var loader = loaderType.FieldHandler.Load(loaderType.RealType, _relationInfoResolver.TypeConverterFactory);
         if (loaderType.FieldHandler.NeedsCtx())
         {
-            return (ref MemReader reader, IInternalObjectDBTransaction transaction, ref byte value) =>
+            return (ref reader, transaction, ref value) =>
             {
                 loader(ref reader, new DBReaderCtx(transaction), ref value);
             };
         }
 
-        return (ref MemReader reader, IInternalObjectDBTransaction transaction, ref byte value) =>
+        return (ref reader, transaction, ref value) =>
         {
             loader(ref reader, null, ref value);
         };
@@ -2106,7 +2034,7 @@ public class RelationInfo
 
         if (needGenerateFreeFor == 0)
         {
-            return (IInternalObjectDBTransaction _, ref MemReader _, IList<ulong> _) => { };
+            return (_, ref _, _) => { };
         }
 
         _needImplementFreeContent = true;
@@ -2114,7 +2042,7 @@ public class RelationInfo
         var handlers = valueFields.Take(needGenerateFreeFor).Where(tfi => !tfi.Computed).Select(tfi => tfi.Handler)
             .ToArray();
 
-        return (IInternalObjectDBTransaction transaction, ref MemReader reader, IList<ulong> ids) =>
+        return (transaction, ref reader, ids) =>
         {
             var ctx = new DBReaderWithFreeInfoCtx(transaction, ids);
             foreach (var handler in handlers)
