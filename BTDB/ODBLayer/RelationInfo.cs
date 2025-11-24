@@ -2119,58 +2119,177 @@ public class RelationInfo
         public int ActualFieldIdx;
     }
 
-    SecondaryKeyValueToPKLoader CreatePrimaryKeyFromSKDataMerger(uint secondaryKeyIndex, string mergerName)
+    ref struct PrimaryKeyFromSKDataMergerCtx
     {
-        var method = ILBuilder.Instance.NewMethod<SecondaryKeyValueToPKLoader>(mergerName);
-        var ilGenerator = method.Generator;
+        public MemReader Reader;
+        public ref MemWriter Writer;
+        public IReaderCtx ReaderCtx;
+        public Span<(uint FromOfs, uint ToOfs)> TempStorageOffsets;
+    }
 
-        void PushWriter(IILGen il) => il.Ldarg(1);
+    delegate void PrimaryKeyFromSKDataMerger(ref PrimaryKeyFromSKDataMergerCtx ctx);
+
+    unsafe SecondaryKeyValueToPKLoader CreatePrimaryKeyFromSKDataMerger(uint secondaryKeyIndex, string mergerName)
+    {
         var skFields = ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Fields;
-
-        var memoPositionLoc = ilGenerator.DeclareLocal(typeof(uint));
-
-        var bufferInfo = new BufferInfo();
-        var outOfOrderPKParts =
-            new Dictionary<int, MemorizedPositionWithLength>(); //index -> bufferIdx, pos, length
-
         var pks = ClientRelationVersionInfo.PrimaryKeyFields.Span;
-        for (var pkIdx = 0; pkIdx < pks.Length; pkIdx++)
+        if (IFieldHandler.UseNoEmitForRelations)
         {
-            if (pks[pkIdx].InKeyValue) break;
-            if (outOfOrderPKParts.TryGetValue(pkIdx, out var memo))
+            var actions = new StructList<PrimaryKeyFromSKDataMerger>();
+            var outOfOrderPKParts = new Dictionary<int, int>();
+            var outOfOrderCount = 0;
+            var processedKeyIndex = 0;
+            var needsReaderCtx = false;
+            for (var pkIdx = 0; pkIdx < pks.Length; pkIdx++)
             {
-                CopyFromMemorizedPosition(ilGenerator, bufferInfo.PushReader, PushWriter, memo);
-                continue;
+                if (pks[pkIdx].InKeyValue) break;
+                if (outOfOrderPKParts.TryGetValue(pkIdx, out var memo))
+                {
+                    actions.Add((ref ctx) =>
+                    {
+                        var (from, to) = ctx.TempStorageOffsets[memo];
+                        ctx.Reader.CopyAbsoluteToWriter(from, to - from, ref ctx.Writer);
+                    });
+                    continue;
+                }
+
+                FindPosition(pkIdx, skFields, out var skFieldIdx);
+                for (var idx = processedKeyIndex; idx < skFieldIdx; idx++)
+                {
+                    var field = skFields[idx];
+                    if (field.IsFromPrimaryKey && !pks[(int)field.Index].InKeyValue)
+                    {
+                        var handlerSkip = pks[(int)field.Index].Handler!;
+                        needsReaderCtx |= handlerSkip.NeedsCtx();
+                        var storageIndex = outOfOrderCount++;
+                        outOfOrderPKParts[(int)field.Index] = storageIndex;
+                        actions.Add((ref ctx) =>
+                        {
+                            ctx.TempStorageOffsets[storageIndex].FromOfs =
+                                (uint)ctx.Reader.GetCurrentPositionWithoutController();
+                            handlerSkip.Skip(ref ctx.Reader, ctx.ReaderCtx);
+                            ctx.TempStorageOffsets[storageIndex].ToOfs =
+                                (uint)ctx.Reader.GetCurrentPositionWithoutController();
+                        });
+                    }
+                    else
+                    {
+                        var f = ClientRelationVersionInfo.GetSecondaryKeyField((int)field.Index);
+                        var handlerSkip = f.Handler!;
+                        needsReaderCtx |= handlerSkip.NeedsCtx();
+                        actions.Add((ref ctx) => { handlerSkip.Skip(ref ctx.Reader, ctx.ReaderCtx); });
+                    }
+                }
+
+                var skField = skFields[skFieldIdx];
+                var handler = pks[(int)skField.Index].Handler!;
+                needsReaderCtx |= handler.NeedsCtx();
+                actions.Add((ref ctx) =>
+                {
+                    var fromOfs = (uint)ctx.Reader.GetCurrentPositionWithoutController();
+                    handler.Skip(ref ctx.Reader, ctx.ReaderCtx);
+                    var toOfs = (uint)ctx.Reader.GetCurrentPositionWithoutController();
+                    ctx.Reader.CopyAbsoluteToWriter(fromOfs, toOfs - fromOfs, ref ctx.Writer);
+                });
+                processedKeyIndex = skFieldIdx + 1;
             }
 
-            FindPosition(pkIdx, skFields, out var skFieldIdx);
-            MergerInitializeBufferReader(ilGenerator, ref bufferInfo,
-                ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex));
-            for (var idx = bufferInfo.ActualFieldIdx; idx < skFieldIdx; idx++)
+            if (needsReaderCtx)
             {
-                var field = skFields[idx];
-                if (field.IsFromPrimaryKey && !pks[(int)field.Index].InKeyValue)
-                {
-                    outOfOrderPKParts[(int)field.Index] = SkipWithMemorizing(ilGenerator, bufferInfo.PushReader,
-                        pks[(int)field.Index].Handler!);
-                }
-                else
-                {
-                    var f = ClientRelationVersionInfo.GetSecondaryKeyField((int)field.Index);
-                    f.Handler!.Skip(ilGenerator, bufferInfo.PushReader, bufferInfo.PushCtx);
-                }
+                actions.Insert(0) = (ref ctx) => { ctx.ReaderCtx = new DBReaderCtx(null); };
             }
 
-            var skField = skFields[skFieldIdx];
-            GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int)skField.Index].Handler!,
-                bufferInfo.PushReader,
-                PushWriter, memoPositionLoc);
+            var actionsArray = actions.ToArray();
+            if (outOfOrderCount > 0)
+            {
+                return (ref key, ref writer) =>
+                {
+                    PrimaryKeyFromSKDataMergerCtx ctx = default;
+                    key.Skip1Byte(); // Skip SK prefix
+                    key.SkipVUInt64(); // Skip relation id
+                    key.Skip1Byte(); // Skip SK index
+                    ctx.Reader = key;
+#pragma warning disable CS9093 // This ref-assigns a value that can only escape the current method through a return statement.
+                    ctx.Writer = ref writer;
+#pragma warning restore CS9093 // This ref-assigns a value that can only escape the current method through a return statement.
+                    Span<(uint FromOfs, uint ToOfs)> tempStorageOffsets = stackalloc (uint, uint)[outOfOrderCount];
+#pragma warning disable CS9080 // Use of variable in this context may expose referenced variables outside of their declaration scope
+                    ctx.TempStorageOffsets = tempStorageOffsets;
+#pragma warning restore CS9080 // Use of variable in this context may expose referenced variables outside of their declaration scope
+                    foreach (var action in actionsArray)
+                    {
+                        action(ref ctx);
+                    }
+                };
+            }
 
-            bufferInfo.ActualFieldIdx = skFieldIdx + 1;
+            return (ref key, ref writer) =>
+            {
+                PrimaryKeyFromSKDataMergerCtx ctx = default;
+                key.Skip1Byte(); // Skip SK prefix
+                key.SkipVUInt64(); // Skip relation id
+                key.Skip1Byte(); // Skip SK index
+                ctx.Reader = key;
+#pragma warning disable CS9093 // This ref-assigns a value that can only escape the current method through a return statement.
+                ctx.Writer = ref writer;
+#pragma warning restore CS9093 // This ref-assigns a value that can only escape the current method through a return statement.
+                foreach (var action in actionsArray)
+                {
+                    action(ref ctx);
+                }
+            };
         }
+        else
+        {
+            var method = ILBuilder.Instance.NewMethod<SecondaryKeyValueToPKLoader>(mergerName);
+            var ilGenerator = method.Generator;
 
-        ilGenerator.Ret();
-        return method.Create();
+            void PushWriter(IILGen il) => il.Ldarg(1);
+
+            var memoPositionLoc = ilGenerator.DeclareLocal(typeof(uint));
+
+            var bufferInfo = new BufferInfo();
+            var outOfOrderPKParts =
+                new Dictionary<int, MemorizedPositionWithLength>(); //index -> bufferIdx, pos, length
+
+            for (var pkIdx = 0; pkIdx < pks.Length; pkIdx++)
+            {
+                if (pks[pkIdx].InKeyValue) break;
+                if (outOfOrderPKParts.TryGetValue(pkIdx, out var memo))
+                {
+                    CopyFromMemorizedPosition(ilGenerator, bufferInfo.PushReader, PushWriter, memo);
+                    continue;
+                }
+
+                FindPosition(pkIdx, skFields, out var skFieldIdx);
+                MergerInitializeBufferReader(ilGenerator, ref bufferInfo,
+                    ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex));
+                for (var idx = bufferInfo.ActualFieldIdx; idx < skFieldIdx; idx++)
+                {
+                    var field = skFields[idx];
+                    if (field.IsFromPrimaryKey && !pks[(int)field.Index].InKeyValue)
+                    {
+                        outOfOrderPKParts[(int)field.Index] = SkipWithMemorizing(ilGenerator, bufferInfo.PushReader,
+                            pks[(int)field.Index].Handler!);
+                    }
+                    else
+                    {
+                        var f = ClientRelationVersionInfo.GetSecondaryKeyField((int)field.Index);
+                        f.Handler!.Skip(ilGenerator, bufferInfo.PushReader, bufferInfo.PushCtx);
+                    }
+                }
+
+                var skField = skFields[skFieldIdx];
+                GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int)skField.Index].Handler!,
+                    bufferInfo.PushReader,
+                    PushWriter, memoPositionLoc);
+
+                bufferInfo.ActualFieldIdx = skFieldIdx + 1;
+            }
+
+            ilGenerator.Ret();
+            return method.Create();
+        }
     }
 
     static void FindPosition(int pkIdx, IList<FieldId> skFields, out int skFieldIdx)
