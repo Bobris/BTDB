@@ -1092,4 +1092,11 @@ public struct MemWriter
             WriteInt64LE(value);
         }
     }
+
+    public unsafe void CopyAbsoluteToWriter(uint start, uint len, ref MemWriter writer)
+    {
+        Debug.Assert((Controller as IMemWriter) == null);
+        if (Start + (nint)start + (nint)len > End) throw new ArgumentOutOfRangeException(nameof(len));
+        writer.WriteBlock(new ReadOnlySpan<byte>((void*)(Start + (nint)start), (int)len));
+    }
 }

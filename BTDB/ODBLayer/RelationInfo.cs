@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -281,10 +282,7 @@ public class RelationInfo
                         continue;
                     }
 
-                    loaders.Add((_, ref reader, ctx) =>
-                    {
-                        srcFieldInfo.Handler!.Skip(ref reader, ctx);
-                    });
+                    loaders.Add((_, ref reader, ctx) => { srcFieldInfo.Handler!.Skip(ref reader, ctx); });
                 }
 
                 primaryKeyIsEnough = metadata.Fields.Length == usedFields;
@@ -533,10 +531,7 @@ public class RelationInfo
                         continue;
                     }
 
-                    loaders.Add((_, ref reader, ctx) =>
-                    {
-                        srcFieldInfo.Handler!.Skip(ref reader, ctx);
-                    });
+                    loaders.Add((_, ref reader, ctx) => { srcFieldInfo.Handler!.Skip(ref reader, ctx); });
                 }
 
                 foreach (var metadataField in metadata.Fields)
@@ -552,10 +547,7 @@ public class RelationInfo
                     if (metadataField.PropRefSetter == null)
                     {
                         var offset = metadataField.ByteOffset!.Value;
-                        loaders.Add((obj, ref _, ctx) =>
-                        {
-                            init(ctx, ref RawData.Ref(obj, offset));
-                        });
+                        loaders.Add((obj, ref _, ctx) => { init(ctx, ref RawData.Ref(obj, offset)); });
                         continue;
                     }
 
@@ -1367,110 +1359,499 @@ public class RelationInfo
         public IFieldHandler Handler;
     }
 
-    SecondaryKeyConvertSaver CreateBytesToSKSaver(uint version, uint secondaryKeyIndex, string saverName)
+    ref struct BytesToSKSaverCtx
     {
-        var method = ILBuilder.Instance.NewMethod<SecondaryKeyConvertSaver>(saverName);
-        var ilGenerator = method.Generator;
-        IILLocal defaultObjectLoc = null;
-        static void PushWriter(IILGen il) => il.Ldarg(1);
+        public IInternalObjectDBTransaction Transaction;
+        public ref MemWriter Writer;
+        public MemReader KeyReader;
+        public MemReader ValueReader;
+        public object EmptyObject;
+        public IReaderCtx ReaderCtx;
+        public IWriterCtx WriterCtx;
+        public MemWriter TempWriter;
+        public Span<(uint FromOfs, uint ToOfs)> TempStorageOffsets;
+        public nint StoragePtr;
+        public FieldHandlerLoad Loader;
+        public FieldHandlerSave Saver;
+        public int StorageIndex;
+        public unsafe delegate*<object, ref byte, void> Getter;
+    }
 
-        var firstBuffer = new BufferInfo(); //pk's
-        var secondBuffer = new BufferInfo(); //values
-        var outOfOrderSkParts = new Dictionary<int, LocalAndHandler>(); //local and specialized saver
+    delegate void BytesToSKSaverAction(ref BytesToSKSaverCtx ctx);
 
+    unsafe SecondaryKeyConvertSaver CreateBytesToSKSaver(uint version, uint secondaryKeyIndex, string saverName)
+    {
         var pks = ClientRelationVersionInfo.PrimaryKeyFields.Span;
         var skFieldIds = ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Fields;
         var skFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex).ToArray();
         var valueFields = _relationVersions[version]!.Fields.Span;
-        var writerCtxLocal = CreateWriterCtx(ilGenerator, skFields, il => il.Ldarg(0));
-        for (var skFieldIdx = 0; skFieldIdx < skFieldIds.Count; skFieldIdx++)
+
+        if (IFieldHandler.UseNoEmitForRelations)
         {
-            if (outOfOrderSkParts.TryGetValue(skFieldIdx, out var saveLocalInfo))
+            var processedKeyFields = 0;
+            var processedValueFields = 0;
+            var needsReaderCtx = false;
+            var needsWriterCtx = false;
+            var outOfOrderCount = 0;
+            var actions = new StructList<BytesToSKSaverAction>();
+            var outOfOrderSkParts = new Dictionary<int, (bool IsFromPrimaryKey, int StorageIdx)>();
+            for (var skFieldIdx = 0; skFieldIdx < skFieldIds.Count; skFieldIdx++)
             {
-                var pushCtx = WriterOrContextForHandler(writerCtxLocal);
-                saveLocalInfo.Handler.Save(ilGenerator, PushWriter, pushCtx, il => il.Ldloc(saveLocalInfo.Local));
-                continue;
-            }
-
-            var skf = skFieldIds[skFieldIdx];
-            if (skf.IsFromPrimaryKey)
-            {
-                InitializeBuffer(2, ref firstBuffer, ilGenerator, pks, true);
-                //firstBuffer.ActualFieldIdx == number of processed PK's
-                for (var pkIdx = firstBuffer.ActualFieldIdx; pkIdx < skf.Index; pkIdx++)
+                if (outOfOrderSkParts.TryGetValue(skFieldIdx, out var saveLocalInfo))
                 {
-                    //all PK parts are contained in SK
-                    FindPosition(pkIdx, skFieldIds, out var skFieldIdxForPk);
-                    StoreIntoLocal(ilGenerator, pks[pkIdx].Handler!, firstBuffer, outOfOrderSkParts,
-                        skFieldIdxForPk,
-                        skFields[skFieldIdxForPk].Handler!);
-                }
-
-                CopyToOutput(ilGenerator, pks[(int)skf.Index].Handler!, writerCtxLocal!, PushWriter,
-                    skFields[skFieldIdx].Handler!, firstBuffer);
-                firstBuffer.ActualFieldIdx = (int)skf.Index + 1;
-            }
-            else
-            {
-                InitializeBuffer(3, ref secondBuffer, ilGenerator, valueFields, false);
-
-                var valueFieldIdx = -1;
-                for (var i = 0; i < valueFields.Length; i++)
-                {
-                    if (valueFields[i].Name == skFields[skFieldIdx].Name)
+                    var storageIdx = saveLocalInfo.StorageIdx;
+                    if (saveLocalInfo.IsFromPrimaryKey)
                     {
-                        valueFieldIdx = i;
-                        break;
-                    }
-                }
-
-                if (valueFieldIdx >= 0)
-                {
-                    for (var valueIdx = secondBuffer.ActualFieldIdx; valueIdx < valueFieldIdx; valueIdx++)
-                    {
-                        var valueField = valueFields[valueIdx];
-                        var storeForSkIndex = -1;
-                        for (var i = 0; i < skFields.Length; i++)
+                        actions.Add((ref ctx) =>
                         {
-                            if (skFields[i].Name == valueField.Name)
-                            {
-                                storeForSkIndex = i;
-                                break;
-                            }
-                        }
-
-                        if (storeForSkIndex == -1)
-                            valueField.Handler!.Skip(ilGenerator, secondBuffer.PushReader, secondBuffer.PushCtx);
-                        else
-                            StoreIntoLocal(ilGenerator, valueField.Handler!, secondBuffer, outOfOrderSkParts,
-                                storeForSkIndex, skFields[storeForSkIndex].Handler!);
+                            var (fromOfs, toOfs) = ctx.TempStorageOffsets[storageIdx];
+                            ctx.KeyReader.CopyAbsoluteToWriter(fromOfs, toOfs - fromOfs, ref ctx.Writer);
+                        });
+                    }
+                    else
+                    {
+                        actions.Add((ref ctx) =>
+                        {
+                            var (fromOfs, toOfs) = ctx.TempStorageOffsets[storageIdx];
+                            ctx.TempWriter.CopyAbsoluteToWriter(fromOfs, toOfs - fromOfs, ref ctx.Writer);
+                        });
                     }
 
-                    CopyToOutput(ilGenerator, valueFields[valueFieldIdx].Handler!, writerCtxLocal!, PushWriter,
-                        skFields[skFieldIdx].Handler!, secondBuffer);
-                    secondBuffer.ActualFieldIdx = valueFieldIdx + 1;
+                    continue;
+                }
+
+                var skf = skFieldIds[skFieldIdx];
+                if (skf.IsFromPrimaryKey)
+                {
+                    for (var pkIdx = processedKeyFields; pkIdx < skf.Index; pkIdx++)
+                    {
+                        //all PK parts are contained in SK
+                        FindPosition(pkIdx, skFieldIds, out var skFieldIdxForPk);
+                        outOfOrderSkParts[skFieldIdxForPk] = (true, outOfOrderCount);
+                        var handler2 = pks[pkIdx].Handler!;
+                        Debug.Assert(handler2.Name == skFields[skFieldIdxForPk].Handler.Name);
+                        needsReaderCtx |= handler2.NeedsCtx();
+                        var storageIndex = outOfOrderCount;
+                        actions.Add((ref ctx) =>
+                        {
+                            ctx.TempStorageOffsets[storageIndex].FromOfs =
+                                (uint)ctx.KeyReader.GetCurrentPositionWithoutController();
+                            handler2.Skip(ref ctx.KeyReader, ctx.ReaderCtx);
+                            ctx.TempStorageOffsets[storageIndex].ToOfs =
+                                (uint)ctx.KeyReader.GetCurrentPositionWithoutController();
+                        });
+                        outOfOrderCount++;
+                    }
+
+                    var handler = pks[(int)skf.Index].Handler!;
+                    Debug.Assert(handler.Name == skFields[skFieldIdx].Handler.Name);
+                    needsReaderCtx |= handler.NeedsCtx();
+                    actions.Add((ref ctx) =>
+                    {
+                        var fromOfs = (uint)ctx.KeyReader.GetCurrentPositionWithoutController();
+                        handler.Skip(ref ctx.KeyReader, ctx.ReaderCtx);
+                        var toOfs = (uint)ctx.KeyReader.GetCurrentPositionWithoutController();
+                        ctx.KeyReader.CopyAbsoluteToWriter(fromOfs, toOfs - fromOfs, ref ctx.Writer);
+                    });
+                    processedKeyFields = (int)skf.Index + 1;
                 }
                 else
                 {
-                    //older version of value does not contain sk field - store field from default value (can be initialized in constructor)
-                    if (defaultObjectLoc == null)
+                    var valueFieldIdx = -1;
+                    for (var i = 0; i < valueFields.Length; i++)
                     {
-                        defaultObjectLoc = ilGenerator.DeclareLocal(ClientType);
-                        ilGenerator.Ldarg(4)
-                            .Castclass(ClientType)
-                            .Stloc(defaultObjectLoc);
+                        if (valueFields[i].Name == skFields[skFieldIdx].Name)
+                        {
+                            valueFieldIdx = i;
+                            break;
+                        }
                     }
 
-                    var loc = defaultObjectLoc;
-                    CreateSaverIl(ilGenerator,
-                        new[] { ClientRelationVersionInfo.GetSecondaryKeyField((int)skf.Index) },
-                        il => il.Ldloc(loc), PushWriter, il => il.Ldarg(0), null);
+                    if (valueFieldIdx >= 0)
+                    {
+                        for (var valueIdx = processedValueFields; valueIdx < valueFieldIdx; valueIdx++)
+                        {
+                            var valueField = valueFields[valueIdx];
+                            var storeForSkIndex = -1;
+                            for (var i = 0; i < skFields.Length; i++)
+                            {
+                                if (skFields[i].Name == valueField.Name)
+                                {
+                                    storeForSkIndex = i;
+                                    break;
+                                }
+                            }
+
+                            var handler3 = valueField.Handler!;
+                            needsReaderCtx |= handler3.NeedsCtx();
+                            if (storeForSkIndex == -1)
+                            {
+                                actions.Add((ref ctx) => { handler3.Skip(ref ctx.ValueReader, ctx.ReaderCtx); });
+                            }
+                            else
+                            {
+                                outOfOrderSkParts[storeForSkIndex] = (false, outOfOrderCount);
+                                var storageIndex = outOfOrderCount;
+                                var handlerTo3 = skFields[storeForSkIndex].Handler!;
+                                needsWriterCtx |= handlerTo3.NeedsCtx();
+                                var fieldType3 = handlerTo3.HandledType()!;
+                                var loader3 = handler3.Load(fieldType3,
+                                    DefaultTypeConverterFactory.Instance);
+                                var saver3 = handlerTo3.Save(fieldType3,
+                                    DefaultTypeConverterFactory.Instance);
+                                if (RawData.FitsInInt128(fieldType3))
+                                {
+                                    actions.Add((ref ctx) =>
+                                    {
+                                        UInt128 value = default;
+                                        loader3(ref ctx.ValueReader, ctx.ReaderCtx,
+                                            ref Unsafe.As<UInt128, byte>(ref value));
+                                        ctx.TempStorageOffsets[storageIndex].FromOfs =
+                                            ctx.TempWriter.NoControllerGetCurrentPosition();
+                                        saver3(ref ctx.TempWriter, ctx.WriterCtx,
+                                            ref Unsafe.As<UInt128, byte>(ref value));
+                                        ctx.TempStorageOffsets[storageIndex].ToOfs =
+                                            ctx.TempWriter.NoControllerGetCurrentPosition();
+                                    });
+                                }
+                                else if (!fieldType3.IsValueType)
+                                {
+                                    actions.Add((ref ctx) =>
+                                    {
+                                        object value = null!;
+                                        loader3(ref ctx.ValueReader, ctx.ReaderCtx,
+                                            ref Unsafe.As<object, byte>(ref value));
+                                        ctx.TempStorageOffsets[storageIndex].FromOfs =
+                                            ctx.TempWriter.NoControllerGetCurrentPosition();
+                                        saver3(ref ctx.TempWriter, ctx.WriterCtx,
+                                            ref Unsafe.As<object, byte>(ref value));
+                                        ctx.TempStorageOffsets[storageIndex].ToOfs =
+                                            ctx.TempWriter.NoControllerGetCurrentPosition();
+                                    });
+                                }
+                                else
+                                {
+                                    var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType3);
+                                    actions.Add((ref ctx) =>
+                                    {
+                                        ctx.Loader = loader3;
+                                        ctx.Saver = saver3;
+                                        ctx.StorageIndex = storageIndex;
+                                        stackAllocator(ref Unsafe.As<BytesToSKSaverCtx, byte>(ref ctx),
+                                            ref ctx.StoragePtr, &Nested);
+
+                                        static void Nested(ref byte value)
+                                        {
+                                            ref var context = ref Unsafe.As<byte, BytesToSKSaverCtx>(ref value);
+                                            context.Loader(ref context.ValueReader, context.ReaderCtx,
+                                                ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                                            context.TempStorageOffsets[context.StorageIndex].FromOfs =
+                                                context.TempWriter.NoControllerGetCurrentPosition();
+                                            context.Saver(ref context.TempWriter, context.WriterCtx,
+                                                ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                                            context.TempStorageOffsets[context.StorageIndex].ToOfs =
+                                                context.TempWriter.NoControllerGetCurrentPosition();
+                                        }
+                                    });
+                                }
+
+                                outOfOrderCount++;
+                            }
+                        }
+
+                        var handler = valueFields[valueFieldIdx].Handler!;
+                        needsReaderCtx |= handler.NeedsCtx();
+                        var handlerTo = skFields[skFieldIdx].Handler!;
+                        needsWriterCtx |= handlerTo.NeedsCtx();
+                        var fieldType = handlerTo.HandledType()!;
+                        var loader = handler.Load(fieldType,
+                            DefaultTypeConverterFactory.Instance);
+                        var saver = handlerTo.Save(fieldType,
+                            DefaultTypeConverterFactory.Instance);
+
+                        if (RawData.FitsInInt128(fieldType))
+                        {
+                            actions.Add((ref ctx) =>
+                            {
+                                UInt128 value = default;
+                                loader(ref ctx.ValueReader, ctx.ReaderCtx,
+                                    ref Unsafe.As<UInt128, byte>(ref value));
+                                saver(ref ctx.Writer, ctx.WriterCtx,
+                                    ref Unsafe.As<UInt128, byte>(ref value));
+                            });
+                        }
+                        else if (!fieldType.IsValueType)
+                        {
+                            actions.Add((ref ctx) =>
+                            {
+                                object value = null!;
+                                loader(ref ctx.ValueReader, ctx.ReaderCtx,
+                                    ref Unsafe.As<object, byte>(ref value));
+                                saver(ref ctx.Writer, ctx.WriterCtx,
+                                    ref Unsafe.As<object, byte>(ref value));
+                            });
+                        }
+                        else
+                        {
+                            var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
+                            actions.Add((ref ctx) =>
+                            {
+                                ctx.Loader = loader;
+                                ctx.Saver = saver;
+                                stackAllocator(ref Unsafe.As<BytesToSKSaverCtx, byte>(ref ctx),
+                                    ref ctx.StoragePtr, &Nested);
+
+                                static void Nested(ref byte value)
+                                {
+                                    ref var context = ref Unsafe.As<byte, BytesToSKSaverCtx>(ref value);
+                                    context.Loader(ref context.ValueReader, context.ReaderCtx,
+                                        ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                                    context.Saver(ref context.Writer, context.WriterCtx,
+                                        ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                                }
+                            });
+                        }
+
+                        processedValueFields = valueFieldIdx + 1;
+                    }
+                    else
+                    {
+                        //the older version of value does not contain sk field - store field from default value (can be initialized in constructor)
+                        var metadata = ReflectionMetadata.FindByType(ClientType);
+                        FieldMetadata? fieldMeta = null;
+                        foreach (var fieldMetadata in metadata.Fields)
+                        {
+                            if (fieldMetadata.Name == skFields[skFieldIdx].Name)
+                            {
+                                fieldMeta = fieldMetadata;
+                            }
+                        }
+
+                        if (fieldMeta == null)
+                        {
+                            throw new BTDBException(
+                                $"Cannot find field metadata for field {skFields[skFieldIdx].Name} in type {ClientType}");
+                        }
+
+                        var handlerTo = skFields[skFieldIdx].Handler!;
+                        needsWriterCtx |= handlerTo.NeedsCtx();
+                        var fieldType = fieldMeta.Type;
+                        var saver = handlerTo.Save(fieldType,
+                            DefaultTypeConverterFactory.Instance);
+                        var getter = fieldMeta.PropRefGetter;
+                        if (getter != null)
+                        {
+                            if (RawData.FitsInInt128(fieldType))
+                            {
+                                actions.Add((ref ctx) =>
+                                {
+                                    UInt128 value = default;
+                                    getter(ctx.EmptyObject, ref Unsafe.As<UInt128, byte>(ref value));
+                                    saver(ref ctx.Writer, ctx.WriterCtx,
+                                        ref Unsafe.As<UInt128, byte>(ref value));
+                                });
+                            }
+                            else if (!fieldType.IsValueType)
+                            {
+                                actions.Add((ref ctx) =>
+                                {
+                                    object value = null!;
+                                    getter(ctx.EmptyObject, ref Unsafe.As<object, byte>(ref value));
+                                    saver(ref ctx.Writer, ctx.WriterCtx,
+                                        ref Unsafe.As<object, byte>(ref value));
+                                });
+                            }
+                            else
+                            {
+                                var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
+                                actions.Add((ref ctx) =>
+                                {
+                                    ctx.Getter = getter;
+                                    ctx.Saver = saver;
+                                    stackAllocator(ref Unsafe.As<BytesToSKSaverCtx, byte>(ref ctx),
+                                        ref ctx.StoragePtr, &Nested);
+
+                                    static void Nested(ref byte value)
+                                    {
+                                        ref var context = ref Unsafe.As<byte, BytesToSKSaverCtx>(ref value);
+                                        context.Getter(context.EmptyObject,
+                                            ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                                        context.Saver(ref context.Writer, context.WriterCtx,
+                                            ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
+                                    }
+                                });
+                            }
+
+                            continue;
+                        }
+
+                        var fieldOffset = fieldMeta.ByteOffset.Value;
+                        actions.Add((ref ctx) =>
+                        {
+                            saver(ref ctx.Writer, ctx.WriterCtx, ref RawData.Ref(ctx.EmptyObject, fieldOffset));
+                        });
+                    }
                 }
             }
-        }
 
-        ilGenerator.Ret();
-        return method.Create();
+            if (needsReaderCtx)
+            {
+                actions.Insert(0) = (ref ctx) => { ctx.ReaderCtx = new DBReaderCtx(ctx.Transaction); };
+            }
+
+            if (needsWriterCtx)
+            {
+                actions.Insert(0) = (ref ctx) => { ctx.WriterCtx = new DBWriterCtx(ctx.Transaction); };
+            }
+
+            var actionsArray = actions.ToArray();
+            if (outOfOrderCount > 0)
+            {
+                return (tr, ref writer, ref keyReader, ref valueReader, emptyValue) =>
+                {
+                    BytesToSKSaverCtx ctx = default;
+                    ctx.Transaction = tr;
+#pragma warning disable CS9093 // This ref-assigns a value that can only escape the current method through a return statement.
+                    ctx.Writer = ref writer;
+#pragma warning restore CS9093 // This ref-assigns a value that can only escape the current method through a return statement.
+                    ctx.KeyReader = keyReader;
+                    ctx.ValueReader = valueReader;
+                    ctx.EmptyObject = emptyValue;
+                    ctx.KeyReader.Skip1Byte(); // Skip PrimaryKey prefix
+                    ctx.KeyReader.SkipVUInt64();
+                    ctx.ValueReader.SkipVUInt64(); // Skip version
+                    Span<(uint FromOfs, uint ToOfs)> tempStorageOffsets = stackalloc (uint, uint)[outOfOrderCount];
+#pragma warning disable CS9080 // Use of variable in this context may expose referenced variables outside of their declaration scope
+                    ctx.TempStorageOffsets = tempStorageOffsets;
+#pragma warning restore CS9080 // Use of variable in this context may expose referenced variables outside of their declaration scope
+                    ctx.TempWriter = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+                    foreach (var action in actionsArray)
+                    {
+                        action(ref ctx);
+                    }
+                };
+            }
+
+            return (tr, ref writer, ref keyReader, ref valueReader, emptyValue) =>
+            {
+                BytesToSKSaverCtx ctx = default;
+                ctx.Transaction = tr;
+#pragma warning disable CS9093 // This ref-assigns a value that can only escape the current method through a return statement.
+                ctx.Writer = ref writer;
+#pragma warning restore CS9093 // This ref-assigns a value that can only escape the current method through a return statement.
+                ctx.KeyReader = keyReader;
+                ctx.ValueReader = valueReader;
+                ctx.EmptyObject = emptyValue;
+                ctx.KeyReader.Skip1Byte(); // Skip PrimaryKey prefix
+                ctx.KeyReader.SkipVUInt64();
+                ctx.ValueReader.SkipVUInt64(); // Skip version
+                foreach (var action in actionsArray)
+                {
+                    action(ref ctx);
+                }
+            };
+        }
+        else
+        {
+            var method = ILBuilder.Instance.NewMethod<SecondaryKeyConvertSaver>(saverName);
+            var ilGenerator = method.Generator;
+            IILLocal defaultObjectLoc = null;
+            static void PushWriter(IILGen il) => il.Ldarg(1);
+
+            var firstBuffer = new BufferInfo(); //pk's
+            var secondBuffer = new BufferInfo(); //values
+            var outOfOrderSkParts = new Dictionary<int, LocalAndHandler>(); //local and specialized saver
+
+            var writerCtxLocal = CreateWriterCtx(ilGenerator, skFields, il => il.Ldarg(0));
+            for (var skFieldIdx = 0; skFieldIdx < skFieldIds.Count; skFieldIdx++)
+            {
+                if (outOfOrderSkParts.TryGetValue(skFieldIdx, out var saveLocalInfo))
+                {
+                    var pushCtx = WriterOrContextForHandler(writerCtxLocal);
+                    saveLocalInfo.Handler.Save(ilGenerator, PushWriter, pushCtx, il => il.Ldloc(saveLocalInfo.Local));
+                    continue;
+                }
+
+                var skf = skFieldIds[skFieldIdx];
+                if (skf.IsFromPrimaryKey)
+                {
+                    InitializeBuffer(2, ref firstBuffer, ilGenerator, pks, true);
+                    //firstBuffer.ActualFieldIdx == number of processed PK's
+                    for (var pkIdx = firstBuffer.ActualFieldIdx; pkIdx < skf.Index; pkIdx++)
+                    {
+                        //all PK parts are contained in SK
+                        FindPosition(pkIdx, skFieldIds, out var skFieldIdxForPk);
+                        StoreIntoLocal(ilGenerator, pks[pkIdx].Handler!, firstBuffer, outOfOrderSkParts,
+                            skFieldIdxForPk,
+                            skFields[skFieldIdxForPk].Handler!);
+                    }
+
+                    CopyToOutput(ilGenerator, pks[(int)skf.Index].Handler!, writerCtxLocal!, PushWriter,
+                        skFields[skFieldIdx].Handler!, firstBuffer);
+                    firstBuffer.ActualFieldIdx = (int)skf.Index + 1;
+                }
+                else
+                {
+                    InitializeBuffer(3, ref secondBuffer, ilGenerator, valueFields, false);
+
+                    var valueFieldIdx = -1;
+                    for (var i = 0; i < valueFields.Length; i++)
+                    {
+                        if (valueFields[i].Name == skFields[skFieldIdx].Name)
+                        {
+                            valueFieldIdx = i;
+                            break;
+                        }
+                    }
+
+                    if (valueFieldIdx >= 0)
+                    {
+                        for (var valueIdx = secondBuffer.ActualFieldIdx; valueIdx < valueFieldIdx; valueIdx++)
+                        {
+                            var valueField = valueFields[valueIdx];
+                            var storeForSkIndex = -1;
+                            for (var i = 0; i < skFields.Length; i++)
+                            {
+                                if (skFields[i].Name == valueField.Name)
+                                {
+                                    storeForSkIndex = i;
+                                    break;
+                                }
+                            }
+
+                            if (storeForSkIndex == -1)
+                                valueField.Handler!.Skip(ilGenerator, secondBuffer.PushReader, secondBuffer.PushCtx);
+                            else
+                                StoreIntoLocal(ilGenerator, valueField.Handler!, secondBuffer, outOfOrderSkParts,
+                                    storeForSkIndex, skFields[storeForSkIndex].Handler!);
+                        }
+
+                        CopyToOutput(ilGenerator, valueFields[valueFieldIdx].Handler!, writerCtxLocal!, PushWriter,
+                            skFields[skFieldIdx].Handler!, secondBuffer);
+                        secondBuffer.ActualFieldIdx = valueFieldIdx + 1;
+                    }
+                    else
+                    {
+                        //older version of value does not contain sk field - store field from default value (can be initialized in constructor)
+                        if (defaultObjectLoc == null)
+                        {
+                            defaultObjectLoc = ilGenerator.DeclareLocal(ClientType);
+                            ilGenerator.Ldarg(4)
+                                .Castclass(ClientType)
+                                .Stloc(defaultObjectLoc);
+                        }
+
+                        var loc = defaultObjectLoc;
+                        CreateSaverIl(ilGenerator,
+                            new[] { ClientRelationVersionInfo.GetSecondaryKeyField((int)skf.Index) },
+                            il => il.Ldloc(loc), PushWriter, il => il.Ldarg(0), null);
+                    }
+                }
+            }
+
+            ilGenerator.Ret();
+            return method.Create();
+        }
     }
 
     static void CopyToOutput(IILGen ilGenerator, IFieldHandler valueHandler, IILLocal writerCtxLocal,
@@ -1560,87 +1941,47 @@ public class RelationInfo
 
     unsafe RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName, bool forPrimaryKey)
     {
-#pragma warning disable CS0162 // Unreachable code detected
-        if (IFieldHandler.UseNoEmitForRelations)
+        var metadata = ReflectionMetadata.FindByType(ClientType);
+        if (metadata == null)
+            throw new BTDBException($"Cannot find metadata for type {ClientType.ToSimpleName()}");
+
+        var onSerialize = metadata.OnSerialize;
+        if (!forPrimaryKey) onSerialize = null;
+
+        var anyNeedsCtx = false;
+        foreach (var field in fields)
         {
-            var metadata = ReflectionMetadata.FindByType(ClientType);
-            if (metadata == null)
-                throw new BTDBException($"Cannot find metadata for type {ClientType.ToSimpleName()}");
-
-            var onSerialize = metadata.OnSerialize;
-            if (!forPrimaryKey) onSerialize = null;
-
-            var anyNeedsCtx = false;
-            foreach (var field in fields)
+            if (field.Handler!.NeedsCtx())
             {
-                if (field.Handler!.NeedsCtx())
-                {
-                    anyNeedsCtx = true;
-                    break;
-                }
+                anyNeedsCtx = true;
+                break;
+            }
+        }
+
+        StructList<RelationSaverItem> saveInstructions = new();
+        CreateSaverItems(ref saveInstructions, metadata, fields, forPrimaryKey);
+        var saveInstructionsArray = saveInstructions.ToArray();
+        return (transaction, ref writer, value) =>
+        {
+            var result = 0;
+            if (onSerialize != null)
+            {
+                onSerialize(value);
             }
 
-            StructList<RelationSaverItem> saveInstructions = new();
-            CreateSaverItems(ref saveInstructions, metadata, fields, forPrimaryKey);
-            var saveInstructionsArray = saveInstructions.ToArray();
-            return (transaction, ref writer, value) =>
+            IWriterCtx? writerCtx = null;
+            if (anyNeedsCtx)
             {
-                var result = 0;
-                if (onSerialize != null)
-                {
-                    onSerialize(value);
-                }
-
-                IWriterCtx? writerCtx = null;
-                if (anyNeedsCtx)
-                {
-                    writerCtx = new DBWriterCtx(transaction);
-                }
-
-                foreach (var relationSaverItem in saveInstructionsArray)
-                {
-                    relationSaverItem(ref writer, writerCtx, value, ref result);
-                }
-
-                return result;
-            };
-        }
-        else
-        {
-            var method = ILBuilder.Instance.NewMethod<RelationSaver>(saverName);
-            var ilGenerator = method.Generator;
-            StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType,
-                (ushort)ilGenerator.DeclareLocal(ClientType).Index);
-            var result = ilGenerator.DeclareLocal(typeof(int));
-            ilGenerator
-                .LdcI4(0)
-                .Stloc(result);
-            if (forPrimaryKey)
-            {
-                foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
-                                                                 BindingFlags.NonPublic))
-                {
-                    if (methodInfo.GetCustomAttribute<OnSerializeAttribute>() == null) continue;
-                    if (methodInfo.GetParameters().Length != 0)
-                        throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." +
-                                                methodInfo.Name +
-                                                " must have zero parameters.");
-                    if (methodInfo.ReturnType != typeof(void))
-                        throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." +
-                                                methodInfo.Name +
-                                                " must return void.");
-                    ilGenerator.Ldloc(0).Callvirt(methodInfo);
-                }
+                writerCtx = new DBWriterCtx(transaction);
             }
 
-            CreateSaverIl(ilGenerator, fields,
-                il => il.Ldloc(0), il => il.Ldarg(1), il => il.Ldarg(0),
-                forPrimaryKey ? (il => il.Stloc(result)) : null);
-            ilGenerator.Ldloc(result);
-            ilGenerator.Ret();
-            return method.Create();
-        }
-#pragma warning restore CS0162 // Unreachable code detected
+            foreach (var relationSaverItem in saveInstructionsArray)
+            {
+                relationSaverItem(ref writer, writerCtx, value, ref result);
+            }
+
+            return result;
+        };
     }
 
     static bool SecondaryIndexHasSameDefinition(ReadOnlySpan<TableFieldInfo> currFields,
@@ -1690,8 +2031,7 @@ public class RelationInfo
             }
         }
 
-        return new RelationVersionInfo(prime.PrimaryKeyFields, secondaryKeys, prime.SecondaryKeyFields,
-            prime.Fields);
+        return new(prime.PrimaryKeyFields, secondaryKeys, prime.SecondaryKeyFields, prime.Fields);
     }
 
     static bool IsIgnoredType(Type type)
@@ -1962,10 +2302,7 @@ public class RelationInfo
             };
         }
 
-        return (ref reader, transaction, ref value) =>
-        {
-            loader(ref reader, null, ref value);
-        };
+        return (ref reader, transaction, ref value) => { loader(ref reader, null, ref value); };
     }
 
     static string GetPersistentName(PropertyInfo p)
