@@ -1496,9 +1496,9 @@ public class RelationInfo
                                 needsWriterCtx |= handlerTo3.NeedsCtx();
                                 var fieldType3 = handlerTo3.HandledType()!;
                                 var loader3 = handler3.Load(fieldType3,
-                                    DefaultTypeConverterFactory.Instance);
+                                    _relationInfoResolver.TypeConverterFactory);
                                 var saver3 = handlerTo3.Save(fieldType3,
-                                    DefaultTypeConverterFactory.Instance);
+                                    _relationInfoResolver.TypeConverterFactory);
                                 if (RawData.FitsInInt128(fieldType3))
                                 {
                                     actions.Add((ref ctx) =>
@@ -1565,9 +1565,9 @@ public class RelationInfo
                         needsWriterCtx |= handlerTo.NeedsCtx();
                         var fieldType = handlerTo.HandledType()!;
                         var loader = handler.Load(fieldType,
-                            DefaultTypeConverterFactory.Instance);
+                            _relationInfoResolver.TypeConverterFactory);
                         var saver = handlerTo.Save(fieldType,
-                            DefaultTypeConverterFactory.Instance);
+                            _relationInfoResolver.TypeConverterFactory);
 
                         if (RawData.FitsInInt128(fieldType))
                         {
@@ -1637,7 +1637,7 @@ public class RelationInfo
                         needsWriterCtx |= handlerTo.NeedsCtx();
                         var fieldType = fieldMeta.Type;
                         var saver = handlerTo.Save(fieldType,
-                            DefaultTypeConverterFactory.Instance);
+                            _relationInfoResolver.TypeConverterFactory);
                         var getter = fieldMeta.PropRefGetter;
                         if (getter != null)
                         {
