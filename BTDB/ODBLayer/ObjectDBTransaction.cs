@@ -1040,7 +1040,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     {
         var builder = RelationBuilder.GetFromCache(interfaceType, _owner.RelationInfoResolver);
         var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType, builder);
-        var factory = (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator.Create(relationInfo);
+        var factory = (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator(relationInfo);
         if (relationInfo.LastPersistedVersion == 0)
         {
             var upgrader =

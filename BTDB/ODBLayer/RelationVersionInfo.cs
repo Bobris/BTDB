@@ -8,30 +8,16 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
 
-struct FieldId : IEquatable<FieldId>
+public record struct FieldId(bool IsFromPrimaryKey, uint Index)
 {
-    readonly bool _isFromPrimaryKey;
-    readonly uint _index;
-
-    public bool IsFromPrimaryKey => _isFromPrimaryKey;
-    public uint Index => _index;
-
-    public FieldId(bool isFromPrimaryKey, uint index)
-    {
-        _isFromPrimaryKey = isFromPrimaryKey;
-        _index = index;
-    }
-
-    public bool Equals(FieldId other)
-    {
-        return _isFromPrimaryKey == other.IsFromPrimaryKey && _index == other.Index;
-    }
+    public readonly bool IsFromPrimaryKey = IsFromPrimaryKey;
+    public readonly uint Index = Index;
 }
 
 class SecondaryKeyInfo
 {
-    public IList<FieldId> Fields { get; set; }
-    public string Name { get; set; }
+    public string Name;
+    public IList<FieldId> Fields;
 
     public static bool Equal(SecondaryKeyInfo a, SecondaryKeyInfo b)
     {
@@ -39,7 +25,7 @@ class SecondaryKeyInfo
             return false;
         if (a.Fields.Count != b.Fields.Count)
             return false;
-        for (int i = 0; i < a.Fields.Count; i++)
+        for (var i = 0; i < a.Fields.Count; i++)
         {
             if (!a.Fields[i].Equals(b.Fields[i]))
                 return false;
@@ -147,13 +133,13 @@ public class RelationVersionInfo
                     info.Fields.Add(new FieldId(true, (uint)PrimaryKeyFields.Span.IndexOf(primaryKeyFields[pk.Key])));
             }
 
-            var skIndex = SelectSecondaryKeyIndex(info);
+            var skIndex = SelectSecondaryKeyIndex();
             _secondaryKeysNames[indexName] = skIndex;
             _secondaryKeys[skIndex] = info;
         }
     }
 
-    uint SelectSecondaryKeyIndex(SecondaryKeyInfo info)
+    uint SelectSecondaryKeyIndex()
     {
         var index = 0u;
         while (_secondaryKeys.ContainsKey(index))

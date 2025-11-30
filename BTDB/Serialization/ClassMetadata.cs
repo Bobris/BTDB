@@ -15,6 +15,10 @@ public class ClassMetadata
     public unsafe delegate*<object> Creator;
     public unsafe delegate*<object, void> OnSerialize;
     public Func<IContainer?, RelationBeforeRemove>? OnBeforeRemoveFactory;
+    public uint[]? PrimaryKeyFields;
+    public uint IndexOfInKeyValue; // If it is PrimaryKeyFields.Length then there is no in key values
+    public (string Name, uint[] SecondaryKeyFields)[]? SecondaryKeys;
+    public uint[]? RelationFields;
 
     public string TruePersistedName =>
         PersistedName ?? (string.IsNullOrEmpty(Namespace) ? Name : Namespace + "." + Name);

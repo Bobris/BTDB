@@ -814,7 +814,7 @@ public class RelationInfo
     internal byte[]? PrimeSK2Real;
 
     // ReSharper disable once NotNullMemberIsNotInitialized - not true
-    public RelationInfo(uint id, string name, RelationBuilder builder, IInternalObjectDBTransaction tr)
+    public RelationInfo(uint id, string name, IRelationBuilder builder, IInternalObjectDBTransaction tr)
     {
         _id = id;
         _name = name;
@@ -2421,7 +2421,7 @@ public class RelationInfo
             };
         }
 
-        return (ref reader, transaction, ref value) => { loader(ref reader, null, ref value); };
+        return (ref reader, _, ref value) => { loader(ref reader, null, ref value); };
     }
 
     static string GetPersistentName(PropertyInfo p)

@@ -39,7 +39,7 @@ public class RelationsInfo
 
     [SkipLocalsInit]
     internal RelationInfo CreateByName(IInternalObjectDBTransaction tr, string name, Type interfaceType,
-        RelationBuilder builder)
+        IRelationBuilder builder)
     {
         name = string.Intern(name);
         if (!_name2Id.TryGetValue(name, out var id))

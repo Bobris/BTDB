@@ -7,23 +7,42 @@ using System.Runtime.CompilerServices;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 // ReSharper disable ParameterOnlyUsedForPreconditionCheck.Local
 
 namespace BTDB.ODBLayer;
 
-public class RelationBuilder
+public interface IRelationBuilder
+{
+    Type InterfaceType { get; }
+    Type ItemType { get; }
+    object PristineItemInstance { get; }
+    RelationVersionInfo ClientRelationVersionInfo { get; }
+    List<Type> LoadTypes { get; }
+    IRelationInfoResolver RelationInfoResolver { get; }
+    Func<RelationInfo, Func<IObjectDBTransaction, IRelation>> DelegateCreator { get; }
+}
+
+public class RelationBuilder : IRelationBuilder
 {
     readonly Type _relationDbManipulatorType;
     readonly string _name;
-    public readonly Type InterfaceType;
-    public readonly Type ItemType;
-    public readonly object PristineItemInstance;
-    public readonly RelationVersionInfo ClientRelationVersionInfo;
-    public readonly List<Type> LoadTypes = new();
-    public readonly IRelationInfoResolver RelationInfoResolver;
-    public IILDynamicMethodWithThis DelegateCreator { get; }
+
+    public Type InterfaceType { get; }
+
+    public Type ItemType { get; }
+
+    public object PristineItemInstance { get; }
+
+    public RelationVersionInfo ClientRelationVersionInfo { get; }
+
+    public List<Type> LoadTypes { get; }
+
+    public IRelationInfoResolver RelationInfoResolver { get; }
+
+    public Func<RelationInfo, Func<IObjectDBTransaction, IRelation>> DelegateCreator { get; }
 
     static readonly MethodInfo MemWriterGetSpanMethodInfo =
         typeof(MemWriter).GetMethod(nameof(MemWriter.GetSpan))!;
@@ -42,7 +61,7 @@ public class RelationBuilder
         _relationBuilderCache = new();
     }
 
-    internal static RelationBuilder GetFromCache(Type interfaceType, IRelationInfoResolver relationInfoResolver)
+    internal static IRelationBuilder GetFromCache(Type interfaceType, IRelationInfoResolver relationInfoResolver)
     {
         if (_relationBuilderCache.TryGetValue((interfaceType, relationInfoResolver.ActualOptions.Name),
                 out var res))
@@ -82,18 +101,17 @@ public class RelationBuilder
         _name = InterfaceType.ToSimpleName();
         ClientRelationVersionInfo = CreateVersionInfoByReflection();
         _relationDbManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(ItemType);
-        LoadTypes.Add(ItemType);
+        LoadTypes = [ItemType];
         DelegateCreator = Build();
     }
 
-    object CreatePristineInstance()
+    unsafe object CreatePristineInstance()
     {
         var container = RelationInfoResolver.Container;
         var res = container?.ResolveOptional(ItemType);
-        return (res ??
-                (ItemType.GetDefaultConstructor() != null
-                    ? Activator.CreateInstance(ItemType, nonPublic: true)
-                    : RuntimeHelpers.GetUninitializedObject(ItemType)))!;
+        if (res != null) return res;
+        var metadata = ReflectionMetadata.FindByType(ItemType);
+        return metadata.Creator();
     }
 
     RelationVersionInfo CreateVersionInfoByReflection()
@@ -206,19 +224,18 @@ public class RelationBuilder
         return LoadTypes.Count - 1;
     }
 
-    IILDynamicMethodWithThis Build()
+    Func<RelationInfo, Func<IObjectDBTransaction, IRelation>> Build()
     {
         var interfaceType = InterfaceType;
         var relationName = interfaceType!.ToSimpleName();
         var classImpl = ILBuilder.Instance.NewType("Relation" + relationName, _relationDbManipulatorType,
-            new[] { interfaceType });
+            [interfaceType]);
         var constructorMethod =
-            classImpl.DefineConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) });
+            classImpl.DefineConstructor([typeof(IObjectDBTransaction), typeof(RelationInfo)]);
         var il = constructorMethod.Generator;
         // super.ctor(transaction, relationInfo);
         il.Ldarg(0).Ldarg(1).Ldarg(2)
-            .Call(_relationDbManipulatorType.GetConstructor(new[]
-                { typeof(IObjectDBTransaction), typeof(RelationInfo) })!)
+            .Call(_relationDbManipulatorType.GetConstructor([typeof(IObjectDBTransaction), typeof(RelationInfo)])!)
             .Ret();
         var methods = RelationInfo.GetMethods(interfaceType);
         foreach (var method in methods)
@@ -332,10 +349,10 @@ public class RelationBuilder
         ilGenerator
             .Ldarg(1)
             .Ldarg(0)
-            .Newobj(classImplType.GetConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) })!)
+            .Newobj(classImplType.GetConstructor([typeof(IObjectDBTransaction), typeof(RelationInfo)])!)
             .Castclass(typeof(IRelation))
             .Ret();
-        return methodBuilder;
+        return ri => (Func<IObjectDBTransaction, IRelation>)methodBuilder.Create(ri);
     }
 
     static string SubstringAfterBy(string name)
