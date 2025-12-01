@@ -53,6 +53,9 @@ static file class PersonRegistration
                 return res;
             };
         };
+        metadata.PrimaryKeyFields = [0];
+        metadata.IndexOfInKeyValue = 1;
+        metadata.SecondaryKeys = [];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

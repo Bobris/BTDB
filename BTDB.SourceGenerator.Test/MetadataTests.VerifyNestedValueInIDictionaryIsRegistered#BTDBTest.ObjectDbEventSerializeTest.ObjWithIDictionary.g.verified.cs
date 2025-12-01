@@ -47,6 +47,9 @@ static file class ObjWithIDictionaryRegistration
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
             },
         ];
+        metadata.PrimaryKeyFields = [0];
+        metadata.IndexOfInKeyValue = 1;
+        metadata.SecondaryKeys = [];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

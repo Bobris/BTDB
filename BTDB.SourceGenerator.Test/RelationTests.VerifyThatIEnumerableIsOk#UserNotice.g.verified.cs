@@ -45,6 +45,9 @@ static file class UserNoticeRegistration
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
             },
         ];
+        metadata.PrimaryKeyFields = [0, 1];
+        metadata.IndexOfInKeyValue = 2;
+        metadata.SecondaryKeys = [("NoticeId", [1, 0])];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

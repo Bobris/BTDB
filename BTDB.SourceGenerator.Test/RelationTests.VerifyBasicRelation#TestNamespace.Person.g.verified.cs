@@ -55,6 +55,9 @@ static file class PersonRegistration
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field3(dummy)),
             },
         ];
+        metadata.PrimaryKeyFields = [0, 1];
+        metadata.IndexOfInKeyValue = 2;
+        metadata.SecondaryKeys = [];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

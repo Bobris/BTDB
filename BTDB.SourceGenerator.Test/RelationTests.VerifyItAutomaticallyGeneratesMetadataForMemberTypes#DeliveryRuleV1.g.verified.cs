@@ -53,6 +53,9 @@ static file class DeliveryRuleV1Registration
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field3(dummy)),
             },
         ];
+        metadata.PrimaryKeyFields = [1];
+        metadata.IndexOfInKeyValue = 1;
+        metadata.SecondaryKeys = [];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

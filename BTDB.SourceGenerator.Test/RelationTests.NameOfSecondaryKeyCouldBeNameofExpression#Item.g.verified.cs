@@ -69,6 +69,9 @@ static file class ItemRegistration
                 ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field5(dummy)),
             },
         ];
+        metadata.PrimaryKeyFields = [0, 1, 2];
+        metadata.IndexOfInKeyValue = 3;
+        metadata.SecondaryKeys = [("LockDeadline", [0, 1, 3, 4, 2])];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

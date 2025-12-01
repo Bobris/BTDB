@@ -1788,6 +1788,75 @@ public class SourceGenerator : IIncrementalGenerator
         var additionalDeclarations = new StringBuilder();
         var parameterIndex = 0;
 
+        uint[]? primaryKeyFields = null;
+        uint indexOfInKeyValue = 0; // If it is PrimaryKeyFields.Length then there is no in key values
+        (string Name, uint[] SecondaryKeyFields)[]? secondaryKeys = null;
+
+        if (generationInfo.Fields.Any(f => !f.Indexes.IsEmpty))
+        {
+            var primaryKeyOrder2Info = new Dictionary<uint, (uint Index, bool InKeyValue)>();
+            var secondaryKeyName2Info =
+                new Dictionary<string, List<(uint Index, uint Order, uint IncludePrimaryKeyOrder)>>();
+
+            for (var index = 0; index < generationInfo.Fields.Count; index++)
+            {
+                var generationInfoField = generationInfo.Fields[index];
+                foreach (var indexInfo in generationInfoField.Indexes)
+                {
+                    if (indexInfo.Name == null)
+                    {
+                        primaryKeyOrder2Info[indexInfo.Order] = ((uint)index, indexInfo.InKeyValue);
+                    }
+                    else
+                    {
+                        if (!secondaryKeyName2Info.ContainsKey(indexInfo.Name))
+                            secondaryKeyName2Info[indexInfo.Name] = [];
+                        secondaryKeyName2Info[indexInfo.Name]
+                            .Add(((uint)index, indexInfo.Order, indexInfo.IncludePrimaryKeyOrder));
+                    }
+                }
+            }
+
+            var pkInfos = primaryKeyOrder2Info.OrderBy(p => p.Key).ToList();
+            indexOfInKeyValue = (uint)pkInfos.Count;
+            primaryKeyFields = new uint[pkInfos.Count];
+            for (var i = 0; i < pkInfos.Count; i++)
+            {
+                primaryKeyFields[i] = pkInfos[i].Value.Index;
+                if (pkInfos[i].Value.InKeyValue && i < indexOfInKeyValue) indexOfInKeyValue = (uint)i;
+            }
+
+            secondaryKeys = new (string Name, uint[] SecondaryKeyFields)[secondaryKeyName2Info.Count];
+            var j = 0;
+            foreach (var keyValuePair in secondaryKeyName2Info)
+            {
+                var ordered = keyValuePair.Value.OrderBy(v => v.Order).ToList();
+                var secondaryKeyFields = new List<uint>();
+                foreach (var info in ordered)
+                {
+                    for (var i = 1; i <= info.IncludePrimaryKeyOrder; i++)
+                    {
+                        if (primaryKeyOrder2Info.TryGetValue((uint)i, out var pkInfo))
+                        {
+                            secondaryKeyFields.Add(pkInfo.Index);
+                        }
+                    }
+
+                    secondaryKeyFields.Add(info.Index);
+                }
+
+                foreach (var primaryKeyField in primaryKeyFields)
+                {
+                    if (!secondaryKeyFields.Contains(primaryKeyField))
+                    {
+                        secondaryKeyFields.Add(primaryKeyField);
+                    }
+                }
+
+                secondaryKeys[j++] = (keyValuePair.Key, secondaryKeyFields.ToArray());
+            }
+        }
+
         if (generationInfo.ConstructorParameters != null)
         {
             foreach (var (name, type, keyCode, isReference, optional, defaultValue) in generationInfo
@@ -2322,6 +2391,16 @@ public class SourceGenerator : IIncrementalGenerator
                                     return res;
                                 };
                             };
+
+                    """);
+            }
+
+            if (primaryKeyFields != null)
+            {
+                metadataCode.Append($"""
+                            metadata.PrimaryKeyFields = [{string.Join(", ", primaryKeyFields)}];
+                            metadata.IndexOfInKeyValue = {indexOfInKeyValue};
+                            metadata.SecondaryKeys = [{string.Join(", ", secondaryKeys!.Select(v => $"(\"{v.Name}\", [{string.Join(", ", v.SecondaryKeyFields)}])"))}];
 
                     """);
             }
