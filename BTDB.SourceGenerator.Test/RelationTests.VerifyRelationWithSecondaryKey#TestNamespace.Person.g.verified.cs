@@ -77,7 +77,7 @@ static file class PersonRegistration
         ];
         metadata.PrimaryKeyFields = [0, 1, 2, 4];
         metadata.IndexOfInKeyValue = 2;
-        metadata.SecondaryKeys = [("PersonId", [1, 0, 2, 4]), ("LowerCaseName", [0, 3, 1, 2, 4])];
+        metadata.SecondaryKeys = [("PersonId", [1, 0]), ("LowerCaseName", [0, 3, 1])];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

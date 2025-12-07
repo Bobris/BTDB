@@ -65,11 +65,8 @@ public class SourceGenerator : IIncrementalGenerator
                         {
                             if (constructorParametersExpression is not CollectionExpressionSyntax aces)
                             {
-                                return new(GenerationType.Error, null, "BTDB0001",
-                                    "Must use CollectionExpression syntax for ConstructorParameters", null, false,
-                                    false,
-                                    false, false, [], [],
-                                    [], [], [], [], [], [], [], [],
+                                return GenerationError("BTDB0001",
+                                    "Must use CollectionExpression syntax for ConstructorParameters",
                                     constructorParametersExpression.GetLocation());
                             }
 
@@ -87,7 +84,7 @@ public class SourceGenerator : IIncrementalGenerator
                         }
 
                         return GenerationInfoForClass(symb, null, false, constructorParameters, semanticModel,
-                            [], [], false);
+                            [], [], false, false);
                     }
 
                     // Symbols allow us to get the compile-time information.
@@ -126,7 +123,7 @@ public class SourceGenerator : IIncrementalGenerator
                             .ToArray();
                         return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
                             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false, false,
-                            false,
+                            false, false,
                             parameters, [new PropertyInfo("", returnType, null, true, false, false, false, null)], [],
                             [], [], [],
                             [], [], [], [], null);
@@ -148,7 +145,7 @@ public class SourceGenerator : IIncrementalGenerator
                             var generationInfo = GenerationInfoForClass((INamedTypeSymbol)relationType, null, false,
                                 null,
                                 semanticModel,
-                                [], [], false);
+                                [], [], false, true);
                             if (generationInfo is not { GenType: GenerationType.Class }) return null;
                             var detectedError = DetectErrors(generationInfo.Fields.AsSpan(),
                                 ((InterfaceDeclarationSyntax)syntaxContext.Node).Identifier.GetLocation());
@@ -181,7 +178,7 @@ public class SourceGenerator : IIncrementalGenerator
                                         {
                                             var variantInfo = GenerationInfoForClass(
                                                 (INamedTypeSymbol)typeArgument, null, false,
-                                                null, semanticModel, [], [], false);
+                                                null, semanticModel, [], [], false, false);
                                             if (variantInfo != null)
                                             {
                                                 variantsGenerationInfos.Add(variantInfo);
@@ -199,7 +196,7 @@ public class SourceGenerator : IIncrementalGenerator
                                         {
                                             var variantInfo = GenerationInfoForClass(
                                                 (INamedTypeSymbol)valueType, null, false,
-                                                null, semanticModel, [], [], false);
+                                                null, semanticModel, [], [], false, false);
                                             if (variantInfo != null) variantsGenerationInfos.Add(variantInfo);
                                         }
                                     }
@@ -211,7 +208,7 @@ public class SourceGenerator : IIncrementalGenerator
                                     {
                                         var variantInfo = GenerationInfoForClass(
                                             (INamedTypeSymbol)methodReturnType, null, false,
-                                            null, semanticModel, [], [], false);
+                                            null, semanticModel, [], [], false, false);
                                         if (variantInfo != null) variantsGenerationInfos.Add(variantInfo);
                                     }
                                 }
@@ -231,7 +228,7 @@ public class SourceGenerator : IIncrementalGenerator
                                         {
                                             var variantInfo = GenerationInfoForClass(
                                                 (INamedTypeSymbol)typeArgument, null, false,
-                                                null, semanticModel, [], [], false);
+                                                null, semanticModel, [], [], false, false);
                                             if (variantInfo != null) variantsGenerationInfos.Add(variantInfo);
                                         }
                                     }
@@ -242,7 +239,7 @@ public class SourceGenerator : IIncrementalGenerator
                                 return detectedError;
                             return new(GenerationType.RelationIface, namespaceName, interfaceName,
                                 symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), persistedName, false,
-                                false, false, false,
+                                false, false, false, false,
                                 [], [], [], [], generationInfo.Fields, [],
                                 [new(relationType)], [], [],
                                 [
@@ -261,7 +258,7 @@ public class SourceGenerator : IIncrementalGenerator
                             var interfaceName = symbol.Name;
                             return new(GenerationType.Interface, namespaceName, interfaceName,
                                 symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false,
-                                false, false,
+                                false, false, false,
                                 [],
                                 [], [],
                                 dispatchers, [], [],
@@ -304,7 +301,7 @@ public class SourceGenerator : IIncrementalGenerator
                             .Any(m => m.ValueText == "partial");
 
                         return GenerationInfoForClass(symbol, classDeclarationSyntax, isPartial, null, semanticModel,
-                            [], [], false);
+                            [], [], false, false);
                     }
 
                     if (syntaxContext.Node is RecordDeclarationSyntax recordDeclarationSyntax)
@@ -341,15 +338,14 @@ public class SourceGenerator : IIncrementalGenerator
                             .Any(m => m.ValueText == "partial");
 
                         return GenerationInfoForClass(symbol, recordDeclarationSyntax, isPartial, null, semanticModel,
-                            [], [], false);
+                            [], [], false, false);
                     }
 
                     return null!;
                 }
                 catch (Exception e)
                 {
-                    return new(GenerationType.Error, null, "BTDB0000", e.StackTrace, null, false, false, false, false,
-                        [], [], [], [], [], [], [], [], [], [], syntaxContext.Node.GetLocation());
+                    return GenerationError("BTDB0000", e.StackTrace, syntaxContext.Node.GetLocation());
                 }
             }).Where(i => i != null);
         gen = gen.SelectMany((g, _) => g!.Nested.IsEmpty ? Enumerable.Repeat(g, 1) : [g, ..g.Nested])!;
@@ -489,7 +485,7 @@ public class SourceGenerator : IIncrementalGenerator
 
     static GenerationInfo GenerationError(string code, string message, Location location)
     {
-        return new(GenerationType.Error, null, code, message, null, false, false, false, false, [],
+        return new(GenerationType.Error, null, code, message, null, false, false, false, false, false, [],
             [], [], [], [], [], [], [], [], [], location);
     }
 
@@ -504,7 +500,7 @@ public class SourceGenerator : IIncrementalGenerator
     static GenerationInfo? GenerationInfoForClass(INamedTypeSymbol symbol,
         TypeDeclarationSyntax? classDeclarationSyntax,
         bool isPartial, INamedTypeSymbol[]? constructorParameters, SemanticModel model,
-        HashSet<CollectionInfo> collections, HashSet<GenerationInfo> nested, bool forceMetadata,
+        HashSet<CollectionInfo> collections, HashSet<GenerationInfo> nested, bool forceMetadata, bool isRelationItem,
         HashSet<string>? processed = null)
     {
         if (symbol.DeclaredAccessibility == Accessibility.Private)
@@ -681,7 +677,7 @@ public class SourceGenerator : IIncrementalGenerator
                 ExtractPersistedName(f),
                 f.Type.IsReferenceType, f.Name, null, null, false,
                 f.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                ExtractIndexInfo(f.GetAttributes())))
+                ExtractIndexInfo(f.GetAllAttributes())))
             .Concat(GetAllMembersIncludingBase(symbol)
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic && SerializableType(p.Type))
@@ -720,7 +716,7 @@ public class SourceGenerator : IIncrementalGenerator
                         p.Type.IsReferenceType,
                         backingName, getterName, setterName, isReadOnly,
                         p.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                        ExtractIndexInfo(p.GetAttributes()));
+                        ExtractIndexInfo(p.GetAllAttributes()));
                 })).ToArray();
 
         var fieldTypes = symbol.GetMembers()
@@ -836,6 +832,11 @@ public class SourceGenerator : IIncrementalGenerator
         // No IOC and no metadata => no generation
         if (fields.Length == 0 && parameters == null) return null;
 
+        if (!isRelationItem && fields.Any(f => !f.Indexes.IsEmpty))
+        {
+            isRelationItem = true;
+        }
+
         var privateConstructor =
             constructor?.DeclaredAccessibility is Accessibility.Private or Accessibility.Protected ||
             GetAllMembersIncludingBase(symbol)
@@ -853,7 +854,7 @@ public class SourceGenerator : IIncrementalGenerator
             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), persistedName, isPartial,
             privateConstructor,
             hasDefaultConstructor,
-            forceMetadata,
+            forceMetadata, isRelationItem,
             parameters,
             propertyInfos, parentDeclarations, dispatchers.ToArray(), fields, methods.ToArray(), implements,
             collections.ToArray(), genericParameters,
@@ -907,7 +908,7 @@ public class SourceGenerator : IIncrementalGenerator
             a.AttributeClass?.Name == "DependencyAttribute" && a.AttributeClass.InBTDBIOCNamespace());
     }
 
-    static EquatableArray<IndexInfo> ExtractIndexInfo(ImmutableArray<AttributeData> attributeDatas)
+    static EquatableArray<IndexInfo> ExtractIndexInfo(IEnumerable<AttributeData> attributeDatas)
     {
         var indexInfos = new List<IndexInfo>();
         var hasBothPrimaryAndInKeyValue = 0;
@@ -1165,7 +1166,7 @@ public class SourceGenerator : IIncrementalGenerator
                             namedTypeSymbol.Name,
                             namedTypeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false,
                             false,
-                            true, true, [], [],
+                            true, true, false, [], [],
                             [], [],
                             DetectValueTupleFields(namedTypeSymbol), [],
                             [], [], [],
@@ -1176,7 +1177,7 @@ public class SourceGenerator : IIncrementalGenerator
                              (ITypeSymbol)namedTypeSymbol is INamedTypeSymbol namedTypeSymbol1)
                     {
                         var gi = GenerationInfoForClass(namedTypeSymbol1, null, false, null, model,
-                            collections, nested, true, processed);
+                            collections, nested, true, false, processed);
                         if (gi != null)
                             nested.Add(gi);
                     }
@@ -1208,10 +1209,23 @@ public class SourceGenerator : IIncrementalGenerator
     {
         var members = new List<ISymbol>();
         var currentSymbol = symbol;
+        var uniqueNames = new HashSet<string>();
 
         while (currentSymbol != null)
         {
-            members.AddRange(currentSymbol.GetMembers());
+            foreach (var iSymbol in currentSymbol.GetMembers())
+            {
+                if (iSymbol is IFieldSymbol or IPropertySymbol)
+                {
+                    if (!uniqueNames.Add(iSymbol.Name)) continue;
+                    members.Add(iSymbol);
+                }
+                else
+                {
+                    members.Add(iSymbol);
+                }
+            }
+
             currentSymbol = currentSymbol.BaseType;
         }
 
@@ -1332,9 +1346,8 @@ public class SourceGenerator : IIncrementalGenerator
             if (generationInfo.GenType == GenerationType.Error)
             {
                 context.ReportDiagnostic(Diagnostic.Create(
-                    new DiagnosticDescriptor(generationInfo.Name, generationInfo.FullName, generationInfo.FullName,
-                        "BTDB",
-                        DiagnosticSeverity.Error, true), generationInfo.Location));
+                    new(generationInfo.Name, generationInfo.FullName, generationInfo.FullName,
+                        "BTDB", DiagnosticSeverity.Error, true), generationInfo.Location));
                 continue;
             }
 
@@ -1792,7 +1805,7 @@ public class SourceGenerator : IIncrementalGenerator
         uint indexOfInKeyValue = 0; // If it is PrimaryKeyFields.Length then there is no in key values
         (string Name, uint[] SecondaryKeyFields)[]? secondaryKeys = null;
 
-        if (generationInfo.Fields.Any(f => !f.Indexes.IsEmpty))
+        if (generationInfo.IsRelationItem)
         {
             var primaryKeyOrder2Info = new Dictionary<uint, (uint Index, bool InKeyValue)>();
             var secondaryKeyName2Info =
@@ -1845,8 +1858,10 @@ public class SourceGenerator : IIncrementalGenerator
                     secondaryKeyFields.Add(info.Index);
                 }
 
-                foreach (var primaryKeyField in primaryKeyFields)
+                for (var index = 0; index < primaryKeyFields.Length; index++)
                 {
+                    if (index >= indexOfInKeyValue) break;
+                    var primaryKeyField = primaryKeyFields[index];
                     if (!secondaryKeyFields.Contains(primaryKeyField))
                     {
                         secondaryKeyFields.Add(primaryKeyField);
@@ -2666,6 +2681,7 @@ record GenerationInfo(
     bool PrivateConstructor, // or has required fields
     bool HasDefaultConstructor,
     bool ForceMetadata,
+    bool IsRelationItem,
     EquatableArray<ParameterInfo>? ConstructorParameters,
     EquatableArray<PropertyInfo> Properties,
     EquatableArray<string> ParentDeclarations,

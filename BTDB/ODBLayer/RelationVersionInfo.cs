@@ -4,6 +4,7 @@ using System.Linq;
 using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
@@ -19,7 +20,8 @@ class SecondaryKeyInfo
     public string Name;
     public IList<FieldId> Fields;
 
-    public static bool Equal(SecondaryKeyInfo a, SecondaryKeyInfo b)
+    public static bool Equal(SecondaryKeyInfo a, ReadOnlyMemory<TableFieldInfo> aSecondaryKeyFields, SecondaryKeyInfo b,
+        ReadOnlyMemory<TableFieldInfo> bSecondaryKeyFields)
     {
         if (a.Name != b.Name)
             return false;
@@ -27,8 +29,18 @@ class SecondaryKeyInfo
             return false;
         for (var i = 0; i < a.Fields.Count; i++)
         {
-            if (!a.Fields[i].Equals(b.Fields[i]))
-                return false;
+            if (a.Fields[i].IsFromPrimaryKey != b.Fields[i].IsFromPrimaryKey) return false;
+            if (a.Fields[i].IsFromPrimaryKey)
+            {
+                if (a.Fields[i].Index != b.Fields[i].Index)
+                    return false;
+            }
+            else
+            {
+                if (aSecondaryKeyFields.Span[(int)a.Fields[i].Index].Name !=
+                    bSecondaryKeyFields.Span[(int)b.Fields[i].Index].Name)
+                    return false;
+            }
         }
 
         return true;
@@ -169,6 +181,70 @@ public class RelationVersionInfo
             HasComputedField = true;
             break;
         }
+    }
+
+    public unsafe RelationVersionInfo(FieldMetadata[] fields, uint[] primaryKeyFields, uint indexOfInKeyValue,
+        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, IFieldHandlerFactory fieldHandlerFactory)
+    {
+        PrimaryKeyFields = primaryKeyFields.Select((i, j) => TableFieldInfo.Create(fields[i].Name,
+            fieldHandlerFactory.CreateFromType(fields[i].Type, FieldHandlerOptions.Orderable), j >= indexOfInKeyValue,
+            false)).ToArray();
+        var fs = new TableFieldInfo[fields.Length - primaryKeyFields.Length];
+        var fieldIdx = 0;
+        HasComputedField = false;
+        for (var i = 0u; i < fields.Length; i++)
+        {
+            if (primaryKeyFields.Contains(i)) continue;
+            var field = fields[i];
+            var computed = field.ByteOffset == null && field.PropRefSetter == null;
+            fs[fieldIdx++] = TableFieldInfo.Create(field.Name,
+                fieldHandlerFactory.CreateFromType(field.Type, FieldHandlerOptions.None), false, computed);
+            if (computed) HasComputedField = true;
+        }
+
+        Fields = fs;
+        _secondaryKeysNames = new Dictionary<string, uint>(secondaryKeys.Length);
+        _secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>(secondaryKeys.Length);
+        var f2FRemapper = new Dictionary<uint, uint>(fs.Length);
+        var secondaryKeyFields = new List<TableFieldInfo>();
+        var secondaryKeyIndex = 0u;
+        foreach (var secondaryKey in secondaryKeys)
+        {
+            _secondaryKeysNames.Add(secondaryKey.Name, secondaryKeyIndex);
+            var skFields = new List<FieldId>(secondaryKey.SecondaryKeyFields.Length);
+            foreach (var secondaryKeyField in secondaryKey.SecondaryKeyFields)
+            {
+                var idx = primaryKeyFields.IndexOf(secondaryKeyField);
+                if (idx >= 0)
+                {
+                    skFields.Add(new(true, (uint)idx));
+                }
+                else
+                {
+                    if (!f2FRemapper.TryGetValue(secondaryKeyField, out var remapped))
+                    {
+                        remapped = (uint)secondaryKeyFields.Count;
+                        f2FRemapper.Add(secondaryKeyField, remapped);
+                        secondaryKeyFields.Add(TableFieldInfo.Create(fields[secondaryKeyField].Name,
+                            fieldHandlerFactory.CreateFromType(fields[secondaryKeyField].Type,
+                                FieldHandlerOptions.Orderable), false,
+                            fields[secondaryKeyField].ByteOffset == null &&
+                            fields[secondaryKeyField].PropRefSetter == null));
+                    }
+
+                    skFields.Add(new(false, remapped));
+                }
+            }
+
+            _secondaryKeys.Add(secondaryKeyIndex, new()
+            {
+                Name = secondaryKey.Name,
+                Fields = skFields
+            });
+            secondaryKeyIndex++;
+        }
+
+        _secondaryKeyFields = secondaryKeyFields.ToArray();
     }
 
     internal TableFieldInfo? this[string name]
@@ -390,7 +466,7 @@ public class RelationVersionInfo
         foreach (var key in a._secondaryKeys)
         {
             if (!b._secondaryKeys.TryGetValue(key.Key, out var bInfo)) return false;
-            if (!SecondaryKeyInfo.Equal(key.Value, bInfo)) return false;
+            if (!SecondaryKeyInfo.Equal(key.Value, a._secondaryKeyFields, bInfo, b._secondaryKeyFields)) return false;
         }
 
         //Fields

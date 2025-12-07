@@ -28,6 +28,26 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyRelationWithoutPrimaryKey()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Person
+            {
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IPersonTable : ICovariantRelation<Person>
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyRelationWithSecondaryKey()
     {
         // language=cs

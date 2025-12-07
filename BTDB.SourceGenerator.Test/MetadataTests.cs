@@ -284,6 +284,26 @@ public class MetadataTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyDerivedClassNewingIdenticalProperty()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class Child
+            {
+                public ulong Id { get; set; }
+            }
+
+            public class DerivedChild : Child
+            {
+               public new ulong Id { get; set; }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIIndirectPropertyIsCorrectlyGenerated()
     {
         // language=cs

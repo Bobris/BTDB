@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -99,7 +100,16 @@ public class RelationBuilder : IRelationBuilder
             relationInfoResolver.ActualOptions.ThrowBTDBException(
                 ItemType.ToSimpleName() + " cannot be registered as singleton");
         _name = InterfaceType.ToSimpleName();
-        ClientRelationVersionInfo = CreateVersionInfoByReflection();
+        var v1 = CreateVersionInfoByMetadata();
+        var v2 = CreateVersionInfoByReflection();
+        if (!RelationVersionInfo.Equal(v1, v2))
+        {
+            throw new InvalidOperationException("" + ItemType.ToSimpleName() +
+                                                " has different metadata and reflection version info: " + v1 + " vs " +
+                                                v2);
+        }
+
+        ClientRelationVersionInfo = v1;
         _relationDbManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(ItemType);
         LoadTypes = [ItemType];
         DelegateCreator = Build();
@@ -112,6 +122,15 @@ public class RelationBuilder : IRelationBuilder
         if (res != null) return res;
         var metadata = ReflectionMetadata.FindByType(ItemType);
         return metadata.Creator();
+    }
+
+    RelationVersionInfo CreateVersionInfoByMetadata()
+    {
+        var metadata = ReflectionMetadata.FindByType(ItemType);
+        if (metadata == null)
+            throw new InvalidOperationException("Cannot find metadata for " + ItemType.ToSimpleName());
+        return new(metadata.Fields, metadata.PrimaryKeyFields!, metadata.IndexOfInKeyValue,
+            metadata.SecondaryKeys!, RelationInfoResolver.FieldHandlerFactory);
     }
 
     RelationVersionInfo CreateVersionInfoByReflection()

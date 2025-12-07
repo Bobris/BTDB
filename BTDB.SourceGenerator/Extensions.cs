@@ -1,10 +1,34 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 
 namespace BTDB.SourceGenerator;
 
 public static class Extensions
 {
+    public static IEnumerable<AttributeData> GetAllAttributes(this ISymbol symbol)
+    {
+        // attributes declared on the symbol itself
+        foreach (var attribute in symbol.GetAttributes())
+            yield return attribute;
+
+        // attributes declared on base types
+        for (var current = symbol.ContainingType.BaseType; current != null; current = current.BaseType)
+        {
+            foreach (var attribute in current.GetAttributes())
+                yield return attribute;
+        }
+
+        // attributes declared on interfaces
+        var seen = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        foreach (var iface in symbol.ContainingType.AllInterfaces)
+        {
+            if (!seen.Add(iface)) continue;
+            foreach (var attribute in iface.GetAttributes())
+                yield return attribute;
+        }
+    }
+
     public static bool InNamespace(this ISymbol symbol, params ReadOnlySpan<string> namespaces)
     {
         if (symbol.ContainingNamespace is null) return false;
