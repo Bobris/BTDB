@@ -270,7 +270,7 @@ public class MemReaderWriterTest
             (ref MemReader r) => Assert.Equal(0x1234567890ABCDEFL, r.ReadInt64BE()),
             (ref MemReader s) => s.Skip8Bytes());
         TestWriteRead((ref MemWriter w) => w.WriteInt64LE(0x1234567890ABCDEFL),
-            new byte[] { 0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF }.Reverse().ToArray(),
+            new byte[] { 0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF }.AsEnumerable().Reverse().ToArray(),
             (ref MemReader r) => Assert.Equal(0x1234567890ABCDEFL, r.ReadInt64LE()),
             (ref MemReader s) => s.Skip8Bytes());
     }
