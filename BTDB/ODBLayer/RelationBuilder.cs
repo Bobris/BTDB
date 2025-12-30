@@ -246,6 +246,17 @@ public class RelationBuilder : IRelationBuilder
     Func<RelationInfo, Func<IObjectDBTransaction, IRelation>> Build()
     {
         var interfaceType = InterfaceType;
+        if (IFieldHandler.UseNoEmitForRelations)
+        {
+            var creator = ReflectionMetadata.FindRelationCreatorByType(interfaceType);
+            if (creator != null)
+            {
+                LoadTypes.Clear();
+                LoadTypes.AddRange(creator.Value.Item2);
+                return creator.Value.Item1;
+            }
+        }
+
         var relationName = interfaceType!.ToSimpleName();
         var classImpl = ILBuilder.Instance.NewType("Relation" + relationName, _relationDbManipulatorType,
             [interfaceType]);

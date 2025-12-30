@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    int Insert(Person person);
+        ^^^^^^
+}
+*/
+ : (9,8)-(9,14),
+      Message: Method 'Insert' has return type 'int' but the base method requires 'bool' (or void),
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0012,
+        Title: Method 'Insert' has return type 'int' but the base method requires 'bool' (or void),
+        MessageFormat: Method 'Insert' has return type 'int' but the base method requires 'bool' (or void),
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

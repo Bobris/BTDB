@@ -4,14 +4,24 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.ODBLayer;
 // Name: ITestTable
 // Field: Id ulong
 //           PrimaryIndex: 1
 [CompilerGenerated]
-static file class ITestTableRegistration
+file class ITestTableRegistration
 {
+    public class ImplTestTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Test>, global::ITestTable
+    {
+        public ImplTestTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+        {
+        }
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::ITestTable),
+            info => { return transaction => new ImplTestTable(transaction, info); },
+            [typeof(global::Test)]);
     }
 }

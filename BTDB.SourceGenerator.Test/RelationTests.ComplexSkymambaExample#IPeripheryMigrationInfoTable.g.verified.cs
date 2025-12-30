@@ -4,14 +4,24 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.ODBLayer;
 // Name: IPeripheryMigrationInfoTable
 // Field: CompanyId ulong
 //           PrimaryIndex: 1
 [CompilerGenerated]
-static file class IPeripheryMigrationInfoTableRegistration
+file class IPeripheryMigrationInfoTableRegistration
 {
+    public class ImplPeripheryMigrationInfoTable : global::BTDB.ODBLayer.RelationDBManipulator<global::ContinentMigrationInfo>, global::IPeripheryMigrationInfoTable
+    {
+        public ImplPeripheryMigrationInfoTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+        {
+        }
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::IPeripheryMigrationInfoTable),
+            info => { return transaction => new ImplPeripheryMigrationInfoTable(transaction, info); },
+            [typeof(global::ContinentMigrationInfo)]);
     }
 }

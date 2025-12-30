@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.SymbolStore;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -121,10 +122,10 @@ public class SourceGenerator : IIncrementalGenerator
                                     ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue, new(p.Type))
                                     : null))
                             .ToArray();
-                        return new GenerationInfo(GenerationType.Delegate, namespaceName, delegateName,
+                        return new(GenerationType.Delegate, namespaceName, delegateName,
                             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false, false,
                             false, false,
-                            parameters, [new PropertyInfo("", returnType, null, true, false, false, false, null)], [],
+                            parameters, [new("", returnType, null, true, false, false, false, null)], [],
                             [], [], [],
                             [], [], [], [], null);
                     }
@@ -149,11 +150,22 @@ public class SourceGenerator : IIncrementalGenerator
                             if (generationInfo is not { GenType: GenerationType.Class }) return null;
                             var detectedError = DetectErrors(generationInfo.Fields.AsSpan(),
                                 ((InterfaceDeclarationSyntax)syntaxContext.Node).Identifier.GetLocation());
-                            // Get all methods
-                            var methods = symbol.GetMembers().OfType<IMethodSymbol>().ToArray();
+                            if (detectedError != null)
+                                return detectedError;
+                            var methods = GetAllMethodsIncludingInheritance(symbol).ToList();
+                            detectedError = DetectErrorsInMethods(methods, relationType, semanticModel);
+                            if (detectedError != null)
+                                return detectedError;
+                            var methodsList = new List<MethodInfo>(methods.Count);
                             var variantsGenerationInfos = new List<GenerationInfo>();
+                            var loadTypes = new HashSet<TypeRef> { new(relationType) };
                             foreach (var method in methods)
                             {
+                                methodsList.Add(new(method.Name, IfVoidNull(method.ReturnType),
+                                    method.Parameters.Select(p =>
+                                        new ParameterInfo(p.Name, p.Type.ToDisplayString(), null,
+                                            p.Type.IsReferenceType, p.IsOptional, null)).ToArray(), true,
+                                    method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
                                 var methodReturnType = method.ReturnType as INamedTypeSymbol;
                                 if (methodReturnType is { TypeKind: TypeKind.Interface })
                                 {
@@ -181,6 +193,7 @@ public class SourceGenerator : IIncrementalGenerator
                                                 null, semanticModel, [], [], false, false);
                                             if (variantInfo != null)
                                             {
+                                                loadTypes.Add(new(typeArgument));
                                                 variantsGenerationInfos.Add(variantInfo);
                                             }
                                         }
@@ -197,7 +210,11 @@ public class SourceGenerator : IIncrementalGenerator
                                             var variantInfo = GenerationInfoForClass(
                                                 (INamedTypeSymbol)valueType, null, false,
                                                 null, semanticModel, [], [], false, false);
-                                            if (variantInfo != null) variantsGenerationInfos.Add(variantInfo);
+                                            if (variantInfo != null)
+                                            {
+                                                loadTypes.Add(new(valueType));
+                                                variantsGenerationInfos.Add(variantInfo);
+                                            }
                                         }
                                     }
                                 }
@@ -207,14 +224,18 @@ public class SourceGenerator : IIncrementalGenerator
                                     if (methodReturnType != null && SerializableType(methodReturnType))
                                     {
                                         var variantInfo = GenerationInfoForClass(
-                                            (INamedTypeSymbol)methodReturnType, null, false,
+                                            methodReturnType, null, false,
                                             null, semanticModel, [], [], false, false);
-                                        if (variantInfo != null) variantsGenerationInfos.Add(variantInfo);
+                                        if (variantInfo != null)
+                                        {
+                                            loadTypes.Add(new(methodReturnType));
+                                            variantsGenerationInfos.Add(variantInfo);
+                                        }
                                     }
                                 }
                                 else if (method.Name.StartsWith("GatherBy"))
                                 {
-                                    // Extract type argument from first parameter which must implement ICollection<>
+                                    // Extract type argument from the first parameter which must implement ICollection<>
                                     if (method.Parameters.Length > 0 &&
                                         method.Parameters[0].Type is INamedTypeSymbol
                                         {
@@ -229,19 +250,21 @@ public class SourceGenerator : IIncrementalGenerator
                                             var variantInfo = GenerationInfoForClass(
                                                 (INamedTypeSymbol)typeArgument, null, false,
                                                 null, semanticModel, [], [], false, false);
-                                            if (variantInfo != null) variantsGenerationInfos.Add(variantInfo);
+                                            if (variantInfo != null)
+                                            {
+                                                loadTypes.Add(new(typeArgument));
+                                                variantsGenerationInfos.Add(variantInfo);
+                                            }
                                         }
                                     }
                                 }
                             }
 
-                            if (detectedError != null)
-                                return detectedError;
                             return new(GenerationType.RelationIface, namespaceName, interfaceName,
                                 symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), persistedName, false,
                                 false, false, false, false,
-                                [], [], [], [], generationInfo.Fields, [],
-                                [new(relationType)], [], [],
+                                [], [], [], [], generationInfo.Fields, methodsList.ToArray(),
+                                loadTypes.ToArray(), [], [],
                                 [
                                     generationInfo, ..generationInfo.Nested, ..variantsGenerationInfos,
                                     ..variantsGenerationInfos.SelectMany(g => g.Nested)
@@ -350,6 +373,84 @@ public class SourceGenerator : IIncrementalGenerator
             }).Where(i => i != null);
         gen = gen.SelectMany((g, _) => g!.Nested.IsEmpty ? Enumerable.Repeat(g, 1) : [g, ..g.Nested])!;
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
+    }
+
+    GenerationInfo? DetectErrorsInMethods(List<IMethodSymbol> methods, ITypeSymbol relationType,
+        SemanticModel semanticModel)
+    {
+        // Virtually create type from BTDB package namespace BTDB.ODBLayer type RelationDBManipulator<relationType>
+        var compilation = semanticModel.Compilation;
+
+        // Get the RelationDBManipulator<> type from BTDB.ODBLayer namespace
+        var relationDbManipulatorType = compilation.GetTypeByMetadataName("BTDB.ODBLayer.RelationDBManipulator`1");
+        if (relationDbManipulatorType == null)
+        {
+            throw new Exception("BTDB.ODBLayer.RelationDBManipulator`1 type not found");
+        }
+
+        // Construct RelationDBManipulator<relationType>
+        var constructedType = relationDbManipulatorType.Construct(relationType);
+
+        // Check each method in the interface
+        foreach (var method in methods)
+        {
+            if (method.Name.StartsWith("FindBy", StringComparison.Ordinal) ||
+                method.Name.StartsWith("FirstBy", StringComparison.Ordinal) ||
+                method.Name.StartsWith("GatherBy", StringComparison.Ordinal) ||
+                method.Name.StartsWith("RemoveBy", StringComparison.Ordinal) ||
+                method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal) ||
+                method.Name.StartsWith("Contains", StringComparison.Ordinal))
+                continue;
+            // Find a matching method in RelationDBManipulator<relationType>
+            var baseMethod = constructedType.GetMembers(method.Name)
+                .OfType<IMethodSymbol>()
+                .FirstOrDefault(m => m.MethodKind == MethodKind.Ordinary);
+
+            if (baseMethod != null)
+            {
+                // Check if parameter count matches
+                if (method.Parameters.Length != baseMethod.Parameters.Length)
+                {
+                    return GenerationError("BTDB0010",
+                        $"Method '{method.Name}' has {method.Parameters.Length} parameter(s) but the base method in RelationDBManipulator<{relationType.Name}> requires {baseMethod.Parameters.Length} parameter(s)",
+                        method.Locations[0]);
+                }
+
+                // Check if the return type matches or is void
+                if (!SymbolEqualityComparer.Default.Equals(method.ReturnType, baseMethod.ReturnType) &&
+                    method.ReturnType.SpecialType != SpecialType.System_Void)
+                {
+                    return GenerationError("BTDB0012",
+                        $"Method '{method.Name}' has return type '{method.ReturnType.ToDisplayString()}' but the base method requires '{baseMethod.ReturnType.ToDisplayString()}' (or void)",
+                        method.Locations[0]);
+                }
+
+                // Check if parameter types match
+                for (var i = 0; i < method.Parameters.Length; i++)
+                {
+                    var interfaceParam = method.Parameters[i];
+                    var baseParam = baseMethod.Parameters[i];
+
+                    if (!SymbolEqualityComparer.Default.Equals(interfaceParam.Type, baseParam.Type))
+                    {
+                        return GenerationError("BTDB0011",
+                            $"Method '{method.Name}' parameter {i + 1} has type '{interfaceParam.Type.ToDisplayString()}' but the base method requires '{baseParam.Type.ToDisplayString()}'",
+                            method.Locations[0]);
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns null if the return type is void, otherwise returns the fully qualified type name.
+    /// </summary>
+    static string? IfVoidNull(ITypeSymbol methodReturnType)
+    {
+        if (methodReturnType.SpecialType == SpecialType.System_Void) return null;
+        return methodReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
     }
 
     static string? DetectDependencyName(ISymbol parameterSymbol)
@@ -791,7 +892,7 @@ public class SourceGenerator : IIncrementalGenerator
 
             methods.Add(new(methodSymbol.Name,
                 methodSymbol.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                [], methodSymbol.DeclaredAccessibility is Accessibility.Public, Purpose.OnSerialize));
+                [], methodSymbol.DeclaredAccessibility is Accessibility.Public, null, Purpose.OnSerialize));
         }
 
         foreach (var methodSymbol in GetAllMembersIncludingBase(symbol).OfType<IMethodSymbol>().Where(m => m
@@ -826,7 +927,7 @@ public class SourceGenerator : IIncrementalGenerator
                     p.NullableAnnotation == NullableAnnotation.Annotated, p.HasExplicitDefaultValue
                         ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue, new(p.Type))
                         : null)).ToArray(),
-                methodSymbol.DeclaredAccessibility is Accessibility.Public, Purpose.OnBeforeRemove));
+                methodSymbol.DeclaredAccessibility is Accessibility.Public, null, Purpose.OnBeforeRemove));
         }
 
         // No IOC and no metadata => no generation
@@ -1203,6 +1304,23 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return new(fields.ToArray());
+    }
+
+    static IEnumerable<IMethodSymbol> GetAllMethodsIncludingInheritance(INamedTypeSymbol symbol)
+    {
+        if (symbol.InODBLayerNamespace()) yield break;
+        foreach (var member in symbol.GetMembers().OfType<IMethodSymbol>())
+        {
+            yield return member;
+        }
+
+        foreach (var symbolInterface in symbol.Interfaces)
+        {
+            foreach (var methodSymbol in GetAllMethodsIncludingInheritance(symbolInterface))
+            {
+                yield return methodSymbol;
+            }
+        }
     }
 
     static IEnumerable<ISymbol> GetAllMembersIncludingBase(INamedTypeSymbol symbol)
@@ -2604,6 +2722,7 @@ public class SourceGenerator : IIncrementalGenerator
             #nullable enable
             using System;
             using System.Runtime.CompilerServices;
+            using BTDB.ODBLayer;
 
             """);
 
@@ -2635,8 +2754,45 @@ public class SourceGenerator : IIncrementalGenerator
         // language=c#
         var declarations = new StringBuilder();
         declarations.Append("[CompilerGenerated]\n");
-        declarations.Append($"static file class {generationInfo.Name}Registration\n{{\n");
+        declarations.Append($"file class {generationInfo.Name}Registration\n{{\n");
+        var implName = $"Impl{generationInfo.Name.Substring(1)}";
+        // language=C#
+        declarations.Append($$"""
+                public class {{implName}} : global::BTDB.ODBLayer.RelationDBManipulator<{{generationInfo.Implements[0].FullyQualifiedName}}>, {{generationInfo.FullName}}
+                {
+                    public {{implName}}(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+                    {
+                    }
 
+            """);
+        foreach (var method in generationInfo.Methods)
+        {
+            // language=C#
+            declarations.Append($$"""
+
+                        [SkipLocalsInit]
+                        {{method.ResultType ?? "void"}} {{method.DefinedInType}}.{{method.Name}}({{string.Join(", ", method.Parameters.Select(p => $"{p.Type} {p.Name}"))}})
+                        {
+
+                """);
+            if (method.Name is "Insert" or "Upsert" or "ShallowInsert" or "ShallowUpsert")
+            {
+                declarations.Append(
+                    $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
+            }
+            else
+            {
+                declarations.Append("            throw new NotImplementedException();\n");
+            }
+
+            // language=C#
+            declarations.Append("""
+                        }
+
+                """);
+        }
+
+        declarations.Append("    }\n");
         code.Append(declarations);
 
         // language=c#
@@ -2644,6 +2800,9 @@ public class SourceGenerator : IIncrementalGenerator
                 [ModuleInitializer]
                 internal static unsafe void Register4BTDB()
                 {
+                    BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof({{generationInfo.FullName}}),
+                        info => { return transaction => new {{implName}}(transaction, info); },
+                        [{{string.Join(", ", generationInfo.Implements.Select(f => $"typeof({NormalizeType(f.FullyQualifiedName)})"))}}]);
                 }
             }
 
@@ -2783,6 +2942,7 @@ record MethodInfo(
     string? ResultType,
     EquatableArray<ParameterInfo> Parameters,
     bool IsPublic,
+    string? DefinedInType,
     Purpose Purpose = Purpose.None);
 
 // Name == null for primary key, InKeyValue could be true only for primary key, IncludePrimaryKeyOrder is used only for secondary key

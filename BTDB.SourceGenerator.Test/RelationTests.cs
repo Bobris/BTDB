@@ -617,4 +617,65 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyInheritanceFromGenericInterface()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public string Name { get; set; }
+            }
+
+            public interface IWithInsert<T>
+            {
+                void Insert(T user);
+            }
+
+            public interface IPersonTable : IWithInsert<Person>, IRelation<Person>
+            {
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyErrorIsShownForWrongNumberOfParameters()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public string Name { get; set; }
+            }
+
+            public interface IPersonTable : IRelation<Person>
+            {
+                void Insert();
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyErrorIsShownForWrongReturnType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public string Name { get; set; }
+            }
+
+            public interface IPersonTable : IRelation<Person>
+            {
+                int Insert(Person person);
+            }
+            """);
+    }
 }

@@ -4,6 +4,7 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.ODBLayer;
 // Name: IUserNoticeTable
 // Field: UserId ulong
 //           PrimaryIndex: 1
@@ -11,10 +12,31 @@ using System.Runtime.CompilerServices;
 //           PrimaryIndex: 2
 //           SecondaryIndex NoticeId: 0
 [CompilerGenerated]
-static file class IUserNoticeTableRegistration
+file class IUserNoticeTableRegistration
 {
+    public class ImplUserNoticeTable : global::BTDB.ODBLayer.RelationDBManipulator<global::UserNotice>, global::IUserNoticeTable
+    {
+        public ImplUserNoticeTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+        {
+        }
+
+        [SkipLocalsInit]
+        void global::IUserNoticeTable.Insert(UserNotice un)
+        {
+            base.Insert(un);
+        }
+
+        [SkipLocalsInit]
+        global::System.Collections.Generic.IEnumerable<global::UserNotice> global::IUserNoticeTable.ListByNoticeId(BTDB.ODBLayer.AdvancedEnumeratorParam<ulong> noticeId)
+        {
+            throw new NotImplementedException();
+        }
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::IUserNoticeTable),
+            info => { return transaction => new ImplUserNoticeTable(transaction, info); },
+            [typeof(global::UserNotice)]);
     }
 }

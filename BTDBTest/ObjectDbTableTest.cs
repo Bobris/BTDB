@@ -1045,34 +1045,6 @@ namespace BTDBTest
             Assert.Contains("not supported", ex.Message);
         }
 
-        public interface IWronglyDefinedWrongParamCount : IRelation<Person>
-        {
-            void Insert();
-        }
-
-        [Fact]
-        public void ReportsProblemAboutWrongParamCount()
-        {
-            using var tr = _db.StartTransaction();
-            var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedWrongParamCount>("No"));
-            Assert.Contains("Insert", ex.Message);
-            Assert.Contains("parameters count", ex.Message);
-        }
-
-        public interface IWronglyDefinedWrongParamType : IRelation<Person>
-        {
-            void Insert(PersonSimple room);
-        }
-
-        [Fact]
-        public void ReportsProblemAboutWrongParamType()
-        {
-            using var tr = _db.StartTransaction();
-            var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedWrongParamType>("No"));
-            Assert.Contains("Insert", ex.Message);
-            Assert.Contains("Person", ex.Message);
-        }
-
         public class UserNotice
         {
             [PrimaryKey(1)] public ulong UserId { get; set; }
@@ -1936,9 +1908,6 @@ namespace BTDBTest
 
         public interface ICompanyName : IRelation<CompanyName>
         {
-            [PersistedName("BusinessId")] uint CompanyId { get; set; }
-            string Code { get; set; }
-
             void Insert(CompanyName room);
 
             CompanyName FindById(ulong Id);

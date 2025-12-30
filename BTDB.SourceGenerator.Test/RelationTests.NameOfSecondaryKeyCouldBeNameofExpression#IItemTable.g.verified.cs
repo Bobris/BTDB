@@ -4,6 +4,7 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.ODBLayer;
 // Name: IItemTable
 // Field: CompanyId ulong
 //           PrimaryIndex: 1
@@ -16,10 +17,19 @@ using System.Runtime.CompilerServices;
 // Field: LockDeadline global::System.DateTime
 //           SecondaryIndex LockDeadline: 4
 [CompilerGenerated]
-static file class IItemTableRegistration
+file class IItemTableRegistration
 {
+    public class ImplItemTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Item>, global::IItemTable
+    {
+        public ImplItemTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+        {
+        }
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::IItemTable),
+            info => { return transaction => new ImplItemTable(transaction, info); },
+            [typeof(global::Item)]);
     }
 }

@@ -4,6 +4,7 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.ODBLayer;
 // Name: IRowObjInObjV2Table
 // Field: Id ulong
 //           PrimaryIndex: 1
@@ -11,10 +12,19 @@ using System.Runtime.CompilerServices;
 
 namespace BTDBTest;
 [CompilerGenerated]
-static file class IRowObjInObjV2TableRegistration
+file class IRowObjInObjV2TableRegistration
 {
+    public class ImplRowObjInObjV2Table : global::BTDB.ODBLayer.RelationDBManipulator<global::BTDBTest.RowObjInObjV2>, global::BTDBTest.IRowObjInObjV2Table
+    {
+        public ImplRowObjInObjV2Table(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+        {
+        }
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::BTDBTest.IRowObjInObjV2Table),
+            info => { return transaction => new ImplRowObjInObjV2Table(transaction, info); },
+            [typeof(global::BTDBTest.RowObjInObjV2)]);
     }
 }

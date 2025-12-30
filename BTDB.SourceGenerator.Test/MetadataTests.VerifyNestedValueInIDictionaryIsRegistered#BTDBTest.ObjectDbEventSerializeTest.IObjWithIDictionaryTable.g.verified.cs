@@ -4,6 +4,7 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.ODBLayer;
 // Name: IObjWithIDictionaryTable
 // Field: TenantId uint
 //           PrimaryIndex: 1
@@ -11,10 +12,19 @@ using System.Runtime.CompilerServices;
 
 namespace BTDBTest;
 [CompilerGenerated]
-static file class IObjWithIDictionaryTableRegistration
+file class IObjWithIDictionaryTableRegistration
 {
+    public class ImplObjWithIDictionaryTable : global::BTDB.ODBLayer.RelationDBManipulator<global::BTDBTest.ObjectDbEventSerializeTest.ObjWithIDictionary>, global::BTDBTest.ObjectDbEventSerializeTest.IObjWithIDictionaryTable
+    {
+        public ImplObjWithIDictionaryTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+        {
+        }
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::BTDBTest.ObjectDbEventSerializeTest.IObjWithIDictionaryTable),
+            info => { return transaction => new ImplObjWithIDictionaryTable(transaction, info); },
+            [typeof(global::BTDBTest.ObjectDbEventSerializeTest.ObjWithIDictionary)]);
     }
 }

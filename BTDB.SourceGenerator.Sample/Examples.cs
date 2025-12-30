@@ -6,6 +6,7 @@ using BTDB.IL;
 using BTDB.IOC;
 using BTDB.ODBLayer;
 using BTDB.Serialization;
+using BTDB.StreamLayer;
 using Sample3rdPartyLib;
 
 [assembly: GenerateFor(typeof(Class3rdPartyWithKeyedDependency))]
@@ -315,46 +316,70 @@ public class Person2
     }
 }
 
-static file class Person2Registration
+public class Test
 {
-    internal static unsafe void Register4BTDB()
+    [PrimaryKey(1)] public ulong Id { get; set; }
+    public string Name { get; set; }
+    public int Age { get; set; }
+}
+
+public class JustAge
+{
+    public int Age { get; set; }
+}
+
+public class JustName
+{
+    public string Name { get; set; }
+}
+
+public interface IWithInsert<T>
+{
+    void Insert(T user);
+}
+
+public interface IVariantTestTable : IWithInsert<Test>, IRelation<Test>
+{
+    JustAge FindById(ulong id);
+    ulong GatherById(ICollection<JustName> items, long skip, long take, Constraint<ulong> id);
+}
+
+static file class ImplVariantTestTableRegistration
+{
+    public class ImplVariantTestTable : global::BTDB.ODBLayer.RelationDBManipulator<Test>, IVariantTestTable
     {
-        var metadata = new ClassMetadata();
-        metadata.Name = "Person2";
-        metadata.Type = typeof(Person2);
-        metadata.Creator = metadata.Creator = &CreatePerson2;
-        static object CreatePerson2() => new Person2();
-        var dummy = Unsafe.As<DynamicValueWrapper<Enum>>(metadata);
-        metadata.Fields =
-        [
-            new()
-            {
-                Name = "Name",
-                Type = typeof(string),
-                ByteOffset = RawData.CalcOffset(dummy, ref dummy),
-            },
-        ];
-        metadata.OnBeforeRemoveFactory = container =>
+        public ImplVariantTestTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction,
+            relationInfo)
         {
-            global::System.ArgumentNullException.ThrowIfNull(container);
-            var f1 = container.CreateFactory(new global::BTDB.IOC.CreateFactoryCtx(),
-                typeof(global::Sample3rdPartyLib.I3rdPartyInterface), "dependency");
-            if (f1 == null)
-                throw new global::System.ArgumentException(
-                    "Cannot resolve I3rdPartyInterface dependency parameter of Person2.ThirdOnBeforeRemove");
-            var f2 = container.CreateFactory(new global::BTDB.IOC.CreateFactoryCtx(),
-                typeof(global::Sample3rdPartyLib.I3rdPartyInterface), "Key1");
-            return (transaction, value) =>
-            {
-                var val = Unsafe.As<Person2>(value);
-                var res = false;
-                res |= val.OnBeforeRemove();
-                res |= val.SecondOnBeforeRemove(transaction);
-                res |= val.ThirdOnBeforeRemove(Unsafe.As<I3rdPartyInterface>(f1(container, null))!,
-                    Unsafe.As<I3rdPartyInterface>(f2?.Invoke(container, null)));
-                return res;
-            };
-        };
-        ReflectionMetadata.Register(metadata);
+        }
+
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
+        void IWithInsert<Test>.Insert(Test item)
+        {
+            base.Insert(item);
+        }
+
+        [global::System.Runtime.CompilerServices.SkipLocalsInit]
+        JustAge IVariantTestTable.FindById(ulong id)
+        {
+            var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
+            WriteRelationPKPrefix(ref writer);
+            writer.WriteVUInt64(id);
+            return FindByIdOrDefault<JustAge>(writer.GetSpan(), true, 1);
+        }
+
+        ulong IVariantTestTable.GatherById(ICollection<JustName> items, long skip, long take, Constraint<ulong> id)
+        {
+            var c_c = new ConstraintInfo[1];
+            c_c[0].Constraint = id;
+            return GatherByPrimaryKey(2, c_c, items, skip, take, null);
+        }
+    }
+
+    internal static void Register4BTDB()
+    {
+        ReflectionMetadata.RegisterRelation(typeof(IVariantTestTable),
+            info => { return transaction => new ImplVariantTestTable(transaction, info); },
+            [typeof(Test), typeof(JustAge), typeof(JustName)]);
     }
 }

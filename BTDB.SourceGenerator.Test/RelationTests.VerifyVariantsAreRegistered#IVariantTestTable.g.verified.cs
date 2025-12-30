@@ -4,16 +4,38 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.ODBLayer;
 // Name: IVariantTestTable
 // Field: Id ulong
 //           PrimaryIndex: 1
 // Field: Name string reference
 // Field: Age int
 [CompilerGenerated]
-static file class IVariantTestTableRegistration
+file class IVariantTestTableRegistration
 {
+    public class ImplVariantTestTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Test>, global::IVariantTestTable
+    {
+        public ImplVariantTestTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+        {
+        }
+
+        [SkipLocalsInit]
+        global::JustAge global::IVariantTestTable.FindById(ulong id)
+        {
+            throw new NotImplementedException();
+        }
+
+        [SkipLocalsInit]
+        ulong global::IVariantTestTable.GatherById(System.Collections.Generic.ICollection<JustName> items, long skip, long take, BTDB.ODBLayer.Constraint<ulong> id)
+        {
+            throw new NotImplementedException();
+        }
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::IVariantTestTable),
+            info => { return transaction => new ImplVariantTestTable(transaction, info); },
+            [typeof(global::Test), typeof(global::JustAge), typeof(global::JustName)]);
     }
 }

@@ -4,14 +4,24 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.ODBLayer;
 // Name: IPersonTable
 // Field: Name string reference
 //           PrimaryIndex: 1
 [CompilerGenerated]
-static file class IPersonTableRegistration
+file class IPersonTableRegistration
 {
+    public class ImplPersonTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Person>, global::IPersonTable
+    {
+        public ImplPersonTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+        {
+        }
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::IPersonTable),
+            info => { return transaction => new ImplPersonTable(transaction, info); },
+            [typeof(global::Person)]);
     }
 }

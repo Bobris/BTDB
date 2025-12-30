@@ -4,16 +4,32 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.ODBLayer;
 // Name: IDeliveryRuleTable
 // Field: Activities global::System.Collections.Generic.IList<global::Activity> reference
 // Field: Id ulong
 //           PrimaryIndex: 1
 // Field: Status int
 [CompilerGenerated]
-static file class IDeliveryRuleTableRegistration
+file class IDeliveryRuleTableRegistration
 {
+    public class ImplDeliveryRuleTable : global::BTDB.ODBLayer.RelationDBManipulator<global::DeliveryRuleV1>, global::IDeliveryRuleTable
+    {
+        public ImplDeliveryRuleTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+        {
+        }
+
+        [SkipLocalsInit]
+        void global::IDeliveryRuleTable.Insert(DeliveryRuleV1 job)
+        {
+            base.Insert(job);
+        }
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::IDeliveryRuleTable),
+            info => { return transaction => new ImplDeliveryRuleTable(transaction, info); },
+            [typeof(global::DeliveryRuleV1)]);
     }
 }

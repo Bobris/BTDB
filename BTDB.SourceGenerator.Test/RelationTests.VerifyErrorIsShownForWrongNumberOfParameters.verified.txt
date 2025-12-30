@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    void Insert();
+         ^^^^^^
+}
+*/
+ : (9,9)-(9,15),
+      Message: Method 'Insert' has 0 parameter(s) but the base method in RelationDBManipulator<Person> requires 1 parameter(s),
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0010,
+        Title: Method 'Insert' has 0 parameter(s) but the base method in RelationDBManipulator<Person> requires 1 parameter(s),
+        MessageFormat: Method 'Insert' has 0 parameter(s) but the base method in RelationDBManipulator<Person> requires 1 parameter(s),
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

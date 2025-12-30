@@ -4,6 +4,7 @@
 #nullable enable
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.ODBLayer;
 // Name: IPersonTable
 // Field: ParentId int
 //           PrimaryIndex: 1
@@ -13,10 +14,19 @@ using System.Runtime.CompilerServices;
 
 namespace TestNamespace;
 [CompilerGenerated]
-static file class IPersonTableRegistration
+file class IPersonTableRegistration
 {
+    public class ImplPersonTable : global::BTDB.ODBLayer.RelationDBManipulator<global::TestNamespace.Person>, global::TestNamespace.IPersonTable
+    {
+        public ImplPersonTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
+        {
+        }
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
+        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::TestNamespace.IPersonTable),
+            info => { return transaction => new ImplPersonTable(transaction, info); },
+            [typeof(global::TestNamespace.Person)]);
     }
 }
