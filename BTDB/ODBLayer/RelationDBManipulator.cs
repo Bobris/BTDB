@@ -108,6 +108,11 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return true;
     }
 
+    public void InsertUniqueOrThrow(T obj)
+    {
+        if (!Insert(obj)) throw new BTDBException("Trying to insert duplicate key in " + _relationInfo.Name);
+    }
+
     [SkipLocalsInit]
     public unsafe bool Upsert(T obj)
     {

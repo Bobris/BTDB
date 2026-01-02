@@ -153,7 +153,7 @@ public class SourceGenerator : IIncrementalGenerator
                             if (detectedError != null)
                                 return detectedError;
                             var methods = GetAllMethodsIncludingInheritance(symbol).ToList();
-                            detectedError = DetectErrorsInMethods(methods, relationType, semanticModel);
+                            detectedError = DetectErrorsInMethods(generationInfo, methods, relationType, semanticModel);
                             if (detectedError != null)
                                 return detectedError;
                             var methodsList = new List<MethodInfo>(methods.Count);
@@ -375,7 +375,8 @@ public class SourceGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
     }
 
-    GenerationInfo? DetectErrorsInMethods(List<IMethodSymbol> methods, ITypeSymbol relationType,
+    GenerationInfo? DetectErrorsInMethods(GenerationInfo itemGenInfo, List<IMethodSymbol> methods,
+        ITypeSymbol relationType,
         SemanticModel semanticModel)
     {
         // Virtually create type from BTDB package namespace BTDB.ODBLayer type RelationDBManipulator<relationType>
@@ -418,10 +419,11 @@ public class SourceGenerator : IIncrementalGenerator
 
                 // Check if the return type matches or is void
                 if (!SymbolEqualityComparer.Default.Equals(method.ReturnType, baseMethod.ReturnType) &&
-                    method.ReturnType.SpecialType != SpecialType.System_Void)
+                    (method.Name != "Insert" ||
+                     method.ReturnType.SpecialType != SpecialType.System_Void))
                 {
                     return GenerationError("BTDB0012",
-                        $"Method '{method.Name}' has return type '{method.ReturnType.ToDisplayString()}' but the base method requires '{baseMethod.ReturnType.ToDisplayString()}' (or void)",
+                        $"Method '{method.Name}' has return type '{method.ReturnType.ToDisplayString()}' but method requires '{baseMethod.ReturnType.ToDisplayString()}'",
                         method.Locations[0]);
                 }
 
@@ -2775,7 +2777,12 @@ public class SourceGenerator : IIncrementalGenerator
                         {
 
                 """);
-            if (method.Name is "Insert" or "Upsert" or "ShallowInsert" or "ShallowUpsert")
+            if (method is { Name: "Insert", ResultType: null })
+            {
+                declarations.Append(
+                    $"            base.InsertUniqueOrThrow({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
+            }
+            else if (method.Name is "Insert" or "Upsert" or "ShallowInsert" or "ShallowUpsert")
             {
                 declarations.Append(
                     $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");

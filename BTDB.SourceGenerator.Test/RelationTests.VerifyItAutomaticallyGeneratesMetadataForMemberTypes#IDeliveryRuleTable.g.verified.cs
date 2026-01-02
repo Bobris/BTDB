@@ -22,7 +22,7 @@ file class IDeliveryRuleTableRegistration
         [SkipLocalsInit]
         void global::IDeliveryRuleTable.Insert(DeliveryRuleV1 job)
         {
-            base.Insert(job);
+            base.InsertUniqueOrThrow(job);
         }
     }
     [ModuleInitializer]

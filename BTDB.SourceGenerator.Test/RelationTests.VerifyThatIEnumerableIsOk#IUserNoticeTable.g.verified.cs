@@ -23,7 +23,7 @@ file class IUserNoticeTableRegistration
         [SkipLocalsInit]
         void global::IUserNoticeTable.Insert(UserNotice un)
         {
-            base.Insert(un);
+            base.InsertUniqueOrThrow(un);
         }
 
         [SkipLocalsInit]

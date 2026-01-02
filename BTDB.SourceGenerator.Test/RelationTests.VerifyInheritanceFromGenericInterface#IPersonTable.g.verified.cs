@@ -20,7 +20,7 @@ file class IPersonTableRegistration
         [SkipLocalsInit]
         void global::IWithInsert<global::Person>.Insert(Person user)
         {
-            base.Insert(user);
+            base.InsertUniqueOrThrow(user);
         }
     }
     [ModuleInitializer]
