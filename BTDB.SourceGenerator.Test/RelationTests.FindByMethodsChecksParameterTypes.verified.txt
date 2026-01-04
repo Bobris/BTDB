@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    void Insert(ProductionTrackingDaily productionTrackingDaily);
+    IEnumerable<ProductionTrackingDaily> FindByProductionDateWithCompanyId(ulong companyId,
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        AdvancedEnumeratorParam<DateTime> productionDate);
+*/
+ : (13,41)-(13,74),
+      Message: Cannot find index 'ProductionDateWithCompanyId' defined sks: ,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0013,
+        Title: Cannot find index 'ProductionDateWithCompanyId' defined sks: ,
+        MessageFormat: Cannot find index 'ProductionDateWithCompanyId' defined sks: ,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

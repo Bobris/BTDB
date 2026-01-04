@@ -381,6 +381,7 @@ public class SourceGenerator : IIncrementalGenerator
     {
         // Virtually create type from BTDB package namespace BTDB.ODBLayer type RelationDBManipulator<relationType>
         var compilation = semanticModel.Compilation;
+        var (indexOfInKeyValue, primaryKeyFields, secondaryKeys) = BuildIndexInfo(itemGenInfo);
 
         // Get the RelationDBManipulator<> type from BTDB.ODBLayer namespace
         var relationDbManipulatorType = compilation.GetTypeByMetadataName("BTDB.ODBLayer.RelationDBManipulator`1");
@@ -395,8 +396,35 @@ public class SourceGenerator : IIncrementalGenerator
         // Check each method in the interface
         foreach (var method in methods)
         {
-            if (method.Name.StartsWith("FindBy", StringComparison.Ordinal) ||
-                method.Name.StartsWith("FirstBy", StringComparison.Ordinal) ||
+            if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
+            {
+                var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
+                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields, secondaryKeys);
+            }
+
+            if (method.Name.StartsWith("FirstBy"))
+            {
+                var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
+                var lastParameterIsIOrdererArray = CheckIfLastParameterIsIOrdererArray(method);
+                return CheckParamsNamesAndTypesScanBy(method, indexName, itemGenInfo.Fields, primaryKeyFields,
+                    secondaryKeys, lastParameterIsIOrdererArray);
+            }
+
+            if (method.Name.StartsWith("ScanBy"))
+            {
+                var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, false);
+                // Check if return type is IEnumerable<T>
+                if (!IsIEnumerableOfTWhereTIsClass(method.ReturnType))
+                    return GenerationError("BTDB0019",
+                        $"Return type of '{method.Name}' must be IEnumerable<T>",
+                        method.Locations[0]);
+
+                return CheckParamsNamesAndTypesScanBy(method, indexName, itemGenInfo.Fields, primaryKeyFields,
+                    secondaryKeys, false);
+            }
+
+            // IOrderer[]
+            if (method.Name.StartsWith("FirstBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("GatherBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("RemoveBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal) ||
@@ -444,6 +472,177 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return null;
+    }
+
+    static bool IsIEnumerableOfTWhereTIsClass(ITypeSymbol methodReturnType)
+    {
+        if (methodReturnType is INamedTypeSymbol
+            {
+                TypeKind: TypeKind.Interface,
+                OriginalDefinition.SpecialType: SpecialType.System_Collections_Generic_IEnumerable_T
+            } methodReturnTypeNamedTypeSymbol)
+        {
+            return methodReturnTypeNamedTypeSymbol.TypeArguments.FirstOrDefault()?.TypeKind == TypeKind.Class;
+        }
+
+        return false;
+    }
+
+    GenerationInfo? CheckParamsNamesAndTypesScanBy(IMethodSymbol method, string indexName,
+        EquatableArray<FieldsInfo> fields, uint[] primaryKeyFields,
+        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, bool lastParameterIsIOrdererArray)
+    {
+        if (ValidateIndexName(method, indexName, primaryKeyFields, secondaryKeys, out var fi, out var generationError))
+            return generationError;
+        var paramCount = method.Parameters.Length - (lastParameterIsIOrdererArray ? 1 : 0);
+        if (paramCount > fi!.Length)
+        {
+            return GenerationError("BTDB0016",
+                $"Too many parameters for index '{indexName}'",
+                method.Locations[0]);
+        }
+
+        for (var i = 0; i < fi.Length; i++)
+        {
+            if (i >= paramCount) break;
+            var param = method.Parameters[i];
+            var f = fields[(int)fi[i]];
+            if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                return GenerationError("BTDB0014",
+                    $"Parameter '{param.Name}' does not match field '{f.Name}' from index '{indexName}'",
+                    param.Locations[0]);
+            }
+
+            // Validate parameter is Constraint<T> type
+            if (param.Type is not INamedTypeSymbol paramTypeSymbol ||
+                !paramTypeSymbol.InODBLayerNamespace() ||
+                paramTypeSymbol.Name != "Constraint" ||
+                !paramTypeSymbol.IsGenericType ||
+                paramTypeSymbol.TypeArguments.Length != 1)
+            {
+                return GenerationError("BTDB0017",
+                    $"Parameter '{param.Name}' in method '{method.Name}' must be of type Constraint<T>",
+                    param.Locations[0]);
+            }
+
+            var constraintGenericType = paramTypeSymbol.TypeArguments[0];
+            var constraintGenericTypeStr =
+                constraintGenericType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+            // Check if the constraint generic type matches the field type
+            if (!AreTypesCompatible(constraintGenericTypeStr, f.Type))
+            {
+                return GenerationError("BTDB0018",
+                    $"Parameter constraint type mismatch in method '{method.Name}' for parameter '{param.Name}' (expected '{f.Type}' but '{constraintGenericTypeStr}' found)",
+                    param.Locations[0]);
+            }
+        }
+
+        return null;
+    }
+
+    bool AreTypesCompatible(string pType, string fType)
+    {
+        if (pType == fType) return true;
+        if (pType == "ulong" && fType == "uint") return true;
+        if (pType == "ulong" && fType == "ushort") return true;
+        if (pType == "ulong" && fType == "byte") return true;
+        if (pType == "long" && fType == "int") return true;
+        if (pType == "long" && fType == "short") return true;
+        if (pType == "long" && fType == "sbyte") return true;
+        return false;
+    }
+
+    static bool CheckIfLastParameterIsIOrdererArray(IMethodSymbol method)
+    {
+        return method.Parameters.Length > 0 &&
+               method.Parameters[method.Parameters.Length - 1].Type is IArrayTypeSymbol arrayType &&
+               arrayType.ElementType.InODBLayerNamespace() && arrayType.ElementType.Name == "IOrderer";
+    }
+
+    GenerationInfo? CheckParamsNamesAndTypes(IMethodSymbol method, string indexName, EquatableArray<FieldsInfo> fields,
+        uint[] primaryKeyFields, (string Name, uint[] SecondaryKeyFields)[] secondaryKeys)
+    {
+        if (ValidateIndexName(method, indexName, primaryKeyFields, secondaryKeys, out var fi, out var generationError))
+            return generationError;
+        for (var i = 0; i < fi!.Length; i++)
+        {
+            if (i >= method.Parameters.Length) break;
+            var param = method.Parameters[i];
+            var f = fields[(int)fi[i]];
+            if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                return GenerationError("BTDB0014",
+                    $"Parameter '{param.Name}' does not match field '{f.Name}' from index '{indexName}'",
+                    param.Locations[0]);
+            }
+
+            if (param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) != f.Type)
+            {
+                return GenerationError("BTDB0015",
+                    $"Parameter '{param.Name}' type '{param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}' does not match field '{f.Name}' type '{f.Type}' from index '{indexName}'",
+                    param.Locations[0]);
+            }
+        }
+
+        return null;
+    }
+
+    static bool ValidateIndexName(IMethodSymbol method, string indexName, uint[] primaryKeyFields,
+        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, out uint[]? fi, out GenerationInfo? generationError)
+    {
+        fi = indexName == "Id"
+            ? primaryKeyFields
+            : secondaryKeys.FirstOrDefault(sk => sk.Name == indexName).SecondaryKeyFields;
+        if (fi == null)
+        {
+            generationError = GenerationError("BTDB0013",
+                $"Cannot find index '{indexName}' defined sks: {string.Join(", ", secondaryKeys.Select(sk => sk.Name))}",
+                method.Locations[0]);
+            return true;
+        }
+
+        generationError = null;
+        return false;
+    }
+
+    static (string IndexName, bool HasOrDefault) StripVariant((string Name, uint[] SecondaryKeyFields)[] skIndexes,
+        string name, bool withOrDefault)
+    {
+        (string IndexName, bool HasOrDefault) result = ("", false);
+
+        name = name.Substring(name.IndexOf("By", StringComparison.Ordinal) + 2);
+
+        void Check(string id)
+        {
+            if (!name.StartsWith(id)) return;
+            if (withOrDefault)
+            {
+                if (name.AsSpan(id.Length).StartsWith("OrDefault"))
+                {
+                    if (result.IndexName.Length < id.Length)
+                    {
+                        result = (id, true);
+                        return;
+                    }
+                }
+            }
+
+            if (result.IndexName.Length < id.Length)
+            {
+                result = (id, false);
+            }
+        }
+
+        Check("Id");
+        foreach (var secondaryKeyName in skIndexes.Select(s =>
+                     s.Name))
+        {
+            Check(secondaryKeyName);
+        }
+
+        return result.IndexName.Length == 0 ? (name, false) : result;
     }
 
     /// <summary>
@@ -1927,69 +2126,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (generationInfo.IsRelationItem)
         {
-            var primaryKeyOrder2Info = new Dictionary<uint, (uint Index, bool InKeyValue)>();
-            var secondaryKeyName2Info =
-                new Dictionary<string, List<(uint Index, uint Order, uint IncludePrimaryKeyOrder)>>();
-
-            for (var index = 0; index < generationInfo.Fields.Count; index++)
-            {
-                var generationInfoField = generationInfo.Fields[index];
-                foreach (var indexInfo in generationInfoField.Indexes)
-                {
-                    if (indexInfo.Name == null)
-                    {
-                        primaryKeyOrder2Info[indexInfo.Order] = ((uint)index, indexInfo.InKeyValue);
-                    }
-                    else
-                    {
-                        if (!secondaryKeyName2Info.ContainsKey(indexInfo.Name))
-                            secondaryKeyName2Info[indexInfo.Name] = [];
-                        secondaryKeyName2Info[indexInfo.Name]
-                            .Add(((uint)index, indexInfo.Order, indexInfo.IncludePrimaryKeyOrder));
-                    }
-                }
-            }
-
-            var pkInfos = primaryKeyOrder2Info.OrderBy(p => p.Key).ToList();
-            indexOfInKeyValue = (uint)pkInfos.Count;
-            primaryKeyFields = new uint[pkInfos.Count];
-            for (var i = 0; i < pkInfos.Count; i++)
-            {
-                primaryKeyFields[i] = pkInfos[i].Value.Index;
-                if (pkInfos[i].Value.InKeyValue && i < indexOfInKeyValue) indexOfInKeyValue = (uint)i;
-            }
-
-            secondaryKeys = new (string Name, uint[] SecondaryKeyFields)[secondaryKeyName2Info.Count];
-            var j = 0;
-            foreach (var keyValuePair in secondaryKeyName2Info)
-            {
-                var ordered = keyValuePair.Value.OrderBy(v => v.Order).ToList();
-                var secondaryKeyFields = new List<uint>();
-                foreach (var info in ordered)
-                {
-                    for (var i = 1; i <= info.IncludePrimaryKeyOrder; i++)
-                    {
-                        if (primaryKeyOrder2Info.TryGetValue((uint)i, out var pkInfo))
-                        {
-                            secondaryKeyFields.Add(pkInfo.Index);
-                        }
-                    }
-
-                    secondaryKeyFields.Add(info.Index);
-                }
-
-                for (var index = 0; index < primaryKeyFields.Length; index++)
-                {
-                    if (index >= indexOfInKeyValue) break;
-                    var primaryKeyField = primaryKeyFields[index];
-                    if (!secondaryKeyFields.Contains(primaryKeyField))
-                    {
-                        secondaryKeyFields.Add(primaryKeyField);
-                    }
-                }
-
-                secondaryKeys[j++] = (keyValuePair.Key, secondaryKeyFields.ToArray());
-            }
+            (indexOfInKeyValue, primaryKeyFields, secondaryKeys) = BuildIndexInfo(generationInfo);
         }
 
         if (generationInfo.ConstructorParameters != null)
@@ -2609,6 +2746,79 @@ public class SourceGenerator : IIncrementalGenerator
         context.AddSource(
             $"{generationInfo.FullName.Replace("global::", "").Replace("<", "[").Replace(">", "]").Replace(" ", "")}.g.cs",
             SourceText.From(code, Encoding.UTF8));
+    }
+
+    static (uint indexOfInKeyValue, uint[] primaryKeyFields, (string Name, uint[] SecondaryKeyFields)[] secondaryKeys)
+        BuildIndexInfo(GenerationInfo generationInfo)
+    {
+        uint indexOfInKeyValue;
+        uint[] primaryKeyFields;
+        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys;
+        var primaryKeyOrder2Info = new Dictionary<uint, (uint Index, bool InKeyValue)>();
+        var secondaryKeyName2Info =
+            new Dictionary<string, List<(uint Index, uint Order, uint IncludePrimaryKeyOrder)>>();
+
+        for (var index = 0; index < generationInfo.Fields.Count; index++)
+        {
+            var generationInfoField = generationInfo.Fields[index];
+            foreach (var indexInfo in generationInfoField.Indexes)
+            {
+                if (indexInfo.Name == null)
+                {
+                    primaryKeyOrder2Info[indexInfo.Order] = ((uint)index, indexInfo.InKeyValue);
+                }
+                else
+                {
+                    if (!secondaryKeyName2Info.ContainsKey(indexInfo.Name))
+                        secondaryKeyName2Info[indexInfo.Name] = [];
+                    secondaryKeyName2Info[indexInfo.Name]
+                        .Add(((uint)index, indexInfo.Order, indexInfo.IncludePrimaryKeyOrder));
+                }
+            }
+        }
+
+        var pkInfos = primaryKeyOrder2Info.OrderBy(p => p.Key).ToList();
+        indexOfInKeyValue = (uint)pkInfos.Count;
+        primaryKeyFields = new uint[pkInfos.Count];
+        for (var i = 0; i < pkInfos.Count; i++)
+        {
+            primaryKeyFields[i] = pkInfos[i].Value.Index;
+            if (pkInfos[i].Value.InKeyValue && i < indexOfInKeyValue) indexOfInKeyValue = (uint)i;
+        }
+
+        secondaryKeys = new (string Name, uint[] SecondaryKeyFields)[secondaryKeyName2Info.Count];
+        var j = 0;
+        foreach (var keyValuePair in secondaryKeyName2Info)
+        {
+            var ordered = keyValuePair.Value.OrderBy(v => v.Order).ToList();
+            var secondaryKeyFields = new List<uint>();
+            foreach (var info in ordered)
+            {
+                for (var i = 1; i <= info.IncludePrimaryKeyOrder; i++)
+                {
+                    if (primaryKeyOrder2Info.TryGetValue((uint)i, out var pkInfo))
+                    {
+                        secondaryKeyFields.Add(pkInfo.Index);
+                    }
+                }
+
+                secondaryKeyFields.Add(info.Index);
+            }
+
+            for (var index = 0; index < primaryKeyFields.Length; index++)
+            {
+                if (index >= indexOfInKeyValue) break;
+                var primaryKeyField = primaryKeyFields[index];
+                if (!secondaryKeyFields.Contains(primaryKeyField))
+                {
+                    secondaryKeyFields.Add(primaryKeyField);
+                }
+            }
+
+            secondaryKeys[j++] = (keyValuePair.Key, secondaryKeyFields.ToArray());
+        }
+
+        return (indexOfInKeyValue, primaryKeyFields, secondaryKeys);
     }
 
     static string OnBeforeRemoveDeclareParams(EquatableArray<ParameterInfo> parameters)

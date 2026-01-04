@@ -678,4 +678,28 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task FindByMethodsChecksParameterTypes()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System;
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class ProductionTrackingDaily
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public DateTime ProductionDate { get; set; }
+            }
+
+            public interface IProductionInvalidTable : IRelation<ProductionTrackingDaily>
+            {
+                void Insert(ProductionTrackingDaily productionTrackingDaily);
+                IEnumerable<ProductionTrackingDaily> FindByProductionDateWithCompanyId(ulong companyId,
+                    AdvancedEnumeratorParam<DateTime> productionDate);
+            }
+            """);
+    }
 }

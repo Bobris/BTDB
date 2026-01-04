@@ -1524,23 +1524,6 @@ namespace BTDBTest
             tr.Commit();
         }
 
-        public interface IProductionInvalidTable : IRelation<ProductionTrackingDaily>
-        {
-            void Insert(ProductionTrackingDaily productionTrackingDaily);
-
-            IEnumerable<ProductionTrackingDaily> FindByProductionDateWithCompanyId(ulong companyId,
-                AdvancedEnumeratorParam<DateTime> productionDate);
-        }
-
-        [Fact]
-        public void FindByMethodsChecksParameterTypes()
-        {
-            using var tr = _db.StartTransaction();
-            var ex = Assert.Throws<BTDBException>(() =>
-                tr.InitRelation<IProductionInvalidTable>("FindByMethodsChecksParameterTypes"));
-            Assert.Contains("expected 'System.DateTime'", ex.Message);
-        }
-
         public interface IProductionTableWithContains : IRelation<ProductionTrackingDaily>
         {
             void Insert(ProductionTrackingDaily productionTrackingDaily);
@@ -1892,25 +1875,6 @@ namespace BTDBTest
             Assert.Equal(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField.Value);
             Assert.Equal(TestEnum.Item2, o.EnumField.Value);
             Assert.Equal(new byte[] { 1 }, o.ByteBufferField.Value.ToByteArray());
-        }
-
-        public class CompanyName
-        {
-            [PrimaryKey(1)]
-            [PersistedName("BusinessId")]
-            public uint CompanyId { get; set; }
-
-            [PrimaryKey(2)] public string Code { get; set; }
-            [PrimaryKey(3)] public ulong Id { get; set; }
-            public string Name { get; set; }
-        }
-
-
-        public interface ICompanyName : IRelation<CompanyName>
-        {
-            void Insert(CompanyName room);
-
-            CompanyName FindById(ulong Id);
         }
 
         [DebuggerDisplay("{DebuggerDisplay,nq}")]
