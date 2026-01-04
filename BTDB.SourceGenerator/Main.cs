@@ -399,7 +399,8 @@ public class SourceGenerator : IIncrementalGenerator
             if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
             {
                 var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
-                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields, secondaryKeys);
+                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
+                    indexOfInKeyValue, secondaryKeys);
             }
 
             if (method.Name.StartsWith("FirstBy"))
@@ -407,6 +408,7 @@ public class SourceGenerator : IIncrementalGenerator
                 var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
                 var lastParameterIsIOrdererArray = CheckIfLastParameterIsIOrdererArray(method);
                 return CheckParamsNamesAndTypesScanBy(method, indexName, itemGenInfo.Fields, primaryKeyFields,
+                    uint.MaxValue,
                     secondaryKeys, lastParameterIsIOrdererArray);
             }
 
@@ -420,7 +422,7 @@ public class SourceGenerator : IIncrementalGenerator
                         method.Locations[0]);
 
                 return CheckParamsNamesAndTypesScanBy(method, indexName, itemGenInfo.Fields, primaryKeyFields,
-                    secondaryKeys, false);
+                    uint.MaxValue, secondaryKeys, false);
             }
 
             // IOrderer[]
@@ -489,10 +491,11 @@ public class SourceGenerator : IIncrementalGenerator
     }
 
     GenerationInfo? CheckParamsNamesAndTypesScanBy(IMethodSymbol method, string indexName,
-        EquatableArray<FieldsInfo> fields, uint[] primaryKeyFields,
+        EquatableArray<FieldsInfo> fields, uint[] primaryKeyFields, uint inKeyValueIndex,
         (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, bool lastParameterIsIOrdererArray)
     {
-        if (ValidateIndexName(method, indexName, primaryKeyFields, secondaryKeys, out var fi, out var generationError))
+        if (ValidateIndexName(method, indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys, out var fi,
+                out var generationError))
             return generationError;
         var paramCount = method.Parameters.Length - (lastParameterIsIOrdererArray ? 1 : 0);
         if (paramCount > fi!.Length)
@@ -562,9 +565,10 @@ public class SourceGenerator : IIncrementalGenerator
     }
 
     GenerationInfo? CheckParamsNamesAndTypes(IMethodSymbol method, string indexName, EquatableArray<FieldsInfo> fields,
-        uint[] primaryKeyFields, (string Name, uint[] SecondaryKeyFields)[] secondaryKeys)
+        uint[] primaryKeyFields, uint inKeyValueIndex, (string Name, uint[] SecondaryKeyFields)[] secondaryKeys)
     {
-        if (ValidateIndexName(method, indexName, primaryKeyFields, secondaryKeys, out var fi, out var generationError))
+        if (ValidateIndexName(method, indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys, out var fi,
+                out var generationError))
             return generationError;
         for (var i = 0; i < fi!.Length; i++)
         {
@@ -589,21 +593,29 @@ public class SourceGenerator : IIncrementalGenerator
         return null;
     }
 
-    static bool ValidateIndexName(IMethodSymbol method, string indexName, uint[] primaryKeyFields,
-        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, out uint[]? fi, out GenerationInfo? generationError)
+    static bool ValidateIndexName(IMethodSymbol method, string indexName, uint[] primaryKeyFields, uint inKeyValueIndex,
+        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, out ReadOnlySpan<uint> fi,
+        out GenerationInfo? generationError)
     {
-        fi = indexName == "Id"
+        var fii = indexName == "Id"
             ? primaryKeyFields
             : secondaryKeys.FirstOrDefault(sk => sk.Name == indexName).SecondaryKeyFields;
-        if (fi == null)
+        if (fii == null)
         {
             generationError = GenerationError("BTDB0013",
                 $"Cannot find index '{indexName}' defined sks: {string.Join(", ", secondaryKeys.Select(sk => sk.Name))}",
                 method.Locations[0]);
+            fi = default;
             return true;
         }
 
         generationError = null;
+        fi = fii;
+        if (fii == primaryKeyFields && inKeyValueIndex != uint.MaxValue)
+        {
+            fi = fi.Slice(0, (int)inKeyValueIndex);
+        }
+
         return false;
     }
 
