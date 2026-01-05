@@ -494,9 +494,7 @@ public class SourceGenerator : IIncrementalGenerator
                 }
             }
 
-            // IOrderer[]
             if (method.Name.StartsWith("FirstBy", StringComparison.Ordinal) ||
-                method.Name.StartsWith("GatherBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("RemoveBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("Contains", StringComparison.Ordinal))
