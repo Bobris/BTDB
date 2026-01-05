@@ -513,8 +513,211 @@ public class SourceGenerator : IIncrementalGenerator
                 }
             }
 
-            if (method.Name.StartsWith("RemoveBy", StringComparison.Ordinal) ||
-                method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal) ||
+            if (method.Name.StartsWith("AnyBy"))
+            {
+                // Validate return type is bool
+                if (method.ReturnType.SpecialType != SpecialType.System_Boolean)
+                {
+                    return GenerationError("BTDB0029",
+                        $"Method '{method.Name}' must return bool",
+                        method.Locations[0]);
+                }
+
+                var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
+
+                // Check if last parameter is AdvancedEnumeratorParam<T>
+                if (CheckIfLastParameterIsAdvancedEnumeratorParam(method, out var aepGenericType))
+                {
+                    // Validate parameters excluding the AdvancedEnumeratorParam
+                    var validationError = ValidateIndexName(method, indexName, primaryKeyFields, indexOfInKeyValue, secondaryKeys, out var fieldIndexes, out _);
+                    if (validationError) return null;
+
+                    // Validate AdvancedEnumeratorParam generic type matches last field type
+                    if (fieldIndexes!.Length > 0 && method.Parameters.Length > 1)
+                    {
+                        var lastFieldIndex = fieldIndexes[fieldIndexes.Length - 1];
+                        var lastField = itemGenInfo.Fields[(int)lastFieldIndex];
+                        var aepTypeStr = aepGenericType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                        if (!AreTypesCompatible(aepTypeStr, lastField.Type))
+                        {
+                            return GenerationError("BTDB0031",
+                                $"AdvancedEnumeratorParam generic type '{aepTypeStr}' does not match last field '{lastField.Name}' type '{lastField.Type}' in method '{method.Name}'",
+                                method.Parameters[method.Parameters.Length - 1].Locations[0]);
+                        }
+                    }
+
+                    // Validate the remaining parameters (exclude last AdvancedEnumeratorParam)
+                    for (var i = 0; i < fieldIndexes!.Length && i < method.Parameters.Length - 1; i++)
+                    {
+                        var param = method.Parameters[i];
+                        var f = itemGenInfo.Fields[(int)fieldIndexes[i]];
+
+                        if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return GenerationError("BTDB0014",
+                                $"Parameter '{param.Name}' does not match field '{f.Name}' from index '{indexName}' in method '{method.Name}'",
+                                param.Locations[0]);
+                        }
+
+                        var paramType = param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        if (paramType != f.Type)
+                        {
+                            return GenerationError("BTDB0015",
+                                $"Parameter '{param.Name}' type '{paramType}' does not match field '{f.Name}' type '{f.Type}' from index '{indexName}' in method '{method.Name}'",
+                                param.Locations[0]);
+                        }
+                    }
+                    return null;
+                }
+
+                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
+                    indexOfInKeyValue, secondaryKeys, true);
+            }
+
+            if (method.Name.StartsWith("CountBy"))
+            {
+                // Validate return type is long-like (int, uint, long, ulong)
+                if (method.ReturnType.SpecialType != SpecialType.System_Int32 &&
+                    method.ReturnType.SpecialType != SpecialType.System_UInt32 &&
+                    method.ReturnType.SpecialType != SpecialType.System_Int64 &&
+                    method.ReturnType.SpecialType != SpecialType.System_UInt64)
+                {
+                    return GenerationError("BTDB0030",
+                        $"Method '{method.Name}' must return int, uint, long, or ulong",
+                        method.Locations[0]);
+                }
+
+                var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
+
+                // Check if last parameter is AdvancedEnumeratorParam<T>
+                if (CheckIfLastParameterIsAdvancedEnumeratorParam(method, out var aepGenericType))
+                {
+                    // Validate parameters excluding the AdvancedEnumeratorParam
+                    var validationError = ValidateIndexName(method, indexName, primaryKeyFields, indexOfInKeyValue, secondaryKeys, out var fieldIndexes, out _);
+                    if (validationError) return null;
+
+                    // Validate AdvancedEnumeratorParam generic type matches last field type
+                    if (fieldIndexes!.Length > 0 && method.Parameters.Length > 1)
+                    {
+                        var lastFieldIndex = fieldIndexes[fieldIndexes.Length - 1];
+                        var lastField = itemGenInfo.Fields[(int)lastFieldIndex];
+                        var aepTypeStr = aepGenericType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                        if (!AreTypesCompatible(aepTypeStr, lastField.Type))
+                        {
+                            return GenerationError("BTDB0031",
+                                $"AdvancedEnumeratorParam generic type '{aepTypeStr}' does not match last field '{lastField.Name}' type '{lastField.Type}' in method '{method.Name}'",
+                                method.Parameters[method.Parameters.Length - 1].Locations[0]);
+                        }
+                    }
+
+                    // Validate the remaining parameters (exclude last AdvancedEnumeratorParam)
+                    for (var i = 0; i < fieldIndexes!.Length && i < method.Parameters.Length - 1; i++)
+                    {
+                        var param = method.Parameters[i];
+                        var f = itemGenInfo.Fields[(int)fieldIndexes[i]];
+
+                        if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return GenerationError("BTDB0014",
+                                $"Parameter '{param.Name}' does not match field '{f.Name}' from index '{indexName}' in method '{method.Name}'",
+                                param.Locations[0]);
+                        }
+
+                        var paramType = param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        if (paramType != f.Type)
+                        {
+                            return GenerationError("BTDB0015",
+                                $"Parameter '{param.Name}' type '{paramType}' does not match field '{f.Name}' type '{f.Type}' from index '{indexName}' in method '{method.Name}'",
+                                param.Locations[0]);
+                        }
+                    }
+                    return null;
+                }
+
+                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
+                    indexOfInKeyValue, secondaryKeys, true);
+            }
+
+            if (method.Name.StartsWith("RemoveBy", StringComparison.Ordinal))
+            {
+                var (indexName, hasVariant) = StripVariant(secondaryKeys, method.Name, false);
+
+                // Check if method has special suffix like "Partial"
+                var methodSuffix = method.Name.Substring(("RemoveBy" + indexName).Length);
+                var hasSpecialSuffix = methodSuffix.StartsWith("Partial", StringComparison.Ordinal) ||
+                                      methodSuffix.StartsWith("OrDefault", StringComparison.Ordinal);
+
+                // Skip validation for special variants like "Partial", "OrDefault"
+                if (hasVariant || hasSpecialSuffix)
+                    continue;
+
+                // Validate return type (void, bool, int, uint, long, ulong)
+                if (method.ReturnType.SpecialType != SpecialType.System_Void &&
+                    method.ReturnType.SpecialType != SpecialType.System_Boolean &&
+                    method.ReturnType.SpecialType != SpecialType.System_Int32 &&
+                    method.ReturnType.SpecialType != SpecialType.System_UInt32 &&
+                    method.ReturnType.SpecialType != SpecialType.System_Int64 &&
+                    method.ReturnType.SpecialType != SpecialType.System_UInt64)
+                {
+                    return GenerationError("BTDB0032",
+                        $"Method '{method.Name}' must return void, bool, int, uint, long, or ulong",
+                        method.Locations[0]);
+                }
+
+                // Check if last parameter is AdvancedEnumeratorParam<T>
+                if (CheckIfLastParameterIsAdvancedEnumeratorParam(method, out var aepGenericType))
+                {
+                    // Validate parameters excluding the AdvancedEnumeratorParam
+                    var validationError = ValidateIndexName(method, indexName, primaryKeyFields, indexOfInKeyValue, secondaryKeys, out var fieldIndexes, out _);
+                    if (validationError) return null;
+
+                    // Validate AdvancedEnumeratorParam generic type matches last field type
+                    if (fieldIndexes!.Length > 0 && method.Parameters.Length > 1)
+                    {
+                        var lastFieldIndex = fieldIndexes[fieldIndexes.Length - 1];
+                        var lastField = itemGenInfo.Fields[(int)lastFieldIndex];
+                        var aepTypeStr = aepGenericType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                        if (!AreTypesCompatible(aepTypeStr, lastField.Type))
+                        {
+                            return GenerationError("BTDB0031",
+                                $"AdvancedEnumeratorParam generic type '{aepTypeStr}' does not match last field '{lastField.Name}' type '{lastField.Type}' in method '{method.Name}'",
+                                method.Parameters[method.Parameters.Length - 1].Locations[0]);
+                        }
+                    }
+
+                    // Validate the remaining parameters (exclude last AdvancedEnumeratorParam)
+                    for (var i = 0; i < fieldIndexes!.Length && i < method.Parameters.Length - 1; i++)
+                    {
+                        var param = method.Parameters[i];
+                        var f = itemGenInfo.Fields[(int)fieldIndexes[i]];
+
+                        if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return GenerationError("BTDB0014",
+                                $"Parameter '{param.Name}' does not match field '{f.Name}' from index '{indexName}' in method '{method.Name}'",
+                                param.Locations[0]);
+                        }
+
+                        var paramType = param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        if (paramType != f.Type)
+                        {
+                            return GenerationError("BTDB0015",
+                                $"Parameter '{param.Name}' type '{paramType}' does not match field '{f.Name}' type '{f.Type}' from index '{indexName}' in method '{method.Name}'",
+                                param.Locations[0]);
+                        }
+                    }
+                    return null;
+                }
+
+                // Validate parameters normally if no AdvancedEnumeratorParam (skip parameter count check to allow prefix matching)
+                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
+                    indexOfInKeyValue, secondaryKeys, true);
+            }
+
+            if (method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("Contains", StringComparison.Ordinal))
                 continue;
             // Find a matching method in RelationDBManipulator<relationType>
@@ -612,6 +815,24 @@ public class SourceGenerator : IIncrementalGenerator
                arrayType.ElementType.InODBLayerNamespace() && arrayType.ElementType.Name == "IOrderer";
     }
 
+    static bool CheckIfLastParameterIsAdvancedEnumeratorParam(IMethodSymbol method, out ITypeSymbol? genericTypeArg)
+    {
+        genericTypeArg = null;
+        if (method.Parameters.Length == 0) return false;
+
+        var lastParam = method.Parameters[method.Parameters.Length - 1];
+        if (lastParam.Type is INamedTypeSymbol namedType &&
+            namedType.InODBLayerNamespace() &&
+            namedType.Name == "AdvancedEnumeratorParam" &&
+            namedType.IsGenericType &&
+            namedType.TypeArguments.Length == 1)
+        {
+            genericTypeArg = namedType.TypeArguments[0];
+            return true;
+        }
+        return false;
+    }
+
     static GenerationInfo? ValidateConstraintParameters(IMethodSymbol method, string indexName,
         EquatableArray<FieldsInfo> fields, ReadOnlySpan<uint> fieldIndexes, int startParamIndex, int paramCount)
     {
@@ -700,8 +921,10 @@ public class SourceGenerator : IIncrementalGenerator
         return ValidateConstraintParameters(method, indexName, fields, fi, startParamIndex, constraintParamCount);
     }
 
-    GenerationInfo? CheckParamsNamesAndTypes(IMethodSymbol method, string indexName, EquatableArray<FieldsInfo> fields,
-        uint[] primaryKeyFields, uint inKeyValueIndex, (string Name, uint[] SecondaryKeyFields)[] secondaryKeys)
+    static GenerationInfo? CheckParamsNamesAndTypes(IMethodSymbol method, string indexName,
+        EquatableArray<FieldsInfo> fields,
+        uint[] primaryKeyFields, uint inKeyValueIndex, (string Name, uint[] SecondaryKeyFields)[] secondaryKeys,
+        bool skipNumberOfParametersCheck = false)
     {
         if (ValidateIndexName(method, indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys, out var fi,
                 out var generationError))
@@ -709,7 +932,8 @@ public class SourceGenerator : IIncrementalGenerator
 
         // For non-prefix-based queries (returns single item, not IEnumerable), validate parameter count matches key count
         var isPrefixBased = IsIEnumerableOfTWhereTIsClass(method.ReturnType);
-        if (indexName == "Id" && !isPrefixBased && method.Parameters.Length != fi!.Length)
+        if (!skipNumberOfParametersCheck && indexName == "Id" && !isPrefixBased &&
+            method.Parameters.Length != fi.Length)
         {
             return GenerationError("BTDB0020",
                 $"Number of parameters in '{method.Name}' does not match {indexName} key count {fi.Length}.",

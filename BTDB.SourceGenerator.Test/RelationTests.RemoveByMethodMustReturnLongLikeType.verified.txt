@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // RemoveById must return int, uint, long, or ulong, not string
+    string RemoveById(ulong companyId, ulong productId);
+           ^^^^^^^^^^
+}
+*/
+ : (12,11)-(12,21),
+      Message: Method 'RemoveById' must return void, bool, int, uint, long, or ulong,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0032,
+        Title: Method 'RemoveById' must return void, bool, int, uint, long, or ulong,
+        MessageFormat: Method 'RemoveById' must return void, bool, int, uint, long, or ulong,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

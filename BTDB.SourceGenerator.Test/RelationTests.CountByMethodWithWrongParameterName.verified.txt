@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // CountById parameter name must match primary key field name
+    long CountById(ulong wrongName);
+                         ^^^^^^^^^
+}
+*/
+ : (12,25)-(12,34),
+      Message: Parameter 'wrongName' does not match field 'CompanyId' from index 'Id',
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0014,
+        Title: Parameter 'wrongName' does not match field 'CompanyId' from index 'Id',
+        MessageFormat: Parameter 'wrongName' does not match field 'CompanyId' from index 'Id',
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

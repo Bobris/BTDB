@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // RemoveById parameter name must match primary key field name
+    long RemoveById(ulong wrongName, ulong productId);
+                          ^^^^^^^^^
+}
+*/
+ : (12,26)-(12,35),
+      Message: Parameter 'wrongName' does not match field 'CompanyId' from index 'Id',
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0014,
+        Title: Parameter 'wrongName' does not match field 'CompanyId' from index 'Id',
+        MessageFormat: Parameter 'wrongName' does not match field 'CompanyId' from index 'Id',
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

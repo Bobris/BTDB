@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // AdvancedEnumeratorParam generic type must match last field type (ProductId is ulong, not string)
+    long CountById(ulong companyId, AdvancedEnumeratorParam<string> productIdParam);
+                                                                    ^^^^^^^^^^^^^^
+}
+*/
+ : (12,68)-(12,82),
+      Message: AdvancedEnumeratorParam generic type 'string' does not match last field 'ProductId' type 'ulong' in method 'CountById',
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0031,
+        Title: AdvancedEnumeratorParam generic type 'string' does not match last field 'ProductId' type 'ulong' in method 'CountById',
+        MessageFormat: AdvancedEnumeratorParam generic type 'string' does not match last field 'ProductId' type 'ulong' in method 'CountById',
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

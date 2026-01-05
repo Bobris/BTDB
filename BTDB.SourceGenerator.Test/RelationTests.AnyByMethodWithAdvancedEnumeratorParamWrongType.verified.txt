@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // AdvancedEnumeratorParam generic type must match last field type (ProductId is ulong, not int)
+    bool AnyById(ulong companyId, AdvancedEnumeratorParam<int> productIdParam);
+                                                               ^^^^^^^^^^^^^^
+}
+*/
+ : (12,63)-(12,77),
+      Message: AdvancedEnumeratorParam generic type 'int' does not match last field 'ProductId' type 'ulong' in method 'AnyById',
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0031,
+        Title: AdvancedEnumeratorParam generic type 'int' does not match last field 'ProductId' type 'ulong' in method 'AnyById',
+        MessageFormat: AdvancedEnumeratorParam generic type 'int' does not match last field 'ProductId' type 'ulong' in method 'AnyById',
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

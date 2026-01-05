@@ -951,4 +951,334 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task AnyByMethodMustReturnBool()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // AnyById must return bool, not int
+                int AnyById(ulong companyId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task AnyByMethodWithWrongParameterType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // AnyById parameter type must match primary key type
+                bool AnyById(string companyId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task AnyByMethodWithWrongParameterName()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // AnyById parameter name must match primary key field name
+                bool AnyById(ulong wrongName);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task AnyByMethodWithAdvancedEnumeratorParamWrongType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // AdvancedEnumeratorParam generic type must match last field type (ProductId is ulong, not int)
+                bool AnyById(ulong companyId, AdvancedEnumeratorParam<int> productIdParam);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task AnyByMethodWithAdvancedEnumeratorParamValid()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // Valid: AdvancedEnumeratorParam<ulong> matches ProductId type
+                bool AnyById(ulong companyId, AdvancedEnumeratorParam<ulong> productIdParam);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task CountByMethodMustReturnLongLikeType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // CountById must return int, uint, long, or ulong, not string
+                string CountById(ulong companyId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task CountByMethodWithWrongParameterType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // CountById parameter type must match primary key type
+                int CountById(string companyId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task CountByMethodWithWrongParameterName()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // CountById parameter name must match primary key field name
+                long CountById(ulong wrongName);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task CountByMethodWithAdvancedEnumeratorParamWrongType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // AdvancedEnumeratorParam generic type must match last field type (ProductId is ulong, not string)
+                long CountById(ulong companyId, AdvancedEnumeratorParam<string> productIdParam);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task CountByMethodWithAdvancedEnumeratorParamValid()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // Valid: AdvancedEnumeratorParam<ulong> matches ProductId type
+                long CountById(ulong companyId, AdvancedEnumeratorParam<ulong> productIdParam);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task RemoveByMethodMustReturnLongLikeType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // RemoveById must return int, uint, long, or ulong, not string
+                string RemoveById(ulong companyId, ulong productId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task RemoveByMethodWithWrongParameterType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // RemoveById parameter type must match primary key type
+                int RemoveById(string companyId, ulong productId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task RemoveByMethodWithWrongParameterName()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // RemoveById parameter name must match primary key field name
+                long RemoveById(ulong wrongName, ulong productId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task RemoveByMethodWithAdvancedEnumeratorParamWrongType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // AdvancedEnumeratorParam generic type must match last field type (ProductId is ulong, not uint)
+                int RemoveById(ulong companyId, AdvancedEnumeratorParam<uint> productIdParam);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task RemoveByMethodWithAdvancedEnumeratorParamValid()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // Valid: AdvancedEnumeratorParam<ulong> matches ProductId type
+                int RemoveById(ulong companyId, AdvancedEnumeratorParam<ulong> productIdParam);
+            }
+            """);
+    }
 }

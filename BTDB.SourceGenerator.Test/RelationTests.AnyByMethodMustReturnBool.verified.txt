@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // AnyById must return bool, not int
+    int AnyById(ulong companyId);
+        ^^^^^^^
+}
+*/
+ : (12,8)-(12,15),
+      Message: Method 'AnyById' must return bool,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0029,
+        Title: Method 'AnyById' must return bool,
+        MessageFormat: Method 'AnyById' must return bool,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // CountById parameter type must match primary key type
+    int CountById(string companyId);
+                         ^^^^^^^^^
+}
+*/
+ : (12,25)-(12,34),
+      Message: Parameter 'companyId' type 'string' does not match field 'CompanyId' type 'ulong' from index 'Id',
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0015,
+        Title: Parameter 'companyId' type 'string' does not match field 'CompanyId' type 'ulong' from index 'Id',
+        MessageFormat: Parameter 'companyId' type 'string' does not match field 'CompanyId' type 'ulong' from index 'Id',
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}
