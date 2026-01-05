@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // FirstById has too many constraint parameters (3) for a 2-field primary key
+    Product FirstById(Constraint<ulong> companyId, Constraint<ulong> productId, Constraint<string> name);
+            ^^^^^^^^^
+}
+*/
+ : (12,12)-(12,21),
+      Message: Too many constraint parameters for index 'Id' in method 'FirstById',
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0028,
+        Title: Too many constraint parameters for index 'Id' in method 'FirstById',
+        MessageFormat: Too many constraint parameters for index 'Id' in method 'FirstById',
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

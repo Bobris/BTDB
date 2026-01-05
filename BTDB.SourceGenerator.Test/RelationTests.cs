@@ -841,4 +841,114 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task FirstByMethodMustHaveClassReturnType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // FirstById must return class type, not struct
+                ulong FirstById(Constraint<ulong> companyId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task FirstByMethodWithTooManyConstraintParameters()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // FirstById has too many constraint parameters (3) for a 2-field primary key
+                Product FirstById(Constraint<ulong> companyId, Constraint<ulong> productId, Constraint<string> name);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task FirstByMethodWithConstraintParameterTypeMismatch()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // FirstById has wrong constraint type - should be Constraint<ulong> not Constraint<string>
+                Product FirstById(Constraint<string> companyId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task FirstByMethodWithConstraintParameterNameMismatch()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // FirstById has wrong parameter name - should be "companyId" not "wrongName"
+                Product FirstById(Constraint<ulong> wrongName);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task FirstByMethodWithNonConstraintParameter()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // FirstById parameter must be Constraint<T>, not raw type
+                Product FirstById(ulong companyId);
+            }
+            """);
+    }
 }

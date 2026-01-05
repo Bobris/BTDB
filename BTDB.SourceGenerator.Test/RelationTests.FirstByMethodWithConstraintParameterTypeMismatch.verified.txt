@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // FirstById has wrong constraint type - should be Constraint<ulong> not Constraint<string>
+    Product FirstById(Constraint<string> companyId);
+                                         ^^^^^^^^^
+}
+*/
+ : (12,41)-(12,50),
+      Message: Parameter constraint type mismatch in method 'FirstById' for parameter 'companyId' (expected 'ulong' but 'string' found),
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0018,
+        Title: Parameter constraint type mismatch in method 'FirstById' for parameter 'companyId' (expected 'ulong' but 'string' found),
+        MessageFormat: Parameter constraint type mismatch in method 'FirstById' for parameter 'companyId' (expected 'ulong' but 'string' found),
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

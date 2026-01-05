@@ -405,11 +405,30 @@ public class SourceGenerator : IIncrementalGenerator
 
             if (method.Name.StartsWith("FirstBy"))
             {
+                // Validate return type is class
+                if (method.ReturnType.TypeKind != TypeKind.Class)
+                {
+                    return GenerationError("BTDB0027",
+                        $"Method '{method.Name}' must have class return type",
+                        method.Locations[0]);
+                }
+
                 var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
+
+                // Check if last parameter is IOrderer[]
                 var lastParameterIsIOrdererArray = CheckIfLastParameterIsIOrdererArray(method);
-                return CheckParamsNamesAndTypesScanBy(method, indexName, itemGenInfo.Fields, primaryKeyFields,
-                    uint.MaxValue,
-                    secondaryKeys, lastParameterIsIOrdererArray);
+
+                // Validate constraint parameters
+                var constraintParamCount = method.Parameters.Length - (lastParameterIsIOrdererArray ? 1 : 0);
+
+                if (constraintParamCount > 0)
+                {
+                    var validationError = ValidateFirstByConstraintParameters(method, indexName,
+                        itemGenInfo.Fields, primaryKeyFields, secondaryKeys, 0, constraintParamCount,
+                        lastParameterIsIOrdererArray);
+                    if (validationError != null)
+                        return validationError;
+                }
             }
 
             if (method.Name.StartsWith("ScanBy"))
@@ -494,8 +513,7 @@ public class SourceGenerator : IIncrementalGenerator
                 }
             }
 
-            if (method.Name.StartsWith("FirstBy", StringComparison.Ordinal) ||
-                method.Name.StartsWith("RemoveBy", StringComparison.Ordinal) ||
+            if (method.Name.StartsWith("RemoveBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("Contains", StringComparison.Ordinal))
                 continue;
@@ -654,6 +672,27 @@ public class SourceGenerator : IIncrementalGenerator
         if (constraintParamCount > fi!.Length)
         {
             return GenerationError("BTDB0026",
+                $"Too many constraint parameters for index '{indexName}' in method '{method.Name}'",
+                method.Locations[0]);
+        }
+
+        return ValidateConstraintParameters(method, indexName, fields, fi, startParamIndex, constraintParamCount);
+    }
+
+    static GenerationInfo? ValidateFirstByConstraintParameters(IMethodSymbol method, string indexName,
+        EquatableArray<FieldsInfo> fields, uint[] primaryKeyFields,
+        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, int startParamIndex, int constraintParamCount,
+        bool lastParameterIsIOrdererArray)
+    {
+        // Validate index name
+        if (ValidateIndexName(method, indexName, primaryKeyFields, uint.MaxValue, secondaryKeys, out var fi,
+                out var generationError))
+            return generationError;
+
+        // Validate constraint parameter count doesn't exceed index field count
+        if (constraintParamCount > fi!.Length)
+        {
+            return GenerationError("BTDB0028",
                 $"Too many constraint parameters for index '{indexName}' in method '{method.Name}'",
                 method.Locations[0]);
         }

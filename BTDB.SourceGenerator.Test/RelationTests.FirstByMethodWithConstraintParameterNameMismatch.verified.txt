@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // FirstById has wrong parameter name - should be "companyId" not "wrongName"
+    Product FirstById(Constraint<ulong> wrongName);
+                                        ^^^^^^^^^
+}
+*/
+ : (12,40)-(12,49),
+      Message: Parameter 'wrongName' does not match field 'CompanyId' from index 'Id' in method 'FirstById',
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0014,
+        Title: Parameter 'wrongName' does not match field 'CompanyId' from index 'Id' in method 'FirstById',
+        MessageFormat: Parameter 'wrongName' does not match field 'CompanyId' from index 'Id' in method 'FirstById',
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

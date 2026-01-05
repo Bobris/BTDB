@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // FirstById parameter must be Constraint<T>, not raw type
+    Product FirstById(ulong companyId);
+                            ^^^^^^^^^
+}
+*/
+ : (12,28)-(12,37),
+      Message: Parameter 'companyId' in method 'FirstById' must be of type Constraint<T>,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0017,
+        Title: Parameter 'companyId' in method 'FirstById' must be of type Constraint<T>,
+        MessageFormat: Parameter 'companyId' in method 'FirstById' must be of type Constraint<T>,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

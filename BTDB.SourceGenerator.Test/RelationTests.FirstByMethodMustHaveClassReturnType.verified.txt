@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // FirstById must return class type, not struct
+    ulong FirstById(Constraint<ulong> companyId);
+          ^^^^^^^^^
+}
+*/
+ : (12,10)-(12,19),
+      Message: Method 'FirstById' must have class return type,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0027,
+        Title: Method 'FirstById' must have class return type,
+        MessageFormat: Method 'FirstById' must have class return type,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}
