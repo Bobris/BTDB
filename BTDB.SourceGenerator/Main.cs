@@ -672,7 +672,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         // For non-prefix-based queries (returns single item, not IEnumerable), validate parameter count matches key count
         var isPrefixBased = IsIEnumerableOfTWhereTIsClass(method.ReturnType);
-        if (!isPrefixBased && method.Parameters.Length != fi!.Length)
+        if (indexName == "Id" && !isPrefixBased && method.Parameters.Length != fi!.Length)
         {
             return GenerationError("BTDB0020",
                 $"Number of parameters in '{method.Name}' does not match {indexName} key count {fi.Length}.",
