@@ -702,4 +702,143 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task FindByMethodChecksParameterCount()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System;
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                void Insert(Product product);
+                // FindById with missing parameter - should return single item but only has 1 of 2 params
+                Product FindById(ulong companyId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task GatherByMethodMustReturnUlong()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // GatherById must return ulong, not int
+                int GatherById(ICollection<Product> items, long skip, long take);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task GatherByMethodMustHaveAtLeastThreeParameters()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // GatherById must have at least 3 parameters (collection, skip, take)
+                ulong GatherById(ICollection<Product> items);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task GatherByMethodFirstParameterMustBeICollection()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // First parameter must implement ICollection<>
+                ulong GatherById(IEnumerable<Product> items, long skip, long take);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task GatherByMethodSecondParameterMustBeNamedSkip()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // Second parameter must be named "skip" and be long
+                ulong GatherById(ICollection<Product> items, long wrongName, long take);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task GatherByMethodThirdParameterMustBeNamedTake()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // Third parameter must be named "take" and be long
+                ulong GatherById(ICollection<Product> items, long skip, long wrongName);
+            }
+            """);
+    }
 }

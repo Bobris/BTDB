@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // GatherById must return ulong, not int
+    int GatherById(ICollection<Product> items, long skip, long take);
+        ^^^^^^^^^^
+}
+*/
+ : (13,8)-(13,18),
+      Message: Method 'GatherById' must return ulong,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0021,
+        Title: Method 'GatherById' must return ulong,
+        MessageFormat: Method 'GatherById' must return ulong,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

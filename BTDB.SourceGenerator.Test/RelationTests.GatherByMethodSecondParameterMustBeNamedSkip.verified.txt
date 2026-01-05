@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // Second parameter must be named "skip" and be long
+    ulong GatherById(ICollection<Product> items, long wrongName, long take);
+                                                      ^^^^^^^^^
+}
+*/
+ : (13,54)-(13,63),
+      Message: Method 'GatherById' second parameter must be long type and named skip,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0024,
+        Title: Method 'GatherById' second parameter must be long type and named skip,
+        MessageFormat: Method 'GatherById' second parameter must be long type and named skip,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

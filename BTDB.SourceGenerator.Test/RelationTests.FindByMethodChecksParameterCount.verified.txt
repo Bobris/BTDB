@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // FindById with missing parameter - should return single item but only has 1 of 2 params
+    Product FindById(ulong companyId);
+            ^^^^^^^^
+}
+*/
+ : (14,12)-(14,20),
+      Message: Number of parameters in 'FindById' does not match Id key count 2.,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0020,
+        Title: Number of parameters in 'FindById' does not match Id key count 2.,
+        MessageFormat: Number of parameters in 'FindById' does not match Id key count 2.,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

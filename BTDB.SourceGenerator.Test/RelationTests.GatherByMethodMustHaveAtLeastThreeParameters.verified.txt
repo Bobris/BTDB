@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // GatherById must have at least 3 parameters (collection, skip, take)
+    ulong GatherById(ICollection<Product> items);
+          ^^^^^^^^^^
+}
+*/
+ : (13,10)-(13,20),
+      Message: Method 'GatherById' expects at least 3 parameters,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0022,
+        Title: Method 'GatherById' expects at least 3 parameters,
+        MessageFormat: Method 'GatherById' expects at least 3 parameters,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

@@ -425,6 +425,75 @@ public class SourceGenerator : IIncrementalGenerator
                     uint.MaxValue, secondaryKeys, false);
             }
 
+            if (method.Name.StartsWith("GatherBy"))
+            {
+                // Validate return type is ulong
+                if (method.ReturnType.SpecialType != SpecialType.System_UInt64)
+                {
+                    return GenerationError("BTDB0021",
+                        $"Method '{method.Name}' must return ulong",
+                        method.Locations[0]);
+                }
+
+                // Validate minimum 3 parameters
+                if (method.Parameters.Length < 3)
+                {
+                    return GenerationError("BTDB0022",
+                        $"Method '{method.Name}' expects at least 3 parameters",
+                        method.Locations[0]);
+                }
+
+                // Validate first parameter is ICollection<>
+                var firstParam = method.Parameters[0];
+                if (firstParam.Type is not INamedTypeSymbol
+                    {
+                        TypeKind: TypeKind.Interface,
+                        OriginalDefinition.SpecialType: SpecialType.System_Collections_Generic_ICollection_T
+                    })
+                {
+                    return GenerationError("BTDB0023",
+                        $"Method '{method.Name}' first parameter must implement ICollection<>",
+                        firstParam.Locations[0]);
+                }
+
+                // Validate second parameter is named "skip" and is long
+                var secondParam = method.Parameters[1];
+                if (secondParam.Name != "skip" || secondParam.Type.SpecialType != SpecialType.System_Int64)
+                {
+                    return GenerationError("BTDB0024",
+                        $"Method '{method.Name}' second parameter must be long type and named skip",
+                        secondParam.Locations[0]);
+                }
+
+                // Validate third parameter is named "take" and is long
+                var thirdParam = method.Parameters[2];
+                if (thirdParam.Name != "take" || thirdParam.Type.SpecialType != SpecialType.System_Int64)
+                {
+                    return GenerationError("BTDB0025",
+                        $"Method '{method.Name}' third parameter must be long type and named take",
+                        thirdParam.Locations[0]);
+                }
+
+                // Extract index name and validate remaining constraint parameters
+                var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
+
+                // Check if last parameter is IOrderer[]
+                var lastParameterIsIOrdererArray = CheckIfLastParameterIsIOrdererArray(method);
+
+                // Create a slice of parameters from index 3 onwards (skip collection, skip, take)
+                var constraintParamCount = method.Parameters.Length - 3 - (lastParameterIsIOrdererArray ? 1 : 0);
+
+                // Validate the constraint parameters
+                if (constraintParamCount > 0)
+                {
+                    var validationError = ValidateGatherByConstraintParameters(method, indexName,
+                        itemGenInfo.Fields, primaryKeyFields, secondaryKeys, 3, constraintParamCount,
+                        lastParameterIsIOrdererArray);
+                    if (validationError != null)
+                        return validationError;
+                }
+            }
+
             // IOrderer[]
             if (method.Name.StartsWith("FirstBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("GatherBy", StringComparison.Ordinal) ||
@@ -505,15 +574,43 @@ public class SourceGenerator : IIncrementalGenerator
                 method.Locations[0]);
         }
 
-        for (var i = 0; i < fi.Length; i++)
+        return ValidateConstraintParameters(method, indexName, fields, fi, 0, paramCount);
+    }
+
+    static bool AreTypesCompatible(string pType, string fType)
+    {
+        if (pType == fType) return true;
+        if (pType == "ulong" && fType == "uint") return true;
+        if (pType == "ulong" && fType == "ushort") return true;
+        if (pType == "ulong" && fType == "byte") return true;
+        if (pType == "long" && fType == "int") return true;
+        if (pType == "long" && fType == "short") return true;
+        if (pType == "long" && fType == "sbyte") return true;
+        return false;
+    }
+
+    static bool CheckIfLastParameterIsIOrdererArray(IMethodSymbol method)
+    {
+        return method.Parameters.Length > 0 &&
+               method.Parameters[method.Parameters.Length - 1].Type is IArrayTypeSymbol arrayType &&
+               arrayType.ElementType.InODBLayerNamespace() && arrayType.ElementType.Name == "IOrderer";
+    }
+
+    static GenerationInfo? ValidateConstraintParameters(IMethodSymbol method, string indexName,
+        EquatableArray<FieldsInfo> fields, ReadOnlySpan<uint> fieldIndexes, int startParamIndex, int paramCount)
+    {
+        for (var i = 0; i < fieldIndexes.Length; i++)
         {
             if (i >= paramCount) break;
-            var param = method.Parameters[i];
-            var f = fields[(int)fi[i]];
+            var paramIndex = startParamIndex + i;
+            var param = method.Parameters[paramIndex];
+            var f = fields[(int)fieldIndexes[i]];
+
+            // Check parameter name matches field name
             if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase))
             {
                 return GenerationError("BTDB0014",
-                    $"Parameter '{param.Name}' does not match field '{f.Name}' from index '{indexName}'",
+                    $"Parameter '{param.Name}' does not match field '{f.Name}' from index '{indexName}' in method '{method.Name}'",
                     param.Locations[0]);
             }
 
@@ -545,23 +642,25 @@ public class SourceGenerator : IIncrementalGenerator
         return null;
     }
 
-    bool AreTypesCompatible(string pType, string fType)
+    static GenerationInfo? ValidateGatherByConstraintParameters(IMethodSymbol method, string indexName,
+        EquatableArray<FieldsInfo> fields, uint[] primaryKeyFields,
+        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, int startParamIndex, int constraintParamCount,
+        bool lastParameterIsIOrdererArray)
     {
-        if (pType == fType) return true;
-        if (pType == "ulong" && fType == "uint") return true;
-        if (pType == "ulong" && fType == "ushort") return true;
-        if (pType == "ulong" && fType == "byte") return true;
-        if (pType == "long" && fType == "int") return true;
-        if (pType == "long" && fType == "short") return true;
-        if (pType == "long" && fType == "sbyte") return true;
-        return false;
-    }
+        // Validate index name
+        if (ValidateIndexName(method, indexName, primaryKeyFields, uint.MaxValue, secondaryKeys, out var fi,
+                out var generationError))
+            return generationError;
 
-    static bool CheckIfLastParameterIsIOrdererArray(IMethodSymbol method)
-    {
-        return method.Parameters.Length > 0 &&
-               method.Parameters[method.Parameters.Length - 1].Type is IArrayTypeSymbol arrayType &&
-               arrayType.ElementType.InODBLayerNamespace() && arrayType.ElementType.Name == "IOrderer";
+        // Validate constraint parameter count doesn't exceed index field count
+        if (constraintParamCount > fi!.Length)
+        {
+            return GenerationError("BTDB0026",
+                $"Too many constraint parameters for index '{indexName}' in method '{method.Name}'",
+                method.Locations[0]);
+        }
+
+        return ValidateConstraintParameters(method, indexName, fields, fi, startParamIndex, constraintParamCount);
     }
 
     GenerationInfo? CheckParamsNamesAndTypes(IMethodSymbol method, string indexName, EquatableArray<FieldsInfo> fields,
@@ -570,6 +669,16 @@ public class SourceGenerator : IIncrementalGenerator
         if (ValidateIndexName(method, indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys, out var fi,
                 out var generationError))
             return generationError;
+
+        // For non-prefix-based queries (returns single item, not IEnumerable), validate parameter count matches key count
+        var isPrefixBased = IsIEnumerableOfTWhereTIsClass(method.ReturnType);
+        if (!isPrefixBased && method.Parameters.Length != fi!.Length)
+        {
+            return GenerationError("BTDB0020",
+                $"Number of parameters in '{method.Name}' does not match {indexName} key count {fi.Length}.",
+                method.Locations[0]);
+        }
+
         for (var i = 0; i < fi!.Length; i++)
         {
             if (i >= method.Parameters.Length) break;

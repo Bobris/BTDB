@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // First parameter must implement ICollection<>
+    ulong GatherById(IEnumerable<Product> items, long skip, long take);
+                                          ^^^^^
+}
+*/
+ : (13,42)-(13,47),
+      Message: Method 'GatherById' first parameter must implement ICollection<>,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0023,
+        Title: Method 'GatherById' first parameter must implement ICollection<>,
+        MessageFormat: Method 'GatherById' first parameter must implement ICollection<>,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

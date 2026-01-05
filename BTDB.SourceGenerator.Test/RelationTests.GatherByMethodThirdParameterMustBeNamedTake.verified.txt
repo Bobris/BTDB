@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // Third parameter must be named "take" and be long
+    ulong GatherById(ICollection<Product> items, long skip, long wrongName);
+                                                                 ^^^^^^^^^
+}
+*/
+ : (13,65)-(13,74),
+      Message: Method 'GatherById' third parameter must be long type and named take,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0025,
+        Title: Method 'GatherById' third parameter must be long type and named take,
+        MessageFormat: Method 'GatherById' third parameter must be long type and named take,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}
