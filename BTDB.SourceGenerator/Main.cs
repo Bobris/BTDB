@@ -2416,7 +2416,8 @@ public class SourceGenerator : IIncrementalGenerator
         var parametersCode = new StringBuilder();
         var parameterIndex = 0;
 
-        foreach (var (name, type, _, _, _, _) in generationInfo.ConstructorParameters!)
+        var constructorParameters = generationInfo.ConstructorParameters ?? EquatableArray<ParameterInfo>.Empty;
+        foreach (var (name, type, _, _, _, _) in constructorParameters)
         {
             var normalizeType = NormalizeType(type);
             if (parameterIndex > 0) parametersCode.Append(", ");
@@ -2629,12 +2630,13 @@ public class SourceGenerator : IIncrementalGenerator
             declarations.Append($"static file class {generationInfo.Name}Registration\n{{\n");
         }
 
+        var constructorParameters = generationInfo.ConstructorParameters ?? EquatableArray<ParameterInfo>.Empty;
         if (isTuple)
         {
             declarations.Append($$"""
                     class TupleStunt
                     {
-                {{string.Join("\n", generationInfo.ConstructorParameters!.Value.Select((f, i) => $"        public {f.Type} Item{i + 1};"))}}
+                {{string.Join("\n", constructorParameters.Select((f, i) => $"        public {f.Type} Item{i + 1};"))}}
                     }
 
 
@@ -2643,17 +2645,17 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (generationInfo.PrivateConstructor)
         {
-            var constructorParameters = new StringBuilder();
-            foreach (var (name, type, _, _, _, _) in generationInfo.ConstructorParameters)
+            var constructorParametersText = new StringBuilder();
+            foreach (var (name, type, _, _, _, _) in constructorParameters)
             {
-                if (constructorParameters.Length > 0) constructorParameters.Append(", ");
-                constructorParameters.Append($"{type} {name}");
+                if (constructorParametersText.Length > 0) constructorParametersText.Append(", ");
+                constructorParametersText.Append($"{type} {name}");
             }
 
             // language=c#
             declarations.Append($"""
                     [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
-                    extern static {generationInfo.FullName} Constr({constructorParameters});
+                    extern static {generationInfo.FullName} Constr({constructorParametersText});
 
                 """);
         }
@@ -2746,7 +2748,7 @@ public class SourceGenerator : IIncrementalGenerator
             var fieldIndex = 0;
             if (isTuple)
             {
-                foreach (var field in generationInfo.ConstructorParameters!)
+                foreach (var field in constructorParameters)
                 {
                     var normalizedType = NormalizeType(field.Type);
                     fieldIndex++;
