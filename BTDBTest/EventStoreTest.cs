@@ -651,7 +651,7 @@ public class EventStoreTest
         var eventObserver = new StoringEventObserver();
         reader.ReadFromStartToEnd(eventObserver);
         var readUserEvent = (ErrorInfo)eventObserver.Events[0][0];
-        Assert.Equal(1, readUserEvent.PropertyErrors.Count);
+        Assert.Single(readUserEvent.PropertyErrors);
     }
 
     [Fact]

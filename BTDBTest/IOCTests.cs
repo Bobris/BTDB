@@ -52,7 +52,7 @@ public partial class IocTests
     }
 
     [Fact]
-    public void LazySingletonsAreThreadSafe()
+    public async Task LazySingletonsAreThreadSafe()
     {
         var builder = new ContainerBuilder();
         builder.RegisterType<SuperLazy>().As<IAmLazy>().SingleInstance();
@@ -68,7 +68,7 @@ public partial class IocTests
         var task1 = Task.Run(() => { l1 = a.Materialize; });
         var task2 = Task.Run(() => { l2 = b.Materialize; });
 
-        Task.WaitAll(task1, task2);
+        await Task.WhenAll(task1, task2);
         Assert.NotNull(l1);
         Assert.Same(l1, l2);
     }

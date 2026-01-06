@@ -21,7 +21,7 @@ public class ILExtensionsTest
 
         public void Fun(int noFun)
         {
-            Assert.True(false, "Fail");
+            Assert.Fail("Fail");
         }
 
         int PrivateProperty { get; set; }

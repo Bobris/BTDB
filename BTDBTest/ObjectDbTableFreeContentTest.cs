@@ -142,7 +142,7 @@ public class ObjectDbTableFreeContentTest : IDisposable
         {
             var links = creator(tr);
             Assert.True(links.ShallowRemoveById(1)); //remove without free
-            Assert.Equal(0, links.Count);
+            Assert.Empty(links);
             tr.Commit();
         }
 
@@ -158,7 +158,7 @@ public class ObjectDbTableFreeContentTest : IDisposable
             var links = creator(tr);
             var value = links.FindById(1);
             links.ShallowRemoveById(1); //remove without free
-            Assert.Equal(0, links.Count);
+            Assert.Empty(links);
             links.Insert(value);
             Assert.Equal(3, value.Edges.Count);
             tr.Commit();

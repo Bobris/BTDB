@@ -331,7 +331,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
             var creator = tr.InitRelation<IJobTable3>("Job");
             var jobTable = creator(tr);
             jobTable.RemoveById(11);
-            Assert.Equal(0, jobTable.Count);
+            Assert.Empty(jobTable);
         }
     }
 
@@ -383,7 +383,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
             var jobTable = creator(tr);
             jobTable.RemoveById(11);
 
-            Assert.Equal(1, jobTable.Count);
+            Assert.Single(jobTable);
 
             Assert.Null(jobTable.FindByExpiredStatusOrDefault(false, 300));
 
@@ -533,7 +533,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
         {
             var creator = tr.InitRelation<IDateTimeV2Table>("T");
             var table = creator(tr);
-            Assert.Equal(1, table.Count);
+            Assert.Single(table);
 
             Assert.True(table.First().Modified.HasValue);
             Assert.Equal(new(2000, 1, 1), table.First().Modified!.Value);
@@ -590,7 +590,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
         {
             var creator = tr.InitRelation<IDictV2Table>("T");
             var table = creator(tr);
-            Assert.Equal(1, table.Count);
+            Assert.Single(table);
 
             Assert.Equal(2, table.First().D.Count);
             Assert.Equal(1, table.First().D[g1].Num);
@@ -664,7 +664,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
         {
             var creator = tr.InitRelation<IRowObjWithDictV2Table>("T");
             var table = creator(tr);
-            Assert.Equal(1, table.Count);
+            Assert.Single(table);
 
             Assert.Equal(2, table.First().Obj.D.Count);
             Assert.Equal(1, table.First().Obj.D[g1].Num);
@@ -731,7 +731,7 @@ public class ObjectDbTableUpgradeTest : IDisposable
         {
             var creator = tr.InitRelation<IRowObjInObjV2Table>("T");
             var table = creator(tr);
-            Assert.Equal(1, table.Count);
+            Assert.Single(table);
             Assert.NotNull(table.First());
         }
     }
@@ -819,10 +819,10 @@ public class ObjectDbTableUpgradeTest : IDisposable
             var creator = tr.InitRelation<IS1RowObjWithListV2Table>("T");
             var table = creator(tr);
             table.RemoveById(2);
-            Assert.Equal(1, table.Count);
+            Assert.Single(table);
 
-            Assert.Equal(1, table.First().L.Count);
-            Assert.Equal(1, table.First().L[0].D.Count);
+            Assert.Single(table.First().L);
+            Assert.Single(table.First().L[0].D);
             Assert.Equal(1, table.First().L[0].D[1].Num);
             table.Upsert(table.First());
             // Assert no leaks in IDictionaries

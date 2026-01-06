@@ -417,7 +417,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
     {
         using var fileCollection = new InMemoryFileCollection();
         using var db = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 1024);
-        using (var tr = db.StartWritingTransaction().Result)
+        using (var tr = await db.StartWritingTransaction())
         {
             using var cursor = tr.CreateCursor();
             cursor.CreateOrUpdateKeyValue(Key1, new byte[1024]);
@@ -426,7 +426,7 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
         }
 
         await db.Compact(CancellationToken.None);
-        using (var tr = db.StartWritingTransaction().Result)
+        using (var tr = await db.StartWritingTransaction())
         {
             using var cursor = tr.CreateCursor();
             cursor.FindKeyIndex(0);

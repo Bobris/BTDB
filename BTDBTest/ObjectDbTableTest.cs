@@ -82,7 +82,7 @@ namespace BTDBTest
             {
                 var personSimpleTable = creator(tr);
                 personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" });
-                Assert.Equal(1, personSimpleTable.Count);
+                Assert.Single(personSimpleTable);
                 using var en = personSimpleTable.GetEnumerator();
                 en.MoveNext();
                 Assert.Equal("Boris", en.Current.Name);
@@ -1162,7 +1162,7 @@ namespace BTDBTest
             Assert.Equal(50, cnt);
 
             cnt = files.RemoveByIdPartial(100);
-            Assert.Equal(0, files.Count);
+            Assert.Empty(files);
             Assert.Equal(50, cnt);
         }
 
@@ -1438,7 +1438,7 @@ namespace BTDBTest
             var removedCount = personTable.RemoveById(13);
             Assert.Equal(1, removedCount);
 
-            Assert.Equal(0, personTable.Count);
+            Assert.Empty(personTable);
         }
 
         public class ProductionTrackingDaily
@@ -1631,7 +1631,7 @@ namespace BTDBTest
             var creator = tr.InitRelation<IPersonInherited>("IPersonInherited");
             var table = creator(tr);
             table.Insert(new PersonSimple { Email = "anonymous" });
-            Assert.Equal(1, table.Count);
+            Assert.Single(table);
         }
 
         public class SimpleObject
@@ -2038,7 +2038,7 @@ namespace BTDBTest
                 var ruleV2Table = creator(tr);
                 ruleV2Table.RemoveById(11);
 
-                Assert.Equal(1, ruleV2Table.Count);
+                Assert.Single(ruleV2Table);
 
                 var j = ruleV2Table.FindById(12);
                 Assert.Equal(200, j.Status);
@@ -2193,7 +2193,7 @@ namespace BTDBTest
                 var todo = creatorToProcess(tr);
                 var done = creatorDone(tr);
 
-                Assert.Equal(0, todo.Count);
+                Assert.Empty(todo);
                 var job = done.FindById(1);
                 Assert.Equal(2, job.Properties.Count);
                 Assert.Equal("two", job.Properties[2]);
@@ -2627,7 +2627,7 @@ namespace BTDBTest
             Assert.Equal((uint)0, table.CountByUploadTime(1, BatchType.Notification, param));
             Assert.Equal(new[] { 1ul, 2ul, 3ul }, table.FindByIdOnlyPk(1).Select(v => v.BatchId).ToList());
             table.RemoveAll();
-            Assert.Equal(0, table.Count);
+            Assert.Empty(table);
         }
 
         [Fact]
@@ -2907,7 +2907,7 @@ namespace BTDBTest
             ItemWithOnBeforeRemove.CallCounter = 0;
             tr.KeyValueDBTransaction.SetCommitUlong(1);
             table.RemoveAll();
-            Assert.Equal(1, table.Count);
+            Assert.Single(table);
             Assert.Equal(6ul, ItemWithOnBeforeRemove.CallCounter);
             _container = null;
         }

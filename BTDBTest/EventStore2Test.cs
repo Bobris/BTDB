@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using BTDB.EventStore2Layer;
 using BTDB.EventStoreLayer;
 using Xunit;
@@ -937,14 +938,14 @@ public class EventStore2Test
     }
 
     [Fact]
-    public void CanSerializeOdbDictionary()
+    public async Task CanSerializeOdbDictionary()
     {
         using (var kvDb = new BTreeKeyValueDB(new InMemoryFileCollection()))
         using (var objDb = new ObjectDB())
         {
             objDb.Open(kvDb, false);
 
-            using (var tr = objDb.StartWritingTransaction().Result)
+            using (var tr = await objDb.StartWritingTransaction())
             {
                 var singleton = tr.Singleton<ObjectWithIDictionary>();
                 singleton.Items[1] = "ahoj";

@@ -1,6 +1,7 @@
 using System;
 using System.Security.Cryptography;
 using System.Threading;
+using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using Xunit;
@@ -56,17 +57,17 @@ public class ChunkStorageTest : IDisposable
     }
 
     [Fact]
-    public void WhatIPutICanGetInSameTransaction()
+    public async Task WhatIPutICanGetInSameTransaction()
     {
         using (var tr = _cs.StartTransaction())
         {
             tr.Put(CalcHash(new byte[] { 0 }), ByteBuffer.NewAsync(new byte[] { 1 }), true);
-            Assert.Equal(new byte[] { 1 }, tr.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+            Assert.Equal(new byte[] { 1 }, (await tr.Get(CalcHash(new byte[] { 0 }))).ToByteArray());
         }
     }
 
     [Fact]
-    public void WhatIPutICanGetInNextTransaction()
+    public async Task WhatIPutICanGetInNextTransaction()
     {
         using (var tr = _cs.StartTransaction())
         {
@@ -75,12 +76,12 @@ public class ChunkStorageTest : IDisposable
 
         using (var tr = _cs.StartTransaction())
         {
-            Assert.Equal(new byte[] { 1 }, tr.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+            Assert.Equal(new byte[] { 1 }, (await tr.Get(CalcHash(new byte[] { 0 }))).ToByteArray());
         }
     }
 
     [Fact]
-    public void ItRemembersContentAfterReopen()
+    public async Task ItRemembersContentAfterReopen()
     {
         using (var tr = _cs.StartTransaction())
         {
@@ -90,7 +91,7 @@ public class ChunkStorageTest : IDisposable
         ReopenStorage();
         using (var tr = _cs.StartTransaction())
         {
-            Assert.Equal([1], tr.Get(CalcHash([0])).Result.ToByteArray());
+            Assert.Equal([1], (await tr.Get(CalcHash([0]))).ToByteArray());
         }
     }
 }

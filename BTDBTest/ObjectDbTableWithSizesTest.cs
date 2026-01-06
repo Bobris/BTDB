@@ -89,13 +89,13 @@ public class ObjectDbTableWithSizesTest : ObjectDbTestBase
         var table = tr.GetRelation<IDocumentTable>();
         CreateData(table);
         Assert.Equal((2ul,19ul,239666ul+171ul), table.RemoveWithSizesById(Constraint<ulong>.Any, Constraint<string>.Any));
-        Assert.Equal(0, table.Count);
+        Assert.Empty(table);
         CreateData(table);
         Assert.Equal((2ul,19ul,239666ul+171ul), table.RemoveWithSizesById(Constraint.Unsigned.Exact(1ul), Constraint<string>.Any));
-        Assert.Equal(0, table.Count);
+        Assert.Empty(table);
         CreateData(table);
         Assert.Equal((2ul,19ul,239666ul+171ul), table.RemoveWithSizesById(Constraint.Unsigned.Exact(1ul), Constraint.String.StartsWith("Fi")));
-        Assert.Equal(0, table.Count);
+        Assert.Empty(table);
     }
 
     static void CreateData(IDocumentTable table)

@@ -2,6 +2,7 @@
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace BTDBTest;
@@ -23,21 +24,24 @@ public class EnumCompatibilityTest : IDisposable
     }
 
     [Fact]
-    public void EnumIsBinaryCompatible()
+    public async Task EnumIsBinaryCompatible()
     {
         const ulong testId = 1ul;
         var odb = CreateObjectDB();
-        var tr = odb.StartWritingTransaction().Result;
-        var itemRelation = tr.GetRelation<IItemTable>();
-        itemRelation.Insert(new Item { Id = testId, Type = ItemType.B });
-        tr.Commit();
-        tr.Dispose();
+        using (var tr = await odb.StartWritingTransaction())
+        {
+            var itemRelation = tr.GetRelation<IItemTable>();
+            itemRelation.Insert(new Item { Id = testId, Type = ItemType.B });
+            tr.Commit();
+        }
+
         odb = CreateObjectDB();
-        tr = odb.StartReadOnlyTransaction();
-        var flagRelation = tr.GetRelation<IFlagTable>();
-        var flag = flagRelation.FindById(testId);
-        tr.Dispose();
-        Assert.Equal(FlagType.B, flag.Type);
+        using (var tr = odb.StartReadOnlyTransaction())
+        {
+            var flagRelation = tr.GetRelation<IFlagTable>();
+            var flag = flagRelation.FindById(testId);
+            Assert.Equal(FlagType.B, flag.Type);
+        }
     }
 
     public void Dispose()

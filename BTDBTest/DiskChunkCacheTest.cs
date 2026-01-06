@@ -35,28 +35,28 @@ public class DiskChunkCacheTest
     }
 
     [Fact]
-    public void GetFromEmptyCacheReturnsEmptyByteBuffer()
+    public async Task GetFromEmptyCacheReturnsEmptyByteBuffer()
     {
         using (var fileCollection = new InMemoryFileCollection())
         using (var cache = new DiskChunkCache(fileCollection, 20, 1000))
         {
-            Assert.Equal(0, cache.Get(CalcHash(new byte[] { 0 })).Result.Length);
+            Assert.Equal(0, (await cache.Get(CalcHash(new byte[] { 0 }))).Length);
         }
     }
 
     [Fact]
-    public void WhatIPutICanGet()
+    public async Task WhatIPutICanGet()
     {
         using (var fileCollection = new InMemoryFileCollection())
         using (var cache = new DiskChunkCache(fileCollection, 20, 1000))
         {
             cache.Put(CalcHash(new byte[] { 0 }), ByteBuffer.NewAsync(new byte[] { 1 }));
-            Assert.Equal(new byte[] { 1 }, cache.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+            Assert.Equal(new byte[] { 1 }, (await cache.Get(CalcHash(new byte[] { 0 }))).ToByteArray());
         }
     }
 
     [Fact]
-    public void ItRemebersContentAfterReopen()
+    public async Task ItRemebersContentAfterReopen()
     {
         using (var fileCollection = new InMemoryFileCollection())
         {
@@ -66,7 +66,7 @@ public class DiskChunkCacheTest
             }
             using (var cache = new DiskChunkCache(fileCollection, 20, 1000))
             {
-                Assert.Equal(new byte[] { 1 }, cache.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+                Assert.Equal(new byte[] { 1 }, (await cache.Get(CalcHash(new byte[] { 0 }))).ToByteArray());
             }
         }
     }
@@ -97,11 +97,11 @@ public class DiskChunkCacheTest
         cache.Put(CalcHash(content), ByteBuffer.NewAsync(content));
     }
 
-    bool Get(IChunkCache cache, int i)
+    async Task<bool> Get(IChunkCache cache, int i)
     {
         var content = new byte[1024];
         PackUnpack.PackInt32BE(content, 0, i);
-        return cache.Get(CalcHash(content)).Result.Length == 1024;
+        return (await cache.Get(CalcHash(content))).Length == 1024;
     }
 
     [Fact]
@@ -116,13 +116,13 @@ public class DiskChunkCacheTest
                 {
                     Put(cache, i);
                     for (var j = 0; j < i; j++)
-                        Get(cache, i);
+                        await Get(cache, i);
                     if (CalcLength(fileCollection) <= cacheCapacity) continue;
                     await FinishCompactTask(cache);
                     Assert.True(CalcLength(fileCollection) <= cacheCapacity);
                 }
-                Assert.True(Get(cache, 79));
-                Assert.False(Get(cache, 0));
+                Assert.True(await Get(cache, 79));
+                Assert.False(await Get(cache, 0));
             }
         }
     }
@@ -139,14 +139,14 @@ public class DiskChunkCacheTest
                 {
                     Put(cache, i);
                     for (var j = 0; j < 79 - i; j++)
-                        Get(cache, i);
+                        await Get(cache, i);
                     if (CalcLength(fileCollection) <= cacheCapacity) continue;
                     await FinishCompactTask(cache);
                     Assert.True(CalcLength(fileCollection) <= cacheCapacity);
                 }
                 _output.WriteLine(cache.CalcStats());
-                Assert.True(Get(cache, 0));
-                Assert.False(Get(cache, 60));
+                Assert.True(await Get(cache, 0));
+                Assert.False(await Get(cache, 60));
             }
         }
     }
@@ -162,7 +162,7 @@ public class DiskChunkCacheTest
         fileCollection.Enumerate().Sum(f => (long)f.GetSize());
 
     [Fact]
-    public void AccessEveryTenthTenTimesMoreMakesItStay()
+    public async Task AccessEveryTenthTenTimesMoreMakesItStay()
     {
         using (var fileCollection = new InMemoryFileCollection())
         {
@@ -173,13 +173,13 @@ public class DiskChunkCacheTest
                 {
                     Put(cache, i);
                     for (var j = 0; j < (i % 5 == 0 ? 10 + i : 1); j++)
-                        Get(cache, i);
+                        await Get(cache, i);
                     if (i == 42) Thread.Sleep(500);
                     Assert.True(fileCollection.Enumerate().Sum(f => (long)f.GetSize()) <= cacheCapacity);
                 }
                 _output.WriteLine(cache.CalcStats());
-                Assert.True(Get(cache, 0));
-                Assert.False(Get(cache, 1));
+                Assert.True(await Get(cache, 0));
+                Assert.False(await Get(cache, 1));
             }
         }
     }
