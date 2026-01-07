@@ -27,14 +27,15 @@ namespace BTDBTest
         {
             [PrimaryKey(1)] public ulong TenantId { get; set; }
 
-            [PrimaryKey(2)] public string Email { get; set; }
+            [PrimaryKey(2)] public string Email { get; set; } = null!;
 
-            public string Name { get; set; }
+            public string Name { get; set; } = null!;
 
-            public Dictionary<string, IList<byte>> Ratings { get; set; }
+            public Dictionary<string, IList<byte>> Ratings { get; set; } = null!;
 
-            public bool Equals(PersonSimple other)
+            public bool Equals(PersonSimple? other)
             {
+                if (other is null) return false;
                 if (TenantId != other.TenantId || !string.Equals(Email, other.Email) ||
                     !string.Equals(Name, other.Name))
                     return false;
@@ -48,8 +49,7 @@ namespace BTDBTest
 
                 foreach (var r in Ratings)
                 {
-                    IList<byte> otherValue;
-                    if (!other.Ratings.TryGetValue(r.Key, out otherValue))
+                    if (!other.Ratings.TryGetValue(r.Key, out var otherValue))
                         return false;
                     if (r.Value == otherValue)
                         return true;
@@ -454,7 +454,7 @@ namespace BTDBTest
 
             [SecondaryKey("Age", Order = 2)]
             [SecondaryKey("Name", IncludePrimaryKeyOrder = 1)]
-            public string Name { get; set; }
+            public string Name { get; set; } = null!;
 
             [SecondaryKey("Age", IncludePrimaryKeyOrder = 1)]
             public uint Age { get; set; }
@@ -683,10 +683,10 @@ namespace BTDBTest
 
             [SecondaryKey("Name")]
             [SecondaryKey("PrioritizedName", Order = 2)]
-            public string Name { get; set; }
+            public string Name { get; set; } = null!;
 
-            [SecondaryKey("Look")] public Dictionary<int, int> Lookup { get; set; }
-            public IDictionary<int, int> UnusedDictionary { get; set; } //test skipping with ctx
+            [SecondaryKey("Look")] public Dictionary<int, int> Lookup { get; set; } = null!;
+            public IDictionary<int, int> UnusedDictionary { get; set; } = null!; //test skipping with ctx
 
             [SecondaryKey("PrioritizedName")] public short Priority { get; set; }
         }
@@ -837,7 +837,7 @@ namespace BTDBTest
 
             [PrimaryKey(2)]
             [SecondaryKey("Email", Order = 2)]
-            public string Email { get; set; }
+            public string Email { get; set; } = null!;
         }
 
         public interface IUserTable : IRelation<User>
@@ -901,7 +901,7 @@ namespace BTDBTest
             [SecondaryKey("Status")]
             [SecondaryKey("CompanyIdAndStatus", Order = 2)]
             [SecondaryKey("UserIdAndStatus", Order = 2)]
-            public string Status { get; set; }
+            public string Status { get; set; } = null!;
         }
 
         public interface ILicTable : IRelation<Lic>
@@ -933,7 +933,7 @@ namespace BTDBTest
             public ulong CompanyId { get; set; }
 
             [PrimaryKey(2)] public ulong Id { get; set; }
-            public string Name { get; set; }
+            public string Name { get; set; } = null!;
 
             [SecondaryKey("Beds")] public int Beds { get; set; }
         }
@@ -992,7 +992,7 @@ namespace BTDBTest
 
             [PrimaryKey(2)] public ulong Id { get; set; }
 
-            public string Name { get; set; }
+            public string Name { get; set; } = null!;
 
             [SecondaryKey("DocumentType")] public uint DocumentType { get; set; }
 
@@ -1093,13 +1093,13 @@ namespace BTDBTest
         {
             [PrimaryKey] public ulong Id { get; set; }
 
-            public IIndirect<RawData> Data { get; set; }
+            public IIndirect<RawData> Data { get; set; } = null!;
         }
 
         public class RawData
         {
-            public byte[] Data { get; set; }
-            public IDictionary<ulong, ulong> Edges { get; set; }
+            public byte[] Data { get; set; } = null!;
+            public IDictionary<ulong, ulong> Edges { get; set; } = null!;
         }
 
         public interface IHddRelation : IRelation<File>
@@ -1247,39 +1247,39 @@ namespace BTDBTest
 
         public class PermutationOfKeys
         {
-            [SecondaryKey("Sec", Order = 1)] public string A0 { get; set; }
+            [SecondaryKey("Sec", Order = 1)] public string A0 { get; set; } = null!;
 
             [PrimaryKey(1)]
             [SecondaryKey("Sec", Order = 2)]
-            public string A { get; set; }
+            public string A { get; set; } = null!;
 
-            [SecondaryKey("Sec", Order = 3)] public string A1 { get; set; }
+            [SecondaryKey("Sec", Order = 3)] public string A1 { get; set; } = null!;
 
-            [SecondaryKey("Sec", Order = 7)] public string B0 { get; set; }
+            [SecondaryKey("Sec", Order = 7)] public string B0 { get; set; } = null!;
 
             [PrimaryKey(2)]
             [SecondaryKey("Sec", Order = 8)]
-            public string B { get; set; }
+            public string B { get; set; } = null!;
 
-            [SecondaryKey("Sec", Order = 9)] public string B1 { get; set; }
+            [SecondaryKey("Sec", Order = 9)] public string B1 { get; set; } = null!;
 
-            [SecondaryKey("Sec", Order = 6)] public string C0 { get; set; }
+            [SecondaryKey("Sec", Order = 6)] public string C0 { get; set; } = null!;
 
-            [PrimaryKey(3)] public string C { get; set; }
+            [PrimaryKey(3)] public string C { get; set; } = null!;
 
             [PrimaryKey(4)]
             [SecondaryKey("Sec", Order = 4)]
-            public string D { get; set; }
+            public string D { get; set; } = null!;
 
-            [SecondaryKey("Sec", Order = 5)] public string D1 { get; set; }
+            [SecondaryKey("Sec", Order = 5)] public string D1 { get; set; } = null!;
 
-            [SecondaryKey("Sec", Order = 10)] public string E0 { get; set; }
+            [SecondaryKey("Sec", Order = 10)] public string E0 { get; set; } = null!;
 
             [PrimaryKey(5)]
             [SecondaryKey("Sec", Order = 11)]
-            public string E { get; set; }
+            public string E { get; set; } = null!;
 
-            [SecondaryKey("Sec", Order = 12)] public string E1 { get; set; }
+            [SecondaryKey("Sec", Order = 12)] public string E1 { get; set; } = null!;
         }
         //Sec: A0, A, A1, D, D1, C0, B0, B, B1, E0, E, E1
 
@@ -1548,31 +1548,31 @@ namespace BTDBTest
         {
             [PrimaryKey(1)] public ulong CompanyId { get; set; }
             [PrimaryKey(2)] public ulong ApplicationId { get; set; }
-            [PrimaryKey(3)] public string IdentityUserId { get; set; }
+            [PrimaryKey(3)] public string IdentityUserId { get; set; } = null!;
 
             [SecondaryKey("NormalizedUserName", IncludePrimaryKeyOrder = 2)]
-            public string NormalizedUserName { get; set; }
+            public string NormalizedUserName { get; set; } = null!;
         }
 
         public class EducatedPerson : PersonSimple
         {
-            public string Degree { get; set; }
+            public string Degree { get; set; } = null!;
         }
 
         class TraceListenerCountingFails : TraceListener
         {
             public int FailCount { get; set; }
 
-            public override void Fail(string message, string detailMessage)
+            public override void Fail(string? message, string? detailMessage)
             {
                 FailCount++;
             }
 
-            public override void Write(string message)
+            public override void Write(string? message)
             {
             }
 
-            public override void WriteLine(string message)
+            public override void WriteLine(string? message)
             {
             }
         }
@@ -1612,7 +1612,7 @@ namespace BTDBTest
         {
             [PrimaryKey(1)] public ulong CompanyId { get; set; }
             [PrimaryKey(0)] public ulong ApplicationId { get; set; }
-            public string Name { get; set; }
+            public string Name { get; set; } = null!;
         }
 
         public interface IWithInsert<T>
@@ -1638,7 +1638,7 @@ namespace BTDBTest
         {
             [PrimaryKey] public ulong Id { get; set; }
 
-            [SecondaryKey("Name")] public string Name { get; set; }
+            [SecondaryKey("Name")] public string Name { get; set; } = null!;
         }
 
         public interface ISimpleRelation : IRelation<SimpleObject>
@@ -1759,9 +1759,9 @@ namespace BTDBTest
             table.Insert(new WithNullableInKey { Value = 41u });
             table.Insert(new WithNullableInKey { Key = 1u, Value = 42u });
             var n = table.FindById(new ulong?());
-            Assert.Equal(41u, n.Value.Value);
+            Assert.Equal(41u, n.Value.GetValueOrDefault());
             n = table.FindById(1u);
-            Assert.Equal(42u, n.Value.Value);
+            Assert.Equal(42u, n.Value.GetValueOrDefault());
         }
 
         public class WithNullableInSecondaryKey
@@ -1791,7 +1791,7 @@ namespace BTDBTest
             var v = table.FindBySK(50346);
             Assert.NotNull(v);
             Assert.True(v.Value.HasValue);
-            Assert.Equal(42u, v.Value.Value);
+            Assert.Equal(42u, v.Value.GetValueOrDefault());
         }
 
         public enum TestEnum
@@ -1858,23 +1858,24 @@ namespace BTDBTest
 
             var o = table.FindById(11);
 
-            Assert.Equal(-10, o.SByteField.Value);
-            Assert.Equal(10, o.ByteField.Value);
-            Assert.Equal(-1000, o.ShortField.Value);
-            Assert.Equal(1000, o.UShortField.Value);
-            Assert.Equal(-100000, o.IntField.Value);
-            Assert.Equal(100000u, o.UIntField.Value);
-            Assert.Equal(-1000000000000, o.LongField.Value);
-            Assert.Equal(1000000000000u, o.ULongField.Value);
-            Assert.True(o.BoolField.Value);
-            Assert.InRange(12.34 - o.DoubleField.Value, -1e-10, 1e10);
-            Assert.InRange(-12.34 - o.FloatField.Value, -1e-6, 1e6);
-            Assert.Equal(123456.789m, o.DecimalField.Value);
-            Assert.Equal(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local), o.DateTimeField.Value);
-            Assert.Equal(new TimeSpan(1, 2, 3, 4), o.TimeSpanField.Value);
-            Assert.Equal(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField.Value);
-            Assert.Equal(TestEnum.Item2, o.EnumField.Value);
-            Assert.Equal(new byte[] { 1 }, o.ByteBufferField.Value.ToByteArray());
+            Assert.Equal(-10, o.SByteField.GetValueOrDefault());
+            Assert.Equal(10, o.ByteField.GetValueOrDefault());
+            Assert.Equal(-1000, o.ShortField.GetValueOrDefault());
+            Assert.Equal(1000, o.UShortField.GetValueOrDefault());
+            Assert.Equal(-100000, o.IntField.GetValueOrDefault());
+            Assert.Equal(100000u, o.UIntField.GetValueOrDefault());
+            Assert.Equal(-1000000000000, o.LongField.GetValueOrDefault());
+            Assert.Equal(1000000000000u, o.ULongField.GetValueOrDefault());
+            Assert.True(o.BoolField.GetValueOrDefault());
+            Assert.InRange(12.34 - o.DoubleField.GetValueOrDefault(), -1e-10, 1e10);
+            Assert.InRange(-12.34 - o.FloatField.GetValueOrDefault(), -1e-6, 1e6);
+            Assert.Equal(123456.789m, o.DecimalField.GetValueOrDefault());
+            Assert.Equal(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local),
+                o.DateTimeField.GetValueOrDefault());
+            Assert.Equal(new TimeSpan(1, 2, 3, 4), o.TimeSpanField.GetValueOrDefault());
+            Assert.Equal(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField.GetValueOrDefault());
+            Assert.Equal(TestEnum.Item2, o.EnumField.GetValueOrDefault());
+            Assert.Equal(new byte[] { 1 }, o.ByteBufferField.GetValueOrDefault().ToByteArray());
         }
 
         [DebuggerDisplay("{DebuggerDisplay,nq}")]
@@ -1886,7 +1887,7 @@ namespace BTDBTest
 
             [NotStored] string DebuggerDisplay => $"CompanyId={CompanyId}, UserId={UserId}, Value={Value}";
 
-            public override bool Equals(object obj) =>
+            public override bool Equals(object? obj) =>
                 obj is InheritedRelation_CompanyItem item &&
                 CompanyId == item.CompanyId &&
                 UserId == item.UserId;
@@ -1997,7 +1998,7 @@ namespace BTDBTest
                 Status = 100;
             }
 
-            public IList<Activity> Activities { get; set; }
+            public IList<Activity> Activities { get; set; } = null!;
 
             [PrimaryKey(1)] public ulong Id { get; set; }
 
@@ -2051,7 +2052,7 @@ namespace BTDBTest
         {
             [PrimaryKey(1)] public ulong CompanyId { get; set; }
             [PrimaryKey(2)] public ulong ApplicationId { get; set; }
-            public string Description { get; set; }
+            public string Description { get; set; } = null!;
             public ulong CreatedUserId { get; set; }
         }
 
@@ -2083,7 +2084,7 @@ namespace BTDBTest
 
             [PrimaryKey(2)] public DateTime Expiration { get; set; }
 
-            public string Name { get; set; }
+            public string Name { get; set; } = null!;
         }
 
         public interface IItemTaskTable : IRelation<ItemTask>
@@ -2148,7 +2149,7 @@ namespace BTDBTest
         public class SimpleJob
         {
             [PrimaryKey] public ulong Id { get; set; }
-            public IDictionary<int, string> Properties { get; set; }
+            public IDictionary<int, string> Properties { get; set; } = null!;
         }
 
         public interface ISimpleJobTable : IRelation<SimpleJob>
@@ -2278,12 +2279,12 @@ namespace BTDBTest
         {
             [PrimaryKey(1)] public ulong Id { get; set; }
 
-            public IList<string> Parts { get; set; }
+            public IList<string> Parts { get; set; } = null!;
         }
 
         public class PartWithSet
         {
-            public ISet<string> Parts { get; set; }
+            public ISet<string> Parts { get; set; } = null!;
         }
 
         public interface ITableWithListAsSet : IRelation<ItemWithList>
@@ -2308,7 +2309,7 @@ namespace BTDBTest
         public class ItemWithOrderedSet
         {
             [PrimaryKey(1)] public long Id { get; set; }
-            public IOrderedSet<string> Parts { get; set; }
+            public IOrderedSet<string> Parts { get; set; } = null!;
         }
 
         public interface ITableWithOrderedSet : IRelation<ItemWithOrderedSet>
@@ -2656,7 +2657,7 @@ namespace BTDBTest
         {
             [PrimaryKey(1)] public ulong Id { get; set; }
 
-            public IInnerInterface Inner { get; set; }
+            public IInnerInterface Inner { get; set; } = null!;
         }
 
         [Generate]
@@ -2676,7 +2677,7 @@ namespace BTDBTest
 
             [PrimaryKey(1)] public ulong TenantId { get; set; }
 
-            public string Name { get; set; }
+            public string Name { get; set; } = null!;
         }
 
         public interface IPersonPrivateConstructorTable : IRelation<PersonPrivateConstructor>
@@ -2702,7 +2703,7 @@ namespace BTDBTest
 
             [PrimaryKey(1)] public ulong TenantId { get; set; }
 
-            public string Name { get; set; }
+            public string Name { get; set; } = null!;
         }
 
         public interface IPersonWoConstructorTable : IRelation<PersonWoConstructor>
@@ -2734,7 +2735,7 @@ namespace BTDBTest
             [PrimaryKey(1)] public ulong TenantId { get; set; }
 
             // DON'T DO THIS IN YOUR CODE !!! Either use IList<T>, List<T>, HashSet<T> for inline storage or IOrderedSet<T> for externaly stored T
-            public OrderedSet<int> Ordered { get; set; }
+            public OrderedSet<int> Ordered { get; set; } = null!;
         }
 
         public interface IRowWithOrderedSetTable : IRelation<RowWithOrderedSet>
@@ -2752,7 +2753,7 @@ namespace BTDBTest
 
         public class UrlWithStatus
         {
-            [PrimaryKey(1)] public string Url { get; set; }
+            [PrimaryKey(1)] public string Url { get; set; } = null!;
             public HttpStatusCode StatusCode { get; set; }
         }
 
@@ -2773,7 +2774,7 @@ namespace BTDBTest
         public class RowWithObject
         {
             [PrimaryKey(1)] public ulong Id { get; set; }
-            public object Anything { get; set; }
+            public object Anything { get; set; } = null!;
         }
 
         public interface IRowWithObjectTable : IRelation<RowWithObject>
@@ -2819,7 +2820,7 @@ namespace BTDBTest
         public class ItemWithOnSerialize
         {
             [PrimaryKey(1)] public ulong Id { get; set; }
-            public string Text { get; set; }
+            public string Text { get; set; } = null!;
 
             [OnSerialize]
             void MakeTextUpperCase()
@@ -3031,7 +3032,7 @@ namespace BTDBTest
         {
             [PrimaryKey(1)] public ulong Id { get; set; }
 
-            public Dictionary<string, ReadOnlyMemory<byte>> Dict { get; set; }
+            public Dictionary<string, ReadOnlyMemory<byte>> Dict { get; set; } = null!;
         }
 
         public interface IItemWithDictWithReadOnlyMemoryTable : IRelation<ItemWithDictWithReadOnlyMemory>
@@ -3062,7 +3063,7 @@ namespace BTDBTest
 
         public class ActionItem
         {
-            public PlannedMigrationStartInfo PlannedMigrationStart { get; set; }
+            public PlannedMigrationStartInfo PlannedMigrationStart { get; set; } = null!;
         }
 
         public interface IActionTable : IRelation<ActionItem>
@@ -3085,7 +3086,7 @@ namespace BTDBTest
             [SecondaryKey("ArchiveIdForMigration", IncludePrimaryKeyOrder = 1)]
             public string? OldArchiveIdForMigration => ArchiveId;
 
-            public string ArchiveId { get; set; }
+            public string ArchiveId { get; set; } = null!;
         }
 
         public interface IInvoiceTable : IRelation<Invoice>

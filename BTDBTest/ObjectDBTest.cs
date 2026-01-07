@@ -29,15 +29,16 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class Person : IEquatable<Person>
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
         public uint Age { get; set; }
 
-        public bool Equals(Person other)
+        public bool Equals(Person? other)
         {
+            if (other is null) return false;
             return Name == other.Name && Age == other.Age;
         }
 
-        public override bool Equals(object other) => Equals(other as Person);
+        public override bool Equals(object? other) => Equals(other as Person);
 
         public override int GetHashCode()
         {
@@ -51,24 +52,24 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class PersonWithNonStoredProperty
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
         [NotStored] public uint Age { get; set; }
     }
 
     [Generate]
     public class PersonNew
     {
-        public string Name { get; set; }
-        public string Comment { get; set; }
+        public string Name { get; set; } = null!;
+        public string Comment { get; set; } = null!;
         public ulong Age { get; set; }
     }
 
     [Generate]
     public class Tree
     {
-        public Tree Left { get; set; }
-        public Tree Right { get; set; }
-        public string Content { get; set; }
+        public Tree Left { get; set; } = null!;
+        public Tree Right { get; set; } = null!;
+        public string Content { get; set; } = null!;
     }
 
     [Generate]
@@ -516,7 +517,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class VariousFieldTypes
     {
-        public string StringField { get; set; }
+        public string StringField { get; set; } = null!;
         public sbyte SByteField { get; set; }
         public byte ByteField { get; set; }
         public short ShortField { get; set; }
@@ -525,8 +526,8 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public uint UIntField { get; set; }
         public long LongField { get; set; }
         public ulong ULongField { get; set; }
-        public IIndirect<object> DbObjectField { get; set; }
-        public IIndirect<VariousFieldTypes> VariousFieldTypesField { get; set; }
+        public IIndirect<object> DbObjectField { get; set; } = null!;
+        public IIndirect<VariousFieldTypes> VariousFieldTypesField { get; set; } = null!;
         public bool BoolField { get; set; }
         public double DoubleField { get; set; }
         public float FloatField { get; set; }
@@ -535,9 +536,9 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         public DateTime DateTimeField { get; set; }
         public TimeSpan TimeSpanField { get; set; }
         public TestEnum EnumField { get; set; }
-        public byte[] ByteArrayField { get; set; }
+        public byte[] ByteArrayField { get; set; } = null!;
         public ByteBuffer ByteBufferField { get; set; }
-        public Version VersionField { get; set; }
+        public Version VersionField { get; set; } = null!;
         public EncryptedString EncryptedStringField { get; set; }
     }
 
@@ -636,7 +637,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class Root
     {
-        public IList<Person> Persons { get; set; }
+        public IList<Person> Persons { get; set; } = null!;
     }
 
     [Fact]
@@ -664,12 +665,12 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class VariousLists
     {
-        public IList<int> IntList { get; set; }
-        public IList<string> StringList { get; set; }
-        public IList<byte> ByteList { get; set; }
-        public IList<ByteBuffer> ByteBufferList { get; set; }
-        public IList<int?> NullableIntList { get; set; }
-        public ISet<int> IntSet { get; set; }
+        public IList<int> IntList { get; set; } = null!;
+        public IList<string> StringList { get; set; } = null!;
+        public IList<byte> ByteList { get; set; } = null!;
+        public IList<ByteBuffer> ByteBufferList { get; set; } = null!;
+        public IList<int?> NullableIntList { get; set; } = null!;
+        public ISet<int> IntSet { get; set; } = null!;
     }
 
     [Fact]
@@ -697,9 +698,9 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             Assert.Equal(new byte[] { 1, 2 }, root.ByteBufferList[0].ToByteArray());
             Assert.Equal(new List<int?> { 1, 2 }, root.NullableIntList);
             Assert.Equal(new HashSet<int> { 1, 2 }, root.IntSet);
-            root.IntList = null;
-            root.StringList = null;
-            root.ByteList = null;
+            root.IntList = null!;
+            root.StringList = null!;
+            root.ByteList = null!;
             tr.Store(root);
             tr.Commit();
         }
@@ -740,7 +741,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             var root = tr.Singleton<VariousLists>();
             root.IntList = new List<int> { 5, 10, 2000 };
             root.StringList = new List<string>();
-            root.ByteList = null;
+            root.ByteList = null!;
             root.ByteBufferList = new List<ByteBuffer> { ByteBuffer.NewAsync(new byte[] { 1, 2 }) };
             root.NullableIntList = new List<int?> { 1, 2 };
             root.IntSet = new HashSet<int> { 1, 2 };
@@ -758,8 +759,10 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class InlineDictionary
     {
-        public Dictionary<int, string> Int2String { get; set; }
-        public Dictionary<int?, bool?> NullableInt2Bool { get; set; }
+        public Dictionary<int, string> Int2String { get; set; } = null!;
+#pragma warning disable CS8714
+        public Dictionary<int?, bool?> NullableInt2Bool { get; set; } = null!;
+#pragma warning restore CS8714
     }
 
     [Fact]
@@ -768,8 +771,10 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         using (var tr = _db.StartTransaction())
         {
             var root = tr.Singleton<InlineDictionary>();
-            root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+            root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null! } };
+#pragma warning disable CS8714
             root.NullableInt2Bool = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } };
+#pragma warning restore CS8714
             tr.Commit();
         }
 
@@ -791,7 +796,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         {
             var root = tr.Singleton<InlineDictionary>();
             Assert.Empty(root.Int2String);
-            root.Int2String = null;
+            root.Int2String = null!;
             tr.Store(root);
             tr.Commit();
         }
@@ -809,8 +814,10 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         using (var tr = _db.StartTransaction())
         {
             var root = tr.Singleton<InlineDictionary>();
-            root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+            root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null! } };
+#pragma warning disable CS8714
             root.NullableInt2Bool = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } };
+#pragma warning restore CS8714
             tr.Commit();
         }
 
@@ -825,8 +832,8 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class InlineList
     {
-        public List<int> IntList { get; set; }
-        public List<int?> NullableIntList { get; set; }
+        public List<int> IntList { get; set; } = null!;
+        public List<int?> NullableIntList { get; set; } = null!;
     }
 
     [Fact]
@@ -859,7 +866,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         {
             var root = tr.Singleton<InlineList>();
             Assert.Empty(root.IntList);
-            root.IntList = null;
+            root.IntList = null!;
             tr.Store(root);
             tr.Commit();
         }
@@ -892,8 +899,10 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class SimpleDictionary
     {
-        public IDictionary<int, string> Int2String { get; set; }
-        public IDictionary<int?, bool?> NullableInt2Bool { get; set; }
+        public IDictionary<int, string> Int2String { get; set; } = null!;
+#pragma warning disable CS8714
+        public IDictionary<int?, bool?> NullableInt2Bool { get; set; } = null!;
+#pragma warning restore CS8714
     }
 
     [Fact]
@@ -902,8 +911,10 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         using (var tr = _db.StartTransaction())
         {
             var root = tr.Singleton<SimpleDictionary>();
-            root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+            root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null! } };
+#pragma warning disable CS8714
             root.NullableInt2Bool = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } };
+#pragma warning restore CS8714
             tr.Commit();
         }
 
@@ -935,8 +946,10 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         using (var tr = _db.StartTransaction())
         {
             var root = tr.Singleton<SimpleDictionary>();
-            root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+            root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null! } };
+#pragma warning disable CS8714
             root.NullableInt2Bool = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } };
+#pragma warning restore CS8714
             tr.Commit();
         }
 
@@ -951,7 +964,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class SimpleOrderedDictionary
     {
-        public IOrderedDictionary<int, string> Int2String { get; set; }
+        public IOrderedDictionary<int, string> Int2String { get; set; } = null!;
     }
 
     [Fact]
@@ -1021,7 +1034,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class SimpleOrderedSet
     {
-        public IOrderedSet<int> IntSet { get; set; }
+        public IOrderedSet<int> IntSet { get; set; } = null!;
     }
 
     [Fact]
@@ -1085,8 +1098,8 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class ComplexDictionary
     {
-        public IDictionary<string, Person> String2Person { get; set; }
-        public string String { get; set; }
+        public IDictionary<string, Person> String2Person { get; set; } = null!;
+        public string String { get; set; } = null!;
     }
 
     [Fact]
@@ -1097,7 +1110,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             var root = tr.Singleton<ComplexDictionary>();
             Assert.NotNull(root.String2Person);
             root.String2Person = new Dictionary<string, Person>
-                { { "Boris", new Person { Name = "Boris", Age = 35 } }, { "null", null } };
+                { { "Boris", new Person { Name = "Boris", Age = 35 } }, { "null", null! } };
             tr.Commit();
         }
 
@@ -1140,7 +1153,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         {
             var root = tr.Singleton<ComplexDictionary>();
             root.String2Person = new Dictionary<string, Person>
-                { { "Boris", new Person { Name = "Boris", Age = 35 } }, { "null", null } };
+                { { "Boris", new Person { Name = "Boris", Age = 35 } }, { "null", null! } };
             tr.Commit();
         }
 
@@ -1155,7 +1168,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class ByteArrayDictionary
     {
-        public IDictionary<byte[], byte[]> Bytes2Bytes { get; set; }
+        public IDictionary<byte[], byte[]> Bytes2Bytes { get; set; } = null!;
     }
 
     [Fact]
@@ -1313,7 +1326,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 
     public class Manager : Person
     {
-        public List<Person> Managing { get; set; }
+        public List<Person> Managing { get; set; } = null!;
     }
 
     [Fact]
@@ -1366,7 +1379,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class ListOfInlinePersons
     {
-        public List<Person> InlinePersons { get; set; }
+        public List<Person> InlinePersons { get; set; } = null!;
     }
 
     [Fact]
@@ -1397,7 +1410,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class PersonWithPrivateAge
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
         private uint Age { get; set; }
 
         [NotStored]
@@ -1450,10 +1463,10 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class IndirectTree
     {
-        public IIndirect<IndirectTree> Parent { get; set; }
-        public IIndirect<IndirectTree> Left { get; set; }
-        public IIndirect<IndirectTree> Right { get; set; }
-        public string Content { get; set; }
+        public IIndirect<IndirectTree> Parent { get; set; } = null!;
+        public IIndirect<IndirectTree> Left { get; set; } = null!;
+        public IIndirect<IndirectTree> Right { get; set; } = null!;
+        public string Content { get; set; } = null!;
     }
 
     [Fact]
@@ -1512,8 +1525,8 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class TwoComplexDictionary
     {
-        public IDictionary<string, Person> String2Person { get; set; }
-        public IDictionary<string, PersonNew> String2PersonNew { get; set; }
+        public IDictionary<string, Person> String2Person { get; set; } = null!;
+        public IDictionary<string, PersonNew> String2PersonNew { get; set; } = null!;
     }
 
     [Fact]
@@ -1550,14 +1563,14 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class ObjectWithDictString2ListOfUInt64
     {
-        public IDictionary<string, List<ulong>> Dict { get; set; }
+        public IDictionary<string, List<ulong>> Dict { get; set; } = null!;
     }
 
     [Generate]
     public class Object2WithDictString2ListOfUInt64
     {
-        public IDictionary<string, List<ulong>> Dict { get; set; }
-        public String Added { get; set; }
+        public IDictionary<string, List<ulong>> Dict { get; set; } = null!;
+        public String Added { get; set; } = null!;
     }
 
     [Fact]
@@ -1583,14 +1596,14 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class ObjectWithDictInt2String
     {
-        public IDictionary<int, string> Dict { get; set; }
+        public IDictionary<int, string> Dict { get; set; } = null!;
     }
 
     [Generate]
     public class Object2WithDictInt2String
     {
-        public IDictionary<int, string> Dict { get; set; }
-        public String Added { get; set; }
+        public IDictionary<int, string> Dict { get; set; } = null!;
+        public String Added { get; set; } = null!;
     }
 
     [Fact]
@@ -1654,7 +1667,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 
     public class ObjectWithDictWithInlineKey
     {
-        public IDictionary<Person, int> Dict { get; set; }
+        public IDictionary<Person, int> Dict { get; set; } = null!;
     }
 
     [Fact]
@@ -1668,7 +1681,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 
     public class ObjectWithDictWithInlineKeyNew
     {
-        public IDictionary<PersonNew, int> Dict { get; set; }
+        public IDictionary<PersonNew, int> Dict { get; set; } = null!;
     }
 
     [Fact(Skip = "This is very difficult to do")]
@@ -1697,7 +1710,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 
     public class ObjectWithDictWithDateTimeKey
     {
-        public IDictionary<DateTime, DateTime> Dist { get; set; }
+        public IDictionary<DateTime, DateTime> Dist { get; set; } = null!;
     }
 
     [Fact]
@@ -1731,13 +1744,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class CC1V1T2
     {
-        public IDictionary<CC1V1T3, long> Dict2 { get; set; }
+        public IDictionary<CC1V1T3, long> Dict2 { get; set; } = null!;
     }
 
     [Generate]
     public class CC1V1T1
     {
-        public IDictionary<ulong, CC1V1T2> Dict { get; set; }
+        public IDictionary<ulong, CC1V1T2> Dict { get; set; } = null!;
     }
 
     public enum CC1V2T3
@@ -1750,13 +1763,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class CC1V2T2
     {
-        public IDictionary<CC1V2T3, long> Dict2 { get; set; }
+        public IDictionary<CC1V2T3, long> Dict2 { get; set; } = null!;
     }
 
     [Generate]
     public class CC1V2T1
     {
-        public IDictionary<ulong, CC1V2T2> Dict { get; set; }
+        public IDictionary<ulong, CC1V2T2> Dict { get; set; } = null!;
     }
 
     [Fact]
@@ -1789,7 +1802,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class IndirectValueDict
     {
-        public IDictionary<int, IIndirect<Person>> Dict { get; set; }
+        public IDictionary<int, IIndirect<Person>> Dict { get; set; } = null!;
     }
 
     [Fact]
@@ -1825,7 +1838,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class WithIndirect
     {
-        public IIndirect<Person> Indirect { get; set; }
+        public IIndirect<Person> Indirect { get; set; } = null!;
     }
 
     [Fact]
@@ -1852,7 +1865,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         using (var tr = _db.StartTransaction())
         {
             var d = tr.Singleton<WithIndirect>();
-            d.Indirect = new DBIndirect<Person>(null);
+            d.Indirect = new DBIndirect<Person>(null!);
             tr.Commit();
         }
 
@@ -1964,30 +1977,30 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 
     public class Rule1
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
     }
 
     public class Rule2
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
         public int Type { get; set; }
     }
 
     [Generate]
     public class ObjectWfd1
     {
-        public Rule1 A { get; set; }
-        public Rule1 B { get; set; }
-        public Rule1 C { get; set; }
+        public Rule1 A { get; set; } = null!;
+        public Rule1 B { get; set; } = null!;
+        public Rule1 C { get; set; } = null!;
     }
 
     [Generate]
     public class ObjectWfd2
     {
-        public Rule2 A { get; set; }
+        public Rule2 A { get; set; } = null!;
 
         //public Rule2 B { get; set; }
-        public Rule2 C { get; set; }
+        public Rule2 C { get; set; } = null!;
     }
 
     [Fact]
@@ -2030,13 +2043,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class ComplexMap
     {
-        public IOrderedDictionary<ulong, IDictionary<MapEnum, int>> Items { get; set; }
+        public IOrderedDictionary<ulong, IDictionary<MapEnum, int>> Items { get; set; } = null!;
     }
 
     [Generate]
     public class ComplexMapEx
     {
-        public IOrderedDictionary<ulong, IDictionary<MapEnumEx, int>> Items { get; set; }
+        public IOrderedDictionary<ulong, IDictionary<MapEnumEx, int>> Items { get; set; } = null!;
     }
 
     [Fact]
@@ -2066,8 +2079,8 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class SimpleWithIndexer
     {
-        public string OddName { get; set; }
-        public string EvenName { get; set; }
+        public string OddName { get; set; } = null!;
+        public string EvenName { get; set; } = null!;
 
         public string this[int i] => i % 2 == 0 ? EvenName : OddName;
     }
@@ -2123,12 +2136,12 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class DictWithComplexCompoundKey
     {
-        public IOrderedDictionary<LogId, string> Items { get; set; }
+        public IOrderedDictionary<LogId, string> Items { get; set; } = null!;
     }
 
     public class LogId
     {
-        public string Key { get; set; }
+        public string Key { get; set; } = null!;
         public DateTime DateTime { get; set; }
         public ulong CollisionId { get; set; }
     }
@@ -2219,13 +2232,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class UlongGuidMap
     {
-        public IOrderedDictionary<UlongGuidKey, string> Items { get; set; }
+        public IOrderedDictionary<UlongGuidKey, string> Items { get; set; } = null!;
     }
 
     [Generate]
     public class GuidMap
     {
-        public IOrderedDictionary<Guid, string> Items { get; set; }
+        public IOrderedDictionary<Guid, string> Items { get; set; } = null!;
     }
 
     [Fact]
@@ -2243,7 +2256,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         using (var tr = _db.StartTransaction())
         {
             var items = tr.Singleton<GuidMap>().Items;
-            string value;
+            string? value;
             Assert.True(items.TryGetValue(guid, out value));
 
             Assert.Equal("a", value);
@@ -2265,7 +2278,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         using (var tr = _db.StartTransaction())
         {
             var items = tr.Singleton<UlongGuidMap>().Items;
-            string value;
+            string? value;
             Assert.True(items.TryGetValue(new UlongGuidKey { Ulong = 1, Guid = guid }, out value));
 
             Assert.Equal("a", value);
@@ -2274,7 +2287,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 
     public class TimeIndex
     {
-        public IOrderedDictionary<TimeIndexKey, ulong> Items { get; set; }
+        public IOrderedDictionary<TimeIndexKey, ulong> Items { get; set; } = null!;
 
         public class TimeIndexKey
         {
@@ -2476,19 +2489,19 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class ConversionItemsOld
     {
-        public IDictionary<ulong, ConversionItemOld> Items { get; set; }
+        public IDictionary<ulong, ConversionItemOld> Items { get; set; } = null!;
     }
 
     public class ConversionItemNew
     {
         public ulong Id { get; set; }
-        public string En { get; set; }
+        public string En { get; set; } = null!;
     }
 
     [Generate]
     public class ConversionItemsNew
     {
-        public IDictionary<ulong, ConversionItemNew> Items { get; set; }
+        public IDictionary<ulong, ConversionItemNew> Items { get; set; } = null!;
     }
 
     public class EnumToStringTypeConverterFactory : DefaultTypeConverterFactory
@@ -2501,6 +2514,8 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
                 if (cfg.Flags)
                     return null; // Flags are hard :-)
                 var convToUlong = base.GetConverter(from, typeof(ulong));
+                if (convToUlong is null)
+                    return null;
                 return (ref byte fromI, ref byte toI) =>
                 {
                     ulong fromUlong = 0;
@@ -2546,11 +2561,12 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             return base.GenerateConversion(from, to);
         }
 
-        static EnumFieldHandler.EnumConfiguration[] _enumCfgs;
+        static EnumFieldHandler.EnumConfiguration[]? _enumCfgs;
 
         public static string EnumToString(ulong value, int cfgIdx)
         {
-            var cfg = _enumCfgs[cfgIdx];
+            var cfgs = _enumCfgs ?? throw new InvalidOperationException("Enum configuration is not initialized.");
+            var cfg = cfgs[cfgIdx];
             // What should happen if not found? for now just crash.
             return cfg.Names[Array.IndexOf(cfg.Values, value)];
         }
@@ -2587,18 +2603,18 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     public class Key
     {
         public ulong Id { get; set; }
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
     }
 
     [Generate]
     public class EmailAtttachments
     {
-        public IOrderedDictionary<Key, IIndirect<Value>> Attachments { get; set; }
+        public IOrderedDictionary<Key, IIndirect<Value>> Attachments { get; set; } = null!;
     }
 
     public class Value
     {
-        public byte[] Val { get; set; }
+        public byte[] Val { get; set; } = null!;
     }
 
     string data =
@@ -2624,13 +2640,13 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     public class UserKey
     {
         public ulong CompanyId { get; set; }
-        public string Email { get; set; }
+        public string Email { get; set; } = null!;
     }
 
     [Generate]
     public class ItemsDict
     {
-        public IOrderedDictionary<UserKey, ulong> Items { get; set; }
+        public IOrderedDictionary<UserKey, ulong> Items { get; set; } = null!;
     }
 
     string data2 =
@@ -2755,7 +2771,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     public class WithState1
     {
         public StateV1 State { get; set; }
-        public IDictionary<StateV1, string> S { get; set; }
+        public IDictionary<StateV1, string> S { get; set; } = null!;
     }
 
     public enum StateV2
@@ -2768,7 +2784,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     public class WithState2
     {
         public StateV2 State { get; set; }
-        public IDictionary<StateV2, string> S { get; set; }
+        public IDictionary<StateV2, string> S { get; set; } = null!;
     }
 
     [Fact]
@@ -2914,26 +2930,26 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
 
     public class DynamicValueWrapper<TValueType> : IDynamicValue
     {
-        public TValueType Value { get; set; }
+        public TValueType Value { get; set; } = default!;
     }
 
     public class Money
     {
         public decimal MinorValue { get; init; }
 
-        public Currency Currency { get; init; }
+        public Currency Currency { get; init; } = null!;
     }
 
     public class Currency
     {
         public int MinorToAmountRatio { get; init; }
 
-        public string Code { get; init; }
+        public string Code { get; init; } = null!;
     }
 
     public class Root2
     {
-        public List<IDynamicValue> R { get; set; }
+        public List<IDynamicValue> R { get; set; } = null!;
     }
 
     enum Test1
@@ -2989,7 +3005,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     [Generate]
     public class RootWithObj
     {
-        public Obj O { get; set; }
+        public Obj O { get; set; } = null!;
         public int I { get; set; }
     }
 
