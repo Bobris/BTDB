@@ -527,7 +527,7 @@ public class KeyValueDBRollbackTest
         }
 
         kvDb.PreserveHistoryUpToCommitUlong = 100;
-        kvDb.Compact(new CancellationToken());
+        await kvDb.Compact(new CancellationToken());
         var fileCountAfterFirstCompaction = fileCollection.GetCount();
         for (var i = 0; i < 50; i++)
         {
@@ -542,7 +542,7 @@ public class KeyValueDBRollbackTest
         }
 
         kvDb.PreserveHistoryUpToCommitUlong = 150;
-        kvDb.Compact(new CancellationToken());
+        await kvDb.Compact(new CancellationToken());
         Assert.InRange(fileCollection.GetCount(), fileCountAfterFirstCompaction + 1, fileCountAfterFirstCompaction + 3);
         using (kvDb.StartReadOnlyTransaction())
         {
@@ -558,16 +558,16 @@ public class KeyValueDBRollbackTest
                 tr.Commit();
             }
 
-            kvDb.Compact(new CancellationToken());
+            await kvDb.Compact(new CancellationToken());
             Assert.InRange(fileCollection.GetCount(), fileCountAfterFirstCompaction / 3,
                 2 * fileCountAfterFirstCompaction / 3);
             kvDb.PreserveHistoryUpToCommitUlong = 200;
-            kvDb.Compact(new CancellationToken());
+            await kvDb.Compact(new CancellationToken());
             Assert.InRange(fileCollection.GetCount(), fileCountAfterFirstCompaction / 3,
                 2 * fileCountAfterFirstCompaction / 3);
         }
 
-        kvDb.Compact(new CancellationToken());
+        await kvDb.Compact(new CancellationToken());
         Assert.InRange<uint>(fileCollection.GetCount(), 1, 4);
     }
 
@@ -594,7 +594,7 @@ public class KeyValueDBRollbackTest
             tr.Commit();
         }
 
-        kvDb.Compact(new CancellationToken());
+        await kvDb.Compact(new CancellationToken());
         var fileCountAfterFirstCompaction = fileCollection.GetCount();
         using (kvDb.StartReadOnlyTransaction())
         {
@@ -659,7 +659,7 @@ public class KeyValueDBRollbackTest
                 tr.Commit();
             }
 
-            kvDb.Compact(CancellationToken.None);
+            await kvDb.Compact(CancellationToken.None);
         }
 
         using (var kvDb = new BTreeKeyValueDB(options))
@@ -672,7 +672,7 @@ public class KeyValueDBRollbackTest
                 tr.Commit();
             }
 
-            kvDb.Compact(CancellationToken.None);
+            await kvDb.Compact(CancellationToken.None);
         }
 
         using (var kvDb = new BTreeKeyValueDB(options))

@@ -9,6 +9,7 @@ namespace BTDBTest.SerializationTests;
 
 public class MemoryLayoutTest
 {
+    #pragma warning disable CS0169, CS0649
     // This clones layout of Dictionary<TKey, TValue>.Entry
     struct DictionaryEntry<TKey, TValue> where TKey : notnull
     {
@@ -46,6 +47,7 @@ public class MemoryLayoutTest
         object Obj;
         int Int;
     }
+    #pragma warning restore CS0169, CS0649
 
     [Generate]
     public class RegisterSampleTypes
