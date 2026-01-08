@@ -83,9 +83,7 @@ namespace BTDBTest
                 var personSimpleTable = creator(tr);
                 personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" });
                 Assert.Single(personSimpleTable);
-                using var en = personSimpleTable.GetEnumerator();
-                en.MoveNext();
-                Assert.Equal("Boris", en.Current.Name);
+                Assert.Equal("Boris", personSimpleTable.First().Name);
                 tr.Commit();
             }
         }
@@ -171,14 +169,9 @@ namespace BTDBTest
             using (var tr = _db.StartReadOnlyTransaction())
             {
                 var personSimpleTable = creator(tr);
-                using var enumerator = personSimpleTable.GetEnumerator();
-                Assert.True(enumerator.MoveNext());
-                var person = enumerator.Current;
-                Assert.Equal(personBoris, person);
-                Assert.True(enumerator.MoveNext());
-                person = enumerator.Current;
-                Assert.Equal(personLubos, person);
-                Assert.False(enumerator.MoveNext(), "Only one Person should be evaluated");
+                Assert.Collection(personSimpleTable,
+                    person => Assert.Equal(personBoris, person),
+                    person => Assert.Equal(personLubos, person));
             }
         }
 
@@ -1068,10 +1061,9 @@ namespace BTDBTest
             {
                 var table = tr.GetRelation<IUserNoticeTable>();
                 table.Insert(new UserNotice { UserId = 1, NoticeId = 2 });
-                using var en = table.ListByNoticeId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
-                    1, KeyProposition.Included, 3, KeyProposition.Included)).GetEnumerator();
-                Assert.True(en.MoveNext());
-                Assert.Equal(2u, en.Current!.NoticeId);
+                var notice = table.ListByNoticeId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
+                    1, KeyProposition.Included, 3, KeyProposition.Included)).First();
+                Assert.Equal(2u, notice.NoticeId);
                 foreach (var row in table)
                 {
                     Assert.Equal(2u, row.NoticeId);
@@ -1424,11 +1416,9 @@ namespace BTDBTest
             personTable.Insert(new PersonSimple { TenantId = 13, Email = "a@d.cz", Name = "A" });
             personTable.Insert(new PersonSimple { TenantId = 13, Email = "b@d.cz", Name = "B" });
 
-            using var enumerator = personTable.FindById(13).GetEnumerator();
-            Assert.True(enumerator.MoveNext());
-            Assert.Equal("a@d.cz", enumerator.Current.Email);
-            Assert.True(enumerator.MoveNext());
-            Assert.False(enumerator.MoveNext());
+            var matches = personTable.FindById(13).ToArray();
+            Assert.Equal(2, matches.Length);
+            Assert.Equal("a@d.cz", matches[0].Email);
 
             using var enumerator2 = personTable.FindById(2).GetEnumerator();
             Assert.False(enumerator2.MoveNext());
@@ -1476,23 +1466,20 @@ namespace BTDBTest
             table.Insert(new ProductionTrackingDaily
                 { CompanyId = 5, ProductionDate = currentDay, ProductionsCount = 1 });
 
-            using var companyProduction = table.FindByProductionDate(currentDay).GetEnumerator();
-            Assert.True(companyProduction.MoveNext());
-            Assert.Equal(1u, companyProduction.Current.ProductionsCount);
+            var companyProduction = table.FindByProductionDate(currentDay).First();
+            Assert.Equal(1u, companyProduction.ProductionsCount);
 
             var nextDay = currentDay.AddDays(1);
             var dateParam = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending, currentDay,
                 KeyProposition.Included,
                 nextDay, KeyProposition.Excluded);
-            using var en = table.ListByProductionDateWithCompanyId(5, dateParam).GetEnumerator();
-            Assert.True(en.MoveNext());
-            Assert.Equal(1u, en.Current.ProductionsCount);
+            var production = table.ListByProductionDateWithCompanyId(5, dateParam).First();
+            Assert.Equal(1u, production.ProductionsCount);
 
-            using var en2 = table.ListByProductionDateWithCompanyId(5,
+            var en2 = table.ListByProductionDateWithCompanyId(5,
                 new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending, DateTime.MinValue,
-                    KeyProposition.Included, DateTime.MaxValue, KeyProposition.Excluded)).GetEnumerator();
-            Assert.True(en2.MoveNext());
-            Assert.Equal(1u, en2.Current.ProductionsCount);
+                    KeyProposition.Included, DateTime.MaxValue, KeyProposition.Excluded));
+            Assert.Equal(1u, en2.First().ProductionsCount);
 
             tr.Commit();
         }
@@ -1511,9 +1498,8 @@ namespace BTDBTest
             table.Insert(new ProductionTrackingDaily
                 { CompanyId = 123, ProductionDate = dateTimeValue, ProductionsCount = 12 });
 
-            using var companyProduction = table.FindByProductionDate(dateTimeValue).GetEnumerator();
-            Assert.True(companyProduction.MoveNext());
-            Assert.Equal(12u, companyProduction.Current.ProductionsCount);
+            var companyProduction = table.FindByProductionDate(dateTimeValue).First();
+            Assert.Equal(12u, companyProduction.ProductionsCount);
 
             var dateParam = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending,
                 dateTimeValue, KeyProposition.Excluded,
@@ -1668,7 +1654,7 @@ namespace BTDBTest
                     .GetEnumerator();
             while (enumerator.MoveNext())
             {
-                personSimpleTable.RemoveById(enumerator.Current.Id);
+                personSimpleTable.RemoveById(enumerator.Current!.Id);
             }
 
             tr.Commit();

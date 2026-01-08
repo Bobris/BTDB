@@ -80,13 +80,8 @@ public class MultipleEnumerationTest : ObjectDbTestBase
         var result = table.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
             1, KeyProposition.Included, 2, KeyProposition.Included));
 
-        {
-            using var resultEnumerator = result.GetEnumerator();
-            Assert.True(resultEnumerator.MoveNext());
-
-            var val1 = resultEnumerator.Current;
-            Assert.Equal(100U, val1.ApplicationId);
-        }
+        var val1 = result.First();
+        Assert.Equal(100U, val1.ApplicationId);
 
         var values = result.ToList();
         Assert.Equal(3, values.Count());

@@ -37,6 +37,7 @@ These guidelines summarize how to navigate, build, and contribute to this reposi
 - Prioritize SourceGenerator work: ensure `BTDB.SourceGenerator.Test/BTDB.SourceGenerator.Tests.csproj` passes before other suites.
 - Add tests for behavior changes and bug fixes; favor focused `Fact` tests and parameterized `Theory` tests.
 - Run `dotnet test BTDB.sln` before opening a PR that changes core behavior.
+- Run relevant test suites automatically after changes; do not ask for confirmation before running them.
 
 ## Commit & Pull Request Guidelines
 
