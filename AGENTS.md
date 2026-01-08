@@ -21,7 +21,8 @@ These guidelines summarize how to navigate, build, and contribute to this reposi
 
 ## Environment Requirements
 
-- Always run `dotnet` commands with network access enabled so package restore can complete.
+- Always run `dotnet` commands with network access enabled so package restore and analyzer feeds can complete; request sandbox escalation before invoking `dotnet build`/`dotnet test` if the default environment denies network access.
+- Example: `dotnet test BTDB.SourceGenerator.Test/BTDB.SourceGenerator.Tests.csproj` must be run with the `sandbox_permissions` flag set to `require_escalated` so NuGet restore can reach the feed.
 
 ## Coding Style & Naming Conventions
 
