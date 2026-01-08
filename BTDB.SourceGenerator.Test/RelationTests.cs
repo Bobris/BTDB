@@ -239,6 +239,58 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyThatIEnumerableIsOkWithCompatibleAdvancedEnumeratorParam()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class UserNotice
+            {
+                [PrimaryKey(1)] public ulong UserId { get; set; }
+
+                [PrimaryKey(2)]
+                [SecondaryKey("NoticeId")]
+                public ulong NoticeId { get; set; }
+            }
+
+            [PersistedName("UserNotice")]
+            public interface IUserNoticeTable : IRelation<UserNotice>
+            {
+                void Insert(UserNotice un);
+                IEnumerable<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<uint> noticeId);
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task ReportErrorForSuperfluousMethodParameter()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public ulong TenantId { get; set; }
+                [PrimaryKey(2)] public ulong Id { get; set; }
+                [SecondaryKey("Name", IncludePrimaryKeyOrder = 1)] public string Name { get; set; } = null!;
+            }
+
+            public interface IPersonTableSuperfluousParameter : IRelation<Person>
+            {
+                void Insert(Person person);
+                // SecondaryKey("Name") includes primary key fields at the end; validation trims that tail.
+                IEnumerable<Person> ListByName(ulong tenantId, string name, AdvancedEnumeratorParam<uint> param);
+            }
+
+            """);
+    }
+
+    [Fact]
     public Task VerifyThatIEnumeratorIsError()
     {
         // language=cs
@@ -260,6 +312,167 @@ public class RelationTests : GeneratorTestsBase
             {
                 void Insert(UserNotice un);
                 IEnumerator<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<ulong> noticeId);
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task ListByMethodMustReturnEnumerable()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class UserNotice
+            {
+                [PrimaryKey(1)] public ulong UserId { get; set; }
+
+                [PrimaryKey(2)]
+                [SecondaryKey("NoticeId")]
+                public ulong NoticeId { get; set; }
+            }
+
+            [PersistedName("UserNotice")]
+            public interface IUserNoticeTable : IRelation<UserNotice>
+            {
+                void Insert(UserNotice un);
+                UserNotice ListByNoticeId(ulong noticeId);
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task ListByMethodWithAdvancedEnumeratorParamWrongType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class UserNotice
+            {
+                [PrimaryKey(1)] public ulong UserId { get; set; }
+
+                [PrimaryKey(2)]
+                [SecondaryKey("NoticeId")]
+                public ulong NoticeId { get; set; }
+            }
+
+            [PersistedName("UserNotice")]
+            public interface IUserNoticeTable : IRelation<UserNotice>
+            {
+                void Insert(UserNotice un);
+                IEnumerable<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<int> noticeId);
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task ListByMethodWithAdvancedEnumeratorParamTooManyParameters()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class UserNotice
+            {
+                [PrimaryKey(1)] public ulong UserId { get; set; }
+
+                [PrimaryKey(2)]
+                [SecondaryKey("NoticeId")]
+                public ulong NoticeId { get; set; }
+            }
+
+            [PersistedName("UserNotice")]
+            public interface IUserNoticeTable : IRelation<UserNotice>
+            {
+                void Insert(UserNotice un);
+                IEnumerable<UserNotice> ListByNoticeId(ulong noticeId, ulong userId, AdvancedEnumeratorParam<ulong> noticeIdParam);
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task ListByMethodUsesExplicitSecondaryKeyPrefix()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class ContentVersion
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+
+                [PrimaryKey(2)] public ulong ContentId { get; set; }
+
+                [PrimaryKey(3)]
+                [SecondaryKey("State", Order = 4)]
+                public uint Version { get; set; }
+
+                [SecondaryKey("State", Order = 3, IncludePrimaryKeyOrder = 2)]
+                public ContentVersionState State { get; set; }
+            }
+
+            public enum ContentVersionState
+            {
+                Published = 0,
+                PreviouslyPublished = 1,
+            }
+
+            public interface IContentVersionTable : IRelation<ContentVersion>
+            {
+                IEnumerable<ContentVersion> ListByState(ulong companyId, ulong contentId, ContentVersionState state,
+                    AdvancedEnumeratorParam<uint> param);
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task ConstraintMethodsAllowImplicitPrimaryKeyFields()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class ThingWithSK
+            {
+                public ThingWithSK(ulong tenant, string name, uint age)
+                {
+                    Tenant = tenant;
+                    Name = name;
+                    Age = age;
+                }
+
+                [PrimaryKey(1)] public ulong Tenant { get; set; }
+
+                [PrimaryKey(2)]
+                [SecondaryKey("Name", IncludePrimaryKeyOrder = 0, Order = 1)]
+                public string Name { get; set; }
+
+                [SecondaryKey("Name", IncludePrimaryKeyOrder = 0, Order = 2)]
+                public uint Age { get; set; }
+            }
+
+            public interface IThingWithSKTable : IRelation<ThingWithSK>
+            {
+                IEnumerable<ThingWithSK> ScanByName(Constraint<string> name, Constraint<ulong> age,
+                    Constraint<ulong> tenant);
+
+                ulong GatherByName(List<ThingWithSK> target, long skip, long take, Constraint<string> name,
+                    Constraint<ulong> age, IOrderer[] orderers);
+
+                ThingWithSK? FirstByNameOrDefault(Constraint<string> name, Constraint<ulong> age, IOrderer[] orderers);
+
+                ThingWithSK FirstByName(Constraint<string> name, Constraint<ulong> age, IOrderer[] orderers);
             }
 
             """);
@@ -1254,8 +1467,8 @@ public class RelationTests : GeneratorTestsBase
 
             public interface IProductTable : IRelation<Product>
             {
-                // AdvancedEnumeratorParam generic type must match last field type (ProductId is ulong, not uint)
-                int RemoveById(ulong companyId, AdvancedEnumeratorParam<uint> productIdParam);
+                // AdvancedEnumeratorParam generic type must match last field type (ProductId is ulong, not int)
+                int RemoveById(ulong companyId, AdvancedEnumeratorParam<int> productIdParam);
             }
             """);
     }

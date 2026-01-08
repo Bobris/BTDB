@@ -2,18 +2,18 @@
   Diagnostics: [
     {
       Location: /*
-    // AdvancedEnumeratorParam generic type must match last field type (ProductId is ulong, not uint)
-    int RemoveById(ulong companyId, AdvancedEnumeratorParam<uint> productIdParam);
-                                                                  ^^^^^^^^^^^^^^
+    // AdvancedEnumeratorParam generic type must match last field type (ProductId is ulong, not int)
+    int RemoveById(ulong companyId, AdvancedEnumeratorParam<int> productIdParam);
+                                                                 ^^^^^^^^^^^^^^
 }
 */
- : (12,66)-(12,80),
-      Message: AdvancedEnumeratorParam generic type 'uint' does not match last field 'ProductId' type 'ulong' in method 'RemoveById',
+ : (12,65)-(12,79),
+      Message: AdvancedEnumeratorParam generic type 'int' does not match last field 'ProductId' type 'ulong' in method 'RemoveById',
       Severity: Error,
       Descriptor: {
         Id: BTDB0031,
-        Title: AdvancedEnumeratorParam generic type 'uint' does not match last field 'ProductId' type 'ulong' in method 'RemoveById',
-        MessageFormat: AdvancedEnumeratorParam generic type 'uint' does not match last field 'ProductId' type 'ulong' in method 'RemoveById',
+        Title: AdvancedEnumeratorParam generic type 'int' does not match last field 'ProductId' type 'ulong' in method 'RemoveById',
+        MessageFormat: AdvancedEnumeratorParam generic type 'int' does not match last field 'ProductId' type 'ulong' in method 'RemoveById',
         Category: BTDB,
         DefaultSeverity: Error,
         IsEnabledByDefault: true

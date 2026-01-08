@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    void Insert(UserNotice un);
+    IEnumerable<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<int> noticeId);
+                                                                        ^^^^^^^^
+}
+*/
+ : (16,72)-(16,80),
+      Message: AdvancedEnumeratorParam generic type 'int' does not match field 'NoticeId' type 'ulong' in method 'ListByNoticeId',
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0031,
+        Title: AdvancedEnumeratorParam generic type 'int' does not match field 'NoticeId' type 'ulong' in method 'ListByNoticeId',
+        MessageFormat: AdvancedEnumeratorParam generic type 'int' does not match field 'NoticeId' type 'ulong' in method 'ListByNoticeId',
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

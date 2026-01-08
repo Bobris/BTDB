@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    void Insert(UserNotice un);
+    UserNotice ListByNoticeId(ulong noticeId);
+               ^^^^^^^^^^^^^^
+}
+*/
+ : (16,15)-(16,29),
+      Message: Return type of 'ListByNoticeId' must be IEnumerable<T>,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0033,
+        Title: Return type of 'ListByNoticeId' must be IEnumerable<T>,
+        MessageFormat: Return type of 'ListByNoticeId' must be IEnumerable<T>,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

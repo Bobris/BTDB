@@ -1890,36 +1890,6 @@ namespace BTDBTest
             }
         }
 
-        public interface IPersonTableSuperfluousParameter : IRelation<Person>
-        {
-            void Insert(Person person);
-            IEnumerable<Person> ListByName(ulong tenantId, string name, AdvancedEnumeratorParam<int> param);
-        }
-
-        [Fact]
-        public void ReportErrorForSuperfluousMethodParameter()
-        {
-            using var tr = _db.StartTransaction();
-            var ex = Assert.Throws<BTDBException>(() =>
-                tr.InitRelation<IPersonTableSuperfluousParameter>("Superfluous"));
-            Assert.Contains("mismatch", ex.Message);
-        }
-
-        public interface IPersonTableWrongTypeParameter : IRelation<Person>
-        {
-            void Insert(Person person);
-            IEnumerable<Person> ListByName(ulong tenantId, AdvancedEnumeratorParam<int> param);
-        }
-
-        [Fact]
-        public void ReportErrorForInvalidMethodParameter()
-        {
-            using var tr = _db.StartTransaction();
-            var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IPersonTableWrongTypeParameter>("Invalid"));
-            Assert.Contains("mismatch", ex.Message);
-        }
-
-
         [Fact]
         public void PossibleToEnumerateRelations()
         {

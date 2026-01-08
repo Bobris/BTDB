@@ -513,6 +513,89 @@ public class SourceGenerator : IIncrementalGenerator
                 }
             }
 
+            if (method.Name.StartsWith("ListBy"))
+            {
+                var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
+
+                if (method.ReturnType is INamedTypeSymbol
+                    {
+                        TypeKind: TypeKind.Interface,
+                        OriginalDefinition.SpecialType: SpecialType.System_Collections_Generic_IEnumerator_T
+                    })
+                {
+                    return GenerationError("BTDB0009",
+                        $"Cannot use IEnumerator<> as return type in {method.Name}",
+                        method.Locations[0]);
+                }
+
+                var hasAdvancedEnumerator = CheckIfLastParameterIsAdvancedEnumeratorParam(method, out var aepGenericType);
+                if (hasAdvancedEnumerator)
+                {
+                    if (!IsIEnumerableOfTWhereTIsClass(method.ReturnType) &&
+                        (aepGenericType == null || !IsIOrderedDictionaryEnumerator(method.ReturnType, aepGenericType)))
+                    {
+                        return GenerationError("BTDB0033",
+                            $"Return type of '{method.Name}' must be IEnumerable<T> or IOrderedDictionaryEnumerator<,>",
+                            method.Locations[0]);
+                    }
+
+                    if (ValidateIndexName(method, indexName, primaryKeyFields, indexOfInKeyValue, secondaryKeys,
+                            out var fieldIndexes, out var generationError))
+                        return generationError;
+
+                    var prefixParamCount = method.Parameters.Length - 1;
+                    if (prefixParamCount >= fieldIndexes.Length)
+                    {
+                        return GenerationError("BTDB0016",
+                            $"Too many parameters for index '{indexName}' in method '{method.Name}'",
+                            method.Locations[0]);
+                    }
+
+                    var nextFieldIndex = fieldIndexes[prefixParamCount];
+                    var nextField = itemGenInfo.Fields[(int)nextFieldIndex];
+                    var aepTypeStr = aepGenericType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    if (!AreTypesCompatible(aepTypeStr, nextField.Type))
+                    {
+                        return GenerationError("BTDB0031",
+                            $"AdvancedEnumeratorParam generic type '{aepTypeStr}' does not match field '{nextField.Name}' type '{nextField.Type}' in method '{method.Name}'",
+                            method.Parameters[method.Parameters.Length - 1].Locations[0]);
+                    }
+
+                    for (var i = 0; i < prefixParamCount; i++)
+                    {
+                        var param = method.Parameters[i];
+                        var f = itemGenInfo.Fields[(int)fieldIndexes[i]];
+
+                        if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return GenerationError("BTDB0014",
+                                $"Parameter '{param.Name}' does not match field '{f.Name}' from index '{indexName}' in method '{method.Name}'",
+                                param.Locations[0]);
+                        }
+
+                        var paramType = param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        if (paramType != f.Type)
+                        {
+                            return GenerationError("BTDB0015",
+                                $"Parameter '{param.Name}' type '{paramType}' does not match field '{f.Name}' type '{f.Type}' from index '{indexName}' in method '{method.Name}'",
+                                param.Locations[0]);
+                        }
+                    }
+
+                    return null;
+                }
+
+                if (!IsIEnumerableOfTWhereTIsClass(method.ReturnType))
+                {
+                    return GenerationError("BTDB0033",
+                        $"Return type of '{method.Name}' must be IEnumerable<T>",
+                        method.Locations[0]);
+                }
+
+                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
+                    indexOfInKeyValue, secondaryKeys, true);
+            }
+
             if (method.Name.StartsWith("AnyBy"))
             {
                 // Validate return type is bool
@@ -778,9 +861,26 @@ public class SourceGenerator : IIncrementalGenerator
         return false;
     }
 
+    static bool IsIOrderedDictionaryEnumerator(ITypeSymbol methodReturnType, ITypeSymbol keyType)
+    {
+        if (methodReturnType is INamedTypeSymbol
+            {
+                TypeKind: TypeKind.Interface,
+                OriginalDefinition.Name: "IOrderedDictionaryEnumerator"
+            } named &&
+            named.OriginalDefinition.InODBLayerNamespace() &&
+            named.TypeArguments.Length == 2)
+        {
+            return SymbolEqualityComparer.Default.Equals(named.TypeArguments[0], keyType);
+        }
+
+        return false;
+    }
+
     GenerationInfo? CheckParamsNamesAndTypesScanBy(IMethodSymbol method, string indexName,
         EquatableArray<FieldsInfo> fields, uint[] primaryKeyFields, uint inKeyValueIndex,
-        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, bool lastParameterIsIOrdererArray)
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys,
+        bool lastParameterIsIOrdererArray)
     {
         if (ValidateIndexName(method, indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys, out var fi,
                 out var generationError))
@@ -799,13 +899,61 @@ public class SourceGenerator : IIncrementalGenerator
     static bool AreTypesCompatible(string pType, string fType)
     {
         if (pType == fType) return true;
-        if (pType == "ulong" && fType == "uint") return true;
-        if (pType == "ulong" && fType == "ushort") return true;
-        if (pType == "ulong" && fType == "byte") return true;
-        if (pType == "long" && fType == "int") return true;
-        if (pType == "long" && fType == "short") return true;
-        if (pType == "long" && fType == "sbyte") return true;
+
+        if (IsUnsignedIntegralType(pType) && IsUnsignedIntegralType(fType)) return true;
+        if (IsSignedIntegralType(pType) && IsSignedIntegralType(fType)) return true;
+
         return false;
+    }
+
+    static bool IsUnsignedIntegralType(string type)
+    {
+        return NormalizeIntegralType(type) is IntegralType.Byte or IntegralType.UInt16 or IntegralType.UInt32
+            or IntegralType.UInt64;
+    }
+
+    static bool IsSignedIntegralType(string type)
+    {
+        return NormalizeIntegralType(type) is IntegralType.SByte or IntegralType.Int16 or IntegralType.Int32
+            or IntegralType.Int64;
+    }
+
+    static IntegralType NormalizeIntegralType(string type)
+    {
+        if (type.StartsWith("global::System.", StringComparison.Ordinal))
+        {
+            type = type.Substring("global::System.".Length);
+        }
+        else if (type.StartsWith("System.", StringComparison.Ordinal))
+        {
+            type = type.Substring("System.".Length);
+        }
+
+        return type switch
+        {
+            "byte" or "Byte" => IntegralType.Byte,
+            "ushort" or "UInt16" => IntegralType.UInt16,
+            "uint" or "UInt32" => IntegralType.UInt32,
+            "ulong" or "UInt64" => IntegralType.UInt64,
+            "sbyte" or "SByte" => IntegralType.SByte,
+            "short" or "Int16" => IntegralType.Int16,
+            "int" or "Int32" => IntegralType.Int32,
+            "long" or "Int64" => IntegralType.Int64,
+            _ => IntegralType.None
+        };
+    }
+
+    enum IntegralType
+    {
+        None = 0,
+        Byte,
+        UInt16,
+        UInt32,
+        UInt64,
+        SByte,
+        Int16,
+        Int32,
+        Int64
     }
 
     static bool CheckIfLastParameterIsIOrdererArray(IMethodSymbol method)
@@ -881,8 +1029,8 @@ public class SourceGenerator : IIncrementalGenerator
 
     static GenerationInfo? ValidateGatherByConstraintParameters(IMethodSymbol method, string indexName,
         EquatableArray<FieldsInfo> fields, uint[] primaryKeyFields,
-        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, int startParamIndex, int constraintParamCount,
-        bool lastParameterIsIOrdererArray)
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys, int startParamIndex,
+        int constraintParamCount, bool lastParameterIsIOrdererArray)
     {
         // Validate index name
         if (ValidateIndexName(method, indexName, primaryKeyFields, uint.MaxValue, secondaryKeys, out var fi,
@@ -902,8 +1050,8 @@ public class SourceGenerator : IIncrementalGenerator
 
     static GenerationInfo? ValidateFirstByConstraintParameters(IMethodSymbol method, string indexName,
         EquatableArray<FieldsInfo> fields, uint[] primaryKeyFields,
-        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, int startParamIndex, int constraintParamCount,
-        bool lastParameterIsIOrdererArray)
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys, int startParamIndex,
+        int constraintParamCount, bool lastParameterIsIOrdererArray)
     {
         // Validate index name
         if (ValidateIndexName(method, indexName, primaryKeyFields, uint.MaxValue, secondaryKeys, out var fi,
@@ -923,7 +1071,8 @@ public class SourceGenerator : IIncrementalGenerator
 
     static GenerationInfo? CheckParamsNamesAndTypes(IMethodSymbol method, string indexName,
         EquatableArray<FieldsInfo> fields,
-        uint[] primaryKeyFields, uint inKeyValueIndex, (string Name, uint[] SecondaryKeyFields)[] secondaryKeys,
+        uint[] primaryKeyFields, uint inKeyValueIndex,
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys,
         bool skipNumberOfParametersCheck = false)
     {
         if (ValidateIndexName(method, indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys, out var fi,
@@ -964,12 +1113,28 @@ public class SourceGenerator : IIncrementalGenerator
     }
 
     static bool ValidateIndexName(IMethodSymbol method, string indexName, uint[] primaryKeyFields, uint inKeyValueIndex,
-        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys, out ReadOnlySpan<uint> fi,
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys, out ReadOnlySpan<uint> fi,
         out GenerationInfo? generationError)
     {
-        var fii = indexName == "Id"
-            ? primaryKeyFields
-            : secondaryKeys.FirstOrDefault(sk => sk.Name == indexName).SecondaryKeyFields;
+        uint[]? fii = null;
+        uint explicitPrefixLength = 0;
+        var isConstraintMethod = method.Name.StartsWith("ScanBy", StringComparison.Ordinal) ||
+                                 method.Name.StartsWith("GatherBy", StringComparison.Ordinal) ||
+                                 method.Name.StartsWith("FirstBy", StringComparison.Ordinal);
+        if (indexName == "Id")
+        {
+            fii = primaryKeyFields;
+        }
+        else
+        {
+            var skInfo = secondaryKeys.FirstOrDefault(sk => sk.Name == indexName);
+            if (!string.IsNullOrEmpty(skInfo.Name))
+            {
+                fii = skInfo.SecondaryKeyFields;
+                explicitPrefixLength = skInfo.ExplicitPrefixLength;
+            }
+        }
+
         if (fii == null)
         {
             generationError = GenerationError("BTDB0013",
@@ -985,11 +1150,16 @@ public class SourceGenerator : IIncrementalGenerator
         {
             fi = fi.Slice(0, (int)inKeyValueIndex);
         }
+        else if (!isConstraintMethod && indexName != "Id" && explicitPrefixLength > 0)
+        {
+            fi = fi.Slice(0, (int)explicitPrefixLength);
+        }
 
         return false;
     }
 
-    static (string IndexName, bool HasOrDefault) StripVariant((string Name, uint[] SecondaryKeyFields)[] skIndexes,
+    static (string IndexName, bool HasOrDefault) StripVariant(
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] skIndexes,
         string name, bool withOrDefault)
     {
         (string IndexName, bool HasOrDefault) result = ("", false);
@@ -2505,7 +2675,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         uint[]? primaryKeyFields = null;
         uint indexOfInKeyValue = 0; // If it is PrimaryKeyFields.Length then there is no in key values
-        (string Name, uint[] SecondaryKeyFields)[]? secondaryKeys = null;
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[]? secondaryKeys = null;
 
         if (generationInfo.IsRelationItem)
         {
@@ -3132,12 +3302,13 @@ public class SourceGenerator : IIncrementalGenerator
             SourceText.From(code, Encoding.UTF8));
     }
 
-    static (uint indexOfInKeyValue, uint[] primaryKeyFields, (string Name, uint[] SecondaryKeyFields)[] secondaryKeys)
+    static (uint indexOfInKeyValue, uint[] primaryKeyFields,
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys)
         BuildIndexInfo(GenerationInfo generationInfo)
     {
         uint indexOfInKeyValue;
         uint[] primaryKeyFields;
-        (string Name, uint[] SecondaryKeyFields)[] secondaryKeys;
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys;
         var primaryKeyOrder2Info = new Dictionary<uint, (uint Index, bool InKeyValue)>();
         var secondaryKeyName2Info =
             new Dictionary<string, List<(uint Index, uint Order, uint IncludePrimaryKeyOrder)>>();
@@ -3170,7 +3341,8 @@ public class SourceGenerator : IIncrementalGenerator
             if (pkInfos[i].Value.InKeyValue && i < indexOfInKeyValue) indexOfInKeyValue = (uint)i;
         }
 
-        secondaryKeys = new (string Name, uint[] SecondaryKeyFields)[secondaryKeyName2Info.Count];
+        secondaryKeys = new (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[
+            secondaryKeyName2Info.Count];
         var j = 0;
         foreach (var keyValuePair in secondaryKeyName2Info)
         {
@@ -3189,6 +3361,8 @@ public class SourceGenerator : IIncrementalGenerator
                 secondaryKeyFields.Add(info.Index);
             }
 
+            var explicitPrefixLength = (uint)secondaryKeyFields.Count;
+
             for (var index = 0; index < primaryKeyFields.Length; index++)
             {
                 if (index >= indexOfInKeyValue) break;
@@ -3199,7 +3373,7 @@ public class SourceGenerator : IIncrementalGenerator
                 }
             }
 
-            secondaryKeys[j++] = (keyValuePair.Key, secondaryKeyFields.ToArray());
+            secondaryKeys[j++] = (keyValuePair.Key, secondaryKeyFields.ToArray(), explicitPrefixLength);
         }
 
         return (indexOfInKeyValue, primaryKeyFields, secondaryKeys);

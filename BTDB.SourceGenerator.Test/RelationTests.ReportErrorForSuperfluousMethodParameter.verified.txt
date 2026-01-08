@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    // SecondaryKey("Name") includes primary key fields at the end; validation trims that tail.
+    IEnumerable<Person> ListByName(ulong tenantId, string name, AdvancedEnumeratorParam<uint> param);
+                        ^^^^^^^^^^
+}
+*/
+ : (14,24)-(14,34),
+      Message: Too many parameters for index 'Name' in method 'ListByName',
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0016,
+        Title: Too many parameters for index 'Name' in method 'ListByName',
+        MessageFormat: Too many parameters for index 'Name' in method 'ListByName',
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}
