@@ -3601,6 +3601,71 @@ public class SourceGenerator : IIncrementalGenerator
                     declarations.Append("            return base.AnyWithPrefix(writer.GetSpan());\n");
                 }
             }
+            else if (method.Name.StartsWith("CountBy", StringComparison.Ordinal))
+            {
+                var paramCount = method.Parameters.Count;
+                string? advParamType = null;
+                var advType = string.Empty;
+                var lastParam = paramCount > 0 ? method.Parameters[paramCount - 1] : null;
+                var lastParamName = lastParam?.Name ?? "";
+                var hasAdvancedEnumerator = paramCount > 0 &&
+                                            TryGetAdvancedEnumeratorParamType(lastParam!.Type, out advType);
+                if (hasAdvancedEnumerator)
+                {
+                    advParamType = advType;
+                }
+
+                var prefixParamCount = paramCount - (hasAdvancedEnumerator ? 1 : 0);
+                var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
+
+                AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParamCount), advParamType);
+
+                if (hasAdvancedEnumerator)
+                {
+                    if (indexName == "Id")
+                    {
+                        AppendAdvancedKeyPrefix(declarations, false, null, method.Parameters, prefixParamCount,
+                            lastParamName, advParamType!);
+                    }
+                    else
+                    {
+                        var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
+                        declarations.Append(
+                            $"            var remappedSecondaryKeyIndex = RemapPrimeSK({secondaryKeyIndex}u);\n");
+                        AppendAdvancedKeyPrefix(declarations, true, "remappedSecondaryKeyIndex", method.Parameters,
+                            prefixParamCount, lastParamName, advParamType!);
+                    }
+
+                    var countExpr =
+                        $"base.CountWithProposition({lastParamName}.StartProposition, prefixLen, startKeyBytes, {lastParamName}.EndProposition, endKeyBytes)";
+                    declarations.Append($"            return {WrapCountResult(countExpr, method.ResultType)};\n");
+                }
+                else
+                {
+                    declarations.Append(
+                        "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                    if (indexName == "Id")
+                    {
+                        declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                    }
+                    else
+                    {
+                        var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
+                        declarations.Append(
+                            $"            var remappedSecondaryKeyIndex = RemapPrimeSK({secondaryKeyIndex}u);\n");
+                        declarations.Append(
+                            "            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);\n");
+                    }
+
+                    for (var i = 0; i < paramCount; i++)
+                    {
+                        AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                    }
+
+                    var countExpr = "base.CountWithPrefix(writer.GetSpan())";
+                    declarations.Append($"            return {WrapCountResult(countExpr, method.ResultType)};\n");
+                }
+            }
             else if (method.Name.StartsWith("GatherBy", StringComparison.Ordinal))
             {
                 var paramCount = method.Parameters.Count;
@@ -3951,6 +4016,23 @@ public class SourceGenerator : IIncrementalGenerator
         AppendWriteOrderableValue(declarations, $"{advParamName}.End", advParamType, null, "                ");
         declarations.Append("            }\n");
         declarations.Append("            var endKeyBytes = writer.GetSpan();\n");
+    }
+
+    static string WrapCountResult(string expression, string? resultType)
+    {
+        if (string.IsNullOrWhiteSpace(resultType))
+        {
+            return expression;
+        }
+
+        var normalized = NormalizeIntegralType(resultType!);
+        return normalized switch
+        {
+            IntegralType.Int32 => $"(int){expression}",
+            IntegralType.UInt32 => $"(uint){expression}",
+            IntegralType.UInt64 => $"(ulong){expression}",
+            _ => expression
+        };
     }
 
     static bool TryGetAdvancedEnumeratorParamType(string type, out string genericType)
