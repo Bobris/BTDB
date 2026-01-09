@@ -1335,6 +1335,25 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task FloatIndexIsRejected()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class FloatIndexEntity
+            {
+                [PrimaryKey(1)] public float Id { get; set; }
+            }
+
+            public interface IFloatIndexTable : IRelation<FloatIndexEntity>
+            {
+                bool Contains(float id);
+            }
+            """);
+    }
+
+    [Fact]
     public Task ContainsMethodGeneratesKeyLookup()
     {
         // language=cs

@@ -1096,6 +1096,12 @@ public class SourceGenerator : IIncrementalGenerator
         {
             var f = fields[i];
             var indexes = f.Indexes.GetArray() ?? [];
+            if (indexes.Length > 0 && IsFloatOrDoubleType(f.Type))
+            {
+                return GenerationError("BTDB0035",
+                    $"Field '{f.Name}' type '{f.Type}' cannot be used in indexes", location);
+            }
+
             if (indexes.Any(ii => ii.Name == null && ii.IncludePrimaryKeyOrder == 1))
             {
                 return GenerationError("BTDB0002", "Cannot use PrimaryKey together with InKeyValue in " + f.Name,
@@ -3663,18 +3669,22 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append(
                     $"            ctx_ctx.WriteOrderedEncryptedString(ref writer, {parameter.Name});\n");
                 return;
-            case "System.Single":
-            case "float":
-            case "System.Double":
-            case "double":
-                declarations.Append(
-                    $"            throw new NotSupportedException(\"Type {normalizedType} is not supported as orderable field.\");\n");
-                return;
             default:
                 declarations.Append(
                     $"            throw new NotSupportedException(\"Contains does not support key type '{normalizedType}'.\");\n");
                 return;
         }
+    }
+
+    static bool IsFloatOrDoubleType(string type)
+    {
+        var normalized = NormalizeType(type);
+        if (normalized is "float" or "double")
+        {
+            return true;
+        }
+
+        return false;
     }
 
     static uint FindSecondaryKeyIndex(

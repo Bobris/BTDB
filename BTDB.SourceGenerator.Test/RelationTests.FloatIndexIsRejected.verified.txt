@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+
+public interface IFloatIndexTable : IRelation<FloatIndexEntity>
+                 ^^^^^^^^^^^^^^^^
+{
+*/
+ : (7,17)-(7,33),
+      Message: Field 'Id' type 'float' cannot be used in indexes,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0035,
+        Title: Field 'Id' type 'float' cannot be used in indexes,
+        MessageFormat: Field 'Id' type 'float' cannot be used in indexes,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}
