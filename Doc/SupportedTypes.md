@@ -5,8 +5,8 @@
 - signed integers (`sbyte`, `short`, `int`, `long`) `Constraint<long>`/`Constraint.Signed`
 - unsigned integers (`byte`, `ushort`, `uint`, `ulong`) `Constraint<ulong>`/`Constraint.Unsigned`
 - `bool` `Constraint<bool>`/`Constraint.Bool`
-- `float` (`Single`)
-- `double` (`Double`)
+- `float` (`Single`) (cannot be used as key)
+- `double` (`Double`) (cannot be used as key)
 - `Decimal`
 - `string` `Constraint<string>`/`Constraint.String`
 - `EncryptedString`
