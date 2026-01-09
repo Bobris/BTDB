@@ -1006,13 +1006,16 @@ public class SourceGenerator : IIncrementalGenerator
 
         generationError = null;
         fi = fii;
-        if (fii == primaryKeyFields && inKeyValueIndex != uint.MaxValue)
+        if (inKeyValueIndex != uint.MaxValue) // Constraint-based methods are allowed to use all fields from indexes
         {
-            fi = fi.Slice(0, (int)inKeyValueIndex);
-        }
-        else if (inKeyValueIndex != uint.MaxValue && indexName != "Id" && explicitPrefixLength > 0)
-        {
-            fi = fi.Slice(0, (int)explicitPrefixLength);
+            if (fii == primaryKeyFields)
+            {
+                fi = fi.Slice(0, (int)inKeyValueIndex);
+            }
+            else if (indexName != "Id" && explicitPrefixLength > 0)
+            {
+                fi = fi.Slice(0, (int)explicitPrefixLength);
+            }
         }
 
         return false;
