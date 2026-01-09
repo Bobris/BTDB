@@ -3652,22 +3652,32 @@ public class SourceGenerator : IIncrementalGenerator
             case "System.DateTimeOffset":
                 declarations.Append($"            writer.WriteDateTimeOffset({parameter.Name});\n");
                 return;
+            case "System.TimeSpan":
+                declarations.Append($"            writer.WriteTimeSpan({parameter.Name});\n");
+                return;
             case "System.Guid":
                 declarations.Append($"            writer.WriteGuid({parameter.Name});\n");
                 return;
             case "System.Decimal":
                 declarations.Append($"            writer.WriteDecimal({parameter.Name});\n");
                 return;
-            case "System.Byte[]":
+            case "System.Net.IPAddress":
+                declarations.Append($"            writer.WriteIPAddress({parameter.Name});\n");
+                return;
             case "byte[]":
             case "BTDB.Buffer.ByteBuffer":
             case "System.ReadOnlyMemory<byte>":
-            case "System.ReadOnlyMemory<System.Byte>":
                 declarations.Append($"            writer.WriteByteArray({parameter.Name});\n");
+                return;
+            case "System.Version":
+                declarations.Append($"            writer.WriteVersion({parameter.Name});\n");
                 return;
             case "BTDB.Encrypted.EncryptedString":
                 declarations.Append(
                     $"            ctx_ctx.WriteOrderedEncryptedString(ref writer, {parameter.Name});\n");
+                return;
+            case "Microsoft.Extensions.Primitives.StringValues":
+                declarations.Append($"            writer.WriteStringValues({parameter.Name});\n");
                 return;
             default:
                 declarations.Append(
