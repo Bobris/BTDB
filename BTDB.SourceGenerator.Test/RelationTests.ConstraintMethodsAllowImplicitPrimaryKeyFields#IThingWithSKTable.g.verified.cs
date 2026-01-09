@@ -44,13 +44,19 @@ file class IThingWithSKTableRegistration
         [SkipLocalsInit]
         global::ThingWithSK global::IThingWithSKTable.FirstByNameOrDefault(BTDB.ODBLayer.Constraint<string> name, BTDB.ODBLayer.Constraint<ulong> age, BTDB.ODBLayer.IOrderer[] orderers)
         {
-            throw new NotImplementedException();
+            var c_c = new ConstraintInfo[2];
+            c_c[0].Constraint = name;
+            c_c[1].Constraint = age;
+            return FirstBySecondaryKey<global::ThingWithSK>(0, c_c, 0u, orderers, true);
         }
 
         [SkipLocalsInit]
         global::ThingWithSK global::IThingWithSKTable.FirstByName(BTDB.ODBLayer.Constraint<string> name, BTDB.ODBLayer.Constraint<ulong> age, BTDB.ODBLayer.IOrderer[] orderers)
         {
-            throw new NotImplementedException();
+            var c_c = new ConstraintInfo[2];
+            c_c[0].Constraint = name;
+            c_c[1].Constraint = age;
+            return FirstBySecondaryKey<global::ThingWithSK>(0, c_c, 0u, orderers, false);
         }
     }
     [ModuleInitializer]

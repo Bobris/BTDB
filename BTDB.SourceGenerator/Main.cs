@@ -3475,6 +3475,36 @@ public class SourceGenerator : IIncrementalGenerator
                         $"            return ScanBySecondaryKeyPrefix<{itemType}>({loaderIndex}, c_c, {secondaryKeyIndex}u);\n");
                 }
             }
+            else if (method.Name.StartsWith("FirstBy", StringComparison.Ordinal))
+            {
+                var paramCount = method.Parameters.Count;
+                var hasOrderers = paramCount > 0 && IsOrdererArrayType(method.Parameters[paramCount - 1].Type);
+                var constraintCount = paramCount - (hasOrderers ? 1 : 0);
+                var itemType = NormalizeType(method.ResultType ?? "");
+                var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
+                if (loaderIndex < 0) loaderIndex = 0;
+                var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
+
+                declarations.Append($"            var c_c = new ConstraintInfo[{constraintCount}];\n");
+                for (var i = 0; i < constraintCount; i++)
+                {
+                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Name};\n");
+                }
+
+                var orderersArg = hasOrderers ? method.Parameters[paramCount - 1].Name : "null";
+                var hasOrDefaultLiteral = hasOrDefault ? "true" : "false";
+                if (indexName == "Id")
+                {
+                    declarations.Append(
+                        $"            return FirstByPrimaryKey<{itemType}>({loaderIndex}, c_c, null, {orderersArg}, {hasOrDefaultLiteral});\n");
+                }
+                else
+                {
+                    var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
+                    declarations.Append(
+                        $"            return FirstBySecondaryKey<{itemType}>({loaderIndex}, c_c, {secondaryKeyIndex}u, {orderersArg}, {hasOrDefaultLiteral});\n");
+                }
+            }
             else
             {
                 declarations.Append("            throw new NotImplementedException();\n");

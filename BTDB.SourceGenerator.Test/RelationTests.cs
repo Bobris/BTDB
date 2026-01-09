@@ -675,6 +675,26 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task FirstByPrimaryKeyUsesPrimaryKeyIndex()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                Product FirstByIdOrDefault(Constraint<ulong> id);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyThatOnSerializeAttributeOnStaticMethodShowsError()
     {
         // language=cs
