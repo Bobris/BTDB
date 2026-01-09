@@ -622,6 +622,24 @@ public class SourceGenerator : IIncrementalGenerator
                     indexOfInKeyValue, secondaryKeys, true, true);
             }
 
+            if (method.Name == "RemoveWithSizesById")
+            {
+                if (method.ReturnType is not INamedTypeSymbol
+                    {
+                        IsTupleType: true,
+                        TupleElements.Length: 3
+                    } tupleType ||
+                    tupleType.TupleElements.Any(e => e.Type.SpecialType != SpecialType.System_UInt64))
+                {
+                    return GenerationError("BTDB0036",
+                        $"Method '{method.Name}' must return (ulong Count, ulong KeySizes, ulong ValueSizes)",
+                        method.Locations[0]);
+                }
+
+                return ValidateFirstByConstraintParameters(method, "Id", itemGenInfo.Fields, primaryKeyFields,
+                    secondaryKeys, 0, method.Parameters.Length);
+            }
+
             if (method.Name == "Contains")
             {
                 if (method.ReturnType.SpecialType != SpecialType.System_Boolean)
@@ -3607,6 +3625,17 @@ public class SourceGenerator : IIncrementalGenerator
                         }
                     }
                 }
+            }
+            else if (method.Name == "RemoveWithSizesById")
+            {
+                var paramCount = method.Parameters.Count;
+                declarations.Append($"            var c_c = new ConstraintInfo[{paramCount}];\n");
+                for (var i = 0; i < paramCount; i++)
+                {
+                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Name};\n");
+                }
+
+                declarations.Append("            return base.RemoveWithSizesByPrimaryKey(c_c);\n");
             }
             else if (method.Name.StartsWith("ListBy", StringComparison.Ordinal))
             {

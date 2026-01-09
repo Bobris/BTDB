@@ -1775,4 +1775,26 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task RemoveWithSizesByIdGeneratesPrimaryKeyConstraints()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Document
+            {
+                [PrimaryKey(1)] public ulong TenantId { get; set; }
+                [PrimaryKey(2)] public string Key { get; set; } = null!;
+                public string Value { get; set; } = null!;
+            }
+
+            public interface IDocumentTable : IRelation<Document>
+            {
+                (ulong Count, ulong KeySizes, ulong ValueSizes) RemoveWithSizesById(Constraint<ulong> tenantId,
+                    Constraint<string> key);
+            }
+            """);
+    }
 }
