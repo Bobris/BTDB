@@ -25,7 +25,11 @@ file class IThingWithSKTableRegistration
         [SkipLocalsInit]
         global::System.Collections.Generic.IEnumerable<global::ThingWithSK> global::IThingWithSKTable.ScanByName(BTDB.ODBLayer.Constraint<string> name, BTDB.ODBLayer.Constraint<ulong> age, BTDB.ODBLayer.Constraint<ulong> tenant)
         {
-            throw new NotImplementedException();
+            var c_c = new ConstraintInfo[3];
+            c_c[0].Constraint = name;
+            c_c[1].Constraint = age;
+            c_c[2].Constraint = tenant;
+            return ScanBySecondaryKeyPrefix<global::ThingWithSK>(0, c_c, 0u);
         }
 
         [SkipLocalsInit]

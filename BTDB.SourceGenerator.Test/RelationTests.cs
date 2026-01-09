@@ -635,6 +635,46 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task ScanBySecondaryKeyUsesSecondaryKeyIndex()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                [SecondaryKey("Email")] public string Email { get; set; } = null!;
+            }
+
+            public interface IEmailTable : IRelation<Person>
+            {
+                System.Collections.Generic.IEnumerable<Person> ScanByEmail(Constraint<string> email);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task ScanByPrimaryKeyUsesPrimaryKeyPrefix()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IPersonTable : IRelation<Person>
+            {
+                System.Collections.Generic.IEnumerable<Person> ScanById(Constraint<ulong> id);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyThatOnSerializeAttributeOnStaticMethodShowsError()
     {
         // language=cs

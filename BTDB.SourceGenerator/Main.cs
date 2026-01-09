@@ -3449,6 +3449,32 @@ public class SourceGenerator : IIncrementalGenerator
                         $"            return GatherBySecondaryKey({loaderIndex}, c_c, {method.Parameters[0].Name}, {method.Parameters[1].Name}, {method.Parameters[2].Name}, {secondaryKeyIndex}u, {orderersArg});\n");
                 }
             }
+            else if (method.Name.StartsWith("ScanBy", StringComparison.Ordinal))
+            {
+                var paramCount = method.Parameters.Count;
+                var itemType = ExtractEnumerableItemType(method.ResultType ?? "");
+                var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
+                if (loaderIndex < 0) loaderIndex = 0;
+                var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
+
+                declarations.Append($"            var c_c = new ConstraintInfo[{paramCount}];\n");
+                for (var i = 0; i < paramCount; i++)
+                {
+                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Name};\n");
+                }
+
+                if (indexName == "Id")
+                {
+                    declarations.Append(
+                        $"            return ScanByPrimaryKeyPrefix<{itemType}>({loaderIndex}, c_c);\n");
+                }
+                else
+                {
+                    var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
+                    declarations.Append(
+                        $"            return ScanBySecondaryKeyPrefix<{itemType}>({loaderIndex}, c_c, {secondaryKeyIndex}u);\n");
+                }
+            }
             else
             {
                 declarations.Append("            throw new NotImplementedException();\n");
@@ -3500,6 +3526,16 @@ public class SourceGenerator : IIncrementalGenerator
         if (start < 0 || end <= start) return collectionType;
         var typeArg = collectionType.Substring(start + 1, end - start - 1).Trim();
         return typeArg.Replace("global::", "");
+    }
+
+    static string ExtractEnumerableItemType(string enumerableType)
+    {
+        if (string.IsNullOrWhiteSpace(enumerableType)) return enumerableType;
+        var start = enumerableType.IndexOf('<');
+        var end = enumerableType.LastIndexOf('>');
+        if (start < 0 || end <= start) return enumerableType;
+        var typeArg = enumerableType.Substring(start + 1, end - start - 1).Trim();
+        return typeArg;
     }
 
     static int FindLoaderIndex(EquatableArray<TypeRef> loadTypes, string itemType)
