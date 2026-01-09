@@ -120,7 +120,8 @@ public class SourceGenerator : IIncrementalGenerator
                                 p.IsOptional || p.NullableAnnotation == NullableAnnotation.Annotated,
                                 p.HasExplicitDefaultValue
                                     ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue, new(p.Type))
-                                    : null))
+                                    : null,
+                                GetEnumUnderlyingType(p.Type)))
                             .ToArray();
                         return new(GenerationType.Delegate, namespaceName, delegateName,
                             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null, false, false, false,
@@ -164,7 +165,8 @@ public class SourceGenerator : IIncrementalGenerator
                                 methodsList.Add(new(method.Name, IfVoidNull(method.ReturnType),
                                     method.Parameters.Select(p =>
                                         new ParameterInfo(p.Name, p.Type.ToDisplayString(), null,
-                                            p.Type.IsReferenceType, p.IsOptional, null)).ToArray(), true,
+                                            p.Type.IsReferenceType, p.IsOptional, null,
+                                            GetEnumUnderlyingType(p.Type))).ToArray(), true,
                                     method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
                                 var methodReturnType = method.ReturnType as INamedTypeSymbol;
                                 if (methodReturnType is { TypeKind: TypeKind.Interface })
@@ -1330,7 +1332,8 @@ public class SourceGenerator : IIncrementalGenerator
                 p.HasExplicitDefaultValue
                     ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue,
                         new(p.Type))
-                    : null))
+                    : null,
+                GetEnumUnderlyingType(p.Type)))
             .ToArray();
 
         if (hasDefaultConstructor && parameters == null)
@@ -1548,7 +1551,8 @@ public class SourceGenerator : IIncrementalGenerator
                     p.Type.IsReferenceType,
                     p.NullableAnnotation == NullableAnnotation.Annotated, p.HasExplicitDefaultValue
                         ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue, new(p.Type))
-                        : null)).ToArray(),
+                        : null,
+                    GetEnumUnderlyingType(p.Type))).ToArray(),
                 methodSymbol.DeclaredAccessibility is Accessibility.Public, null, Purpose.OnBeforeRemove));
         }
 
@@ -2456,7 +2460,7 @@ public class SourceGenerator : IIncrementalGenerator
         var parameterIndex = 0;
 
         var constructorParameters = generationInfo.ConstructorParameters ?? EquatableArray<ParameterInfo>.Empty;
-        foreach (var (name, type, _, _, _, _) in constructorParameters)
+        foreach (var (name, type, _, _, _, _, _) in constructorParameters)
         {
             var normalizeType = NormalizeType(type);
             if (parameterIndex > 0) parametersCode.Append(", ");
@@ -2553,7 +2557,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (generationInfo.ConstructorParameters != null)
         {
-            foreach (var (name, type, keyCode, isReference, optional, defaultValue) in generationInfo
+            foreach (var (name, type, keyCode, isReference, optional, defaultValue, _) in generationInfo
                          .ConstructorParameters)
             {
                 var normalizeType = NormalizeType(type);
@@ -2685,7 +2689,7 @@ public class SourceGenerator : IIncrementalGenerator
         if (generationInfo.PrivateConstructor)
         {
             var constructorParametersText = new StringBuilder();
-            foreach (var (name, type, _, _, _, _) in constructorParameters)
+            foreach (var (name, type, _, _, _, _, _) in constructorParameters)
             {
                 if (constructorParametersText.Length > 0) constructorParametersText.Append(", ");
                 constructorParametersText.Append($"{type} {name}");
@@ -3430,7 +3434,7 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append(
                     "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
                 declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
-                AppendContainsWriterCtxIfNeeded(declarations, method.Parameters);
+                AppendWriterCtxIfNeeded(declarations, method.Parameters, null);
 
                 for (var i = 0; i < method.Parameters.Count; i++)
                 {
@@ -3438,6 +3442,159 @@ public class SourceGenerator : IIncrementalGenerator
                 }
 
                 declarations.Append("            return base.Contains(writer.GetSpan());\n");
+            }
+            else if (method.Name.StartsWith("ListBy", StringComparison.Ordinal))
+            {
+                var paramCount = method.Parameters.Count;
+                string? advParamType = null;
+                var advType = string.Empty;
+                var lastParam = paramCount > 0 ? method.Parameters[paramCount - 1] : null;
+                var lastParamName = lastParam?.Name ?? "";
+                var hasAdvancedEnumerator = paramCount > 0 &&
+                                            TryGetAdvancedEnumeratorParamType(lastParam!.Type,
+                                                out advType);
+                if (hasAdvancedEnumerator)
+                {
+                    advParamType = advType;
+                }
+
+                var prefixParamCount = paramCount - (hasAdvancedEnumerator ? 1 : 0);
+                var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
+                var usesOrderedEnumerator = TryGetOrderedDictionaryEnumeratorTypes(method.ResultType, out var keyType,
+                    out var valueType);
+                var itemType = usesOrderedEnumerator
+                    ? valueType
+                    : ExtractEnumerableItemType(method.ResultType ?? "");
+                var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
+
+                AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParamCount), advParamType);
+
+                if (indexName == "Id")
+                {
+                    if (hasAdvancedEnumerator)
+                    {
+                        declarations.Append(
+                            "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                        declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                        for (var i = 0; i < prefixParamCount; i++)
+                        {
+                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                        }
+
+                        declarations.Append("            var prefixLen = (int)writer.GetCurrentPosition();\n");
+                        declarations.Append(
+                            $"            if ({lastParamName}.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
+                        declarations.Append("            {\n");
+                        AppendWriteOrderableValue(declarations, $"{lastParamName}.Start",
+                            advParamType!, null, "                ");
+                        declarations.Append("            }\n");
+                        declarations.Append("            var startKeyBytes = writer.GetScopedSpanAndReset();\n");
+
+                        declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                        for (var i = 0; i < prefixParamCount; i++)
+                        {
+                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                        }
+
+                        declarations.Append(
+                            $"            if ({lastParamName}.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
+                        declarations.Append("            {\n");
+                        AppendWriteOrderableValue(declarations, $"{lastParamName}.End",
+                            advParamType!, null, "                ");
+                        declarations.Append("            }\n");
+                        declarations.Append("            var endKeyBytes = writer.GetSpan();\n");
+
+                        if (usesOrderedEnumerator)
+                        {
+                            declarations.Append(
+                                $"            return new global::BTDB.ODBLayer.RelationAdvancedOrderedEnumerator<{keyType}, {itemType}>(this, {lastParamName}.Order, {lastParamName}.StartProposition, prefixLen, startKeyBytes, {lastParamName}.EndProposition, endKeyBytes, {loaderIndex}, {prefixParamCount});\n");
+                        }
+                        else
+                        {
+                            declarations.Append(
+                                $"            return new global::BTDB.ODBLayer.RelationAdvancedEnumerator<{itemType}>(this, {lastParamName}.Order, {lastParamName}.StartProposition, prefixLen, startKeyBytes, {lastParamName}.EndProposition, endKeyBytes, {loaderIndex});\n");
+                        }
+                    }
+                    else
+                    {
+                        declarations.Append(
+                            "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                        declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                        for (var i = 0; i < paramCount; i++)
+                        {
+                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                        }
+
+                        declarations.Append(
+                            $"            return new global::BTDB.ODBLayer.RelationAdvancedEnumerator<{itemType}>(this, writer.GetSpan(), {loaderIndex});\n");
+                    }
+                }
+                else
+                {
+                    var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
+                    declarations.Append(
+                        $"            var remappedSecondaryKeyIndex = RemapPrimeSK({secondaryKeyIndex}u);\n");
+                    if (hasAdvancedEnumerator)
+                    {
+                        declarations.Append(
+                            "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                        declarations.Append(
+                            "            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);\n");
+                        for (var i = 0; i < prefixParamCount; i++)
+                        {
+                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                        }
+
+                        declarations.Append("            var prefixLen = (int)writer.GetCurrentPosition();\n");
+                        declarations.Append(
+                            $"            if ({lastParamName}.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
+                        declarations.Append("            {\n");
+                        AppendWriteOrderableValue(declarations, $"{lastParamName}.Start",
+                            advParamType!, null, "                ");
+                        declarations.Append("            }\n");
+                        declarations.Append("            var startKeyBytes = writer.GetScopedSpanAndReset();\n");
+
+                        declarations.Append(
+                            "            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);\n");
+                        for (var i = 0; i < prefixParamCount; i++)
+                        {
+                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                        }
+
+                        declarations.Append(
+                            $"            if ({lastParamName}.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
+                        declarations.Append("            {\n");
+                        AppendWriteOrderableValue(declarations, $"{lastParamName}.End",
+                            advParamType!, null, "                ");
+                        declarations.Append("            }\n");
+                        declarations.Append("            var endKeyBytes = writer.GetSpan();\n");
+
+                        if (usesOrderedEnumerator)
+                        {
+                            declarations.Append(
+                                $"            return new global::BTDB.ODBLayer.RelationAdvancedOrderedSecondaryKeyEnumerator<{keyType}, {itemType}>(this, {lastParamName}.Order, {lastParamName}.StartProposition, prefixLen, startKeyBytes, {lastParamName}.EndProposition, endKeyBytes, remappedSecondaryKeyIndex, {loaderIndex}, {prefixParamCount});\n");
+                        }
+                        else
+                        {
+                            declarations.Append(
+                                $"            return new global::BTDB.ODBLayer.RelationAdvancedSecondaryKeyEnumerator<{itemType}>(this, {lastParamName}.Order, {lastParamName}.StartProposition, prefixLen, startKeyBytes, {lastParamName}.EndProposition, endKeyBytes, remappedSecondaryKeyIndex, {loaderIndex});\n");
+                        }
+                    }
+                    else
+                    {
+                        declarations.Append(
+                            "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                        declarations.Append(
+                            "            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);\n");
+                        for (var i = 0; i < paramCount; i++)
+                        {
+                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                        }
+
+                        declarations.Append(
+                            $"            return new global::BTDB.ODBLayer.RelationAdvancedSecondaryKeyEnumerator<{itemType}>(this, writer.GetSpan(), remappedSecondaryKeyIndex, {loaderIndex});\n");
+                    }
+                }
             }
             else if (method.Name.StartsWith("GatherBy", StringComparison.Ordinal))
             {
@@ -3563,6 +3720,17 @@ public class SourceGenerator : IIncrementalGenerator
         return type;
     }
 
+    static string? GetEnumUnderlyingType(ITypeSymbol typeSymbol)
+    {
+        if (typeSymbol is INamedTypeSymbol { TypeKind: TypeKind.Enum } enumType &&
+            enumType.EnumUnderlyingType != null)
+        {
+            return enumType.EnumUnderlyingType.ToDisplayString();
+        }
+
+        return null;
+    }
+
     static bool IsOrdererArrayType(string type)
     {
         return type == "BTDB.ODBLayer.IOrderer[]";
@@ -3604,14 +3772,20 @@ public class SourceGenerator : IIncrementalGenerator
         return -1;
     }
 
-    static bool NeedsWriterCtxForContains(IEnumerable<ParameterInfo> parameters)
+    static bool NeedsWriterCtx(IEnumerable<ParameterInfo> parameters, string? extraType)
     {
-        return parameters.Any(p => NormalizeType(p.Type) == "BTDB.Encrypted.EncryptedString");
+        if (parameters.Any(p => NormalizeType(p.Type) == "BTDB.Encrypted.EncryptedString"))
+        {
+            return true;
+        }
+
+        return extraType != null && NormalizeType(extraType) == "BTDB.Encrypted.EncryptedString";
     }
 
-    static void AppendContainsWriterCtxIfNeeded(StringBuilder declarations, IEnumerable<ParameterInfo> parameters)
+    static void AppendWriterCtxIfNeeded(StringBuilder declarations, IEnumerable<ParameterInfo> parameters,
+        string? extraType)
     {
-        if (!NeedsWriterCtxForContains(parameters))
+        if (!NeedsWriterCtx(parameters, extraType))
         {
             return;
         }
@@ -3621,77 +3795,196 @@ public class SourceGenerator : IIncrementalGenerator
 
     static void AppendWriteOrderableParameter(StringBuilder declarations, ParameterInfo parameter)
     {
-        var normalizedType = NormalizeType(parameter.Type);
+        AppendWriteOrderableValue(declarations, parameter.Name, parameter.Type, parameter.EnumUnderlyingType, "            ");
+    }
+
+    static void AppendWriteOrderableValue(StringBuilder declarations, string valueExpression, string valueType,
+        string? enumUnderlyingType = null, string indent = "            ")
+    {
+        if (enumUnderlyingType != null)
+        {
+            var normalizedUnderlying = NormalizeType(enumUnderlyingType);
+            switch (normalizedUnderlying)
+            {
+                case "sbyte":
+                case "short":
+                case "int":
+                case "long":
+                    declarations.Append($"{indent}writer.WriteVInt64((long){valueExpression});\n");
+                    return;
+                case "byte":
+                case "ushort":
+                case "uint":
+                case "ulong":
+                    declarations.Append($"{indent}writer.WriteVUInt64((ulong){valueExpression});\n");
+                    return;
+                default:
+                    declarations.Append(
+                        $"{indent}throw new NotSupportedException(\"Key does not support enum type '{normalizedUnderlying}'.\");\n");
+                    return;
+            }
+        }
+
+        var normalizedType = NormalizeType(valueType);
         switch (normalizedType)
         {
             case "string":
-                declarations.Append($"            writer.WriteStringOrdered({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteStringOrdered({valueExpression});\n");
                 return;
             case "bool":
-                declarations.Append($"            writer.WriteBool({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteBool({valueExpression});\n");
                 return;
             case "byte":
-                declarations.Append($"            writer.WriteUInt8({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteUInt8({valueExpression});\n");
                 return;
             case "sbyte":
-                declarations.Append($"            writer.WriteInt8Ordered({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteInt8Ordered({valueExpression});\n");
                 return;
             case "short":
             case "int":
             case "long":
-                declarations.Append($"            writer.WriteVInt64({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteVInt64({valueExpression});\n");
                 return;
             case "ushort":
             case "uint":
             case "ulong":
-                declarations.Append($"            writer.WriteVUInt64({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteVUInt64({valueExpression});\n");
                 return;
             case "System.DateTime":
-                declarations.Append($"            writer.WriteDateTimeForbidUnspecifiedKind({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteDateTimeForbidUnspecifiedKind({valueExpression});\n");
                 return;
             case "System.DateTimeOffset":
-                declarations.Append($"            writer.WriteDateTimeOffset({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteDateTimeOffset({valueExpression});\n");
                 return;
             case "System.TimeSpan":
-                declarations.Append($"            writer.WriteTimeSpan({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteTimeSpan({valueExpression});\n");
                 return;
             case "System.Guid":
-                declarations.Append($"            writer.WriteGuid({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteGuid({valueExpression});\n");
                 return;
             case "System.Decimal":
-                declarations.Append($"            writer.WriteDecimal({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteDecimal({valueExpression});\n");
                 return;
             case "System.Net.IPAddress":
-                declarations.Append($"            writer.WriteIPAddress({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteIPAddress({valueExpression});\n");
                 return;
             case "System.Collections.Generic.List<string>":
                 declarations.Append(
-                    $"            if ({parameter.Name} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){parameter.Name}.Count); foreach (var item in {parameter.Name}) writer.WriteString(item); }}\n");
+                    $"{indent}if ({valueExpression} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){valueExpression}.Count); foreach (var item in {valueExpression}) writer.WriteString(item); }}\n");
                 return;
             case "System.Collections.Generic.List<ulong>":
                 declarations.Append(
-                    $"            if ({parameter.Name} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){parameter.Name}.Count); foreach (var item in {parameter.Name}) writer.WriteVUInt64(item); }}\n");
+                    $"{indent}if ({valueExpression} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){valueExpression}.Count); foreach (var item in {valueExpression}) writer.WriteVUInt64(item); }}\n");
                 return;
             case "byte[]":
             case "BTDB.Buffer.ByteBuffer":
             case "System.ReadOnlyMemory<byte>":
-                declarations.Append($"            writer.WriteByteArray({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteByteArray({valueExpression});\n");
                 return;
             case "System.Version":
-                declarations.Append($"            writer.WriteVersion({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteVersion({valueExpression});\n");
                 return;
             case "BTDB.Encrypted.EncryptedString":
                 declarations.Append(
-                    $"            ctx_ctx.WriteOrderedEncryptedString(ref writer, {parameter.Name});\n");
+                    $"{indent}ctx_ctx.WriteOrderedEncryptedString(ref writer, {valueExpression});\n");
                 return;
             case "Microsoft.Extensions.Primitives.StringValues":
-                declarations.Append($"            writer.WriteStringValues({parameter.Name});\n");
+                declarations.Append($"{indent}writer.WriteStringValues({valueExpression});\n");
                 return;
             default:
                 declarations.Append(
-                    $"            throw new NotSupportedException(\"Contains does not support key type '{normalizedType}'.\");\n");
+                    $"{indent}throw new NotSupportedException(\"Key does not support type '{normalizedType}'.\");\n");
                 return;
         }
+    }
+
+    static bool TryGetAdvancedEnumeratorParamType(string type, out string genericType)
+    {
+        var normalized = type!.Replace("global::", "");
+        const string prefix = "BTDB.ODBLayer.AdvancedEnumeratorParam<";
+        const string shortPrefix = "AdvancedEnumeratorParam<";
+        if (normalized.StartsWith(prefix, StringComparison.Ordinal) ||
+            normalized.StartsWith(shortPrefix, StringComparison.Ordinal))
+        {
+            var start = normalized.IndexOf('<');
+            var end = normalized.LastIndexOf('>');
+            if (start >= 0 && end > start)
+            {
+                genericType = normalized.Substring(start + 1, end - start - 1).Trim();
+                return true;
+            }
+        }
+
+        genericType = "";
+        return false;
+    }
+
+    static bool TryGetOrderedDictionaryEnumeratorTypes(string? type, out string keyType, out string valueType)
+    {
+        keyType = "";
+        valueType = "";
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            return false;
+        }
+
+        var normalized = type!.Replace("global::", "");
+        const string prefix = "BTDB.ODBLayer.IOrderedDictionaryEnumerator<";
+        const string shortPrefix = "IOrderedDictionaryEnumerator<";
+        if (!normalized.StartsWith(prefix, StringComparison.Ordinal) &&
+            !normalized.StartsWith(shortPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var start = normalized.IndexOf('<');
+        var end = normalized.LastIndexOf('>');
+        if (start < 0 || end <= start)
+        {
+            return false;
+        }
+
+        var args = normalized.Substring(start + 1, end - start - 1);
+        var split = SplitGenericArguments(args);
+        if (split.Length != 2)
+        {
+            return false;
+        }
+
+        keyType = split[0].Trim();
+        valueType = split[1].Trim();
+        return true;
+    }
+
+    static string[] SplitGenericArguments(string args)
+    {
+        var parts = new List<string>();
+        var depth = 0;
+        var start = 0;
+        for (var i = 0; i < args.Length; i++)
+        {
+            var ch = args[i];
+            switch (ch)
+            {
+                case '<':
+                    depth++;
+                    break;
+                case '>':
+                    depth--;
+                    break;
+                case ',':
+                    if (depth == 0)
+                    {
+                        parts.Add(args.Substring(start, i - start));
+                        start = i + 1;
+                    }
+
+                    break;
+            }
+        }
+
+        parts.Add(args.Substring(start));
+        return parts.ToArray();
     }
 
     static bool IsFloatOrDoubleType(string type)
@@ -3804,7 +4097,8 @@ record ParameterInfo(
     string? KeyCode,
     bool IsReference,
     bool Optional,
-    string? DefaultValue);
+    string? DefaultValue,
+    string? EnumUnderlyingType = null);
 
 record PropertyInfo(
     string Name,

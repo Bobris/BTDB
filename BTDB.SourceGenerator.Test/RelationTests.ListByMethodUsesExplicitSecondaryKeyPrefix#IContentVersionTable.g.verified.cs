@@ -27,7 +27,28 @@ file class IContentVersionTableRegistration
         [SkipLocalsInit]
         global::System.Collections.Generic.IEnumerable<global::ContentVersion> global::IContentVersionTable.ListByState(ulong companyId, ulong contentId, ContentVersionState state, BTDB.ODBLayer.AdvancedEnumeratorParam<uint> param)
         {
-            throw new NotImplementedException();
+            var remappedSecondaryKeyIndex = RemapPrimeSK(0u);
+            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
+            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);
+            writer.WriteVUInt64(companyId);
+            writer.WriteVUInt64(contentId);
+            writer.WriteVInt64((long)state);
+            var prefixLen = (int)writer.GetCurrentPosition();
+            if (param.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
+            {
+                writer.WriteVUInt64(param.Start);
+            }
+            var startKeyBytes = writer.GetScopedSpanAndReset();
+            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);
+            writer.WriteVUInt64(companyId);
+            writer.WriteVUInt64(contentId);
+            writer.WriteVInt64((long)state);
+            if (param.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
+            {
+                writer.WriteVUInt64(param.End);
+            }
+            var endKeyBytes = writer.GetSpan();
+            return new global::BTDB.ODBLayer.RelationAdvancedSecondaryKeyEnumerator<global::ContentVersion>(this, param.Order, param.StartProposition, prefixLen, startKeyBytes, param.EndProposition, endKeyBytes, remappedSecondaryKeyIndex, 0);
         }
     }
     [ModuleInitializer]

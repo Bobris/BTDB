@@ -29,7 +29,22 @@ file class IUserNoticeTableRegistration
         [SkipLocalsInit]
         global::System.Collections.Generic.IEnumerable<global::UserNotice> global::IUserNoticeTable.ListByNoticeId(BTDB.ODBLayer.AdvancedEnumeratorParam<uint> noticeId)
         {
-            throw new NotImplementedException();
+            var remappedSecondaryKeyIndex = RemapPrimeSK(0u);
+            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
+            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);
+            var prefixLen = (int)writer.GetCurrentPosition();
+            if (noticeId.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
+            {
+                writer.WriteVUInt64(noticeId.Start);
+            }
+            var startKeyBytes = writer.GetScopedSpanAndReset();
+            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);
+            if (noticeId.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
+            {
+                writer.WriteVUInt64(noticeId.End);
+            }
+            var endKeyBytes = writer.GetSpan();
+            return new global::BTDB.ODBLayer.RelationAdvancedSecondaryKeyEnumerator<global::UserNotice>(this, noticeId.Order, noticeId.StartProposition, prefixLen, startKeyBytes, noticeId.EndProposition, endKeyBytes, remappedSecondaryKeyIndex, 0);
         }
     }
     [ModuleInitializer]
