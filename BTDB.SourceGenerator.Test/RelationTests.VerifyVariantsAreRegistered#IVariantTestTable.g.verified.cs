@@ -22,7 +22,10 @@ file class IVariantTestTableRegistration
         [SkipLocalsInit]
         global::JustAge global::IVariantTestTable.FindById(ulong id)
         {
-            throw new NotImplementedException();
+            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
+            WriteRelationPKPrefix(ref writer);
+            writer.WriteVUInt64(id);
+            return base.FindByIdOrDefault<global::JustAge>(writer.GetSpan(), true, 1);
         }
 
         [SkipLocalsInit]

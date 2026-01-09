@@ -3443,6 +3443,66 @@ public class SourceGenerator : IIncrementalGenerator
 
                 declarations.Append("            return base.Contains(writer.GetSpan());\n");
             }
+            else if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
+            {
+                var paramCount = method.Parameters.Count;
+                var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
+                var isPrefixBased = IsEnumerableType(method.ResultType);
+                var itemType = isPrefixBased
+                    ? ExtractEnumerableItemType(method.ResultType ?? "")
+                    : NormalizeType(method.ResultType ?? "");
+                var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
+                if (loaderIndex < 0) loaderIndex = 0;
+
+                AppendWriterCtxIfNeeded(declarations, method.Parameters, null);
+                declarations.Append(
+                    "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                if (indexName == "Id")
+                {
+                    declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                }
+                else
+                {
+                    var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
+                    declarations.Append(
+                        $"            var remappedSecondaryKeyIndex = RemapPrimeSK({secondaryKeyIndex}u);\n");
+                    declarations.Append(
+                        "            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);\n");
+                }
+
+                for (var i = 0; i < paramCount; i++)
+                {
+                    AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                }
+
+                if (isPrefixBased)
+                {
+                    if (indexName == "Id")
+                    {
+                        declarations.Append(
+                            $"            return ({method.ResultType})base.FindByPrimaryKeyPrefix<{itemType}>(writer.GetSpan(), {loaderIndex});\n");
+                    }
+                    else
+                    {
+                        declarations.Append(
+                            $"            return ({method.ResultType})base.FindBySecondaryKey<{itemType}>(remappedSecondaryKeyIndex, writer.GetSpan(), {loaderIndex});\n");
+                    }
+                }
+                else
+                {
+                    var throwWhenNotFound = hasOrDefault ? "false" : "true";
+                    if (indexName == "Id")
+                    {
+                        declarations.Append(
+                            $"            return base.FindByIdOrDefault<{itemType}>(writer.GetSpan(), {throwWhenNotFound}, {loaderIndex});\n");
+                    }
+                    else
+                    {
+                        declarations.Append(
+                            $"            return base.FindBySecondaryKeyOrDefault<{itemType}>(remappedSecondaryKeyIndex, writer.GetSpan(), {throwWhenNotFound}, {loaderIndex});\n");
+                    }
+                }
+            }
             else if (method.Name.StartsWith("ListBy", StringComparison.Ordinal))
             {
                 var paramCount = method.Parameters.Count;
@@ -3792,6 +3852,18 @@ public class SourceGenerator : IIncrementalGenerator
 
     static string? GetEnumUnderlyingType(ITypeSymbol typeSymbol)
     {
+        if (typeSymbol is INamedTypeSymbol
+            {
+                TypeKind: TypeKind.Struct,
+                OriginalDefinition.SpecialType: SpecialType.System_Nullable_T
+            } nullableType &&
+            nullableType.TypeArguments.Length == 1 &&
+            nullableType.TypeArguments[0] is INamedTypeSymbol { TypeKind: TypeKind.Enum } nullableEnum &&
+            nullableEnum.EnumUnderlyingType != null)
+        {
+            return nullableEnum.EnumUnderlyingType.ToDisplayString();
+        }
+
         if (typeSymbol is INamedTypeSymbol { TypeKind: TypeKind.Enum } enumType &&
             enumType.EnumUnderlyingType != null)
         {
@@ -3823,6 +3895,12 @@ public class SourceGenerator : IIncrementalGenerator
         if (start < 0 || end <= start) return enumerableType;
         var typeArg = enumerableType.Substring(start + 1, end - start - 1).Trim();
         return typeArg;
+    }
+
+    static bool IsEnumerableType(string? enumerableType)
+    {
+        if (enumerableType is null) return false;
+        return enumerableType.StartsWith("System.Collections.Generic.IEnumerable<", StringComparison.Ordinal);
     }
 
     static int FindLoaderIndex(EquatableArray<TypeRef> loadTypes, string itemType)
@@ -3865,12 +3943,29 @@ public class SourceGenerator : IIncrementalGenerator
 
     static void AppendWriteOrderableParameter(StringBuilder declarations, ParameterInfo parameter)
     {
-        AppendWriteOrderableValue(declarations, parameter.Name, parameter.Type, parameter.EnumUnderlyingType, "            ");
+        AppendWriteOrderableValue(declarations, parameter.Name, parameter.Type, parameter.EnumUnderlyingType,
+            "            ");
     }
 
     static void AppendWriteOrderableValue(StringBuilder declarations, string valueExpression, string valueType,
         string? enumUnderlyingType = null, string indent = "            ")
     {
+        var nullableUnderlyingType = TryGetNullableUnderlyingType(valueType);
+        if (nullableUnderlyingType != null)
+        {
+            declarations.Append($"{indent}if (!{valueExpression}.HasValue)\n");
+            declarations.Append($"{indent}{{\n");
+            declarations.Append($"{indent}    writer.WriteBool(false);\n");
+            declarations.Append($"{indent}}}\n");
+            declarations.Append($"{indent}else\n");
+            declarations.Append($"{indent}{{\n");
+            declarations.Append($"{indent}    writer.WriteBool(true);\n");
+            AppendWriteOrderableValue(declarations, $"{valueExpression}.Value", nullableUnderlyingType,
+                enumUnderlyingType, indent + "    ");
+            declarations.Append($"{indent}}}\n");
+            return;
+        }
+
         if (enumUnderlyingType != null)
         {
             var normalizedUnderlying = NormalizeType(enumUnderlyingType);
@@ -3966,6 +4061,27 @@ public class SourceGenerator : IIncrementalGenerator
                     $"{indent}throw new NotSupportedException(\"Key does not support type '{normalizedType}'.\");\n");
                 return;
         }
+    }
+
+    static string? TryGetNullableUnderlyingType(string valueType)
+    {
+        if (valueType.EndsWith("?", StringComparison.Ordinal))
+        {
+            return valueType.Substring(0, valueType.Length - 1);
+        }
+
+        const string prefix = "System.Nullable<";
+        if (valueType.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            var start = valueType.IndexOf('<');
+            var end = valueType.LastIndexOf('>');
+            if (start >= 0 && end > start)
+            {
+                return valueType.Substring(start + 1, end - start - 1).Trim();
+            }
+        }
+
+        return null;
     }
 
     static void AppendAdvancedKeyPrefix(StringBuilder declarations, bool useSecondaryKey,
