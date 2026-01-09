@@ -1,0 +1,23 @@
+{
+  Diagnostics: [
+    {
+      Location: /*
+    // Contains must return bool, not int
+    int Contains(ulong companyId, ulong productId);
+        ^^^^^^^^
+}
+*/
+ : (12,8)-(12,16),
+      Message: Method 'Contains' must return bool,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0034,
+        Title: Method 'Contains' must return bool,
+        MessageFormat: Method 'Contains' must return bool,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

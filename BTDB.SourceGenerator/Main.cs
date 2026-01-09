@@ -800,6 +800,19 @@ public class SourceGenerator : IIncrementalGenerator
                     indexOfInKeyValue, secondaryKeys, true);
             }
 
+            if (method.Name == "Contains")
+            {
+                if (method.ReturnType.SpecialType != SpecialType.System_Boolean)
+                {
+                    return GenerationError("BTDB0034",
+                        $"Method '{method.Name}' must return bool",
+                        method.Locations[0]);
+                }
+
+                return CheckParamsNamesAndTypes(method, "Id", itemGenInfo.Fields, primaryKeyFields,
+                    indexOfInKeyValue, secondaryKeys);
+            }
+
             if (method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal) ||
                 method.Name.StartsWith("Contains", StringComparison.Ordinal))
                 continue;

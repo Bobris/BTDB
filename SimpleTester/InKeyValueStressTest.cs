@@ -13,10 +13,10 @@ public class ApiKey
     [PrimaryKey(2)] public ulong ApiKeyId { get; set; }
 
     [SecondaryKey("Key", IncludePrimaryKeyOrder = 1)]
-    public string Key { get; set; }
+    public string Key { get; set; } = null!;
 
-    public string Name { get; set; }
-    public string Description { get; set; }
+    public string Name { get; set; } = null!;
+    public string Description { get; set; } = null!;
     public DateTime CreatedDate { get; set; }
     [InKeyValue(3)] public DateTime? LastUsedDate { get; set; }
     [InKeyValue(4)] public DateTime? ExpirationDate { get; set; }

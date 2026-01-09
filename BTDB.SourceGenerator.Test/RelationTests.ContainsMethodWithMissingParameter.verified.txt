@@ -1,0 +1,23 @@
+{
+  Diagnostics: [
+    {
+      Location: /*
+    // Contains must specify all primary key fields
+    bool Contains(ulong companyId);
+         ^^^^^^^^
+}
+*/
+ : (12,9)-(12,17),
+      Message: Number of parameters in 'Contains' does not match Id key count 2.,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0020,
+        Title: Number of parameters in 'Contains' does not match Id key count 2.,
+        MessageFormat: Number of parameters in 'Contains' does not match Id key count 2.,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

@@ -1166,6 +1166,94 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task ContainsMethodMustReturnBool()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // Contains must return bool, not int
+                int Contains(ulong companyId, ulong productId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task ContainsMethodWithWrongParameterType()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // Contains parameter type must match primary key type
+                bool Contains(string companyId, ulong productId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task ContainsMethodWithWrongParameterName()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // Contains parameter name must match primary key field name
+                bool Contains(ulong wrongName, ulong productId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task ContainsMethodWithMissingParameter()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                // Contains must specify all primary key fields
+                bool Contains(ulong companyId);
+            }
+            """);
+    }
+
+    [Fact]
     public Task AnyByMethodMustReturnBool()
     {
         // language=cs
