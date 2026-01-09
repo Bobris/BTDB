@@ -3664,6 +3664,20 @@ public class SourceGenerator : IIncrementalGenerator
             case "System.Net.IPAddress":
                 declarations.Append($"            writer.WriteIPAddress({parameter.Name});\n");
                 return;
+            case "System.Collections.Generic.List<string>":
+            case "System.Collections.Generic.List<System.String>":
+            case "System.Collections.Generic.List<global::System.String>":
+            case "global::System.Collections.Generic.List<global::System.String>":
+                declarations.Append(
+                    $"            if ({parameter.Name} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){parameter.Name}.Count); foreach (var item in {parameter.Name}) writer.WriteStringOrdered(item); }}\n");
+                return;
+            case "System.Collections.Generic.List<ulong>":
+            case "System.Collections.Generic.List<System.UInt64>":
+            case "System.Collections.Generic.List<global::System.UInt64>":
+            case "global::System.Collections.Generic.List<global::System.UInt64>":
+                declarations.Append(
+                    $"            if ({parameter.Name} == null) writer.WriteVUInt32(0); else {{ writer.WriteVUInt32((uint){parameter.Name}.Count); foreach (var item in {parameter.Name}) writer.WriteVUInt64(item); }}\n");
+                return;
             case "byte[]":
             case "BTDB.Buffer.ByteBuffer":
             case "System.ReadOnlyMemory<byte>":

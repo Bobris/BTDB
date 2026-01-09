@@ -1354,6 +1354,36 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task ContainsSupportsMoreKeyTypes()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System;
+            using System.Collections.Generic;
+            using System.Net;
+            using Microsoft.Extensions.Primitives;
+            using BTDB.ODBLayer;
+
+            public class ContainsKeyTypes
+            {
+                [PrimaryKey(1)] public string Name { get; set; } = "";
+                [PrimaryKey(2)] public TimeSpan Duration { get; set; }
+                [PrimaryKey(3)] public IPAddress Address { get; set; } = IPAddress.Loopback;
+                [PrimaryKey(4)] public Version ApiVersion { get; set; } = new Version(1, 0);
+                [PrimaryKey(5)] public StringValues Tags { get; set; } = StringValues.Empty;
+                [PrimaryKey(6)] public List<string> Names { get; set; } = new List<string>();
+                [PrimaryKey(7)] public List<ulong> Counters { get; set; } = new List<ulong>();
+            }
+
+            public interface IContainsKeyTypesTable : IRelation<ContainsKeyTypes>
+            {
+                bool Contains(string name, TimeSpan duration, IPAddress address, Version apiVersion,
+                    StringValues tags, List<string> names, List<ulong> counters);
+            }
+            """);
+    }
+
+    [Fact]
     public Task ContainsMethodGeneratesKeyLookup()
     {
         // language=cs

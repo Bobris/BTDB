@@ -1,9 +1,11 @@
 using System;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Primitives;
 using Sample3rdPartyLib;
 using VerifyXunit;
 using Xunit;
@@ -24,6 +26,8 @@ public class GeneratorTestsBase
                 MetadataReference.CreateFromFile(typeof(GenerateAttribute).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(FromKeyedServicesAttribute).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(I3rdPartyInterface).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(IPAddress).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(StringValues).Assembly.Location),
             ], new(OutputKind.ConsoleApplication, allowUnsafe: true));
         var runResult = driver.RunGenerators(compilation);
         // Update the compilation and rerun the generator
