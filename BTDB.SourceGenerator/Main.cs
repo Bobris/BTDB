@@ -3473,36 +3473,8 @@ public class SourceGenerator : IIncrementalGenerator
                 {
                     if (hasAdvancedEnumerator)
                     {
-                        declarations.Append(
-                            "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
-                        declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
-                        for (var i = 0; i < prefixParamCount; i++)
-                        {
-                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
-                        }
-
-                        declarations.Append("            var prefixLen = (int)writer.GetCurrentPosition();\n");
-                        declarations.Append(
-                            $"            if ({lastParamName}.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
-                        declarations.Append("            {\n");
-                        AppendWriteOrderableValue(declarations, $"{lastParamName}.Start",
-                            advParamType!, null, "                ");
-                        declarations.Append("            }\n");
-                        declarations.Append("            var startKeyBytes = writer.GetScopedSpanAndReset();\n");
-
-                        declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
-                        for (var i = 0; i < prefixParamCount; i++)
-                        {
-                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
-                        }
-
-                        declarations.Append(
-                            $"            if ({lastParamName}.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
-                        declarations.Append("            {\n");
-                        AppendWriteOrderableValue(declarations, $"{lastParamName}.End",
-                            advParamType!, null, "                ");
-                        declarations.Append("            }\n");
-                        declarations.Append("            var endKeyBytes = writer.GetSpan();\n");
+                        AppendAdvancedKeyPrefix(declarations, false, null, method.Parameters, prefixParamCount,
+                            lastParamName, advParamType!);
 
                         if (usesOrderedEnumerator)
                         {
@@ -3536,38 +3508,8 @@ public class SourceGenerator : IIncrementalGenerator
                         $"            var remappedSecondaryKeyIndex = RemapPrimeSK({secondaryKeyIndex}u);\n");
                     if (hasAdvancedEnumerator)
                     {
-                        declarations.Append(
-                            "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
-                        declarations.Append(
-                            "            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);\n");
-                        for (var i = 0; i < prefixParamCount; i++)
-                        {
-                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
-                        }
-
-                        declarations.Append("            var prefixLen = (int)writer.GetCurrentPosition();\n");
-                        declarations.Append(
-                            $"            if ({lastParamName}.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
-                        declarations.Append("            {\n");
-                        AppendWriteOrderableValue(declarations, $"{lastParamName}.Start",
-                            advParamType!, null, "                ");
-                        declarations.Append("            }\n");
-                        declarations.Append("            var startKeyBytes = writer.GetScopedSpanAndReset();\n");
-
-                        declarations.Append(
-                            "            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);\n");
-                        for (var i = 0; i < prefixParamCount; i++)
-                        {
-                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
-                        }
-
-                        declarations.Append(
-                            $"            if ({lastParamName}.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
-                        declarations.Append("            {\n");
-                        AppendWriteOrderableValue(declarations, $"{lastParamName}.End",
-                            advParamType!, null, "                ");
-                        declarations.Append("            }\n");
-                        declarations.Append("            var endKeyBytes = writer.GetSpan();\n");
+                        AppendAdvancedKeyPrefix(declarations, true, "remappedSecondaryKeyIndex", method.Parameters,
+                            prefixParamCount, lastParamName, advParamType!);
 
                         if (usesOrderedEnumerator)
                         {
@@ -3594,6 +3536,69 @@ public class SourceGenerator : IIncrementalGenerator
                         declarations.Append(
                             $"            return new global::BTDB.ODBLayer.RelationAdvancedSecondaryKeyEnumerator<{itemType}>(this, writer.GetSpan(), remappedSecondaryKeyIndex, {loaderIndex});\n");
                     }
+                }
+            }
+            else if (method.Name.StartsWith("AnyBy", StringComparison.Ordinal))
+            {
+                var paramCount = method.Parameters.Count;
+                string? advParamType = null;
+                var advType = string.Empty;
+                var lastParam = paramCount > 0 ? method.Parameters[paramCount - 1] : null;
+                var lastParamName = lastParam?.Name ?? "";
+                var hasAdvancedEnumerator = paramCount > 0 &&
+                                            TryGetAdvancedEnumeratorParamType(lastParam!.Type, out advType);
+                if (hasAdvancedEnumerator)
+                {
+                    advParamType = advType;
+                }
+
+                var prefixParamCount = paramCount - (hasAdvancedEnumerator ? 1 : 0);
+                var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
+
+                AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParamCount), advParamType);
+
+                if (hasAdvancedEnumerator)
+                {
+                    if (indexName == "Id")
+                    {
+                        AppendAdvancedKeyPrefix(declarations, false, null, method.Parameters, prefixParamCount,
+                            lastParamName, advParamType!);
+                    }
+                    else
+                    {
+                        var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
+                        declarations.Append(
+                            $"            var remappedSecondaryKeyIndex = RemapPrimeSK({secondaryKeyIndex}u);\n");
+                        AppendAdvancedKeyPrefix(declarations, true, "remappedSecondaryKeyIndex", method.Parameters,
+                            prefixParamCount, lastParamName, advParamType!);
+                    }
+
+                    declarations.Append(
+                        $"            return base.AnyWithProposition({lastParamName}.StartProposition, prefixLen, startKeyBytes, {lastParamName}.EndProposition, endKeyBytes);\n");
+                }
+                else
+                {
+                    declarations.Append(
+                        "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                    if (indexName == "Id")
+                    {
+                        declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                    }
+                    else
+                    {
+                        var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
+                        declarations.Append(
+                            $"            var remappedSecondaryKeyIndex = RemapPrimeSK({secondaryKeyIndex}u);\n");
+                        declarations.Append(
+                            "            WriteRelationSKPrefix(ref writer, remappedSecondaryKeyIndex);\n");
+                    }
+
+                    for (var i = 0; i < paramCount; i++)
+                    {
+                        AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                    }
+
+                    declarations.Append("            return base.AnyWithPrefix(writer.GetSpan());\n");
                 }
             }
             else if (method.Name.StartsWith("GatherBy", StringComparison.Ordinal))
@@ -3896,6 +3901,56 @@ public class SourceGenerator : IIncrementalGenerator
                     $"{indent}throw new NotSupportedException(\"Key does not support type '{normalizedType}'.\");\n");
                 return;
         }
+    }
+
+    static void AppendAdvancedKeyPrefix(StringBuilder declarations, bool useSecondaryKey,
+        string? remappedSecondaryKeyIndexVar, EquatableArray<ParameterInfo> parameters, int prefixParamCount,
+        string advParamName, string advParamType)
+    {
+        declarations.Append(
+            "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+        if (useSecondaryKey)
+        {
+            declarations.Append($"            WriteRelationSKPrefix(ref writer, {remappedSecondaryKeyIndexVar});\n");
+        }
+        else
+        {
+            declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+        }
+
+        for (var i = 0; i < prefixParamCount; i++)
+        {
+            AppendWriteOrderableParameter(declarations, parameters[i]);
+        }
+
+        declarations.Append("            var prefixLen = (int)writer.GetCurrentPosition();\n");
+        declarations.Append(
+            $"            if ({advParamName}.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
+        declarations.Append("            {\n");
+        AppendWriteOrderableValue(declarations, $"{advParamName}.Start", advParamType, null, "                ");
+        declarations.Append("            }\n");
+        declarations.Append("            var startKeyBytes = writer.GetScopedSpanAndReset();\n");
+
+        if (useSecondaryKey)
+        {
+            declarations.Append($"            WriteRelationSKPrefix(ref writer, {remappedSecondaryKeyIndexVar});\n");
+        }
+        else
+        {
+            declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+        }
+
+        for (var i = 0; i < prefixParamCount; i++)
+        {
+            AppendWriteOrderableParameter(declarations, parameters[i]);
+        }
+
+        declarations.Append(
+            $"            if ({advParamName}.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
+        declarations.Append("            {\n");
+        AppendWriteOrderableValue(declarations, $"{advParamName}.End", advParamType, null, "                ");
+        declarations.Append("            }\n");
+        declarations.Append("            var endKeyBytes = writer.GetSpan();\n");
     }
 
     static bool TryGetAdvancedEnumeratorParamType(string type, out string genericType)

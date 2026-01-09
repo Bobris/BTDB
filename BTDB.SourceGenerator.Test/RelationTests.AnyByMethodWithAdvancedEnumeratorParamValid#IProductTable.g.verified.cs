@@ -23,7 +23,23 @@ file class IProductTableRegistration
         [SkipLocalsInit]
         bool global::IProductTable.AnyById(ulong companyId, BTDB.ODBLayer.AdvancedEnumeratorParam<ulong> productIdParam)
         {
-            throw new NotImplementedException();
+            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
+            WriteRelationPKPrefix(ref writer);
+            writer.WriteVUInt64(companyId);
+            var prefixLen = (int)writer.GetCurrentPosition();
+            if (productIdParam.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
+            {
+                writer.WriteVUInt64(productIdParam.Start);
+            }
+            var startKeyBytes = writer.GetScopedSpanAndReset();
+            WriteRelationPKPrefix(ref writer);
+            writer.WriteVUInt64(companyId);
+            if (productIdParam.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
+            {
+                writer.WriteVUInt64(productIdParam.End);
+            }
+            var endKeyBytes = writer.GetSpan();
+            return base.AnyWithProposition(productIdParam.StartProposition, prefixLen, startKeyBytes, productIdParam.EndProposition, endKeyBytes);
         }
     }
     [ModuleInitializer]
