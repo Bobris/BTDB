@@ -28,7 +28,9 @@ file class IVariantTestTableRegistration
         [SkipLocalsInit]
         ulong global::IVariantTestTable.GatherById(System.Collections.Generic.ICollection<JustName> items, long skip, long take, BTDB.ODBLayer.Constraint<ulong> id)
         {
-            throw new NotImplementedException();
+            var c_c = new ConstraintInfo[1];
+            c_c[0].Constraint = id;
+            return GatherByPrimaryKey(2, c_c, items, skip, take, null);
         }
     }
     [ModuleInitializer]

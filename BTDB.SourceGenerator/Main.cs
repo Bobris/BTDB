@@ -3419,6 +3419,25 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append(
                     $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
             }
+            else if (method.Name.StartsWith("GatherBy", StringComparison.Ordinal))
+            {
+                var paramCount = method.Parameters.Count;
+                var hasOrderers = paramCount > 0 && IsOrdererArrayType(method.Parameters[paramCount - 1].Type);
+                var constraintCount = paramCount - 3 - (hasOrderers ? 1 : 0);
+                var itemType = ExtractCollectionItemType(method.Parameters[0].Type);
+                var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
+                if (loaderIndex < 0) loaderIndex = 0;
+
+                declarations.Append($"            var c_c = new ConstraintInfo[{constraintCount}];\n");
+                for (var i = 0; i < constraintCount; i++)
+                {
+                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i + 3].Name};\n");
+                }
+
+                var orderersArg = hasOrderers ? method.Parameters[paramCount - 1].Name : "null";
+                declarations.Append(
+                    $"            return GatherByPrimaryKey({loaderIndex}, c_c, {method.Parameters[0].Name}, {method.Parameters[1].Name}, {method.Parameters[2].Name}, {orderersArg});\n");
+            }
             else
             {
                 declarations.Append("            throw new NotImplementedException();\n");
@@ -3456,6 +3475,37 @@ public class SourceGenerator : IIncrementalGenerator
     {
         if (type == "dynamic") return "object";
         return type;
+    }
+
+    static bool IsOrdererArrayType(string type)
+    {
+        return type == "BTDB.ODBLayer.IOrderer[]";
+    }
+
+    static string ExtractCollectionItemType(string collectionType)
+    {
+        var start = collectionType.IndexOf('<');
+        var end = collectionType.LastIndexOf('>');
+        if (start < 0 || end <= start) return collectionType;
+        var typeArg = collectionType.Substring(start + 1, end - start - 1).Trim();
+        return typeArg.Replace("global::", "");
+    }
+
+    static int FindLoaderIndex(EquatableArray<TypeRef> loadTypes, string itemType)
+    {
+        var normalizedItemType = NormalizeType(itemType);
+        var usesNamespace = normalizedItemType.IndexOf('.') >= 0;
+        for (var i = 0; i < loadTypes.Count; i++)
+        {
+            var typeRef = loadTypes[i];
+            var candidate = typeRef.FullyQualifiedName;
+            if (string.Equals(candidate, normalizedItemType, StringComparison.Ordinal))
+                return i;
+            if (!usesNamespace && string.Equals(typeRef.Name, normalizedItemType, StringComparison.Ordinal))
+                return i;
+        }
+
+        return -1;
     }
 }
 
