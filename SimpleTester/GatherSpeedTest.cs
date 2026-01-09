@@ -16,7 +16,7 @@ public class Record
 
     [PrimaryKey(3)] public ulong MessageId { get; set; }
 
-    [InKeyValue(4)] public string Recipient { get; set; }
+    [InKeyValue(4)] public string Recipient { get; set; } = null!;
 }
 
 public interface IRecordTable : IRelation<Record>

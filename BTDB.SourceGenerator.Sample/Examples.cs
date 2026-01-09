@@ -238,7 +238,7 @@ public struct DictEntry<TKey, TValue>
 public class TupleIntString
 {
     public int Item1;
-    public string Item2;
+    public string Item2 = null!;
 }
 
 public struct ValueTupleIntString
@@ -253,7 +253,7 @@ public interface IDynamicValue
 
 public class DynamicValueWrapper<TValueType> : IDynamicValue
 {
-    public TValueType Value { get; set; }
+    public required TValueType Value { get; set; }
 }
 
 static file class DynamicValueWrapperRegistration
@@ -291,7 +291,7 @@ static file class DynamicValueWrapperRegistration
 
 public class Person2
 {
-    [PrimaryKey(1)] public string Name { get; set; }
+    [PrimaryKey(1)] public string Name { get; set; } = null!;
 
     [OnBeforeRemove]
     public bool OnBeforeRemove()
@@ -311,7 +311,7 @@ public class Person2
     public bool ThirdOnBeforeRemove(I3rdPartyInterface dependency, I3rdPartyInterface? key1)
     {
         Console.WriteLine($"Dependency says: {dependency.Name}");
-        Console.WriteLine($"Key1 says: {key1.Name}");
+        Console.WriteLine($"Key1 says: {key1!.Name}");
         return true;
     }
 }
@@ -319,7 +319,7 @@ public class Person2
 public class Test
 {
     [PrimaryKey(1)] public ulong Id { get; set; }
-    public string Name { get; set; }
+    public string Name { get; set; } = null!;
     public int Age { get; set; }
 }
 
@@ -330,7 +330,7 @@ public class JustAge
 
 public class JustName
 {
-    public string Name { get; set; }
+    public string Name { get; set; } = null!;
 }
 
 public interface IWithInsert<T>
