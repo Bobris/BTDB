@@ -3390,6 +3390,7 @@ public class SourceGenerator : IIncrementalGenerator
         declarations.Append("[CompilerGenerated]\n");
         declarations.Append($"file class {generationInfo.Name}Registration\n{{\n");
         var implName = $"Impl{generationInfo.Name.Substring(1)}";
+        var (_, _, secondaryKeys) = BuildIndexInfo(generationInfo);
         // language=C#
         declarations.Append($$"""
                 public class {{implName}} : global::BTDB.ODBLayer.RelationDBManipulator<{{generationInfo.Implements[0].FullyQualifiedName}}>, {{generationInfo.FullName}}
@@ -3427,6 +3428,7 @@ public class SourceGenerator : IIncrementalGenerator
                 var itemType = ExtractCollectionItemType(method.Parameters[0].Type);
                 var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
                 if (loaderIndex < 0) loaderIndex = 0;
+                var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
 
                 declarations.Append($"            var c_c = new ConstraintInfo[{constraintCount}];\n");
                 for (var i = 0; i < constraintCount; i++)
@@ -3435,8 +3437,17 @@ public class SourceGenerator : IIncrementalGenerator
                 }
 
                 var orderersArg = hasOrderers ? method.Parameters[paramCount - 1].Name : "null";
-                declarations.Append(
-                    $"            return GatherByPrimaryKey({loaderIndex}, c_c, {method.Parameters[0].Name}, {method.Parameters[1].Name}, {method.Parameters[2].Name}, {orderersArg});\n");
+                if (indexName == "Id")
+                {
+                    declarations.Append(
+                        $"            return GatherByPrimaryKey({loaderIndex}, c_c, {method.Parameters[0].Name}, {method.Parameters[1].Name}, {method.Parameters[2].Name}, {orderersArg});\n");
+                }
+                else
+                {
+                    var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
+                    declarations.Append(
+                        $"            return GatherBySecondaryKey({loaderIndex}, c_c, {method.Parameters[0].Name}, {method.Parameters[1].Name}, {method.Parameters[2].Name}, {secondaryKeyIndex}u, {orderersArg});\n");
+                }
             }
             else
             {
@@ -3506,6 +3517,19 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return -1;
+    }
+
+    static uint FindSecondaryKeyIndex(
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys,
+        string indexName)
+    {
+        for (var i = 0; i < secondaryKeys.Length; i++)
+        {
+            if (secondaryKeys[i].Name == indexName)
+                return (uint)i;
+        }
+
+        return 0;
     }
 }
 

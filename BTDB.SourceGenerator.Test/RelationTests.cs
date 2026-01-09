@@ -614,6 +614,27 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task GatherBySecondaryKeyUsesSecondaryKeyIndex()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+            using System.Collections.Generic;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                [SecondaryKey("Email")] public string Email { get; set; } = null!;
+            }
+
+            public interface IEmailTable : IRelation<Person>
+            {
+                ulong GatherByEmail(ICollection<Person> items, long skip, long take, Constraint<string> email);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyThatOnSerializeAttributeOnStaticMethodShowsError()
     {
         // language=cs

@@ -34,7 +34,7 @@ file class IThingWithSKTableRegistration
             var c_c = new ConstraintInfo[2];
             c_c[0].Constraint = name;
             c_c[1].Constraint = age;
-            return GatherByPrimaryKey(0, c_c, target, skip, take, orderers);
+            return GatherBySecondaryKey(0, c_c, target, skip, take, 0u, orderers);
         }
 
         [SkipLocalsInit]
