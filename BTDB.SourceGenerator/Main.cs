@@ -424,8 +424,7 @@ public class SourceGenerator : IIncrementalGenerator
                 if (constraintParamCount > 0)
                 {
                     var validationError = ValidateFirstByConstraintParameters(method, indexName,
-                        itemGenInfo.Fields, primaryKeyFields, secondaryKeys, 0, constraintParamCount,
-                        lastParameterIsIOrdererArray);
+                        itemGenInfo.Fields, primaryKeyFields, secondaryKeys, 0, constraintParamCount);
                     if (validationError != null)
                         return validationError;
                 }
@@ -886,7 +885,7 @@ public class SourceGenerator : IIncrementalGenerator
     static GenerationInfo? ValidateFirstByConstraintParameters(IMethodSymbol method, string indexName,
         EquatableArray<FieldsInfo> fields, uint[] primaryKeyFields,
         (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys, int startParamIndex,
-        int constraintParamCount, bool lastParameterIsIOrdererArray)
+        int constraintParamCount)
     {
         // Validate index name
         if (ValidateIndexName(method, indexName, primaryKeyFields, uint.MaxValue, secondaryKeys, out var fi,
@@ -982,9 +981,6 @@ public class SourceGenerator : IIncrementalGenerator
     {
         uint[]? fii = null;
         uint explicitPrefixLength = 0;
-        var isConstraintMethod = method.Name.StartsWith("ScanBy", StringComparison.Ordinal) ||
-                                 method.Name.StartsWith("GatherBy", StringComparison.Ordinal) ||
-                                 method.Name.StartsWith("FirstBy", StringComparison.Ordinal);
         if (indexName == "Id")
         {
             fii = primaryKeyFields;
@@ -1014,7 +1010,7 @@ public class SourceGenerator : IIncrementalGenerator
         {
             fi = fi.Slice(0, (int)inKeyValueIndex);
         }
-        else if (!isConstraintMethod && indexName != "Id" && explicitPrefixLength > 0)
+        else if (inKeyValueIndex != uint.MaxValue && indexName != "Id" && explicitPrefixLength > 0)
         {
             fi = fi.Slice(0, (int)explicitPrefixLength);
         }
