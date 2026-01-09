@@ -1335,6 +1335,26 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task ContainsMethodGeneratesKeyLookup()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class ProductionTrackingDaily
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public global::System.DateTime ProductionDate { get; set; }
+            }
+
+            public interface IProductionTableWithContains : IRelation<ProductionTrackingDaily>
+            {
+                bool Contains(ulong companyId, global::System.DateTime productionDate);
+            }
+            """);
+    }
+
+    [Fact]
     public Task AnyByMethodMustReturnBool()
     {
         // language=cs

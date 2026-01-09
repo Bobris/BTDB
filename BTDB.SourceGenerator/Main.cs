@@ -3419,6 +3419,20 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append(
                     $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
             }
+            else if (method.Name == "Contains")
+            {
+                declarations.Append(
+                    "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                AppendContainsWriterCtxIfNeeded(declarations, method.Parameters);
+
+                for (var i = 0; i < method.Parameters.Count; i++)
+                {
+                    AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                }
+
+                declarations.Append("            return base.Contains(writer.GetSpan());\n");
+            }
             else if (method.Name.StartsWith("GatherBy", StringComparison.Ordinal))
             {
                 var paramCount = method.Parameters.Count;
@@ -3582,6 +3596,85 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return -1;
+    }
+
+    static bool NeedsWriterCtxForContains(IEnumerable<ParameterInfo> parameters)
+    {
+        return parameters.Any(p => NormalizeType(p.Type) == "BTDB.Encrypted.EncryptedString");
+    }
+
+    static void AppendContainsWriterCtxIfNeeded(StringBuilder declarations, IEnumerable<ParameterInfo> parameters)
+    {
+        if (!NeedsWriterCtxForContains(parameters))
+        {
+            return;
+        }
+
+        declarations.Append("            var ctx_ctx = new global::BTDB.ODBLayer.DBWriterCtx(Transaction);\n");
+    }
+
+    static void AppendWriteOrderableParameter(StringBuilder declarations, ParameterInfo parameter)
+    {
+        var normalizedType = NormalizeType(parameter.Type);
+        switch (normalizedType)
+        {
+            case "string":
+                declarations.Append($"            writer.WriteStringOrdered({parameter.Name});\n");
+                return;
+            case "bool":
+                declarations.Append($"            writer.WriteBool({parameter.Name});\n");
+                return;
+            case "byte":
+                declarations.Append($"            writer.WriteUInt8({parameter.Name});\n");
+                return;
+            case "sbyte":
+                declarations.Append($"            writer.WriteInt8Ordered({parameter.Name});\n");
+                return;
+            case "short":
+            case "int":
+            case "long":
+                declarations.Append($"            writer.WriteVInt64({parameter.Name});\n");
+                return;
+            case "ushort":
+            case "uint":
+            case "ulong":
+                declarations.Append($"            writer.WriteVUInt64({parameter.Name});\n");
+                return;
+            case "System.DateTime":
+                declarations.Append($"            writer.WriteDateTimeForbidUnspecifiedKind({parameter.Name});\n");
+                return;
+            case "System.DateTimeOffset":
+                declarations.Append($"            writer.WriteDateTimeOffset({parameter.Name});\n");
+                return;
+            case "System.Guid":
+                declarations.Append($"            writer.WriteGuid({parameter.Name});\n");
+                return;
+            case "System.Decimal":
+                declarations.Append($"            writer.WriteDecimal({parameter.Name});\n");
+                return;
+            case "System.Byte[]":
+            case "byte[]":
+            case "BTDB.Buffer.ByteBuffer":
+            case "System.ReadOnlyMemory<byte>":
+            case "System.ReadOnlyMemory<System.Byte>":
+                declarations.Append($"            writer.WriteByteArray({parameter.Name});\n");
+                return;
+            case "BTDB.Encrypted.EncryptedString":
+                declarations.Append(
+                    $"            ctx_ctx.WriteOrderedEncryptedString(ref writer, {parameter.Name});\n");
+                return;
+            case "System.Single":
+            case "float":
+            case "System.Double":
+            case "double":
+                declarations.Append(
+                    $"            throw new NotSupportedException(\"Type {normalizedType} is not supported as orderable field.\");\n");
+                return;
+            default:
+                declarations.Append(
+                    $"            throw new NotSupportedException(\"Contains does not support key type '{normalizedType}'.\");\n");
+                return;
+        }
     }
 
     static uint FindSecondaryKeyIndex(
