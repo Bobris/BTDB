@@ -21,25 +21,12 @@ file class IProductTableRegistration
         }
 
         [SkipLocalsInit]
-        int global::IProductTable.RemoveById(ulong companyId, BTDB.ODBLayer.AdvancedEnumeratorParam<ulong> productIdParam)
+        int global::IProductTable.RemoveByIdPartial(ulong companyId, int maxCount)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);
             writer.WriteVUInt64(companyId);
-            var prefixLen = (int)writer.GetCurrentPosition();
-            if (productIdParam.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
-            {
-                writer.WriteVUInt64(productIdParam.Start);
-            }
-            var startKeyBytes = writer.GetScopedSpanAndReset();
-            WriteRelationPKPrefix(ref writer);
-            writer.WriteVUInt64(companyId);
-            if (productIdParam.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
-            {
-                writer.WriteVUInt64(productIdParam.End);
-            }
-            var endKeyBytes = writer.GetSpan();
-            return (int)base.RemoveByIdAdvancedParam(productIdParam.Order, productIdParam.StartProposition, prefixLen, startKeyBytes, productIdParam.EndProposition, endKeyBytes);
+            return (int)base.RemoveByPrimaryKeyPrefixPartial(writer.GetSpan(), maxCount);
         }
     }
     [ModuleInitializer]

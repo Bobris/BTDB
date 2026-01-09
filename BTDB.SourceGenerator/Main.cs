@@ -3503,6 +3503,111 @@ public class SourceGenerator : IIncrementalGenerator
                     }
                 }
             }
+            else if (method.Name.StartsWith("RemoveBy", StringComparison.Ordinal) ||
+                     method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal))
+            {
+                if (method.Name == "RemoveByIdPartial")
+                {
+                    var paramCount = method.Parameters.Count;
+                    var maxCountParam = method.Parameters[paramCount - 1];
+                    var prefixParamCount = paramCount - 1;
+
+                    AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParamCount), null);
+                    declarations.Append(
+                        "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                    declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                    for (var i = 0; i < prefixParamCount; i++)
+                    {
+                        AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                    }
+
+                    var removeExpr = $"base.RemoveByPrimaryKeyPrefixPartial(writer.GetSpan(), {maxCountParam.Name})";
+                    declarations.Append($"            return {WrapCountResult(removeExpr, method.ResultType)};\n");
+                }
+                else
+                {
+                    var paramCount = method.Parameters.Count;
+                    var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
+                    if (indexName != "Id")
+                    {
+                        declarations.Append(
+                            $"            throw new global::BTDB.KVDBLayer.BTDBException(\"Remove by secondary key in {generationInfo.Name}.{method.Name} is unsupported. Instead use ListBy and remove enumerated.\");\n");
+                    }
+                    else
+                    {
+                        string? advParamType = null;
+                        var advType = string.Empty;
+                        var lastParam = paramCount > 0 ? method.Parameters[paramCount - 1] : null;
+                        var lastParamName = lastParam?.Name ?? "";
+                        var hasAdvancedEnumerator = paramCount > 0 &&
+                                                    TryGetAdvancedEnumeratorParamType(lastParam!.Type, out advType);
+                        if (hasAdvancedEnumerator)
+                        {
+                            advParamType = advType;
+                        }
+
+                        var isPrefixBased = IsRemoveByCountReturnType(method.ResultType);
+                        var prefixParamCount = paramCount - (hasAdvancedEnumerator ? 1 : 0);
+
+                        if (hasAdvancedEnumerator)
+                        {
+                            if (!isPrefixBased)
+                            {
+                                declarations.Append(
+                                    $"            throw new global::BTDB.KVDBLayer.BTDBException(\"Return value in {method.Name} must be int, uint, long, or ulong.\");\n");
+                            }
+                            else
+                            {
+                                AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParamCount),
+                                    advParamType);
+                                AppendAdvancedKeyPrefix(declarations, false, null, method.Parameters, prefixParamCount,
+                                    lastParamName, advParamType!);
+                                var removeExpr =
+                                    $"base.RemoveByIdAdvancedParam({lastParamName}.Order, {lastParamName}.StartProposition, prefixLen, startKeyBytes, {lastParamName}.EndProposition, endKeyBytes)";
+                                declarations.Append(
+                                    $"            return {WrapCountResult(removeExpr, method.ResultType)};\n");
+                            }
+                        }
+                        else if (isPrefixBased)
+                        {
+                            AppendWriterCtxIfNeeded(declarations, method.Parameters, null);
+                            declarations.Append(
+                                "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                            declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                            for (var i = 0; i < paramCount; i++)
+                            {
+                                AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                            }
+
+                            var removeExpr = "base.RemoveByPrimaryKeyPrefix(writer.GetSpan())";
+                            declarations.Append(
+                                $"            return {WrapCountResult(removeExpr, method.ResultType)};\n");
+                        }
+                        else
+                        {
+                            AppendWriterCtxIfNeeded(declarations, method.Parameters, null);
+                            declarations.Append(
+                                "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                            declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                            for (var i = 0; i < paramCount; i++)
+                            {
+                                AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                            }
+
+                            var throwWhenNotFound = method.ResultType == null ? "true" : "false";
+                            var removeMethodName = method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal)
+                                ? "ShallowRemoveById"
+                                : "RemoveById";
+                            declarations.Append(
+                                $"            var removed = base.{removeMethodName}(writer.GetSpan(), {throwWhenNotFound});\n");
+                            if (method.ResultType != null)
+                            {
+                                declarations.Append("            return removed;\n");
+                            }
+                        }
+                    }
+                }
+            }
             else if (method.Name.StartsWith("ListBy", StringComparison.Ordinal))
             {
                 var paramCount = method.Parameters.Count;
@@ -3903,6 +4008,13 @@ public class SourceGenerator : IIncrementalGenerator
         return enumerableType.StartsWith("System.Collections.Generic.IEnumerable<", StringComparison.Ordinal);
     }
 
+    static bool IsRemoveByCountReturnType(string? resultType)
+    {
+        if (resultType is null) return false;
+        return NormalizeIntegralType(resultType!) is IntegralType.Int32 or IntegralType.UInt32 or IntegralType.Int64
+            or IntegralType.UInt64;
+    }
+
     static int FindLoaderIndex(EquatableArray<TypeRef> loadTypes, string itemType)
     {
         var normalizedItemType = NormalizeType(itemType);
@@ -4136,7 +4248,7 @@ public class SourceGenerator : IIncrementalGenerator
 
     static string WrapCountResult(string expression, string? resultType)
     {
-        if (string.IsNullOrWhiteSpace(resultType))
+        if (resultType is null)
         {
             return expression;
         }

@@ -1732,4 +1732,47 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task RemoveByMethodGeneratesRemoveById()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                void RemoveById(ulong companyId, ulong productId);
+                bool RemoveByIdOrDefault(ulong companyId, ulong productId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task RemoveByIdPartialGeneratesPrefixPartial()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong ProductId { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                int RemoveByIdPartial(ulong companyId, int maxCount);
+            }
+            """);
+    }
 }

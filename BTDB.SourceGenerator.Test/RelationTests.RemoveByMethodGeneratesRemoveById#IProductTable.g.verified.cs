@@ -21,25 +21,24 @@ file class IProductTableRegistration
         }
 
         [SkipLocalsInit]
-        int global::IProductTable.RemoveById(ulong companyId, BTDB.ODBLayer.AdvancedEnumeratorParam<ulong> productIdParam)
+        void global::IProductTable.RemoveById(ulong companyId, ulong productId)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);
             writer.WriteVUInt64(companyId);
-            var prefixLen = (int)writer.GetCurrentPosition();
-            if (productIdParam.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
-            {
-                writer.WriteVUInt64(productIdParam.Start);
-            }
-            var startKeyBytes = writer.GetScopedSpanAndReset();
+            writer.WriteVUInt64(productId);
+            var removed = base.RemoveById(writer.GetSpan(), true);
+        }
+
+        [SkipLocalsInit]
+        bool global::IProductTable.RemoveByIdOrDefault(ulong companyId, ulong productId)
+        {
+            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);
             writer.WriteVUInt64(companyId);
-            if (productIdParam.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)
-            {
-                writer.WriteVUInt64(productIdParam.End);
-            }
-            var endKeyBytes = writer.GetSpan();
-            return (int)base.RemoveByIdAdvancedParam(productIdParam.Order, productIdParam.StartProposition, prefixLen, startKeyBytes, productIdParam.EndProposition, endKeyBytes);
+            writer.WriteVUInt64(productId);
+            var removed = base.RemoveById(writer.GetSpan(), false);
+            return removed;
         }
     }
     [ModuleInitializer]
