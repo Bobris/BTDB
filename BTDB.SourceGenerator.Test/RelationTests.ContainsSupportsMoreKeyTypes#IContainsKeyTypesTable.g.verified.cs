@@ -39,7 +39,7 @@ file class IContainsKeyTypesTableRegistration
             writer.WriteIPAddress(address);
             writer.WriteVersion(apiVersion);
             writer.WriteStringValues(tags);
-            if (names == null) writer.WriteVUInt32(0); else { writer.WriteVUInt32((uint)names.Count); foreach (var item in names) writer.WriteStringOrdered(item); }
+            if (names == null) writer.WriteVUInt32(0); else { writer.WriteVUInt32((uint)names.Count); foreach (var item in names) writer.WriteString(item); }
             if (counters == null) writer.WriteVUInt32(0); else { writer.WriteVUInt32((uint)counters.Count); foreach (var item in counters) writer.WriteVUInt64(item); }
             return base.Contains(writer.GetSpan());
         }
