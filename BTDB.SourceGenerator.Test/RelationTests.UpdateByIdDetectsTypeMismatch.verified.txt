@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    bool UpdateById(ulong tenantId, int name);
+                                        ^^^^
+}
+*/
+ : (11,40)-(11,44),
+      Message: Method UpdateById parameter name type 'int' does not match field 'Name' type 'string'.,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0046,
+        Title: Method UpdateById parameter name type 'int' does not match field 'Name' type 'string'.,
+        MessageFormat: Method UpdateById parameter name type 'int' does not match field 'Name' type 'string'.,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

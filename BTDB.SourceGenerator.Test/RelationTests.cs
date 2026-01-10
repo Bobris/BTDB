@@ -2004,6 +2004,27 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task UpdateByIdDetectsTypeMismatch()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class PersonInvalid
+            {
+                [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IPersonInvalid2Table : IRelation<PersonInvalid>
+            {
+                bool UpdateById(ulong tenantId, int name);
+            }
+            """);
+    }
+
+    [Fact]
     public Task DefaultInterfaceMethodIsNotGenerated()
     {
         // language=cs

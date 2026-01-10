@@ -67,28 +67,6 @@ public class ObjectDbTableUpdateByIdTest : ObjectDbTestBase
         tr.Commit();
     }
 
-    public class PersonInvalid
-    {
-        [PrimaryKey(1)] public ulong TenantId { get; set; }
-
-        public string? Name { get; set; }
-
-        public string? ExpertSexChange { get; set; }
-        public string? ExpertsExchange { get; set; }
-    }
-
-    public interface IPersonInvalid2Table : IRelation<PersonInvalid>
-    {
-        bool UpdateById(ulong tenantId, int name);
-    }
-
-    [Fact]
-    public void UpdateByIdDetectsValueParametersWithWrongTypes()
-    {
-        using var tr = _db.StartTransaction();
-        Assert.Contains(" name ", Assert.Throws<BTDBException>(() => tr.GetRelation<IPersonInvalid2Table>()).Message);
-    }
-
     public interface IPersonVoidTable : IRelation<Person>
     {
         void UpdateById(ulong tenantId, int age);

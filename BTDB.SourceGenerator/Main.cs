@@ -1032,12 +1032,14 @@ public class SourceGenerator : IIncrementalGenerator
         {
             var param = method.Parameters[paramIndex];
             var matches = 0;
+            FieldsInfo? matchedField = null;
             for (var fieldIndex = 0; fieldIndex < nonPkFields.Count; fieldIndex++)
             {
                 var field = nonPkFields[fieldIndex];
                 if (string.Equals(field.Name, param.Name, StringComparison.OrdinalIgnoreCase))
                 {
                     matches++;
+                    matchedField = field;
                     if (matches > 1)
                     {
                         return GenerationError("BTDB0044",
@@ -1051,6 +1053,14 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 return GenerationError("BTDB0045",
                     $"Method {method.Name} parameter {param.Name} does not match any relation fields.",
+                    param.Locations[0]);
+            }
+
+            var paramType = param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (!AreTypesCompatible(paramType, matchedField!.Type))
+            {
+                return GenerationError("BTDB0046",
+                    $"Method {method.Name} parameter {param.Name} type '{paramType}' does not match field '{matchedField.Name}' type '{matchedField.Type}'.",
                     param.Locations[0]);
             }
         }
