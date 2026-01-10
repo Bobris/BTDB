@@ -786,7 +786,7 @@ public class SourceGenerator : IIncrementalGenerator
                 out var generationError))
             return generationError;
         var paramCount = method.Parameters.Length - (lastParameterIsIOrdererArray ? 1 : 0);
-        if (paramCount > fi!.Length)
+        if (paramCount > fi.Length)
         {
             return GenerationError("BTDB0016",
                 $"Too many parameters for index '{indexName}'",
@@ -938,7 +938,7 @@ public class SourceGenerator : IIncrementalGenerator
             return generationError;
 
         // Validate constraint parameter count doesn't exceed index field count
-        if (constraintParamCount > fi!.Length)
+        if (constraintParamCount > fi.Length)
         {
             return GenerationError("BTDB0026",
                 $"Too many constraint parameters for index '{indexName}' in method '{method.Name}'",
@@ -959,7 +959,7 @@ public class SourceGenerator : IIncrementalGenerator
             return generationError;
 
         // Validate constraint parameter count doesn't exceed index field count
-        if (constraintParamCount > fi!.Length)
+        if (constraintParamCount > fi.Length)
         {
             return GenerationError("BTDB0028",
                 $"Too many constraint parameters for index '{indexName}' in method '{method.Name}'",
@@ -1018,7 +1018,7 @@ public class SourceGenerator : IIncrementalGenerator
             }
         }
 
-        for (var i = 0; i < fi!.Length; i++)
+        for (var i = 0; i < fi.Length; i++)
         {
             if (i >= paramCount) break;
             var param = method.Parameters[i];
@@ -4439,7 +4439,7 @@ public class SourceGenerator : IIncrementalGenerator
     static bool IsRemoveByCountReturnType(string? resultType)
     {
         if (resultType is null) return false;
-        return NormalizeIntegralType(resultType!) is IntegralType.Int32 or IntegralType.UInt32 or IntegralType.Int64
+        return NormalizeIntegralType(resultType) is IntegralType.Int32 or IntegralType.UInt32 or IntegralType.Int64
             or IntegralType.UInt64;
     }
 
@@ -4683,7 +4683,7 @@ public class SourceGenerator : IIncrementalGenerator
             if (start >= 0 && end > start)
             {
                 var args = normalized.Substring(start + 1, end - start - 1);
-                elementTypes = SplitGenericArguments(args)
+                elementTypes = SplitArguments(args)
                     .Select(arg => RemoveTupleElementName(arg.Replace("global::", "")))
                     .ToArray();
                 if (elementTypes.Length is 0 or > 7)
@@ -4700,7 +4700,7 @@ public class SourceGenerator : IIncrementalGenerator
             normalized.EndsWith(")", StringComparison.Ordinal))
         {
             var inner = normalized.Substring(1, normalized.Length - 2);
-            elementTypes = SplitTupleArguments(inner)
+            elementTypes = SplitArguments(inner)
                 .Select(arg => RemoveTupleElementName(arg.Replace("global::", "")))
                 .ToArray();
             if (elementTypes.Length is 0 or > 7)
@@ -4716,7 +4716,7 @@ public class SourceGenerator : IIncrementalGenerator
         return false;
     }
 
-    static string[] SplitTupleArguments(string args)
+    static string[] SplitArguments(string args)
     {
         var parts = new List<string>();
         var angleDepth = 0;
@@ -4887,7 +4887,7 @@ public class SourceGenerator : IIncrementalGenerator
             return expression;
         }
 
-        var normalized = NormalizeIntegralType(resultType!);
+        var normalized = NormalizeIntegralType(resultType);
         return normalized switch
         {
             IntegralType.Int32 => $"(int){expression}",
@@ -4899,7 +4899,7 @@ public class SourceGenerator : IIncrementalGenerator
 
     static bool TryGetAdvancedEnumeratorParamType(string type, out string genericType)
     {
-        var normalized = type!.Replace("global::", "");
+        var normalized = type.Replace("global::", "");
         const string prefix = "BTDB.ODBLayer.AdvancedEnumeratorParam<";
         const string shortPrefix = "AdvancedEnumeratorParam<";
         if (normalized.StartsWith(prefix, StringComparison.Ordinal) ||
@@ -4944,7 +4944,7 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         var args = normalized.Substring(start + 1, end - start - 1);
-        var split = SplitGenericArguments(args);
+        var split = SplitArguments(args);
         if (split.Length != 2)
         {
             return false;
@@ -4953,37 +4953,6 @@ public class SourceGenerator : IIncrementalGenerator
         keyType = split[0].Trim();
         valueType = split[1].Trim();
         return true;
-    }
-
-    static string[] SplitGenericArguments(string args)
-    {
-        var parts = new List<string>();
-        var depth = 0;
-        var start = 0;
-        for (var i = 0; i < args.Length; i++)
-        {
-            var ch = args[i];
-            switch (ch)
-            {
-                case '<':
-                    depth++;
-                    break;
-                case '>':
-                    depth--;
-                    break;
-                case ',':
-                    if (depth == 0)
-                    {
-                        parts.Add(args.Substring(start, i - start));
-                        start = i + 1;
-                    }
-
-                    break;
-            }
-        }
-
-        parts.Add(args.Substring(start));
-        return parts.ToArray();
     }
 
     static bool IsFloatOrDoubleType(string type)
