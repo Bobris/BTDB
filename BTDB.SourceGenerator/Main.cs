@@ -404,6 +404,44 @@ public class SourceGenerator : IIncrementalGenerator
             if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
             {
                 var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
+                if (method.ReturnType is INamedTypeSymbol
+                    {
+                        TypeKind: TypeKind.Interface,
+                        OriginalDefinition.SpecialType: SpecialType.System_Collections_Generic_IEnumerable_T
+                    } enumerableReturnType)
+                {
+                    var itemType = enumerableReturnType.TypeArguments.FirstOrDefault();
+                    if (itemType is not INamedTypeSymbol { TypeKind: TypeKind.Class })
+                    {
+                        return GenerationError("BTDB0042",
+                            $"Return type of '{method.Name}' must be class or IEnumerable<T> where T is class",
+                            method.Locations[0]);
+                    }
+
+                    if (!SerializableType(itemType))
+                    {
+                        return GenerationError("BTDB0043",
+                            $"Return type of '{method.Name}' must use serializable class type",
+                            method.Locations[0]);
+                    }
+                }
+                else
+                {
+                    if (method.ReturnType.TypeKind != TypeKind.Class)
+                    {
+                        return GenerationError("BTDB0042",
+                            $"Return type of '{method.Name}' must be class or IEnumerable<T> where T is class",
+                            method.Locations[0]);
+                    }
+
+                    if (!SerializableType(method.ReturnType))
+                    {
+                        return GenerationError("BTDB0043",
+                            $"Return type of '{method.Name}' must use serializable class type",
+                            method.Locations[0]);
+                    }
+                }
+
                 return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
                     indexOfInKeyValue, secondaryKeys);
             }
@@ -3819,7 +3857,6 @@ public class SourceGenerator : IIncrementalGenerator
                     ? ExtractEnumerableItemType(method.ResultType ?? "")
                     : NormalizeType(method.ResultType ?? "");
                 var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
-                if (loaderIndex < 0) loaderIndex = 0;
 
                 AppendWriterCtxIfNeeded(declarations, method.Parameters, null);
                 declarations.Append(
@@ -4012,7 +4049,6 @@ public class SourceGenerator : IIncrementalGenerator
                     ? valueType
                     : ExtractEnumerableItemType(method.ResultType ?? "");
                 var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
-                if (loaderIndex < 0) loaderIndex = 0;
 
                 AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParamCount), advParamType);
 
@@ -4220,7 +4256,6 @@ public class SourceGenerator : IIncrementalGenerator
                 var constraintCount = paramCount - 3 - (hasOrderers ? 1 : 0);
                 var itemType = ExtractCollectionItemType(method.Parameters[0].Type);
                 var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
-                if (loaderIndex < 0) loaderIndex = 0;
                 var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
 
                 declarations.Append($"            var c_c = new ConstraintInfo[{constraintCount}];\n");
@@ -4247,7 +4282,6 @@ public class SourceGenerator : IIncrementalGenerator
                 var paramCount = method.Parameters.Count;
                 var itemType = ExtractEnumerableItemType(method.ResultType ?? "");
                 var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
-                if (loaderIndex < 0) loaderIndex = 0;
                 var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
 
                 declarations.Append($"            var c_c = new ConstraintInfo[{paramCount}];\n");
@@ -4275,7 +4309,6 @@ public class SourceGenerator : IIncrementalGenerator
                 var constraintCount = paramCount - (hasOrderers ? 1 : 0);
                 var itemType = NormalizeType(method.ResultType ?? "");
                 var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
-                if (loaderIndex < 0) loaderIndex = 0;
                 var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
 
                 declarations.Append($"            var c_c = new ConstraintInfo[{constraintCount}];\n");

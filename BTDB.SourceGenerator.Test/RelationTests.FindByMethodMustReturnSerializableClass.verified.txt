@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    Task FindById(ulong companyId);
+         ^^^^^^^^
+}
+*/
+ : (10,9)-(10,17),
+      Message: Return type of 'FindById' must use serializable class type,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0043,
+        Title: Return type of 'FindById' must use serializable class type,
+        MessageFormat: Return type of 'FindById' must use serializable class type,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

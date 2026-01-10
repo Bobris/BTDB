@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    int FindById(ulong companyId);
+        ^^^^^^^^
+}
+*/
+ : (9,8)-(9,16),
+      Message: Return type of 'FindById' must be class or IEnumerable<T> where T is class,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0042,
+        Title: Return type of 'FindById' must be class or IEnumerable<T> where T is class,
+        MessageFormat: Return type of 'FindById' must be class or IEnumerable<T> where T is class,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

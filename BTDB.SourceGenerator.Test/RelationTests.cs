@@ -1043,6 +1043,45 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task FindByMethodMustReturnClassOrEnumerable()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                int FindById(ulong companyId);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task FindByMethodMustReturnSerializableClass()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Threading.Tasks;
+            using BTDB.ODBLayer;
+
+            public class Product
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+            }
+
+            public interface IProductTable : IRelation<Product>
+            {
+                Task FindById(ulong companyId);
+            }
+            """);
+    }
+
+    [Fact]
     public Task GatherByMethodMustReturnUlong()
     {
         // language=cs
