@@ -3444,7 +3444,7 @@ public class SourceGenerator : IIncrementalGenerator
         declarations.Append("[CompilerGenerated]\n");
         declarations.Append($"file class {generationInfo.Name}Registration\n{{\n");
         var implName = $"Impl{generationInfo.Name.Substring(1)}";
-        var (_, _, secondaryKeys) = BuildIndexInfo(generationInfo);
+        var (_, primaryKeyFields, secondaryKeys) = BuildIndexInfo(generationInfo);
         // language=C#
         declarations.Append($$"""
                 public class {{implName}} : global::BTDB.ODBLayer.RelationDBManipulator<{{generationInfo.Implements[0].FullyQualifiedName}}>, {{generationInfo.FullName}}
@@ -3629,7 +3629,10 @@ public class SourceGenerator : IIncrementalGenerator
                                 AppendWriteOrderableParameter(declarations, method.Parameters[i]);
                             }
 
-                            var removeExpr = "base.RemoveByPrimaryKeyPrefix(writer.GetSpan())";
+                            var removeExpr = (!HasOnBeforeRemove(generationInfo) &&
+                                              AllKeyPrefixesAreSame(primaryKeyFields, secondaryKeys, paramCount))
+                                ? "base.RemoveByKeyPrefixWithoutIterate(writer.GetSpan())"
+                                : "base.RemoveByPrimaryKeyPrefix(writer.GetSpan())";
                             declarations.Append(
                                 $"            return {WrapCountResult(removeExpr, method.ResultType)};\n");
                         }
@@ -4074,6 +4077,34 @@ public class SourceGenerator : IIncrementalGenerator
         if (resultType is null) return false;
         return NormalizeIntegralType(resultType!) is IntegralType.Int32 or IntegralType.UInt32 or IntegralType.Int64
             or IntegralType.UInt64;
+    }
+
+    static bool HasOnBeforeRemove(GenerationInfo generationInfo)
+    {
+        return generationInfo.Methods.Any(m => m.Purpose == Purpose.OnBeforeRemove);
+    }
+
+    static bool AllKeyPrefixesAreSame(uint[] primaryKeyFields,
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys, int count)
+    {
+        for (var i = 0; i < secondaryKeys.Length; i++)
+        {
+            var skFields = secondaryKeys[i].SecondaryKeyFields;
+            if (skFields.Length < count)
+            {
+                return false;
+            }
+
+            for (var idx = 0; idx < count; idx++)
+            {
+                if (skFields[idx] != primaryKeyFields[idx])
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     static int FindLoaderIndex(EquatableArray<TypeRef> loadTypes, string itemType)

@@ -1777,6 +1777,33 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task RemoveByIdPrefixUsesFastRemove()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class DataSamePrefix
+            {
+                [PrimaryKey(1)]
+                [SecondaryKey("S", Order = 1)]
+                public int A { get; set; }
+
+                [PrimaryKey(2)] public int B { get; set; }
+
+                [PrimaryKey(3)]
+                [SecondaryKey("S", Order = 2)]
+                public int C { get; set; }
+            }
+
+            public interface IDataSamePrefixTable : IRelation<DataSamePrefix>
+            {
+                int RemoveById(int a);
+            }
+            """);
+    }
+
+    [Fact]
     public Task RemoveWithSizesByIdGeneratesPrimaryKeyConstraints()
     {
         // language=cs
