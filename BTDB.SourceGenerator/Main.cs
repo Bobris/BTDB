@@ -843,10 +843,33 @@ public class SourceGenerator : IIncrementalGenerator
     {
         if (pType == fType) return true;
 
-        if (IsUnsignedIntegralType(pType) && IsUnsignedIntegralType(fType)) return true;
-        if (IsSignedIntegralType(pType) && IsSignedIntegralType(fType)) return true;
+        var normalizedParamType = RemoveGlobalPrefix(pType);
+        var normalizedFieldType = RemoveGlobalPrefix(fType);
+        if (normalizedParamType == normalizedFieldType) return true;
+        if (IsStringEncryptedStringPair(normalizedParamType, normalizedFieldType)) return true;
+
+        if (IsUnsignedIntegralType(normalizedParamType) && IsUnsignedIntegralType(normalizedFieldType)) return true;
+        if (IsSignedIntegralType(normalizedParamType) && IsSignedIntegralType(normalizedFieldType)) return true;
 
         return false;
+    }
+
+    static string RemoveGlobalPrefix(string type)
+    {
+        if (type.StartsWith("global::", StringComparison.Ordinal))
+        {
+            type = type.Substring("global::".Length);
+        }
+
+        return type;
+    }
+
+    static bool IsStringEncryptedStringPair(string paramType, string fieldType)
+    {
+        const string stringType = "System.String";
+        const string encryptedStringType = "BTDB.Encrypted.EncryptedString";
+        return (paramType == stringType && fieldType == encryptedStringType) ||
+               (paramType == encryptedStringType && fieldType == stringType);
     }
 
     static bool IsUnsignedIntegralType(string type)
@@ -1057,6 +1080,13 @@ public class SourceGenerator : IIncrementalGenerator
             }
 
             var paramType = param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (IsForbiddenUpdateByIdValueParameterType(param.Type))
+            {
+                return GenerationError("BTDB0047",
+                    $"Method {method.Name} parameter {param.Name} type '{paramType}' is not allowed for UpdateById values.",
+                    param.Locations[0]);
+            }
+
             if (!AreTypesCompatible(paramType, matchedField!.Type))
             {
                 return GenerationError("BTDB0046",
@@ -1066,6 +1096,59 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return null;
+    }
+
+    static bool IsForbiddenUpdateByIdValueParameterType(ITypeSymbol typeSymbol)
+    {
+        if (IsListFieldHandlerCompatible(typeSymbol) || IsDictionaryFieldHandlerCompatible(typeSymbol))
+        {
+            return true;
+        }
+
+        if (typeSymbol is not INamedTypeSymbol namedTypeSymbol)
+        {
+            return typeSymbol.TypeKind == TypeKind.Class;
+        }
+
+        if (namedTypeSymbol.SpecialType == SpecialType.System_String) return false;
+        if (namedTypeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+            "global::BTDB.Encrypted.EncryptedString")
+        {
+            return false;
+        }
+
+        return typeSymbol.TypeKind == TypeKind.Class;
+    }
+
+    static bool IsListFieldHandlerCompatible(ITypeSymbol typeSymbol)
+    {
+        if (typeSymbol is not INamedTypeSymbol namedTypeSymbol || !namedTypeSymbol.IsGenericType)
+        {
+            return false;
+        }
+
+        if (IsListOrSetType(namedTypeSymbol.ConstructedFrom)) return true;
+
+        return namedTypeSymbol.AllInterfaces.Any(static iface =>
+            iface.IsGenericType && IsListOrSetType(iface.ConstructedFrom));
+    }
+
+    static bool IsListOrSetType(INamedTypeSymbol typeSymbol)
+    {
+        var typeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        return typeName is "global::System.Collections.Generic.IList<T>"
+            or "global::System.Collections.Generic.ISet<T>";
+    }
+
+    static bool IsDictionaryFieldHandlerCompatible(ITypeSymbol typeSymbol)
+    {
+        if (typeSymbol is not INamedTypeSymbol { IsGenericType: true } namedTypeSymbol)
+        {
+            return false;
+        }
+
+        var constructedType = namedTypeSymbol.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        return constructedType is "global::System.Collections.Generic.IDictionary<TKey, TValue>" or "global::System.Collections.Generic.Dictionary<TKey, TValue>";
     }
 
     static GenerationInfo? CheckParamsNamesAndTypes(IMethodSymbol method, string indexName,

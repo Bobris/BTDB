@@ -2004,6 +2004,29 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task UpdateByIdDetectsForbiddenValueTypes()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class PersonInvalid
+            {
+                [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+                public IList<string> Names { get; set; } = new List<string>();
+                public IDictionary<int, string> Map { get; set; } = new Dictionary<int, string>();
+            }
+
+            public interface IPersonInvalid4Table : IRelation<PersonInvalid>
+            {
+                bool UpdateById(ulong tenantId, IList<string> names, IDictionary<int, string> map);
+            }
+            """);
+    }
+
+    [Fact]
     public Task UpdateByIdDetectsTypeMismatch()
     {
         // language=cs

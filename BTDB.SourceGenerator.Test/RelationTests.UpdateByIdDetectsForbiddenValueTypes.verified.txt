@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    bool UpdateById(ulong tenantId, IList<string> names, IDictionary<int, string> map);
+                                                  ^^^^^
+}
+*/
+ : (13,50)-(13,55),
+      Message: Method UpdateById parameter names type 'global::System.Collections.Generic.IList<string>' is not allowed for UpdateById values.,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0047,
+        Title: Method UpdateById parameter names type 'global::System.Collections.Generic.IList<string>' is not allowed for UpdateById values.,
+        MessageFormat: Method UpdateById parameter names type 'global::System.Collections.Generic.IList<string>' is not allowed for UpdateById values.,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}
