@@ -12,10 +12,10 @@ public delegate void FieldHandlerSave(ref MemWriter writer, IWriterCtx? ctx, ref
 
 public interface IFieldHandler
 {
-    public static bool UseNoEmit = false;
-    public static bool UseNoEmitForKeyValue = false;
-    public static bool UseNoEmitForRelations = false;
-    public static bool UseNoEmitForDescriptors = false;
+    public static bool UseNoEmit = true;
+    public static bool UseNoEmitForKeyValue = true;
+    public static bool UseNoEmitForRelations = true;
+    public static bool UseNoEmitForDescriptors = true;
 
     string Name { get; }
     byte[]? Configuration { get; }
