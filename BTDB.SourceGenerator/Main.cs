@@ -3447,6 +3447,11 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append(
                     $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
             }
+            else if (method.Name is "Update" or "ShallowUpdate")
+            {
+                declarations.Append(
+                    $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
+            }
             else if (method.Name == "Contains")
             {
                 declarations.Append(
