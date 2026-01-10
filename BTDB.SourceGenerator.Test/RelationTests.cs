@@ -1818,4 +1818,24 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task DefaultInterfaceMethodIsNotGenerated()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Item
+            {
+                [PrimaryKey] public ulong Id { get; set; }
+            }
+
+            public interface IItemTable : IRelation<Item>
+            {
+                int CountN1Groups() => 42;
+                void Update(Item item);
+            }
+            """);
+    }
 }

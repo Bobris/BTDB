@@ -153,7 +153,10 @@ public class SourceGenerator : IIncrementalGenerator
                                 ((InterfaceDeclarationSyntax)syntaxContext.Node).Identifier.GetLocation());
                             if (detectedError != null)
                                 return detectedError;
-                            var methods = GetAllMethodsIncludingInheritance(symbol).ToList();
+                            var methods = GetAllMethodsIncludingInheritance(symbol)
+                                .Where(m => m.MethodKind == MethodKind.Ordinary &&
+                                            !IsInterfaceMethodWithImplementation(m))
+                                .ToList();
                             detectedError = DetectErrorsInMethods(generationInfo, methods, relationType, semanticModel);
                             if (detectedError != null)
                                 return detectedError;
@@ -1078,6 +1081,30 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return result.IndexName.Length == 0 ? (name, false) : result;
+    }
+
+    static bool IsInterfaceMethodWithImplementation(IMethodSymbol method)
+    {
+        if (method.ContainingType.TypeKind != TypeKind.Interface)
+        {
+            return false;
+        }
+
+        if (method.IsAbstract)
+        {
+            return false;
+        }
+
+        foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+        {
+            if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax &&
+                (methodSyntax.Body != null || methodSyntax.ExpressionBody != null))
+            {
+                return true;
+            }
+        }
+
+        return !method.IsAbstract;
     }
 
     /// <summary>
