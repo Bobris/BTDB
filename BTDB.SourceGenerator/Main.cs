@@ -3931,86 +3931,77 @@ public class SourceGenerator : IIncrementalGenerator
                 else
                 {
                     var paramCount = method.Parameters.Count;
-                    var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
-                    if (indexName != "Id")
+                    string? advParamType = null;
+                    var advType = string.Empty;
+                    var lastParam = paramCount > 0 ? method.Parameters[paramCount - 1] : null;
+                    var lastParamName = lastParam?.Name ?? "";
+                    var hasAdvancedEnumerator = paramCount > 0 &&
+                                                TryGetAdvancedEnumeratorParamType(lastParam!.Type, out advType);
+                    if (hasAdvancedEnumerator)
                     {
-                        declarations.Append(
-                            $"            throw new global::BTDB.KVDBLayer.BTDBException(\"Remove by secondary key in {generationInfo.Name}.{method.Name} is unsupported. Instead use ListBy and remove enumerated.\");\n");
+                        advParamType = advType;
                     }
-                    else
+
+                    var isPrefixBased = IsRemoveByCountReturnType(method.ResultType);
+                    var prefixParamCount = paramCount - (hasAdvancedEnumerator ? 1 : 0);
+
+                    if (hasAdvancedEnumerator)
                     {
-                        string? advParamType = null;
-                        var advType = string.Empty;
-                        var lastParam = paramCount > 0 ? method.Parameters[paramCount - 1] : null;
-                        var lastParamName = lastParam?.Name ?? "";
-                        var hasAdvancedEnumerator = paramCount > 0 &&
-                                                    TryGetAdvancedEnumeratorParamType(lastParam!.Type, out advType);
-                        if (hasAdvancedEnumerator)
+                        if (!isPrefixBased)
                         {
-                            advParamType = advType;
-                        }
-
-                        var isPrefixBased = IsRemoveByCountReturnType(method.ResultType);
-                        var prefixParamCount = paramCount - (hasAdvancedEnumerator ? 1 : 0);
-
-                        if (hasAdvancedEnumerator)
-                        {
-                            if (!isPrefixBased)
-                            {
-                                declarations.Append(
-                                    $"            throw new global::BTDB.KVDBLayer.BTDBException(\"Return value in {method.Name} must be int, uint, long, or ulong.\");\n");
-                            }
-                            else
-                            {
-                                AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParamCount),
-                                    advParamType);
-                                AppendAdvancedKeyPrefix(declarations, false, null, method.Parameters, prefixParamCount,
-                                    lastParamName, advParamType!);
-                                var removeExpr =
-                                    $"base.RemoveByIdAdvancedParam({lastParamName}.Order, {lastParamName}.StartProposition, prefixLen, startKeyBytes, {lastParamName}.EndProposition, endKeyBytes)";
-                                declarations.Append(
-                                    $"            return {WrapCountResult(removeExpr, method.ResultType)};\n");
-                            }
-                        }
-                        else if (isPrefixBased)
-                        {
-                            AppendWriterCtxIfNeeded(declarations, method.Parameters, null);
                             declarations.Append(
-                                "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
-                            declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
-                            for (var i = 0; i < paramCount; i++)
-                            {
-                                AppendWriteOrderableParameter(declarations, method.Parameters[i]);
-                            }
-
-                            var removeExpr = (!HasOnBeforeRemove(generationInfo) &&
-                                              AllKeyPrefixesAreSame(primaryKeyFields, secondaryKeys, paramCount))
-                                ? "base.RemoveByKeyPrefixWithoutIterate(writer.GetSpan())"
-                                : "base.RemoveByPrimaryKeyPrefix(writer.GetSpan())";
-                            declarations.Append(
-                                $"            return {WrapCountResult(removeExpr, method.ResultType)};\n");
+                                $"            throw new global::BTDB.KVDBLayer.BTDBException(\"Return value in {method.Name} must be int, uint, long, or ulong.\");\n");
                         }
                         else
                         {
-                            AppendWriterCtxIfNeeded(declarations, method.Parameters, null);
+                            AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParamCount),
+                                advParamType);
+                            AppendAdvancedKeyPrefix(declarations, false, null, method.Parameters, prefixParamCount,
+                                lastParamName, advParamType!);
+                            var removeExpr =
+                                $"base.RemoveByIdAdvancedParam({lastParamName}.Order, {lastParamName}.StartProposition, prefixLen, startKeyBytes, {lastParamName}.EndProposition, endKeyBytes)";
                             declarations.Append(
-                                "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
-                            declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
-                            for (var i = 0; i < paramCount; i++)
-                            {
-                                AppendWriteOrderableParameter(declarations, method.Parameters[i]);
-                            }
+                                $"            return {WrapCountResult(removeExpr, method.ResultType)};\n");
+                        }
+                    }
+                    else if (isPrefixBased)
+                    {
+                        AppendWriterCtxIfNeeded(declarations, method.Parameters, null);
+                        declarations.Append(
+                            "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                        declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                        for (var i = 0; i < paramCount; i++)
+                        {
+                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                        }
 
-                            var throwWhenNotFound = method.ResultType == null ? "true" : "false";
-                            var removeMethodName = method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal)
-                                ? "ShallowRemoveById"
-                                : "RemoveById";
-                            declarations.Append(
-                                $"            var removed = base.{removeMethodName}(writer.GetSpan(), {throwWhenNotFound});\n");
-                            if (method.ResultType != null)
-                            {
-                                declarations.Append("            return removed;\n");
-                            }
+                        var removeExpr = (!HasOnBeforeRemove(generationInfo) &&
+                                          AllKeyPrefixesAreSame(primaryKeyFields, secondaryKeys, paramCount))
+                            ? "base.RemoveByKeyPrefixWithoutIterate(writer.GetSpan())"
+                            : "base.RemoveByPrimaryKeyPrefix(writer.GetSpan())";
+                        declarations.Append(
+                            $"            return {WrapCountResult(removeExpr, method.ResultType)};\n");
+                    }
+                    else
+                    {
+                        AppendWriterCtxIfNeeded(declarations, method.Parameters, null);
+                        declarations.Append(
+                            "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                        declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                        for (var i = 0; i < paramCount; i++)
+                        {
+                            AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                        }
+
+                        var throwWhenNotFound = method.ResultType == null ? "true" : "false";
+                        var removeMethodName = method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal)
+                            ? "ShallowRemoveById"
+                            : "RemoveById";
+                        declarations.Append(
+                            $"            var removed = base.{removeMethodName}(writer.GetSpan(), {throwWhenNotFound});\n");
+                        if (method.ResultType != null)
+                        {
+                            declarations.Append("            return removed;\n");
                         }
                     }
                 }
