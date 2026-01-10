@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    int RemoveByContactId(ulong companyId, ulong contactId);
+        ^^^^^^^^^^^^^^^^^
+}
+*/
+ : (14,8)-(14,25),
+      Message: Remove by secondary key in ContactGroupRelation.RemoveByContactId is unsupported. Instead use ListBy and remove enumerated.,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0038,
+        Title: Remove by secondary key in ContactGroupRelation.RemoveByContactId is unsupported. Instead use ListBy and remove enumerated.,
+        MessageFormat: Remove by secondary key in ContactGroupRelation.RemoveByContactId is unsupported. Instead use ListBy and remove enumerated.,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

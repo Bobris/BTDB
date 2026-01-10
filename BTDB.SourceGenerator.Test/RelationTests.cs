@@ -1690,6 +1690,30 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task RemoveBySecondaryKeyIsUnsupported()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class ContactGroupRelation
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong GroupId { get; set; }
+
+                [PrimaryKey(3)]
+                [SecondaryKey("ContactId", IncludePrimaryKeyOrder = 1)]
+                public ulong ContactId { get; set; }
+            }
+
+            public interface IContactGroupRelationTable : IRelation<ContactGroupRelation>
+            {
+                int RemoveByContactId(ulong companyId, ulong contactId);
+            }
+            """);
+    }
+
+    [Fact]
     public Task RemoveByMethodWithAdvancedEnumeratorParamWrongType()
     {
         // language=cs

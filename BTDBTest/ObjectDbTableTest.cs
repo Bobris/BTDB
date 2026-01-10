@@ -2434,24 +2434,6 @@ namespace BTDBTest
             public ulong ContactId { get; set; }
         }
 
-        public interface IContactGroupRelationTable : IRelation<ContactGroupRelationDb>
-        {
-            IEnumerable<ContactGroupRelationDb> FindById(ulong companyId, ulong groupId);
-            IEnumerable<ContactGroupRelationDb> FindByContactId(ulong companyId, ulong contactId);
-            int CountById(ulong companyId, ulong groupId);
-            int RemoveById(ulong companyId, ulong groupId);
-            int RemoveByContactId(ulong companyId, ulong contactId);
-            bool RemoveById(ulong companyId, ulong groupId, ulong contactId);
-        }
-
-        [Fact]
-        public void RemoveBySecondaryKeyThrowsUnsupported()
-        {
-            using var tr = _db.StartTransaction();
-            Assert.Contains("unsupported",
-                Assert.Throws<BTDBException>(() => tr.GetRelation<IContactGroupRelationTable>()).Message);
-        }
-
         public class MyContactGroupRelationDb : IEquatable<MyContactGroupRelationDb>
         {
             [PrimaryKey(1)] public ulong CompanyId { get; set; }

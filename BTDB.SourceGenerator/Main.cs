@@ -607,6 +607,13 @@ public class SourceGenerator : IIncrementalGenerator
                 if (hasVariant || hasSpecialSuffix)
                     continue;
 
+                if (indexName != "Id")
+                {
+                    return GenerationError("BTDB0038",
+                        $"Remove by secondary key in {itemGenInfo.Name}.{method.Name} is unsupported. Instead use ListBy and remove enumerated.",
+                        method.Locations[0]);
+                }
+
                 // Validate return type (void, bool, int, uint, long, ulong)
                 if (method.ReturnType.SpecialType != SpecialType.System_Void &&
                     method.ReturnType.SpecialType != SpecialType.System_Boolean &&
