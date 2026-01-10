@@ -77,18 +77,6 @@ public class ObjectDbTableUpdateByIdTest : ObjectDbTestBase
         public string? ExpertsExchange { get; set; }
     }
 
-    public interface IPersonInvalid1Table : IRelation<PersonInvalid>
-    {
-        bool UpdateById(ulong tenantId, int age);
-    }
-
-    [Fact]
-    public void UpdateByIdDetectsUnusedParameters()
-    {
-        using var tr = _db.StartTransaction();
-        Assert.Contains(" age ", Assert.Throws<BTDBException>(() => tr.GetRelation<IPersonInvalid1Table>()).Message);
-    }
-
     public interface IPersonInvalid2Table : IRelation<PersonInvalid>
     {
         bool UpdateById(ulong tenantId, int name);
@@ -99,19 +87,6 @@ public class ObjectDbTableUpdateByIdTest : ObjectDbTestBase
     {
         using var tr = _db.StartTransaction();
         Assert.Contains(" name ", Assert.Throws<BTDBException>(() => tr.GetRelation<IPersonInvalid2Table>()).Message);
-    }
-
-    public interface IPersonInvalid3Table : IRelation<PersonInvalid>
-    {
-        bool UpdateById(ulong tenantId, string expertsExchange);
-    }
-
-    [Fact]
-    public void UpdateByIdDetectsNotUniqueParameterNameMatch()
-    {
-        using var tr = _db.StartTransaction();
-        Assert.Contains(" expertsExchange ",
-            Assert.Throws<BTDBException>(() => tr.GetRelation<IPersonInvalid3Table>()).Message);
     }
 
     public interface IPersonVoidTable : IRelation<Person>

@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    bool UpdateById(ulong tenantId, int age);
+                                        ^^^
+}
+*/
+ : (14,40)-(14,43),
+      Message: Method UpdateById parameter age does not match any relation fields.,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0045,
+        Title: Method UpdateById parameter age does not match any relation fields.,
+        MessageFormat: Method UpdateById parameter age does not match any relation fields.,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    bool UpdateById(ulong tenantId, string expertsExchange);
+                                           ^^^^^^^^^^^^^^^
+}
+*/
+ : (14,43)-(14,58),
+      Message: Method UpdateById matched parameter expertsExchange more than once.,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0044,
+        Title: Method UpdateById matched parameter expertsExchange more than once.,
+        MessageFormat: Method UpdateById matched parameter expertsExchange more than once.,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

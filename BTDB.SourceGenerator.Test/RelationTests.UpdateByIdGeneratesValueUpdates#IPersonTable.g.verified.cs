@@ -46,7 +46,6 @@ file class IPersonTableRegistration
             var oldValueBytes = default(global::System.ReadOnlySpan<byte>);
             var updated = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, false);
             if (!updated) return false;
-            var usedParams = new bool[1];
             global::BTDB.ODBLayer.DBWriterCtx? valueCtx = null;
             global::BTDB.ODBLayer.DBReaderCtx? readerCtx = null;
             unsafe
@@ -87,9 +86,6 @@ file class IPersonTableRegistration
                             {
                                 case 0:
                                 {
-                                    if (usedParams[0])
-                                        throw new global::BTDB.KVDBLayer.BTDBException("Method UpdateById matched parameter name more than once.");
-                                    usedParams[0] = true;
                                     var save = handler.Save(typeof(string), Transaction.Owner.TypeConverterFactory);
                                     if (handler.NeedsCtx())
                                     {
@@ -114,12 +110,6 @@ file class IPersonTableRegistration
                     {
                         reader.CopyFromPosToWriter(memoPos, ref writer);
                     }
-                    var missing = new global::System.Collections.Generic.List<string>();
-                    if (!usedParams[0]) missing.Add("name");
-                    if (missing.Count != 0)
-                    {
-                        throw new global::BTDB.KVDBLayer.BTDBException("Method UpdateById parameters " + string.Join(", ", missing) + " does not match any relation fields.");
-                    }
                 }
             }
             base.UpdateByIdFinish(keyBytes, oldValueBytes, writer.GetSpan());
@@ -137,7 +127,6 @@ file class IPersonTableRegistration
             var keyBytes = writer.GetScopedSpanAndReset();
             var oldValueBytes = default(global::System.ReadOnlySpan<byte>);
             _ = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, true);
-            var usedParams = new bool[1];
             global::BTDB.ODBLayer.DBWriterCtx? valueCtx = null;
             global::BTDB.ODBLayer.DBReaderCtx? readerCtx = null;
             unsafe
@@ -178,9 +167,6 @@ file class IPersonTableRegistration
                             {
                                 case 0:
                                 {
-                                    if (usedParams[0])
-                                        throw new global::BTDB.KVDBLayer.BTDBException("Method UpdateByIdSecret matched parameter secret more than once.");
-                                    usedParams[0] = true;
                                     var save = handler.Save(typeof(string), Transaction.Owner.TypeConverterFactory);
                                     if (handler.NeedsCtx())
                                     {
@@ -205,12 +191,6 @@ file class IPersonTableRegistration
                     {
                         reader.CopyFromPosToWriter(memoPos, ref writer);
                     }
-                    var missing = new global::System.Collections.Generic.List<string>();
-                    if (!usedParams[0]) missing.Add("secret");
-                    if (missing.Count != 0)
-                    {
-                        throw new global::BTDB.KVDBLayer.BTDBException("Method UpdateByIdSecret parameters " + string.Join(", ", missing) + " does not match any relation fields.");
-                    }
                 }
             }
             base.UpdateByIdFinish(keyBytes, oldValueBytes, writer.GetSpan());
@@ -230,7 +210,6 @@ file class IPersonTableRegistration
                 {
                     var valueFields = ClientRelationVersionInfoAccessor(relationInfo).Fields.Span;
                     var typeConvertorGenerator = RelationInfoResolverAccessor(relationInfo).TypeConvertorGenerator;
-                    var usedParams = new bool[1];
                     for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)
                     {
                         var valueField = valueFields[valueFieldIndex];
@@ -246,9 +225,6 @@ file class IPersonTableRegistration
                         {
                             case 0:
                             {
-                                if (usedParams[0])
-                                    throw new global::BTDB.KVDBLayer.BTDBException("Method UpdateById matched parameter name more than once.");
-                                usedParams[0] = true;
                                 var parameterType = typeof(string);
                                 var specializedHandler = handler.SpecializeSaveForType(parameterType);
                                 if (typeConvertorGenerator.GenerateConversion(parameterType, specializedHandler.HandledType()!) == null)
@@ -257,17 +233,10 @@ file class IPersonTableRegistration
                             }
                         }
                     }
-                    var missing = new global::System.Collections.Generic.List<string>();
-                    if (!usedParams[0]) missing.Add("name");
-                    if (missing.Count != 0)
-                    {
-                        throw new global::BTDB.KVDBLayer.BTDBException("Method UpdateById parameters " + string.Join(", ", missing) + " does not match any relation fields.");
-                    }
                 }
                 {
                     var valueFields = ClientRelationVersionInfoAccessor(relationInfo).Fields.Span;
                     var typeConvertorGenerator = RelationInfoResolverAccessor(relationInfo).TypeConvertorGenerator;
-                    var usedParams = new bool[1];
                     for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)
                     {
                         var valueField = valueFields[valueFieldIndex];
@@ -283,9 +252,6 @@ file class IPersonTableRegistration
                         {
                             case 0:
                             {
-                                if (usedParams[0])
-                                    throw new global::BTDB.KVDBLayer.BTDBException("Method UpdateByIdSecret matched parameter secret more than once.");
-                                usedParams[0] = true;
                                 var parameterType = typeof(string);
                                 var specializedHandler = handler.SpecializeSaveForType(parameterType);
                                 if (typeConvertorGenerator.GenerateConversion(parameterType, specializedHandler.HandledType()!) == null)
@@ -293,12 +259,6 @@ file class IPersonTableRegistration
                                 break;
                             }
                         }
-                    }
-                    var missing = new global::System.Collections.Generic.List<string>();
-                    if (!usedParams[0]) missing.Add("secret");
-                    if (missing.Count != 0)
-                    {
-                        throw new global::BTDB.KVDBLayer.BTDBException("Method UpdateByIdSecret parameters " + string.Join(", ", missing) + " does not match any relation fields.");
                     }
                 }
                 return transaction => new ImplPersonTable(transaction, relationInfo);

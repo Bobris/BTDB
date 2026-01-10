@@ -653,6 +653,11 @@ public class SourceGenerator : IIncrementalGenerator
                         method.Locations[0]);
                 }
 
+                var duplicateParamError = ValidateUpdateByIdValueParameters(method, itemGenInfo.Fields,
+                    primaryKeyFields);
+                if (duplicateParamError != null)
+                    return duplicateParamError;
+
                 return CheckParamsNamesAndTypes(method, "Id", itemGenInfo.Fields, primaryKeyFields,
                     indexOfInKeyValue, secondaryKeys, true);
             }
@@ -1005,6 +1010,52 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return ValidateConstraintParameters(method, indexName, fields, fi, startParamIndex, constraintParamCount);
+    }
+
+    static GenerationInfo? ValidateUpdateByIdValueParameters(IMethodSymbol method, EquatableArray<FieldsInfo> fields,
+        uint[] primaryKeyFields)
+    {
+        var pkParamCount = primaryKeyFields.Length;
+        if (method.Parameters.Length <= pkParamCount) return null;
+
+        var pkFieldIndexes = new HashSet<uint>(primaryKeyFields);
+        var nonPkFields = new List<FieldsInfo>();
+        for (var fieldIndex = 0; fieldIndex < fields.Count; fieldIndex++)
+        {
+            if (pkFieldIndexes.Contains((uint)fieldIndex)) continue;
+            var field = fields[fieldIndex];
+            if (field.ReadOnly) continue;
+            nonPkFields.Add(field);
+        }
+
+        for (var paramIndex = pkParamCount; paramIndex < method.Parameters.Length; paramIndex++)
+        {
+            var param = method.Parameters[paramIndex];
+            var matches = 0;
+            for (var fieldIndex = 0; fieldIndex < nonPkFields.Count; fieldIndex++)
+            {
+                var field = nonPkFields[fieldIndex];
+                if (string.Equals(field.Name, param.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    matches++;
+                    if (matches > 1)
+                    {
+                        return GenerationError("BTDB0044",
+                            $"Method {method.Name} matched parameter {param.Name} more than once.",
+                            param.Locations[0]);
+                    }
+                }
+            }
+
+            if (matches == 0)
+            {
+                return GenerationError("BTDB0045",
+                    $"Method {method.Name} parameter {param.Name} does not match any relation fields.",
+                    param.Locations[0]);
+            }
+        }
+
+        return null;
     }
 
     static GenerationInfo? CheckParamsNamesAndTypes(IMethodSymbol method, string indexName,
@@ -3389,7 +3440,6 @@ public class SourceGenerator : IIncrementalGenerator
         validationBody.Append($"                    var valueFields = {valueFieldsExpression};\n");
         validationBody.Append(
             $"                    var typeConvertorGenerator = {typeConvertorGeneratorExpression};\n");
-        validationBody.Append($"                    var usedParams = new bool[{valueParamCount}];\n");
         validationBody.Append(
             "                    for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)\n");
         validationBody.Append("                    {\n");
@@ -3423,10 +3473,6 @@ public class SourceGenerator : IIncrementalGenerator
 
             validationBody.Append($"                            case {i}:\n");
             validationBody.Append("                            {\n");
-            validationBody.Append($"                                if (usedParams[{i}])\n");
-            validationBody.Append(
-                $"                                    throw new global::BTDB.KVDBLayer.BTDBException(\"Method {method.Name} matched parameter {param.Name} more than once.\");\n");
-            validationBody.Append($"                                usedParams[{i}] = true;\n");
             validationBody.Append(
                 $"                                var parameterType = typeof({paramTypeForTypeof});\n");
             validationBody.Append(
@@ -3440,19 +3486,6 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         validationBody.Append("                        }\n");
-        validationBody.Append("                    }\n");
-        validationBody.Append(
-            "                    var missing = new global::System.Collections.Generic.List<string>();\n");
-        for (var i = 0; i < valueParamCount; i++)
-        {
-            var param = method.Parameters[pkParamCount + i];
-            validationBody.Append($"                    if (!usedParams[{i}]) missing.Add(\"{param.Name}\");\n");
-        }
-
-        validationBody.Append("                    if (missing.Count != 0)\n");
-        validationBody.Append("                    {\n");
-        validationBody.Append(
-            $"                        throw new global::BTDB.KVDBLayer.BTDBException(\"Method {method.Name} parameters \" + string.Join(\", \", missing) + \" does not match any relation fields.\");\n");
         validationBody.Append("                    }\n");
         validationBody.Append("                }\n");
     }
@@ -3714,7 +3747,6 @@ public class SourceGenerator : IIncrementalGenerator
                             "            _ = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, true);\n");
                     }
 
-                    declarations.Append($"            var usedParams = new bool[{valueParamCount}];\n");
                     declarations.Append("            global::BTDB.ODBLayer.DBWriterCtx? valueCtx = null;\n");
                     declarations.Append("            global::BTDB.ODBLayer.DBReaderCtx? readerCtx = null;\n");
                     declarations.Append("            unsafe\n");
@@ -3776,10 +3808,6 @@ public class SourceGenerator : IIncrementalGenerator
 
                         declarations.Append($"                                case {i}:\n");
                         declarations.Append("                                {\n");
-                        declarations.Append($"                                    if (usedParams[{i}])\n");
-                        declarations.Append(
-                            $"                                        throw new global::BTDB.KVDBLayer.BTDBException(\"Method {method.Name} matched parameter {param.Name} more than once.\");\n");
-                        declarations.Append($"                                    usedParams[{i}] = true;\n");
                         declarations.Append(
                             $"                                    var save = handler.Save(typeof({paramTypeForTypeof}), Transaction.Owner.TypeConverterFactory);\n");
                         declarations.Append("                                    if (handler.NeedsCtx())\n");
@@ -3809,20 +3837,6 @@ public class SourceGenerator : IIncrementalGenerator
                     declarations.Append("                    if (copyMode)\n");
                     declarations.Append("                    {\n");
                     declarations.Append("                        reader.CopyFromPosToWriter(memoPos, ref writer);\n");
-                    declarations.Append("                    }\n");
-                    declarations.Append(
-                        "                    var missing = new global::System.Collections.Generic.List<string>();\n");
-                    for (var i = 0; i < valueParamCount; i++)
-                    {
-                        var param = method.Parameters[pkParamCount + i];
-                        declarations.Append(
-                            $"                    if (!usedParams[{i}]) missing.Add(\"{param.Name}\");\n");
-                    }
-
-                    declarations.Append("                    if (missing.Count != 0)\n");
-                    declarations.Append("                    {\n");
-                    declarations.Append(
-                        $"                        throw new global::BTDB.KVDBLayer.BTDBException(\"Method {method.Name} parameters \" + string.Join(\", \", missing) + \" does not match any relation fields.\");\n");
                     declarations.Append("                    }\n");
                     declarations.Append("                }\n");
                     declarations.Append("            }\n");

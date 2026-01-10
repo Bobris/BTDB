@@ -1956,6 +1956,54 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task UpdateByIdDetectsNotUniqueParameterNameMatch()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class PersonInvalid
+            {
+                [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+                public string? Name { get; set; }
+
+                public string? ExpertSexChange { get; set; }
+                public string? ExpertsExchange { get; set; }
+            }
+
+            public interface IPersonInvalid3Table : IRelation<PersonInvalid>
+            {
+                bool UpdateById(ulong tenantId, string expertsExchange);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task UpdateByIdDetectsUnusedParameters()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class PersonInvalid
+            {
+                [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+                public string? Name { get; set; }
+
+                public string? ExpertSexChange { get; set; }
+                public string? ExpertsExchange { get; set; }
+            }
+
+            public interface IPersonInvalid1Table : IRelation<PersonInvalid>
+            {
+                bool UpdateById(ulong tenantId, int age);
+            }
+            """);
+    }
+
+    [Fact]
     public Task DefaultInterfaceMethodIsNotGenerated()
     {
         // language=cs
