@@ -318,6 +318,27 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task ReportsProblemAboutUsageOfUnknownMethod()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+            }
+
+            public interface IWronglyDefinedUnknownMethod : IRelation<Person>
+            {
+                void Insert(Person person);
+                void Delete(Person person);
+            }
+
+            """);
+    }
+
+    [Fact]
     public Task ListByMethodMustReturnEnumerable()
     {
         // language=cs
@@ -1866,6 +1887,31 @@ public class RelationTests : GeneratorTestsBase
             {
                 void Update(Person person);
                 void ShallowUpdate(Person person);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task UpdateByIdGeneratesValueUpdates()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.Encrypted;
+            using BTDB.ODBLayer;
+
+            public class Person
+            {
+                [PrimaryKey(1)] public ulong TenantId { get; set; }
+                [PrimaryKey(2)] public ulong Id { get; set; }
+                public string Name { get; set; } = null!;
+                public EncryptedString Secret { get; set; }
+            }
+
+            public interface IPersonTable : IRelation<Person>
+            {
+                bool UpdateById(ulong tenantId, ulong id);
+                bool UpdateById(ulong tenantId, ulong id, string name);
+                void UpdateByIdSecret(ulong tenantId, ulong id, string secret);
             }
             """);
     }

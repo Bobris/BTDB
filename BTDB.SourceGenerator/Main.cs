@@ -433,6 +433,8 @@ public class SourceGenerator : IIncrementalGenerator
                     if (validationError != null)
                         return validationError;
                 }
+
+                continue;
             }
 
             if (method.Name.StartsWith("ScanBy"))
@@ -515,6 +517,8 @@ public class SourceGenerator : IIncrementalGenerator
                     if (validationError != null)
                         return validationError;
                 }
+
+                continue;
             }
 
             if (method.Name.StartsWith("ListBy"))
@@ -592,6 +596,27 @@ public class SourceGenerator : IIncrementalGenerator
 
                 return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
                     indexOfInKeyValue, secondaryKeys, true, true);
+            }
+
+            if (method.Name.StartsWith("UpdateById", StringComparison.Ordinal))
+            {
+                if (method.ReturnType.SpecialType != SpecialType.System_Void &&
+                    method.ReturnType.SpecialType != SpecialType.System_Boolean)
+                {
+                    return GenerationError("BTDB0039",
+                        $"Method '{method.Name}' must return void or bool",
+                        method.Locations[0]);
+                }
+
+                if (method.Parameters.Length < primaryKeyFields.Length)
+                {
+                    return GenerationError("BTDB0040",
+                        $"Not enough parameters in {method.Name} (expected at least {primaryKeyFields.Length}).",
+                        method.Locations[0]);
+                }
+
+                return CheckParamsNamesAndTypes(method, "Id", itemGenInfo.Fields, primaryKeyFields,
+                    indexOfInKeyValue, secondaryKeys, true);
             }
 
             if (method.Name.StartsWith("RemoveBy", StringComparison.Ordinal))
@@ -681,38 +706,40 @@ public class SourceGenerator : IIncrementalGenerator
                 .OfType<IMethodSymbol>()
                 .FirstOrDefault(m => m.MethodKind == MethodKind.Ordinary);
 
-            if (baseMethod != null)
+            if (baseMethod == null)
             {
-                // Check if parameter count matches
-                if (method.Parameters.Length != baseMethod.Parameters.Length)
+                return GenerationError("BTDB0041", $"Method {method.Name} is not supported.", method.Locations[0]);
+            }
+
+            // Check if parameter count matches
+            if (method.Parameters.Length != baseMethod.Parameters.Length)
+            {
+                return GenerationError("BTDB0010",
+                    $"Method '{method.Name}' has {method.Parameters.Length} parameter(s) but the base method in RelationDBManipulator<{relationType.Name}> requires {baseMethod.Parameters.Length} parameter(s)",
+                    method.Locations[0]);
+            }
+
+            // Check if the return type matches or is void
+            if (!SymbolEqualityComparer.Default.Equals(method.ReturnType, baseMethod.ReturnType) &&
+                (method.Name != "Insert" ||
+                 method.ReturnType.SpecialType != SpecialType.System_Void))
+            {
+                return GenerationError("BTDB0012",
+                    $"Method '{method.Name}' has return type '{method.ReturnType.ToDisplayString()}' but method requires '{baseMethod.ReturnType.ToDisplayString()}'",
+                    method.Locations[0]);
+            }
+
+            // Check if parameter types match
+            for (var i = 0; i < method.Parameters.Length; i++)
+            {
+                var interfaceParam = method.Parameters[i];
+                var baseParam = baseMethod.Parameters[i];
+
+                if (!SymbolEqualityComparer.Default.Equals(interfaceParam.Type, baseParam.Type))
                 {
-                    return GenerationError("BTDB0010",
-                        $"Method '{method.Name}' has {method.Parameters.Length} parameter(s) but the base method in RelationDBManipulator<{relationType.Name}> requires {baseMethod.Parameters.Length} parameter(s)",
+                    return GenerationError("BTDB0011",
+                        $"Method '{method.Name}' parameter {i + 1} has type '{interfaceParam.Type.ToDisplayString()}' but the base method requires '{baseParam.Type.ToDisplayString()}'",
                         method.Locations[0]);
-                }
-
-                // Check if the return type matches or is void
-                if (!SymbolEqualityComparer.Default.Equals(method.ReturnType, baseMethod.ReturnType) &&
-                    (method.Name != "Insert" ||
-                     method.ReturnType.SpecialType != SpecialType.System_Void))
-                {
-                    return GenerationError("BTDB0012",
-                        $"Method '{method.Name}' has return type '{method.ReturnType.ToDisplayString()}' but method requires '{baseMethod.ReturnType.ToDisplayString()}'",
-                        method.Locations[0]);
-                }
-
-                // Check if parameter types match
-                for (var i = 0; i < method.Parameters.Length; i++)
-                {
-                    var interfaceParam = method.Parameters[i];
-                    var baseParam = baseMethod.Parameters[i];
-
-                    if (!SymbolEqualityComparer.Default.Equals(interfaceParam.Type, baseParam.Type))
-                    {
-                        return GenerationError("BTDB0011",
-                            $"Method '{method.Name}' parameter {i + 1} has type '{interfaceParam.Type.ToDisplayString()}' but the base method requires '{baseParam.Type.ToDisplayString()}'",
-                            method.Locations[0]);
-                    }
                 }
             }
         }
@@ -845,8 +872,7 @@ public class SourceGenerator : IIncrementalGenerator
         if (lastParam.Type is INamedTypeSymbol namedType &&
             namedType.InODBLayerNamespace() &&
             namedType.Name == "AdvancedEnumeratorParam" &&
-            namedType.IsGenericType &&
-            namedType.TypeArguments.Length == 1)
+            namedType is { IsGenericType: true, TypeArguments.Length: 1 })
         {
             genericTypeArg = namedType.TypeArguments[0];
             return true;
@@ -3314,6 +3340,85 @@ public class SourceGenerator : IIncrementalGenerator
         return (indexOfInKeyValue, primaryKeyFields, secondaryKeys);
     }
 
+    static void AppendUpdateByIdValidation(StringBuilder validationBody, MethodInfo method, int pkParamCount,
+        string valueFieldsExpression, string typeConvertorGeneratorExpression)
+    {
+        var paramCount = method.Parameters.Count;
+        var valueParamCount = paramCount - pkParamCount;
+        if (valueParamCount <= 0) return;
+
+        validationBody.Append("                {\n");
+        validationBody.Append($"                    var valueFields = {valueFieldsExpression};\n");
+        validationBody.Append(
+            $"                    var typeConvertorGenerator = {typeConvertorGeneratorExpression};\n");
+        validationBody.Append($"                    var usedParams = new bool[{valueParamCount}];\n");
+        validationBody.Append(
+            "                    for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)\n");
+        validationBody.Append("                    {\n");
+        validationBody.Append("                        var valueField = valueFields[valueFieldIndex];\n");
+        validationBody.Append("                        if (valueField.Computed) continue;\n");
+        validationBody.Append("                        var paramIndex = -1;\n");
+        for (var i = 0; i < valueParamCount; i++)
+        {
+            var keyword = i == 0 ? "if" : "else if";
+            var param = method.Parameters[pkParamCount + i];
+            validationBody.Append(
+                $"                        {keyword} (string.Equals(valueField.Name, \"{param.Name}\", StringComparison.OrdinalIgnoreCase))\n");
+            validationBody.Append("                        {\n");
+            validationBody.Append($"                            paramIndex = {i};\n");
+            validationBody.Append("                        }\n");
+        }
+
+        validationBody.Append("                        if (paramIndex == -1) continue;\n");
+        validationBody.Append("                        var handler = valueField.Handler!;\n");
+        validationBody.Append("                        switch (paramIndex)\n");
+        validationBody.Append("                        {\n");
+        for (var i = 0; i < valueParamCount; i++)
+        {
+            var param = method.Parameters[pkParamCount + i];
+            var paramType = NormalizeType(param.Type);
+            var paramTypeForTypeof = paramType;
+            if (param.IsReference && paramTypeForTypeof.EndsWith("?", StringComparison.Ordinal))
+            {
+                paramTypeForTypeof = paramTypeForTypeof.Substring(0, paramTypeForTypeof.Length - 1);
+            }
+
+            validationBody.Append($"                            case {i}:\n");
+            validationBody.Append("                            {\n");
+            validationBody.Append($"                                if (usedParams[{i}])\n");
+            validationBody.Append(
+                $"                                    throw new global::BTDB.KVDBLayer.BTDBException(\"Method {method.Name} matched parameter {param.Name} more than once.\");\n");
+            validationBody.Append($"                                usedParams[{i}] = true;\n");
+            validationBody.Append(
+                $"                                var parameterType = typeof({paramTypeForTypeof});\n");
+            validationBody.Append(
+                "                                var specializedHandler = handler.SpecializeSaveForType(parameterType);\n");
+            validationBody.Append(
+                "                                if (typeConvertorGenerator.GenerateConversion(parameterType, specializedHandler.HandledType()!) == null)\n");
+            validationBody.Append(
+                $"                                    throw new global::BTDB.KVDBLayer.BTDBException(\"Method {method.Name} matched parameter {param.Name} has wrong type \" + global::BTDB.IL.EmitHelpers.ToSimpleName(parameterType) + \" not convertible to \" + global::BTDB.IL.EmitHelpers.ToSimpleName(specializedHandler.HandledType()!));\n");
+            validationBody.Append("                                break;\n");
+            validationBody.Append("                            }\n");
+        }
+
+        validationBody.Append("                        }\n");
+        validationBody.Append("                    }\n");
+        validationBody.Append(
+            "                    var missing = new global::System.Collections.Generic.List<string>();\n");
+        for (var i = 0; i < valueParamCount; i++)
+        {
+            var param = method.Parameters[pkParamCount + i];
+            validationBody.Append($"                    if (!usedParams[{i}]) missing.Add(\"{param.Name}\");\n");
+        }
+
+        validationBody.Append("                    if (missing.Count != 0)\n");
+        validationBody.Append("                    {\n");
+        validationBody.Append(
+            $"                        throw new global::BTDB.KVDBLayer.BTDBException(\"Method {method.Name} parameters \" + string.Join(\", \", missing) + \" does not match any relation fields.\");\n");
+        validationBody.Append("                    }\n");
+        validationBody.Append("                }\n");
+    }
+
     static string OnBeforeRemoveDeclareParams(EquatableArray<ParameterInfo> parameters)
     {
         if (parameters.IsEmpty) return "";
@@ -3461,16 +3566,17 @@ public class SourceGenerator : IIncrementalGenerator
         declarations.Append("[CompilerGenerated]\n");
         declarations.Append($"file class {generationInfo.Name}Registration\n{{\n");
         var implName = $"Impl{generationInfo.Name.Substring(1)}";
-        var (_, primaryKeyFields, secondaryKeys) = BuildIndexInfo(generationInfo);
+        var (indexOfInKeyValue, primaryKeyFields, secondaryKeys) = BuildIndexInfo(generationInfo);
+        var constructorBody = new StringBuilder();
+        var creatorValidationBody = new StringBuilder();
+        string? creatorThrowMessage = null;
+        var needsRelationInfoAccessors = false;
         // language=C#
         declarations.Append($$"""
                 public class {{implName}} : global::BTDB.ODBLayer.RelationDBManipulator<{{generationInfo.Implements[0].FullyQualifiedName}}>, {{generationInfo.FullName}}
                 {
-                    public {{implName}}(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
-                    {
-                    }
-
             """);
+        var classBodyStart = declarations.Length;
         foreach (var method in generationInfo.Methods)
         {
             // language=C#
@@ -3496,6 +3602,199 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 declarations.Append(
                     $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
+            }
+            else if (method.Name.StartsWith("UpdateById", StringComparison.Ordinal))
+            {
+                var paramCount = method.Parameters.Count;
+                var pkParamCount = primaryKeyFields.Length;
+                var valueParamCount = paramCount - pkParamCount;
+                var returnsBool = method.ResultType != null && IsBoolType(method.ResultType);
+                if (creatorThrowMessage == null)
+                {
+                    if (paramCount < pkParamCount)
+                    {
+                        creatorThrowMessage =
+                            $"Not enough parameters in {method.Name} (expected at least {pkParamCount}).";
+                    }
+                    else if (method.ResultType != null && !returnsBool)
+                    {
+                        creatorThrowMessage =
+                            $"Method {method.Name} should be defined with void or bool return type.";
+                    }
+                    else if (valueParamCount > 0)
+                    {
+                        AppendUpdateByIdValidation(creatorValidationBody, method, pkParamCount,
+                            "ClientRelationVersionInfoAccessor(relationInfo).Fields.Span",
+                            "RelationInfoResolverAccessor(relationInfo).TypeConvertorGenerator");
+                        needsRelationInfoAccessors = true;
+                    }
+                }
+
+                declarations.Append(
+                    "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(pkParamCount), null);
+                declarations.Append("            var lenOfPkWoInKeyValues = 0;\n");
+                for (var i = 0; i < pkParamCount; i++)
+                {
+                    if (i == (int)indexOfInKeyValue)
+                    {
+                        declarations.Append("            lenOfPkWoInKeyValues = (int)writer.GetCurrentPosition();\n");
+                    }
+
+                    AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                }
+
+                declarations.Append("            var keyBytes = writer.GetScopedSpanAndReset();\n");
+                if (valueParamCount <= 0)
+                {
+                    if (returnsBool)
+                    {
+                        declarations.Append(
+                            "            var updated = base.UpdateByIdInKeyValues(keyBytes, lenOfPkWoInKeyValues, false);\n");
+                        declarations.Append("            return updated;\n");
+                    }
+                    else
+                    {
+                        declarations.Append(
+                            "            _ = base.UpdateByIdInKeyValues(keyBytes, lenOfPkWoInKeyValues, true);\n");
+                    }
+                }
+                else
+                {
+                    declarations.Append(
+                        "            var oldValueBytes = default(global::System.ReadOnlySpan<byte>);\n");
+                    if (returnsBool)
+                    {
+                        declarations.Append(
+                            "            var updated = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, false);\n");
+                        declarations.Append("            if (!updated) return false;\n");
+                    }
+                    else
+                    {
+                        declarations.Append(
+                            "            _ = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, true);\n");
+                    }
+
+                    declarations.Append($"            var usedParams = new bool[{valueParamCount}];\n");
+                    declarations.Append("            global::BTDB.ODBLayer.DBWriterCtx? valueCtx = null;\n");
+                    declarations.Append("            global::BTDB.ODBLayer.DBReaderCtx? readerCtx = null;\n");
+                    declarations.Append("            unsafe\n");
+                    declarations.Append("            {\n");
+                    declarations.Append("                fixed (byte* _ = oldValueBytes)\n");
+                    declarations.Append("                {\n");
+                    declarations.Append(
+                        "                    var reader = global::BTDB.StreamLayer.MemReader.CreateFromPinnedSpan(oldValueBytes);\n");
+                    declarations.Append("                    reader.SkipVUInt32();\n");
+                    declarations.Append("                    uint memoPos = 0;\n");
+                    declarations.Append("                    var copyMode = false;\n");
+                    declarations.Append("                    var valueFields = ValueFields;\n");
+                    declarations.Append(
+                        "                    for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)\n");
+                    declarations.Append("                    {\n");
+                    declarations.Append("                        var valueField = valueFields[valueFieldIndex];\n");
+                    declarations.Append("                        if (valueField.Computed) continue;\n");
+                    declarations.Append("                        var paramIndex = -1;\n");
+                    for (var i = 0; i < valueParamCount; i++)
+                    {
+                        var keyword = i == 0 ? "if" : "else if";
+                        var param = method.Parameters[pkParamCount + i];
+                        declarations.Append(
+                            $"                        {keyword} (string.Equals(valueField.Name, \"{param.Name}\", StringComparison.OrdinalIgnoreCase))\n");
+                        declarations.Append("                        {\n");
+                        declarations.Append($"                            paramIndex = {i};\n");
+                        declarations.Append("                        }\n");
+                    }
+
+                    declarations.Append("                        var newCopyMode = paramIndex == -1;\n");
+                    declarations.Append("                        if (copyMode != newCopyMode)\n");
+                    declarations.Append("                        {\n");
+                    declarations.Append("                            if (newCopyMode)\n");
+                    declarations.Append("                            {\n");
+                    declarations.Append(
+                        "                                memoPos = (uint)reader.GetCurrentPositionWithoutController();\n");
+                    declarations.Append("                            }\n");
+                    declarations.Append("                            else\n");
+                    declarations.Append("                            {\n");
+                    declarations.Append(
+                        "                                reader.CopyFromPosToWriter(memoPos, ref writer);\n");
+                    declarations.Append("                            }\n");
+                    declarations.Append("                            copyMode = newCopyMode;\n");
+                    declarations.Append("                        }\n");
+                    declarations.Append("                        var handler = valueField.Handler!;\n");
+                    declarations.Append("                        if (!newCopyMode)\n");
+                    declarations.Append("                        {\n");
+                    declarations.Append("                            switch (paramIndex)\n");
+                    declarations.Append("                            {\n");
+                    for (var i = 0; i < valueParamCount; i++)
+                    {
+                        var param = method.Parameters[pkParamCount + i];
+                        var paramType = NormalizeType(param.Type);
+                        var paramTypeForTypeof = paramType;
+                        if (param.IsReference && paramTypeForTypeof.EndsWith("?", StringComparison.Ordinal))
+                        {
+                            paramTypeForTypeof = paramTypeForTypeof.Substring(0, paramTypeForTypeof.Length - 1);
+                        }
+
+                        declarations.Append($"                                case {i}:\n");
+                        declarations.Append("                                {\n");
+                        declarations.Append($"                                    if (usedParams[{i}])\n");
+                        declarations.Append(
+                            $"                                        throw new global::BTDB.KVDBLayer.BTDBException(\"Method {method.Name} matched parameter {param.Name} more than once.\");\n");
+                        declarations.Append($"                                    usedParams[{i}] = true;\n");
+                        declarations.Append(
+                            $"                                    var save = handler.Save(typeof({paramTypeForTypeof}), Transaction.Owner.TypeConverterFactory);\n");
+                        declarations.Append("                                    if (handler.NeedsCtx())\n");
+                        declarations.Append("                                    {\n");
+                        declarations.Append(
+                            "                                        valueCtx ??= new global::BTDB.ODBLayer.DBWriterCtx(Transaction);\n");
+                        declarations.Append("                                    }\n");
+                        declarations.Append(
+                            $"                                    save(ref writer, valueCtx, ref Unsafe.As<{paramType}, byte>(ref {param.Name}));\n");
+                        declarations.Append("                                    break;\n");
+                        declarations.Append("                                }\n");
+                    }
+
+                    declarations.Append("                            }\n");
+                    declarations.Append("                        }\n");
+                    declarations.Append("                        if (handler.NeedsCtx())\n");
+                    declarations.Append("                        {\n");
+                    declarations.Append(
+                        "                            readerCtx ??= new global::BTDB.ODBLayer.DBReaderCtx(Transaction);\n");
+                    declarations.Append("                            handler.Skip(ref reader, readerCtx);\n");
+                    declarations.Append("                        }\n");
+                    declarations.Append("                        else\n");
+                    declarations.Append("                        {\n");
+                    declarations.Append("                            handler.Skip(ref reader, null);\n");
+                    declarations.Append("                        }\n");
+                    declarations.Append("                    }\n");
+                    declarations.Append("                    if (copyMode)\n");
+                    declarations.Append("                    {\n");
+                    declarations.Append("                        reader.CopyFromPosToWriter(memoPos, ref writer);\n");
+                    declarations.Append("                    }\n");
+                    declarations.Append(
+                        "                    var missing = new global::System.Collections.Generic.List<string>();\n");
+                    for (var i = 0; i < valueParamCount; i++)
+                    {
+                        var param = method.Parameters[pkParamCount + i];
+                        declarations.Append(
+                            $"                    if (!usedParams[{i}]) missing.Add(\"{param.Name}\");\n");
+                    }
+
+                    declarations.Append("                    if (missing.Count != 0)\n");
+                    declarations.Append("                    {\n");
+                    declarations.Append(
+                        $"                        throw new global::BTDB.KVDBLayer.BTDBException(\"Method {method.Name} parameters \" + string.Join(\", \", missing) + \" does not match any relation fields.\");\n");
+                    declarations.Append("                    }\n");
+                    declarations.Append("                }\n");
+                    declarations.Append("            }\n");
+                    declarations.Append(
+                        "            base.UpdateByIdFinish(keyBytes, oldValueBytes, writer.GetSpan());\n");
+                    if (returnsBool)
+                    {
+                        declarations.Append("            return true;\n");
+                    }
+                }
             }
             else if (method.Name == "Contains")
             {
@@ -3713,6 +4012,7 @@ public class SourceGenerator : IIncrementalGenerator
                     ? valueType
                     : ExtractEnumerableItemType(method.ResultType ?? "");
                 var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
+                if (loaderIndex < 0) loaderIndex = 0;
 
                 AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParamCount), advParamType);
 
@@ -4010,21 +4310,64 @@ public class SourceGenerator : IIncrementalGenerator
                 """);
         }
 
+        var constructorDeclaration = new StringBuilder();
+        constructorDeclaration.Append(
+            $"\n        public {implName}(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)\n");
+        constructorDeclaration.Append("        {\n");
+        constructorDeclaration.Append(constructorBody);
+        constructorDeclaration.Append("        }\n");
+        declarations.Insert(classBodyStart, constructorDeclaration);
         declarations.Append("    }\n");
+        if (needsRelationInfoAccessors)
+        {
+            // language=c#
+            declarations.Append("""
+                    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_relationInfoResolver")]
+                    extern static ref global::BTDB.ODBLayer.IRelationInfoResolver RelationInfoResolverAccessor(global::BTDB.ODBLayer.RelationInfo @this);
+
+                    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ClientRelationVersionInfo")]
+                    extern static global::BTDB.ODBLayer.RelationVersionInfo ClientRelationVersionInfoAccessor(global::BTDB.ODBLayer.RelationInfo @this);
+
+                """);
+        }
+
         code.Append(declarations);
 
-        // language=c#
-        code.Append($$"""
-                [ModuleInitializer]
-                internal static unsafe void Register4BTDB()
-                {
-                    BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof({{generationInfo.FullName}}),
-                        info => { return transaction => new {{implName}}(transaction, info); },
-                        [{{string.Join(", ", generationInfo.Implements.Select(f => $"typeof({NormalizeType(f.FullyQualifiedName)})"))}}]);
-                }
-            }
+        var relationCreatorArgument = new StringBuilder();
+        if (creatorThrowMessage != null)
+        {
+            relationCreatorArgument.Append("            relationInfo =>\n");
+            relationCreatorArgument.Append("            {\n");
+            relationCreatorArgument.Append(
+                $"                throw new global::BTDB.KVDBLayer.BTDBException(\"{creatorThrowMessage}\");\n");
+            relationCreatorArgument.Append("            },\n");
+        }
+        else if (creatorValidationBody.Length == 0)
+        {
+            relationCreatorArgument.Append(
+                $"            info => {{ return transaction => new {implName}(transaction, info); }},\n");
+        }
+        else
+        {
+            relationCreatorArgument.Append("            relationInfo =>\n");
+            relationCreatorArgument.Append("            {\n");
+            relationCreatorArgument.Append(creatorValidationBody);
+            relationCreatorArgument.Append(
+                $"                return transaction => new {implName}(transaction, relationInfo);\n");
+            relationCreatorArgument.Append("            },\n");
+        }
 
-            """);
+        // language=c#
+        code.Append("    [ModuleInitializer]\n");
+        code.Append("    internal static unsafe void Register4BTDB()\n");
+        code.Append("    {\n");
+        code.Append(
+            $"        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof({generationInfo.FullName}),\n");
+        code.Append(relationCreatorArgument);
+        code.Append(
+            $"            [{string.Join(", ", generationInfo.Implements.Select(f => $"typeof({NormalizeType(f.FullyQualifiedName)})"))}]);\n");
+        code.Append("    }\n");
+        code.Append("}\n");
 
         context.AddSource(
             $"{generationInfo.FullName.Replace("global::", "").Replace("<", "[").Replace(">", "]")}.g.cs",
@@ -4102,7 +4445,7 @@ public class SourceGenerator : IIncrementalGenerator
 
     static bool HasOnBeforeRemove(GenerationInfo generationInfo)
     {
-        return generationInfo.Methods.Any(m => m.Purpose == Purpose.OnBeforeRemove);
+        return generationInfo.Nested[0].Methods.Any(m => m.Purpose == Purpose.OnBeforeRemove);
     }
 
     static bool AllKeyPrefixesAreSame(uint[] primaryKeyFields,
@@ -4131,28 +4474,56 @@ public class SourceGenerator : IIncrementalGenerator
     static int FindLoaderIndex(EquatableArray<TypeRef> loadTypes, string itemType)
     {
         var normalizedItemType = NormalizeType(itemType);
-        var usesNamespace = normalizedItemType.IndexOf('.') >= 0;
+        var normalizedItemTypeNoGlobal = normalizedItemType.Replace("global::", "");
+        var usesNamespace = normalizedItemTypeNoGlobal.IndexOf('.') >= 0;
         for (var i = 0; i < loadTypes.Count; i++)
         {
             var typeRef = loadTypes[i];
-            var candidate = typeRef.FullyQualifiedName;
-            if (string.Equals(candidate, normalizedItemType, StringComparison.Ordinal))
+            var candidate = NormalizeType(typeRef.FullyQualifiedName);
+            if (string.Equals(candidate, normalizedItemType, StringComparison.Ordinal) ||
+                string.Equals(candidate.Replace("global::", ""), normalizedItemTypeNoGlobal,
+                    StringComparison.Ordinal))
                 return i;
-            if (!usesNamespace && string.Equals(typeRef.Name, normalizedItemType, StringComparison.Ordinal))
+            if (!usesNamespace && string.Equals(typeRef.Name, normalizedItemTypeNoGlobal, StringComparison.Ordinal))
                 return i;
         }
 
         return -1;
     }
 
-    static bool NeedsWriterCtx(IEnumerable<ParameterInfo> parameters, string? extraType)
+    static bool ContainsEncryptedStringType(string type)
     {
-        if (parameters.Any(p => NormalizeType(p.Type) == "BTDB.Encrypted.EncryptedString"))
+        var normalized = NormalizeType(type).Replace("global::", "");
+        if (normalized == "BTDB.Encrypted.EncryptedString") return true;
+
+        var nullableUnderlying = TryGetNullableUnderlyingType(normalized);
+        if (nullableUnderlying != null && ContainsEncryptedStringType(nullableUnderlying))
         {
             return true;
         }
 
-        return extraType != null && NormalizeType(extraType) == "BTDB.Encrypted.EncryptedString";
+        if (TryGetTupleElementTypes(normalized, out var elementTypes))
+        {
+            for (var i = 0; i < elementTypes.Length; i++)
+            {
+                if (ContainsEncryptedStringType(elementTypes[i]))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    static bool NeedsWriterCtx(IEnumerable<ParameterInfo> parameters, string? extraType)
+    {
+        if (parameters.Any(p => ContainsEncryptedStringType(p.Type)))
+        {
+            return true;
+        }
+
+        return extraType != null && ContainsEncryptedStringType(extraType);
     }
 
     static void AppendWriterCtxIfNeeded(StringBuilder declarations, IEnumerable<ParameterInfo> parameters,
@@ -4216,6 +4587,17 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         var normalizedType = NormalizeType(valueType);
+        if (TryGetTupleElementTypes(normalizedType, out var tupleElementTypes))
+        {
+            for (var i = 0; i < tupleElementTypes.Length; i++)
+            {
+                AppendWriteOrderableValue(declarations, $"{valueExpression}.Item{i + 1}", tupleElementTypes[i], null,
+                    indent);
+            }
+
+            return;
+        }
+
         switch (normalizedType)
         {
             case "string":
@@ -4286,6 +4668,145 @@ public class SourceGenerator : IIncrementalGenerator
                     $"{indent}throw new NotSupportedException(\"Key does not support type '{normalizedType}'.\");\n");
                 return;
         }
+    }
+
+    static bool TryGetTupleElementTypes(string type, out string[] elementTypes)
+    {
+        var normalized = type.Replace("global::", "");
+        if (normalized.StartsWith("System.Tuple<", StringComparison.Ordinal) ||
+            normalized.StartsWith("Tuple<", StringComparison.Ordinal) ||
+            normalized.StartsWith("System.ValueTuple<", StringComparison.Ordinal) ||
+            normalized.StartsWith("ValueTuple<", StringComparison.Ordinal))
+        {
+            var start = normalized.IndexOf('<');
+            var end = normalized.LastIndexOf('>');
+            if (start >= 0 && end > start)
+            {
+                var args = normalized.Substring(start + 1, end - start - 1);
+                elementTypes = SplitGenericArguments(args)
+                    .Select(arg => RemoveTupleElementName(arg.Replace("global::", "")))
+                    .ToArray();
+                if (elementTypes.Length is 0 or > 7)
+                {
+                    elementTypes = Array.Empty<string>();
+                    return false;
+                }
+
+                return true;
+            }
+        }
+
+        if (normalized.StartsWith("(", StringComparison.Ordinal) &&
+            normalized.EndsWith(")", StringComparison.Ordinal))
+        {
+            var inner = normalized.Substring(1, normalized.Length - 2);
+            elementTypes = SplitTupleArguments(inner)
+                .Select(arg => RemoveTupleElementName(arg.Replace("global::", "")))
+                .ToArray();
+            if (elementTypes.Length is 0 or > 7)
+            {
+                elementTypes = Array.Empty<string>();
+                return false;
+            }
+
+            return true;
+        }
+
+        elementTypes = Array.Empty<string>();
+        return false;
+    }
+
+    static string[] SplitTupleArguments(string args)
+    {
+        var parts = new List<string>();
+        var angleDepth = 0;
+        var parenDepth = 0;
+        var start = 0;
+        for (var i = 0; i < args.Length; i++)
+        {
+            var ch = args[i];
+            switch (ch)
+            {
+                case '<':
+                    angleDepth++;
+                    break;
+                case '>':
+                    angleDepth--;
+                    break;
+                case '(':
+                    parenDepth++;
+                    break;
+                case ')':
+                    parenDepth--;
+                    break;
+                case ',':
+                    if (angleDepth == 0 && parenDepth == 0)
+                    {
+                        parts.Add(args.Substring(start, i - start));
+                        start = i + 1;
+                    }
+
+                    break;
+            }
+        }
+
+        parts.Add(args.Substring(start));
+        return parts.ToArray();
+    }
+
+    static string RemoveTupleElementName(string element)
+    {
+        var trimmed = element.Trim();
+        var depth = 0;
+        for (var i = trimmed.Length - 1; i >= 0; i--)
+        {
+            var ch = trimmed[i];
+            switch (ch)
+            {
+                case '>':
+                    depth++;
+                    break;
+                case '<':
+                    depth--;
+                    break;
+            }
+
+            if (depth == 0 && char.IsWhiteSpace(ch))
+            {
+                var before = trimmed.Substring(0, i).Trim();
+                var after = trimmed.Substring(i).Trim();
+                if (IsIdentifier(after))
+                {
+                    return before;
+                }
+            }
+        }
+
+        return trimmed;
+    }
+
+    static bool IsIdentifier(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+        var start = value[0] == '@' ? 1 : 0;
+        if (start >= value.Length) return false;
+        if (!IsIdentifierStart(value[start])) return false;
+        for (var i = start + 1; i < value.Length; i++)
+        {
+            if (!IsIdentifierPart(value[i])) return false;
+        }
+
+        return true;
+    }
+
+    static bool IsIdentifierStart(char ch)
+    {
+        return ch == '_' || char.IsLetter(ch);
+    }
+
+    static bool IsIdentifierPart(char ch)
+    {
+        return ch == '_' || char.IsLetterOrDigit(ch);
     }
 
     static string? TryGetNullableUnderlyingType(string valueType)
@@ -4474,6 +4995,12 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return false;
+    }
+
+    static bool IsBoolType(string type)
+    {
+        var normalized = NormalizeType(type).Replace("global::", "");
+        return normalized is "bool" or "System.Boolean";
     }
 
     static uint FindSecondaryKeyIndex(

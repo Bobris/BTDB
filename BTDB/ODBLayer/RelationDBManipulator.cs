@@ -31,6 +31,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
     public IInternalObjectDBTransaction Transaction => _transaction;
     public RelationInfo RelationInfo => _relationInfo;
+    protected ReadOnlySpan<TableFieldInfo> ValueFields => _relationInfo.ClientRelationVersionInfo.Fields.Span;
 
     const string AssertNotDerivedTypesMsg = "Derived types are not supported.";
 

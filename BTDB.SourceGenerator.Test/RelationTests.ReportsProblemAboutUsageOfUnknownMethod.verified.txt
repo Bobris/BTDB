@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    void Insert(Person person);
+    void Delete(Person person);
+         ^^^^^^
+}
+*/
+ : (10,9)-(10,15),
+      Message: Method Delete is not supported.,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0041,
+        Title: Method Delete is not supported.,
+        MessageFormat: Method Delete is not supported.,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

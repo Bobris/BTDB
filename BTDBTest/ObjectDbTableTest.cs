@@ -1023,21 +1023,6 @@ namespace BTDBTest
             }
         }
 
-        public interface IWronglyDefinedUnknownMethod : IRelation<Person>
-        {
-            void Insert(Person room);
-            void Delete(Person room);
-        }
-
-        [Fact]
-        public void ReportsProblemAboutUsageOfUnknownMethod()
-        {
-            using var tr = _db.StartTransaction();
-            var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedUnknownMethod>("No"));
-            Assert.Contains("Delete", ex.Message);
-            Assert.Contains("not supported", ex.Message);
-        }
-
         public class UserNotice
         {
             [PrimaryKey(1)] public ulong UserId { get; set; }
