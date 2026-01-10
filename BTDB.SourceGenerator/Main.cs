@@ -643,6 +643,16 @@ public class SourceGenerator : IIncrementalGenerator
                     secondaryKeys, 0, method.Parameters.Length);
             }
 
+            if (method.Name == "ShallowUpsertWithSizes")
+            {
+                if (secondaryKeys.Length > 0)
+                {
+                    return GenerationError("BTDB0037",
+                        $"Method '{method.Name}' cannot be used with relation with secondary indexes",
+                        method.Locations[0]);
+                }
+            }
+
             if (method.Name == "Contains")
             {
                 if (method.ReturnType.SpecialType != SpecialType.System_Boolean)
@@ -3469,7 +3479,8 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append(
                     $"            base.InsertUniqueOrThrow({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
             }
-            else if (method.Name is "Insert" or "Upsert" or "ShallowInsert" or "ShallowUpsert")
+            else if (method.Name is "Insert" or "Upsert" or "ShallowInsert" or "ShallowUpsert" or
+                     "ShallowUpsertWithSizes")
             {
                 declarations.Append(
                     $"            {(method.ResultType != null ? "return " : "")}base.{method.Name}({string.Join(", ", method.Parameters.Select(p => p.Name))});\n");
@@ -4069,7 +4080,10 @@ public class SourceGenerator : IIncrementalGenerator
     static bool IsEnumerableType(string? enumerableType)
     {
         if (enumerableType is null) return false;
-        return enumerableType.StartsWith("System.Collections.Generic.IEnumerable<", StringComparison.Ordinal);
+        var normalized = enumerableType.StartsWith("global::", StringComparison.Ordinal)
+            ? enumerableType.Substring("global::".Length)
+            : enumerableType;
+        return normalized.StartsWith("System.Collections.Generic.IEnumerable<", StringComparison.Ordinal);
     }
 
     static bool IsRemoveByCountReturnType(string? resultType)
