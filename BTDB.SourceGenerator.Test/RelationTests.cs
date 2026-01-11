@@ -1950,7 +1950,7 @@ public class RelationTests : GeneratorTestsBase
             {
                 bool UpdateById(ulong tenantId, ulong id);
                 bool UpdateById(ulong tenantId, ulong id, string name);
-                void UpdateByIdSecret(ulong tenantId, ulong id, string secret);
+                void UpdateByIdSecret(ulong tenantId, ulong id, EncryptedString secret);
             }
             """);
     }
@@ -2043,6 +2043,28 @@ public class RelationTests : GeneratorTestsBase
             public interface IPersonInvalid2Table : IRelation<PersonInvalid>
             {
                 bool UpdateById(ulong tenantId, int name);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task UpdateByIdDetectsEncryptedStringTypeMismatch()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.Encrypted;
+            using BTDB.ODBLayer;
+
+            public class PersonInvalid
+            {
+                [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+                public EncryptedString Secret { get; set; }
+            }
+
+            public interface IPersonInvalid5Table : IRelation<PersonInvalid>
+            {
+                void UpdateByIdSecret(ulong tenantId, string secret);
             }
             """);
     }

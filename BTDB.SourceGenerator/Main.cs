@@ -846,7 +846,6 @@ public class SourceGenerator : IIncrementalGenerator
         var normalizedParamType = RemoveGlobalPrefix(pType);
         var normalizedFieldType = RemoveGlobalPrefix(fType);
         if (normalizedParamType == normalizedFieldType) return true;
-        if (IsStringEncryptedStringPair(normalizedParamType, normalizedFieldType)) return true;
 
         if (IsUnsignedIntegralType(normalizedParamType) && IsUnsignedIntegralType(normalizedFieldType)) return true;
         if (IsSignedIntegralType(normalizedParamType) && IsSignedIntegralType(normalizedFieldType)) return true;
@@ -862,14 +861,6 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return type;
-    }
-
-    static bool IsStringEncryptedStringPair(string paramType, string fieldType)
-    {
-        const string stringType = "System.String";
-        const string encryptedStringType = "BTDB.Encrypted.EncryptedString";
-        return (paramType == stringType && fieldType == encryptedStringType) ||
-               (paramType == encryptedStringType && fieldType == stringType);
     }
 
     static bool IsUnsignedIntegralType(string type)
@@ -3767,16 +3758,22 @@ public class SourceGenerator : IIncrementalGenerator
                             "            _ = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, true);\n");
                     }
 
-                    declarations.Append("            global::BTDB.ODBLayer.DBWriterCtx? valueCtx = null;\n");
-                    declarations.Append("            global::BTDB.ODBLayer.DBReaderCtx? readerCtx = null;\n");
+                    declarations.Append("            global::BTDB.ODBLayer.DBWriterCtx? ctx_ctx = null;\n");
+                    declarations.Append("            global::BTDB.ODBLayer.DBReaderCtx? ctx_reader = null;\n");
+                    AppendWriterCtxIfNeeded(declarations, method.Parameters.Skip(pkParamCount), null);
+                    declarations.Append("            if (RelationInfo.ClientVersionNeedsCtx)\n");
+                    declarations.Append("            {\n");
+                    declarations.Append(
+                        "                ctx_reader = new global::BTDB.ODBLayer.DBReaderCtx(Transaction);\n");
+                    declarations.Append("            }\n");
                     declarations.Append("            unsafe\n");
                     declarations.Append("            {\n");
                     declarations.Append("                fixed (byte* _ = oldValueBytes)\n");
                     declarations.Append("                {\n");
                     declarations.Append(
                         "                    var reader = global::BTDB.StreamLayer.MemReader.CreateFromPinnedSpan(oldValueBytes);\n");
-                    declarations.Append("                    reader.SkipVUInt64();\n");
                     declarations.Append("                    uint memoPos = 0;\n");
+                    declarations.Append("                    reader.SkipVUInt64();\n");
                     var copyMode = false;
                     for (var vfi = 0; vfi < valueFields.Length; vfi++)
                     {
@@ -3818,7 +3815,7 @@ public class SourceGenerator : IIncrementalGenerator
                         }
                         else
                         {
-                            AppendSkipValue(declarations, vf.Type, "                    ");
+                            AppendSkipValue(declarations, vf.Type, vfi, "                    ");
                         }
                     }
 
@@ -4366,7 +4363,7 @@ public class SourceGenerator : IIncrementalGenerator
             SourceText.From(code.ToString(), Encoding.UTF8));
     }
 
-    static void AppendSkipValue(StringBuilder declarations, string vfType, string indent = "            ")
+    static void AppendSkipValue(StringBuilder declarations, string vfType, int vfi, string indent = "            ")
     {
         var normalizedType = NormalizeType(vfType);
         switch (normalizedType)
@@ -4424,7 +4421,7 @@ public class SourceGenerator : IIncrementalGenerator
                 return;
             default:
                 declarations.Append(
-                    $"{indent}throw new NotSupportedException(\"Value does not support type '{normalizedType}'.\");\n");
+                    $"{indent}RelationInfo.ClientVersionValueHandlers[{vfi}].Skip(ref reader, ctx_reader);\n");
                 return;
         }
     }

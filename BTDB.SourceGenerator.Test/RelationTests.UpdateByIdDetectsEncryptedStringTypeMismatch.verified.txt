@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    void UpdateByIdSecret(ulong tenantId, string secret);
+                                                 ^^^^^^
+}
+*/
+ : (12,49)-(12,55),
+      Message: Method UpdateByIdSecret parameter secret type 'string' does not match field 'Secret' type 'global::BTDB.Encrypted.EncryptedString'.,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0046,
+        Title: Method UpdateByIdSecret parameter secret type 'string' does not match field 'Secret' type 'global::BTDB.Encrypted.EncryptedString'.,
+        MessageFormat: Method UpdateByIdSecret parameter secret type 'string' does not match field 'Secret' type 'global::BTDB.Encrypted.EncryptedString'.,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

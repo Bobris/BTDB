@@ -48,6 +48,9 @@ public class RelationInfo
     RelationBeforeRemove? _beforeRemove;
     bool _hasInKeyValue;
 
+    public IFieldHandler[] ClientVersionValueHandlers;
+    public bool ClientVersionNeedsCtx;
+
     internal StructList<ItemLoaderInfo> ItemLoaderInfos;
 
     ref struct FieldSaverCtx
@@ -828,6 +831,13 @@ public class RelationInfo
         ResolveVersionInfos();
         ClientRelationVersionInfo = CreateVersionInfoFromPrime(builder.ClientRelationVersionInfo);
         _hasInKeyValue = false;
+        ClientVersionNeedsCtx = ClientRelationVersionInfo.NeedsCtx();
+        ClientVersionValueHandlers = new IFieldHandler[ClientRelationVersionInfo.Fields.Length];
+        for (int i = 0; i < ClientVersionValueHandlers.Length; i++)
+        {
+            ClientVersionValueHandlers[i] = ClientRelationVersionInfo.Fields.Span[i].Handler!;
+        }
+
         foreach (var fieldInfo in ClientRelationVersionInfo.PrimaryKeyFields.Span)
         {
             if (!fieldInfo.InKeyValue) continue;

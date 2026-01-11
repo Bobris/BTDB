@@ -46,18 +46,22 @@ file class IPersonTableRegistration
             var oldValueBytes = default(global::System.ReadOnlySpan<byte>);
             var updated = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, false);
             if (!updated) return false;
-            global::BTDB.ODBLayer.DBWriterCtx? valueCtx = null;
-            global::BTDB.ODBLayer.DBReaderCtx? readerCtx = null;
+            global::BTDB.ODBLayer.DBWriterCtx? ctx_ctx = null;
+            global::BTDB.ODBLayer.DBReaderCtx? ctx_reader = null;
+            if (RelationInfo.ClientVersionNeedsCtx)
+            {
+                ctx_reader = new global::BTDB.ODBLayer.DBReaderCtx(Transaction);
+            }
             unsafe
             {
                 fixed (byte* _ = oldValueBytes)
                 {
                     var reader = global::BTDB.StreamLayer.MemReader.CreateFromPinnedSpan(oldValueBytes);
-                    reader.SkipVUInt64();
                     uint memoPos = 0;
+                    reader.SkipVUInt64();
                     writer.WriteString(name);
                     memoPos = (uint)reader.GetCurrentPositionWithoutController();
-                    throw new NotSupportedException("Value does not support type 'global::BTDB.Encrypted.EncryptedString'.");
+                    RelationInfo.ClientVersionValueHandlers[1].Skip(ref reader, ctx_reader);
                     reader.CopyFromPosToWriter(memoPos, ref writer);
                 }
             }
@@ -66,7 +70,7 @@ file class IPersonTableRegistration
         }
 
         [SkipLocalsInit]
-        void global::IPersonTable.UpdateByIdSecret(ulong tenantId, ulong id, string secret)
+        void global::IPersonTable.UpdateByIdSecret(ulong tenantId, ulong id, BTDB.Encrypted.EncryptedString secret)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);
@@ -76,19 +80,24 @@ file class IPersonTableRegistration
             var keyBytes = writer.GetScopedSpanAndReset();
             var oldValueBytes = default(global::System.ReadOnlySpan<byte>);
             _ = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, true);
-            global::BTDB.ODBLayer.DBWriterCtx? valueCtx = null;
-            global::BTDB.ODBLayer.DBReaderCtx? readerCtx = null;
+            global::BTDB.ODBLayer.DBWriterCtx? ctx_ctx = null;
+            global::BTDB.ODBLayer.DBReaderCtx? ctx_reader = null;
+            var ctx_ctx = new global::BTDB.ODBLayer.DBWriterCtx(Transaction);
+            if (RelationInfo.ClientVersionNeedsCtx)
+            {
+                ctx_reader = new global::BTDB.ODBLayer.DBReaderCtx(Transaction);
+            }
             unsafe
             {
                 fixed (byte* _ = oldValueBytes)
                 {
                     var reader = global::BTDB.StreamLayer.MemReader.CreateFromPinnedSpan(oldValueBytes);
-                    reader.SkipVUInt64();
                     uint memoPos = 0;
+                    reader.SkipVUInt64();
                     memoPos = (uint)reader.GetCurrentPositionWithoutController();
                     reader.SkipString();
                     reader.CopyFromPosToWriter(memoPos, ref writer);
-                    writer.WriteString(secret);
+                    ctx_ctx.WriteEncryptedString(ref writer, secret);
                 }
             }
             base.UpdateByIdFinish(keyBytes, oldValueBytes, writer.GetSpan());
