@@ -1148,7 +1148,8 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         var constructedType = namedTypeSymbol.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        return constructedType is "global::System.Collections.Generic.IDictionary<TKey, TValue>" or "global::System.Collections.Generic.Dictionary<TKey, TValue>";
+        return constructedType is "global::System.Collections.Generic.IDictionary<TKey, TValue>"
+            or "global::System.Collections.Generic.Dictionary<TKey, TValue>";
     }
 
     static GenerationInfo? CheckParamsNamesAndTypes(IMethodSymbol method, string indexName,
@@ -3733,7 +3734,6 @@ public class SourceGenerator : IIncrementalGenerator
         var (indexOfInKeyValue, primaryKeyFields, secondaryKeys) = BuildIndexInfo(generationInfo);
         var constructorBody = new StringBuilder();
         var creatorValidationBody = new StringBuilder();
-        string? creatorThrowMessage = null;
         var needsRelationInfoAccessors = false;
         // language=C#
         declarations.Append($$"""
@@ -3773,25 +3773,12 @@ public class SourceGenerator : IIncrementalGenerator
                 var pkParamCount = primaryKeyFields.Length;
                 var valueParamCount = paramCount - pkParamCount;
                 var returnsBool = method.ResultType != null && IsBoolType(method.ResultType);
-                if (creatorThrowMessage == null)
+                if (valueParamCount > 0)
                 {
-                    if (paramCount < pkParamCount)
-                    {
-                        creatorThrowMessage =
-                            $"Not enough parameters in {method.Name} (expected at least {pkParamCount}).";
-                    }
-                    else if (method.ResultType != null && !returnsBool)
-                    {
-                        creatorThrowMessage =
-                            $"Method {method.Name} should be defined with void or bool return type.";
-                    }
-                    else if (valueParamCount > 0)
-                    {
-                        AppendUpdateByIdValidation(creatorValidationBody, method, pkParamCount,
-                            "ClientRelationVersionInfoAccessor(relationInfo).Fields.Span",
-                            "RelationInfoResolverAccessor(relationInfo).TypeConvertorGenerator");
-                        needsRelationInfoAccessors = true;
-                    }
+                    AppendUpdateByIdValidation(creatorValidationBody, method, pkParamCount,
+                        "ClientRelationVersionInfoAccessor(relationInfo).Fields.Span",
+                        "RelationInfoResolverAccessor(relationInfo).TypeConvertorGenerator");
+                    needsRelationInfoAccessors = true;
                 }
 
                 declarations.Append(
@@ -4465,15 +4452,7 @@ public class SourceGenerator : IIncrementalGenerator
         code.Append(declarations);
 
         var relationCreatorArgument = new StringBuilder();
-        if (creatorThrowMessage != null)
-        {
-            relationCreatorArgument.Append("            relationInfo =>\n");
-            relationCreatorArgument.Append("            {\n");
-            relationCreatorArgument.Append(
-                $"                throw new global::BTDB.KVDBLayer.BTDBException(\"{creatorThrowMessage}\");\n");
-            relationCreatorArgument.Append("            },\n");
-        }
-        else if (creatorValidationBody.Length == 0)
+        if (creatorValidationBody.Length == 0)
         {
             relationCreatorArgument.Append(
                 $"            info => {{ return transaction => new {implName}(transaction, info); }},\n");
