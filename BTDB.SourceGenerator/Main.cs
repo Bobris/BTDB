@@ -4659,7 +4659,7 @@ public class SourceGenerator : IIncrementalGenerator
                 declarations.Append($"{indent}writer.WriteUInt8({valueExpression});\n");
                 return;
             case "sbyte":
-                declarations.Append($"{indent}writer.WriteInt8Ordered({valueExpression});\n");
+                declarations.Append($"{indent}writer.WriteInt8({valueExpression});\n");
                 return;
             case "short":
             case "int":
