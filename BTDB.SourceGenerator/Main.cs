@@ -877,25 +877,16 @@ public class SourceGenerator : IIncrementalGenerator
 
     static IntegralType NormalizeIntegralType(string type)
     {
-        if (type.StartsWith("global::System.", StringComparison.Ordinal))
-        {
-            type = type.Substring("global::System.".Length);
-        }
-        else if (type.StartsWith("System.", StringComparison.Ordinal))
-        {
-            type = type.Substring("System.".Length);
-        }
-
         return type switch
         {
-            "byte" or "Byte" => IntegralType.Byte,
-            "ushort" or "UInt16" => IntegralType.UInt16,
-            "uint" or "UInt32" => IntegralType.UInt32,
-            "ulong" or "UInt64" => IntegralType.UInt64,
-            "sbyte" or "SByte" => IntegralType.SByte,
-            "short" or "Int16" => IntegralType.Int16,
-            "int" or "Int32" => IntegralType.Int32,
-            "long" or "Int64" => IntegralType.Int64,
+            "byte" => IntegralType.Byte,
+            "ushort" => IntegralType.UInt16,
+            "uint" => IntegralType.UInt32,
+            "ulong" => IntegralType.UInt64,
+            "sbyte" => IntegralType.SByte,
+            "short" => IntegralType.Int16,
+            "int" => IntegralType.Int32,
+            "long" => IntegralType.Int64,
             _ => IntegralType.None
         };
     }
