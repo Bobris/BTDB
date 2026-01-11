@@ -113,7 +113,7 @@ public class ObjectDbTableUpdateByIdTest : ObjectDbTestBase
     public interface IComplexPersonTable : IRelation<ComplexPerson>
     {
         bool UpdateById(ulong tenantId, ulong id, string name);
-        bool UpdateByIdSecret(ulong tenantId, ulong id, string secret);
+        bool UpdateByIdSecret(ulong tenantId, ulong id, EncryptedString secret);
     }
 
     [Fact]

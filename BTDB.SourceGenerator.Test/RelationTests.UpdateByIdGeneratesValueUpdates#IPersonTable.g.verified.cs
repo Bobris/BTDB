@@ -46,7 +46,6 @@ file class IPersonTableRegistration
             var oldValueBytes = default(global::System.ReadOnlySpan<byte>);
             var updated = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, false);
             if (!updated) return false;
-            global::BTDB.ODBLayer.DBWriterCtx? ctx_ctx = null;
             global::BTDB.ODBLayer.DBReaderCtx? ctx_reader = null;
             if (RelationInfo.ClientVersionNeedsCtx)
             {
@@ -59,6 +58,7 @@ file class IPersonTableRegistration
                     var reader = global::BTDB.StreamLayer.MemReader.CreateFromPinnedSpan(oldValueBytes);
                     uint memoPos = 0;
                     reader.SkipVUInt64();
+                    reader.SkipString();
                     writer.WriteString(name);
                     memoPos = (uint)reader.GetCurrentPositionWithoutController();
                     RelationInfo.ClientVersionValueHandlers[1].Skip(ref reader, ctx_reader);
@@ -80,7 +80,6 @@ file class IPersonTableRegistration
             var keyBytes = writer.GetScopedSpanAndReset();
             var oldValueBytes = default(global::System.ReadOnlySpan<byte>);
             _ = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, true);
-            global::BTDB.ODBLayer.DBWriterCtx? ctx_ctx = null;
             global::BTDB.ODBLayer.DBReaderCtx? ctx_reader = null;
             var ctx_ctx = new global::BTDB.ODBLayer.DBWriterCtx(Transaction);
             if (RelationInfo.ClientVersionNeedsCtx)
@@ -97,6 +96,7 @@ file class IPersonTableRegistration
                     memoPos = (uint)reader.GetCurrentPositionWithoutController();
                     reader.SkipString();
                     reader.CopyFromPosToWriter(memoPos, ref writer);
+                    RelationInfo.ClientVersionValueHandlers[1].Skip(ref reader, ctx_reader);
                     ctx_ctx.WriteEncryptedString(ref writer, secret);
                 }
             }

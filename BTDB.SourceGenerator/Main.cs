@@ -3758,7 +3758,6 @@ public class SourceGenerator : IIncrementalGenerator
                             "            _ = base.UpdateByIdStart(keyBytes, ref writer, ref oldValueBytes, lenOfPkWoInKeyValues, true);\n");
                     }
 
-                    declarations.Append("            global::BTDB.ODBLayer.DBWriterCtx? ctx_ctx = null;\n");
                     declarations.Append("            global::BTDB.ODBLayer.DBReaderCtx? ctx_reader = null;\n");
                     AppendWriterCtxIfNeeded(declarations, method.Parameters.Skip(pkParamCount), null);
                     declarations.Append("            if (RelationInfo.ClientVersionNeedsCtx)\n");
@@ -3809,13 +3808,10 @@ public class SourceGenerator : IIncrementalGenerator
                             copyMode = newCopyMode;
                         }
 
+                        AppendSkipValue(declarations, vf.Type, vfi, "                    ");
                         if (pi != null)
                         {
                             AppendWriteValueParameter(declarations, pi, "                    ");
-                        }
-                        else
-                        {
-                            AppendSkipValue(declarations, vf.Type, vfi, "                    ");
                         }
                     }
 
