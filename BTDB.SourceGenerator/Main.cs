@@ -386,7 +386,7 @@ public class SourceGenerator : IIncrementalGenerator
     {
         // Virtually create type from BTDB package namespace BTDB.ODBLayer type RelationDBManipulator<relationType>
         var compilation = semanticModel.Compilation;
-        var (indexOfInKeyValue, primaryKeyFields, secondaryKeys) = BuildIndexInfo(itemGenInfo);
+        var (indexOfInKeyValue, primaryKeyFields, secondaryKeys, _) = BuildIndexInfo(itemGenInfo);
 
         // Get the RelationDBManipulator<> type from BTDB.ODBLayer namespace
         var relationDbManipulatorType = compilation.GetTypeByMetadataName("BTDB.ODBLayer.RelationDBManipulator`1");
@@ -2823,7 +2823,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (generationInfo.IsRelationItem)
         {
-            (indexOfInKeyValue, primaryKeyFields, secondaryKeys) = BuildIndexInfo(generationInfo);
+            (indexOfInKeyValue, primaryKeyFields, secondaryKeys, _) = BuildIndexInfo(generationInfo);
         }
 
         if (generationInfo.ConstructorParameters != null)
@@ -3447,7 +3447,7 @@ public class SourceGenerator : IIncrementalGenerator
     }
 
     static (uint indexOfInKeyValue, uint[] primaryKeyFields,
-        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys)
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys, uint[] valueFields)
         BuildIndexInfo(GenerationInfo generationInfo)
     {
         uint indexOfInKeyValue;
@@ -3520,68 +3520,17 @@ public class SourceGenerator : IIncrementalGenerator
             secondaryKeys[j++] = (keyValuePair.Key, secondaryKeyFields.ToArray(), explicitPrefixLength);
         }
 
-        return (indexOfInKeyValue, primaryKeyFields, secondaryKeys);
-    }
-
-    static void AppendUpdateByIdValidation(StringBuilder validationBody, MethodInfo method, int pkParamCount,
-        string valueFieldsExpression, string typeConvertorGeneratorExpression)
-    {
-        var paramCount = method.Parameters.Count;
-        var valueParamCount = paramCount - pkParamCount;
-        if (valueParamCount <= 0) return;
-
-        validationBody.Append("                {\n");
-        validationBody.Append($"                    var valueFields = {valueFieldsExpression};\n");
-        validationBody.Append(
-            $"                    var typeConvertorGenerator = {typeConvertorGeneratorExpression};\n");
-        validationBody.Append(
-            "                    for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)\n");
-        validationBody.Append("                    {\n");
-        validationBody.Append("                        var valueField = valueFields[valueFieldIndex];\n");
-        validationBody.Append("                        if (valueField.Computed) continue;\n");
-        validationBody.Append("                        var paramIndex = -1;\n");
-        for (var i = 0; i < valueParamCount; i++)
+        var valueFields = new uint[generationInfo.Fields.Count - primaryKeyFields.Length];
+        j = 0;
+        for (var i = 0; i < generationInfo.Fields.Count; i++)
         {
-            var keyword = i == 0 ? "if" : "else if";
-            var param = method.Parameters[pkParamCount + i];
-            validationBody.Append(
-                $"                        {keyword} (string.Equals(valueField.Name, \"{param.Name}\", StringComparison.OrdinalIgnoreCase))\n");
-            validationBody.Append("                        {\n");
-            validationBody.Append($"                            paramIndex = {i};\n");
-            validationBody.Append("                        }\n");
-        }
-
-        validationBody.Append("                        if (paramIndex == -1) continue;\n");
-        validationBody.Append("                        var handler = valueField.Handler!;\n");
-        validationBody.Append("                        switch (paramIndex)\n");
-        validationBody.Append("                        {\n");
-        for (var i = 0; i < valueParamCount; i++)
-        {
-            var param = method.Parameters[pkParamCount + i];
-            var paramType = NormalizeType(param.Type);
-            var paramTypeForTypeof = paramType;
-            if (param.IsReference && paramTypeForTypeof.EndsWith("?", StringComparison.Ordinal))
+            if (!primaryKeyFields.Contains((uint)i))
             {
-                paramTypeForTypeof = paramTypeForTypeof.Substring(0, paramTypeForTypeof.Length - 1);
+                valueFields[j++] = (uint)i;
             }
-
-            validationBody.Append($"                            case {i}:\n");
-            validationBody.Append("                            {\n");
-            validationBody.Append(
-                $"                                var parameterType = typeof({paramTypeForTypeof});\n");
-            validationBody.Append(
-                "                                var specializedHandler = handler.SpecializeSaveForType(parameterType);\n");
-            validationBody.Append(
-                "                                if (typeConvertorGenerator.GenerateConversion(parameterType, specializedHandler.HandledType()!) == null)\n");
-            validationBody.Append(
-                $"                                    throw new global::BTDB.KVDBLayer.BTDBException(\"Method {method.Name} matched parameter {param.Name} has wrong type \" + global::BTDB.IL.EmitHelpers.ToSimpleName(parameterType) + \" not convertible to \" + global::BTDB.IL.EmitHelpers.ToSimpleName(specializedHandler.HandledType()!));\n");
-            validationBody.Append("                                break;\n");
-            validationBody.Append("                            }\n");
         }
 
-        validationBody.Append("                        }\n");
-        validationBody.Append("                    }\n");
-        validationBody.Append("                }\n");
+        return (indexOfInKeyValue, primaryKeyFields, secondaryKeys, valueFields);
     }
 
     static string OnBeforeRemoveDeclareParams(EquatableArray<ParameterInfo> parameters)
@@ -3731,10 +3680,8 @@ public class SourceGenerator : IIncrementalGenerator
         declarations.Append("[CompilerGenerated]\n");
         declarations.Append($"file class {generationInfo.Name}Registration\n{{\n");
         var implName = $"Impl{generationInfo.Name.Substring(1)}";
-        var (indexOfInKeyValue, primaryKeyFields, secondaryKeys) = BuildIndexInfo(generationInfo);
+        var (indexOfInKeyValue, primaryKeyFields, secondaryKeys, valueFields) = BuildIndexInfo(generationInfo);
         var constructorBody = new StringBuilder();
-        var creatorValidationBody = new StringBuilder();
-        var needsRelationInfoAccessors = false;
         // language=C#
         declarations.Append($$"""
                 public class {{implName}} : global::BTDB.ODBLayer.RelationDBManipulator<{{generationInfo.Implements[0].FullyQualifiedName}}>, {{generationInfo.FullName}}
@@ -3773,13 +3720,6 @@ public class SourceGenerator : IIncrementalGenerator
                 var pkParamCount = primaryKeyFields.Length;
                 var valueParamCount = paramCount - pkParamCount;
                 var returnsBool = method.ResultType != null && IsBoolType(method.ResultType);
-                if (valueParamCount > 0)
-                {
-                    AppendUpdateByIdValidation(creatorValidationBody, method, pkParamCount,
-                        "ClientRelationVersionInfoAccessor(relationInfo).Fields.Span",
-                        "RelationInfoResolverAccessor(relationInfo).TypeConvertorGenerator");
-                    needsRelationInfoAccessors = true;
-                }
 
                 declarations.Append(
                     "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
@@ -3835,89 +3775,59 @@ public class SourceGenerator : IIncrementalGenerator
                     declarations.Append("                {\n");
                     declarations.Append(
                         "                    var reader = global::BTDB.StreamLayer.MemReader.CreateFromPinnedSpan(oldValueBytes);\n");
-                    declarations.Append("                    reader.SkipVUInt32();\n");
+                    declarations.Append("                    reader.SkipVUInt64();\n");
                     declarations.Append("                    uint memoPos = 0;\n");
-                    declarations.Append("                    var copyMode = false;\n");
-                    declarations.Append("                    var valueFields = ValueFields;\n");
-                    declarations.Append(
-                        "                    for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)\n");
-                    declarations.Append("                    {\n");
-                    declarations.Append("                        var valueField = valueFields[valueFieldIndex];\n");
-                    declarations.Append("                        if (valueField.Computed) continue;\n");
-                    declarations.Append("                        var paramIndex = -1;\n");
-                    for (var i = 0; i < valueParamCount; i++)
+                    var copyMode = false;
+                    for (var vfi = 0; vfi < valueFields.Length; vfi++)
                     {
-                        var keyword = i == 0 ? "if" : "else if";
-                        var param = method.Parameters[pkParamCount + i];
-                        declarations.Append(
-                            $"                        {keyword} (string.Equals(valueField.Name, \"{param.Name}\", StringComparison.OrdinalIgnoreCase))\n");
-                        declarations.Append("                        {\n");
-                        declarations.Append($"                            paramIndex = {i};\n");
-                        declarations.Append("                        }\n");
-                    }
-
-                    declarations.Append("                        var newCopyMode = paramIndex == -1;\n");
-                    declarations.Append("                        if (copyMode != newCopyMode)\n");
-                    declarations.Append("                        {\n");
-                    declarations.Append("                            if (newCopyMode)\n");
-                    declarations.Append("                            {\n");
-                    declarations.Append(
-                        "                                memoPos = (uint)reader.GetCurrentPositionWithoutController();\n");
-                    declarations.Append("                            }\n");
-                    declarations.Append("                            else\n");
-                    declarations.Append("                            {\n");
-                    declarations.Append(
-                        "                                reader.CopyFromPosToWriter(memoPos, ref writer);\n");
-                    declarations.Append("                            }\n");
-                    declarations.Append("                            copyMode = newCopyMode;\n");
-                    declarations.Append("                        }\n");
-                    declarations.Append("                        var handler = valueField.Handler!;\n");
-                    declarations.Append("                        if (!newCopyMode)\n");
-                    declarations.Append("                        {\n");
-                    declarations.Append("                            switch (paramIndex)\n");
-                    declarations.Append("                            {\n");
-                    for (var i = 0; i < valueParamCount; i++)
-                    {
-                        var param = method.Parameters[pkParamCount + i];
-                        var paramType = NormalizeType(param.Type);
-                        var paramTypeForTypeof = paramType;
-                        if (param.IsReference && paramTypeForTypeof.EndsWith("?", StringComparison.Ordinal))
+                        var vf = generationInfo.Fields[(int)valueFields[vfi]];
+                        if (vf is { GetterName: not null, SetterName: null }) // computed
+                            continue;
+                        ParameterInfo? pi = null;
+                        for (var i = 0; i < valueParamCount; i++)
                         {
-                            paramTypeForTypeof = paramTypeForTypeof.Substring(0, paramTypeForTypeof.Length - 1);
+                            var keyword = i == 0 ? "if" : "else if";
+                            var param = method.Parameters[pkParamCount + i];
+                            if (string.Equals(vf.Name, param.Name, StringComparison.OrdinalIgnoreCase))
+                            {
+                                pi = param;
+                                break;
+                            }
                         }
 
-                        declarations.Append($"                                case {i}:\n");
-                        declarations.Append("                                {\n");
-                        declarations.Append(
-                            $"                                    var save = handler.Save(typeof({paramTypeForTypeof}), Transaction.Owner.TypeConverterFactory);\n");
-                        declarations.Append("                                    if (handler.NeedsCtx())\n");
-                        declarations.Append("                                    {\n");
-                        declarations.Append(
-                            "                                        valueCtx ??= new global::BTDB.ODBLayer.DBWriterCtx(Transaction);\n");
-                        declarations.Append("                                    }\n");
-                        declarations.Append(
-                            $"                                    save(ref writer, valueCtx, ref Unsafe.As<{paramType}, byte>(ref {param.Name}));\n");
-                        declarations.Append("                                    break;\n");
-                        declarations.Append("                                }\n");
+                        var newCopyMode = pi == null;
+                        if (copyMode != newCopyMode)
+                        {
+                            if (newCopyMode)
+                            {
+                                declarations.Append(
+                                    "                    memoPos = (uint)reader.GetCurrentPositionWithoutController();\n");
+                            }
+                            else
+                            {
+                                declarations.Append(
+                                    "                    reader.CopyFromPosToWriter(memoPos, ref writer);\n");
+                            }
+
+                            copyMode = newCopyMode;
+                        }
+
+                        if (pi != null)
+                        {
+                            AppendWriteValueParameter(declarations, pi, "                    ");
+                        }
+                        else
+                        {
+                            AppendSkipValue(declarations, vf.Type, "                    ");
+                        }
                     }
 
-                    declarations.Append("                            }\n");
-                    declarations.Append("                        }\n");
-                    declarations.Append("                        if (handler.NeedsCtx())\n");
-                    declarations.Append("                        {\n");
-                    declarations.Append(
-                        "                            readerCtx ??= new global::BTDB.ODBLayer.DBReaderCtx(Transaction);\n");
-                    declarations.Append("                            handler.Skip(ref reader, readerCtx);\n");
-                    declarations.Append("                        }\n");
-                    declarations.Append("                        else\n");
-                    declarations.Append("                        {\n");
-                    declarations.Append("                            handler.Skip(ref reader, null);\n");
-                    declarations.Append("                        }\n");
-                    declarations.Append("                    }\n");
-                    declarations.Append("                    if (copyMode)\n");
-                    declarations.Append("                    {\n");
-                    declarations.Append("                        reader.CopyFromPosToWriter(memoPos, ref writer);\n");
-                    declarations.Append("                    }\n");
+                    if (copyMode)
+                    {
+                        declarations.Append(
+                            "                    reader.CopyFromPosToWriter(memoPos, ref writer);\n");
+                    }
+
                     declarations.Append("                }\n");
                     declarations.Append("            }\n");
                     declarations.Append(
@@ -4436,36 +4346,8 @@ public class SourceGenerator : IIncrementalGenerator
         constructorDeclaration.Append("        }\n");
         declarations.Insert(classBodyStart, constructorDeclaration);
         declarations.Append("    }\n");
-        if (needsRelationInfoAccessors)
-        {
-            // language=c#
-            declarations.Append("""
-                    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_relationInfoResolver")]
-                    extern static ref global::BTDB.ODBLayer.IRelationInfoResolver RelationInfoResolverAccessor(global::BTDB.ODBLayer.RelationInfo @this);
-
-                    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ClientRelationVersionInfo")]
-                    extern static global::BTDB.ODBLayer.RelationVersionInfo ClientRelationVersionInfoAccessor(global::BTDB.ODBLayer.RelationInfo @this);
-
-                """);
-        }
 
         code.Append(declarations);
-
-        var relationCreatorArgument = new StringBuilder();
-        if (creatorValidationBody.Length == 0)
-        {
-            relationCreatorArgument.Append(
-                $"            info => {{ return transaction => new {implName}(transaction, info); }},\n");
-        }
-        else
-        {
-            relationCreatorArgument.Append("            relationInfo =>\n");
-            relationCreatorArgument.Append("            {\n");
-            relationCreatorArgument.Append(creatorValidationBody);
-            relationCreatorArgument.Append(
-                $"                return transaction => new {implName}(transaction, relationInfo);\n");
-            relationCreatorArgument.Append("            },\n");
-        }
 
         // language=c#
         code.Append("    [ModuleInitializer]\n");
@@ -4473,7 +4355,7 @@ public class SourceGenerator : IIncrementalGenerator
         code.Append("    {\n");
         code.Append(
             $"        BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof({generationInfo.FullName}),\n");
-        code.Append(relationCreatorArgument);
+        code.Append($"            info => {{ return transaction => new {implName}(transaction, info); }},\n");
         code.Append(
             $"            [{string.Join(", ", generationInfo.Implements.Select(f => $"typeof({NormalizeType(f.FullyQualifiedName)})"))}]);\n");
         code.Append("    }\n");
@@ -4482,6 +4364,69 @@ public class SourceGenerator : IIncrementalGenerator
         context.AddSource(
             $"{generationInfo.FullName.Replace("global::", "").Replace("<", "[").Replace(">", "]")}.g.cs",
             SourceText.From(code.ToString(), Encoding.UTF8));
+    }
+
+    static void AppendSkipValue(StringBuilder declarations, string vfType, string indent = "            ")
+    {
+        var normalizedType = NormalizeType(vfType);
+        switch (normalizedType)
+        {
+            case "string":
+                declarations.Append($"{indent}reader.SkipString();\n");
+                return;
+            case "bool":
+                declarations.Append($"{indent}reader.Skip1Byte();\n");
+                return;
+            case "byte":
+                declarations.Append($"{indent}reader.Skip1Byte();\n");
+                return;
+            case "sbyte":
+                declarations.Append($"{indent}reader.Skip1Byte();\n");
+                return;
+            case "short":
+            case "int":
+            case "long":
+                declarations.Append($"{indent}reader.SkipVInt64();\n");
+                return;
+            case "ushort":
+            case "uint":
+            case "ulong":
+                declarations.Append($"{indent}reader.SkipVUInt64();\n");
+                return;
+            case "System.DateTime":
+                declarations.Append($"{indent}reader.SkipDateTime();\n");
+                return;
+            case "System.DateTimeOffset":
+                declarations.Append($"{indent}reader.SkipDateTimeOffset();\n");
+                return;
+            case "System.TimeSpan":
+                declarations.Append($"{indent}reader.SkipTimeSpan();\n");
+                return;
+            case "System.Guid":
+                declarations.Append($"{indent}reader.SkipGuid();\n");
+                return;
+            case "System.Decimal":
+                declarations.Append($"{indent}reader.SkipDecimal();\n");
+                return;
+            case "System.Net.IPAddress":
+                declarations.Append($"{indent}reader.SkipIPAddress();\n");
+                return;
+            case "byte[]":
+            case "BTDB.Buffer.ByteBuffer":
+            case "System.ReadOnlyMemory<byte>":
+                declarations.Append($"{indent}reader.SkipByteArray();\n");
+                return;
+            case "System.Version":
+                declarations.Append($"{indent}reader.SkipVersion();\n");
+                return;
+            case "Microsoft.Extensions.Primitives.StringValues":
+                declarations.Append($"{indent}reader.SkipStringValues();\n");
+                return;
+            default:
+                declarations.Append(
+                    $"{indent}throw new NotSupportedException(\"Value does not support type '{normalizedType}'.\");\n");
+                return;
+        }
     }
 
     static string NormalizeType(string type)
@@ -4647,6 +4592,132 @@ public class SourceGenerator : IIncrementalGenerator
         declarations.Append("            var ctx_ctx = new global::BTDB.ODBLayer.DBWriterCtx(Transaction);\n");
     }
 
+    static void AppendWriteValueParameter(StringBuilder declarations, ParameterInfo parameter,
+        string indent = "            ")
+    {
+        AppendWriteValue(declarations, parameter.Name, parameter.Type, parameter.EnumUnderlyingType,
+            indent);
+    }
+
+    static void AppendWriteValue(StringBuilder declarations, string valueExpression, string valueType,
+        string? enumUnderlyingType = null, string indent = "            ")
+    {
+        var nullableUnderlyingType = TryGetNullableUnderlyingType(valueType);
+        if (nullableUnderlyingType != null)
+        {
+            declarations.Append($"{indent}if (!{valueExpression}.HasValue)\n");
+            declarations.Append($"{indent}{{\n");
+            declarations.Append($"{indent}    writer.WriteBool(false);\n");
+            declarations.Append($"{indent}}}\n");
+            declarations.Append($"{indent}else\n");
+            declarations.Append($"{indent}{{\n");
+            declarations.Append($"{indent}    writer.WriteBool(true);\n");
+            AppendWriteValue(declarations, $"{valueExpression}.Value", nullableUnderlyingType,
+                enumUnderlyingType, indent + "    ");
+            declarations.Append($"{indent}}}\n");
+            return;
+        }
+
+        if (enumUnderlyingType != null)
+        {
+            var normalizedUnderlying = NormalizeType(enumUnderlyingType);
+            switch (normalizedUnderlying)
+            {
+                case "sbyte":
+                case "short":
+                case "int":
+                case "long":
+                    declarations.Append($"{indent}writer.WriteVInt64((long){valueExpression});\n");
+                    return;
+                case "byte":
+                case "ushort":
+                case "uint":
+                case "ulong":
+                    declarations.Append($"{indent}writer.WriteVUInt64((ulong){valueExpression});\n");
+                    return;
+                default:
+                    declarations.Append(
+                        $"{indent}throw new NotSupportedException(\"Key does not support enum type '{normalizedUnderlying}'.\");\n");
+                    return;
+            }
+        }
+
+        var normalizedType = NormalizeType(valueType);
+        if (TryGetTupleElementTypes(normalizedType, out var tupleElementTypes))
+        {
+            for (var i = 0; i < tupleElementTypes.Length; i++)
+            {
+                AppendWriteValue(declarations, $"{valueExpression}.Item{i + 1}", tupleElementTypes[i], null,
+                    indent);
+            }
+
+            return;
+        }
+
+        switch (normalizedType)
+        {
+            case "string":
+                declarations.Append($"{indent}writer.WriteString({valueExpression});\n");
+                return;
+            case "bool":
+                declarations.Append($"{indent}writer.WriteBool({valueExpression});\n");
+                return;
+            case "byte":
+                declarations.Append($"{indent}writer.WriteUInt8({valueExpression});\n");
+                return;
+            case "sbyte":
+                declarations.Append($"{indent}writer.WriteInt8Ordered({valueExpression});\n");
+                return;
+            case "short":
+            case "int":
+            case "long":
+                declarations.Append($"{indent}writer.WriteVInt64({valueExpression});\n");
+                return;
+            case "ushort":
+            case "uint":
+            case "ulong":
+                declarations.Append($"{indent}writer.WriteVUInt64({valueExpression});\n");
+                return;
+            case "System.DateTime":
+                declarations.Append($"{indent}writer.WriteDateTime({valueExpression});\n");
+                return;
+            case "System.DateTimeOffset":
+                declarations.Append($"{indent}writer.WriteDateTimeOffset({valueExpression});\n");
+                return;
+            case "System.TimeSpan":
+                declarations.Append($"{indent}writer.WriteTimeSpan({valueExpression});\n");
+                return;
+            case "System.Guid":
+                declarations.Append($"{indent}writer.WriteGuid({valueExpression});\n");
+                return;
+            case "System.Decimal":
+                declarations.Append($"{indent}writer.WriteDecimal({valueExpression});\n");
+                return;
+            case "System.Net.IPAddress":
+                declarations.Append($"{indent}writer.WriteIPAddress({valueExpression});\n");
+                return;
+            case "byte[]":
+            case "BTDB.Buffer.ByteBuffer":
+            case "System.ReadOnlyMemory<byte>":
+                declarations.Append($"{indent}writer.WriteByteArray({valueExpression});\n");
+                return;
+            case "System.Version":
+                declarations.Append($"{indent}writer.WriteVersion({valueExpression});\n");
+                return;
+            case "BTDB.Encrypted.EncryptedString":
+                declarations.Append(
+                    $"{indent}ctx_ctx.WriteEncryptedString(ref writer, {valueExpression});\n");
+                return;
+            case "Microsoft.Extensions.Primitives.StringValues":
+                declarations.Append($"{indent}writer.WriteStringValues({valueExpression});\n");
+                return;
+            default:
+                declarations.Append(
+                    $"{indent}throw new NotSupportedException(\"Value does not support type '{normalizedType}'.\");\n");
+                return;
+        }
+    }
+
     static void AppendWriteOrderableParameter(StringBuilder declarations, ParameterInfo parameter)
     {
         AppendWriteOrderableValue(declarations, parameter.Name, parameter.Type, parameter.EnumUnderlyingType,
@@ -4701,7 +4772,8 @@ public class SourceGenerator : IIncrementalGenerator
         {
             for (var i = 0; i < tupleElementTypes.Length; i++)
             {
-                AppendWriteOrderableValue(declarations, $"{valueExpression}.Item{i + 1}", tupleElementTypes[i], null,
+                AppendWriteOrderableValue(declarations, $"{valueExpression}.Item{i + 1}", tupleElementTypes[i],
+                    null,
                     indent);
             }
 
@@ -4948,7 +5020,8 @@ public class SourceGenerator : IIncrementalGenerator
             "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
         if (useSecondaryKey)
         {
-            declarations.Append($"            WriteRelationSKPrefix(ref writer, {remappedSecondaryKeyIndexVar});\n");
+            declarations.Append(
+                $"            WriteRelationSKPrefix(ref writer, {remappedSecondaryKeyIndexVar});\n");
         }
         else
         {
@@ -4970,7 +5043,8 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (useSecondaryKey)
         {
-            declarations.Append($"            WriteRelationSKPrefix(ref writer, {remappedSecondaryKeyIndexVar});\n");
+            declarations.Append(
+                $"            WriteRelationSKPrefix(ref writer, {remappedSecondaryKeyIndexVar});\n");
         }
         else
         {

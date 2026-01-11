@@ -53,63 +53,12 @@ file class IPersonTableRegistration
                 fixed (byte* _ = oldValueBytes)
                 {
                     var reader = global::BTDB.StreamLayer.MemReader.CreateFromPinnedSpan(oldValueBytes);
-                    reader.SkipVUInt32();
+                    reader.SkipVUInt64();
                     uint memoPos = 0;
-                    var copyMode = false;
-                    var valueFields = ValueFields;
-                    for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)
-                    {
-                        var valueField = valueFields[valueFieldIndex];
-                        if (valueField.Computed) continue;
-                        var paramIndex = -1;
-                        if (string.Equals(valueField.Name, "name", StringComparison.OrdinalIgnoreCase))
-                        {
-                            paramIndex = 0;
-                        }
-                        var newCopyMode = paramIndex == -1;
-                        if (copyMode != newCopyMode)
-                        {
-                            if (newCopyMode)
-                            {
-                                memoPos = (uint)reader.GetCurrentPositionWithoutController();
-                            }
-                            else
-                            {
-                                reader.CopyFromPosToWriter(memoPos, ref writer);
-                            }
-                            copyMode = newCopyMode;
-                        }
-                        var handler = valueField.Handler!;
-                        if (!newCopyMode)
-                        {
-                            switch (paramIndex)
-                            {
-                                case 0:
-                                {
-                                    var save = handler.Save(typeof(string), Transaction.Owner.TypeConverterFactory);
-                                    if (handler.NeedsCtx())
-                                    {
-                                        valueCtx ??= new global::BTDB.ODBLayer.DBWriterCtx(Transaction);
-                                    }
-                                    save(ref writer, valueCtx, ref Unsafe.As<string, byte>(ref name));
-                                    break;
-                                }
-                            }
-                        }
-                        if (handler.NeedsCtx())
-                        {
-                            readerCtx ??= new global::BTDB.ODBLayer.DBReaderCtx(Transaction);
-                            handler.Skip(ref reader, readerCtx);
-                        }
-                        else
-                        {
-                            handler.Skip(ref reader, null);
-                        }
-                    }
-                    if (copyMode)
-                    {
-                        reader.CopyFromPosToWriter(memoPos, ref writer);
-                    }
+                    writer.WriteString(name);
+                    memoPos = (uint)reader.GetCurrentPositionWithoutController();
+                    throw new NotSupportedException("Value does not support type 'global::BTDB.Encrypted.EncryptedString'.");
+                    reader.CopyFromPosToWriter(memoPos, ref writer);
                 }
             }
             base.UpdateByIdFinish(keyBytes, oldValueBytes, writer.GetSpan());
@@ -134,135 +83,22 @@ file class IPersonTableRegistration
                 fixed (byte* _ = oldValueBytes)
                 {
                     var reader = global::BTDB.StreamLayer.MemReader.CreateFromPinnedSpan(oldValueBytes);
-                    reader.SkipVUInt32();
+                    reader.SkipVUInt64();
                     uint memoPos = 0;
-                    var copyMode = false;
-                    var valueFields = ValueFields;
-                    for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)
-                    {
-                        var valueField = valueFields[valueFieldIndex];
-                        if (valueField.Computed) continue;
-                        var paramIndex = -1;
-                        if (string.Equals(valueField.Name, "secret", StringComparison.OrdinalIgnoreCase))
-                        {
-                            paramIndex = 0;
-                        }
-                        var newCopyMode = paramIndex == -1;
-                        if (copyMode != newCopyMode)
-                        {
-                            if (newCopyMode)
-                            {
-                                memoPos = (uint)reader.GetCurrentPositionWithoutController();
-                            }
-                            else
-                            {
-                                reader.CopyFromPosToWriter(memoPos, ref writer);
-                            }
-                            copyMode = newCopyMode;
-                        }
-                        var handler = valueField.Handler!;
-                        if (!newCopyMode)
-                        {
-                            switch (paramIndex)
-                            {
-                                case 0:
-                                {
-                                    var save = handler.Save(typeof(string), Transaction.Owner.TypeConverterFactory);
-                                    if (handler.NeedsCtx())
-                                    {
-                                        valueCtx ??= new global::BTDB.ODBLayer.DBWriterCtx(Transaction);
-                                    }
-                                    save(ref writer, valueCtx, ref Unsafe.As<string, byte>(ref secret));
-                                    break;
-                                }
-                            }
-                        }
-                        if (handler.NeedsCtx())
-                        {
-                            readerCtx ??= new global::BTDB.ODBLayer.DBReaderCtx(Transaction);
-                            handler.Skip(ref reader, readerCtx);
-                        }
-                        else
-                        {
-                            handler.Skip(ref reader, null);
-                        }
-                    }
-                    if (copyMode)
-                    {
-                        reader.CopyFromPosToWriter(memoPos, ref writer);
-                    }
+                    memoPos = (uint)reader.GetCurrentPositionWithoutController();
+                    reader.SkipString();
+                    reader.CopyFromPosToWriter(memoPos, ref writer);
+                    writer.WriteString(secret);
                 }
             }
             base.UpdateByIdFinish(keyBytes, oldValueBytes, writer.GetSpan());
         }
     }
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_relationInfoResolver")]
-    extern static ref global::BTDB.ODBLayer.IRelationInfoResolver RelationInfoResolverAccessor(global::BTDB.ODBLayer.RelationInfo @this);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ClientRelationVersionInfo")]
-    extern static global::BTDB.ODBLayer.RelationVersionInfo ClientRelationVersionInfoAccessor(global::BTDB.ODBLayer.RelationInfo @this);
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
         BTDB.Serialization.ReflectionMetadata.RegisterRelation(typeof(global::IPersonTable),
-            relationInfo =>
-            {
-                {
-                    var valueFields = ClientRelationVersionInfoAccessor(relationInfo).Fields.Span;
-                    var typeConvertorGenerator = RelationInfoResolverAccessor(relationInfo).TypeConvertorGenerator;
-                    for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)
-                    {
-                        var valueField = valueFields[valueFieldIndex];
-                        if (valueField.Computed) continue;
-                        var paramIndex = -1;
-                        if (string.Equals(valueField.Name, "name", StringComparison.OrdinalIgnoreCase))
-                        {
-                            paramIndex = 0;
-                        }
-                        if (paramIndex == -1) continue;
-                        var handler = valueField.Handler!;
-                        switch (paramIndex)
-                        {
-                            case 0:
-                            {
-                                var parameterType = typeof(string);
-                                var specializedHandler = handler.SpecializeSaveForType(parameterType);
-                                if (typeConvertorGenerator.GenerateConversion(parameterType, specializedHandler.HandledType()!) == null)
-                                    throw new global::BTDB.KVDBLayer.BTDBException("Method UpdateById matched parameter name has wrong type " + global::BTDB.IL.EmitHelpers.ToSimpleName(parameterType) + " not convertible to " + global::BTDB.IL.EmitHelpers.ToSimpleName(specializedHandler.HandledType()!));
-                                break;
-                            }
-                        }
-                    }
-                }
-                {
-                    var valueFields = ClientRelationVersionInfoAccessor(relationInfo).Fields.Span;
-                    var typeConvertorGenerator = RelationInfoResolverAccessor(relationInfo).TypeConvertorGenerator;
-                    for (var valueFieldIndex = 0; valueFieldIndex < valueFields.Length; valueFieldIndex++)
-                    {
-                        var valueField = valueFields[valueFieldIndex];
-                        if (valueField.Computed) continue;
-                        var paramIndex = -1;
-                        if (string.Equals(valueField.Name, "secret", StringComparison.OrdinalIgnoreCase))
-                        {
-                            paramIndex = 0;
-                        }
-                        if (paramIndex == -1) continue;
-                        var handler = valueField.Handler!;
-                        switch (paramIndex)
-                        {
-                            case 0:
-                            {
-                                var parameterType = typeof(string);
-                                var specializedHandler = handler.SpecializeSaveForType(parameterType);
-                                if (typeConvertorGenerator.GenerateConversion(parameterType, specializedHandler.HandledType()!) == null)
-                                    throw new global::BTDB.KVDBLayer.BTDBException("Method UpdateByIdSecret matched parameter secret has wrong type " + global::BTDB.IL.EmitHelpers.ToSimpleName(parameterType) + " not convertible to " + global::BTDB.IL.EmitHelpers.ToSimpleName(specializedHandler.HandledType()!));
-                                break;
-                            }
-                        }
-                    }
-                }
-                return transaction => new ImplPersonTable(transaction, relationInfo);
-            },
+            info => { return transaction => new ImplPersonTable(transaction, info); },
             [typeof(global::Person)]);
     }
 }
