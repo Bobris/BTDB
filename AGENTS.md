@@ -28,6 +28,9 @@ These guidelines summarize how to navigate, build, and contribute to this reposi
 
 - Indentation: 4 spaces; line endings: LF; always trim trailing whitespace.
 - C# style follows `.editorconfig`: prefer `var` when the type is apparent, and use file-scoped namespaces.
+- Do not use `#region`/`#endregion` in new or edited code.
+- When calling methods with `params ReadOnlySpan<string>`, pass string arguments directly instead of array/collection expressions.
+- Suppress `CS8620` at file scope when using `params ReadOnlySpan<string>` with direct string arguments.
 - Prefer `resultType is null` over `string.IsNullOrWhiteSpace(resultType)` when checking nullable type strings.
 - Naming: PascalCase for public types/members and type parameters (e.g., `TItem`).
 - Target framework is .NET 9 with C# 12 language features.

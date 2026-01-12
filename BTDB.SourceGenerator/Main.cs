@@ -9,6 +9,8 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
+#pragma warning disable CS8620 // Params ReadOnlySpan<T> nullability warnings for direct arguments.
+
 namespace BTDB.SourceGenerator;
 
 [Generator]
@@ -839,70 +841,7 @@ public class SourceGenerator : IIncrementalGenerator
         return ValidateConstraintParameters(method, indexName, fields, fi, 0, paramCount);
     }
 
-    static bool AreTypesCompatible(string pType, string fType)
-    {
-        if (pType == fType) return true;
-
-        var normalizedParamType = RemoveGlobalPrefix(pType);
-        var normalizedFieldType = RemoveGlobalPrefix(fType);
-        if (normalizedParamType == normalizedFieldType) return true;
-
-        if (IsUnsignedIntegralType(normalizedParamType) && IsUnsignedIntegralType(normalizedFieldType)) return true;
-        if (IsSignedIntegralType(normalizedParamType) && IsSignedIntegralType(normalizedFieldType)) return true;
-
-        return false;
-    }
-
-    static string RemoveGlobalPrefix(string type)
-    {
-        if (type.StartsWith("global::", StringComparison.Ordinal))
-        {
-            type = type.Substring("global::".Length);
-        }
-
-        return type;
-    }
-
-    static bool IsUnsignedIntegralType(string type)
-    {
-        return NormalizeIntegralType(type) is IntegralType.Byte or IntegralType.UInt16 or IntegralType.UInt32
-            or IntegralType.UInt64;
-    }
-
-    static bool IsSignedIntegralType(string type)
-    {
-        return NormalizeIntegralType(type) is IntegralType.SByte or IntegralType.Int16 or IntegralType.Int32
-            or IntegralType.Int64;
-    }
-
-    static IntegralType NormalizeIntegralType(string type)
-    {
-        return type switch
-        {
-            "byte" => IntegralType.Byte,
-            "ushort" => IntegralType.UInt16,
-            "uint" => IntegralType.UInt32,
-            "ulong" => IntegralType.UInt64,
-            "sbyte" => IntegralType.SByte,
-            "short" => IntegralType.Int16,
-            "int" => IntegralType.Int32,
-            "long" => IntegralType.Int64,
-            _ => IntegralType.None
-        };
-    }
-
-    enum IntegralType
-    {
-        None = 0,
-        Byte,
-        UInt16,
-        UInt32,
-        UInt64,
-        SByte,
-        Int16,
-        Int32,
-        Int64
-    }
+    
 
     static bool CheckIfLastParameterIsIOrdererArray(IMethodSymbol method)
     {
@@ -964,7 +903,7 @@ public class SourceGenerator : IIncrementalGenerator
                 constraintGenericType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
             // Check if the constraint generic type matches the field type
-            if (!AreTypesCompatible(constraintGenericTypeStr, f.Type))
+            if (!TypeUtilities.AreTypesCompatible(constraintGenericTypeStr, f.Type))
             {
                 return GenerationError("BTDB0018",
                     $"Parameter constraint type mismatch in method '{method.Name}' for parameter '{param.Name}' (expected '{f.Type}' but '{constraintGenericTypeStr}' found)",
@@ -1069,7 +1008,7 @@ public class SourceGenerator : IIncrementalGenerator
                     param.Locations[0]);
             }
 
-            if (!AreTypesCompatible(paramType, matchedField!.Type))
+            if (!TypeUtilities.AreTypesCompatible(paramType, matchedField!.Type))
             {
                 return GenerationError("BTDB0046",
                     $"Method {method.Name} parameter {param.Name} type '{paramType}' does not match field '{matchedField.Name}' type '{matchedField.Type}'.",
@@ -1175,7 +1114,7 @@ public class SourceGenerator : IIncrementalGenerator
             var nextFieldIndex = fi[paramCount];
             var nextField = fields[(int)nextFieldIndex];
             var aepTypeStr = aepGenericType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            if (!AreTypesCompatible(aepTypeStr, nextField.Type))
+            if (!TypeUtilities.AreTypesCompatible(aepTypeStr, nextField.Type))
             {
                 return GenerationError("BTDB0031",
                     $"AdvancedEnumeratorParam generic type '{aepTypeStr}' does not match field '{nextField.Name}' type '{nextField.Type}' in method '{method.Name}'",
@@ -1329,7 +1268,7 @@ public class SourceGenerator : IIncrementalGenerator
         var attr = parameterSymbol.GetAttributes()
                 .FirstOrDefault(a =>
                     (a.AttributeClass?.Name == "FromKeyedServicesAttribute" &&
-                     (a.AttributeClass?.InNamespace("Microsoft", "Extensions", "DependencyInjection") ?? false)) ||
+                    (a.AttributeClass?.InNamespace("Microsoft", "Extensions", "DependencyInjection") ?? false)) ||
                     (a.AttributeClass?.Name == "DependencyAttribute" &&
                      (a.AttributeClass?.InBTDBIOCNamespace() ?? false)))
             ;
@@ -4478,7 +4417,7 @@ public class SourceGenerator : IIncrementalGenerator
     static bool IsRemoveByCountReturnType(string? resultType)
     {
         if (resultType is null) return false;
-        return NormalizeIntegralType(resultType) is IntegralType.Int32 or IntegralType.UInt32 or IntegralType.Int64
+        return TypeUtilities.NormalizeIntegralType(resultType) is IntegralType.Int32 or IntegralType.UInt32 or IntegralType.Int64
             or IntegralType.UInt64;
     }
 
@@ -5055,7 +4994,7 @@ public class SourceGenerator : IIncrementalGenerator
             return expression;
         }
 
-        var normalized = NormalizeIntegralType(resultType);
+        var normalized = TypeUtilities.NormalizeIntegralType(resultType);
         return normalized switch
         {
             IntegralType.Int32 => $"(int){expression}",
@@ -5153,6 +5092,8 @@ public class SourceGenerator : IIncrementalGenerator
         return 0;
     }
 }
+
+#pragma warning restore CS8620
 
 enum GenerationType
 {
