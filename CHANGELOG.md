@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.0.0
+
 ### Fixed
 
 Secondary key upgrade could now introduce List<> field (till now it crashes with null reference exception).
