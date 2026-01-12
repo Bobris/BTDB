@@ -17,15 +17,41 @@ class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeScanTrait>, ILiveScop
     StructList<Predicate<Type>> _filters = new();
 
     readonly Assembly[]? _fromAssemblies;
+    readonly Assembly? _fromAssembly;
 
     public MultiRegistration()
     {
         _fromAssemblies = null;
     }
 
+    public MultiRegistration(Assembly fromAssembly)
+    {
+        _fromAssembly = fromAssembly;
+    }
+
     public MultiRegistration(Assembly[] fromParams)
     {
+        if (fromParams.Length == 1)
+        {
+            _fromAssembly = fromParams[0];
+            return;
+        }
+
         _fromAssemblies = fromParams;
+    }
+
+    public MultiRegistration(ReadOnlySpan<Assembly> fromParams)
+    {
+        if (fromParams.Length == 1)
+        {
+            _fromAssembly = fromParams[0];
+            return;
+        }
+
+        if (!fromParams.IsEmpty)
+        {
+            _fromAssemblies = fromParams.ToArray();
+        }
     }
 
     public void Where(Predicate<Type> filter)
@@ -45,24 +71,35 @@ class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeScanTrait>, ILiveScop
 
     public void Register(ContainerRegistrationContext context)
     {
-        if (_fromAssemblies == null)
+        void RegisterType(Type type)
+        {
+            if (!type.IsClass || type.IsAbstract || !MatchFilter(type)) return;
+            ((IContanerRegistration)new SingleRegistration(type, this, Lifetime)).Register(context);
+        }
+
+        if (_fromAssemblies == null && _fromAssembly == null)
         {
             foreach (var (typeToken, value) in IContainer.FactoryRegistry)
             {
                 var type = Type.GetTypeFromHandle(RuntimeTypeHandle.FromIntPtr(typeToken));
-                if (type is not { IsClass: true }) continue;
-                if (!MatchFilter(type)) continue;
-                ((IContanerRegistration)new SingleRegistration(type, this, Lifetime)).Register(context);
+                if (type is null) continue;
+                RegisterType(type);
+            }
+        }
+        else if (_fromAssembly != null)
+        {
+            foreach (var type in _fromAssembly.GetTypes())
+            {
+                RegisterType(type);
             }
         }
         else
         {
-            foreach (var assembly in _fromAssemblies)
+            foreach (var assembly in _fromAssemblies!)
             {
                 foreach (var type in assembly.GetTypes())
                 {
-                    if (!type.IsClass || type.IsAbstract || !MatchFilter(type)) continue;
-                    ((IContanerRegistration)new SingleRegistration(type, this, Lifetime)).Register(context);
+                    RegisterType(type);
                 }
             }
         }

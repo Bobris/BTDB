@@ -110,10 +110,19 @@ public class ContainerBuilder
 
     public IRegistration<IAsLiveScopeScanTrait> RegisterAssemblyTypes(Assembly from)
     {
-        return RegisterAssemblyTypes(new[] { from });
+        var registration = new MultiRegistration(from);
+        _registrations.Add(registration);
+        return registration;
     }
 
     public IRegistration<IAsLiveScopeScanTrait> RegisterAssemblyTypes(params Assembly[] fromParams)
+    {
+        var registration = new MultiRegistration(fromParams);
+        _registrations.Add(registration);
+        return registration;
+    }
+
+    public IRegistration<IAsLiveScopeScanTrait> RegisterAssemblyTypes(ReadOnlySpan<Assembly> fromParams)
     {
         var registration = new MultiRegistration(fromParams);
         _registrations.Add(registration);
