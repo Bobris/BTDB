@@ -178,7 +178,8 @@ public class SourceGenerator : IIncrementalGenerator
                                 {
                                     // Check is return type is IEnumerator<>
                                     if (methodReturnType.OriginalDefinition.SpecialType ==
-                                        SpecialType.System_Collections_Generic_IEnumerator_T)
+                                        SpecialType.System_Collections_Generic_IEnumerator_T &&
+                                        method.Name != "GetEnumerator")
                                     {
                                         return GenerationError("BTDB0009",
                                             "Cannot use IEnumerator<> as return type in " + method.Name,
@@ -403,6 +404,8 @@ public class SourceGenerator : IIncrementalGenerator
         // Check each method in the interface
         foreach (var method in methods)
         {
+            if (method.Name == "GetEnumerator" && method.ReturnType.IsIEnumeratorOfT())
+                continue;
             if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
             {
                 var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
