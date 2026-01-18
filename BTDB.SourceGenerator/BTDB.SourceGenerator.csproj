@@ -10,7 +10,7 @@
         <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
         <RootNamespace>BTDB.SourceGenerator</RootNamespace>
         <PackageId>BTDB.SourceGenerator</PackageId>
-        <Version>34.0.3</Version>
+        <Version>34.0.4</Version>
         <Authors>Boris Letocha</Authors>
         <PackageProjectUrl>https://github.com/Bobris/BTDB</PackageProjectUrl>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
