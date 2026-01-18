@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+{
+    IList<UserNotice> ListById(ulong userId);
+                      ^^^^^^^^
+}
+*/
+ : (11,22)-(11,30),
+      Message: Return type of 'ListById' must be IEnumerable<T>, ICollection<T>, or IReadOnlyCollection<T>,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0033,
+        Title: Return type of 'ListById' must be IEnumerable<T>, ICollection<T>, or IReadOnlyCollection<T>,
+        MessageFormat: Return type of 'ListById' must be IEnumerable<T>, ICollection<T>, or IReadOnlyCollection<T>,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

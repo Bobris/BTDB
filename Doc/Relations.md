@@ -210,12 +210,17 @@ because only fields with matching names and types will be deserialized. Note: Th
 
     IOrderedDictionaryEnumerator<uint, Person> ListById(AdvancedEnumeratorParam<uint> param);
     IEnumerable<Person> ListById(AdvancedEnumeratorParam<uint> param);
+    ICollection<Person> ListById2(AdvancedEnumeratorParam<uint> param);
+    IReadOnlyCollection<Person> ListById3(AdvancedEnumeratorParam<uint> param);
     IEnumerable<Person> ListById();
+    ICollection<Person> ListById2();
+    IReadOnlyCollection<Person> ListById3();
 
 List by ascending/descending order and specified range. Parts of primary key may be used for listing. In example below
 you can list all rooms or just rooms for specified company by two `ListById` method. (`IOrderedDictionaryEnumerator`,
-`IEnumerable` can be used as return values if used without AdvancedEnumeratorParam only `IEnumerable` could be used and
-it is ascending order only.)
+`IEnumerable`, `ICollection`, or `IReadOnlyCollection` can be used as return values. If used without
+AdvancedEnumeratorParam only `IEnumerable`/`ICollection`/`IReadOnlyCollection` could be used and it is ascending
+order only.)
 
 ```C#
     public class Room
@@ -257,7 +262,7 @@ missing constraints are automatically "Any"):
 
     var roomsOf1 = table.ScanById(Constraint.Unsigned.Exact(1));
 
-Scan by primary key also support variants like `ScanByIdVariantName`.
+Scan by primary key also support variants like `ScanByIdVariantName`. Return type can be only `IEnumerable<T>`.
 
 `Scan` can do most of the same stuff as `List`, it is a little bit slower though, so prefer `List` if you can. `Scan`
 needs

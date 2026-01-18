@@ -419,7 +419,49 @@ public class SourceGenerator : IIncrementalGenerator
                     if (itemType is not INamedTypeSymbol { TypeKind: TypeKind.Class })
                     {
                         return GenerationError("BTDB0042",
-                            $"Return type of '{method.Name}' must be class or IEnumerable<T> where T is class",
+                            $"Return type of '{method.Name}' must be class or IEnumerable<T>/ICollection<T>/IReadOnlyCollection<T> where T is class",
+                            method.Locations[0]);
+                    }
+
+                    if (!SerializableType(itemType))
+                    {
+                        return GenerationError("BTDB0043",
+                            $"Return type of '{method.Name}' must use serializable class type",
+                            method.Locations[0]);
+                    }
+                }
+                else if (method.ReturnType is INamedTypeSymbol
+                         {
+                             TypeKind: TypeKind.Interface,
+                             OriginalDefinition.SpecialType: SpecialType.System_Collections_Generic_ICollection_T
+                         } collectionReturnType)
+                {
+                    var itemType = collectionReturnType.TypeArguments.FirstOrDefault();
+                    if (itemType is not INamedTypeSymbol { TypeKind: TypeKind.Class })
+                    {
+                        return GenerationError("BTDB0042",
+                            $"Return type of '{method.Name}' must be class or IEnumerable<T>/ICollection<T>/IReadOnlyCollection<T> where T is class",
+                            method.Locations[0]);
+                    }
+
+                    if (!SerializableType(itemType))
+                    {
+                        return GenerationError("BTDB0043",
+                            $"Return type of '{method.Name}' must use serializable class type",
+                            method.Locations[0]);
+                    }
+                }
+                else if (method.ReturnType is INamedTypeSymbol
+                         {
+                             TypeKind: TypeKind.Interface,
+                             OriginalDefinition.SpecialType: SpecialType.System_Collections_Generic_IReadOnlyCollection_T
+                         } readOnlyCollectionReturnType)
+                {
+                    var itemType = readOnlyCollectionReturnType.TypeArguments.FirstOrDefault();
+                    if (itemType is not INamedTypeSymbol { TypeKind: TypeKind.Class })
+                    {
+                        return GenerationError("BTDB0042",
+                            $"Return type of '{method.Name}' must be class or IEnumerable<T>/ICollection<T>/IReadOnlyCollection<T> where T is class",
                             method.Locations[0]);
                     }
 
@@ -435,7 +477,7 @@ public class SourceGenerator : IIncrementalGenerator
                     if (method.ReturnType.TypeKind != TypeKind.Class)
                     {
                         return GenerationError("BTDB0042",
-                            $"Return type of '{method.Name}' must be class or IEnumerable<T> where T is class",
+                            $"Return type of '{method.Name}' must be class or IEnumerable<T>/ICollection<T>/IReadOnlyCollection<T> where T is class",
                             method.Locations[0]);
                     }
 
@@ -583,11 +625,11 @@ public class SourceGenerator : IIncrementalGenerator
                     CheckIfLastParameterIsAdvancedEnumeratorParam(method, out var aepGenericType);
                 if (hasAdvancedEnumerator)
                 {
-                    if (!IsIEnumerableOfTWhereTIsClass(method.ReturnType) &&
+                    if (!IsEnumerableOrCollectionOfTWhereTIsClass(method.ReturnType) &&
                         (aepGenericType == null || !IsIOrderedDictionaryEnumerator(method.ReturnType, aepGenericType)))
                     {
                         return GenerationError("BTDB0033",
-                            $"Return type of '{method.Name}' must be IEnumerable<T> or IOrderedDictionaryEnumerator<,>",
+                            $"Return type of '{method.Name}' must be IEnumerable<T>, ICollection<T>, IReadOnlyCollection<T>, or IOrderedDictionaryEnumerator<,>",
                             method.Locations[0]);
                     }
 
@@ -595,10 +637,10 @@ public class SourceGenerator : IIncrementalGenerator
                         indexOfInKeyValue, secondaryKeys, true, true);
                 }
 
-                if (!IsIEnumerableOfTWhereTIsClass(method.ReturnType))
+                if (!IsEnumerableOrCollectionOfTWhereTIsClass(method.ReturnType))
                 {
                     return GenerationError("BTDB0033",
-                        $"Return type of '{method.Name}' must be IEnumerable<T>",
+                        $"Return type of '{method.Name}' must be IEnumerable<T>, ICollection<T>, or IReadOnlyCollection<T>",
                         method.Locations[0]);
                 }
 
@@ -804,6 +846,34 @@ public class SourceGenerator : IIncrementalGenerator
             } methodReturnTypeNamedTypeSymbol)
         {
             return methodReturnTypeNamedTypeSymbol.TypeArguments.FirstOrDefault()?.TypeKind == TypeKind.Class;
+        }
+
+        return false;
+    }
+
+    static bool IsEnumerableOrCollectionOfTWhereTIsClass(ITypeSymbol methodReturnType)
+    {
+        if (IsIEnumerableOfTWhereTIsClass(methodReturnType))
+        {
+            return true;
+        }
+
+        if (methodReturnType is INamedTypeSymbol
+            {
+                TypeKind: TypeKind.Interface,
+                OriginalDefinition.SpecialType: SpecialType.System_Collections_Generic_ICollection_T
+            } collectionReturnTypeSymbol)
+        {
+            return collectionReturnTypeSymbol.TypeArguments.FirstOrDefault()?.TypeKind == TypeKind.Class;
+        }
+
+        if (methodReturnType is INamedTypeSymbol
+            {
+                TypeKind: TypeKind.Interface,
+                OriginalDefinition.SpecialType: SpecialType.System_Collections_Generic_IReadOnlyCollection_T
+            } readOnlyCollectionReturnTypeSymbol)
+        {
+            return readOnlyCollectionReturnTypeSymbol.TypeArguments.FirstOrDefault()?.TypeKind == TypeKind.Class;
         }
 
         return false;
@@ -1092,7 +1162,7 @@ public class SourceGenerator : IIncrementalGenerator
         var paramCount = method.Parameters.Length - (hasAdvancedEnumeratorParam ? 1 : 0);
 
         // For non-prefix-based queries (returns single item, not IEnumerable), validate parameter count matches key count
-        var isPrefixBased = IsIEnumerableOfTWhereTIsClass(method.ReturnType);
+        var isPrefixBased = IsEnumerableOrCollectionOfTWhereTIsClass(method.ReturnType);
         if (!skipNumberOfParametersCheck && indexName == "Id" && !isPrefixBased &&
             paramCount != fi.Length)
         {
@@ -4427,7 +4497,13 @@ public class SourceGenerator : IIncrementalGenerator
 
     static bool IsOrdererArrayType(string type)
     {
-        return type == "BTDB.ODBLayer.IOrderer[]";
+        var normalized = StripNullableReferenceType(type);
+        if (normalized.StartsWith("global::", StringComparison.Ordinal))
+        {
+            normalized = normalized.Substring("global::".Length);
+        }
+
+        return normalized == "BTDB.ODBLayer.IOrderer[]";
     }
 
     static string ExtractCollectionItemType(string collectionType)
@@ -4465,7 +4541,9 @@ public class SourceGenerator : IIncrementalGenerator
         var normalized = enumerableType.StartsWith("global::", StringComparison.Ordinal)
             ? enumerableType.Substring("global::".Length)
             : enumerableType;
-        return normalized.StartsWith("System.Collections.Generic.IEnumerable<", StringComparison.Ordinal);
+        return normalized.StartsWith("System.Collections.Generic.IEnumerable<", StringComparison.Ordinal) ||
+               normalized.StartsWith("System.Collections.Generic.ICollection<", StringComparison.Ordinal) ||
+               normalized.StartsWith("System.Collections.Generic.IReadOnlyCollection<", StringComparison.Ordinal);
     }
 
     static bool IsRemoveByCountReturnType(string? resultType)

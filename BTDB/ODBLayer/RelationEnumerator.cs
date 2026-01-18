@@ -590,7 +590,7 @@ class RelationSecondaryKeyEnumerator<T> : RelationEnumerator<T>
     }
 }
 
-public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>
+public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>, IReadOnlyCollection<T>
 {
     protected readonly IRelationDbManipulator Manipulator;
     protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
