@@ -10,6 +10,7 @@ public class MetadataTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
+            using System;
             namespace TestNamespace;
 
             [BTDB.Generate]
@@ -58,6 +59,7 @@ public class MetadataTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
+            using System;
             using System.Collections.Generic;
             namespace TestNamespace;
 
@@ -406,6 +408,7 @@ public class MetadataTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
+            using System;
             namespace TestNamespace;
 
             [BTDB.Generate]
@@ -539,6 +542,7 @@ public class MetadataTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
+            using System;
             using System.Collections.Generic;
             namespace TestNamespace;
 

@@ -7,7 +7,7 @@
                ^^^^^^^^^^^^^^
 }
 */
- : (16,15)-(16,29),
+ : (17,15)-(17,29),
       Message: Return type of 'ListByNoticeId' must be IEnumerable<T>,
       Severity: Error,
       Descriptor: {

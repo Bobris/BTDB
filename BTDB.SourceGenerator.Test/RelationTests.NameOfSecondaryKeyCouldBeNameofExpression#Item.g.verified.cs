@@ -34,7 +34,7 @@ static file class ItemRegistration
         metadata.Name = "Item";
         metadata.Type = typeof(global::Item);
         metadata.Namespace = "";
-        metadata.Implements = [];
+        metadata.Implements = [typeof(global::ICompanyRecord)];
         metadata.Creator = &Creator;
         var dummy = Unsafe.As<global::Item>(metadata);
         metadata.Fields = [

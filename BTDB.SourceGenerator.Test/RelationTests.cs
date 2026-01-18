@@ -59,7 +59,7 @@ public class RelationTests : GeneratorTestsBase
             public class Person
             {
                 [PrimaryKey(1)] public int ParentId { get; set; }
-                [PrimaryKey(2)] [SecondaryKey("PersonId", Order = 1) public int PersonId { get; set; }
+                [PrimaryKey(2)] [SecondaryKey("PersonId", Order = 1)] public int PersonId { get; set; }
                 [PrimaryKey(3, true)] public string Name { get; set; } = null!;
                 [SecondaryKey("LowerCaseName", IncludePrimaryKeyOrder = 1, Order = 2)] public string LowerCaseName => Name.ToLower();
                 [InKeyValue(4)] public string Description { get; set; } = null!;
@@ -217,6 +217,7 @@ public class RelationTests : GeneratorTestsBase
         // language=cs
         return VerifySourceGenerator("""
             using System.Collections.Generic;
+            using BTDB.FieldHandler;
             using BTDB.ODBLayer;
 
             public class UserNotice
@@ -244,6 +245,7 @@ public class RelationTests : GeneratorTestsBase
         // language=cs
         return VerifySourceGenerator("""
             using System.Collections.Generic;
+            using BTDB.FieldHandler;
             using BTDB.ODBLayer;
 
             public class UserNotice
@@ -271,6 +273,7 @@ public class RelationTests : GeneratorTestsBase
         // language=cs
         return VerifySourceGenerator("""
             using System.Collections.Generic;
+            using BTDB.FieldHandler;
             using BTDB.ODBLayer;
 
             public class Person
@@ -296,6 +299,7 @@ public class RelationTests : GeneratorTestsBase
         // language=cs
         return VerifySourceGenerator("""
             using System.Collections.Generic;
+            using BTDB.FieldHandler;
             using BTDB.ODBLayer;
 
             public class UserNotice
@@ -344,6 +348,7 @@ public class RelationTests : GeneratorTestsBase
         // language=cs
         return VerifySourceGenerator("""
             using System.Collections.Generic;
+            using BTDB.FieldHandler;
             using BTDB.ODBLayer;
 
             public class UserNotice
@@ -371,6 +376,7 @@ public class RelationTests : GeneratorTestsBase
         // language=cs
         return VerifySourceGenerator("""
             using System.Collections.Generic;
+            using BTDB.FieldHandler;
             using BTDB.ODBLayer;
 
             public class UserNotice
@@ -398,6 +404,7 @@ public class RelationTests : GeneratorTestsBase
         // language=cs
         return VerifySourceGenerator("""
             using System.Collections.Generic;
+            using BTDB.FieldHandler;
             using BTDB.ODBLayer;
 
             public class UserNotice
@@ -536,6 +543,10 @@ public class RelationTests : GeneratorTestsBase
         return VerifySourceGenerator("""
             using System.Collections.Generic;
             using BTDB.ODBLayer;
+
+            public interface ICompanyRecord
+            {
+            }
 
             public class Item : ICompanyRecord
             {

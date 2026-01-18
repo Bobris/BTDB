@@ -11,7 +11,7 @@ using BTDB.ODBLayer;
 // Field: Id ulong
 //           PrimaryIndex: 2
 // Field: Name string reference
-// Field: Secret global::BTDB.Encrypted.EncryptedString reference
+// Field: Secret global::BTDB.Encrypted.EncryptedString
 [CompilerGenerated]
 file class IPersonTableRegistration
 {

@@ -844,7 +844,6 @@ public class SourceGenerator : IIncrementalGenerator
         return ValidateConstraintParameters(method, indexName, fields, fi, 0, paramCount);
     }
 
-    
 
     static bool CheckIfLastParameterIsIOrdererArray(IMethodSymbol method)
     {
@@ -1273,7 +1272,7 @@ public class SourceGenerator : IIncrementalGenerator
         var attr = parameterSymbol.GetAttributes()
                 .FirstOrDefault(a =>
                     (a.AttributeClass?.Name == "FromKeyedServicesAttribute" &&
-                    (a.AttributeClass?.InNamespace("Microsoft", "Extensions", "DependencyInjection") ?? false)) ||
+                     (a.AttributeClass?.InNamespace("Microsoft", "Extensions", "DependencyInjection") ?? false)) ||
                     (a.AttributeClass?.Name == "DependencyAttribute" &&
                      (a.AttributeClass?.InBTDBIOCNamespace() ?? false)))
             ;
@@ -2390,7 +2389,7 @@ public class SourceGenerator : IIncrementalGenerator
                         }
 
                 """);
-            if (@struct.Fields.Count > 0)
+            if (@struct.Fields.Count > 0 && !IsReflectionMetadataExcluded(@struct.FullName))
             {
                 factoryCode.Append($$"""
 
@@ -2915,7 +2914,9 @@ public class SourceGenerator : IIncrementalGenerator
 
         var metadataCode = new StringBuilder();
         var nameWithGeneric = "";
-        if (generationInfo.Fields.Count != 0 || generationInfo.PersistedName != null || generationInfo.ForceMetadata)
+        if ((generationInfo.Fields.Count != 0 || generationInfo.PersistedName != null ||
+             generationInfo.ForceMetadata) &&
+            !IsReflectionMetadataExcluded(generationInfo.FullName))
         {
             if (!generationInfo.GenericParameters.IsEmpty)
             {
@@ -3266,12 +3267,13 @@ public class SourceGenerator : IIncrementalGenerator
                     else
                     {
                         methodIndex++;
+                        var onBeforeRemoveResultType = NormalizeType(m.ResultType ?? "void");
                         if (generationInfo.GenericParameters.IsEmpty)
                         {
                             // language=c#
                             declarations.Append($"""
                                     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
-                                    extern static void OnBeforeRemove{methodIndex}({generationInfo.FullName} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
+                                    extern static {onBeforeRemoveResultType} OnBeforeRemove{methodIndex}({generationInfo.FullName} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
 
                                 """);
                         }
@@ -3280,7 +3282,7 @@ public class SourceGenerator : IIncrementalGenerator
                             // language=c#
                             declarations.Append($"""
                                         [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{m.Name}")]
-                                        extern static void OnBeforeRemove{methodIndex}({nameWithGeneric} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
+                                        extern static {onBeforeRemoveResultType} OnBeforeRemove{methodIndex}({nameWithGeneric} @this{OnBeforeRemoveDeclareParams(m.Parameters)});
 
                                 """);
                         }
@@ -4269,7 +4271,8 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 if (method.ResultType == "global::System.Collections.IEnumerator")
                 {
-                    declarations.Append("            return ((global::System.Collections.IEnumerable)this).GetEnumerator();\n");
+                    declarations.Append(
+                        "            return ((global::System.Collections.IEnumerable)this).GetEnumerator();\n");
                 }
                 else
                 {
@@ -4385,6 +4388,12 @@ public class SourceGenerator : IIncrementalGenerator
         return type;
     }
 
+    static bool IsReflectionMetadataExcluded(string type)
+    {
+        return type is "global::System.Net.IPAddress" or "System.Net.IPAddress"
+            or "global::Microsoft.Extensions.Primitives.StringValues" or "Microsoft.Extensions.Primitives.StringValues";
+    }
+
     static string? GetEnumUnderlyingType(ITypeSymbol typeSymbol)
     {
         if (typeSymbol is INamedTypeSymbol
@@ -4444,7 +4453,8 @@ public class SourceGenerator : IIncrementalGenerator
     static bool IsRemoveByCountReturnType(string? resultType)
     {
         if (resultType is null) return false;
-        return TypeUtilities.NormalizeIntegralType(resultType) is IntegralType.Int32 or IntegralType.UInt32 or IntegralType.Int64
+        return TypeUtilities.NormalizeIntegralType(resultType) is IntegralType.Int32 or IntegralType.UInt32
+            or IntegralType.Int64
             or IntegralType.UInt64;
     }
 

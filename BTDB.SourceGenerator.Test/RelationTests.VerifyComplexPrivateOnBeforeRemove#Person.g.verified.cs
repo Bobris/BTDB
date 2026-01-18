@@ -12,9 +12,9 @@ static file class PersonRegistration
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Name>k__BackingField")]
     extern static ref string Field1(global::Person @this);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "OnBeforeRemove")]
-    extern static void OnBeforeRemove1(global::Person @this);
+    extern static bool OnBeforeRemove1(global::Person @this);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "SecondOnBeforeRemove")]
-    extern static void OnBeforeRemove2(global::Person @this, global::BTDB.ODBLayer.IObjectDBTransaction transaction);
+    extern static bool OnBeforeRemove2(global::Person @this, global::BTDB.ODBLayer.IObjectDBTransaction transaction);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "ThirdOnBeforeRemove")]
     extern static void OnBeforeRemove3(global::Person @this, global::I3rdPartyInterface dependency, global::I3rdPartyInterface key1);
     [ModuleInitializer]

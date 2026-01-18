@@ -16,6 +16,7 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
+            using System;
             namespace TestNamespace;
 
             [BTDB.Generate]
@@ -53,6 +54,7 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
+            using System;
             namespace TestNamespace;
 
             [BTDB.Generate]
@@ -108,6 +110,7 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
+            using System;
             namespace TestNamespace;
 
             [BTDB.Generate]
@@ -133,9 +136,9 @@ public class IOCTests : GeneratorTestsBase
                 IBetterLogger Logger { get; }
             }
 
-            public class Logger: AbstractLogger, IErrorHandler
+            public class ErrorHandler : AbstractLogger, IErrorHandler
             {
-                public Logger(int a, int b): base(a)
+                public ErrorHandler(int a, int b): base(a)
                 {
                 }
 
@@ -154,6 +157,10 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
+            public interface IErrorHandler
+            {
+            }
+
             [BTDB.Generate]
             public class ErrorHandler : IErrorHandler
             {
@@ -171,6 +178,10 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator("""
+            public interface IErrorHandler
+            {
+            }
+
             [BTDB.Generate]
             public class ErrorHandler<T> : IErrorHandler
             {
@@ -321,7 +332,12 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator(@"
+            using System;
             namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
 
             [BTDB.Generate]
             public delegate ILogger Factory(int a, string b);
@@ -333,6 +349,7 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator(@"
+            using System;
             namespace TestNamespace;
 
             public interface ILogger
@@ -353,6 +370,7 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator(@"
+            using System;
             namespace TestNamespace;
 
             public interface ILogger
@@ -373,6 +391,7 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator(@"
+            using System;
             namespace TestNamespace;
 
             [BTDB.Generate]
@@ -388,6 +407,7 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator(@"
+            using System;
             namespace TestNamespace;
 
             public class BaseClass
@@ -407,6 +427,7 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator(@"
+            using System;
             namespace TestNamespace;
 
             public interface ILogger
@@ -430,6 +451,7 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator(@"
+            using System;
             namespace TestNamespace;
 
             public interface ILogger
@@ -468,6 +490,7 @@ public class IOCTests : GeneratorTestsBase
     {
         // language=cs
         return VerifySourceGenerator(@"
+            using System;
             using BTDB.IOC;
             namespace TestNamespace;
 

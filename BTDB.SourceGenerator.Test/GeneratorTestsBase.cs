@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
@@ -21,15 +23,18 @@ public class GeneratorTestsBase
             driverOptions: new GeneratorDriverOptions(default, trackIncrementalGeneratorSteps: true));
         var compilation = CSharpCompilation.Create("test",
             [CSharpSyntaxTree.ParseText(sourceCode)],
-            [
-                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(GenerateAttribute).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(FromKeyedServicesAttribute).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(I3rdPartyInterface).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(IPAddress).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(StringValues).Assembly.Location),
-            ], new(OutputKind.ConsoleApplication, allowUnsafe: true));
+            GetMetadataReferences(),
+            new(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
         var runResult = driver.RunGenerators(compilation);
+        var generatedSources = runResult.GetRunResult().Results
+            .SelectMany(result => result.GeneratedSources)
+            .Select(source => CSharpSyntaxTree.ParseText(source.SourceText, path: source.HintName))
+            .ToList();
+        var generatedCompilation = compilation.AddSyntaxTrees(generatedSources);
+        var compilationErrors = generatedCompilation.GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToArray();
+        Assert.Empty(compilationErrors);
         // Update the compilation and rerun the generator
         compilation = compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText("// dummy"));
 
@@ -45,5 +50,45 @@ public class GeneratorTestsBase
         }
 
         return Verifier.Verify(runResult);
+    }
+
+    private static IEnumerable<MetadataReference> GetMetadataReferences()
+    {
+        var references = new List<MetadataReference>();
+        var referencePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var trustedAssemblies = (string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES");
+
+        if (trustedAssemblies is not null)
+        {
+            foreach (var assemblyPath in trustedAssemblies.Split(Path.PathSeparator,
+                         StringSplitOptions.RemoveEmptyEntries))
+            {
+                AddReference(assemblyPath, references, referencePaths);
+            }
+        }
+        else
+        {
+            AddReference(typeof(object).Assembly.Location, references, referencePaths);
+            AddReference(typeof(Enumerable).Assembly.Location, references, referencePaths);
+        }
+
+        AddReference(typeof(GenerateAttribute).Assembly.Location, references, referencePaths);
+        AddReference(typeof(FromKeyedServicesAttribute).Assembly.Location, references, referencePaths);
+        AddReference(typeof(I3rdPartyInterface).Assembly.Location, references, referencePaths);
+        AddReference(typeof(IPAddress).Assembly.Location, references, referencePaths);
+        AddReference(typeof(StringValues).Assembly.Location, references, referencePaths);
+
+        return references;
+    }
+
+    private static void AddReference(string assemblyPath, ICollection<MetadataReference> references,
+        ISet<string> referencePaths)
+    {
+        if (!referencePaths.Add(assemblyPath))
+        {
+            return;
+        }
+
+        references.Add(MetadataReference.CreateFromFile(assemblyPath));
     }
 }

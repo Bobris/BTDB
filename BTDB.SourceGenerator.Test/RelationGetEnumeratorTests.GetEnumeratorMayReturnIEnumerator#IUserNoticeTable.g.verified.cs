@@ -6,6 +6,7 @@ using System;
 using System.Runtime.CompilerServices;
 using BTDB.ODBLayer;
 // Name: IUserNoticeTable
+// Persisted Name: UserNotice
 // Field: UserId ulong
 //           PrimaryIndex: 1
 // Field: NoticeId ulong
@@ -29,7 +30,7 @@ file class IUserNoticeTableRegistration
         [SkipLocalsInit]
         global::System.Collections.Generic.IEnumerator<global::UserNotice> global::IUserNoticeTable.GetEnumerator()
         {
-            throw new NotImplementedException();
+            return base.GetEnumerator();
         }
     }
     [ModuleInitializer]

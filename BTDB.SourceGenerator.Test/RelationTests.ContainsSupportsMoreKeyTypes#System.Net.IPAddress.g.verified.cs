@@ -9,34 +9,6 @@ namespace System.Net;
 [CompilerGenerated]
 static file class IPAddressRegistration
 {
-    static object Creator()
-    {
-        return RuntimeHelpers.GetUninitializedObject(typeof(global::System.Net.IPAddress));
-    }
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ScopeId")]
-    extern static long Getter1(global::System.Net.IPAddress @this);
-    static void GenGetter1(object @this, ref byte value)
-    {
-        Unsafe.As<byte, long>(ref value) = Getter1(Unsafe.As<global::System.Net.IPAddress>(@this));
-    }
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_ScopeId")]
-    extern static void Setter1(global::System.Net.IPAddress @this, long value);
-    static void GenSetter1(object @this, ref byte value)
-    {
-        Setter1(Unsafe.As<global::System.Net.IPAddress>(@this), Unsafe.As<byte, long>(ref value));
-    }
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Address")]
-    extern static long Getter2(global::System.Net.IPAddress @this);
-    static void GenGetter2(object @this, ref byte value)
-    {
-        Unsafe.As<byte, long>(ref value) = Getter2(Unsafe.As<global::System.Net.IPAddress>(@this));
-    }
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_Address")]
-    extern static void Setter2(global::System.Net.IPAddress @this, long value);
-    static void GenSetter2(object @this, ref byte value)
-    {
-        Setter2(Unsafe.As<global::System.Net.IPAddress>(@this), Unsafe.As<byte, long>(ref value));
-    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -52,29 +24,5 @@ static file class IPAddressRegistration
                 return res;
             };
         });
-        var metadata = new global::BTDB.Serialization.ClassMetadata();
-        metadata.Name = "IPAddress";
-        metadata.Type = typeof(global::System.Net.IPAddress);
-        metadata.Namespace = "System.Net";
-        metadata.Implements = [];
-        metadata.Creator = &Creator;
-        var dummy = Unsafe.As<global::System.Net.IPAddress>(metadata);
-        metadata.Fields = [
-            new global::BTDB.Serialization.FieldMetadata
-            {
-                Name = "ScopeId",
-                Type = typeof(long),
-                PropRefGetter = &GenGetter1,
-                PropRefSetter = &GenSetter1,
-            },
-            new global::BTDB.Serialization.FieldMetadata
-            {
-                Name = "Address",
-                Type = typeof(long),
-                PropRefGetter = &GenGetter2,
-                PropRefSetter = &GenSetter2,
-            },
-        ];
-        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

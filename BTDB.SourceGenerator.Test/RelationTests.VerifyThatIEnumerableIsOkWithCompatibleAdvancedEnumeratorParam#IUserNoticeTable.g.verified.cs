@@ -6,6 +6,7 @@ using System;
 using System.Runtime.CompilerServices;
 using BTDB.ODBLayer;
 // Name: IUserNoticeTable
+// Persisted Name: UserNotice
 // Field: UserId ulong
 //           PrimaryIndex: 1
 // Field: NoticeId ulong

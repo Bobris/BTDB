@@ -11,6 +11,7 @@ public class RelationGetEnumeratorTests : GeneratorTestsBase
         // language=cs
         return VerifySourceGenerator("""
             using System.Collections.Generic;
+            using BTDB.FieldHandler;
             using BTDB.ODBLayer;
 
             public class UserNotice

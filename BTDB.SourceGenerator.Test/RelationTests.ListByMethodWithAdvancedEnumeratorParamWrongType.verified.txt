@@ -7,7 +7,7 @@
                                                                         ^^^^^^^^
 }
 */
- : (16,72)-(16,80),
+ : (17,72)-(17,80),
       Message: AdvancedEnumeratorParam generic type 'int' does not match field 'NoticeId' type 'ulong' in method 'ListByNoticeId',
       Severity: Error,
       Descriptor: {

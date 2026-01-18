@@ -14,7 +14,7 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 3
 // Field: ApiVersion global::System.Version reference
 //           PrimaryIndex: 4
-// Field: Tags global::Microsoft.Extensions.Primitives.StringValues reference
+// Field: Tags global::Microsoft.Extensions.Primitives.StringValues
 //           PrimaryIndex: 5
 // Field: Names global::System.Collections.Generic.List<string> reference
 //           PrimaryIndex: 6
