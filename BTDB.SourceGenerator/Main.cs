@@ -1261,10 +1261,17 @@ public class SourceGenerator : IIncrementalGenerator
     /// <summary>
     /// Returns null if the return type is void, otherwise returns the fully qualified type name.
     /// </summary>
+    static readonly SymbolDisplayFormat MethodReturnTypeFormat = new(
+        SymbolDisplayGlobalNamespaceStyle.Included,
+        SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes |
+                              SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+
     static string? IfVoidNull(ITypeSymbol methodReturnType)
     {
         if (methodReturnType.SpecialType == SpecialType.System_Void) return null;
-        return methodReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        return methodReturnType.ToDisplayString(MethodReturnTypeFormat);
     }
 
     static string? DetectDependencyName(ISymbol parameterSymbol)
@@ -3801,6 +3808,7 @@ public class SourceGenerator : IIncrementalGenerator
                 var itemType = isPrefixBased
                     ? ExtractEnumerableItemType(method.ResultType ?? "")
                     : NormalizeType(method.ResultType ?? "");
+                itemType = StripNullableReferenceType(itemType);
                 var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
 
                 AppendWriterCtxIfNeeded(declarations, method.Parameters, null);
@@ -4216,7 +4224,7 @@ public class SourceGenerator : IIncrementalGenerator
             else if (method.Name.StartsWith("ScanBy", StringComparison.Ordinal))
             {
                 var paramCount = method.Parameters.Count;
-                var itemType = ExtractEnumerableItemType(method.ResultType ?? "");
+                var itemType = StripNullableReferenceType(ExtractEnumerableItemType(method.ResultType ?? ""));
                 var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
                 var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
 
@@ -4243,7 +4251,7 @@ public class SourceGenerator : IIncrementalGenerator
                 var paramCount = method.Parameters.Count;
                 var hasOrderers = paramCount > 0 && IsOrdererArrayType(method.Parameters[paramCount - 1].Type);
                 var constraintCount = paramCount - (hasOrderers ? 1 : 0);
-                var itemType = NormalizeType(method.ResultType ?? "");
+                var itemType = StripNullableReferenceType(NormalizeType(method.ResultType ?? ""));
                 var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
                 var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
 
@@ -4441,6 +4449,16 @@ public class SourceGenerator : IIncrementalGenerator
         return typeArg;
     }
 
+    static string StripNullableReferenceType(string type)
+    {
+        if (type.EndsWith("?", StringComparison.Ordinal))
+        {
+            return type.Substring(0, type.Length - 1);
+        }
+
+        return type;
+    }
+
     static bool IsEnumerableType(string? enumerableType)
     {
         if (enumerableType is null) return false;
@@ -4556,12 +4574,17 @@ public class SourceGenerator : IIncrementalGenerator
         string indent = "            ")
     {
         AppendWriteValue(declarations, parameter.Name, parameter.Type, parameter.EnumUnderlyingType,
-            indent);
+            indent, parameter.IsReference);
     }
 
     static void AppendWriteValue(StringBuilder declarations, string valueExpression, string valueType,
-        string? enumUnderlyingType = null, string indent = "            ")
+        string? enumUnderlyingType = null, string indent = "            ", bool isReferenceType = false)
     {
+        if (isReferenceType && valueType.EndsWith("?", StringComparison.Ordinal))
+        {
+            valueType = valueType.Substring(0, valueType.Length - 1);
+        }
+
         var nullableUnderlyingType = TryGetNullableUnderlyingType(valueType);
         if (nullableUnderlyingType != null)
         {
@@ -4681,12 +4704,17 @@ public class SourceGenerator : IIncrementalGenerator
     static void AppendWriteOrderableParameter(StringBuilder declarations, ParameterInfo parameter)
     {
         AppendWriteOrderableValue(declarations, parameter.Name, parameter.Type, parameter.EnumUnderlyingType,
-            "            ");
+            "            ", parameter.IsReference);
     }
 
     static void AppendWriteOrderableValue(StringBuilder declarations, string valueExpression, string valueType,
-        string? enumUnderlyingType = null, string indent = "            ")
+        string? enumUnderlyingType = null, string indent = "            ", bool isReferenceType = false)
     {
+        if (isReferenceType && valueType.EndsWith("?", StringComparison.Ordinal))
+        {
+            valueType = valueType.Substring(0, valueType.Length - 1);
+        }
+
         var nullableUnderlyingType = TryGetNullableUnderlyingType(valueType);
         if (nullableUnderlyingType != null)
         {

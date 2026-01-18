@@ -72,6 +72,31 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyNullableReferencePrimaryKeyUsesNullChecks()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class Credentials
+            {
+                [PrimaryKey(1)] public ulong ConnectorId { get; set; }
+                [PrimaryKey(2)] public ulong CompanyId { get; set; }
+                [PrimaryKey(3)] public string? Domain { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface ICredentialsTable : IRelation<Credentials>
+            {
+                bool Contains(ulong connectorId, ulong companyId, string? domain);
+                Credentials? FindByIdOrDefault(ulong connectorId, ulong companyId, string? domain);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyCannotUsePrimaryKeyTogetherWithInKeyValue()
     {
         // language=cs

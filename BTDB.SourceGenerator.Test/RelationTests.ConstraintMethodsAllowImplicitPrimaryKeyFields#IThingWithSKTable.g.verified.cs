@@ -42,7 +42,7 @@ file class IThingWithSKTableRegistration
         }
 
         [SkipLocalsInit]
-        global::ThingWithSK global::IThingWithSKTable.FirstByNameOrDefault(BTDB.ODBLayer.Constraint<string> name, BTDB.ODBLayer.Constraint<ulong> age, BTDB.ODBLayer.IOrderer[] orderers)
+        global::ThingWithSK? global::IThingWithSKTable.FirstByNameOrDefault(BTDB.ODBLayer.Constraint<string> name, BTDB.ODBLayer.Constraint<ulong> age, BTDB.ODBLayer.IOrderer[] orderers)
         {
             var c_c = new ConstraintInfo[2];
             c_c[0].Constraint = name;
