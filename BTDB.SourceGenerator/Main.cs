@@ -1130,7 +1130,8 @@ public class SourceGenerator : IIncrementalGenerator
             if (i >= paramCount) break;
             var param = method.Parameters[i];
             var f = fields[(int)fi[i]];
-            if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase))
+            if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase) &&
+                (f.StoredName == null || !param.Name.Equals(f.StoredName, StringComparison.OrdinalIgnoreCase)))
             {
                 return GenerationError("BTDB0014",
                     $"Parameter '{param.Name}' does not match field '{f.Name}' from index '{indexName}'",
