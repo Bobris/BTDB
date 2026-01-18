@@ -2131,7 +2131,18 @@ public class SourceGenerator : IIncrementalGenerator
 
     static IEnumerable<IMethodSymbol> GetAllMethodsIncludingInheritance(INamedTypeSymbol symbol)
     {
+        var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        foreach (var methodSymbol in GetAllMethodsIncludingInheritance(symbol, visited))
+        {
+            yield return methodSymbol;
+        }
+    }
+
+    static IEnumerable<IMethodSymbol> GetAllMethodsIncludingInheritance(INamedTypeSymbol symbol,
+        HashSet<INamedTypeSymbol> visited)
+    {
         if (symbol.InODBLayerNamespace()) yield break;
+        if (!visited.Add(symbol)) yield break;
         foreach (var member in symbol.GetMembers().OfType<IMethodSymbol>())
         {
             yield return member;
@@ -2139,7 +2150,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         foreach (var symbolInterface in symbol.Interfaces)
         {
-            foreach (var methodSymbol in GetAllMethodsIncludingInheritance(symbolInterface))
+            foreach (var methodSymbol in GetAllMethodsIncludingInheritance(symbolInterface, visited))
             {
                 yield return methodSymbol;
             }
@@ -4252,6 +4263,17 @@ public class SourceGenerator : IIncrementalGenerator
                     var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
                     declarations.Append(
                         $"            return FirstBySecondaryKey<{itemType}>({loaderIndex}, c_c, {secondaryKeyIndex}u, {orderersArg}, {hasOrDefaultLiteral});\n");
+                }
+            }
+            else if (method.Name == "GetEnumerator")
+            {
+                if (method.ResultType == "global::System.Collections.IEnumerator")
+                {
+                    declarations.Append("            return ((global::System.Collections.IEnumerable)this).GetEnumerator();\n");
+                }
+                else
+                {
+                    declarations.Append("            return base.GetEnumerator();\n");
                 }
             }
             else
