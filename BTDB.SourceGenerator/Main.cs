@@ -1138,10 +1138,11 @@ public class SourceGenerator : IIncrementalGenerator
                     param.Locations[0]);
             }
 
-            if (param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) != f.Type)
+            var paramType = param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (!TypeUtilities.AreTypesCompatible(paramType, f.Type))
             {
                 return GenerationError("BTDB0015",
-                    $"Parameter '{param.Name}' type '{param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}' does not match field '{f.Name}' type '{f.Type}' from index '{indexName}'",
+                    $"Parameter '{param.Name}' type '{paramType}' does not match field '{f.Name}' type '{f.Type}' from index '{indexName}'",
                     param.Locations[0]);
             }
         }
