@@ -51,5 +51,6 @@ These guidelines summarize how to navigate, build, and contribute to this reposi
 
 ## Documentation Updates
 
-- Update relevant docs in `Doc/` when changing public behavior or APIs.
+- Update `CHANGELOG.md` for every bug fix or new feature.
+- Update relevant docs in `Doc/` when changing public behavior or APIs, or when it otherwise makes sense.
 - Keep README changes high-level; place deep dives in `Doc/`.
