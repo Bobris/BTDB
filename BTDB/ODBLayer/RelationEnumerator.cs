@@ -18,17 +18,17 @@ public struct ConstraintInfo
 
 class RelationConstraintEnumerator<T> : IEnumerator<T>, IEnumerable<T> where T : class
 {
-    readonly IInternalObjectDBTransaction _transaction;
+    protected readonly IInternalObjectDBTransaction _transaction;
     protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
-    readonly ConstraintInfo[] _constraints;
+    protected readonly ConstraintInfo[] _constraints;
     protected readonly IKeyValueDBTransaction KeyValueTr;
     protected IKeyValueDBCursor? _cursor;
 
-    bool _seekNeeded;
+    protected bool _seekNeeded;
 
-    int _skipNextOn = -1;
-    int _keyBytesCount;
-    MemWriter _buffer;
+    protected int _skipNextOn = -1;
+    protected int _keyBytesCount;
+    protected MemWriter _buffer;
     protected MemWriter _key;
 
     public RelationConstraintEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,

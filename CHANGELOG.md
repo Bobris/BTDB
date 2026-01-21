@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+`LastBy`, `LastByOrDefault`, `LastById` methods in `RelationDBManipulator` and SourceGenerator.
+
 ## 34.0.6
 
 ## 34.0.5

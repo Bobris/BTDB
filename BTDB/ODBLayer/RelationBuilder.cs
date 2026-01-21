@@ -315,6 +315,10 @@ public class RelationBuilder : IRelationBuilder
             {
                 BuildFirstByMethod(method, reqMethod);
             }
+            else if (method.Name.StartsWith("LastBy", StringComparison.Ordinal))
+            {
+                BuildLastByMethod(method, reqMethod);
+            }
             else if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
             {
                 BuildFindByMethod(method, reqMethod);
@@ -469,6 +473,77 @@ public class RelationBuilder : IRelationBuilder
             CreateMethodFirstBy(reqMethod.Generator, method.Name, method.ReturnType, method.GetParameters(),
                 nameWithoutVariants.HasOrDefault, nameWithoutVariants.IndexName);
         }
+    }
+
+    void BuildLastByMethod(MethodInfo method, IILMethod reqMethod)
+    {
+        if (!method.ReturnType.IsClass)
+        {
+            RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                $"Method {method.Name} must have class return type.");
+        }
+
+        var nameWithoutVariants = StripVariant(SubstringAfterBy(method.Name), true);
+        if (nameWithoutVariants.IndexName is "Id")
+        {
+            CreateMethodLastById(reqMethod.Generator, method.Name, method.ReturnType, method.GetParameters(),
+                nameWithoutVariants.HasOrDefault);
+        }
+        else
+        {
+            CreateMethodLastBy(reqMethod.Generator, method.Name, method.ReturnType, method.GetParameters(),
+                nameWithoutVariants.HasOrDefault, nameWithoutVariants.IndexName);
+        }
+    }
+
+    void CreateMethodLastBy(IILGen ilGenerator, string methodName, Type itemType, ParameterInfo[] methodParameters,
+        bool hasOrDefault, string skName)
+    {
+        var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
+
+        var skIndex = ClientRelationVersionInfo.GetSecondaryKeyIndex(skName);
+
+        var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex);
+
+        var constraintsParameters = methodParameters.AsSpan();
+        var orderersLocal = DetectOrderers(ilGenerator, ref constraintsParameters, 0);
+        SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, secondaryKeyFields,
+            constraintsLocal);
+
+        //call manipulator.LastBy_
+        ilGenerator
+            .Ldarg(0) //manipulator
+            .LdcI4(RegisterLoadType(itemType!))
+            .Ldloc(constraintsLocal)
+            .LdcI4((int)skIndex)
+            .Ldloc(orderersLocal)
+            .LdcI4(hasOrDefault ? 1 : 0)
+            .Callvirt(
+                _relationDbManipulatorType.GetMethod(
+                    nameof(RelationDBManipulator<IRelation>.LastBySecondaryKey))!.MakeGenericMethod(itemType));
+    }
+
+    void CreateMethodLastById(IILGen ilGenerator, string methodName, Type itemType, ParameterInfo[] methodParameters,
+        bool hasOrDefault)
+    {
+        var constraintsLocal = ilGenerator.DeclareLocal(typeof(ConstraintInfo[]));
+        var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
+        var constraintsParameters = methodParameters.AsSpan();
+        var orderersLocal = DetectOrderers(ilGenerator, ref constraintsParameters, 0);
+
+        SaveMethodConstraintParameters(ilGenerator, methodName, constraintsParameters, primaryKeyFields.Span,
+            constraintsLocal);
+
+        //call manipulator.LastBy_
+        ilGenerator
+            .Ldarg(0) //manipulator
+            .LdcI4(RegisterLoadType(itemType))
+            .Ldloc(constraintsLocal)
+            .Ldloc(orderersLocal)
+            .LdcI4(hasOrDefault ? 1 : 0)
+            .Callvirt(
+                _relationDbManipulatorType.GetMethod(
+                    nameof(RelationDBManipulator<IRelation>.LastByPrimaryKey))!.MakeGenericMethod(itemType));
     }
 
     void CreateMethodFirstBy(IILGen ilGenerator, string methodName, Type itemType, ParameterInfo[] methodParameters,

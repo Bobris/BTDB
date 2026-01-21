@@ -227,7 +227,8 @@ public class SourceGenerator : IIncrementalGenerator
                                     }
                                 }
                                 else if (method.Name.StartsWith("FindBy") ||
-                                         method.Name.StartsWith("FirstBy"))
+                                         method.Name.StartsWith("FirstBy") ||
+                                         method.Name.StartsWith("LastBy"))
                                 {
                                     if (methodReturnType != null && SerializableType(methodReturnType))
                                     {
@@ -493,7 +494,7 @@ public class SourceGenerator : IIncrementalGenerator
                     indexOfInKeyValue, secondaryKeys);
             }
 
-            if (method.Name.StartsWith("FirstBy"))
+            if (method.Name.StartsWith("FirstBy") || method.Name.StartsWith("LastBy"))
             {
                 // Validate return type is class
                 if (method.ReturnType.TypeKind != TypeKind.Class)
@@ -4343,6 +4344,35 @@ public class SourceGenerator : IIncrementalGenerator
                     var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
                     declarations.Append(
                         $"            return FirstBySecondaryKey<{itemType}>({loaderIndex}, c_c, {secondaryKeyIndex}u, {orderersArg}, {hasOrDefaultLiteral});\n");
+                }
+            }
+            else if (method.Name.StartsWith("LastBy", StringComparison.Ordinal))
+            {
+                var paramCount = method.Parameters.Count;
+                var hasOrderers = paramCount > 0 && IsOrdererArrayType(method.Parameters[paramCount - 1].Type);
+                var constraintCount = paramCount - (hasOrderers ? 1 : 0);
+                var itemType = StripNullableReferenceType(NormalizeType(method.ResultType ?? ""));
+                var loaderIndex = FindLoaderIndex(generationInfo.Implements, itemType);
+                var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
+
+                declarations.Append($"            var c_c = new ConstraintInfo[{constraintCount}];\n");
+                for (var i = 0; i < constraintCount; i++)
+                {
+                    declarations.Append($"            c_c[{i}].Constraint = {method.Parameters[i].Name};\n");
+                }
+
+                var orderersArg = hasOrderers ? method.Parameters[paramCount - 1].Name : "null";
+                var hasOrDefaultLiteral = hasOrDefault ? "true" : "false";
+                if (indexName == "Id")
+                {
+                    declarations.Append(
+                        $"            return LastByPrimaryKey<{itemType}>({loaderIndex}, c_c, null, {orderersArg}, {hasOrDefaultLiteral});\n");
+                }
+                else
+                {
+                    var secondaryKeyIndex = FindSecondaryKeyIndex(secondaryKeys, indexName);
+                    declarations.Append(
+                        $"            return LastBySecondaryKey<{itemType}>({loaderIndex}, c_c, {secondaryKeyIndex}u, {orderersArg}, {hasOrDefaultLiteral});\n");
                 }
             }
             else if (method.Name == "GetEnumerator")

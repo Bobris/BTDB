@@ -119,6 +119,28 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyLastByWithNullableOrderersArray()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System;
+            using BTDB.ODBLayer;
+
+            public class Job
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong Id { get; set; }
+                [SecondaryKey("LastUpdate", IncludePrimaryKeyOrder = 1)] public DateTime LastUpdate { get; set; }
+            }
+
+            public interface IJobTable : IRelation<Job>
+            {
+                Job? LastByLastUpdateOrDefault(Constraint<ulong> companyId, IOrderer[]? orderer);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyCannotUsePrimaryKeyTogetherWithInKeyValue()
     {
         // language=cs

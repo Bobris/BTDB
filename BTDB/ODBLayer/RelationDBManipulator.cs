@@ -1144,6 +1144,66 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
     }
 
+    public TItem LastByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
+        IOrderer[]? orderers, bool hasOrDefault) where TItem : class
+    {
+        if (orderers != null && orderers.Length > 0)
+        {
+            var invertedOrderers = new IOrderer[orderers.Length];
+            for (var i = 0; i < orderers.Length; i++) invertedOrderers[i] = Orderer.Backwards(orderers[i]);
+            return FirstByPrimaryKey<TItem>(loaderIndex, constraints, target, invertedOrderers, hasOrDefault);
+        }
+
+        var keyBytes = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+        keyBytes.WriteBlock(_relationInfo.Prefix);
+
+        Span<byte> buffer = stackalloc byte[4096];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buffer);
+
+        using var enumerator = new RelationConstraintReverseEnumerator<TItem>(_transaction, _relationInfo, keyBytes,
+            writer,
+            loaderIndex, constraints);
+
+        if (enumerator.MoveNext())
+        {
+            return enumerator.Current!;
+        }
+
+        ThrowIfNotHasOrDefault(hasOrDefault);
+        return null!;
+    }
+
+    [SkipLocalsInit]
+    public TItem LastBySecondaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, uint secondaryKeyIndex,
+        IOrderer[]? orderers, bool hasOrDefault) where TItem : class
+    {
+        if (orderers != null && orderers.Length > 0)
+        {
+            var invertedOrderers = new IOrderer[orderers.Length];
+            for (var i = 0; i < orderers.Length; i++) invertedOrderers[i] = Orderer.Backwards(orderers[i]);
+            return FirstBySecondaryKey<TItem>(loaderIndex, constraints, secondaryKeyIndex, invertedOrderers,
+                hasOrDefault);
+        }
+
+        var keyBytes = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+        keyBytes.WriteBlock(_relationInfo.PrefixSecondary);
+        var remappedSecondaryKeyIndex = RemapPrimeSK(secondaryKeyIndex);
+        keyBytes.WriteUInt8((byte)remappedSecondaryKeyIndex);
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+
+        using var enumerator = new RelationConstraintSecondaryKeyReverseEnumerator<TItem>(_transaction, _relationInfo,
+            keyBytes, writer,
+            loaderIndex, constraints, remappedSecondaryKeyIndex, this);
+
+        if (enumerator.MoveNextInGather())
+        {
+            return enumerator.Current!;
+        }
+
+        ThrowIfNotHasOrDefault(hasOrDefault);
+        return null!;
+    }
+
     static void ThrowIfNotHasOrDefault(bool hasOrDefault)
     {
         if (!hasOrDefault)

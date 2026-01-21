@@ -550,6 +550,12 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
 
         ThingWithSK FirstByName(Constraint<string> name,
             Constraint<ulong> age, IOrderer[] orderers);
+
+        ThingWithSK? LastByNameOrDefault(Constraint<string> name,
+            Constraint<ulong> age, IOrderer[] orderers);
+
+        ThingWithSK LastByName(Constraint<string> name,
+            Constraint<ulong> age, IOrderer[] orderers);
     }
 
     [Fact]
@@ -744,6 +750,9 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         ulong GatherById(ICollection<ThreePrimaryKeys> target, long skip, long take, Constraint<ulong> tenantId,
             Constraint<ulong> itemId,
             Constraint<ulong> version);
+
+        ThreePrimaryKeys LastById(Constraint<ulong> tenantId, Constraint<ulong> itemId,
+            Constraint<ulong> version);
     }
 
     void FillThreePrimaryKeysWithData()
@@ -806,6 +815,21 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
             t.GatherById(data, 0, 100, Constraint.Unsigned.Any, Constraint.First(Constraint.Unsigned.Any)));
 
         Assert.Equal(new[] { new ThreePrimaryKeys(1, 1, 1), new ThreePrimaryKeys(2, 1, 1) }, data);
+    }
+
+    [Fact]
+    public void LastByIdWorks()
+    {
+        FillThreePrimaryKeysWithData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreePrimaryKeysTable>();
+
+        Assert.Equal(new ThreePrimaryKeys(2, 3, 4),
+            t.LastById(Constraint.Unsigned.Any, Constraint.Unsigned.Any, Constraint.Unsigned.Any));
+            
+        Assert.Equal(new ThreePrimaryKeys(1, 2, 2),
+            t.LastById(Constraint.Unsigned.Exact(1), Constraint.Unsigned.Any, Constraint.Unsigned.Any));
     }
 
     [Fact]
@@ -1074,5 +1098,158 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Equal(3, t.ScanByUlongs(Constraint.ListUlong.StartsWith(1)).Count());
         Assert.Equal(2, t.ScanByUlongs(Constraint.ListUlong.StartsWith(2)).Count());
         Assert.Empty(t.ScanByUlongs(Constraint.ListUlong.StartsWith(5)));
+    }
+    [Fact]
+    public void LastByNameWithConstraintFirstWorks()
+    {
+        FillThingWithSKData();
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+
+        // Without First, should find A (Age 5 matches, Name Any matches)
+        var p = t.LastByName(Constraint.String.Any, Constraint.Unsigned.Exact(5), null);
+        Assert.NotNull(p);
+        Assert.Equal("A", p.Name);
+
+        // With First, should stop after D and fail to find A
+        // LastByName throws if not found
+        Assert.Throws<BTDBException>(() => t.LastByName(Constraint.First(Constraint.String.Any), Constraint.Unsigned.Exact(5), null));
+
+        // LastByNameOrDefault returns null if not found
+        var pDefault = t.LastByNameOrDefault(Constraint.First(Constraint.String.Any), Constraint.Unsigned.Exact(5), null);
+        Assert.Null(pDefault);
+
+        // With First, matching the first encountered (D)
+        p = t.LastByName(Constraint.First(Constraint.String.Any), Constraint.Unsigned.Exact(7), null);
+        Assert.Equal("D", p.Name);
+    }
+
+    [Fact]
+    public void LastByNameWithStartsWithWorks()
+    {
+        FillThingWithSKData();
+        // A, B, C, D
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+
+        var p = t.LastByName(Constraint.String.StartsWith("C"), Constraint.Unsigned.Any, null);
+        Assert.Equal("C", p.Name);
+
+        Assert.Throws<BTDBException>(() => t.LastByName(Constraint.String.StartsWith("Z"), Constraint.Unsigned.Any, null));
+    }
+
+    [Fact]
+    public void LastByNameWithEndsWithWorks()
+    {
+        FillThingWithSKData();
+        // A, B, C, D
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+
+        // Constraint.String.EndsWith uses a Predicate (Slow)
+        var p = t.LastByName(Constraint.String.EndsWith("B"), Constraint.Unsigned.Any, null);
+        Assert.Equal("B", p.Name);
+    }
+
+    [Fact]
+    public void LastByNameWithComplexConstraintsWorks()
+    {
+        FillThingWithSKData();
+        // (1, "A", 5), (1, "B", 6), (2, "C", 6), (3, "D", 7)
+        // Reverse Name Order: D(7), C(6), B(6), A(5)
+
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+
+        // Last Name=Any, Age=6.
+        // D(7) fail. C(6) match.
+        var p = t.LastByName(Constraint.String.Any, Constraint.Unsigned.Exact(6), null);
+        Assert.Equal("C", p.Name);
+
+        // Last Name=Any, Age=5.
+        // D(7), C(6), B(6) fail. A(5) match.
+        p = t.LastByName(Constraint.String.Any, Constraint.Unsigned.Exact(5), null);
+        Assert.Equal("A", p.Name);
+    }
+
+    [Fact]
+    public void LastByNameWithOrderersHelperWorks()
+    {
+        // This tests the path where LastBy delegates to FirstBy with inverted orderers
+        FillThingWithSKData();
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThingWithSKTable>();
+
+        // LastBy Name=Any, Order by Tenant Descending.
+        // Normal LastBy (Index Order): D, C, B, A.
+        // If we provide explicit orderer?
+        // LastBy(..., Orderer.Descending(Tenant))
+        // Translates to: FirstBy(..., Orderer.Ascending(Tenant))
+        // Tenants: 1(A), 1(B), 2(C), 3(D).
+        // Ascending Scan:
+        // A(1), B(1). B comes after A in index (Name B > Name A).
+        // wait, FirstBy iterates forward.
+        // Index: A(1), B(1), C(2), D(3).
+        // First match is A.
+        // So LastBy(Desc(Tenant)) -> FirstBy(Asc(Tenant)) -> A.
+        
+        // Let's verify what "LastBy(Desc)" should mean.
+        // "Last" usually implies "Top 1" of the sort order?
+        // Or "Last" item of the sequence?
+        // Enumerable.Last() returns the last element.
+        // If I sort by Tenant Descending: D(3), C(2), B(1), A(1).
+        // Enumerable.Last is A?
+        
+        // But Relation LastBy is "Last item matching constraints found in index".
+        // If Orderers are provided, `LastBy` delegates to `FirstBy(Inverted)`.
+        // `FirstBy` returns the FIRST item of the (Inverted) sequence.
+        // Sequence: Tenant Descending. D, C, B, A.
+        // Inverted Sequence: Tenant Ascending. A, B, C, D.
+        // FirstBy(Asc) -> A.
+        // So LastBy(Desc) -> A.
+        
+        // Is this intuitive? 
+        // If "LastBy" means "the item at the end of the sequence defined by Orderers":
+        // Sequence(Desc): D, C, B, A. End is A.
+        // So yes, it returns A.
+        
+        var p = t.LastByName(Constraint.String.Any, Constraint.Unsigned.Any, [Orderer.Descending((ThingWithSK v) => v.Tenant)]);
+        Assert.Equal("A", p.Name);
+        
+        // LastBy(Asc(Tenant)) -> FirstBy(Desc(Tenant)) -> D.
+        // Sequence(Asc): A, B, C, D. End is D.
+        p = t.LastByName(Constraint.String.Any, Constraint.Unsigned.Any, [Orderer.Ascending((ThingWithSK v) => v.Tenant)]);
+        Assert.Equal("D", p.Name);
+    }
+
+    [Fact]
+    public void LastByIdThreePrimaryKeysWorks()
+    {
+        FillThreePrimaryKeysWithData();
+        // (1, 1, 1), (1, 1, 2)
+        // (1, 2, 1), (1, 2, 2)
+        // (2, 1, 1)...
+        
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IThreePrimaryKeysTable>();
+        
+        // LasById(Tenant=1). Should be (1, 2, 2).
+        var p = t.LastById(Constraint.Unsigned.Exact(1), Constraint.Unsigned.Any, Constraint.Unsigned.Any);
+        Assert.Equal(new ThreePrimaryKeys(1, 2, 2), p);
+        
+        // LastById(Tenant=1, Item=1). Should be (1, 1, 2).
+        p = t.LastById(Constraint.Unsigned.Exact(1), Constraint.Unsigned.Exact(1), Constraint.Unsigned.Any);
+        Assert.Equal(new ThreePrimaryKeys(1, 1, 2), p);
+        
+        // LastById(First(Any), First(Any), First(Any))
+        // Reverse scan. (End of Index).
+        // (2, 3, 4).
+        // Tenant=2 (First matches -> YesSkipNext)
+        // Item=3 (First matches -> YesSkipNext)
+        // Version=4 (First matches -> YesSkipNext)
+        // Return (2, 3, 4).
+        p = t.LastById(Constraint.First(Constraint.Unsigned.Any), Constraint.First(Constraint.Unsigned.Any), Constraint.First(Constraint.Unsigned.Any));
+        Assert.Equal(new ThreePrimaryKeys(2, 3, 4), p);
     }
 }
