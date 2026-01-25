@@ -365,14 +365,21 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    void MarkFileForRemoval(uint fileId)
+    bool MarkFileForRemoval(uint fileId)
     {
         var file = _fileCollection.GetFile(fileId);
+        var wasTrl = false;
         if (file != null)
+        {
+            wasTrl = _fileCollection.FileInfoByIdx(fileId)?.FileType == KVFileType.TransactionLog;
             Logger?.FileMarkedForDelete(file.Index);
+        }
+
         else
             Logger?.LogWarning($"Marking for delete file id {fileId} unknown in file collection.");
+
         _fileCollection.MakeIdxUnknown(fileId);
+        return wasTrl;
     }
 
     bool IKeyValueDBInternal.LoadUsedFilesFromKeyIndex(uint fileId, IKeyIndex info)
@@ -1019,9 +1026,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    void IKeyValueDBInternal.MarkAsUnknown(IEnumerable<uint> fileIds)
+    bool IKeyValueDBInternal.MarkAsUnknown(IEnumerable<uint> fileIds)
     {
-        MarkAsUnknown(fileIds);
+        return MarkAsUnknown(fileIds);
     }
 
     IFileCollectionWithFileInfos IKeyValueDBInternal.FileCollection => FileCollection;
@@ -1807,12 +1814,15 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return GetGeneration(fileId);
     }
 
-    internal void MarkAsUnknown(IEnumerable<uint> fileIds)
+    internal bool MarkAsUnknown(IEnumerable<uint> fileIds)
     {
+        var anyTRL = false;
         foreach (var fileId in fileIds)
         {
-            MarkFileForRemoval(fileId);
+            anyTRL |= MarkFileForRemoval(fileId);
         }
+
+        return anyTRL;
     }
 
     internal long GetGeneration(uint fileId)

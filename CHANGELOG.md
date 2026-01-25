@@ -2,9 +2,13 @@
 
 ## [unreleased]
 
+### Fixed
+
+Rare corruption of DB when TRL after KVI is completely waste, and it was removed in compaction before creating new KVI.
+
 ### Added
 
-`LastBy`, `LastByOrDefault`, `LastById` methods in `RelationDBManipulator` and SourceGenerator.
+Support for `LastBy...` methods.
 
 ## 34.0.6
 

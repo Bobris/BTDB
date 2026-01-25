@@ -105,7 +105,7 @@ public class KeyValueDBCompactorSchedulerTest
             s.AdviceRunning(true);
             s.AdviceRunning(false);
             Assert.False(e.WaitOne(1000));
-            Assert.True(e.WaitOne(1000));
+            Assert.True(e.WaitOne(800));
             s.AdviceRunning(true);
             Assert.False(e.WaitOne(200));
             s.AdviceRunning(false);

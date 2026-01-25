@@ -12,7 +12,9 @@ public delegate void ValuesIterateAction(uint valueFileId, uint valueOfs, int va
 interface IKeyValueDBInternal : IKeyValueDB
 {
     long GetGeneration(uint fileId);
-    void MarkAsUnknown(IEnumerable<uint> fileIds);
+
+    // Returns true if any marked file was TRL
+    bool MarkAsUnknown(IEnumerable<uint> fileIds);
     IFileCollectionWithFileInfos FileCollection { get; }
     bool ContainsValuesAndDoesNotTouchGeneration(uint fileKey, long dontTouchGeneration);
 
