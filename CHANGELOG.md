@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.1.0
+
 ### Fixed
 
 Rare corruption of DB when TRL after KVI is completely waste, and it was removed in compaction before creating new KVI.
