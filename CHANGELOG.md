@@ -12,6 +12,7 @@ relation keys.
 ### Fixed
 
 Crash when using OnDiskMemoryMappedFileCollection with BTreeKeyValueDB.
+Rare corruption of DB when TRL after KVI is completely waste, and it was removed in compaction before creating new KVI.
 
 ## 33.6.9
 

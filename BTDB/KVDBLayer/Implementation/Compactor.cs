@@ -85,7 +85,8 @@ class Compactor
         }
     }
 
-    void MarkTotallyUselessFilesAsUnknown()
+    // returns true if there was TRL marked as unknown
+    bool MarkTotallyUselessFilesAsUnknown()
     {
         var toRemoveFileIds = new StructList<uint>();
         foreach (var fileStat in _fileStats.Index)
@@ -96,7 +97,8 @@ class Compactor
             }
         }
 
-        if (toRemoveFileIds.Count > 0) _keyValueDB.MarkAsUnknown(toRemoveFileIds);
+        if (toRemoveFileIds.Count > 0) return _keyValueDB.MarkAsUnknown(toRemoveFileIds);
+        return false;
     }
 
     internal async ValueTask<bool> Run()
@@ -158,13 +160,14 @@ class Compactor
                 flushingTransaction.NextCommitTemporaryCloseTransactionLog();
                 flushingTransaction.Commit();
             }
-            MarkTotallyUselessFilesAsUnknown();
-            _keyValueDB.FileCollection.DeleteAllUnknownFiles();
+            var anyTrl = MarkTotallyUselessFilesAsUnknown();
+            if (!anyTrl)
+                _keyValueDB.FileCollection.DeleteAllUnknownFiles();
             var (totalWaste, maxInOneFile) = CalcTotalWaste();
             _keyValueDB.Logger?.CompactionStart(totalWaste);
             if (IsWasteSmall(totalWaste, maxInOneFile))
             {
-                if (_keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.MaxTrLogFileSize / 4))
+                if (anyTrl || _keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.MaxTrLogFileSize / 4))
                     _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
                 _keyValueDB.FileCollection.DeleteAllUnknownFiles();
                 return false;

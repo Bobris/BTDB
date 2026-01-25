@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -410,6 +412,48 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
 
         await db.Compact(CancellationToken.None);
         Assert.Equal(3u, fileCollection.GetCount()); // 1 Log, 1 values, 1 KeyIndex
+    }
+
+    byte[] CreateBigKey(int id, int length)
+    {
+        var key = new byte[length];
+        PackUnpack.PackInt32BE(key, 0, id);
+        return key;
+    }
+
+    [Fact]
+    public async Task SmallCompactionDoesNotCorruptDB()
+    {
+        using var fileCollection = new InMemoryFileCollection();
+        using var db = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 10240, null);
+        using (var tr = db.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            for (var i = 0; i < 10; i++)
+            {
+                cursor.CreateOrUpdateKeyValue(CreateBigKey(i, 4000), new byte[4000]);
+            }
+
+            tr.Commit();
+        }
+
+        await db.Compact(CancellationToken.None);
+        Assert.Equal("9:TRL 10:TRL 11:PVL 12:PVL 13:PVL 14:PVL 15:KVI", fileCollection.CalcFileStats());
+        using (var tr = db.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            for (var i = 4; i < 10; i++)
+            {
+                cursor.FindExactKey(CreateBigKey(i, 4000));
+                cursor.EraseCurrent();
+            }
+
+            tr.Commit();
+        }
+
+        Assert.Equal("9:TRL 10:TRL 11:PVL 12:PVL 13:PVL 14:PVL 15:KVI 16:TRL 17:TRL", fileCollection.CalcFileStats());
+        await db.Compact(CancellationToken.None);
+        Assert.Equal("11:PVL 12:PVL 17:TRL 18:KVI", fileCollection.CalcFileStats());
     }
 
     [Fact]

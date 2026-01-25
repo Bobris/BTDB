@@ -636,7 +636,7 @@ public class KeyValueDBRollbackTest
     }
 
     [Fact]
-    public void CanOpenDbAfterDeletingAndCompacting()
+    public async Task CanOpenDbAfterDeletingAndCompacting()
     {
         using var fileCollection = new InMemoryFileCollection();
         var options = new KeyValueDBOptions
@@ -659,7 +659,8 @@ public class KeyValueDBRollbackTest
                 tr.Commit();
             }
 
-            kvDb.Compact(CancellationToken.None);
+            await kvDb.Compact(CancellationToken.None);
+            Assert.Equal("1:TRL 2:TRL 3:KVI", fileCollection.CalcFileStats());
         }
 
         using (var kvDb = new BTreeKeyValueDB(options))
@@ -672,13 +673,13 @@ public class KeyValueDBRollbackTest
                 tr.Commit();
             }
 
-            kvDb.Compact(CancellationToken.None);
+            await kvDb.Compact(CancellationToken.None);
+            Assert.Equal("2:TRL 4:KVI", fileCollection.CalcFileStats());
         }
 
         using (var kvDb = new BTreeKeyValueDB(options))
         {
-            // If there is error in KVI 3 it will create new KVI 4, but there is no problem in KVI 3
-            Assert.Null(kvDb.FileCollection.FileInfoByIdx(4));
+            Assert.Equal("2:TRL 4:KVI", fileCollection.CalcFileStats());
         }
     }
 }
