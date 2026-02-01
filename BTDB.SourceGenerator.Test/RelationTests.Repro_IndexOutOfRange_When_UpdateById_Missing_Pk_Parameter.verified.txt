@@ -1,0 +1,23 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: /*
+    User? FindByIdOrDefault(ulong id, ulong tenantId);
+    void UpdateById(ulong id);
+         ^^^^^^^^^^
+}
+*/
+ : (15,9)-(15,19),
+      Message: Not enough parameters in UpdateById (expected at least 2).,
+      Severity: Error,
+      Descriptor: {
+        Id: BTDB0040,
+        Title: Not enough parameters in UpdateById (expected at least 2).,
+        MessageFormat: Not enough parameters in UpdateById (expected at least 2).,
+        Category: BTDB,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

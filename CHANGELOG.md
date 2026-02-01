@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Source generator no longer crashes when relation method validation fails mid-iteration (e.g., `UpdateById` missing PK parameters now reports `BTDB0040` instead of throwing).
+
 ## 34.1.0
 
 ### Fixed

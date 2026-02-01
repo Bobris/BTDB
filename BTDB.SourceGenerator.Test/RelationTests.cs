@@ -72,6 +72,31 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task Repro_IndexOutOfRange_When_UpdateById_Missing_Pk_Parameter()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            #nullable enable
+            using BTDB.ODBLayer;
+
+            namespace Users;
+
+            public class User
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                [PrimaryKey(2)] public ulong TenantId { get; set; }
+                public string Name { get; set; } = "";
+            }
+
+            public interface IUserTable : IRelation<User>
+            {
+                User? FindByIdOrDefault(ulong id, ulong tenantId);
+                void UpdateById(ulong id);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyNullableReferencePrimaryKeyUsesNullChecks()
     {
         // language=cs

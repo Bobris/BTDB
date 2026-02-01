@@ -490,8 +490,10 @@ public class SourceGenerator : IIncrementalGenerator
                     }
                 }
 
-                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
+                var findByError = CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
                     indexOfInKeyValue, secondaryKeys);
+                if (findByError != null) return findByError;
+                continue;
             }
 
             if (method.Name.StartsWith("FirstBy") || method.Name.StartsWith("LastBy"))
@@ -532,8 +534,10 @@ public class SourceGenerator : IIncrementalGenerator
                         $"Return type of '{method.Name}' must be IEnumerable<T>",
                         method.Locations[0]);
 
-                return CheckParamsNamesAndTypesScanBy(method, indexName, itemGenInfo.Fields, primaryKeyFields,
-                    uint.MaxValue, secondaryKeys, false);
+                var scanByError = CheckParamsNamesAndTypesScanBy(method, indexName, itemGenInfo.Fields,
+                    primaryKeyFields, uint.MaxValue, secondaryKeys, false);
+                if (scanByError != null) return scanByError;
+                continue;
             }
 
             if (method.Name.StartsWith("GatherBy"))
@@ -634,8 +638,10 @@ public class SourceGenerator : IIncrementalGenerator
                             method.Locations[0]);
                     }
 
-                    return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
-                        indexOfInKeyValue, secondaryKeys, true, true);
+                    var listByError = CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields,
+                        primaryKeyFields, indexOfInKeyValue, secondaryKeys, true, true);
+                    if (listByError != null) return listByError;
+                    continue;
                 }
 
                 if (!IsEnumerableOrCollectionOfTWhereTIsClass(method.ReturnType))
@@ -645,8 +651,10 @@ public class SourceGenerator : IIncrementalGenerator
                         method.Locations[0]);
                 }
 
-                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
-                    indexOfInKeyValue, secondaryKeys, true);
+                var listByNoAdvError = CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields,
+                    primaryKeyFields, indexOfInKeyValue, secondaryKeys, true);
+                if (listByNoAdvError != null) return listByNoAdvError;
+                continue;
             }
 
             if (method.Name.StartsWith("AnyBy"))
@@ -661,8 +669,10 @@ public class SourceGenerator : IIncrementalGenerator
 
                 var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
 
-                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
+                var anyByError = CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
                     indexOfInKeyValue, secondaryKeys, true, true);
+                if (anyByError != null) return anyByError;
+                continue;
             }
 
             if (method.Name.StartsWith("CountBy"))
@@ -680,8 +690,10 @@ public class SourceGenerator : IIncrementalGenerator
 
                 var (indexName, _) = StripVariant(secondaryKeys, method.Name, false);
 
-                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
-                    indexOfInKeyValue, secondaryKeys, true, true);
+                var countByError = CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields,
+                    primaryKeyFields, indexOfInKeyValue, secondaryKeys, true, true);
+                if (countByError != null) return countByError;
+                continue;
             }
 
             if (method.Name.StartsWith("UpdateById", StringComparison.Ordinal))
@@ -706,8 +718,10 @@ public class SourceGenerator : IIncrementalGenerator
                 if (duplicateParamError != null)
                     return duplicateParamError;
 
-                return CheckParamsNamesAndTypes(method, "Id", itemGenInfo.Fields, primaryKeyFields,
+                var updateByIdError = CheckParamsNamesAndTypes(method, "Id", itemGenInfo.Fields, primaryKeyFields,
                     indexOfInKeyValue, secondaryKeys, true);
+                if (updateByIdError != null) return updateByIdError;
+                continue;
             }
 
             if (method.Name.StartsWith("RemoveBy", StringComparison.Ordinal))
@@ -744,8 +758,10 @@ public class SourceGenerator : IIncrementalGenerator
                 }
 
                 // Validate parameters normally if no AdvancedEnumeratorParam (skip parameter count check to allow prefix matching)
-                return CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields, primaryKeyFields,
-                    indexOfInKeyValue, secondaryKeys, true, true);
+                var removeByError = CheckParamsNamesAndTypes(method, indexName, itemGenInfo.Fields,
+                    primaryKeyFields, indexOfInKeyValue, secondaryKeys, true, true);
+                if (removeByError != null) return removeByError;
+                continue;
             }
 
             if (method.Name == "RemoveWithSizesById")
@@ -762,8 +778,10 @@ public class SourceGenerator : IIncrementalGenerator
                         method.Locations[0]);
                 }
 
-                return ValidateFirstByConstraintParameters(method, "Id", itemGenInfo.Fields, primaryKeyFields,
-                    secondaryKeys, 0, method.Parameters.Length);
+                var removeWithSizesError = ValidateFirstByConstraintParameters(method, "Id", itemGenInfo.Fields,
+                    primaryKeyFields, secondaryKeys, 0, method.Parameters.Length);
+                if (removeWithSizesError != null) return removeWithSizesError;
+                continue;
             }
 
             if (method.Name == "ShallowUpsertWithSizes")
@@ -785,8 +803,10 @@ public class SourceGenerator : IIncrementalGenerator
                         method.Locations[0]);
                 }
 
-                return CheckParamsNamesAndTypes(method, "Id", itemGenInfo.Fields, primaryKeyFields,
+                var containsError = CheckParamsNamesAndTypes(method, "Id", itemGenInfo.Fields, primaryKeyFields,
                     indexOfInKeyValue, secondaryKeys);
+                if (containsError != null) return containsError;
+                continue;
             }
 
             if (method.Name.StartsWith("ShallowRemoveBy", StringComparison.Ordinal) ||
