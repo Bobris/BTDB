@@ -436,8 +436,8 @@ public class RelationTests : GeneratorTestsBase
             public interface IPersonTableSuperfluousParameter : IRelation<Person>
             {
                 void Insert(Person person);
-                // SecondaryKey("Name") includes primary key fields at the end; validation trims that tail.
-                IEnumerable<Person> ListByName(ulong tenantId, string name, AdvancedEnumeratorParam<uint> param);
+                // AdvancedEnumeratorParam targets implicit primary key field; use mismatched type to validate checks.
+                IEnumerable<Person> ListByName(ulong tenantId, string name, AdvancedEnumeratorParam<string> param);
             }
 
             """);
@@ -565,6 +565,28 @@ public class RelationTests : GeneratorTestsBase
             {
                 void Insert(UserNotice un);
                 IEnumerable<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<int> noticeId);
+            }
+
+            """);
+    }
+
+    [Fact]
+    public Task ListByMethodAllowsAdvancedEnumeratorParamForImplicitPrimaryKeyField()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class SimpleObject
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+                [SecondaryKey("Name")] public string Name { get; set; } = null!;
+            }
+
+            public interface ISimpleRelation : IRelation<SimpleObject>
+            {
+                IEnumerable<SimpleObject> ListByName(string name, AdvancedEnumeratorParam<ulong> param);
             }
 
             """);
@@ -834,6 +856,26 @@ public class RelationTests : GeneratorTestsBase
             public interface IEmailTable : IRelation<Person>
             {
                 ulong GatherByEmail(ICollection<Person> items, long skip, long take, Constraint<string> email);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task GatherByMethodAllowsCollectionImplementation()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class Item
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+            }
+
+            public interface IItemTable : IRelation<Item>
+            {
+                ulong GatherById(List<Item> items, long skip, long take, Constraint<ulong> id);
             }
             """);
     }

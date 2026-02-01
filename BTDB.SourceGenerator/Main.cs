@@ -558,13 +558,9 @@ public class SourceGenerator : IIncrementalGenerator
                         method.Locations[0]);
                 }
 
-                // Validate first parameter is ICollection<>
+                // Validate first parameter implements ICollection<>
                 var firstParam = method.Parameters[0];
-                if (firstParam.Type is not INamedTypeSymbol
-                    {
-                        TypeKind: TypeKind.Interface,
-                        OriginalDefinition.SpecialType: SpecialType.System_Collections_Generic_ICollection_T
-                    })
+                if (!ImplementsICollectionOfT(firstParam.Type))
                 {
                     return GenerationError("BTDB0023",
                         $"Method '{method.Name}' first parameter must implement ICollection<>",
@@ -900,6 +896,22 @@ public class SourceGenerator : IIncrementalGenerator
         return false;
     }
 
+    static bool ImplementsICollectionOfT(ITypeSymbol typeSymbol)
+    {
+        if (typeSymbol is not INamedTypeSymbol namedTypeSymbol)
+        {
+            return false;
+        }
+
+        if (namedTypeSymbol.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_ICollection_T)
+        {
+            return true;
+        }
+
+        return namedTypeSymbol.AllInterfaces.Any(static iface =>
+            iface.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_ICollection_T);
+    }
+
     static bool IsIOrderedDictionaryEnumerator(ITypeSymbol methodReturnType, ITypeSymbol keyType)
     {
         if (methodReturnType is INamedTypeSymbol
@@ -1194,17 +1206,15 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (hasAdvancedEnumeratorParam)
         {
-            if (isPrefixBased)
+            var fullIndexFields = GetFullIndexFields(indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys);
+            if (fullIndexFields.Length == 0 || paramCount > fi.Length || paramCount >= fullIndexFields.Length)
             {
-                if (paramCount >= fi.Length)
-                {
-                    return GenerationError("BTDB0016",
-                        $"Too many parameters for index '{indexName}' in method '{method.Name}'",
-                        method.Locations[0]);
-                }
+                return GenerationError("BTDB0016",
+                    $"Too many parameters for index '{indexName}' in method '{method.Name}'",
+                    method.Locations[0]);
             }
 
-            var nextFieldIndex = fi[paramCount];
+            var nextFieldIndex = fullIndexFields[paramCount];
             var nextField = fields[(int)nextFieldIndex];
             var aepTypeStr = aepGenericType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             if (!TypeUtilities.AreTypesCompatible(aepTypeStr, nextField.Type))
@@ -1284,6 +1294,28 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return false;
+    }
+
+    static ReadOnlySpan<uint> GetFullIndexFields(string indexName, uint[] primaryKeyFields, uint inKeyValueIndex,
+        (string Name, uint[] SecondaryKeyFields, uint ExplicitPrefixLength)[] secondaryKeys)
+    {
+        if (indexName == "Id")
+        {
+            if (inKeyValueIndex != uint.MaxValue && inKeyValueIndex < primaryKeyFields.Length)
+            {
+                return primaryKeyFields.AsSpan(0, (int)inKeyValueIndex);
+            }
+
+            return primaryKeyFields;
+        }
+
+        var skInfo = secondaryKeys.FirstOrDefault(sk => sk.Name == indexName);
+        if (string.IsNullOrEmpty(skInfo.Name))
+        {
+            return default;
+        }
+
+        return skInfo.SecondaryKeyFields;
     }
 
     static (string IndexName, bool HasOrDefault) StripVariant(

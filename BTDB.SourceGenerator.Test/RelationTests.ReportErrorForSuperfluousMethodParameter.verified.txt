@@ -2,18 +2,18 @@
   Diagnostics: [
     {
       Location: /*
-    // SecondaryKey("Name") includes primary key fields at the end; validation trims that tail.
-    IEnumerable<Person> ListByName(ulong tenantId, string name, AdvancedEnumeratorParam<uint> param);
-                        ^^^^^^^^^^
+    // AdvancedEnumeratorParam targets implicit primary key field; use mismatched type to validate checks.
+    IEnumerable<Person> ListByName(ulong tenantId, string name, AdvancedEnumeratorParam<string> param);
+                                                                                                ^^^^^
 }
 */
- : (15,24)-(15,34),
-      Message: Too many parameters for index 'Name' in method 'ListByName',
+ : (15,96)-(15,101),
+      Message: AdvancedEnumeratorParam generic type 'string' does not match field 'Id' type 'ulong' in method 'ListByName',
       Severity: Error,
       Descriptor: {
-        Id: BTDB0016,
-        Title: Too many parameters for index 'Name' in method 'ListByName',
-        MessageFormat: Too many parameters for index 'Name' in method 'ListByName',
+        Id: BTDB0031,
+        Title: AdvancedEnumeratorParam generic type 'string' does not match field 'Id' type 'ulong' in method 'ListByName',
+        MessageFormat: AdvancedEnumeratorParam generic type 'string' does not match field 'Id' type 'ulong' in method 'ListByName',
         Category: BTDB,
         DefaultSeverity: Error,
         IsEnabledByDefault: true

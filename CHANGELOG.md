@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source generator now accepts `GatherBy...` targets that implement `ICollection<T>` (for example `List<T>`), and allows `AdvancedEnumeratorParam` to target implicit primary key fields on secondary keys.
+
 ## 34.1.1
 
 ### Fixed
