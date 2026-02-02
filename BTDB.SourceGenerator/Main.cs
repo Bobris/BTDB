@@ -3460,6 +3460,9 @@ public class SourceGenerator : IIncrementalGenerator
         var dispatchers = new StringBuilder();
         foreach (var (name, type, resultType, ifaceName) in generationInfo.Dispatchers)
         {
+            const string dispatcherIndent = "               ";
+            var returnPrefix = resultType is null ? "" : "return ";
+            var returnNullLine = resultType is null ? $"\n{dispatcherIndent}return null;" : "";
             // language=c#
             dispatchers.Append($$"""
 
@@ -3468,8 +3471,7 @@ public class SourceGenerator : IIncrementalGenerator
                            return (container, message) =>
                            {
                                var res = nestedFactory(container, null);
-                               {{(resultType != null ? "return " : "")}}Unsafe.As<{{generationInfo.FullName}}>(res).{{name}}(Unsafe.As<{{type}}>(message));
-                               {{(resultType != null ? "" : "return null;")}}
+                               {{returnPrefix}}Unsafe.As<{{generationInfo.FullName}}>(res).{{name}}(Unsafe.As<{{type}}>(message));{{returnNullLine}}
                            };
                         };
                 """);

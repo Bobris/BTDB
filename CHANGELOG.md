@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source generator no longer emits an extra blank line in dispatcher factories.
+
 ## 34.1.2
 
 ### Fixed

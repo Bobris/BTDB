@@ -516,6 +516,42 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyTwoDispatchersGeneration()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            using System;
+            using BTDB.IOC;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public partial interface IDispatcher
+            {
+                public static unsafe partial delegate*<IContainer, object, object?> CreateVerifyDispatcher(IContainer container);
+                public static unsafe partial delegate*<IContainer, object, object?> CreateConsumeDispatcher(IContainer container);
+            }
+
+            public class Message
+            {
+                public string Text { get; set; }
+            }
+
+            public class MessageHandler : IDispatcher
+            {
+                public object? Verify(Message message)
+                {
+                    return null;
+                }
+
+                public void Consume(Message message)
+                {
+                    Console.WriteLine(message.Text);
+                }
+            }
+            ");
+    }
+
+    [Fact]
     public Task VerifyGenerateForOnAssembly()
     {
         // language=cs
