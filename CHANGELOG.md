@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.1.3
+
 ### Fixed
 
 - Source generator no longer emits an extra blank line in dispatcher factories.
