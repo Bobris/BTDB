@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+## 34.1.5
+
+### Fixed
+
+- Fixed creating the first write mapping in `OnDiskMemoryMappedFileCollection` when the backing file is still empty.
+
 ## 34.1.4
 
 ### Fixed
