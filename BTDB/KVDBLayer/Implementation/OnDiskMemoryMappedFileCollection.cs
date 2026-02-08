@@ -160,6 +160,7 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
 
             public void Init(ref MemWriter memWriter)
             {
+                _file.MapContent();
                 memWriter.Start = (nint)_file._pointer;
                 memWriter.Current = memWriter.Start + (nint)Ofs;
                 memWriter.End = memWriter.Start + (nint)_file._cachedLength;

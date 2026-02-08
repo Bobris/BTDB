@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Fixed the crash after compaction with OnDiskMemoryMappedFileCollection.
+
 ## 34.1.3
 
 ### Fixed
