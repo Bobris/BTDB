@@ -41,6 +41,20 @@ public class FileCollectionTests : IDisposable
         }
     }
 
+    [Fact]
+    public void CanCreateAndWriteMemoryMappedFileBackedByEmptyFile()
+    {
+        using var dc = new OnDiskMemoryMappedFileCollection(_dir);
+        var file = dc.AddFile("trl");
+        var writer = new MemWriter(file.GetAppenderWriter());
+        writer.WriteUInt8(42);
+        writer.Flush();
+
+        var data = new byte[1];
+        file.RandomRead(data, 0, false);
+        Assert.Equal((byte)42, data[0]);
+    }
+
     public void Dispose()
     {
         Directory.Delete(_dir, true);

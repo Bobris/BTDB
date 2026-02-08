@@ -65,7 +65,8 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
         void MapContent()
         {
             if (_accessor != null) return;
-            _memoryMappedFile = MemoryMappedFile.CreateFromFile(_stream, null, 0, MemoryMappedFileAccess.ReadWrite,
+            var capacity = Math.Max(1, _cachedLength);
+            _memoryMappedFile = MemoryMappedFile.CreateFromFile(_stream, null, capacity, MemoryMappedFileAccess.ReadWrite,
                 HandleInheritability.None, true);
             _accessor = _memoryMappedFile!.CreateViewAccessor();
             _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _pointer);
