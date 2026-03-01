@@ -2313,4 +2313,111 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task ClassRelationItemSupportsInterfaceContractHooks()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.IOC;
+            using BTDB.ODBLayer;
+
+            public interface IContract
+            {
+                [PrimaryKey(1)] ulong Id { get; set; }
+                string Name { get; set; }
+
+                [OnSerialize]
+                void Normalize();
+
+                [OnBeforeRemove]
+                bool CheckBeforeRemove(IObjectDBTransaction transaction, IContainer container);
+            }
+
+            public partial class Contract : IContract
+            {
+            }
+
+            public interface IContractTable : IRelation<Contract>
+            {
+                Contract FindById(ulong id);
+                IEnumerable<Contract> ListById();
+            }
+            """,
+            """
+            public partial class Contract
+            {
+                public virtual ulong Id { get; set; }
+                public virtual string Name { get; set; }
+
+                public virtual void Normalize()
+                {
+                }
+
+                public virtual bool CheckBeforeRemove(global::BTDB.ODBLayer.IObjectDBTransaction transaction,
+                    global::BTDB.IOC.IContainer container)
+                {
+                    return true;
+                }
+            }
+            """);
+    }
+
+    [Fact]
+    public Task ClassRelationItemSupportsInheritedInterfaceContract()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public interface IBaseEntity
+            {
+                [PrimaryKey(1)] ulong TenantId { get; set; }
+
+                [OnSerialize]
+                void BaseSerialize();
+            }
+
+            public interface ILeftEntity : IBaseEntity
+            {
+            }
+
+            public interface IRightEntity : IBaseEntity
+            {
+            }
+
+            public interface IEntity : ILeftEntity, IRightEntity
+            {
+                string Name { get; set; }
+
+                [OnBeforeRemove]
+                void BeforeRemove();
+            }
+
+            public partial class Entity : IEntity
+            {
+            }
+
+            public interface IEntityTable : IRelation<Entity>
+            {
+                Entity FindById(ulong tenantId);
+            }
+            """,
+            """
+            public partial class Entity
+            {
+                public virtual ulong TenantId { get; set; }
+                public virtual string Name { get; set; }
+
+                public virtual void BaseSerialize()
+                {
+                }
+
+                public virtual void BeforeRemove()
+                {
+                }
+            }
+            """);
+    }
 }

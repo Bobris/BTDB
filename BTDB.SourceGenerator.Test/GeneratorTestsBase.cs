@@ -16,7 +16,8 @@ namespace BTDB.SourceGenerator.Tests;
 
 public class GeneratorTestsBase
 {
-    protected static Task VerifySourceGenerator(string sourceCode)
+    protected static Task VerifySourceGenerator(string sourceCode,
+        string? sourceCodeForCompilationValidation = null)
     {
         var generator = new SourceGenerator();
         var driver = CSharpGeneratorDriver.Create([generator.AsSourceGenerator()],
@@ -31,6 +32,12 @@ public class GeneratorTestsBase
             .Select(source => CSharpSyntaxTree.ParseText(source.SourceText, path: source.HintName))
             .ToList();
         var generatedCompilation = compilation.AddSyntaxTrees(generatedSources);
+        if (sourceCodeForCompilationValidation is not null)
+        {
+            generatedCompilation = generatedCompilation.AddSyntaxTrees(
+                CSharpSyntaxTree.ParseText(sourceCodeForCompilationValidation, path: "ValidationOnly.cs"));
+        }
+
         var compilationErrors = generatedCompilation.GetDiagnostics()
             .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
             .ToArray();

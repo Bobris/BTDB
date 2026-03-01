@@ -570,6 +570,55 @@ because they need to deserialize all removing items.
     }
 ```
 
+## Interface contracts for class relation items
+
+For source-generated relations, `T` in `IRelation<T>` is still a class. The generator can use interfaces implemented by
+that class (including inherited interfaces) as the source of persisted fields/indexes and lifecycle hooks.
+`OnSerialize` and `OnBeforeRemove` methods can be declared on the interface contract.
+
+```C#
+    public interface IRoom
+    {
+        [PrimaryKey(1)]
+        ulong CompanyId { get; set; }
+
+        string Name { get; set; }
+
+        [OnSerialize]
+        void Normalize();
+
+        [OnBeforeRemove]
+        bool CanRemove(IObjectDBTransaction transaction);
+    }
+
+    public partial class Room : IRoom
+    {
+    }
+
+    public partial class Room
+    {
+        public virtual ulong CompanyId { get; set; }
+        public virtual string Name { get; set; } = "";
+
+        public virtual void Normalize()
+        {
+        }
+
+        public virtual bool CanRemove(IObjectDBTransaction transaction)
+        {
+            return false;
+        }
+    }
+
+    public interface IRoomTable : IRelation<Room>
+    {
+        Room FindById(ulong companyId);
+    }
+```
+
+This is useful when the class is generated in multiple partial declarations and one generator provides the interface
+contract while another provides implementations.
+
 ## ShallowUpsertWithSizes
 
 ```C#

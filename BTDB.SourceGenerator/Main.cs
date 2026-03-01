@@ -1684,6 +1684,8 @@ public class SourceGenerator : IIncrementalGenerator
                 }).ToArray();
         }
 
+        var relationItemMembers = GetRelationItemMembersIncludingInheritance(symbol).ToArray();
+
         var propertyInfos = symbol.GetMembers()
             .OfType<IPropertySymbol>()
             .Where(p => !p.IsStatic)
@@ -1716,7 +1718,7 @@ public class SourceGenerator : IIncrementalGenerator
                             p.DeclaredAccessibility != Accessibility.Public, true, p.Name);
                     }))
             .ToArray();
-        var fields = GetAllMembersIncludingBase(symbol)
+        var fields = relationItemMembers
             .OfType<IFieldSymbol>()
             .Where(f => !f.IsStatic && SerializableType(f.Type))
             .Where(f =>
@@ -1730,7 +1732,7 @@ public class SourceGenerator : IIncrementalGenerator
                 f.Type.IsReferenceType, f.Name, null, null, false,
                 f.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 ExtractIndexInfo(f.GetAllAttributes())))
-            .Concat(GetAllMembersIncludingBase(symbol)
+            .Concat(relationItemMembers
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic && SerializableType(p.Type))
                 .Where(p =>
@@ -1742,24 +1744,36 @@ public class SourceGenerator : IIncrementalGenerator
                 .Select(p =>
                 {
                     var isReadOnly = p.SetMethod is null;
-                    var getterName = !IsDefaultMethodImpl(p.GetMethod!.DeclaringSyntaxReferences)
-                        ? p.GetMethod.Name
-                        : null;
-                    var setterName = isReadOnly
-                        ? ""
-                        : !IsDefaultMethodImpl(p.SetMethod!.DeclaringSyntaxReferences)
-                            ? p.SetMethod.Name
-                            : null;
-                    var backingName = getterName == null || setterName == null
-                        ? $"<{p.Name}>k__BackingField"
-                        : null;
-                    if (getterName != null && backingName == null)
+                    string? getterName;
+                    string? setterName;
+                    string? backingName;
+                    if (p.ContainingType.TypeKind == TypeKind.Interface)
                     {
-                        backingName = ExtractPropertyFromGetter(p.GetMethod!.DeclaringSyntaxReferences, model);
-                        if (backingName != null) getterName = null;
+                        getterName = p.GetMethod?.Name;
+                        setterName = isReadOnly ? null : p.SetMethod?.Name;
+                        backingName = null;
                     }
+                    else
+                    {
+                        getterName = !IsDefaultMethodImpl(p.GetMethod!.DeclaringSyntaxReferences)
+                            ? p.GetMethod.Name
+                            : null;
+                        setterName = isReadOnly
+                            ? ""
+                            : !IsDefaultMethodImpl(p.SetMethod!.DeclaringSyntaxReferences)
+                                ? p.SetMethod.Name
+                                : null;
+                        backingName = getterName == null || setterName == null
+                            ? $"<{p.Name}>k__BackingField"
+                            : null;
+                        if (getterName != null && backingName == null)
+                        {
+                            backingName = ExtractPropertyFromGetter(p.GetMethod!.DeclaringSyntaxReferences, model);
+                            if (backingName != null) getterName = null;
+                        }
 
-                    if (isReadOnly) setterName = null;
+                        if (isReadOnly) setterName = null;
+                    }
 
                     return new FieldsInfo(p.Name,
                         p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
@@ -1771,7 +1785,7 @@ public class SourceGenerator : IIncrementalGenerator
                         ExtractIndexInfo(p.GetAllAttributes()));
                 })).ToArray();
 
-        var fieldTypes = symbol.GetMembers()
+        var fieldTypes = relationItemMembers
             .OfType<IFieldSymbol>()
             .Where(f => !f.IsStatic)
             .Where(f =>
@@ -1780,7 +1794,7 @@ public class SourceGenerator : IIncrementalGenerator
                 f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
                 || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
             .Select(f => f.Type)
-            .Concat(symbol.GetMembers()
+            .Concat(relationItemMembers
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic)
                 .Where(p =>
@@ -1810,7 +1824,9 @@ public class SourceGenerator : IIncrementalGenerator
 
         var methods = new List<MethodInfo>();
 
-        foreach (var methodSymbol in GetAllMembersIncludingBase(symbol).OfType<IMethodSymbol>().Where(m => m
+        var relationItemMethods = relationItemMembers.OfType<IMethodSymbol>();
+
+        foreach (var methodSymbol in relationItemMethods.Where(m => m
                      .GetAttributes().Any(a =>
                          a.AttributeClass?.Name == OnSerializeAttributeName && a.AttributeClass.InODBLayerNamespace())))
         {
@@ -1843,10 +1859,12 @@ public class SourceGenerator : IIncrementalGenerator
 
             methods.Add(new(methodSymbol.Name,
                 methodSymbol.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                [], methodSymbol.DeclaredAccessibility is Accessibility.Public, null, Purpose.OnSerialize));
+                [], methodSymbol.DeclaredAccessibility is Accessibility.Public,
+                methodSymbol.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                Purpose.OnSerialize));
         }
 
-        foreach (var methodSymbol in GetAllMembersIncludingBase(symbol).OfType<IMethodSymbol>().Where(m => m
+        foreach (var methodSymbol in relationItemMethods.Where(m => m
                      .GetAttributes().Any(a =>
                          a.AttributeClass?.Name == OnBeforeRemoveAttributeName &&
                          a.AttributeClass.InODBLayerNamespace())))
@@ -1879,7 +1897,9 @@ public class SourceGenerator : IIncrementalGenerator
                         ? CSharpSyntaxUtilities.FormatLiteral(p.ExplicitDefaultValue, new(p.Type))
                         : null,
                     GetEnumUnderlyingType(p.Type))).ToArray(),
-                methodSymbol.DeclaredAccessibility is Accessibility.Public, null, Purpose.OnBeforeRemove));
+                methodSymbol.DeclaredAccessibility is Accessibility.Public,
+                methodSymbol.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                Purpose.OnBeforeRemove));
         }
 
         // No IOC and no metadata => no generation
@@ -2283,6 +2303,108 @@ public class SourceGenerator : IIncrementalGenerator
             {
                 yield return methodSymbol;
             }
+        }
+    }
+
+    static IEnumerable<ISymbol> GetRelationItemMembersIncludingInheritance(INamedTypeSymbol symbol)
+    {
+        var members = new List<ISymbol>();
+        var byKey = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (symbol.TypeKind != TypeKind.Interface)
+        {
+            foreach (var member in GetAllMembersIncludingBase(symbol))
+            {
+                AddOrReplaceRelationItemMember(member, byKey, members);
+            }
+
+            var visitedClassInterfaces = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+            foreach (var iface in symbol.AllInterfaces.OrderBy(
+                         i => i.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                         StringComparer.Ordinal))
+            {
+                CollectRelationInterfaceMembers(iface, visitedClassInterfaces, byKey, members);
+            }
+
+            return members;
+        }
+
+        var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        CollectRelationInterfaceMembers(symbol, visited, byKey, members);
+        return members;
+    }
+
+    static void CollectRelationInterfaceMembers(INamedTypeSymbol symbol,
+        HashSet<INamedTypeSymbol> visited,
+        Dictionary<string, int> byKey,
+        List<ISymbol> members)
+    {
+        if (!visited.Add(symbol)) return;
+
+        foreach (var member in symbol.GetMembers())
+        {
+            AddOrReplaceRelationItemMember(member, byKey, members);
+        }
+
+        foreach (var baseInterface in symbol.Interfaces.OrderBy(
+                     i => i.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                     StringComparer.Ordinal))
+        {
+            CollectRelationInterfaceMembers(baseInterface, visited, byKey, members);
+        }
+    }
+
+    static void AddOrReplaceRelationItemMember(ISymbol member, Dictionary<string, int> byKey, List<ISymbol> members)
+    {
+        if (member is not (IFieldSymbol or IPropertySymbol or IMethodSymbol))
+        {
+            return;
+        }
+
+        var key = RelationItemMemberKey(member);
+        if (byKey.TryGetValue(key, out var index))
+        {
+            if (HasRelationContractAttribute(member) && !HasRelationContractAttribute(members[index]))
+            {
+                members[index] = member;
+            }
+
+            return;
+        }
+
+        byKey[key] = members.Count;
+        members.Add(member);
+    }
+
+    static bool HasRelationContractAttribute(ISymbol member)
+    {
+        foreach (var attr in member.GetAttributes())
+        {
+            var attrName = attr.AttributeClass?.Name;
+            if (attrName is "PrimaryKeyAttribute" or "InKeyValueAttribute" or "SecondaryKeyAttribute" or
+                "PersistedNameAttribute" or "NotStoredAttribute" or OnSerializeAttributeName or
+                OnBeforeRemoveAttributeName)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    static string RelationItemMemberKey(ISymbol member)
+    {
+        switch (member)
+        {
+            case IFieldSymbol field:
+                return $"F:{field.Name}:{field.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}";
+            case IPropertySymbol property:
+                return
+                    $"P:{property.Name}:{property.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}({string.Join(",", property.Parameters.Select(p => p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))})";
+            case IMethodSymbol method:
+                return
+                    $"M:{method.Name}({string.Join(",", method.Parameters.Select(p => p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))}){method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}";
+            default:
+                return member.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         }
     }
 
@@ -3286,8 +3408,9 @@ public class SourceGenerator : IIncrementalGenerator
                 {
                     if (m.IsPublic)
                     {
+                        var onSerializeInvokeType = NormalizeType(m.DefinedInType ?? generationInfo.FullName);
                         metadataCode.Append($"""
-                                        Unsafe.As<{generationInfo.FullName}>(@this).{m.Name}();
+                                        Unsafe.As<{onSerializeInvokeType}>(@this).{m.Name}();
 
                             """);
                     }
@@ -3389,8 +3512,10 @@ public class SourceGenerator : IIncrementalGenerator
                     var maybeOr = m.ResultType == "void" ? "" : "res |= ";
                     if (m.IsPublic)
                     {
+                        var onBeforeRemoveInvokeType = NormalizeType(m.DefinedInType ?? generationInfo.FullName);
+                        var useLocalVal = onBeforeRemoveInvokeType == NormalizeType(generationInfo.FullName);
                         metadataCode.Append($"""
-                                            {maybeOr}val.{m.Name}({OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex)});
+                                            {maybeOr}{(useLocalVal ? "val" : $"Unsafe.As<{onBeforeRemoveInvokeType}>(value)")}.{m.Name}({OnBeforeRemoveCallParams(m.Parameters, ref paramIocIndex)});
 
                             """);
                     }
