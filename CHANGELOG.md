@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.2.0
+
 ### Added
 
 - Source generator relations now support class relation items that use interface contracts for persisted properties/indexes and lifecycle hooks (`OnSerialize`, `OnBeforeRemove`), including inherited interface members.
