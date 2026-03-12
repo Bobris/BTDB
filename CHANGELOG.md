@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+- `CompactorScheduler` now tracks compaction requests per `IKeyValueDB`, so shared schedulers compact only the databases that were advised to run.
+
 ## 34.2.0
 
 ### Added

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -6,17 +7,23 @@ namespace BTDB.KVDBLayer;
 
 public class CompactorScheduler : IDisposable, ICompactorScheduler
 {
-    Func<CancellationToken, ValueTask<bool>>[] _coreActions = [];
+    sealed class DbCompactionInfo
+    {
+        public required IKeyValueDB KeyValueDB { get; init; }
+        public bool FirstTime = true;
+        public long DueAtTicks;
+    }
+
+    static readonly TimeSpan ImmediateRunDelay = TimeSpan.FromMilliseconds(1);
+    readonly List<DbCompactionInfo> _dbCompactions = [];
     readonly Timer _timer;
     CancellationTokenSource _cancellationSource = new CancellationTokenSource();
     readonly object _lock = new();
-    bool _running; //compacting in progress
-    bool _advisedRunning; //was advised again during compacting
-    bool _firstTime; //in time period before first compact (try save resource during app startup)
-    bool _timerStarted; //timer is planned
+    bool _running; // compacting in progress
     bool _disposed;
     internal TimeSpan WaitTime { get; set; }
 
+    // ReSharper disable once ReplaceWithFieldKeyword nullable mismatch
     static ICompactorScheduler? _instance;
 
     public static ICompactorScheduler Instance
@@ -36,27 +43,21 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
     internal CompactorScheduler()
     {
         _timer = new Timer(OnTimer);
-        _firstTime = true;
         WaitTime = TimeSpan.FromMinutes(10 + new Random().NextDouble() * 5);
     }
 
-    public Func<CancellationToken, ValueTask<bool>> AddCompactAction(
-        Func<CancellationToken, ValueTask<bool>> compactAction)
+    public void AddCompactAction(IKeyValueDB keyValueDB)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(CompactorScheduler));
-        while (true)
+        lock (_lock)
         {
-            var oldA = _coreActions;
-            var newA = oldA;
-            Array.Resize(ref newA, oldA.Length + 1);
-            newA[oldA.Length] = compactAction;
-            if (Interlocked.CompareExchange(ref _coreActions, newA, oldA) == oldA) break;
+            if (FindDbCompactionUnsafe(keyValueDB) != null)
+                return;
+            _dbCompactions.Add(new DbCompactionInfo { KeyValueDB = keyValueDB });
         }
-
-        return compactAction;
     }
 
-    public void RemoveCompactAction(Func<CancellationToken, ValueTask<bool>> compactAction)
+    public void RemoveCompactAction(IKeyValueDB keyValueDB)
     {
         if (_disposed) return;
         lock (_lock)
@@ -68,78 +69,88 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
             }
 
             _cancellationSource = new CancellationTokenSource();
-            while (true)
-            {
-                var oldA = _coreActions;
-                var newA = oldA;
-                var idx = Array.IndexOf(newA, compactAction);
-                if (idx < 0) break;
-                Array.Resize(ref newA, oldA.Length - 1);
-                if (idx > 0) Array.Copy(oldA, 0, newA, 0, idx);
-                if (idx < newA.Length) Array.Copy(oldA, idx + 1, newA, idx, newA.Length - idx);
-                if (Interlocked.CompareExchange(ref _coreActions, newA, oldA) == oldA) break;
-            }
+            var dbCompaction = FindDbCompactionUnsafe(keyValueDB);
+            if (dbCompaction == null) return;
+            _dbCompactions.Remove(dbCompaction);
+            RescheduleTimerUnsafe();
         }
     }
 
-    public void AdviceRunning(bool openingDb)
+    public void AdviceRunning(IKeyValueDB keyValueDB, bool openingDb)
     {
         lock (_lock)
         {
-            if (_running)
+            var dbCompaction = FindDbCompactionUnsafe(keyValueDB);
+            if (dbCompaction == null) return;
+            ScheduleDbCompactionUnsafe(dbCompaction, openingDb);
+            if (!_running)
             {
-                _advisedRunning = true;
-                return;
-            }
-
-            if (openingDb)
-            {
-                if (_timerStarted)
-                    return;
-                _timer.Change(WaitTime, TimeSpan.FromMilliseconds(-1));
-                _timerStarted = true;
-            }
-            else if (!_firstTime || !_timerStarted) //!_timerStared only when not AdviceRunning(true) was called
-            {
-                _timer.Change(1, -1);
-                _timerStarted = true;
+                RescheduleTimerUnsafe();
             }
         }
     }
 
     // ReSharper disable once AsyncVoidMethod
-    async void OnTimer(object state)
+    async void OnTimer(object? state)
     {
+        List<DbCompactionInfo>? dueCompactions;
         lock (_lock)
         {
-            _firstTime = false;
-            _timerStarted = false;
             if (_running) return;
+            dueCompactions = TakeDueCompactionsUnsafe();
+            if (dueCompactions == null)
+            {
+                RescheduleTimerUnsafe();
+                return;
+            }
+
             _running = true;
         }
 
         try
         {
-            var needed = false;
-            do
+            while (true)
             {
-                _advisedRunning = false;
-                var actions = _coreActions;
-                for (var i = 0; i < actions.Length; i++)
+                List<DbCompactionInfo>? neededAgain = null;
+                foreach (var dbCompaction in dueCompactions)
                 {
                     if (_cancellationSource.IsCancellationRequested) break;
-                    needed |= await actions[i](_cancellationSource.Token);
-                }
-            } while (_advisedRunning);
+                    var needed = await dbCompaction.KeyValueDB.Compact(_cancellationSource.Token);
 
-            lock (_lock)
-            {
-                _running = false;
-                Monitor.PulseAll(_lock);
-                needed |= _advisedRunning;
-                if (needed && !_cancellationSource.IsCancellationRequested)
+                    if (needed)
+                    {
+                        neededAgain ??= [];
+                        neededAgain.Add(dbCompaction);
+                    }
+
+                    if (_cancellationSource.IsCancellationRequested) break;
+                }
+
+                lock (_lock)
                 {
-                    _timer.Change(WaitTime, TimeSpan.FromMilliseconds(-1));
+                    if (_cancellationSource.IsCancellationRequested)
+                    {
+                        _running = false;
+                        Monitor.PulseAll(_lock);
+                        return;
+                    }
+
+                    if (neededAgain != null)
+                    {
+                        foreach (var dbCompaction in neededAgain)
+                        {
+                            ScheduleDbCompactionAfterWaitUnsafe(dbCompaction);
+                        }
+                    }
+
+                    dueCompactions = TakeDueCompactionsUnsafe();
+                    if (dueCompactions == null)
+                    {
+                        _running = false;
+                        Monitor.PulseAll(_lock);
+                        RescheduleTimerUnsafe();
+                        return;
+                    }
                 }
             }
         }
@@ -149,6 +160,7 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
             {
                 _running = false;
                 Monitor.PulseAll(_lock);
+                RescheduleTimerUnsafe();
             }
         }
     }
@@ -166,5 +178,91 @@ public class CompactorScheduler : IDisposable, ICompactorScheduler
         }
 
         _timer.Dispose();
+    }
+
+    DbCompactionInfo? FindDbCompactionUnsafe(IKeyValueDB keyValueDB)
+    {
+        for (var i = 0; i < _dbCompactions.Count; i++)
+        {
+            if (ReferenceEquals(_dbCompactions[i].KeyValueDB, keyValueDB))
+                return _dbCompactions[i];
+        }
+
+        return null;
+    }
+
+    void ScheduleDbCompactionUnsafe(DbCompactionInfo dbCompaction, bool openingDb)
+    {
+        if (openingDb)
+        {
+            if (dbCompaction.DueAtTicks != 0)
+                return;
+            dbCompaction.DueAtTicks = DateTime.UtcNow.Add(WaitTime).Ticks;
+            return;
+        }
+
+        if (!dbCompaction.FirstTime || dbCompaction.DueAtTicks == 0)
+        {
+            dbCompaction.DueAtTicks = DateTime.UtcNow.Add(ImmediateRunDelay).Ticks;
+        }
+    }
+
+    void ScheduleDbCompactionAfterWaitUnsafe(DbCompactionInfo dbCompaction)
+    {
+        var dueAtTicks = DateTime.UtcNow.Add(WaitTime).Ticks;
+        if (dbCompaction.DueAtTicks == 0 || dbCompaction.DueAtTicks > dueAtTicks)
+        {
+            dbCompaction.DueAtTicks = dueAtTicks;
+        }
+    }
+
+    List<DbCompactionInfo>? TakeDueCompactionsUnsafe()
+    {
+        List<DbCompactionInfo>? dueCompactions = null;
+        var nowTicks = DateTime.UtcNow.Ticks;
+        for (var i = 0; i < _dbCompactions.Count; i++)
+        {
+            var dbCompaction = _dbCompactions[i];
+            if (dbCompaction.DueAtTicks == 0 || dbCompaction.DueAtTicks > nowTicks)
+                continue;
+            dbCompaction.FirstTime = false;
+            dbCompaction.DueAtTicks = 0;
+            dueCompactions ??= [];
+            dueCompactions.Add(dbCompaction);
+        }
+
+        return dueCompactions;
+    }
+
+    void RescheduleTimerUnsafe()
+    {
+        if (_disposed)
+            return;
+
+        long nextDueAtTicks = 0;
+        for (var i = 0; i < _dbCompactions.Count; i++)
+        {
+            var dueAtTicks = _dbCompactions[i].DueAtTicks;
+            if (dueAtTicks == 0)
+                continue;
+            if (nextDueAtTicks == 0 || dueAtTicks < nextDueAtTicks)
+            {
+                nextDueAtTicks = dueAtTicks;
+            }
+        }
+
+        if (nextDueAtTicks == 0)
+        {
+            _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            return;
+        }
+
+        var wait = new DateTime(nextDueAtTicks, DateTimeKind.Utc) - DateTime.UtcNow;
+        if (wait < ImmediateRunDelay)
+        {
+            wait = ImmediateRunDelay;
+        }
+
+        _timer.Change(wait, Timeout.InfiniteTimeSpan);
     }
 }

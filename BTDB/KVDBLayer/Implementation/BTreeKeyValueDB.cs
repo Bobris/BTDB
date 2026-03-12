@@ -60,7 +60,6 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     readonly IFileCollectionWithFileInfos _fileCollection;
     readonly Dictionary<long, object> _subDBs = new();
-    readonly Func<CancellationToken, ValueTask<bool>>? _compactFunc;
     readonly bool _readOnly;
     readonly bool _lenientOpen;
     bool _disposed = false;
@@ -117,8 +116,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         if (!_readOnly)
         {
             AdjustFileSize();
-            _compactFunc = _compactorScheduler?.AddCompactAction(Compact);
-            _compactorScheduler?.AdviceRunning(true);
+            _compactorScheduler?.AddCompactAction(this);
+            _compactorScheduler?.AdviceRunning(this, true);
         }
     }
 
@@ -982,7 +981,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     public void Dispose()
     {
-        _compactorScheduler?.RemoveCompactAction(_compactFunc!);
+        _compactorScheduler?.RemoveCompactAction(this);
         lock (_writeLock)
         {
             if (_writingTransaction != null)
@@ -1316,7 +1315,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         if (root.TrLogFileId != _fileIdWithTransactionLog && root.TrLogFileId != 0)
         {
-            _compactorScheduler?.AdviceRunning(false);
+            _compactorScheduler?.AdviceRunning(this, false);
         }
 
         root.TrLogFileId = _fileIdWithTransactionLog;
