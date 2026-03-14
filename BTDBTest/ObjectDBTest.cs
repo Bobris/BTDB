@@ -78,6 +78,17 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     {
     }
 
+    [Generate]
+    public class ElementOrderInfoBase<TId, TType>
+    {
+        public TId Id { get; set; } = default!;
+        public TType Type { get; set; } = default!;
+    }
+
+    public class JourneyMapElementOrderInfo : ElementOrderInfoBase<ulong, int>
+    {
+    }
+
     public ObjectDbTest()
     {
         _allocator = new(new MallocAllocator());
@@ -205,6 +216,23 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             var p = tr.Enumerate<Person>().First();
             Assert.Equal("Bobris", p.Name);
             Assert.Equal(35u, p.Age);
+        }
+    }
+
+    [Fact]
+    public void InsertDerivedClassFromGenericBase()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            tr.Store(new JourneyMapElementOrderInfo { Id = 42, Type = 7 });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var item = tr.Enumerate<JourneyMapElementOrderInfo>().First();
+            Assert.Equal<ulong>(42, item.Id);
+            Assert.Equal(7, item.Type);
         }
     }
 
