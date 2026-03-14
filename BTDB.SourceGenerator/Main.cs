@@ -405,7 +405,7 @@ public class SourceGenerator : IIncrementalGenerator
         // Check each method in the interface
         foreach (var method in methods)
         {
-            if (method.Name == "GetEnumerator" && method.ReturnType.IsIEnumeratorOfT())
+            if (method.Name == "GetEnumerator")
                 continue;
             if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
             {
