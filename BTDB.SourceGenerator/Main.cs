@@ -1726,12 +1726,19 @@ public class SourceGenerator : IIncrementalGenerator
                 !HasDependencyAttribute(f) &&
                 f.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute")
                 || f.GetAttributes().Any(a => a.AttributeClass?.Name == "PersistedNameAttribute"))
-            .Select(f => new FieldsInfo(f.Name,
-                f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), GenericTypeFrom(f.Type),
-                ExtractPersistedName(f),
-                f.Type.IsReferenceType, f.Name, null, null, false,
-                f.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                ExtractIndexInfo(f.GetAllAttributes())))
+            .Select(f =>
+            {
+                var ownerGenericInfo = ExtractOwnerGenericInfo(f.ContainingType);
+                return new FieldsInfo(f.Name,
+                    f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), GenericTypeFrom(f.Type),
+                    ExtractPersistedName(f),
+                    f.Type.IsReferenceType, f.Name, null, null, false,
+                    f.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    ownerGenericInfo.OwnerGenericFullName,
+                    ownerGenericInfo.OwnerGenericArguments,
+                    ownerGenericInfo.OwnerGenericParameters,
+                    ExtractIndexInfo(f.GetAllAttributes()));
+            })
             .Concat(relationItemMembers
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic && SerializableType(p.Type))
@@ -1776,6 +1783,7 @@ public class SourceGenerator : IIncrementalGenerator
                         if (isReadOnly) setterName = null;
                     }
 
+                    var ownerGenericInfo = ExtractOwnerGenericInfo(implementationProperty.ContainingType);
                     return new FieldsInfo(p.Name,
                         implementationProperty.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                         GenericTypeFrom(implementationProperty.OriginalDefinition.Type),
@@ -1783,6 +1791,9 @@ public class SourceGenerator : IIncrementalGenerator
                         implementationProperty.Type.IsReferenceType,
                         backingName, getterName, setterName, isReadOnly,
                         implementationProperty.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        ownerGenericInfo.OwnerGenericFullName,
+                        ownerGenericInfo.OwnerGenericArguments,
+                        ownerGenericInfo.OwnerGenericParameters,
                         ExtractIndexInfo(p.GetAllAttributes()));
                 })).ToArray();
 
@@ -1813,10 +1824,7 @@ public class SourceGenerator : IIncrementalGenerator
             GatherCollections(model, fieldTypes, collections, nested, processed);
         }
 
-        var genericParameters = symbol.TypeParameters.Zip(symbol.TypeArguments, (p, a) => (p, a)).Select(p =>
-            new GenericParameter(p.p.Name, new(p.a),
-                p.p.HasReferenceTypeConstraint, p.p.HasValueTypeConstraint, p.p.HasConstructorConstraint,
-                p.p.ConstraintTypes.Select(pp => new TypeRef(pp)).ToArray())).ToArray();
+        var genericParameters = ExtractGenericParameters(symbol);
 
         if (namespaceName == "System" && className == "Tuple")
         {
@@ -1963,6 +1971,28 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         return argType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    }
+
+    static EquatableArray<GenericParameter> ExtractGenericParameters(INamedTypeSymbol symbol)
+    {
+        return symbol.TypeParameters.Zip(symbol.TypeArguments, (p, a) => (p, a)).Select(p =>
+            new GenericParameter(p.p.Name, new(p.a),
+                p.p.HasReferenceTypeConstraint, p.p.HasValueTypeConstraint, p.p.HasConstructorConstraint,
+                p.p.ConstraintTypes.Select(pp => new TypeRef(pp)).ToArray())).ToArray();
+    }
+
+    static OwnerGenericInfo ExtractOwnerGenericInfo(INamedTypeSymbol symbol)
+    {
+        if (!symbol.IsGenericType)
+        {
+            return new(null, null, []);
+        }
+
+        var originalDefinition = symbol.OriginalDefinition;
+        return new(
+            originalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            string.Join(", ", symbol.TypeArguments.Select(t => t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))),
+            ExtractGenericParameters(originalDefinition));
     }
 
     static bool SerializableType(ITypeSymbol typeSymbol)
@@ -2273,7 +2303,7 @@ public class SourceGenerator : IIncrementalGenerator
             var name = "Item" + (i + 1);
             fields.Add(new(name, type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), GenericTypeFrom(type),
                 null, type.IsReferenceType, name, null, null, false,
-                "", EquatableArray<IndexInfo>.Empty));
+                "", null, null, [], EquatableArray<IndexInfo>.Empty));
         }
 
         return new(fields.ToArray());
@@ -3293,7 +3323,27 @@ public class SourceGenerator : IIncrementalGenerator
                         """);
                     if (field.BackingName != null)
                     {
-                        if (generationInfo.GenericParameters.IsEmpty)
+                        var useGenericFieldAdapter = field.OwnerGenericFullName != null &&
+                                                     field.OwnerFullName != generationInfo.FullName;
+                        if (useGenericFieldAdapter)
+                        {
+                            var adapterGenericParameters = field.OwnerGenericParameters.ToArray();
+                            var ownerGenericBaseName = field.OwnerGenericFullName!;
+                            ownerGenericBaseName =
+                                ownerGenericBaseName.Substring(0, ownerGenericBaseName.IndexOf('<'));
+                            var ownerAdapterType =
+                                $"{ownerGenericBaseName}<{string.Join(", ", adapterGenericParameters.Select(p => p.Name))}>";
+                            // language=c#
+                            declarations.Append($$"""
+                                    public static class FieldAdapter{{fieldIndex}}<{{string.Join(", ", adapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(adapterGenericParameters)}}
+                                    {
+                                        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{{field.BackingName}}")]
+                                        extern public static ref {{NormalizeType(field.GenericType)}} Field({{ownerAdapterType}} @this);
+                                    }
+
+                                """);
+                        }
+                        else if (generationInfo.GenericParameters.IsEmpty)
                         {
                             // language=c#
                             declarations.Append($"""
@@ -3314,7 +3364,7 @@ public class SourceGenerator : IIncrementalGenerator
 
                         // language=c#
                         metadataCode.Append($"""
-                                            ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref {ActivatorName(generationInfo)}Field{fieldIndex}(dummy)),
+                                            ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref {(useGenericFieldAdapter ? $"{ActivatorName(generationInfo)}FieldAdapter{fieldIndex}<{field.OwnerGenericArguments}>.Field" : $"{ActivatorName(generationInfo)}Field{fieldIndex}")}(dummy)),
 
                             """);
                     }
@@ -3796,10 +3846,16 @@ public class SourceGenerator : IIncrementalGenerator
 
     static string GenericConstrains(GenerationInfo generationInfo)
     {
-        if (!generationInfo.GenericParameters.Any(SomeConstraint)) return "";
+        return GenericConstrains(generationInfo.GenericParameters);
+    }
+
+    static string GenericConstrains(IEnumerable<GenericParameter> genericParametersSource)
+    {
+        var genericParameters = genericParametersSource.ToArray();
+        if (!genericParameters.Any(SomeConstraint)) return "";
 
         return
-            $" where {string.Join(", ", generationInfo.GenericParameters.Where(SomeConstraint).Select(p => $"{p.Name}: " + string.Join(", ", EnumerateConstraints(p))))}";
+            $" where {string.Join(", ", genericParameters.Where(SomeConstraint).Select(p => $"{p.Name}: " + string.Join(", ", EnumerateConstraints(p))))}";
     }
 
     static IEnumerable<string> EnumerateConstraints(GenericParameter genericParameter)
@@ -5565,7 +5621,15 @@ record FieldsInfo(
     string? SetterName,
     bool ReadOnly,
     string OwnerFullName,
+    string? OwnerGenericFullName,
+    string? OwnerGenericArguments,
+    EquatableArray<GenericParameter> OwnerGenericParameters,
     EquatableArray<IndexInfo> Indexes);
+
+record OwnerGenericInfo(
+    string? OwnerGenericFullName,
+    string? OwnerGenericArguments,
+    EquatableArray<GenericParameter> OwnerGenericParameters);
 
 enum Purpose
 {

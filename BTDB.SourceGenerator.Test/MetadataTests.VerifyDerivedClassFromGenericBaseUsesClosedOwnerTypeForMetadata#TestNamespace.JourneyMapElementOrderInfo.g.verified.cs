@@ -11,10 +11,16 @@ static file class JourneyMapElementOrderInfoRegistration
 {
     [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
     extern static global::TestNamespace.JourneyMapElementOrderInfo Creator();
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Id>k__BackingField")]
-    extern static ref ulong Field1(global::TestNamespace.ElementOrderInfoBase<ulong, int> @this);
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Type>k__BackingField")]
-    extern static ref int Field2(global::TestNamespace.ElementOrderInfoBase<ulong, int> @this);
+    public static class FieldAdapter1<TId, TType>
+    {
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Id>k__BackingField")]
+        extern public static ref TId Field(global::TestNamespace.ElementOrderInfoBase<TId, TType> @this);
+    }
+    public static class FieldAdapter2<TId, TType>
+    {
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Type>k__BackingField")]
+        extern public static ref TType Field(global::TestNamespace.ElementOrderInfoBase<TId, TType> @this);
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -38,13 +44,13 @@ static file class JourneyMapElementOrderInfoRegistration
             {
                 Name = "Id",
                 Type = typeof(ulong),
-                ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field1(dummy)),
+                ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref FieldAdapter1<ulong, int>.Field(dummy)),
             },
             new global::BTDB.Serialization.FieldMetadata
             {
                 Name = "Type",
                 Type = typeof(int),
-                ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref Field2(dummy)),
+                ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref FieldAdapter2<ulong, int>.Field(dummy)),
             },
         ];
         global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
