@@ -159,6 +159,35 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             };
         }
 
+        if (targetType.IsSZArray)
+        {
+            var itemType = targetType.GetElementType()!;
+            var arrayItemLoad = _itemDescriptor!.GenerateLoadEx(itemType, typeConverterFactory);
+            return (ref MemReader reader, ITypeBinaryDeserializerContext? ctx, ref byte value) =>
+            {
+                var count = reader.ReadVUInt32();
+                if (count == 0)
+                {
+                    Unsafe.As<byte, object?>(ref value) = null;
+                    return;
+                }
+
+                count--;
+                var obj = Array.CreateInstance(itemType, (int)count);
+                if (_typeSerializers.PreserveDescriptors)
+                    TypeSerializers.Object2DescriptorMap.Add(obj, this);
+                ref readonly var mt = ref RawData.MethodTableRef(obj);
+                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var offsetDelta = mt.ComponentSize;
+                for (var i = 0u; i != count; i++, offset += offsetDelta)
+                {
+                    arrayItemLoad(ref reader, ctx, ref RawData.Ref(obj, offset));
+                }
+
+                Unsafe.As<byte, object?>(ref value) = obj;
+            };
+        }
+
         var collectionMetadata = ReflectionMetadata.FindCollectionByType(targetType!);
         if (collectionMetadata == null)
         {
