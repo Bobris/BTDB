@@ -1743,32 +1743,33 @@ public class SourceGenerator : IIncrementalGenerator
                                                     a.AttributeClass?.Name == "SecondaryKeyAttribute")))
                 .Select(p =>
                 {
-                    var isReadOnly = p.SetMethod is null;
+                    var implementationProperty = ResolvePropertyImplementation(symbol, p);
+                    var isReadOnly = implementationProperty.SetMethod is null;
                     string? getterName;
                     string? setterName;
                     string? backingName;
-                    if (p.ContainingType.TypeKind == TypeKind.Interface)
+                    if (implementationProperty.ContainingType.TypeKind == TypeKind.Interface)
                     {
-                        getterName = p.GetMethod?.Name;
-                        setterName = isReadOnly ? null : p.SetMethod?.Name;
+                        getterName = implementationProperty.GetMethod?.Name;
+                        setterName = isReadOnly ? null : implementationProperty.SetMethod?.Name;
                         backingName = null;
                     }
                     else
                     {
-                        getterName = !IsDefaultMethodImpl(p.GetMethod!.DeclaringSyntaxReferences)
-                            ? p.GetMethod.Name
+                        getterName = !IsDefaultMethodImpl(implementationProperty.GetMethod!.DeclaringSyntaxReferences)
+                            ? implementationProperty.GetMethod.Name
                             : null;
                         setterName = isReadOnly
                             ? ""
-                            : !IsDefaultMethodImpl(p.SetMethod!.DeclaringSyntaxReferences)
-                                ? p.SetMethod.Name
+                            : !IsDefaultMethodImpl(implementationProperty.SetMethod!.DeclaringSyntaxReferences)
+                                ? implementationProperty.SetMethod.Name
                                 : null;
                         backingName = getterName == null || setterName == null
                             ? $"<{p.Name}>k__BackingField"
                             : null;
                         if (getterName != null && backingName == null)
                         {
-                            backingName = ExtractPropertyFromGetter(p.GetMethod!.DeclaringSyntaxReferences, model);
+                            backingName = ExtractPropertyFromGetter(implementationProperty.GetMethod!.DeclaringSyntaxReferences, model);
                             if (backingName != null) getterName = null;
                         }
 
@@ -1776,12 +1777,12 @@ public class SourceGenerator : IIncrementalGenerator
                     }
 
                     return new FieldsInfo(p.Name,
-                        p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                        GenericTypeFrom(p.OriginalDefinition.Type),
+                        implementationProperty.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        GenericTypeFrom(implementationProperty.OriginalDefinition.Type),
                         ExtractPersistedName(p),
-                        p.Type.IsReferenceType,
+                        implementationProperty.Type.IsReferenceType,
                         backingName, getterName, setterName, isReadOnly,
-                        p.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        implementationProperty.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                         ExtractIndexInfo(p.GetAllAttributes()));
                 })).ToArray();
 
@@ -2331,6 +2332,14 @@ public class SourceGenerator : IIncrementalGenerator
         var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         CollectRelationInterfaceMembers(symbol, visited, byKey, members);
         return members;
+    }
+
+    static IPropertySymbol ResolvePropertyImplementation(INamedTypeSymbol symbol, IPropertySymbol property)
+    {
+        if (symbol.TypeKind == TypeKind.Interface || property.ContainingType.TypeKind != TypeKind.Interface)
+            return property;
+
+        return symbol.FindImplementationForInterfaceMember(property) as IPropertySymbol ?? property;
     }
 
     static void CollectRelationInterfaceMembers(INamedTypeSymbol symbol,

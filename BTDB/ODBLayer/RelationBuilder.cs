@@ -135,6 +135,74 @@ public class RelationBuilder : IRelationBuilder
             metadata.SecondaryKeys!, RelationInfoResolver.FieldHandlerFactory);
     }
 
+    static bool HasRelationContractAttribute(PropertyInfo property)
+    {
+        return property.GetCustomAttribute<PrimaryKeyAttribute>() != null ||
+               property.GetCustomAttribute<InKeyValueAttribute>() != null ||
+               property.GetCustomAttributes<SecondaryKeyAttribute>().Any() ||
+               property.GetCustomAttribute<PersistedNameAttribute>() != null ||
+               property.GetCustomAttribute<NotStoredAttribute>() != null;
+    }
+
+    PropertyInfo ResolveRelationContractProperty(PropertyInfo property)
+    {
+        if (HasRelationContractAttribute(property)) return property;
+
+        foreach (var interfaceType in ItemType.GetInterfaces().OrderBy(i => i.FullName ?? i.Name, StringComparer.Ordinal))
+        {
+            var interfaceProperty = FindImplementedInterfaceProperty(property, interfaceType);
+            if (interfaceProperty == null || !HasRelationContractAttribute(interfaceProperty)) continue;
+            return interfaceProperty;
+        }
+
+        return property;
+    }
+
+    PropertyInfo? FindImplementedInterfaceProperty(PropertyInfo property, Type interfaceType)
+    {
+        var map = ItemType.GetInterfaceMap(interfaceType);
+        foreach (var interfaceProperty in interfaceType.GetProperties())
+        {
+            if (MapsToInterfaceProperty(property, interfaceProperty, map))
+                return interfaceProperty;
+        }
+
+        return null;
+    }
+
+    static bool MapsToInterfaceProperty(PropertyInfo property, PropertyInfo interfaceProperty, InterfaceMapping map)
+    {
+        return MapsToInterfaceAccessor(property.GetAnyGetMethod(), interfaceProperty.GetAnyGetMethod(), map) ||
+               MapsToInterfaceAccessor(property.GetAnySetMethod(), interfaceProperty.GetAnySetMethod(), map);
+    }
+
+    static bool MapsToInterfaceAccessor(MethodInfo? propertyAccessor, MethodInfo? interfaceAccessor,
+        InterfaceMapping map)
+    {
+        if (propertyAccessor == null || interfaceAccessor == null) return false;
+
+        for (var i = 0; i < map.InterfaceMethods.Length; i++)
+        {
+            if (map.InterfaceMethods[i] == interfaceAccessor)
+                return map.TargetMethods[i] == propertyAccessor;
+        }
+
+        return false;
+    }
+
+    TableFieldInfo BuildTableFieldInfo(PropertyInfo property, PropertyInfo attributeSource,
+        FieldHandlerOptions handlerOptions, bool inKeyValue)
+    {
+        var fieldHandler = RelationInfoResolver.FieldHandlerFactory.CreateFromType(property.PropertyType, handlerOptions);
+        if (fieldHandler == null)
+            throw new BTDBException(string.Format(
+                "FieldHandlerFactory did not build property {0} of type {2} in {1}", property.Name, _name,
+                property.PropertyType.FullName));
+        var persistedName = attributeSource.GetCustomAttribute<PersistedNameAttribute>();
+        return TableFieldInfo.Create(persistedName != null ? persistedName.Name : property.Name, fieldHandler,
+            inKeyValue, !property.CanWrite);
+    }
+
     RelationVersionInfo CreateVersionInfoByReflection()
     {
         var props = ItemType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
@@ -154,7 +222,8 @@ public class RelationBuilder : IRelationBuilder
         var fields = new List<TableFieldInfo>(props.Length);
         foreach (var pi in props)
         {
-            if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
+            var relationContractProperty = ResolveRelationContractProperty(pi);
+            if (relationContractProperty.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
             if (pi.GetIndexParameters().Length != 0) continue;
             if (!pi.CanRead)
             {
@@ -164,9 +233,9 @@ public class RelationBuilder : IRelationBuilder
             }
 
             if (!pi.CanWrite && pi.GetCustomAttribute<CompilerGeneratedAttribute>() != null) continue;
-            var pks = pi.GetCustomAttributes<PrimaryKeyAttribute>(true);
+            var pks = relationContractProperty.GetCustomAttributes<PrimaryKeyAttribute>(true);
             var actualPKAttribute = pks.FirstOrDefault();
-            if (pi.GetCustomAttribute<InKeyValueAttribute>() is { } inKeyValueAttribute)
+            if (relationContractProperty.GetCustomAttribute<InKeyValueAttribute>() is { } inKeyValueAttribute)
             {
                 if (actualPKAttribute != null)
                     RelationInfoResolver.ActualOptions.ThrowBTDBException(
@@ -182,15 +251,15 @@ public class RelationBuilder : IRelationBuilder
                         $"Key field {pi.Name} must have setter, cannot be computed");
                 }
 
-                var fieldInfo = TableFieldInfo.Build(_name, pi, RelationInfoResolver.FieldHandlerFactory,
-                    FieldHandlerOptions.Orderable, actualPKAttribute.InKeyValue);
+                var fieldInfo = BuildTableFieldInfo(pi, relationContractProperty, FieldHandlerOptions.Orderable,
+                    actualPKAttribute.InKeyValue);
                 if (fieldInfo.Handler!.NeedsCtx())
                     RelationInfoResolver.ActualOptions.ThrowBTDBException(
                         $"Unsupported key field {fieldInfo.Name} type.");
                 primaryKeys.Add(actualPKAttribute.Order, fieldInfo);
             }
 
-            var sks = pi.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
+            var sks = relationContractProperty.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
             var id = (int)(-actualPKAttribute?.Order ?? secondaryKeyFields.Count);
             List<SecondaryKeyAttribute> currentList = null;
             if (sks.Length == 0 && !pi.CanWrite)
@@ -212,8 +281,8 @@ public class RelationBuilder : IRelationBuilder
                     currentList = new(sks.Length);
                     secondaryKeys.Add(new(id, currentList));
                     if (actualPKAttribute == null)
-                        secondaryKeyFields.Add(TableFieldInfo.Build(_name, pi,
-                            RelationInfoResolver.FieldHandlerFactory, FieldHandlerOptions.Orderable, false));
+                        secondaryKeyFields.Add(BuildTableFieldInfo(pi, relationContractProperty,
+                            FieldHandlerOptions.Orderable, false));
                 }
 
                 var key = (SecondaryKeyAttribute)sks[i];
@@ -224,8 +293,7 @@ public class RelationBuilder : IRelationBuilder
             }
 
             if (actualPKAttribute == null)
-                fields.Add(TableFieldInfo.Build(_name, pi, RelationInfoResolver.FieldHandlerFactory,
-                    FieldHandlerOptions.None, false));
+                fields.Add(BuildTableFieldInfo(pi, relationContractProperty, FieldHandlerOptions.None, false));
         }
 
         return new(primaryKeys, secondaryKeys, secondaryKeyFields.ToArray(), fields.ToArray());

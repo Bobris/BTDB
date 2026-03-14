@@ -306,6 +306,46 @@ public class MetadataTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyDerivedClassFromGenericBaseUsesClosedOwnerTypeForMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class ElementOrderInfoBase<TId, TType>
+            {
+                public TId Id { get; set; }
+                public TType Type { get; set; }
+            }
+
+            public class JourneyMapElementOrderInfo : ElementOrderInfoBase<ulong, int>
+            {
+            }
+            """);
+    }
+
+    [Fact]
+    public Task VerifyDerivedClassFromBaseUsesAccessorMethodsForMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            public class Event
+            {
+                public ulong Id { get; set; }
+            }
+
+            [BTDB.Generate]
+            public class EventWithApiKey : Event
+            {
+                public string ApiKey { get; set; }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyIIndirectPropertyIsCorrectlyGenerated()
     {
         // language=cs
