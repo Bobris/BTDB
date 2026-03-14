@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.3.1
+
 ### Fixed
 
 - Source generator now ignores inherited `GetEnumerator` methods when validating relation interfaces, which fixes covariant relation hierarchies that also expose `FindBy...` methods.
