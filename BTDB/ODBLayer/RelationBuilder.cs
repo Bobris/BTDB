@@ -121,6 +121,8 @@ public class RelationBuilder : IRelationBuilder
         var res = container?.ResolveOptional(ItemType);
         if (res != null) return res;
         var metadata = ReflectionMetadata.FindByType(ItemType);
+        if (metadata == null)
+            throw new InvalidOperationException("Cannot find metadata for " + ItemType.ToSimpleName());
         return metadata.Creator();
     }
 
