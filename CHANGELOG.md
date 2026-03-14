@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.3.3
+
 ### Fixed
 
 - Source generator now emits generic field accessor adapters for metadata on inherited members from generic owner types, which fixes runtime failures when storing derived classes that close generic base properties.
