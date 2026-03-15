@@ -2,11 +2,16 @@
 
 ## [unreleased]
 
+### Fixed
+
+- BtdbInternalNextInChain is not skipped in metadata generation.
+
 ## 34.3.3
 
 ### Fixed
 
-- Source generator now emits generic field accessor adapters for metadata on inherited members from generic owner types, which fixes runtime failures when storing derived classes that close generic base properties.
+- Source generator now emits generic field accessor adapters for metadata on inherited members from generic owner types,
+  which fixes runtime failures when storing derived classes that close generic base properties.
 
 ## 34.3.2
 
@@ -14,19 +19,22 @@
 
 ### Fixed
 
-- Source generator now ignores inherited `GetEnumerator` methods when validating relation interfaces, which fixes covariant relation hierarchies that also expose `FindBy...` methods.
+- Source generator now ignores inherited `GetEnumerator` methods when validating relation interfaces, which fixes
+  covariant relation hierarchies that also expose `FindBy...` methods.
 
 ## 34.3.0
 
 ### Fixed
 
-- `CompactorScheduler` now tracks compaction requests per `IKeyValueDB`, so shared schedulers compact only the databases that were advised to run.
+- `CompactorScheduler` now tracks compaction requests per `IKeyValueDB`, so shared schedulers compact only the databases
+  that were advised to run.
 
 ## 34.2.0
 
 ### Added
 
-- Source generator relations now support class relation items that use interface contracts for persisted properties/indexes and lifecycle hooks (`OnSerialize`, `OnBeforeRemove`), including inherited interface members.
+- Source generator relations now support class relation items that use interface contracts for persisted
+  properties/indexes and lifecycle hooks (`OnSerialize`, `OnBeforeRemove`), including inherited interface members.
 
 ## 34.1.5
 
@@ -50,13 +58,15 @@
 
 ### Fixed
 
-- Source generator now accepts `GatherBy...` targets that implement `ICollection<T>` (for example `List<T>`), and allows `AdvancedEnumeratorParam` to target implicit primary key fields on secondary keys.
+- Source generator now accepts `GatherBy...` targets that implement `ICollection<T>` (for example `List<T>`), and allows
+  `AdvancedEnumeratorParam` to target implicit primary key fields on secondary keys.
 
 ## 34.1.1
 
 ### Fixed
 
-Source generator no longer crashes when relation method validation fails mid-iteration (e.g., `UpdateById` missing PK parameters now reports `BTDB0040` instead of throwing).
+Source generator no longer crashes when relation method validation fails mid-iteration (e.g., `UpdateById` missing PK
+parameters now reports `BTDB0040` instead of throwing).
 
 ## 34.1.0
 
