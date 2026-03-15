@@ -2420,4 +2420,60 @@ public class RelationTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task Repro_InheritedRelationHooksOnGenericBaseGenerateInvalidConstraints()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System;
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public interface ICompanyRecord
+            {
+                ulong CompanyId { get; }
+            }
+
+            public interface ICompanyItemTableBase<T> : IRelation<T> where T : class, ICompanyRecord
+            {
+            }
+
+            [BTDB.Generate]
+            public interface ICustomRelation : IRelation
+            {
+            }
+
+            public abstract class GenericProxy<TTable, TTableBase, TData>(IObjectDBTransaction tr)
+                where TTableBase : class, ICompanyItemTableBase<TData>
+                where TData : class, ICompanyRecord
+            {
+                public Type BtdbInternalGetRelationInterfaceType()
+                {
+                    return typeof(TTable);
+                }
+
+                public IRelation BtdbInternalNextInChain { get; set; } = null!;
+            }
+
+            public class Item : ICompanyRecord
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong Id { get; set; }
+            }
+
+            public interface IItemTableBase : ICompanyItemTableBase<Item>
+            {
+            }
+
+            public interface IItemTable : ICustomRelation
+            {
+            }
+
+            public class ItemTable(IObjectDBTransaction tr) : GenericProxy<IItemTable, IItemTableBase, Item>(tr), IItemTable
+            {
+            }
+            """);
+    }
 }

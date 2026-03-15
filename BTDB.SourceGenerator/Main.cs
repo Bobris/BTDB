@@ -1742,6 +1742,7 @@ public class SourceGenerator : IIncrementalGenerator
             .Concat(relationItemMembers
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic && SerializableType(p.Type))
+                .Where(p => p.Name != "BtdbInternalNextInChain")
                 .Where(p =>
                     !HasDependencyAttribute(p) &&
                     p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&
@@ -1809,6 +1810,7 @@ public class SourceGenerator : IIncrementalGenerator
             .Concat(relationItemMembers
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic)
+                .Where(p => p.Name != "BtdbInternalNextInChain")
                 .Where(p =>
                     !HasDependencyAttribute(p) &&
                     p.GetAttributes().All(a => a.AttributeClass?.Name != "NotStoredAttribute") &&

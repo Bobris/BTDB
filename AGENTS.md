@@ -16,12 +16,14 @@ These guidelines summarize how to navigate, build, and contribute to this reposi
 
 - `dotnet build BTDB.sln` builds the full solution.
 - `dotnet test BTDB.sln` runs all tests.
+- `dotnet test BTDB.SourceGenerator.Test/BTDB.SourceGenerator.Tests.csproj` runs the SourceGenerator test suite only.
 - `dotnet test BTDBTest/BTDBTest.csproj` runs the main test suite only.
 - `dotnet run --project SimpleTester/SimpleTester.csproj` runs the local tester app.
 
 ## Environment Requirements
 
 - Always run `dotnet` commands with network access enabled so package restore and analyzer feeds can complete; request sandbox escalation before invoking `dotnet build`/`dotnet test` if the default environment denies network access.
+- `nuget.config` restores from NuGet plus the `terrafx` feed, so offline restore/build/test runs are incomplete.
 - Example: `dotnet test BTDB.SourceGenerator.Test/BTDB.SourceGenerator.Tests.csproj` must be run with the `sandbox_permissions` flag set to `require_escalated` so NuGet restore can reach the feed.
 
 ## Coding Style & Naming Conventions
@@ -33,11 +35,14 @@ These guidelines summarize how to navigate, build, and contribute to this reposi
 - Suppress `CS8620` at file scope when using `params ReadOnlySpan<string>` with direct string arguments.
 - Prefer `resultType is null` over `string.IsNullOrWhiteSpace(resultType)` when checking nullable type strings.
 - Naming: PascalCase for public types/members and type parameters (e.g., `TItem`).
-- Target framework is .NET 9 with C# 12 language features.
+- Main library and test projects target .NET 10; `BTDB.SourceGenerator/` targets `netstandard2.0` as a Roslyn component.
 
 ## Testing Guidelines
 
 - Tests use xUnit; look for `*Test.cs`/`*Tests.cs` under `BTDBTest/` and `BTDB.SourceGenerator.Test/`.
+- `BTDB.SourceGenerator.Test/` uses Verify snapshot files (`*.verified.cs`, `*.verified.txt`); add or update the matching baselines when generated output or diagnostics intentionally change.
+- New SourceGenerator tests should go through `GeneratorTestsBase.VerifySourceGenerator(...)`, which verifies compilation succeeds and that incremental outputs are cached on rerun.
+- `BTDBTest/` uses Assent approval files (`*.approved.txt`) for text baselines.
 - Prioritize SourceGenerator work: ensure `BTDB.SourceGenerator.Test/BTDB.SourceGenerator.Tests.csproj` passes before other suites.
 - Add tests for behavior changes and bug fixes; favor focused `Fact` tests and parameterized `Theory` tests.
 - Run `dotnet test BTDB.sln` before opening a PR that changes core behavior.
