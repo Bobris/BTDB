@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.3.4
+
 ### Fixed
 
 - BtdbInternalNextInChain is not skipped in metadata generation.
