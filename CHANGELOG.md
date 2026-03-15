@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Fixed loading `CommandHistory` records after reopening the database when nested items contain polymorphic `List<UndoableEvent>` values.
+
 ## 34.3.4
 
 ### Fixed
