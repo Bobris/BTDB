@@ -48,6 +48,35 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyGenerateForClosedRelationInterfaceEmitsRelationItemMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB;
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public abstract class File
+            {
+                [PrimaryKey] public ulong Id { get; set; }
+                public string FileName { get; set; } = null!;
+            }
+
+            [GenerateFor(typeof(IFileTable<DownloadSectionFile>))]
+            public class DownloadSectionFile : File
+            {
+                public string UploadGuid { get; set; } = null!;
+            }
+
+            public interface IFileTable<TFile> : IRelation<TFile> where TFile : File
+            {
+                TFile FindByIdOrDefault(ulong id);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyRelationWithSecondaryKey()
     {
         // language=cs

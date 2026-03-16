@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source generator now handles `GenerateFor(typeof(IRelation<...>))` and similar closed relation interfaces by
+  emitting metadata for the concrete relation item type.
+
 ## 34.3.5
 
 ### Fixed
