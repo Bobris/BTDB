@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.3.6
+
 ### Fixed
 
 - Source generator now handles `GenerateFor(typeof(IRelation<...>))` and similar closed relation interfaces by
