@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.3.10
+
 ### Fixed
 
 - Object DB relation loading no longer double-reads `Int128`-sized value-type members that are populated through metadata `PropRefSetter` adapters, which fixes corrupted trailing fields when reopening stored rows.
