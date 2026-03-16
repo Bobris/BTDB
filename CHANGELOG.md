@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Object DB relations now accept `IList<T>` properties backed by arrays when saving/upserting rows.
+
 ## 34.3.8
 
 ### Fixed

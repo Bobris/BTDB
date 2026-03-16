@@ -257,6 +257,7 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
         var itemType = asType.GenericTypeArguments[0];
         var hashSetType = typeof(HashSet<>).MakeGenericType(itemType);
         var listType = typeof(List<>).MakeGenericType(itemType);
+        var arrayType = itemType.MakeArrayType();
         var saveItem = _itemsHandler.Save(itemType, typeConverterFactory);
         var layout = RawData.GetHashSetEntriesLayout(itemType);
         return (ref MemWriter writer, IWriterCtx? ctx, ref byte value) =>
@@ -265,7 +266,19 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
             if (obj != null)
             {
                 var objType = obj.GetType();
-                if (listType.IsAssignableFrom(objType))
+                if (arrayType.IsAssignableFrom(objType))
+                {
+                    var count = (uint)RawData.GetArrayLength(ref value);
+                    writer.WriteVUInt32(count);
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
+                    }
+                }
+                else if (listType.IsAssignableFrom(objType))
                 {
                     var count = (uint)Unsafe.As<ICollection>(obj).Count;
                     writer.WriteVUInt32(count);
@@ -297,6 +310,20 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
                         }
 
                         saveItem(ref writer, ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                    }
+                }
+                else if (objType.IsGenericType && objType.Name == "<>z__ReadOnlyArray`1" &&
+                         objType.GenericTypeArguments[0] == itemType)
+                {
+                    obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
+                    var count = (uint)RawData.GetArrayLength(ref Unsafe.As<object, byte>(ref obj));
+                    writer.WriteVUInt32(count);
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
                     }
                 }
                 else throw new BTDBException("Cannot save type " + objType.ToSimpleName());
