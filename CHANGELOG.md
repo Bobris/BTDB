@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.3.8
+
 ### Fixed
 
 - Source generator now preserves the closed generic member type when emitting metadata accessor adapters for inherited
