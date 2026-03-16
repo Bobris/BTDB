@@ -326,6 +326,38 @@ public class MetadataTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyDerivedClassFromGenericBaseUsesAccessorAdaptersForMetadata()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            public abstract class CompanyMapKeyBase<TKey>
+            {
+                ulong _companyId;
+                TKey _id = default!;
+
+                public ulong CompanyId
+                {
+                    get => _companyId + 1;
+                    set => _companyId = value - 1;
+                }
+
+                public TKey Id
+                {
+                    get => _id;
+                    set => _id = value;
+                }
+            }
+
+            [BTDB.Generate]
+            public class ProgramStrategyKey : CompanyMapKeyBase<ulong>
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyDerivedClassFromBaseUsesAccessorMethodsForMetadata()
     {
         // language=cs

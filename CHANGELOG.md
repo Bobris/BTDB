@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source generator now emits metadata getter/setter adapters for inherited properties declared on generic base types,
+  which fixes `InvalidProgramException` when accessing those properties through generated metadata.
+
 ## 34.3.6
 
 ### Fixed

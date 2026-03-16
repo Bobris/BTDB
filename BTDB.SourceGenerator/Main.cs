@@ -3324,6 +3324,18 @@ public class SourceGenerator : IIncrementalGenerator
                 foreach (var field in generationInfo.Fields)
                 {
                     var normalizedType = NormalizeType(field.Type);
+                    var useGenericOwnerAdapter = field.OwnerGenericFullName != null &&
+                                                 field.OwnerFullName != generationInfo.FullName;
+                    var ownerAdapterGenericParameters = field.OwnerGenericParameters.ToArray();
+                    var ownerAdapterType = "";
+                    if (useGenericOwnerAdapter)
+                    {
+                        var ownerGenericBaseName = field.OwnerGenericFullName!;
+                        ownerGenericBaseName =
+                            ownerGenericBaseName.Substring(0, ownerGenericBaseName.IndexOf('<'));
+                        ownerAdapterType =
+                            $"{ownerGenericBaseName}<{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}>";
+                    }
                     fieldIndex++;
                     // language=c#
                     metadataCode.Append($$"""
@@ -3335,19 +3347,11 @@ public class SourceGenerator : IIncrementalGenerator
                         """);
                     if (field.BackingName != null)
                     {
-                        var useGenericFieldAdapter = field.OwnerGenericFullName != null &&
-                                                     field.OwnerFullName != generationInfo.FullName;
-                        if (useGenericFieldAdapter)
+                        if (useGenericOwnerAdapter)
                         {
-                            var adapterGenericParameters = field.OwnerGenericParameters.ToArray();
-                            var ownerGenericBaseName = field.OwnerGenericFullName!;
-                            ownerGenericBaseName =
-                                ownerGenericBaseName.Substring(0, ownerGenericBaseName.IndexOf('<'));
-                            var ownerAdapterType =
-                                $"{ownerGenericBaseName}<{string.Join(", ", adapterGenericParameters.Select(p => p.Name))}>";
                             // language=c#
                             declarations.Append($$"""
-                                    public static class FieldAdapter{{fieldIndex}}<{{string.Join(", ", adapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(adapterGenericParameters)}}
+                                    public static class FieldAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
                                     {
                                         [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "{{field.BackingName}}")]
                                         extern public static ref {{NormalizeType(field.GenericType)}} Field({{ownerAdapterType}} @this);
@@ -3376,14 +3380,30 @@ public class SourceGenerator : IIncrementalGenerator
 
                         // language=c#
                         metadataCode.Append($"""
-                                            ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref {(useGenericFieldAdapter ? $"{ActivatorName(generationInfo)}FieldAdapter{fieldIndex}<{field.OwnerGenericArguments}>.Field" : $"{ActivatorName(generationInfo)}Field{fieldIndex}")}(dummy)),
+                                            ByteOffset = global::BTDB.Serialization.RawData.CalcOffset(dummy, ref {(useGenericOwnerAdapter ? $"{ActivatorName(generationInfo)}FieldAdapter{fieldIndex}<{field.OwnerGenericArguments}>.Field" : $"{ActivatorName(generationInfo)}Field{fieldIndex}")}(dummy)),
 
                             """);
                     }
 
                     if (field is { GetterName: not null })
                     {
-                        if (generationInfo.GenericParameters.IsEmpty)
+                        if (useGenericOwnerAdapter)
+                        {
+                            // language=c#
+                            declarations.Append($$"""
+                                    public static class GetterAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
+                                    {
+                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
+                                        extern public static {{normalizedType}} Getter({{ownerAdapterType}} @this);
+                                    }
+                                    static void GenGetter{{fieldIndex}}(object @this, ref byte value)
+                                    {
+                                        Unsafe.As<byte, {{normalizedType}}>(ref value) = GetterAdapter{{fieldIndex}}<{{field.OwnerGenericArguments}}>.Getter(Unsafe.As<{{field.OwnerFullName}}>(@this));
+                                    }
+
+                                """);
+                        }
+                        else if (generationInfo.GenericParameters.IsEmpty)
                         {
                             // language=c#
                             declarations.Append($$"""
@@ -3419,7 +3439,23 @@ public class SourceGenerator : IIncrementalGenerator
 
                     if (field is { SetterName: not null })
                     {
-                        if (generationInfo.GenericParameters.IsEmpty)
+                        if (useGenericOwnerAdapter)
+                        {
+                            // language=c#
+                            declarations.Append($$"""
+                                    public static class SetterAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
+                                    {
+                                        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
+                                        extern public static void Setter({{ownerAdapterType}} @this, {{normalizedType}} value);
+                                    }
+                                    static void GenSetter{{fieldIndex}}(object @this, ref byte value)
+                                    {
+                                        SetterAdapter{{fieldIndex}}<{{field.OwnerGenericArguments}}>.Setter(Unsafe.As<{{field.OwnerFullName}}>(@this), Unsafe.As<byte, {{normalizedType}}>(ref value));
+                                    }
+
+                                """);
+                        }
+                        else if (generationInfo.GenericParameters.IsEmpty)
                         {
                             // language=c#
                             declarations.Append($$"""
