@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source generator now supports `AdvancedEnumeratorParam<TEnum>` on relation methods that enumerate or filter by enum
+  secondary keys, which fixes runtime failures when building advanced key ranges for enum-backed indexes.
+
 ## 34.3.10
 
 ### Fixed

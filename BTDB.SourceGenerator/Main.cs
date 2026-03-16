@@ -4275,7 +4275,7 @@ public class SourceGenerator : IIncrementalGenerator
                             AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParamCount),
                                 advParamType);
                             AppendAdvancedKeyPrefix(declarations, false, null, method.Parameters, prefixParamCount,
-                                lastParamName, advParamType!);
+                                lastParamName, advParamType!, lastParam?.EnumUnderlyingType);
                             var removeExpr =
                                 $"base.RemoveByIdAdvancedParam({lastParamName}.Order, {lastParamName}.StartProposition, prefixLen, startKeyBytes, {lastParamName}.EndProposition, endKeyBytes)";
                             declarations.Append(
@@ -4366,7 +4366,7 @@ public class SourceGenerator : IIncrementalGenerator
                     if (hasAdvancedEnumerator)
                     {
                         AppendAdvancedKeyPrefix(declarations, false, null, method.Parameters, prefixParamCount,
-                            lastParamName, advParamType!);
+                            lastParamName, advParamType!, lastParam?.EnumUnderlyingType);
 
                         if (usesOrderedEnumerator)
                         {
@@ -4401,7 +4401,7 @@ public class SourceGenerator : IIncrementalGenerator
                     if (hasAdvancedEnumerator)
                     {
                         AppendAdvancedKeyPrefix(declarations, true, "remappedSecondaryKeyIndex", method.Parameters,
-                            prefixParamCount, lastParamName, advParamType!);
+                            prefixParamCount, lastParamName, advParamType!, lastParam?.EnumUnderlyingType);
 
                         if (usesOrderedEnumerator)
                         {
@@ -4454,7 +4454,7 @@ public class SourceGenerator : IIncrementalGenerator
                     if (indexName == "Id")
                     {
                         AppendAdvancedKeyPrefix(declarations, false, null, method.Parameters, prefixParamCount,
-                            lastParamName, advParamType!);
+                            lastParamName, advParamType!, lastParam?.EnumUnderlyingType);
                     }
                     else
                     {
@@ -4462,7 +4462,7 @@ public class SourceGenerator : IIncrementalGenerator
                         declarations.Append(
                             $"            var remappedSecondaryKeyIndex = RemapPrimeSK({secondaryKeyIndex}u);\n");
                         AppendAdvancedKeyPrefix(declarations, true, "remappedSecondaryKeyIndex", method.Parameters,
-                            prefixParamCount, lastParamName, advParamType!);
+                            prefixParamCount, lastParamName, advParamType!, lastParam?.EnumUnderlyingType);
                     }
 
                     declarations.Append(
@@ -4517,7 +4517,7 @@ public class SourceGenerator : IIncrementalGenerator
                     if (indexName == "Id")
                     {
                         AppendAdvancedKeyPrefix(declarations, false, null, method.Parameters, prefixParamCount,
-                            lastParamName, advParamType!);
+                            lastParamName, advParamType!, lastParam?.EnumUnderlyingType);
                     }
                     else
                     {
@@ -4525,7 +4525,7 @@ public class SourceGenerator : IIncrementalGenerator
                         declarations.Append(
                             $"            var remappedSecondaryKeyIndex = RemapPrimeSK({secondaryKeyIndex}u);\n");
                         AppendAdvancedKeyPrefix(declarations, true, "remappedSecondaryKeyIndex", method.Parameters,
-                            prefixParamCount, lastParamName, advParamType!);
+                            prefixParamCount, lastParamName, advParamType!, lastParam?.EnumUnderlyingType);
                     }
 
                     var countExpr =
@@ -4814,6 +4814,14 @@ public class SourceGenerator : IIncrementalGenerator
             enumType.EnumUnderlyingType != null)
         {
             return enumType.EnumUnderlyingType.ToDisplayString();
+        }
+
+        if (typeSymbol is INamedTypeSymbol { IsGenericType: true, TypeArguments.Length: 1 } genericType &&
+            genericType.Name == "AdvancedEnumeratorParam" &&
+            genericType.TypeArguments[0] is INamedTypeSymbol { TypeKind: TypeKind.Enum } aepEnumType &&
+            aepEnumType.EnumUnderlyingType != null)
+        {
+            return aepEnumType.EnumUnderlyingType.ToDisplayString();
         }
 
         return null;
@@ -5404,7 +5412,7 @@ public class SourceGenerator : IIncrementalGenerator
 
     static void AppendAdvancedKeyPrefix(StringBuilder declarations, bool useSecondaryKey,
         string? remappedSecondaryKeyIndexVar, EquatableArray<ParameterInfo> parameters, int prefixParamCount,
-        string advParamName, string advParamType)
+        string advParamName, string advParamType, string? advParamEnumUnderlyingType)
     {
         declarations.Append(
             "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
@@ -5427,7 +5435,7 @@ public class SourceGenerator : IIncrementalGenerator
         declarations.Append(
             $"            if ({advParamName}.StartProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
         declarations.Append("            {\n");
-        AppendWriteOrderableValue(declarations, $"{advParamName}.Start", advParamType, null, "                ");
+        AppendWriteOrderableValue(declarations, $"{advParamName}.Start", advParamType, advParamEnumUnderlyingType, "                ");
         declarations.Append("            }\n");
         declarations.Append("            var startKeyBytes = writer.GetScopedSpanAndReset();\n");
 
@@ -5449,7 +5457,7 @@ public class SourceGenerator : IIncrementalGenerator
         declarations.Append(
             $"            if ({advParamName}.EndProposition != global::BTDB.ODBLayer.KeyProposition.Ignored)\n");
         declarations.Append("            {\n");
-        AppendWriteOrderableValue(declarations, $"{advParamName}.End", advParamType, null, "                ");
+        AppendWriteOrderableValue(declarations, $"{advParamName}.End", advParamType, advParamEnumUnderlyingType, "                ");
         declarations.Append("            }\n");
         declarations.Append("            var endKeyBytes = writer.GetSpan();\n");
     }
