@@ -26,5 +26,6 @@
     <ItemGroup>
         <ProjectReference Include="../BTDB/BTDB.csproj"/>
         <ProjectReference Include="../BTDB.SourceGenerator/BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+        <ProjectReference Include="../Sample3rdPartyLib/Sample3rdPartyLib.csproj"/>
     </ItemGroup>
 </Project>

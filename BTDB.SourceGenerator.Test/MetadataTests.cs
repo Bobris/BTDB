@@ -358,6 +358,20 @@ public class MetadataTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyDerivedClassFromExternalGenericBaseUsesFieldAccessForAutoProperties()
+    {
+        // language=cs
+        // The base class SampleGenericBase<TKey> is in Sample3rdPartyLib (external assembly)
+        // with auto-properties: ulong CompanyId { get; set; } and TKey Id { get; set; }
+        return VerifySourceGenerator("""
+            [BTDB.Generate]
+            public class ConcreteKey : Sample3rdPartyLib.SampleGenericBase<ulong>
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyDerivedClassFromBaseUsesAccessorMethodsForMetadata()
     {
         // language=cs

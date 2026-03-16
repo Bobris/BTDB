@@ -3389,12 +3389,13 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         if (useGenericOwnerAdapter)
                         {
+                            var normalizedGenericType = NormalizeType(field.GenericType);
                             // language=c#
                             declarations.Append($$"""
                                     public static class GetterAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
                                     {
                                         [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.GetterName}}")]
-                                        extern public static {{normalizedType}} Getter({{ownerAdapterType}} @this);
+                                        extern public static {{normalizedGenericType}} Getter({{ownerAdapterType}} @this);
                                     }
                                     static void GenGetter{{fieldIndex}}(object @this, ref byte value)
                                     {
@@ -3441,12 +3442,13 @@ public class SourceGenerator : IIncrementalGenerator
                     {
                         if (useGenericOwnerAdapter)
                         {
+                            var normalizedGenericType = NormalizeType(field.GenericType);
                             // language=c#
                             declarations.Append($$"""
                                     public static class SetterAdapter{{fieldIndex}}<{{string.Join(", ", ownerAdapterGenericParameters.Select(p => p.Name))}}>{{GenericConstrains(ownerAdapterGenericParameters)}}
                                     {
                                         [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "{{field.SetterName}}")]
-                                        extern public static void Setter({{ownerAdapterType}} @this, {{normalizedType}} value);
+                                        extern public static void Setter({{ownerAdapterType}} @this, {{normalizedGenericType}} value);
                                     }
                                     static void GenSetter{{fieldIndex}}(object @this, ref byte value)
                                     {

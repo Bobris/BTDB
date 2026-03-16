@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source generator now preserves the closed generic member type when emitting metadata accessor adapters for inherited
+  properties, which fixes generated metadata for derived types that inherit generic auto-properties, including bases
+  defined in external assemblies.
+
 ## 34.3.7
 
 ### Fixed
