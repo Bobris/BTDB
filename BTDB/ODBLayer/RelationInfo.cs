@@ -257,6 +257,7 @@ public class RelationInfo
                                 handlerLoad(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref value));
                                 propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
                             });
+                            continue;
                         }
 
                         var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
@@ -506,6 +507,7 @@ public class RelationInfo
                                 handlerLoad(ref reader, ctx, ref Unsafe.As<Int128, byte>(ref value));
                                 propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
                             });
+                            continue;
                         }
 
                         var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(fieldType);
@@ -574,6 +576,7 @@ public class RelationInfo
                             init(ctx, ref Unsafe.As<Int128, byte>(ref value));
                             propRefSetter(obj, ref Unsafe.As<Int128, byte>(ref value));
                         });
+                        continue;
                     }
 
                     var stackAllocator = ReflectionMetadata.FindStackAllocatorByType(metadataField.Type);
