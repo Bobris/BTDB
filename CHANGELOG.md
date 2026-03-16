@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.3.11
+
 ### Fixed
 
 - Source generator now supports `AdvancedEnumeratorParam<TEnum>` on relation methods that enumerate or filter by enum
