@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.3.7
+
 ### Fixed
 
 - Source generator now emits metadata getter/setter adapters for inherited properties declared on generic base types,
