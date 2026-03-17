@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Source generator now treats `[Generate]` on classes transitively across the full base-type hierarchy, so descendants
+  of generated classes are generated the same way as descendants of generated interfaces.
 - Source generator now accepts `AdvancedEnumeratorParam<TEnum>` on relation `FindBy...` methods for secondary keys
   that include additional primary-key prefix fields, which fixes incorrect `BTDB0016` validation errors on valid
   advanced enumerator overloads.

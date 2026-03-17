@@ -181,15 +181,9 @@ public class SourceGenerator : IIncrementalGenerator
                                 a.AttributeClass is { Name: GenerateForName } attr &&
                                 attr.InBTDBNamespace()))
                             return null;
-                        if (!symbol.GetAttributes().Any(a =>
-                                a.AttributeClass is { Name: AttributeName } attr &&
-                                attr.InBTDBNamespace())
-                            && !symbol.AllInterfaces.Any(interfaceSymbol => interfaceSymbol.GetAttributes().Any(a =>
-                                a.AttributeClass is { Name: AttributeName } attr &&
-                                attr.InBTDBNamespace()))
-                            && !(symbol.BaseType?.GetAttributes().Any(a =>
-                                a.AttributeClass is { Name: AttributeName } attr &&
-                                attr.InBTDBNamespace()) ?? false))
+                        if (!HasGenerateAttribute(symbol)
+                            && !symbol.AllInterfaces.Any(HasGenerateAttribute)
+                            && !HasGenerateAttributeOnBaseTypeHierarchy(symbol.BaseType))
                         {
                             return null;
                         }
@@ -218,15 +212,9 @@ public class SourceGenerator : IIncrementalGenerator
                                 a.AttributeClass is { Name: GenerateForName } attr &&
                                 attr.InBTDBNamespace()))
                             return null;
-                        if (!symbol.GetAttributes().Any(a =>
-                                a.AttributeClass is { Name: AttributeName } attr &&
-                                attr.InBTDBNamespace())
-                            && !symbol.AllInterfaces.Any(interfaceSymbol => interfaceSymbol.GetAttributes().Any(a =>
-                                a.AttributeClass is { Name: AttributeName } attr &&
-                                attr.InBTDBNamespace()))
-                            && !(symbol.BaseType?.GetAttributes().Any(a =>
-                                a.AttributeClass is { Name: AttributeName } attr &&
-                                attr.InBTDBNamespace()) ?? false))
+                        if (!HasGenerateAttribute(symbol)
+                            && !symbol.AllInterfaces.Any(HasGenerateAttribute)
+                            && !HasGenerateAttributeOnBaseTypeHierarchy(symbol.BaseType))
                         {
                             return null;
                         }
@@ -247,6 +235,28 @@ public class SourceGenerator : IIncrementalGenerator
             }).Where(i => i != null);
         gen = gen.SelectMany((g, _) => g!.Nested.IsEmpty ? Enumerable.Repeat(g, 1) : [g, ..g.Nested])!;
         context.RegisterSourceOutput(gen.Collect(), GenerateCode!);
+    }
+
+    static bool HasGenerateAttribute(ISymbol symbol)
+    {
+        return symbol.GetAttributes().Any(a =>
+            a.AttributeClass is { Name: AttributeName } attr &&
+            attr.InBTDBNamespace());
+    }
+
+    static bool HasGenerateAttributeOnBaseTypeHierarchy(INamedTypeSymbol? symbol)
+    {
+        while (symbol is not null)
+        {
+            if (HasGenerateAttribute(symbol))
+            {
+                return true;
+            }
+
+            symbol = symbol.BaseType;
+        }
+
+        return false;
     }
 
     GenerationInfo? DetectErrorsInMethods(GenerationInfo itemGenInfo, List<IMethodSymbol> methods,
