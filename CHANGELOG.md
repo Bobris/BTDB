@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.3.12
+
 ### Fixed
 
 - Source generator now treats `[Generate]` on classes transitively across the full base-type hierarchy, so descendants
