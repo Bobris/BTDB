@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.IL;
 using BTDB.KVDBLayer;
+using BTDB.ODBLayer;
 
 namespace BTDB.Serialization;
 
@@ -152,6 +153,12 @@ public sealed class RawData
         if (ReflectionMetadata.FindCollectionByType(type2) is { } metadata2)
         {
             return (metadata2.OffsetNext, metadata2.OffsetKey, metadata2.OffsetValue, metadata2.SizeOfEntry);
+        }
+
+        var type3 = typeof(IOrderedDictionary<,>).MakeGenericType(keyType, valueType);
+        if (ReflectionMetadata.FindCollectionByType(type3) is { } metadata3)
+        {
+            return (metadata3.OffsetNext, metadata3.OffsetKey, metadata3.OffsetValue, metadata3.SizeOfEntry);
         }
 
         throw new BTDBException("Cannot find metadata for Dictionary<" + keyType.ToSimpleName() + ", " +

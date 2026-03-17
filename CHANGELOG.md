@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source generator now accepts `AdvancedEnumeratorParam<TEnum>` on relation `FindBy...` methods for secondary keys
+  that include additional primary-key prefix fields, which fixes incorrect `BTDB0016` validation errors on valid
+  advanced enumerator overloads.
+- `RawData.GetDictionaryEntriesLayout` now recognizes `IOrderedDictionary<TKey, TValue>` metadata, which fixes
+  failures when resolving entry layout information for ordered dictionaries.
+
 ## 34.3.11
 
 ### Fixed

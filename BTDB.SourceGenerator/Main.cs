@@ -1214,10 +1214,11 @@ public class SourceGenerator : IIncrementalGenerator
                 method.Locations[0]);
         }
 
+        ReadOnlySpan<uint> fullIndexFields = default;
         if (hasAdvancedEnumeratorParam)
         {
-            var fullIndexFields = GetFullIndexFields(indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys);
-            if (fullIndexFields.Length == 0 || paramCount > fi.Length || paramCount >= fullIndexFields.Length)
+            fullIndexFields = GetFullIndexFields(indexName, primaryKeyFields, inKeyValueIndex, secondaryKeys);
+            if (fullIndexFields.Length == 0 || paramCount >= fullIndexFields.Length)
             {
                 return GenerationError("BTDB0016",
                     $"Too many parameters for index '{indexName}' in method '{method.Name}'",
@@ -1235,11 +1236,12 @@ public class SourceGenerator : IIncrementalGenerator
             }
         }
 
-        for (var i = 0; i < fi.Length; i++)
+        var validationMax = hasAdvancedEnumeratorParam ? Math.Max(fi.Length, paramCount) : fi.Length;
+        for (var i = 0; i < validationMax; i++)
         {
             if (i >= paramCount) break;
             var param = method.Parameters[i];
-            var f = fields[(int)fi[i]];
+            var f = fields[(int)(i < fi.Length ? fi[i] : fullIndexFields[i])];
             if (!param.Name.Equals(f.Name, StringComparison.OrdinalIgnoreCase) &&
                 (f.StoredName == null || !param.Name.Equals(f.StoredName, StringComparison.OrdinalIgnoreCase)))
             {
