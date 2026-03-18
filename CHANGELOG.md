@@ -2,6 +2,18 @@
 
 ## [unreleased]
 
+### Changed
+
+- `Sample3rdPartyLib` now targets `net10.0`, matching the rest of the solution's .NET 10 sample and test projects.
+
+### Fixed
+
+- Source generator now emits separate `where` clauses for each constrained generic type parameter, which fixes invalid
+  generated code for concrete classes that inherit generic base classes implementing generated interfaces with
+  constraints.
+- Source generator now suppresses `SYSLIB0057` in emitted files, which removes new .NET 10 warnings from generated
+  IOC, metadata, and relation helper code.
+
 ## 34.3.12
 
 ### Fixed

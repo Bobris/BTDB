@@ -800,4 +800,46 @@ public class IOCTests : GeneratorTestsBase
             }
             """);
     }
+
+    [Fact]
+    public Task VerifyConcreteClassInheritingGenericBaseWithConstraints()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            public interface IInput
+            {
+            }
+
+            public interface IResult
+            {
+            }
+
+            [BTDB.Generate]
+            public interface IHandler<TInput, TResult>
+                where TInput : IInput where TResult : IResult
+            {
+                bool CanStart { get; set; }
+            }
+
+            public abstract class AbstractHandler<TInput, TResult> : IHandler<TInput, TResult>
+                where TInput : IInput where TResult : IResult
+            {
+                public bool CanStart { get; set; } = true;
+            }
+
+            public class ConcreteInput : IInput
+            {
+            }
+
+            public class ConcreteResult : IResult
+            {
+            }
+
+            public class ConcreteHandler : AbstractHandler<ConcreteInput, ConcreteResult>
+            {
+            }
+            """);
+    }
 }
