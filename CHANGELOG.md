@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.3.13
+
 ### Changed
 
 - `Sample3rdPartyLib` now targets `net10.0`, matching the rest of the solution's .NET 10 sample and test projects.
