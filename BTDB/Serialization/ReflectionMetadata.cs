@@ -27,6 +27,24 @@ public static class ReflectionMetadata
 
     static SeqLock _lock;
 
+    static ReflectionMetadata()
+    {
+        Register(new ClassMetadata()
+        {
+            Type = typeof(object),
+            Name = "Object",
+            Namespace = "System",
+            Fields = [],
+            Creator = &CreateObject,
+            Implements = []
+        });
+    }
+
+    static object CreateObject()
+    {
+        return new object();
+    }
+
     public static ClassMetadata? FindByType(Type type)
     {
         var handle = type.TypeHandle.Value;

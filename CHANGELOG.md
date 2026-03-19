@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+- EventStore2 now deserializes `object`-typed payloads containing plain `new object()` instances without crashing when `System.Object` metadata is registered manually.
+
 ## 34.3.13
 
 ### Changed
