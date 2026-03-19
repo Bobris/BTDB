@@ -27,9 +27,9 @@ public static class ReflectionMetadata
 
     static SeqLock _lock;
 
-    static ReflectionMetadata()
+    static unsafe ReflectionMetadata()
     {
-        Register(new ClassMetadata()
+        Register(new()
         {
             Type = typeof(object),
             Name = "Object",
