@@ -15,6 +15,7 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
     bool _writing;
     bool _preapprovedWriting;
     bool _temporaryCloseTransactionLog;
+    bool _disposed;
     internal IKeyValueDBCursor? Reused1;
     internal IKeyValueDBCursor? Reused2;
 
@@ -160,14 +161,21 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
 
     public void Dispose()
     {
-        if (Reused1 != null)
+        if (_disposed) return;
+        _disposed = true;
+
+        var reused1 = Reused1;
+        Reused1 = null;
+        if (reused1 != null)
         {
-            ((BTreeKeyValueDBCursor)Reused1).RealDispose(this);
+            ((BTreeKeyValueDBCursor)reused1).RealDispose(this);
         }
 
-        if (Reused2 != null)
+        var reused2 = Reused2;
+        Reused2 = null;
+        if (reused2 != null)
         {
-            ((BTreeKeyValueDBCursor)Reused2).RealDispose(this);
+            ((BTreeKeyValueDBCursor)reused2).RealDispose(this);
         }
 
         if (FirstCursor != null)

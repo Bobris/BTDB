@@ -91,26 +91,21 @@ public abstract class KeyValueDBTestBase
     }
 
     [Fact]
-    public void Test()
+    public void DisposingReadOnlyTransactionTwiceDoesNotBreakPooledCursorReuse()
     {
         using var db = NewKeyValueDB();
-        var tr = db.StartReadOnlyTransaction();
-        var c1 = tr.CreateCursor();
-        try
-        {
-            tr.Dispose();
-        }
-        catch
-        {
-            // ignored
-        }
+        var tr1 = db.StartReadOnlyTransaction();
+        var cursor1 = tr1.CreateCursor();
+        cursor1.Dispose();
+        tr1.Dispose();
 
-        c1.Dispose();
-        tr.Dispose();
-        tr = db.StartReadOnlyTransaction();
-        c1 = tr.CreateCursor();
-        c1.Dispose();
-        tr.Dispose();
+        var tr2 = db.StartReadOnlyTransaction();
+        var cursor2 = tr2.CreateCursor();
+
+        tr1.Dispose();
+
+        cursor2.Dispose();
+        tr2.Dispose();
     }
 
     [Fact]

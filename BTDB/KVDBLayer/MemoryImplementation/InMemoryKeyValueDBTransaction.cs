@@ -13,6 +13,7 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
     bool _writing;
     readonly bool _readOnly;
     bool _preapprovedWriting;
+    bool _disposed;
     internal IKeyValueDBCursor? Reused1;
     internal IKeyValueDBCursor? Reused2;
 
@@ -134,14 +135,21 @@ class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
 
     public void Dispose()
     {
-        if (Reused1 != null)
+        if (_disposed) return;
+        _disposed = true;
+
+        var reused1 = Reused1;
+        Reused1 = null;
+        if (reused1 != null)
         {
-            ((InMemoryKeyValueDBCursor)Reused1).RealDispose(this);
+            ((InMemoryKeyValueDBCursor)reused1).RealDispose(this);
         }
 
-        if (Reused2 != null)
+        var reused2 = Reused2;
+        Reused2 = null;
+        if (reused2 != null)
         {
-            ((InMemoryKeyValueDBCursor)Reused2).RealDispose(this);
+            ((InMemoryKeyValueDBCursor)reused2).RealDispose(this);
         }
 
         if (_writing || _preapprovedWriting)

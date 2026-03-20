@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- KeyValueDB transactions now make repeated `Dispose()` calls idempotent and clear pooled cursor reuse slots before
+  releasing cursors, which fixes crashes when a disposed read-only transaction is disposed again after its cursor has
+  been reused by another transaction.
 - Source generator now always registers reflection metadata for generated types, including empty classes and IOC-only
   generated registrations, which fixes polymorphic ObjectDB storage for generated marker implementations and reuses
   existing constructor accessors for private parameterless constructors.
