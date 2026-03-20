@@ -7,6 +7,8 @@ using System.Runtime.CompilerServices;
 [CompilerGenerated]
 static file class ErrorHandlerRegistration
 {
+    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+    extern static global::ErrorHandler Creator();
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -21,5 +23,15 @@ static file class ErrorHandlerRegistration
                 return res;
             };
         });
+        var metadata = new global::BTDB.Serialization.ClassMetadata();
+        metadata.Name = "ErrorHandler";
+        metadata.Type = typeof(global::ErrorHandler);
+        metadata.Namespace = "";
+        metadata.Implements = [];
+        metadata.Creator = &Creator;
+        var dummy = Unsafe.As<global::ErrorHandler>(metadata);
+        metadata.Fields = [
+        ];
+        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

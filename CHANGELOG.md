@@ -2,6 +2,16 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source generator now always registers reflection metadata for generated types, including empty classes and IOC-only
+  generated registrations, which fixes polymorphic ObjectDB storage for generated marker implementations and reuses
+  existing constructor accessors for private parameterless constructors.
+- EventStore dictionary serialization now writes the live item count instead of the internal slot count, which fixes
+  failures when serializing `Dictionary<TKey, TValue>` instances after removals created free entries.
+- Inline `HashSet<T>` serialization in ObjectDB and EventStore now writes the live item count instead of the internal
+  slot count, which fixes failures after removals created free entries.
+
 ## 34.3.14
 
 ### Fixed

@@ -11,6 +11,8 @@ static file class ErrorHandlerRegistration
 {
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_Logger")]
     extern static void MethodSetterLogger(global::TestNamespace.ErrorHandler @this, global::TestNamespace.ILogger value);
+    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+    extern static global::TestNamespace.ErrorHandler Creator();
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -24,5 +26,15 @@ static file class ErrorHandlerRegistration
                 return res;
             };
         });
+        var metadata = new global::BTDB.Serialization.ClassMetadata();
+        metadata.Name = "ErrorHandler";
+        metadata.Type = typeof(global::TestNamespace.ErrorHandler);
+        metadata.Namespace = "TestNamespace";
+        metadata.Implements = [];
+        metadata.Creator = &Creator;
+        var dummy = Unsafe.As<global::TestNamespace.ErrorHandler>(metadata);
+        metadata.Fields = [
+        ];
+        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

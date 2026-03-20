@@ -268,9 +268,10 @@ class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             var objType = obj.GetType();
             if (dictType.IsAssignableFrom(objType))
             {
-                var count = Unsafe.As<byte, int>(ref RawData.Ref(obj,
-                    RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
-                writer.WriteVUInt32((uint)count + 1);
+                var countFieldOffset = RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8);
+                var count = Unsafe.As<byte, int>(ref RawData.Ref(obj, countFieldOffset));
+                var freeCount = Unsafe.As<byte, int>(ref RawData.Ref(obj, countFieldOffset + 8));
+                writer.WriteVUInt32((uint)(count - freeCount) + 1);
                 if (count == 0) return;
                 obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
                 ref readonly var mt = ref RawData.MethodTableRef(obj);

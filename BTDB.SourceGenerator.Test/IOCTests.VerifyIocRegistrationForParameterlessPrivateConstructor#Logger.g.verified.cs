@@ -20,5 +20,15 @@ static file class LoggerRegistration
                 return res;
             };
         });
+        var metadata = new global::BTDB.Serialization.ClassMetadata();
+        metadata.Name = "Logger";
+        metadata.Type = typeof(global::Logger);
+        metadata.Namespace = "";
+        metadata.Implements = [];
+        metadata.Creator = &Constr;
+        var dummy = Unsafe.As<global::Logger>(metadata);
+        metadata.Fields = [
+        ];
+        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

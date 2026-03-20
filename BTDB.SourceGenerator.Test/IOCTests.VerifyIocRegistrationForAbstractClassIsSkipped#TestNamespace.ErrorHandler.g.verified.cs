@@ -9,6 +9,10 @@ namespace TestNamespace;
 [CompilerGenerated]
 static file class ErrorHandlerRegistration
 {
+    static object Creator()
+    {
+        return RuntimeHelpers.GetUninitializedObject(typeof(global::TestNamespace.ErrorHandler));
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -24,5 +28,15 @@ static file class ErrorHandlerRegistration
                 return res;
             };
         });
+        var metadata = new global::BTDB.Serialization.ClassMetadata();
+        metadata.Name = "ErrorHandler";
+        metadata.Type = typeof(global::TestNamespace.ErrorHandler);
+        metadata.Namespace = "TestNamespace";
+        metadata.Implements = [typeof(global::TestNamespace.IBetterLogger), typeof(global::TestNamespace.ILogger), typeof(global::TestNamespace.IErrorHandler)];
+        metadata.Creator = &Creator;
+        var dummy = Unsafe.As<global::TestNamespace.ErrorHandler>(metadata);
+        metadata.Fields = [
+        ];
+        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

@@ -235,6 +235,19 @@ public class TypeSerializersTest
     }
 
     [Fact]
+    public void DictionaryWithRemovedEntryCanBeSerialized()
+    {
+        var dict = new Dictionary<int, string>
+        {
+            [1] = "a",
+            [2] = "b",
+            [3] = "c"
+        };
+        dict.Remove(2);
+        TestSerialization(new ClassWithDict { Dict = dict });
+    }
+
+    [Fact]
     public void BasicDescribe()
     {
         var ts = new TypeSerializers();

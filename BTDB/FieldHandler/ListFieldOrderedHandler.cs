@@ -293,9 +293,10 @@ public class ListFieldOrderedHandler : IFieldHandler, IFieldHandlerWithNestedFie
                 }
                 else if (hashSetType.IsAssignableFrom(objType))
                 {
-                    var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj,
-                        RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8)));
-                    writer.WriteVUInt32(count);
+                    var countFieldOffset = RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8);
+                    var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset));
+                    var freeCount = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset + 4));
+                    writer.WriteVUInt32(count - freeCount);
                     obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
                     ref readonly var mt = ref RawData.MethodTableRef(obj);
                     var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();

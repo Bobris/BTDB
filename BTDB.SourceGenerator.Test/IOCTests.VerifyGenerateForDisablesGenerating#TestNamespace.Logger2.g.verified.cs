@@ -9,6 +9,8 @@ namespace TestNamespace;
 [CompilerGenerated]
 static file class Logger2Registration
 {
+    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+    extern static global::TestNamespace.Logger2 Creator();
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -20,5 +22,15 @@ static file class Logger2Registration
                 return res;
             };
         });
+        var metadata = new global::BTDB.Serialization.ClassMetadata();
+        metadata.Name = "Logger2";
+        metadata.Type = typeof(global::TestNamespace.Logger2);
+        metadata.Namespace = "TestNamespace";
+        metadata.Implements = [typeof(global::TestNamespace.ILogger)];
+        metadata.Creator = &Creator;
+        var dummy = Unsafe.As<global::TestNamespace.Logger2>(metadata);
+        metadata.Fields = [
+        ];
+        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

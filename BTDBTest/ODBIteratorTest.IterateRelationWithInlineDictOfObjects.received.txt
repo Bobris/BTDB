@@ -1,0 +1,95 @@
+Relation RecordWithMetadata
+Used key: 03 01 01 76 74 66 73 32 00 Value len:74
+BeginKey
+StartField CompanyId
+ScalarObj 1
+ScalarStr 1
+EndField
+StartField UserId
+ScalarObj user1
+ScalarStr user1
+EndField
+EndKey
+BeginValue
+StartField UserName
+ScalarObj User One
+ScalarStr User One
+EndField
+StartField Metadata
+Inline ref -1
+Used key: 00 00 01 Value len:18
+Used key: 00 01 01 01 Value len:126
+StartInlineObject 1-MetadataContainer-1
+StartField Global
+StartDictionary
+StartDictKey
+ScalarObj key1
+ScalarStr key1
+EndDictKey
+StartDictValue
+Inline ref -2
+Used key: 00 00 02 Value len:14
+Used key: 00 01 02 01 Value len:38
+StartInlineObject 2-MetadataValue-1
+StartField StringValue
+ScalarObj value1
+ScalarStr value1
+EndField
+StartField IsReadOnly
+ScalarObj False
+ScalarStr False
+EndField
+EndInlineObject
+EndDictValue
+StartDictKey
+ScalarObj key2
+ScalarStr key2
+EndDictKey
+StartDictValue
+Inline ref -3
+StartInlineObject 2-MetadataValue-1
+StartField StringValue
+ScalarObj value2
+ScalarStr value2
+EndField
+StartField IsReadOnly
+ScalarObj True
+ScalarStr True
+EndField
+EndInlineObject
+EndDictValue
+EndDictionary
+EndField
+StartField Application
+StartDictionary
+StartDictKey
+ScalarObj 100
+ScalarStr 100
+EndDictKey
+StartDictValue
+StartDictionary
+StartDictKey
+ScalarObj appKey1
+ScalarStr appKey1
+EndDictKey
+StartDictValue
+Inline ref -6
+StartInlineObject 2-MetadataValue-1
+StartField StringValue
+ScalarObj appValue1
+ScalarStr appValue1
+EndField
+StartField IsReadOnly
+ScalarObj False
+ScalarStr False
+EndField
+EndInlineObject
+EndDictValue
+EndDictionary
+EndDictValue
+EndDictionary
+EndField
+EndInlineObject
+EndField
+EndValue
+EndRelation

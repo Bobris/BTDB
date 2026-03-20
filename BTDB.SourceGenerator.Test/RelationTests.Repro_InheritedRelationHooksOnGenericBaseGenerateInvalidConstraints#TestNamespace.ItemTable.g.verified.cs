@@ -9,6 +9,10 @@ namespace TestNamespace;
 [CompilerGenerated]
 static file class ItemTableRegistration
 {
+    static object Creator()
+    {
+        return RuntimeHelpers.GetUninitializedObject(typeof(global::TestNamespace.ItemTable));
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -22,5 +26,15 @@ static file class ItemTableRegistration
                 return res;
             };
         });
+        var metadata = new global::BTDB.Serialization.ClassMetadata();
+        metadata.Name = "ItemTable";
+        metadata.Type = typeof(global::TestNamespace.ItemTable);
+        metadata.Namespace = "TestNamespace";
+        metadata.Implements = [typeof(global::TestNamespace.IItemTable), typeof(global::TestNamespace.ICustomRelation), typeof(global::BTDB.ODBLayer.IRelation)];
+        metadata.Creator = &Creator;
+        var dummy = Unsafe.As<global::TestNamespace.ItemTable>(metadata);
+        metadata.Fields = [
+        ];
+        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

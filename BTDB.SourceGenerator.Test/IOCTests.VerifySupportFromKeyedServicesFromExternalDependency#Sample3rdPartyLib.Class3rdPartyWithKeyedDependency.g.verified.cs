@@ -9,6 +9,10 @@ namespace Sample3rdPartyLib;
 [CompilerGenerated]
 static file class Class3rdPartyWithKeyedDependencyRegistration
 {
+    static object Creator()
+    {
+        return RuntimeHelpers.GetUninitializedObject(typeof(global::Sample3rdPartyLib.Class3rdPartyWithKeyedDependency));
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -22,5 +26,15 @@ static file class Class3rdPartyWithKeyedDependencyRegistration
                 return res;
             };
         });
+        var metadata = new global::BTDB.Serialization.ClassMetadata();
+        metadata.Name = "Class3rdPartyWithKeyedDependency";
+        metadata.Type = typeof(global::Sample3rdPartyLib.Class3rdPartyWithKeyedDependency);
+        metadata.Namespace = "Sample3rdPartyLib";
+        metadata.Implements = [typeof(global::Sample3rdPartyLib.I3rdPartyInterface)];
+        metadata.Creator = &Creator;
+        var dummy = Unsafe.As<global::Sample3rdPartyLib.Class3rdPartyWithKeyedDependency>(metadata);
+        metadata.Fields = [
+        ];
+        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }

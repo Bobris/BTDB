@@ -784,6 +784,25 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
         }
     }
 
+    [Fact]
+    public void HashSetWithRemovedEntryRoundtrips()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var root = tr.Singleton<VariousLists>();
+            root.IntSet = new HashSet<int> { 1, 2, 3 };
+            root.IntSet.Remove(2);
+            tr.Store(root);
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var root = tr.Singleton<VariousLists>();
+            Assert.Equal(new HashSet<int> { 1, 3 }, root.IntSet);
+        }
+    }
+
     [Generate]
     public class InlineDictionary
     {

@@ -11,8 +11,6 @@ static file class ErrorHandlerRegistration
 {
     [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
     extern static global::TestNamespace.ErrorHandler Constr();
-    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
-    extern static global::TestNamespace.ErrorHandler Creator();
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Prop>k__BackingField")]
     extern static ref int Field1(global::TestNamespace.ErrorHandler @this);
     [ModuleInitializer]
@@ -31,7 +29,7 @@ static file class ErrorHandlerRegistration
         metadata.Type = typeof(global::TestNamespace.ErrorHandler);
         metadata.Namespace = "TestNamespace";
         metadata.Implements = [];
-        metadata.Creator = &Creator;
+        metadata.Creator = &Constr;
         var dummy = Unsafe.As<global::TestNamespace.ErrorHandler>(metadata);
         metadata.Fields = [
             new global::BTDB.Serialization.FieldMetadata

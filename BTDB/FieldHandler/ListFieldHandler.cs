@@ -330,9 +330,10 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
                 }
                 else if (hashSetType.IsAssignableFrom(objType))
                 {
-                    var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj,
-                        RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8)));
-                    writer.WriteVUInt32(count);
+                    var countFieldOffset = RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8);
+                    var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset));
+                    var freeCount = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset + 4));
+                    writer.WriteVUInt32(count - freeCount);
                     if (count != 0)
                     {
                         obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));

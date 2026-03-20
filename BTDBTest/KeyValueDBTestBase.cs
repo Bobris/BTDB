@@ -91,6 +91,29 @@ public abstract class KeyValueDBTestBase
     }
 
     [Fact]
+    public void Test()
+    {
+        using var db = NewKeyValueDB();
+        var tr = db.StartReadOnlyTransaction();
+        var c1 = tr.CreateCursor();
+        try
+        {
+            tr.Dispose();
+        }
+        catch
+        {
+            // ignored
+        }
+
+        c1.Dispose();
+        tr.Dispose();
+        tr = db.StartReadOnlyTransaction();
+        c1 = tr.CreateCursor();
+        c1.Dispose();
+        tr.Dispose();
+    }
+
+    [Fact]
     public void CanGetSizeOfPair()
     {
         using var db = NewKeyValueDB();

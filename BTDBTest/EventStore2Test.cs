@@ -1003,6 +1003,31 @@ public class EventStore2Test
     }
 
     [Fact]
+    public void SupportSetsAfterRemove()
+    {
+        var serializer = new EventSerializer();
+        var obj = new SomeSets
+        {
+            A = new HashSet<string> { "A", "B", "C" },
+            B = [42, 7, 100]
+        };
+        obj.A.Remove("B");
+        obj.B.Remove(7);
+        var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
+        serializer.ProcessMetadataLog(meta);
+        var data = serializer.Serialize(out _, obj);
+
+        var deserializer = new EventDeserializer();
+        Assert.False(deserializer.Deserialize(out var obj2, data));
+        deserializer.ProcessMetadataLog(meta);
+        Assert.True(deserializer.Deserialize(out obj2, data));
+
+        var ev = obj2 as SomeSets;
+        Assert.Equal(["A", "C"], ev!.A.OrderBy(a => a));
+        Assert.Equal([42, 100], ev.B.OrderBy(b => b));
+    }
+
+    [Fact]
     public void StoreListThenArray()
     {
         var serializer = new EventSerializer();

@@ -9,6 +9,8 @@ namespace TestNamespace;
 [CompilerGenerated]
 static file class MessageHandlerRegistration
 {
+    [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
+    extern static global::TestNamespace.MessageHandler Creator();
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -20,6 +22,16 @@ static file class MessageHandlerRegistration
                 return res;
             };
         });
+        var metadata = new global::BTDB.Serialization.ClassMetadata();
+        metadata.Name = "MessageHandler";
+        metadata.Type = typeof(global::TestNamespace.MessageHandler);
+        metadata.Namespace = "TestNamespace";
+        metadata.Implements = [typeof(global::TestNamespace.IDispatcher)];
+        metadata.Creator = &Creator;
+        var dummy = Unsafe.As<global::TestNamespace.MessageHandler>(metadata);
+        metadata.Fields = [
+        ];
+        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
         global::TestNamespace.IDispatcher.VerifyHandlers.GetOrAddValueRef(typeof(global::TestNamespace.Message).TypeHandle.Value).ExecuteFactory = (global::BTDB.IOC.IContainer c) => {
            var nestedFactory = c.CreateFactory(typeof(global::TestNamespace.MessageHandler));
            return (container, message) =>

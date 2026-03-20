@@ -9,6 +9,10 @@ namespace TestNamespace;
 [CompilerGenerated]
 static file class LoggerRegistration
 {
+    static object Creator()
+    {
+        return RuntimeHelpers.GetUninitializedObject(typeof(global::TestNamespace.Logger));
+    }
     [ModuleInitializer]
     internal static unsafe void Register4BTDB()
     {
@@ -22,5 +26,15 @@ static file class LoggerRegistration
                 return res;
             };
         });
+        var metadata = new global::BTDB.Serialization.ClassMetadata();
+        metadata.Name = "Logger";
+        metadata.Type = typeof(global::TestNamespace.Logger);
+        metadata.Namespace = "TestNamespace";
+        metadata.Implements = [typeof(global::TestNamespace.ILogger)];
+        metadata.Creator = &Creator;
+        var dummy = Unsafe.As<global::TestNamespace.Logger>(metadata);
+        metadata.Fields = [
+        ];
+        global::BTDB.Serialization.ReflectionMetadata.Register(metadata);
     }
 }
