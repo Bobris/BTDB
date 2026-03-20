@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.4.0
+
 ### Fixed
 
 - KeyValueDB transactions now make repeated `Dispose()` calls idempotent and clear pooled cursor reuse slots before
