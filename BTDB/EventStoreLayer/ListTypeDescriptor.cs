@@ -319,7 +319,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
             {
                 var countFieldOffset = RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8);
                 var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset));
-                var freeCount = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset + 4));
+                var freeCount = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset + 8));
                 writer.WriteVUInt32(count - freeCount + 1);
                 if (count != 0)
                 {

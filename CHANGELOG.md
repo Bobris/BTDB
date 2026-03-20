@@ -12,8 +12,9 @@
   existing constructor accessors for private parameterless constructors.
 - EventStore dictionary serialization now writes the live item count instead of the internal slot count, which fixes
   failures when serializing `Dictionary<TKey, TValue>` instances after removals created free entries.
-- Inline `HashSet<T>` serialization in ObjectDB and EventStore now writes the live item count instead of the internal
-  slot count, which fixes failures after removals created free entries.
+- Inline `HashSet<T>` serialization in ObjectDB and EventStore now reads the runtime `HashSet<T>` free-entry count from
+  the correct field and writes the live item count, which fixes corrupted set payloads on .NET 10, including failures
+  after removals created free entries.
 
 ## 34.3.14
 
