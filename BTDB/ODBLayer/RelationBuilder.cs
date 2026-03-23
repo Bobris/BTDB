@@ -144,26 +144,6 @@ public class RelationBuilder : IRelationBuilder
                property.GetCustomAttribute<NotStoredAttribute>() != null;
     }
 
-    static int GetTypeInheritanceDepth(Type declaringType, Type itemType)
-    {
-        var depth = 0;
-        for (var current = itemType; current != null; current = current.BaseType, depth++)
-        {
-            if (current == declaringType)
-                return depth;
-        }
-
-        return int.MaxValue;
-    }
-
-    IOrderedEnumerable<PropertyInfo> OrderPropertiesForRelationContract(IEnumerable<PropertyInfo> properties)
-    {
-        return properties
-            .OrderByDescending(p => GetTypeInheritanceDepth(p.DeclaringType ?? ItemType, ItemType))
-            .ThenBy(p => p.MetadataToken)
-            .ThenBy(p => p.Name, StringComparer.Ordinal);
-    }
-
     PropertyInfo ResolveRelationContractProperty(PropertyInfo property)
     {
         if (HasRelationContractAttribute(property)) return property;
@@ -225,8 +205,7 @@ public class RelationBuilder : IRelationBuilder
 
     RelationVersionInfo CreateVersionInfoByReflection()
     {
-        var props = OrderPropertiesForRelationContract(ItemType.GetProperties(
-            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)).ToArray();
+        var props = ItemType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
         var primaryKeys = new Dictionary<uint, TableFieldInfo>(1); //PK order->fieldInfo
         var secondaryKeyFields = new List<TableFieldInfo>();
         var secondaryKeys =
