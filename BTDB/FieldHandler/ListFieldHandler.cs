@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using BTDB.IL;
@@ -302,74 +303,103 @@ public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandl
             var obj = Unsafe.As<byte, object>(ref value);
             if (ctx!.WriteObject(ref writer, obj))
             {
-                var objType = obj.GetType();
-                if (arrayType.IsAssignableFrom(objType))
+                while (true)
                 {
-                    var count = (uint)RawData.GetArrayLength(ref value);
-                    writer.WriteVUInt32(count);
-                    ref readonly var mt = ref RawData.MethodTableRef(obj);
-                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                    var offsetDelta = mt.ComponentSize;
-                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    var objType = obj.GetType();
+                    if (arrayType.IsAssignableFrom(objType))
                     {
-                        saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
-                    }
-                }
-                else if (listType.IsAssignableFrom(objType))
-                {
-                    var count = (uint)Unsafe.As<ICollection>(obj).Count;
-                    writer.WriteVUInt32(count);
-                    obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
-                    ref readonly var mt = ref RawData.MethodTableRef(obj);
-                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                    var offsetDelta = mt.ComponentSize;
-                    for (var i = 0; i < count; i++, offset += offsetDelta)
-                    {
-                        saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
-                    }
-                }
-                else if (hashSetType.IsAssignableFrom(objType))
-                {
-                    var countFieldOffset = RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8);
-                    var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset));
-                    var freeCount = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset + 8));
-                    writer.WriteVUInt32(count - freeCount);
-                    if (count != 0)
-                    {
-                        obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                        var count = (uint)RawData.GetArrayLength(ref value);
+                        writer.WriteVUInt32(count);
                         ref readonly var mt = ref RawData.MethodTableRef(obj);
                         var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
                         var offsetDelta = mt.ComponentSize;
-                        if (offsetDelta != layout.Size)
-                            throw new BTDBException("Invalid HashSet layout " + offsetDelta + " != " + layout.Size);
                         for (var i = 0; i < count; i++, offset += offsetDelta)
                         {
-                            if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
-                            {
-                                continue;
-                            }
-
-                            saveItem(ref writer, ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                            saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
                         }
+
+                        return;
                     }
-                }
-                else if (objType.IsGenericType && objType.Name == "<>z__ReadOnlyArray`1" &&
-                         objType.GenericTypeArguments[0] == itemType)
-                {
-                    obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
-                    var count = (uint)RawData.GetArrayLength(ref Unsafe.As<object, byte>(ref obj));
-                    writer.WriteVUInt32(count);
-                    ref readonly var mt = ref RawData.MethodTableRef(obj);
-                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
-                    var offsetDelta = mt.ComponentSize;
-                    for (var i = 0; i < count; i++, offset += offsetDelta)
+
+                    if (listType.IsAssignableFrom(objType))
                     {
-                        saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
+                        var count = (uint)Unsafe.As<ICollection>(obj).Count;
+                        writer.WriteVUInt32(count);
+                        obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
+                        ref readonly var mt = ref RawData.MethodTableRef(obj);
+                        var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                        var offsetDelta = mt.ComponentSize;
+                        for (var i = 0; i < count; i++, offset += offsetDelta)
+                        {
+                            saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
+                        }
+
+                        return;
+                    }
+
+                    if (hashSetType.IsAssignableFrom(objType))
+                    {
+                        var countFieldOffset = RawData.Align(8 + 4 * (uint)Unsafe.SizeOf<nint>(), 8);
+                        var count = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset));
+                        var freeCount = Unsafe.As<byte, uint>(ref RawData.Ref(obj, countFieldOffset + 8));
+                        writer.WriteVUInt32(count - freeCount);
+                        if (count != 0)
+                        {
+                            obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(obj));
+                            ref readonly var mt = ref RawData.MethodTableRef(obj);
+                            var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                            var offsetDelta = mt.ComponentSize;
+                            if (offsetDelta != layout.Size)
+                                throw new BTDBException("Invalid HashSet layout " + offsetDelta + " != " + layout.Size);
+                            for (var i = 0; i < count; i++, offset += offsetDelta)
+                            {
+                                if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
+                                {
+                                    continue;
+                                }
+
+                                saveItem(ref writer, ctx, ref RawData.Ref(obj, offset + layout.Offset));
+                            }
+                        }
+
+                        return;
+                    }
+
+                    if (objType.IsGenericType && objType.Name == "<>z__ReadOnlyArray`1" &&
+                        objType.GenericTypeArguments[0] == itemType)
+                    {
+                        obj = RawData.ListItems(Unsafe.As<List<object>>(obj));
+                        var count = (uint)RawData.GetArrayLength(ref Unsafe.As<object, byte>(ref obj));
+                        writer.WriteVUInt32(count);
+                        ref readonly var mt = ref RawData.MethodTableRef(obj);
+                        var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                        var offsetDelta = mt.ComponentSize;
+                        for (var i = 0; i < count; i++, offset += offsetDelta)
+                        {
+                            saveItem(ref writer, ctx, ref RawData.Ref(obj, offset));
+                        }
+
+                        return;
+                    }
+
+                    else if (IsCollectionWrapper(objType, itemType))
+                    {
+                        obj = Unsafe.As<byte, object>(ref RawData.Ref(obj, (uint)Unsafe.SizeOf<object>()));
+                    }
+                    else
+                    {
+                        throw new BTDBException("Cannot save type " + objType.ToSimpleName());
                     }
                 }
-                else throw new BTDBException("Cannot save type " + objType.ToSimpleName());
             }
         };
+    }
+
+    static bool IsCollectionWrapper(Type objType, Type itemType)
+    {
+        return objType.IsConstructedGenericType &&
+               objType.GetGenericTypeDefinition() == typeof(Collection<>) &&
+               objType.GenericTypeArguments[0] == itemType;
     }
 
     public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)

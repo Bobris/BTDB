@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+- ObjectDB and EventStore list serialization now unwrap wrapper collections through their first referenced backing
+  instance before retrying fast-path handling, which fixes `IList<T>` values backed by
+  `System.Collections.ObjectModel.Collection<T>`.
+
 ## 34.4.0
 
 ### Fixed
