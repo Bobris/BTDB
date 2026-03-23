@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.4.2
+
 ### Fixed
 
 - ObjectDB relation metadata now appends omitted primary-key parts to secondary keys in declared primary-key order and
