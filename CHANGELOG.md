@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+- ObjectDB relation metadata now appends omitted primary-key parts to secondary keys in declared primary-key order and
+  builds reflection-based relation metadata deterministically, which fixes generated relation startup failures for some
+  secondary keys that combine explicit fields with implicit primary-key suffixes.
+
 ## 34.4.1
 
 ### Fixed

@@ -137,7 +137,7 @@ public class RelationVersionInfo
             }
 
             //fill all not present parts of primary key
-            foreach (var pk in primaryKeyFields)
+            foreach (var pk in primaryKeyFields.OrderBy(kv => kv.Key))
             {
                 if (pk.Value.InKeyValue)
                     continue;
