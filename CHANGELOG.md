@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.4.1
+
 ### Fixed
 
 - ObjectDB and EventStore list serialization now unwrap wrapper collections through their first referenced backing
