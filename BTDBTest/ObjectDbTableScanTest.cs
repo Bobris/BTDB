@@ -999,6 +999,18 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         IEnumerable<ObjWithDateTime> ScanById(Constraint<DateTime> time);
     }
 
+    public class ObjWithNullableDateTime
+    {
+        [PrimaryKey(1)] public DateTime? Time { get; set; }
+
+        public string? Name { get; set; }
+    }
+
+    public interface IObjectWithNullableDateTimeTable : IRelation<ObjWithNullableDateTime>
+    {
+        IEnumerable<ObjWithNullableDateTime> ScanById(Constraint<DateTime?> time);
+    }
+
     [Fact]
     public void ConstraintDateTimeRangeWorks()
     {
@@ -1016,6 +1028,43 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
         Assert.Single(t.ScanById(Constraint.DateTime.Range(g12, g2)));
         Assert.Single(t.ScanById(Constraint.DateTime.Range(g1, g12)));
         Assert.Empty(t.ScanById(Constraint.DateTime.Range(g12, g2, false)));
+    }
+
+    [Fact]
+    public void ConstraintNullableDateTimePredicateWorks()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IObjectWithNullableDateTimeTable>();
+        var g1 = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var g2 = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        t.Upsert(new() { Time = null, Name = "N" });
+        t.Upsert(new() { Time = g1, Name = "A" });
+        t.Upsert(new() { Time = g2, Name = "B" });
+
+        Assert.Equal("N", string.Concat(t.ScanById(Constraint.NullableDateTime.Predicate(v => !v.HasValue))
+            .Select(p => p.Name)));
+        Assert.Equal("B", string.Concat(t.ScanById(Constraint.NullableDateTime.Predicate(v =>
+                v.HasValue && v.Value.Year == 2025))
+            .Select(p => p.Name)));
+    }
+
+    [Fact]
+    public void ConstraintNullableDateTimeUpToSkipsNullsAndStopsAfterDate()
+    {
+        using var tr = _db.StartTransaction();
+        var t = tr.GetRelation<IObjectWithNullableDateTimeTable>();
+        var g1 = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var g2 = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var g3 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        t.Upsert(new() { Time = null, Name = "N" });
+        t.Upsert(new() { Time = g1, Name = "A" });
+        t.Upsert(new() { Time = g2, Name = "B" });
+        t.Upsert(new() { Time = g3, Name = "C" });
+
+        Assert.Equal("AB", string.Concat(t.ScanById(Constraint.NullableDateTime.UpTo(g2))
+            .Select(p => p.Name)));
+        Assert.Equal("A", string.Concat(t.ScanById(Constraint.NullableDateTime.UpTo(g2, false))
+            .Select(p => p.Name)));
     }
 
     public class ObjWithIndexedListString : IEquatable<ObjWithIndexedListString>
