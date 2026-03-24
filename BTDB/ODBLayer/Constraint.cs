@@ -493,6 +493,15 @@ public static partial class Constraint
         }
     }
 
+    public static partial class NullableDateTime
+    {
+        public static Constraint<System.DateTime?> Predicate(Predicate<System.DateTime?> predicate) =>
+            new ConstraintNullableDateTimePredicate(predicate);
+
+        public static Constraint<System.DateTime?> UpTo(System.DateTime value, bool including = true) =>
+            new ConstraintNullableDateTimeUpTo(DateTime.ForbidUnspecifiedKind(value), including);
+    }
+
     public static partial class Unsigned
     {
         public static Constraint<ulong> Exact(ulong value) => new ConstraintUnsignedExact(value);
@@ -947,6 +956,58 @@ public class ConstraintDateTimePredicate : ConstraintNoPrefix<DateTime>
 
     public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer) =>
         AsMatchResult(_predicate(reader.ReadDateTime()));
+}
+
+public class ConstraintNullableDateTimePredicate : ConstraintNoPrefix<DateTime?>
+{
+    readonly Predicate<DateTime?> _predicate;
+
+    public ConstraintNullableDateTimePredicate(Predicate<DateTime?> predicate) => _predicate = predicate;
+
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
+    {
+        if (reader.ReadUInt8() == 0)
+        {
+            return AsMatchResult(_predicate(null));
+        }
+
+        return AsMatchResult(_predicate(reader.ReadDateTime()));
+    }
+}
+
+public class ConstraintNullableDateTimeUpTo : Constraint<DateTime?>
+{
+    readonly ConstraintDateTimeUpTo _upTo;
+
+    public ConstraintNullableDateTimeUpTo(DateTime value, bool including)
+    {
+        _upTo = new ConstraintDateTimeUpTo(value, including);
+    }
+
+    public override bool IsSimpleExact() => false;
+
+    public override IConstraint.MatchType Prepare(ref MemWriter buffer)
+    {
+        _upTo.Prepare(ref buffer);
+        return IConstraint.MatchType.Prefix;
+    }
+
+    public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
+    {
+        writer.WriteUInt8(1);
+    }
+
+    public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
+    {
+        if (reader.ReadUInt8() != 1) return IConstraint.MatchResult.No;
+        return _upTo.Match(ref reader, buffer);
+    }
+
+    public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
+    {
+        if (reader.ReadUInt8() != 1) return IConstraint.MatchResult.No;
+        return _upTo.MatchLast(ref reader, buffer);
+    }
 }
 
 public abstract class ConstraintExact<T> : Constraint<T>
