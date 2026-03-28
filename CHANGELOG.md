@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.6.12
+
 ### Fixed
 
 SourceGenerator: Generated code now ignores warnings for using obsolete members and types.
