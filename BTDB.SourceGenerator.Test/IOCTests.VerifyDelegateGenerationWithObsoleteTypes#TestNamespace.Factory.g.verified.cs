@@ -14,21 +14,19 @@ static file class FactoryRegistration
     internal static void Register4BTDB()
     {
         global::BTDB.IOC.IContainer.RegisterFactory(typeof(global::TestNamespace.Factory), Factory);
-        global::BTDB.IOC.IContainer.RegisterFactory(typeof(Func<int,string,ILogger>), Factory);
+        global::BTDB.IOC.IContainer.RegisterFactory(typeof(Func<global::TestNamespace.Logger,global::TestNamespace.Logger>), Factory);
         static Func<global::BTDB.IOC.IContainer,global::BTDB.IOC.IResolvingCtx?,object>? Factory(global::BTDB.IOC.IContainer container, global::BTDB.IOC.ICreateFactoryCtx ctx)
         {
             using var resolvingCtxRestorer = ctx.ResolvingCtxRestorer();
             var hasResolvingCtx = ctx.HasResolvingCtx();
-            var p0Idx = ctx.AddInstanceToCtx(typeof(int), "a");
-            var p1Idx = ctx.AddInstanceToCtx(typeof(string), "b");
-            var nestedFactory = container.CreateFactory(ctx, typeof(ILogger), null);
+            var p0Idx = ctx.AddInstanceToCtx(typeof(global::TestNamespace.Logger), "logger");
+            var nestedFactory = container.CreateFactory(ctx, typeof(global::TestNamespace.Logger), null);
             if (nestedFactory == null) return null;
             if (hasResolvingCtx)
             {
-                return (c, r) => (int p0, string p1) =>
+                return (c, r) => (global::TestNamespace.Logger p0) =>
                 {
                     var p0Backup = r!.Exchange(p0Idx, p0);
-                    var p1Backup = r!.Exchange(p1Idx, p1);
                     try
                     {
                         return nestedFactory(c, r);
@@ -36,18 +34,16 @@ static file class FactoryRegistration
                     finally
                     {
                         r!.Set(p0Idx, p0Backup);
-                        r!.Set(p1Idx, p1Backup);
                     }
                 };
             }
             else
             {
                 var paramSize = ctx.GetParamSize();
-                return (c, _) => (int p0, string p1) =>
+                return (c, _) => (global::TestNamespace.Logger p0) =>
                 {
                     var r = new global::BTDB.IOC.ResolvingCtx(paramSize);
                     r.Set(p0Idx, p0);
-                    r.Set(p1Idx, p1);
                     return nestedFactory(c, r);
                 };
             }

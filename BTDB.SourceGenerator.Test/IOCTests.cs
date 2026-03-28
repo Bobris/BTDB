@@ -329,6 +329,27 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyDelegateGenerationWithObsoleteTypes()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            namespace TestNamespace;
+
+            public interface ILogger
+            {
+            }
+
+            [System.Obsolete]
+            public class Logger : ILogger
+            {
+            }
+
+            [BTDB.Generate]
+            public delegate Logger Factory([System.Obsolete] Logger logger);
+            """);
+    }
+
+    [Fact]
     public Task VerifyInitOnlyDependency()
     {
         // language=cs
