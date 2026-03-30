@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.5.0
+
 ### Added
 
 `Constraint.NullableDateTime.Predicate` and `Constraint.NullableDateTime.UpTo` for filtering nullable `DateTime`
