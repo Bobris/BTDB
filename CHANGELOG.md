@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 34.5.1
+
 ### Added
 
 - IOC now supports `Scoped()` registrations and `IContainer.CreateScope()`. `IContainer` is now
