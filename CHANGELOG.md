@@ -2,16 +2,19 @@
 
 ## [unreleased]
 
+### Added
+
+- IOC now supports `Scoped()` registrations and `IContainer.CreateScope()`. `IContainer` is now
+  `IAsyncDisposable`-only, child scopes own scoped instances, the root container owns singletons and registered
+  instances, and BTDB scopes now align with `ContainerBuilder.ServiceCollection` scoped services. `CreateScope()`
+  is forbidden after disposal, while disposal only blocks tracking of newly created owned disposable instances.
+
 ## 34.5.0
 
 ### Added
 
 `Constraint.NullableDateTime.Predicate` and `Constraint.NullableDateTime.UpTo` for filtering nullable `DateTime`
 relation keys.
-
-- IOC now supports `Scoped()` registrations and `IContainer.CreateScope()`. `IContainer` is now
-  `IAsyncDisposable`-only, child scopes own scoped instances, the root container owns singletons and registered
-  instances, and BTDB scopes now align with `ContainerBuilder.ServiceCollection` scoped services.
 
 ## 34.4.2
 
