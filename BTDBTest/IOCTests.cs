@@ -1553,7 +1553,7 @@ public partial class IocTests
     }
 
     [Fact]
-    public async Task DisposedScopeRejectsResolveAndCapturedDeferredFactories()
+    public async Task DisposedScopeStillAllowsNonOwnedDeferredFactories()
     {
         var builder = new ContainerBuilder();
         builder.RegisterType<ScopedTestLogger>().As<ILogger>().Scoped();
@@ -1564,9 +1564,29 @@ public partial class IocTests
 
         await scope.DisposeAsync();
 
-        Assert.Throws<ObjectDisposedException>(() => scope.Resolve<ILogger>());
+        var resolved = scope.Resolve<ILogger>();
+        var fromFactory = factory();
+        var fromLazy = lazy.Value;
+        Assert.NotNull(resolved);
+        Assert.NotNull(fromFactory);
+        Assert.NotNull(fromLazy);
+        Assert.Same(resolved, fromFactory);
+        Assert.Same(resolved, fromLazy);
+    }
+
+    [Fact]
+    public async Task DisposedScopeRejectsCreationOfNewOwnedInstances()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterFactory<AsyncOnlyScopedService>((_, _) => (_, _) => new AsyncOnlyScopedService(new DisposeTracker()))
+            .Scoped();
+        var container = builder.Build();
+        var scope = container.CreateScope();
+        var factory = scope.Resolve<Func<AsyncOnlyScopedService>>();
+
+        await scope.DisposeAsync();
+
         Assert.Throws<ObjectDisposedException>(() => factory());
-        Assert.Throws<ObjectDisposedException>(() => _ = lazy.Value);
     }
 
     [Fact]

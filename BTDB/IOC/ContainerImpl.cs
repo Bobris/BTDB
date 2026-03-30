@@ -103,8 +103,7 @@ public class ContainerImpl : IContainer
 
     public object ResolveKeyed(object? key, Type type)
     {
-        ThrowIfDisposed();
-        var factory = CreateFactoryCore(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key);
+        var factory = CreateFactory(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key);
         if (factory is null)
         {
             ThrowNotResolvable(key, type);
@@ -125,8 +124,7 @@ public class ContainerImpl : IContainer
 
     public object? ResolveOptionalKeyed(object? key, Type type)
     {
-        ThrowIfDisposed();
-        var factory = CreateFactoryCore(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key);
+        var factory = CreateFactory(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key);
         return factory?.Invoke(this, null);
     }
 
@@ -146,17 +144,10 @@ public class ContainerImpl : IContainer
 
     public Func<IContainer, IResolvingCtx?, object?>? CreateFactory(ICreateFactoryCtx ctx, Type type, object? key)
     {
-        ThrowIfDisposed();
-        var factory = CreateFactoryCore((CreateFactoryCtx)ctx, type, key);
-        if (factory == null) return null;
-        return (container, resolvingCtx) =>
-        {
-            ((ContainerImpl)container).ThrowIfDisposed();
-            return factory(container, resolvingCtx);
-        };
+        return CreateFactory((CreateFactoryCtx)ctx, type, key);
     }
 
-    Func<IContainer, IResolvingCtx?, object?>? CreateFactoryCore(CreateFactoryCtx ctxImpl, Type type, object? key)
+    Func<IContainer, IResolvingCtx?, object?>? CreateFactory(CreateFactoryCtx ctxImpl, Type type, object? key)
     {
         if (ctxImpl.IsBound(type, key as string, out var paramIdx))
         {
@@ -182,12 +173,12 @@ public class ContainerImpl : IContainer
         if (Registrations.TryGetValue(new(key, type), out var cReg))
         {
             ctxImpl.ForbidKeylessFallback = false;
-            return CreateFactoryCore(ctxImpl, cReg, key, type);
+            return CreateFactoryFromRegistration(ctxImpl, cReg, key, type);
         }
 
         if (!ctxImpl.ForbidKeylessFallback && Registrations.TryGetValue(new(null, type), out cReg))
         {
-            return CreateFactoryCore(ctxImpl, cReg, key, type);
+            return CreateFactoryFromRegistration(ctxImpl, cReg, key, type);
         }
 
         if (type.IsDelegate())
@@ -206,16 +197,12 @@ public class ContainerImpl : IContainer
             {
                 if (ctxImpl.VerifySingletons) return (_, _) => null;
                 var nestedType = type.GetGenericArguments()[0];
-                var nestedFactory = CreateFactoryCore(ctxImpl, nestedType, key);
+                var nestedFactory = CreateFactory(ctxImpl, nestedType, key);
                 if (nestedFactory == null) return null;
 
                 return (c, r) =>
                 {
-                    var res = () =>
-                    {
-                        ((ContainerImpl)c).ThrowIfDisposed();
-                        return nestedFactory(c, r);
-                    };
+                    var res = () => nestedFactory(c, r);
                     RawData.SetMethodTable(res, type);
                     return res;
                 };
@@ -228,16 +215,12 @@ public class ContainerImpl : IContainer
                 var nestedType = genericArguments[1];
                 if (genericArguments[0] == typeof(IContainer))
                 {
-                    var nestedFactory = CreateFactoryCore(ctxImpl, nestedType, key);
+                    var nestedFactory = CreateFactory(ctxImpl, nestedType, key);
                     if (nestedFactory == null) return null;
 
                     return (_, r) =>
                     {
-                        var res = (IContainer c) =>
-                        {
-                            ((ContainerImpl)c).ThrowIfDisposed();
-                            return nestedFactory(c, r);
-                        };
+                        var res = (IContainer c) => nestedFactory(c, r);
                         RawData.SetMethodTable(res, type);
                         return res;
                     };
@@ -250,7 +233,7 @@ public class ContainerImpl : IContainer
                     using var resolvingCtxRestorer = ctxImpl.ResolvingCtxRestorer();
                     var hasResolvingCtx = ctxImpl.HasResolvingCtx();
                     var p1Idx = ctxImpl.AddInstanceToCtx(genericArguments[0]);
-                    var nestedFactory = CreateFactoryCore(ctxImpl, nestedType, key);
+                    var nestedFactory = CreateFactory(ctxImpl, nestedType, key);
                     if (nestedFactory == null) return null;
                     if (hasResolvingCtx)
                     {
@@ -258,7 +241,6 @@ public class ContainerImpl : IContainer
                         {
                             var res = (object p1) =>
                             {
-                                ((ContainerImpl)c).ThrowIfDisposed();
                                 var p1Backup = r!.Exchange(p1Idx, p1);
                                 try
                                 {
@@ -280,7 +262,6 @@ public class ContainerImpl : IContainer
                         {
                             var res = (object p1) =>
                             {
-                                ((ContainerImpl)c).ThrowIfDisposed();
                                 var r = new ResolvingCtx(paramSize);
                                 r.Set(p1Idx, p1);
                                 return nestedFactory(c, r);
@@ -296,7 +277,7 @@ public class ContainerImpl : IContainer
             {
                 var nestedType = type.GetGenericArguments()[0];
                 VerifyNonValueType(nestedType);
-                var nestedFactory = CreateFactoryCore(ctxImpl, nestedType, key);
+                var nestedFactory = CreateFactory(ctxImpl, nestedType, key);
                 if (nestedFactory == null) return null;
 
                 return (c, r) =>
@@ -314,9 +295,9 @@ public class ContainerImpl : IContainer
                 VerifyNonValueType(nestedType1);
                 var nestedType2 = genericArguments[1];
                 VerifyNonValueType(nestedType2);
-                var nestedFactory1 = CreateFactoryCore(ctxImpl, nestedType1, key);
+                var nestedFactory1 = CreateFactory(ctxImpl, nestedType1, key);
                 if (nestedFactory1 == null) return null;
-                var nestedFactory2 = CreateFactoryCore(ctxImpl, nestedType2, key);
+                var nestedFactory2 = CreateFactory(ctxImpl, nestedType2, key);
                 if (nestedFactory2 == null) return null;
 
                 return (c, r) =>
@@ -336,11 +317,11 @@ public class ContainerImpl : IContainer
                 VerifyNonValueType(nestedType2);
                 var nestedType3 = genericArguments[2];
                 VerifyNonValueType(nestedType3);
-                var nestedFactory1 = CreateFactoryCore(ctxImpl, nestedType1, key);
+                var nestedFactory1 = CreateFactory(ctxImpl, nestedType1, key);
                 if (nestedFactory1 == null) return null;
-                var nestedFactory2 = CreateFactoryCore(ctxImpl, nestedType2, key);
+                var nestedFactory2 = CreateFactory(ctxImpl, nestedType2, key);
                 if (nestedFactory2 == null) return null;
-                var nestedFactory3 = CreateFactoryCore(ctxImpl, nestedType3, key);
+                var nestedFactory3 = CreateFactory(ctxImpl, nestedType3, key);
                 if (nestedFactory3 == null) return null;
 
                 return (c, r) =>
@@ -368,11 +349,7 @@ public class ContainerImpl : IContainer
                 Func<IContainer, IResolvingCtx?, object?>? nestedFactory = null;
                 lazyFactory = (c, r) =>
                 {
-                    var res = new Lazy<object>(() =>
-                    {
-                        ((ContainerImpl)c).ThrowIfDisposed();
-                        return nestedFactory!(c, r);
-                    });
+                    var res = new Lazy<object>(() => nestedFactory!(c, r));
                     RawData.SetMethodTable(res, type);
                     return res;
                 };
@@ -380,7 +357,7 @@ public class ContainerImpl : IContainer
                 var backupResolvingStack = ctxImpl.BackupResolvingStack();
                 try
                 {
-                    nestedFactory = CreateFactoryCore(ctxImpl, nestedType, key);
+                    nestedFactory = CreateFactory(ctxImpl, nestedType, key);
                 }
                 finally
                 {
@@ -406,7 +383,7 @@ public class ContainerImpl : IContainer
         return null;
     }
 
-    Func<IContainer, IResolvingCtx?, object?>? CreateFactoryCore(CreateFactoryCtx ctxImpl, CReg cReg, object? key,
+    Func<IContainer, IResolvingCtx?, object?>? CreateFactoryFromRegistration(CreateFactoryCtx ctxImpl, CReg cReg, object? key,
         Type type)
     {
         if (ctxImpl.Enumerate >= 0 && cReg.Multi.Count > 1)
@@ -635,7 +612,7 @@ public class ContainerImpl : IContainer
         if (nestedType.IsValueType)
             throw new NotSupportedException("IEnumerable<> or Array<> with value type argument is not supported.");
         var enumerableBackup = ctxImpl.StartEnumerate();
-        var nestedFactory = CreateFactoryCore(ctxImpl, nestedType, key);
+        var nestedFactory = CreateFactory(ctxImpl, nestedType, key);
         if (nestedFactory == null)
         {
             ctxImpl.FinishEnumerate(enumerableBackup);
@@ -647,7 +624,7 @@ public class ContainerImpl : IContainer
         factories.Add(nestedFactory);
         while (ctxImpl.IncrementEnumerable())
         {
-            factories.Add(CreateFactoryCore(ctxImpl, nestedType, key)!);
+            factories.Add(CreateFactory(ctxImpl, nestedType, key)!);
         }
 
         ctxImpl.FinishEnumerate(enumerableBackup);
@@ -736,6 +713,7 @@ public class ContainerImpl : IContainer
     void TrackOwnedInstance(object? instance)
     {
         if (instance is not (IDisposable or IAsyncDisposable)) return;
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
         var node = new OwnedInstanceNode(instance);
         node.Next = Interlocked.Exchange(ref _ownedInstances, node);
     }
@@ -774,7 +752,7 @@ public class ContainerImpl : IContainer
         }
     }
 
-    internal void ThrowIfDisposed()
+    void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
     }
