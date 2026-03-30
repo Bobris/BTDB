@@ -4,4 +4,5 @@ enum Lifetime
 {
     AlwaysNew,
     Singleton,
+    Scoped,
 }

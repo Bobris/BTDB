@@ -7,6 +7,10 @@
 `Constraint.NullableDateTime.Predicate` and `Constraint.NullableDateTime.UpTo` for filtering nullable `DateTime`
 relation keys.
 
+- IOC now supports `Scoped()` registrations and `IContainer.CreateScope()`. `IContainer` is now
+  `IAsyncDisposable`-only, child scopes own scoped instances, the root container owns singletons and registered
+  instances, and BTDB scopes now align with `ContainerBuilder.ServiceCollection` scoped services.
+
 ## 34.4.2
 
 ### Fixed

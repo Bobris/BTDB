@@ -9,5 +9,10 @@ class LiveScopeTraitImpl : ILiveScopeTrait, ILiveScopeTraitImpl
         _lifetime = Lifetime.Singleton;
     }
 
+    public void Scoped()
+    {
+        _lifetime = Lifetime.Scoped;
+    }
+
     public Lifetime Lifetime => _lifetime;
 }

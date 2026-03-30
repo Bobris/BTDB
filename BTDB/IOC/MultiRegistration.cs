@@ -12,6 +12,11 @@ class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeScanTrait>, ILiveScop
         Lifetime = Lifetime.Singleton;
     }
 
+    public void Scoped()
+    {
+        Lifetime = Lifetime.Scoped;
+    }
+
     public Lifetime Lifetime { get; private set; } = Lifetime.AlwaysNew;
 
     StructList<Predicate<Type>> _filters = new();

@@ -28,6 +28,13 @@ public static class BuilderExtensions
         return registration;
     }
 
+    public static IRegistration<TTraits> Scoped<TTraits>(this IRegistration<TTraits> registration)
+        where TTraits : ILiveScopeTrait
+    {
+        ((ILiveScopeTrait)registration).Scoped();
+        return registration;
+    }
+
     public static IRegistration<TTraits> As<TTraits>(this IRegistration<TTraits> registration, Type serviceType)
         where TTraits : IAsTrait
     {

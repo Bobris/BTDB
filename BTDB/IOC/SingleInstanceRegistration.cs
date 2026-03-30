@@ -7,6 +7,8 @@ class SingleInstanceRegistration : RegistrationBaseImpl<IAsTrait>, IContanerRegi
     readonly object _instance;
     readonly Type _implementationType;
 
+    internal object Instance => _instance;
+
     public SingleInstanceRegistration(object instance, Type type)
     {
         _instance = instance;
@@ -27,7 +29,10 @@ class SingleInstanceRegistration : RegistrationBaseImpl<IAsTrait>, IContanerRegi
         }
 
         context.AddCReg(GetAsTypesFor(_implementationType), PreserveExistingDefaults, UniqueRegistration,
-            new() { Factory = FactoryFactory, Lifetime = Lifetime.AlwaysNew, SingletonId = uint.MaxValue });
+            new()
+            {
+                Factory = FactoryFactory, Lifetime = Lifetime.AlwaysNew, SingletonId = uint.MaxValue,
+                ScopedId = uint.MaxValue
+            });
     }
 }
-

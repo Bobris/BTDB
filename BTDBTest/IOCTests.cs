@@ -1331,6 +1331,63 @@ public partial class IocTests
         }
     }
 
+    sealed class DisposeTracker
+    {
+        public int AsyncDisposeCount;
+        public int DisposeCount;
+    }
+
+    [Generate]
+    sealed class AsyncOnlyScopedService(DisposeTracker tracker)
+        : IAsyncDisposable
+    {
+        public DisposeTracker Tracker { get; } = tracker;
+
+        public ValueTask DisposeAsync()
+        {
+            Tracker.AsyncDisposeCount++;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    [Generate]
+    sealed class SyncOnlySingletonService(DisposeTracker tracker)
+        : IDisposable
+    {
+        public DisposeTracker Tracker { get; } = tracker;
+
+        public void Dispose()
+        {
+            Tracker.DisposeCount++;
+        }
+    }
+
+    [Generate]
+    public sealed class ScopedContainerCapture(IContainer container)
+    {
+        public IContainer Container { get; } = container;
+    }
+
+    [Generate]
+    sealed class SingletonNeedingLogger(ILogger logger)
+    {
+        public ILogger Logger { get; } = logger;
+    }
+
+    [Generate]
+    public sealed class SingletonUsingScopedThroughFunc(Func<ILogger> factory)
+    {
+        readonly Func<ILogger> _factory = factory;
+
+        public ILogger Resolve() => _factory();
+    }
+
+    [Generate]
+    public class ScopedTestLogger : ILogger;
+
+    [Generate]
+    public class ScopedMsDiService;
+
     [Fact]
     public void DisposableInterfacesAreNotRegisteredAutomatically()
     {
@@ -1385,12 +1442,159 @@ public partial class IocTests
     }
 
     [Fact]
+    public async Task ScopedLifetimeReusesWithinScopeButSeparatesScopes()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<ScopedTestLogger>().As<ILogger>().Scoped();
+        var container = builder.Build();
+
+        var root1 = container.Resolve<ILogger>();
+        var root2 = container.Resolve<ILogger>();
+        Assert.Same(root1, root2);
+
+        await using var scope1 = container.CreateScope();
+        var scope1Log1 = scope1.Resolve<ILogger>();
+        var scope1Log2 = scope1.Resolve<ILogger>();
+        Assert.Same(scope1Log1, scope1Log2);
+        Assert.NotSame(root1, scope1Log1);
+
+        await using var scope2 = container.CreateScope();
+        var scope2Log = scope2.Resolve<ILogger>();
+        Assert.NotSame(root1, scope2Log);
+        Assert.NotSame(scope1Log1, scope2Log);
+    }
+
+    [Fact]
+    public async Task SingletonLifetimeIsSharedAcrossScopes()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
+        var container = builder.Build();
+
+        var rootLogger = container.Resolve<ILogger>();
+        await using var scope = container.CreateScope();
+        var scopedLogger = scope.Resolve<ILogger>();
+
+        Assert.Same(rootLogger, scopedLogger);
+    }
+
+    [Fact]
+    public async Task InjectedContainerIsCurrentScope()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<ScopedContainerCapture>().Scoped();
+        var container = builder.Build();
+
+        var rootCapture = container.Resolve<ScopedContainerCapture>();
+        Assert.Same(container, rootCapture.Container);
+
+        await using var scope = container.CreateScope();
+        var scopedCapture = scope.Resolve<ScopedContainerCapture>();
+        Assert.Same(scope, scopedCapture.Container);
+        Assert.NotSame(rootCapture.Container, scopedCapture.Container);
+    }
+
+    [Fact]
+    public async Task DisposingChildScopeDisposesOnlyOwnedScopedInstances()
+    {
+        var scopedTracker = new DisposeTracker();
+        var singletonTracker = new DisposeTracker();
+        var instanceTracker = new DisposeTracker();
+
+        var builder = new ContainerBuilder();
+        builder.RegisterInstance(new AsyncOnlyScopedService(instanceTracker));
+        builder.RegisterFactory<AsyncOnlyScopedService>((_, _) => (_, _) => new AsyncOnlyScopedService(scopedTracker))
+            .Scoped();
+        builder.RegisterFactory<SyncOnlySingletonService>((_, _) => (_, _) => new SyncOnlySingletonService(singletonTracker))
+            .SingleInstance();
+        var container = builder.Build();
+
+        _ = container.Resolve<SyncOnlySingletonService>();
+        await using (var scope = container.CreateScope())
+        {
+            var scoped = scope.Resolve<AsyncOnlyScopedService>();
+            Assert.Same(scopedTracker, scoped.Tracker);
+        }
+
+        Assert.Equal(1, scopedTracker.AsyncDisposeCount);
+        Assert.Equal(0, singletonTracker.DisposeCount);
+        Assert.Equal(0, instanceTracker.AsyncDisposeCount);
+
+        await container.DisposeAsync();
+
+        Assert.Equal(1, singletonTracker.DisposeCount);
+        Assert.Equal(1, instanceTracker.AsyncDisposeCount);
+    }
+
+    [Fact]
+    public async Task RootDisposeAsyncDisposesRootOwnedInstancesAndIsIdempotent()
+    {
+        var rootScopedTracker = new DisposeTracker();
+        var singletonTracker = new DisposeTracker();
+        var instanceTracker = new DisposeTracker();
+
+        var builder = new ContainerBuilder();
+        builder.RegisterInstance(new AsyncOnlyScopedService(instanceTracker));
+        builder.RegisterFactory<AsyncOnlyScopedService>((_, _) => (_, _) => new AsyncOnlyScopedService(rootScopedTracker))
+            .Scoped();
+        builder.RegisterFactory<SyncOnlySingletonService>((_, _) => (_, _) => new SyncOnlySingletonService(singletonTracker))
+            .SingleInstance();
+        var container = builder.Build();
+
+        _ = container.Resolve<AsyncOnlyScopedService>();
+        _ = container.Resolve<SyncOnlySingletonService>();
+
+        await container.DisposeAsync();
+        await container.DisposeAsync();
+
+        Assert.Equal(1, rootScopedTracker.AsyncDisposeCount);
+        Assert.Equal(1, singletonTracker.DisposeCount);
+        Assert.Equal(1, instanceTracker.AsyncDisposeCount);
+    }
+
+    [Fact]
+    public async Task DisposedScopeRejectsResolveAndCapturedDeferredFactories()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<ScopedTestLogger>().As<ILogger>().Scoped();
+        var container = builder.Build();
+        var scope = container.CreateScope();
+        var factory = scope.Resolve<Func<ILogger>>();
+        var lazy = scope.Resolve<Lazy<ILogger>>();
+
+        await scope.DisposeAsync();
+
+        Assert.Throws<ObjectDisposedException>(() => scope.Resolve<ILogger>());
+        Assert.Throws<ObjectDisposedException>(() => factory());
+        Assert.Throws<ObjectDisposedException>(() => _ = lazy.Value);
+    }
+
+    [Fact]
     public void VerificationFailsWhenSingletonUsesTransient()
     {
         var builder = new ContainerBuilder();
         builder.RegisterType<Logger>().As<ILogger>();
         builder.RegisterType<ErrorHandler>().As<IErrorHandler>().SingleInstance();
         Assert.Throws<BTDBException>(() => builder.BuildAndVerify());
+    }
+
+    [Fact]
+    public void VerificationFailsWhenSingletonUsesScoped()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<ScopedTestLogger>().As<ILogger>().Scoped();
+        builder.RegisterType<SingletonNeedingLogger>().SingleInstance();
+        Assert.Throws<BTDBException>(() => builder.BuildAndVerify());
+    }
+
+    [Fact]
+    public void VerificationAllowsSingletonUsingScopedThroughFunc()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<ScopedTestLogger>().As<ILogger>().Scoped();
+        builder.RegisterType<SingletonUsingScopedThroughFunc>().SingleInstance();
+        var container = builder.BuildAndVerify();
+        Assert.NotNull(container.Resolve<SingletonUsingScopedThroughFunc>());
     }
 
     [Generate]
@@ -1854,6 +2058,29 @@ public partial class IocTests
         Assert.NotNull(actual);
         Assert.IsType<ErrorHandler>(actual);
         Assert.IsType<TestLogger>(actual.Logger);
+    }
+
+    [Fact]
+    public async Task ScopedServicesFromServiceProviderFollowBtDbScopes()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.ServiceCollection.AddScoped<ScopedMsDiService>();
+        var container = containerBuilder.Build();
+
+        var root1 = container.Resolve<ScopedMsDiService>();
+        var root2 = container.Resolve<ScopedMsDiService>();
+        Assert.Same(root1, root2);
+
+        await using var scope1 = container.CreateScope();
+        var scope1Obj1 = scope1.Resolve<ScopedMsDiService>();
+        var scope1Obj2 = scope1.Resolve<ScopedMsDiService>();
+        Assert.Same(scope1Obj1, scope1Obj2);
+        Assert.NotSame(root1, scope1Obj1);
+
+        await using var scope2 = container.CreateScope();
+        var scope2Obj = scope2.Resolve<ScopedMsDiService>();
+        Assert.NotSame(scope1Obj1, scope2Obj);
+        Assert.NotSame(root1, scope2Obj);
     }
 
     [Fact]
