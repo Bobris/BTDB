@@ -27,8 +27,7 @@ public class ContainerImpl : IContainer
     readonly AsyncServiceScope? _serviceScope;
     readonly RefDictionary<uint, object?> _scopedInstances = new();
     SeqLock _scopedInstancesLock;
-    readonly object _ownedInstancesLock = new();
-    StructList<object> _ownedInstances;
+    OwnedInstanceNode? _ownedInstances;
     int _disposeState;
 
     internal ContainerImpl(ReadOnlySpan<IRegistration> registrations, ContainerVerification containerVerification,
@@ -737,33 +736,19 @@ public class ContainerImpl : IContainer
     void TrackOwnedInstance(object? instance)
     {
         if (instance is not (IDisposable or IAsyncDisposable)) return;
-        lock (_ownedInstancesLock)
-        {
-            foreach (var ownedInstance in _ownedInstances)
-            {
-                if (ReferenceEquals(ownedInstance, instance)) return;
-            }
-
-            _ownedInstances.Add(instance);
-        }
+        var node = new OwnedInstanceNode(instance);
+        node.Next = Interlocked.Exchange(ref _ownedInstances, node);
     }
 
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposeState, 1) != 0) return;
 
-        StructList<object> ownedInstances;
-        lock (_ownedInstancesLock)
+        var ownedInstances = Interlocked.Exchange(ref _ownedInstances, null);
+        while (ownedInstances != null)
         {
-            ownedInstances = _ownedInstances;
-            _ownedInstances = new();
-        }
-
-        while (ownedInstances.Count > 0)
-        {
-            var instance = ownedInstances.Last;
-            ownedInstances.Pop();
-            await DisposeOwnedAsync(instance);
+            await DisposeOwnedAsync(ownedInstances.Instance);
+            ownedInstances = ownedInstances.Next;
         }
 
         if (_serviceScope is { } serviceScope)
@@ -807,6 +792,12 @@ public class ContainerImpl : IContainer
 
     sealed class ScopedLocker
     {
+    }
+
+    sealed class OwnedInstanceNode(object instance)
+    {
+        public readonly object Instance = instance;
+        public OwnedInstanceNode? Next;
     }
 
     [DoesNotReturn]
