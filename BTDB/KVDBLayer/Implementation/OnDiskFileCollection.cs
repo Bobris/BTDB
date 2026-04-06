@@ -274,10 +274,6 @@ public class OnDiskFileCollection : IFileCollection
             _stream.Flush(true);
         }
 
-        public void Truncate()
-        {
-        }
-
         public void HardFlushTruncateSwitchToReadOnlyMode()
         {
             HardFlush();

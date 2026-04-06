@@ -66,7 +66,8 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
         {
             if (_accessor != null) return;
             var capacity = Math.Max(1, _cachedLength);
-            _memoryMappedFile = MemoryMappedFile.CreateFromFile(_stream, null, capacity, MemoryMappedFileAccess.ReadWrite,
+            _memoryMappedFile = MemoryMappedFile.CreateFromFile(_stream, null, capacity,
+                MemoryMappedFileAccess.ReadWrite,
                 HandleInheritability.None, true);
             _accessor = _memoryMappedFile!.CreateViewAccessor();
             _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _pointer);
@@ -231,25 +232,19 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
 
         public void HardFlush()
         {
-            _stream.Flush(true);
-        }
-
-        public void Truncate()
-        {
             UnmapContent();
             _stream.SetLength(_trueLength);
+            _stream.Flush(true);
         }
 
         public void HardFlushTruncateSwitchToReadOnlyMode()
         {
             HardFlush();
-            Truncate();
         }
 
         public void HardFlushTruncateSwitchToDisposedMode()
         {
             HardFlush();
-            Truncate();
         }
 
         public ulong GetSize()

@@ -112,6 +112,7 @@ static class Program
 
         Build(projDir, newVersion, nugetToken);
         BuildSourceGenerator(projDir, newVersion, nugetToken);
+        BuildAzureStorage(projDir, newVersion, nugetToken);
         BuildODbDump(projDir);
 
         if (choice == '4') return 0;
@@ -136,6 +137,7 @@ static class Program
         await File.WriteAllTextAsync(projDir + "/CHANGELOG.md", string.Join("", outputLogLines.Select(s => s + '\n')));
         Commands.Stage(gitrepo, "CHANGELOG.md");
         Commands.Stage(gitrepo, "BTDB/BTDB.csproj");
+        Commands.Stage(gitrepo, "BTDB.AzureStorage/BTDB.AzureStorage.csproj");
         Commands.Stage(gitrepo, "BTDB.SourceGenerator/BTDB.SourceGenerator.csproj");
         Commands.Stage(gitrepo, "ODbDump/ODbDump.csproj");
         var author = new LibGit2Sharp.Signature("Releaser", "boris.letocha@gmail.com", DateTime.Now);
@@ -174,6 +176,10 @@ static class Program
         content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
         await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
         fn = projDir + "/BTDB.SourceGenerator/BTDB.SourceGenerator.csproj";
+        content = await File.ReadAllTextAsync(fn);
+        content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
+        await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
+        fn = projDir + "/BTDB.AzureStorage/BTDB.AzureStorage.csproj";
         content = await File.ReadAllTextAsync(fn);
         content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
         await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
@@ -246,6 +252,25 @@ static class Program
         process!.WaitForExit();
         start = new("dotnet",
             "nuget push BTDB.SourceGenerator." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
+        {
+            UseShellExecute = true,
+            WorkingDirectory = projDir + "/artifacts/package/release"
+        };
+        process = Process.Start(start);
+        process!.WaitForExit();
+    }
+
+    static void BuildAzureStorage(string projDir, string newVersion, string nugetToken)
+    {
+        var start = new ProcessStartInfo("dotnet", "pack -c Release")
+        {
+            UseShellExecute = true,
+            WorkingDirectory = projDir + "/BTDB.AzureStorage"
+        };
+        var process = Process.Start(start);
+        process!.WaitForExit();
+        start = new("dotnet",
+            "nuget push BTDB.AzureStorage." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
         {
             UseShellExecute = true,
             WorkingDirectory = projDir + "/artifacts/package/release"

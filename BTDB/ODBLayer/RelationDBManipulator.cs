@@ -1039,7 +1039,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return new RelationPrimaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, loaderIndex);
     }
 
-    public TItem FirstByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
+    public TItem FirstByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem>? target,
         IOrderer[]? orderers, bool hasOrDefault) where TItem : class
     {
         var keyBytes = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
@@ -1144,7 +1144,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         }
     }
 
-    public TItem LastByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem> target,
+    public TItem LastByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem>? target,
         IOrderer[]? orderers, bool hasOrDefault) where TItem : class
     {
         if (orderers != null && orderers.Length > 0)

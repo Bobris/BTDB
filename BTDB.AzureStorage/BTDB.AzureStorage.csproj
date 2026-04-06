@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+        <LangVersion>latest</LangVersion>
+        <Nullable>annotations</Nullable>
+        <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <PackageId>BTDB.AzureStorage</PackageId>
+        <Version>34.5.1</Version>
+        <Authors>Boris Letocha, Lubos Karasek</Authors>
+        <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+        <Description>Azure Blob Storage helpers for BTDB local-cache-backed file collections.</Description>
+        <PackageTags>BTDB Azure Blob Storage</PackageTags>
+        <WarningsAsErrors />
+        <NoWarn>1701;1702;1720</NoWarn>
+        <WarningsNotAsErrors>NU1900;NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <DebugSymbols>true</DebugSymbols>
+        <DebugType>embedded</DebugType>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../BTDB/BTDB.csproj" />
+        <None Include="../README.md" Pack="true" PackagePath="/" />
+    </ItemGroup>
+    <ItemGroup>
+      <PackageReference Include="Azure.Storage.Blobs" Version="12.27.0" />
+    </ItemGroup>
+</Project>

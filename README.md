@@ -85,6 +85,43 @@ exception during transaction disposal.
         }
     }
 
+### Waiting for flush on SIGTERM
+
+When using `BTDB.AzureStorage`, wait for `FlushPendingChangesAsync()` before allowing the process to exit. This makes
+sure queued transaction log appends are uploaded before a newly created key index file can point at them.
+
+In Kubernetes or AKS, this works only if the container receives `SIGTERM` and `terminationGracePeriodSeconds` is long
+enough for the flush to finish before the pod is force-killed.
+
+This is about draining the remote Azure Blob upload queue. It does not preserve the local cache directory, which is
+typically an `emptyDir` volume and should be expected to disappear after pod shutdown.
+
+```csharp
+using System.Runtime.InteropServices;
+using Azure.Storage.Blobs;
+using BTDB.AzureStorage;
+using BTDB.KVDBLayer;
+
+var containerClient = new BlobContainerClient(connectionString, "btdb");
+
+await using var fileCollection = await AzureBlobFileCollection.CreateAsync(new AzureBlobFileCollectionOptions
+{
+    BlobStorageBackend = new AzureBlobStorageBackend(containerClient, "tenant-a/prod"),
+    TransactionLogFlushPeriod = TimeSpan.FromSeconds(30)
+});
+
+using var db = new BTreeKeyValueDB(fileCollection);
+var shutdown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ =>
+{
+    shutdown.TrySetResult();
+});
+
+await shutdown.Task;
+await fileCollection.FlushPendingChangesAsync();
+```
+
 ### Roadmap
 
 - Everything is there just use it

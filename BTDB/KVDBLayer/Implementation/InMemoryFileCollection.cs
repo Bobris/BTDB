@@ -304,11 +304,7 @@ public class InMemoryFileCollection : IFileCollection
 
         public void HardFlush()
         {
-            // We are only in memory, so nothing to do
-        }
-
-        public void Truncate()
-        {
+            // We are only in memory, so nothing to do, only remember last true flushed size to be able to simulate data loss
             _lastTrueFlushedSize = _flushedSize;
         }
 

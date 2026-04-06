@@ -313,18 +313,17 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 if (openUpToCommitUlong.HasValue || latestTrLogFileId != firstTrLogId && firstTrLogId != 0 ||
                     !hasKeyIndex && _fileCollection.FileInfos.Any(p => p.Value.SubDBId == 0))
                 {
-                    // Need to create new trl if cannot append to last one so it is then written to kvi
+                    // Need to create new trl if it cannot append to last one so it is then written to kvi
                     if (openUpToCommitUlong.HasValue && _fileIdWithTransactionLog == 0)
                     {
                         WriteStartOfNewTransactionLogFile();
                         _fileWithTransactionLog!.HardFlush();
-                        _fileWithTransactionLog.Truncate();
-                        // reinitialize MemWriter because it could be garbage after Truncate
+                        // reinitialize MemWriter because it could be garbage after HardFlush();
                         _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
                         UpdateTransactionLogInBTreeRoot(_lastCommitted);
                     }
 
-                    // When not opening history commit KVI file will be created by compaction
+                    // When not opening history commit, compaction will create KVI file
                     if (openUpToCommitUlong.HasValue)
                     {
                         CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration, true);
@@ -336,7 +335,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
                     _writerWithTransactionLog = new(_fileWithTransactionLog!.GetAppenderWriter());
 
-                    if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
+                    if (_writerWithTransactionLog.GetCurrentPosition() >= MaxTrLogFileSize)
                     {
                         WriteStartOfNewTransactionLogFile();
                     }
@@ -1261,6 +1260,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             if (DurableTransactions)
             {
                 _fileWithTransactionLog!.HardFlush();
+                // Reinitialize MemWriter because its content could be invalid due to HardFlush
+                _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
             }
 
             UpdateTransactionLogInBTreeRoot(root);
@@ -1268,8 +1269,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
                 _writerWithTransactionLog.Flush();
-                _fileWithTransactionLog!.Truncate();
-                // Reinitialize MemWriter because its content could be invalid due to truncation
+                _fileWithTransactionLog!.HardFlush();
+                // Reinitialize MemWriter because its content could be invalid due to HardFlush
                 _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
             }
 
@@ -1438,7 +1439,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 _writerWithTransactionLog = new(_fileWithTransactionLog!.GetAppenderWriter());
             }
 
-            if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
+            if (_writerWithTransactionLog.GetCurrentPosition() >= MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
@@ -1590,7 +1591,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     public void WriteEraseOneCommand(in ReadOnlySpan<byte> keyPrefix, in ReadOnlySpan<byte> keySuffix)
     {
-        if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
+        if (_writerWithTransactionLog.GetCurrentPosition() >= MaxTrLogFileSize)
         {
             WriteStartOfNewTransactionLogFile();
         }
@@ -1604,7 +1605,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     public void WriteEraseRangeCommand(in ReadOnlySpan<byte> firstKeyPrefix, in ReadOnlySpan<byte> firstKeySuffix,
         in ReadOnlySpan<byte> secondKeyPrefix, in ReadOnlySpan<byte> secondKeySuffix)
     {
-        if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
+        if (_writerWithTransactionLog.GetCurrentPosition() >= MaxTrLogFileSize)
         {
             WriteStartOfNewTransactionLogFile();
         }

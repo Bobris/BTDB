@@ -20,10 +20,9 @@ public interface IFileCollectionFile
     // this should not need to cache written data in memory, saving memory
     IMemWriter GetExclusiveAppenderWriter();
 
-    // Synchronously wait for OS file buffers to flush => forcing durability
+    // Set file size to current position and synchronously wait for OS file buffers to flush => forcing durability
+    // Writer must be reinitialized before next write!
     void HardFlush();
-
-    void Truncate();
 
     // combination of three methods could be done asynchronously
     // will only use RandomRead for this file till end of process

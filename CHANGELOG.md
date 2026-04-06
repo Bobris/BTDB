@@ -2,6 +2,34 @@
 
 ## [unreleased]
 
+### Added
+
+- Added the `BTDB.AzureStorage` package with `AzureBlobFileCollection`, an `IFileCollection` implementation that
+  maintains a local memory-mapped cache synchronized with Azure Blob Storage, reconciles local and remote file lengths
+  on startup, uploads regular files as block blobs, batches transaction-log block commits on a configurable timer, and
+  drains uploads and deletes through a FIFO background queue.
+- `AzureBlobFileCollectionOptions.DeleteLocalCacheDirectoryOnDispose` makes removal of the local cache directory on
+  dispose an explicit opt-in behavior.
+- `AzureBlobStorageBackend` now accepts an optional path prefix, allowing BTDB files to be scoped under a subdirectory
+  within a shared blob container.
+
+### Changed
+
+- `AzureBlobFileCollection` is now intentionally optimized only for BTDB KeyValueDB file types (`trl`, `pvl`, `kvi`),
+  uses specialized file implementations per type, and writes `pvl`/`kvi` data through a 128 KB buffered exclusive
+  writer instead of the previous memory-mapped writer path.
+- `AzureBlobFileCollectionOptions.Logger` can now observe enqueue, execution, retry failures, and queue length for the
+  Azure Blob FIFO worker, plus startup downloads from Azure Blob Storage.
+- Transaction-log synchronization now passes only the target length plus a random-access reader into the blob backend;
+  `AzureBlobStorageBackend` computes the committed block plan itself with an internal 128 KB preferred block size,
+  reuses existing committed blocks only when their IDs and lengths exactly match the expected layout, and otherwise
+  rebuilds the blob so committed block counts stay bounded even under very small flush increments.
+
+### Fixed
+
+- ObjectDB relation helper methods now accept a nullable collection placeholder for `FirstById`/`LastById` primary-key
+  lookups, which removes nullable warnings from generated relation code that intentionally passes `null`.
+
 ## 34.5.1
 
 ### Added
