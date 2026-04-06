@@ -7,7 +7,7 @@
         <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <PackageId>BTDB.AzureStorage</PackageId>
-        <Version>34.5.1</Version>
+        <Version>35.0.0</Version>
         <Authors>Boris Letocha, Lubos Karasek</Authors>
         <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>

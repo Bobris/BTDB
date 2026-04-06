@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.0.0
+
 ### Added
 
 - Added the `BTDB.AzureStorage` package with `AzureBlobFileCollection`, an `IFileCollection` implementation that
