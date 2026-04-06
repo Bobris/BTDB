@@ -29,6 +29,8 @@ public class ContainerBuilder
     readonly ContainerBuilderBehaviour _builderBehaviour;
 
     ServiceCollection? _serviceCollection;
+    IServiceProvider? _externalServiceProvider;
+    ServiceProviderIntegration? _externalServiceProviderIntegration;
 
     public ServiceCollection ServiceCollection => _serviceCollection ??= new();
 
@@ -146,14 +148,71 @@ public class ContainerBuilder
 
     public IContainer Build()
     {
-        var serviceProvider = _serviceCollection?.BuildServiceProvider();
-        return new ContainerImpl(_registrations.AsReadOnlySpan(), ContainerVerification.AllTypesAreGenerated,
-            serviceProvider);
+        return Build(ContainerVerification.AllTypesAreGenerated);
     }
 
     public IContainer BuildAndVerify(ContainerVerification options = ContainerVerification.All)
     {
-        var serviceProvider = _serviceCollection?.BuildServiceProvider();
-        return new ContainerImpl(_registrations.AsReadOnlySpan(), options, serviceProvider);
+        return Build(options);
+    }
+
+    IContainer Build(ContainerVerification options)
+    {
+        if (_externalServiceProvider != null)
+        {
+            return new ContainerImpl(_registrations.AsReadOnlySpan(), options, _externalServiceProvider,
+                _externalServiceProviderIntegration);
+        }
+
+        IServiceProvider? serviceProvider = null;
+        ServiceProviderIntegration? serviceProviderIntegration = null;
+        var registrationContext = CollectServiceCollectionRegistrations();
+
+        if (_serviceCollection != null || registrationContext.Registrations.Count > 0)
+        {
+            var serviceCollection = new ServiceCollection();
+            if (_serviceCollection != null)
+            {
+                foreach (var descriptor in _serviceCollection)
+                {
+                    ((System.Collections.Generic.ICollection<ServiceDescriptor>)serviceCollection).Add(descriptor);
+                }
+            }
+
+            serviceProviderIntegration = new ServiceProviderIntegration();
+            serviceProviderIntegration.RegisterServices(serviceCollection, registrationContext.Registrations);
+            serviceProvider = serviceCollection.BuildServiceProvider();
+        }
+
+        var container = new ContainerImpl(_registrations.AsReadOnlySpan(), options, serviceProvider,
+            serviceProviderIntegration);
+        if (serviceProvider != null && serviceProviderIntegration != null)
+        {
+            serviceProviderIntegration.Initialize(container);
+        }
+
+        return container;
+    }
+
+    internal ServiceCollectionRegistrationContext CollectServiceCollectionRegistrations()
+    {
+        var registrationContext = new ServiceCollectionRegistrationContext();
+        foreach (var registration in _registrations)
+        {
+            ((IContanerRegistration)registration).RegisterForServiceCollection(registrationContext);
+        }
+
+        return registrationContext;
+    }
+
+    internal ServiceCollection? GetServiceCollection()
+    {
+        return _serviceCollection;
+    }
+
+    internal void SetServiceProvider(IServiceProvider serviceProvider, ServiceProviderIntegration serviceProviderIntegration)
+    {
+        _externalServiceProvider = serviceProvider;
+        _externalServiceProviderIntegration = serviceProviderIntegration;
     }
 }

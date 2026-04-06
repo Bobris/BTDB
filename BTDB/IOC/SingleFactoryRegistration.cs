@@ -45,4 +45,9 @@ class SingleFactoryRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, ILive
                 ScopedId = _lifetime == Lifetime.Scoped ? uint.MaxValue : 0
             });
     }
+
+    public void RegisterForServiceCollection(ServiceCollectionRegistrationContext context)
+    {
+        context.Add(GetAsTypesFor(_implementationType), _lifetime.ToServiceLifetime());
+    }
 }

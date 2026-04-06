@@ -109,4 +109,40 @@ class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeScanTrait>, ILiveScop
             }
         }
     }
+
+    public void RegisterForServiceCollection(ServiceCollectionRegistrationContext context)
+    {
+        void RegisterType(Type type)
+        {
+            if (!type.IsClass || type.IsAbstract || !MatchFilter(type)) return;
+            ((IContanerRegistration)new SingleRegistration(type, this, Lifetime)).RegisterForServiceCollection(context);
+        }
+
+        if (_fromAssemblies == null && _fromAssembly == null)
+        {
+            foreach (var (typeToken, _) in IContainer.FactoryRegistry)
+            {
+                var type = Type.GetTypeFromHandle(RuntimeTypeHandle.FromIntPtr(typeToken));
+                if (type is null) continue;
+                RegisterType(type);
+            }
+        }
+        else if (_fromAssembly != null)
+        {
+            foreach (var type in _fromAssembly.GetTypes())
+            {
+                RegisterType(type);
+            }
+        }
+        else
+        {
+            foreach (var assembly in _fromAssemblies!)
+            {
+                foreach (var type in assembly.GetTypes())
+                {
+                    RegisterType(type);
+                }
+            }
+        }
+    }
 }

@@ -2,6 +2,27 @@
 
 ## IOC Container
 
+BTDB IOC can also be exposed through `Microsoft.Extensions.DependencyInjection`.
+In ASP.NET Core Minimal API, call `builder.Services.UseBtdbIoc(containerBuilder)` and BTDB registrations become
+available as normal DI services, including endpoint parameters.
+
+```csharp
+using BTDB.IOC;
+
+var builder = WebApplication.CreateBuilder(args);
+
+var containerBuilder = new ContainerBuilder();
+containerBuilder.RegisterType<MyService>().As<IMyService>().SingleInstance();
+
+builder.Services.UseBtdbIoc(containerBuilder);
+
+var app = builder.Build();
+
+app.MapGet("/hello", (IMyService service) => service.Hello());
+
+app.Run();
+```
+
 ### Classes
 
 BTDB IOC Container needs Factories for all types that should be constructable.

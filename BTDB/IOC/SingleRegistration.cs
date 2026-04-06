@@ -83,6 +83,11 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
             });
     }
 
+    public void RegisterForServiceCollection(ServiceCollectionRegistrationContext context)
+    {
+        context.Add(GetAsTypesFor(_implementationType), _lifetime.ToServiceLifetime());
+    }
+
     static Func<IContainer, ICreateFactoryCtx, Func<IContainer, IResolvingCtx, object>> BuildFactory(
         Type implementationType)
     {

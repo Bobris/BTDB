@@ -12,6 +12,9 @@
   dispose an explicit opt-in behavior.
 - `AzureBlobStorageBackend` now accepts an optional path prefix, allowing BTDB files to be scoped under a subdirectory
   within a shared blob container.
+- BTDB IOC registrations are now automatically available from `Microsoft.Extensions.DependencyInjection`, including
+  keyed registrations, per-scope `IContainer` resolution, and cycle detection for dependency chains that cross between
+  BTDB IOC and the ASP.NET service provider.
 
 ### Changed
 

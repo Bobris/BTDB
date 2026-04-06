@@ -35,4 +35,9 @@ class SingleInstanceRegistration : RegistrationBaseImpl<IAsTrait>, IContanerRegi
                 ScopedId = uint.MaxValue
             });
     }
+
+    public void RegisterForServiceCollection(ServiceCollectionRegistrationContext context)
+    {
+        context.Add(GetAsTypesFor(_implementationType), Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton);
+    }
 }

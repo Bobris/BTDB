@@ -22,6 +22,53 @@ It is available in Nuget <http://www.nuget.org/packages/BTDB>. Source code drops
 
 ---
 
+## IOC Container
+
+BTDB IOC can be used directly, or it can be bridged into `Microsoft.Extensions.DependencyInjection`.
+For ASP.NET Core Minimal API, register BTDB services into `ContainerBuilder` and then call `UseBtdbIoc(...)`.
+After that, BTDB registrations are available as normal endpoint parameters, and BTDB `IContainer` can also resolve
+services that `WebApplication` registers automatically.
+
+```csharp
+using BTDB;
+using BTDB.IOC;
+
+var builder = WebApplication.CreateBuilder(args);
+
+var btdb = new ContainerBuilder();
+btdb.RegisterType<MyService>().As<IMyService>().SingleInstance();
+
+builder.Services.UseBtdbIoc(btdb);
+
+var app = builder.Build();
+
+app.MapGet("/",
+    (IMyService service) => service.Hello());
+
+app.MapGet("/env",
+    (IContainer container) => container.Resolve<IHostEnvironment>().EnvironmentName);
+
+app.Run();
+
+[Generate]
+public interface IMyService
+{
+    string Hello();
+}
+
+public class MyService : IMyService
+{
+    readonly IHostEnvironment _environment;
+
+    public MyService(IHostEnvironment environment)
+    {
+        _environment = environment;
+    }
+
+    public string Hello() => $"Hello from BTDB IOC in {_environment.EnvironmentName}";
+}
+```
+
 ## Breaking changes
 
 ### 33.9.0
