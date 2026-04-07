@@ -219,6 +219,25 @@ public partial class IocTests
     }
 
     [Fact]
+    public void UseBtdbIocResolvesBtDbSingletonFromAspNetRootProviderWithValidateScopes()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterType<TestLogger>().As<ILogger>().SingleInstance();
+
+        var services = new ServiceCollection();
+        services.UseBtdbIoc(containerBuilder);
+        var serviceProvider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true
+        });
+
+        var logger = serviceProvider.GetRequiredService<ILogger>();
+
+        Assert.IsType<TestLogger>(logger);
+        Assert.Same(serviceProvider.GetRequiredService<ILogger>(), logger);
+    }
+
+    [Fact]
     public async Task UseBtdbIocSharesAspNetScopesWithBtDb()
     {
         var containerBuilder = new ContainerBuilder();

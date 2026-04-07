@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+- BTDB IOC singletons are now resolved correctly from the ASP.NET root `IServiceProvider` when scope validation is
+  enabled, which fixes `UseBtdbIoc(...)` root-provider resolutions that previously failed because `ContainerScope`
+  could not be resolved from the root scope.
+
 ## 35.0.1
 
 ### Fixed

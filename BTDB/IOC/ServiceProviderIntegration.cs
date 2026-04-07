@@ -117,7 +117,10 @@ sealed class ServiceProviderIntegration
     public object ResolveFromContainer(IServiceProvider serviceProvider, Type type, object? key, int registrationIndex)
     {
         using var _ = EnterResolution(type, key);
-        var container = serviceProvider.GetRequiredService<ContainerScope>().Container;
+        var rootScopeIdentity = serviceProvider.GetRequiredService<RootScopeIdentity>();
+        var container = ReferenceEquals(serviceProvider, rootScopeIdentity.ServiceProvider)
+            ? serviceProvider.GetRequiredService<ContainerImpl>()
+            : serviceProvider.GetRequiredService<ContainerScope>().Container;
         return container.ResolveRegistration(type, key, registrationIndex);
     }
 
