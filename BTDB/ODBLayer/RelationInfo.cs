@@ -71,6 +71,25 @@ public class RelationInfo
                 out _loadAsMemory);
         }
 
+        IFieldHandler? TryCreateTargetFieldHandler(Type fieldType)
+        {
+            try
+            {
+                return _owner._relationInfoResolver.FieldHandlerFactory.CreateFromType(fieldType,
+                    FieldHandlerOptions.None);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        void ReportTypeIncompatibility(IFieldHandler sourceHandler, Type fieldType)
+        {
+            _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(sourceHandler.HandledType(),
+                sourceHandler, fieldType, TryCreateTargetFieldHandler(fieldType));
+        }
+
         [SkipLocalsInit]
         internal unsafe object CreateInstance(IInternalObjectDBTransaction tr, IKeyValueDBCursor cursor,
             scoped in ReadOnlySpan<byte> keyBytes)
@@ -222,8 +241,7 @@ public class RelationInfo
                         continue;
                     }
 
-                    _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
-                        specializedSrcHandler, fieldType, null);
+                    ReportTypeIncompatibility(specializedSrcHandler, fieldType);
                 }
 
                 loadInstructions.Add((srcFieldInfo.Handler!, null, null));
@@ -347,8 +365,7 @@ public class RelationInfo
                         continue;
                     }
 
-                    _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
-                        specializedSrcHandler, fieldType, null);
+                    ReportTypeIncompatibility(specializedSrcHandler, fieldType);
                 }
 
                 loadInstructions.Add((srcFieldInfo.Handler!, null, null, false, null));

@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- ObjectDB relation upgrades now report field-handler incompatibilities with more detail, including the concrete
+  destination handler when available and nested handler differences for cases like dictionary key mismatches.
+
 ## 33.6.12
 
 ### Fixed

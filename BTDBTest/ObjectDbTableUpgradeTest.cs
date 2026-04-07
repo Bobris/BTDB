@@ -491,6 +491,17 @@ public class ObjectDbTableUpgradeTest : IDisposable
         ApproveFieldHandlerLoggerMessages();
     }
 
+    [Fact]
+    public void OdbDictionaryToDictionaryIncompatibleUpgradeReportsHandlerTypes()
+    {
+        var source = _db.FieldHandlerFactory.CreateFromType(typeof(IDictionary<SimpleEnum, int>), FieldHandlerOptions.None);
+        var target =
+            _db.FieldHandlerFactory.CreateFromType(typeof(Dictionary<SimpleEnumV3, int>), FieldHandlerOptions.None);
+        var logger = new DefaultFieldHandlerLogger(s => _fieldHandlerLoggerMessages.Add(s));
+        logger.ReportTypeIncompatibility(source.HandledType(), source, typeof(Dictionary<SimpleEnumV3, int>), target);
+        ApproveFieldHandlerLoggerMessages();
+    }
+
     public class DateTimeV1
     {
         [PrimaryKey(1)] public ulong Id { get; set; }

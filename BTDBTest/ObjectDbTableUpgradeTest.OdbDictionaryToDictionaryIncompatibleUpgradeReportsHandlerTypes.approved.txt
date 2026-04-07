@@ -1,0 +1,1 @@
+Cannot load BTDB.ODBLayer.ODBDictionaryFieldHandler into BTDB.FieldHandler.DictionaryFieldHandler (target: System.Collections.Generic.Dictionary<BTDBTest.SimpleEnumV3,int>; key: Enum BTDBTest.SimpleEnum{One=1,Two=2} -> Enum BTDBTest.SimpleEnumV3{Two=2,Three=3,Four=4})
