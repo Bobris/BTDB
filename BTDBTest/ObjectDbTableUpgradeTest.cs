@@ -456,6 +456,28 @@ public class ObjectDbTableUpgradeTest : IDisposable
     {
     }
 
+    public class OdbEnumsInKeys1
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public IDictionary<SimpleEnum, int>? E { get; set; }
+    }
+
+    public interface IOdbEnumsInKeys1Table : IRelation<OdbEnumsInKeys1>
+    {
+    }
+
+    public class OdbEnumsInKeys2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+
+        public Dictionary<SimpleEnumV3, int>? E { get; set; }
+    }
+
+    public interface IOdbEnumsInKeys2Table : IRelation<OdbEnumsInKeys2>
+    {
+    }
+
     [Fact]
     public void EnumsInDictionaryKeysIncompatibleUpgradeDoesNotWorkButAtLeastReportProblem()
     {
@@ -486,6 +508,43 @@ public class ObjectDbTableUpgradeTest : IDisposable
         using (var tr = _db.StartTransaction())
         {
             var creator = tr.InitRelation<IEnumsInKeys1Table>("Enums");
+            var eTable = creator(tr);
+            Assert.Single(eTable);
+        }
+
+        ApproveFieldHandlerLoggerMessages();
+    }
+
+    [Fact]
+    public void OdbDictionaryToDictionaryIncompatibleUpgradeReportsHandlerTypes()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IOdbEnumsInKeys1Table>("Enums");
+            var eTable = creator(tr);
+            var e = new OdbEnumsInKeys1 { Id = 1, E = new Dictionary<SimpleEnum, int> { { SimpleEnum.One, 1 } } };
+            eTable.Upsert(e);
+            tr.Commit();
+        }
+
+        ReopenDb();
+
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IOdbEnumsInKeys2Table>("Enums");
+            var eTable = creator(tr);
+            Assert.Single(eTable);
+            Assert.Null(eTable.First().E);
+            var e = new OdbEnumsInKeys2 { Id = 1, E = new Dictionary<SimpleEnumV3, int> { { SimpleEnumV3.Four, 1 } } };
+            eTable.Upsert(e);
+            tr.Commit();
+        }
+
+        ReopenDb();
+
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IOdbEnumsInKeys1Table>("Enums");
             var eTable = creator(tr);
             Assert.Single(eTable);
         }

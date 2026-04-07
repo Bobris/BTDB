@@ -92,6 +92,25 @@ public class RelationInfo
                 out _loadAsMemory);
         }
 
+        IFieldHandler? TryCreateTargetFieldHandler(Type fieldType)
+        {
+            try
+            {
+                return _owner._relationInfoResolver.FieldHandlerFactory.CreateFromType(fieldType,
+                    FieldHandlerOptions.None);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        void ReportTypeIncompatibility(IFieldHandler sourceHandler, Type fieldType)
+        {
+            _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(sourceHandler.HandledType(),
+                sourceHandler, fieldType, TryCreateTargetFieldHandler(fieldType));
+        }
+
         [SkipLocalsInit]
         internal unsafe object CreateInstance(IInternalObjectDBTransaction tr, IKeyValueDBCursor cursor,
             scoped in ReadOnlySpan<byte> keyBytes)
@@ -225,8 +244,18 @@ public class RelationInfo
                         usedFields++;
                         var fieldType = field.Type;
 
-                        var handlerLoad =
-                            srcFieldInfo.Handler.Load(fieldType, _owner._relationInfoResolver.TypeConverterFactory);
+                        FieldHandlerLoad handlerLoad;
+                        try
+                        {
+                            handlerLoad =
+                                srcFieldInfo.Handler.Load(fieldType, _owner._relationInfoResolver.TypeConverterFactory);
+                        }
+                        catch (Exception)
+                        {
+                            ReportTypeIncompatibility(srcFieldInfo.Handler, fieldType);
+                            loaders.Add((_, ref reader, ctx) => { srcFieldInfo.Handler!.Skip(ref reader, ctx); });
+                            continue;
+                        }
                         if (field.PropRefSetter == null)
                         {
                             var offset = field.ByteOffset!.Value;
@@ -386,8 +415,7 @@ public class RelationInfo
                             continue;
                         }
 
-                        _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
-                            specializedSrcHandler, fieldType, null);
+                        ReportTypeIncompatibility(specializedSrcHandler, fieldType);
                     }
 
                     loadInstructions.Add((srcFieldInfo.Handler!, null, null));
@@ -475,8 +503,18 @@ public class RelationInfo
                         loadedProps.Add(srcFieldInfo.Name);
                         var fieldType = field.Type;
 
-                        var handlerLoad =
-                            srcFieldInfo.Handler.Load(fieldType, _owner._relationInfoResolver.TypeConverterFactory);
+                        FieldHandlerLoad handlerLoad;
+                        try
+                        {
+                            handlerLoad =
+                                srcFieldInfo.Handler.Load(fieldType, _owner._relationInfoResolver.TypeConverterFactory);
+                        }
+                        catch (Exception)
+                        {
+                            ReportTypeIncompatibility(srcFieldInfo.Handler, fieldType);
+                            loaders.Add((_, ref reader, ctx) => { srcFieldInfo.Handler!.Skip(ref reader, ctx); });
+                            continue;
+                        }
                         if (field.PropRefSetter == null)
                         {
                             var offset = field.ByteOffset!.Value;
@@ -696,8 +734,7 @@ public class RelationInfo
                             continue;
                         }
 
-                        _owner._relationInfoResolver.FieldHandlerLogger?.ReportTypeIncompatibility(willLoad,
-                            specializedSrcHandler, fieldType, null);
+                        ReportTypeIncompatibility(specializedSrcHandler, fieldType);
                     }
 
                     loadInstructions.Add((srcFieldInfo.Handler!, null, null, false, null));
