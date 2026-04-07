@@ -425,10 +425,11 @@ public class ContainerImpl : IContainer
             if (cReg.Lifetime == Lifetime.Singleton && cReg.SingletonId != uint.MaxValue)
             {
                 if (ctxImpl.VerifySingletons) return (_, _) => null;
+                var rootContainer = _root;
                 var singletonInstance = Volatile.Read(ref Singletons[cReg.SingletonId]);
                 if (singletonInstance is SingletonLocker)
                 {
-                    return (container, _) => ((ContainerImpl)container).WaitForSingleton(cReg.SingletonId);
+                    return (_, _) => rootContainer.WaitForSingleton(cReg.SingletonId);
                 }
 
                 if (singletonInstance != null)
@@ -443,13 +444,13 @@ public class ContainerImpl : IContainer
 
                 var ff = (IContainer container, IResolvingCtx? resolvingCtx) =>
                 {
-                    ref var singleton = ref ((ContainerImpl)container).Singletons[cReg.SingletonId];
+                    ref var singleton = ref rootContainer.Singletons[cReg.SingletonId];
                     var instance = Volatile.Read(ref singleton);
                     if (instance != null)
                     {
                         if (instance is SingletonLocker)
                         {
-                            return ((ContainerImpl)container).WaitForSingleton(cReg.SingletonId);
+                            return rootContainer.WaitForSingleton(cReg.SingletonId);
                         }
 
                         return instance;
@@ -470,8 +471,8 @@ public class ContainerImpl : IContainer
 
                             try
                             {
-                                instance = f1(container, resolvingCtx);
-                                ((ContainerImpl)container)._root.TrackOwnedInstance(instance);
+                                instance = f1(rootContainer, resolvingCtx);
+                                rootContainer.TrackOwnedInstance(instance);
                                 Volatile.Write(ref singleton, instance);
                                 cReg.SingletonFactoryCache = null;
                                 return instance;
@@ -490,7 +491,7 @@ public class ContainerImpl : IContainer
 
                     if (instance is SingletonLocker)
                     {
-                        return ((ContainerImpl)container).WaitForSingleton(cReg.SingletonId);
+                        return rootContainer.WaitForSingleton(cReg.SingletonId);
                     }
 
                     return instance;
@@ -502,7 +503,7 @@ public class ContainerImpl : IContainer
                     ctxImpl.SingletonDeepness++;
                     try
                     {
-                        f = cReg.Factory(this, ctxImpl);
+                        f = cReg.Factory(rootContainer, ctxImpl);
                     }
                     finally
                     {

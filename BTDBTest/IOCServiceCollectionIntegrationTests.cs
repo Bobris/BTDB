@@ -27,10 +27,18 @@ public partial class IocTests
         public CyclicMsDiService Dependency { get; } = dependency;
     }
 
+    [Generate]
+    public class SingletonBtDbServiceHoldingContainer(IContainer container)
+    {
+        public IContainer Container { get; } = container;
+    }
+
     public sealed class CyclicMsDiService(CyclicBtDbService dependency)
     {
         public CyclicBtDbService Dependency { get; } = dependency;
     }
+
+    public sealed class TransientMsDiService;
 
     [Fact]
     public void ExportedSingletonCanBeResolvedFromServiceProvider()
@@ -270,5 +278,27 @@ public partial class IocTests
         var container = containerBuilder.Build();
 
         Assert.Same(serviceProvider.GetRequiredService<ScopedMsDiService>(), container.Resolve<ScopedMsDiService>());
+    }
+
+    [Fact]
+    public async Task UseBtdbIocSingletonResolvedFromScopeDoesNotCaptureDisposedScopedServiceProvider()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterType<SingletonBtDbServiceHoldingContainer>().AsSelf().SingleInstance();
+
+        var services = new ServiceCollection();
+        services.AddTransient<TransientMsDiService>();
+        services.UseBtdbIoc(containerBuilder);
+        var serviceProvider = services.BuildServiceProvider();
+
+        SingletonBtDbServiceHoldingContainer singleton;
+        await using (var scope = serviceProvider.CreateAsyncScope())
+        {
+            singleton = scope.ServiceProvider.GetRequiredService<SingletonBtDbServiceHoldingContainer>();
+        }
+
+        var resolved = singleton.Container.Resolve<TransientMsDiService>();
+
+        Assert.IsType<TransientMsDiService>(resolved);
     }
 }

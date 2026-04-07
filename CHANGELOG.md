@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+- BTDB IOC singleton factories resolved through `Microsoft.Extensions.DependencyInjection` now always use the root
+  container for singleton storage and follow-up resolutions, which fixes failures when a singleton first created from a
+  disposed DI scope later resolves additional services.
+
 ## 35.0.0
 
 ### Added
