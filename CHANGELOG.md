@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.0.1
+
 ### Fixed
 
 - BTDB IOC singleton factories resolved through `Microsoft.Extensions.DependencyInjection` now always use the root
