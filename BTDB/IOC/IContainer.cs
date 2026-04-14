@@ -26,6 +26,10 @@ public interface IContainer : IAsyncDisposable
     }
 }
 
+public interface IRootContainer : IContainer
+{
+}
+
 public interface IResolvingCtx
 {
     object Exchange(int idx, object value);

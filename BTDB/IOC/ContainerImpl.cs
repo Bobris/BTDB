@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -16,12 +17,42 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace BTDB.IOC;
 
-public class ContainerImpl : IContainer
+public class ContainerImpl : IRootContainer
 {
+    readonly struct ServiceProviderFactoryCacheKey(Type type, object? key, bool allowKeylessFallback) :
+        IEquatable<ServiceProviderFactoryCacheKey>
+    {
+        readonly KeyAndType _keyAndType = new(key, type);
+
+        public Type Type => _keyAndType.Type;
+        public object? Key => _keyAndType.Key;
+        public bool AllowKeylessFallback { get; } = allowKeylessFallback;
+
+        public bool Equals(ServiceProviderFactoryCacheKey other)
+        {
+            return AllowKeylessFallback == other.AllowKeylessFallback && _keyAndType.Equals(other._keyAndType);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(_keyAndType, AllowKeylessFallback);
+        }
+    }
+
+    readonly struct ServiceProviderFactoryCacheValue(
+        Func<IContainer, IResolvingCtx?, object?>? factory,
+        bool clearKeylessFallback)
+    {
+        public Func<IContainer, IResolvingCtx?, object?>? Factory { get; } = factory;
+        public bool ClearKeylessFallback { get; } = clearKeylessFallback;
+    }
+
     internal readonly Dictionary<KeyAndType, CReg> Registrations;
 
     internal readonly object?[] Singletons;
     readonly ContainerImpl _root;
+    readonly ConcurrentDictionary<ServiceProviderFactoryCacheKey, ServiceProviderFactoryCacheValue>
+        _serviceProviderFactoryCache;
     readonly IServiceProvider? _serviceProvider;
     readonly IServiceProviderIsKeyedService? _serviceProviderIsKeyedService;
     readonly ServiceProviderIntegration? _serviceProviderIntegration;
@@ -35,6 +66,7 @@ public class ContainerImpl : IContainer
         IServiceProvider? serviceProvider, ServiceProviderIntegration? serviceProviderIntegration)
     {
         _root = this;
+        _serviceProviderFactoryCache = new();
         _serviceProvider = serviceProvider;
         _serviceProviderIsKeyedService = serviceProvider?.GetService<IServiceProviderIsKeyedService>();
         _serviceProviderIntegration = serviceProviderIntegration;
@@ -61,6 +93,13 @@ public class ContainerImpl : IContainer
             SingletonId = uint.MaxValue,
             ScopedId = uint.MaxValue
         };
+        Registrations[new(null, typeof(IRootContainer))] = new()
+        {
+            Factory = (_, _) => (_, _) => _root,
+            Lifetime = Lifetime.Singleton,
+            SingletonId = uint.MaxValue,
+            ScopedId = uint.MaxValue
+        };
         if (containerVerification == ContainerVerification.None) return;
         if ((containerVerification & ContainerVerification.SingletonsUsingOnlySingletons) != 0)
         {
@@ -80,6 +119,7 @@ public class ContainerImpl : IContainer
     ContainerImpl(ContainerImpl parent, IServiceProvider? serviceProvider, AsyncServiceScope? serviceScope)
     {
         _root = parent._root;
+        _serviceProviderFactoryCache = _root._serviceProviderFactoryCache;
         Registrations = _root.Registrations;
         Singletons = _root.Singletons;
         _serviceScope = serviceScope;
@@ -134,23 +174,76 @@ public class ContainerImpl : IContainer
     bool HasRegistration(Type type, object? key, bool allowKeylessFallback)
     {
         return Registrations.ContainsKey(new(key, type)) ||
-               (allowKeylessFallback && Registrations.ContainsKey(new(null, type)));
+               (key != null && allowKeylessFallback && Registrations.ContainsKey(new(null, type)));
     }
 
-    bool ShouldResolveFromServiceProvider(Type type, object? key, bool allowKeylessFallback)
+    Func<IContainer, IResolvingCtx?, object?>? TryCreateServiceProviderFactory(CreateFactoryCtx ctxImpl, Type type,
+        object? key)
     {
-        if (_serviceProviderIsKeyedService == null) return false;
-        if (HasRegistration(type, key, allowKeylessFallback)) return false;
+        if (_serviceProviderIsKeyedService == null) return null;
+        var cacheKey = new ServiceProviderFactoryCacheKey(type, key, !ctxImpl.ForbidKeylessFallback);
+        if (!_serviceProviderFactoryCache.TryGetValue(cacheKey, out var cacheValue))
+        {
+            cacheValue = _root.CreateServiceProviderFactoryCacheValue(cacheKey);
+            cacheValue = _serviceProviderFactoryCache.GetOrAdd(cacheKey, cacheValue);
+        }
+
+        if (cacheValue.ClearKeylessFallback)
+        {
+            ctxImpl.ForbidKeylessFallback = false;
+        }
+
+        return cacheValue.Factory;
+    }
+
+    ServiceProviderFactoryCacheValue CreateServiceProviderFactoryCacheValue(ServiceProviderFactoryCacheKey cacheKey)
+    {
+        if (_serviceProviderIsKeyedService == null) return default;
+
+        var type = cacheKey.Type;
+        var key = cacheKey.Key;
         if (type.IsAssignableTo(typeof(IEnumerable)) && type.IsGenericType)
         {
             var genericType = type.GenericTypeArguments[0];
-            if (HasRegistration(genericType, key, allowKeylessFallback)) return false;
-            return key != null
-                ? _serviceProviderIsKeyedService.IsKeyedService(genericType, key)
-                : _serviceProviderIsKeyedService.IsService(genericType);
+            if (HasRegistration(genericType, key, cacheKey.AllowKeylessFallback)) return default;
+            if (key != null)
+            {
+                if (_serviceProviderIsKeyedService.IsKeyedService(genericType, key))
+                {
+                    return new((c, r) => ((ContainerImpl)c).ResolveFromServiceProvider(type, key), true);
+                }
+
+                if (cacheKey.AllowKeylessFallback && _serviceProviderIsKeyedService.IsService(genericType))
+                {
+                    return new((c, r) => ((ContainerImpl)c).ResolveFromServiceProvider(type, null), false);
+                }
+
+                return default;
+            }
+
+            return _serviceProviderIsKeyedService.IsService(genericType)
+                ? new((c, r) => ((ContainerImpl)c).ResolveFromServiceProvider(type, null), false)
+                : default;
         }
 
-        return true;
+        if (key != null)
+        {
+            if (_serviceProviderIsKeyedService.IsKeyedService(type, key))
+            {
+                return new((c, r) => ((ContainerImpl)c).ResolveFromServiceProvider(type, key), true);
+            }
+
+            if (cacheKey.AllowKeylessFallback && _serviceProviderIsKeyedService.IsService(type))
+            {
+                return new((c, r) => ((ContainerImpl)c).ResolveFromServiceProvider(type, null), false);
+            }
+
+            return default;
+        }
+
+        return _serviceProviderIsKeyedService.IsService(type)
+            ? new((c, r) => ((ContainerImpl)c).ResolveFromServiceProvider(type, null), false)
+            : default;
     }
 
     public Func<IContainer, IResolvingCtx?, object?>? CreateFactory(ICreateFactoryCtx ctx, Type type, object? key)
@@ -171,25 +264,15 @@ public class ContainerImpl : IContainer
             return CreateFactoryFromRegistration(ctxImpl, cReg, key, type);
         }
 
-        if (!ctxImpl.ForbidKeylessFallback && Registrations.TryGetValue(new(null, type), out cReg))
+        if (key != null && !ctxImpl.ForbidKeylessFallback && Registrations.TryGetValue(new(null, type), out cReg))
         {
             return CreateFactoryFromRegistration(ctxImpl, cReg, key, type);
         }
 
-        if (_serviceProviderIsKeyedService != null)
+        var serviceProviderFactory = TryCreateServiceProviderFactory(ctxImpl, type, key);
+        if (serviceProviderFactory != null)
         {
-            if (key != null && _serviceProviderIsKeyedService.IsKeyedService(type, key) &&
-                ShouldResolveFromServiceProvider(type, key, !ctxImpl.ForbidKeylessFallback))
-            {
-                ctxImpl.ForbidKeylessFallback = false;
-                return (c, r) => ((ContainerImpl)c).ResolveFromServiceProvider(type, key);
-            }
-
-            if ((key == null || !ctxImpl.ForbidKeylessFallback) && _serviceProviderIsKeyedService.IsService(type) &&
-                ShouldResolveFromServiceProvider(type, key, !ctxImpl.ForbidKeylessFallback))
-            {
-                return (c, r) => ((ContainerImpl)c).ResolveFromServiceProvider(type, null);
-            }
+            return serviceProviderFactory;
         }
 
         if (type.IsDelegate())
@@ -638,6 +721,13 @@ public class ContainerImpl : IContainer
     internal object ResolveRegistration(Type type, object? key, int registrationIndex)
     {
         ThrowIfDisposed();
+        var factory = GetRegistrationFactory(type, key, registrationIndex);
+        return factory(this, null)!;
+    }
+
+    internal Func<IContainer, IResolvingCtx?, object?> GetRegistrationFactory(Type type, object? key, int registrationIndex)
+    {
+        ThrowIfDisposed();
         var factory = CreateRegistrationFactory(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key,
             registrationIndex);
         if (factory == null)
@@ -645,7 +735,7 @@ public class ContainerImpl : IContainer
             ThrowNotResolvable(key, type);
         }
 
-        return factory(this, null)!;
+        return factory;
     }
 
     internal IContainer CreateScopeForServiceProvider(IServiceProvider serviceProvider)
@@ -660,10 +750,15 @@ public class ContainerImpl : IContainer
         if (registrationIndex < 0)
             throw new ArgumentOutOfRangeException(nameof(registrationIndex));
 
+        if (registrationIndex == 0 && TryCreateSingleRegistrationFactory(ctxImpl, type, key, out var factory))
+        {
+            return factory;
+        }
+
         var enumerableBackup = ctxImpl.StartEnumerate();
         try
         {
-            var factory = CreateFactory(ctxImpl, type, key);
+            factory = CreateFactory(ctxImpl, type, key);
             if (factory == null) return null;
 
             for (var i = 0; i < registrationIndex; i++)
@@ -679,6 +774,33 @@ public class ContainerImpl : IContainer
         {
             ctxImpl.FinishEnumerate(enumerableBackup);
         }
+    }
+
+    bool TryCreateSingleRegistrationFactory(CreateFactoryCtx ctxImpl, Type type, object? key,
+        [NotNullWhen(true)] out Func<IContainer, IResolvingCtx?, object?>? factory)
+    {
+        if (Registrations.TryGetValue(new(key, type), out var cReg))
+        {
+            if (cReg.Multi.Count != 0)
+            {
+                factory = null;
+                return false;
+            }
+
+            ctxImpl.ForbidKeylessFallback = false;
+            factory = CreateFactoryFromRegistration(ctxImpl, cReg, key, type);
+            return true;
+        }
+
+        if (key != null && !ctxImpl.ForbidKeylessFallback && Registrations.TryGetValue(new(null, type), out cReg) &&
+            cReg.Multi.Count == 0)
+        {
+            factory = CreateFactoryFromRegistration(ctxImpl, cReg, key, type);
+            return true;
+        }
+
+        factory = null;
+        return false;
     }
 
     Func<IContainer, IResolvingCtx?, object?>? CreateArrayFactory(CreateFactoryCtx ctxImpl, object? key,

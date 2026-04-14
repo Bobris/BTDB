@@ -28,6 +28,8 @@ BTDB IOC can be used directly, or it can be bridged into `Microsoft.Extensions.D
 For ASP.NET Core Minimal API, register BTDB services into `ContainerBuilder` and then call `UseBtdbIoc(...)`.
 After that, BTDB registrations are available as normal endpoint parameters, and BTDB `IContainer` can also resolve
 services that `WebApplication` registers automatically.
+If you need the BTDB root container from the ASP.NET root `IServiceProvider`, resolve `IRootContainer`; plain
+`IContainer` stays scope-bound.
 
 ```csharp
 using BTDB;

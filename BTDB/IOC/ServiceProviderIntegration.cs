@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -9,28 +7,14 @@ namespace BTDB.IOC;
 
 sealed class ServiceProviderIntegration
 {
-    readonly AsyncLocal<List<ResolutionRequest>?> _resolutionStack = new();
     ContainerImpl? _rootContainer;
-
-    readonly record struct ResolutionRequest(Type Type, object? Key);
+    IServiceProvider? _rootServiceProvider;
+    IReadOnlyList<ServiceCollectionExport>? _exports;
+    Func<IContainer, IResolvingCtx?, object?>[]? _exportFactories;
 
     sealed class RootScopeIdentity(IServiceProvider serviceProvider)
     {
         public IServiceProvider ServiceProvider { get; } = serviceProvider;
-    }
-
-    sealed class ResolutionGuard(ServiceProviderIntegration owner) : IDisposable
-    {
-        public void Dispose()
-        {
-            var stack = owner._resolutionStack.Value;
-            if (stack == null || stack.Count == 0) return;
-            stack.RemoveAt(stack.Count - 1);
-            if (stack.Count == 0)
-            {
-                owner._resolutionStack.Value = null;
-            }
-        }
     }
 
     sealed class ContainerScope(IServiceProvider serviceProvider, RootScopeIdentity rootScopeIdentity,
@@ -51,9 +35,25 @@ sealed class ServiceProviderIntegration
 
     ContainerImpl RootContainer => _rootContainer ?? throw new InvalidOperationException("BTDB container is not initialized.");
 
-    public void Initialize(ContainerImpl rootContainer)
+    public void Initialize(ContainerImpl rootContainer, IServiceProvider rootServiceProvider)
     {
         _rootContainer = rootContainer;
+        _rootServiceProvider = rootServiceProvider;
+        var exports = _exports;
+        if (exports == null || exports.Count == 0)
+        {
+            _exportFactories = [];
+            return;
+        }
+
+        var exportFactories = new Func<IContainer, IResolvingCtx?, object?>[exports.Count];
+        for (var i = 0; i < exports.Count; i++)
+        {
+            var export = exports[i];
+            exportFactories[i] = rootContainer.GetRegistrationFactory(export.Service.Type, export.Service.Key, export.RegistrationIndex);
+        }
+
+        _exportFactories = exportFactories;
     }
 
     public void RegisterServices(ServiceCollection serviceCollection, IReadOnlyList<ServiceCollectionExport> exports)
@@ -68,9 +68,9 @@ sealed class ServiceProviderIntegration
         RegisterCommonServices(services, exports, sp =>
         {
             var integration = sp.GetRequiredService<ServiceProviderIntegration>();
-            var rootContainer = rootContainerFactory(sp.GetRequiredService<RootScopeIdentity>().ServiceProvider,
-                integration);
-            integration.Initialize(rootContainer);
+            var rootServiceProvider = sp.GetRequiredService<RootScopeIdentity>().ServiceProvider;
+            var rootContainer = rootContainerFactory(rootServiceProvider, integration);
+            integration.Initialize(rootContainer, rootServiceProvider);
             return rootContainer;
         });
     }
@@ -78,9 +78,11 @@ sealed class ServiceProviderIntegration
     void RegisterCommonServices(IServiceCollection services, IReadOnlyList<ServiceCollectionExport> exports,
         Func<IServiceProvider, ContainerImpl> rootContainerFactory)
     {
+        _exports = exports;
         services.AddSingleton(this);
         services.AddSingleton<RootScopeIdentity>(static sp => new(sp));
         services.AddSingleton(rootContainerFactory);
+        services.AddSingleton<IRootContainer>(static sp => sp.GetRequiredService<ContainerImpl>());
         services.AddScoped<ContainerScope>(static sp =>
             new(sp, sp.GetRequiredService<RootScopeIdentity>(), sp.GetRequiredService<ContainerImpl>()));
         services.AddScoped<IContainer>(static sp => sp.GetRequiredService<ContainerScope>().Container);
@@ -89,72 +91,51 @@ sealed class ServiceProviderIntegration
 
     void AddExports(IServiceCollection services, IReadOnlyList<ServiceCollectionExport> exports)
     {
-        foreach (var export in exports)
+        for (var exportIndex = 0; exportIndex < exports.Count; exportIndex++)
         {
+            var export = exports[exportIndex];
+            var currentExportIndex = exportIndex;
             if (export.Service.Key == null)
             {
                 ((ICollection<ServiceDescriptor>)services).Add(ServiceDescriptor.Describe(export.Service.Type,
                     sp => sp.GetRequiredService<ServiceProviderIntegration>()
-                        .ResolveFromContainer(sp, export.Service.Type, null, export.RegistrationIndex), export.Lifetime));
+                        .ResolveFromContainer(sp, currentExportIndex), export.Lifetime));
             }
             else
             {
                 ((ICollection<ServiceDescriptor>)services).Add(ServiceDescriptor.DescribeKeyed(export.Service.Type, export.Service.Key,
                     (sp, serviceKey) => sp.GetRequiredService<ServiceProviderIntegration>()
-                        .ResolveFromContainer(sp, export.Service.Type, serviceKey, export.RegistrationIndex), export.Lifetime));
+                        .ResolveFromContainer(sp, currentExportIndex), export.Lifetime));
             }
         }
     }
 
     public object ResolveRequiredFromServiceProvider(IServiceProvider serviceProvider, Type type, object? key)
     {
-        using var _ = EnterResolution(type, key);
         return key == null
             ? serviceProvider.GetRequiredService(type)
             : serviceProvider.GetRequiredKeyedService(type, key);
     }
 
-    public object ResolveFromContainer(IServiceProvider serviceProvider, Type type, object? key, int registrationIndex)
+    public object ResolveFromContainer(IServiceProvider serviceProvider, int exportIndex)
     {
-        using var _ = EnterResolution(type, key);
-        var rootScopeIdentity = serviceProvider.GetRequiredService<RootScopeIdentity>();
-        var container = ReferenceEquals(serviceProvider, rootScopeIdentity.ServiceProvider)
-            ? serviceProvider.GetRequiredService<ContainerImpl>()
+        var exportFactories = _exportFactories;
+        if (exportFactories == null)
+        {
+            _ = serviceProvider.GetRequiredService<ContainerImpl>();
+            exportFactories = _exportFactories ??
+                              throw new InvalidOperationException("BTDB export factories are not initialized.");
+        }
+
+        var rootServiceProvider = _rootServiceProvider;
+        if (rootServiceProvider == null)
+        {
+            rootServiceProvider = serviceProvider.GetRequiredService<RootScopeIdentity>().ServiceProvider;
+        }
+
+        var container = ReferenceEquals(serviceProvider, rootServiceProvider)
+            ? _rootContainer ?? serviceProvider.GetRequiredService<ContainerImpl>()
             : serviceProvider.GetRequiredService<ContainerScope>().Container;
-        return container.ResolveRegistration(type, key, registrationIndex);
-    }
-
-    IDisposable EnterResolution(Type type, object? key)
-    {
-        var stack = _resolutionStack.Value ??= new();
-        var current = new ResolutionRequest(type, key);
-        foreach (var item in stack)
-        {
-            if (item.Type == current.Type && Equals(item.Key, current.Key))
-            {
-                throw new InvalidOperationException(
-                    $"Detected circular dependency between BTDB IOC and IServiceProvider while resolving {Format(current)}. Resolution chain: {Format(stack)}");
-            }
-        }
-
-        stack.Add(current);
-        return new ResolutionGuard(this);
-    }
-
-    static string Format(IReadOnlyList<ResolutionRequest> stack)
-    {
-        var builder = new StringBuilder();
-        for (var i = 0; i < stack.Count; i++)
-        {
-            if (i != 0) builder.Append(" -> ");
-            builder.Append(Format(stack[i]));
-        }
-
-        return builder.ToString();
-    }
-
-    static string Format(ResolutionRequest request)
-    {
-        return request.Key == null ? request.Type.ToString() : $"{request.Type} with key {request.Key}";
+        return exportFactories[exportIndex](container, null)!;
     }
 }

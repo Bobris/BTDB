@@ -2081,6 +2081,33 @@ public partial class IocTests
     }
 
     [Fact]
+    public void KeyedDependencyFromServiceProvider_ShouldResolve()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.ServiceCollection.AddKeyedSingleton<ILogger, TestLogger>("A");
+
+        var container = containerBuilder.Build();
+        var actual = container.ResolveKeyed<ILogger>("A");
+
+        Assert.NotNull(actual);
+        Assert.IsType<TestLogger>(actual);
+    }
+
+    [Fact]
+    public void KeyedIEnumerableFromServiceProvider_ShouldResolve()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.ServiceCollection.AddKeyedSingleton<ILogger, TestLogger>("A");
+        containerBuilder.ServiceCollection.AddKeyedSingleton<ILogger, TestLogger2>("A");
+
+        var container = containerBuilder.Build();
+        var actual = container.ResolveKeyed<IEnumerable<ILogger>>("A");
+
+        Assert.NotNull(actual);
+        Assert.Equal(2, actual.Count());
+    }
+
+    [Fact]
     public async Task ScopedServicesFromServiceProviderFollowBtDbScopes()
     {
         var containerBuilder = new ContainerBuilder();

@@ -10,6 +10,12 @@ static class Program
 {
     static void Main(string[] args)
     {
+        if (args.Length > 0 && string.Equals(args[0], "ioc-benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            BenchmarkSwitcher.FromTypes([typeof(IocResolveBenchmark)]).Run(args[1..]);
+            return;
+        }
+
         //var b = new EventSerializationBenchmark();
         //b.Complexity = "Complex";
         //if (MemoryProfiler.IsActive && MemoryProfiler.CanControlAllocations)

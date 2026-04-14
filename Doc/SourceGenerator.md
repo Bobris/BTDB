@@ -5,6 +5,8 @@
 BTDB IOC can also be exposed through `Microsoft.Extensions.DependencyInjection`.
 In ASP.NET Core Minimal API, call `builder.Services.UseBtdbIoc(containerBuilder)` and BTDB registrations become
 available as normal DI services, including endpoint parameters.
+When code needs the BTDB root container from the ASP.NET root `IServiceProvider`, resolve `IRootContainer`; scoped
+code should keep using `IContainer`.
 
 ```csharp
 using BTDB.IOC;

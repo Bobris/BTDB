@@ -22,20 +22,9 @@ public partial class IocTests
     }
 
     [Generate]
-    public class CyclicBtDbService(CyclicMsDiService dependency)
-    {
-        public CyclicMsDiService Dependency { get; } = dependency;
-    }
-
-    [Generate]
     public class SingletonBtDbServiceHoldingContainer(IContainer container)
     {
         public IContainer Container { get; } = container;
-    }
-
-    public sealed class CyclicMsDiService(CyclicBtDbService dependency)
-    {
-        public CyclicBtDbService Dependency { get; } = dependency;
     }
 
     public sealed class TransientMsDiService;
@@ -169,35 +158,6 @@ public partial class IocTests
     }
 
     [Fact]
-    public void CrossContainerCycleIsDetectedWhenResolvingFromServiceProvider()
-    {
-        var builder = new ContainerBuilder();
-        builder.ServiceCollection.AddTransient<CyclicMsDiService>();
-        builder.RegisterType<CyclicBtDbService>().AsSelf();
-
-        var container = builder.Build();
-        var serviceProvider = container.Resolve<IServiceProvider>();
-
-        var exception = Assert.Throws<InvalidOperationException>(() => serviceProvider.GetRequiredService<CyclicBtDbService>());
-
-        Assert.Contains("Detected circular dependency between BTDB IOC and IServiceProvider", exception.Message);
-    }
-
-    [Fact]
-    public void CrossContainerCycleIsDetectedWhenResolvingFromBtDb()
-    {
-        var builder = new ContainerBuilder();
-        builder.ServiceCollection.AddTransient<CyclicMsDiService>();
-        builder.RegisterType<CyclicBtDbService>().AsSelf();
-
-        var container = builder.Build();
-
-        var exception = Assert.Throws<InvalidOperationException>(() => container.Resolve<CyclicBtDbService>());
-
-        Assert.Contains("Detected circular dependency between BTDB IOC and IServiceProvider", exception.Message);
-    }
-
-    [Fact]
     public void UseBtdbIocMakesBtDbRegistrationsAvailableFromAspNetServiceProvider()
     {
         var containerBuilder = new ContainerBuilder();
@@ -238,6 +198,29 @@ public partial class IocTests
     }
 
     [Fact]
+    public async Task UseBtdbIocResolvesRootContainerAsSingletonFromAspNetServiceProvider()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterType<TestLogger>().As<ILogger>().SingleInstance();
+
+        var services = new ServiceCollection();
+        services.UseBtdbIoc(containerBuilder);
+        var serviceProvider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true
+        });
+
+        var rootContainer = serviceProvider.GetRequiredService<IRootContainer>();
+        var logger = serviceProvider.GetRequiredService<ILogger>();
+
+        Assert.Same(logger, rootContainer.Resolve<ILogger>());
+
+        await using var scope = serviceProvider.CreateAsyncScope();
+        Assert.Same(rootContainer, scope.ServiceProvider.GetRequiredService<IRootContainer>());
+        Assert.NotSame(rootContainer, scope.ServiceProvider.GetRequiredService<IContainer>());
+    }
+
+    [Fact]
     public async Task UseBtdbIocSharesAspNetScopesWithBtDb()
     {
         var containerBuilder = new ContainerBuilder();
@@ -266,22 +249,6 @@ public partial class IocTests
         Assert.NotSame(scope1Container, scope2Container);
         Assert.NotSame(scope1BtDb1, scope2BtDb);
         Assert.NotSame(scope1MsDi1, scope2MsDi);
-    }
-
-    [Fact]
-    public void UseBtdbIocDetectsCrossContainerCycle()
-    {
-        var containerBuilder = new ContainerBuilder();
-        containerBuilder.RegisterType<CyclicBtDbService>().AsSelf();
-
-        var services = new ServiceCollection();
-        services.AddTransient<CyclicMsDiService>();
-        services.UseBtdbIoc(containerBuilder);
-        var serviceProvider = services.BuildServiceProvider();
-
-        var exception = Assert.Throws<InvalidOperationException>(() => serviceProvider.GetRequiredService<CyclicBtDbService>());
-
-        Assert.Contains("Detected circular dependency between BTDB IOC and IServiceProvider", exception.Message);
     }
 
     [Fact]

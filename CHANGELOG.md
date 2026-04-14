@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+### Added
+
+- `UseBtdbIoc(...)` and BTDB's internal `IServiceProvider` integration now expose `IRootContainer` as a singleton so
+  the BTDB root container can be resolved safely from the ASP.NET root `IServiceProvider` while `IContainer` remains
+  scope-bound.
+
+### Changed
+
+- BTDB IOC now caches `IServiceProvider` fallback factories and removes redundant service-provider availability checks,
+  which reduces overhead when BTDB resolves services from `Microsoft.Extensions.DependencyInjection`.
+- BTDB IOC no longer tracks cross-container dependency cycles at runtime when resolving through
+  `Microsoft.Extensions.DependencyInjection`, which reduces bridge resolve overhead but leaves such cycles to recurse
+  until one of the containers fails naturally.
+- BTDB IOC now uses a root-provider fast path for exported registrations resolved from the ASP.NET root
+  `IServiceProvider`, avoiding extra `RootScopeIdentity` and `ContainerImpl` lookups on the steady-state root path.
+- BTDB IOC now bypasses export enumeration bookkeeping for the common single-registration `registrationIndex == 0`
+  path, which further reduces steady-state resolve overhead for BTDB services exposed through
+  `Microsoft.Extensions.DependencyInjection`.
+- BTDB IOC now binds ASP.NET export descriptors to concrete BTDB registration factories when the root container is
+  initialized, skipping per-resolve registration lookups for BTDB services exposed through
+  `Microsoft.Extensions.DependencyInjection`.
+
 ## 35.0.2
 
 ### Fixed

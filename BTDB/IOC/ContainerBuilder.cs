@@ -188,7 +188,7 @@ public class ContainerBuilder
             serviceProviderIntegration);
         if (serviceProvider != null && serviceProviderIntegration != null)
         {
-            serviceProviderIntegration.Initialize(container);
+            serviceProviderIntegration.Initialize(container, serviceProvider);
         }
 
         return container;
