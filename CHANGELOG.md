@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.0.3
+
 ### Added
 
 - `UseBtdbIoc(...)` and BTDB's internal `IServiceProvider` integration now expose `IRootContainer` as a singleton so
