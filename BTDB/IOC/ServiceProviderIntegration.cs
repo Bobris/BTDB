@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,14 +11,16 @@ sealed class ServiceProviderIntegration
     ContainerImpl? _rootContainer;
     IServiceProvider? _rootServiceProvider;
     IReadOnlyList<ServiceCollectionExport>? _exports;
-    Func<IContainer, IResolvingCtx?, object?>[]? _exportFactories;
+    Func<IContainer, IResolvingCtx?, object?>?[]? _exportFactories;
 
     sealed class RootScopeIdentity(IServiceProvider serviceProvider)
     {
         public IServiceProvider ServiceProvider { get; } = serviceProvider;
     }
 
-    sealed class ContainerScope(IServiceProvider serviceProvider, RootScopeIdentity rootScopeIdentity,
+    sealed class ContainerScope(
+        IServiceProvider serviceProvider,
+        RootScopeIdentity rootScopeIdentity,
         ContainerImpl rootContainer) : IAsyncDisposable
     {
         readonly IContainer? _ownedContainer =
@@ -33,27 +36,17 @@ sealed class ServiceProviderIntegration
         }
     }
 
-    ContainerImpl RootContainer => _rootContainer ?? throw new InvalidOperationException("BTDB container is not initialized.");
+    ContainerImpl RootContainer =>
+        _rootContainer ?? throw new InvalidOperationException("BTDB container is not initialized.");
 
     public void Initialize(ContainerImpl rootContainer, IServiceProvider rootServiceProvider)
     {
         _rootContainer = rootContainer;
         _rootServiceProvider = rootServiceProvider;
         var exports = _exports;
-        if (exports == null || exports.Count == 0)
-        {
-            _exportFactories = [];
-            return;
-        }
-
-        var exportFactories = new Func<IContainer, IResolvingCtx?, object?>[exports.Count];
-        for (var i = 0; i < exports.Count; i++)
-        {
-            var export = exports[i];
-            exportFactories[i] = rootContainer.GetRegistrationFactory(export.Service.Type, export.Service.Key, export.RegistrationIndex);
-        }
-
-        _exportFactories = exportFactories;
+        _exportFactories = exports == null || exports.Count == 0
+            ? []
+            : new Func<IContainer, IResolvingCtx?, object?>?[exports.Count];
     }
 
     public void RegisterServices(ServiceCollection serviceCollection, IReadOnlyList<ServiceCollectionExport> exports)
@@ -103,39 +96,46 @@ sealed class ServiceProviderIntegration
             }
             else
             {
-                ((ICollection<ServiceDescriptor>)services).Add(ServiceDescriptor.DescribeKeyed(export.Service.Type, export.Service.Key,
+                ((ICollection<ServiceDescriptor>)services).Add(ServiceDescriptor.DescribeKeyed(export.Service.Type,
+                    export.Service.Key,
                     (sp, serviceKey) => sp.GetRequiredService<ServiceProviderIntegration>()
                         .ResolveFromContainer(sp, currentExportIndex), export.Lifetime));
             }
         }
     }
 
-    public object ResolveRequiredFromServiceProvider(IServiceProvider serviceProvider, Type type, object? key)
-    {
-        return key == null
-            ? serviceProvider.GetRequiredService(type)
-            : serviceProvider.GetRequiredKeyedService(type, key);
-    }
-
     public object ResolveFromContainer(IServiceProvider serviceProvider, int exportIndex)
     {
-        var exportFactories = _exportFactories;
-        if (exportFactories == null)
-        {
-            _ = serviceProvider.GetRequiredService<ContainerImpl>();
-            exportFactories = _exportFactories ??
-                              throw new InvalidOperationException("BTDB export factories are not initialized.");
-        }
-
         var rootServiceProvider = _rootServiceProvider;
         if (rootServiceProvider == null)
         {
             rootServiceProvider = serviceProvider.GetRequiredService<RootScopeIdentity>().ServiceProvider;
+            _rootServiceProvider = rootServiceProvider;
         }
 
         var container = ReferenceEquals(serviceProvider, rootServiceProvider)
-            ? _rootContainer ?? serviceProvider.GetRequiredService<ContainerImpl>()
+            ? _rootContainer ??= serviceProvider.GetRequiredService<ContainerImpl>()
             : serviceProvider.GetRequiredService<ContainerScope>().Container;
-        return exportFactories[exportIndex](container, null)!;
+        return GetOrCreateExportFactory(serviceProvider, exportIndex)(container, null)!;
+    }
+
+    Func<IContainer, IResolvingCtx?, object?> GetOrCreateExportFactory(IServiceProvider serviceProvider,
+        int exportIndex)
+    {
+        var exportFactories = _exportFactories;
+        if (exportFactories == null)
+        {
+            throw new InvalidOperationException("BTDB export factories are not initialized.");
+        }
+
+        var factory = Volatile.Read(ref exportFactories[exportIndex]);
+        if (factory != null) return factory;
+
+        var rootContainer = _rootContainer ?? serviceProvider.GetRequiredService<ContainerImpl>();
+        var exports = _exports ?? throw new InvalidOperationException("BTDB exports are not initialized.");
+        var export = exports[exportIndex];
+        factory = rootContainer.GetRegistrationFactory(export.Service.Type, export.Service.Key,
+            export.RegistrationIndex);
+        return Interlocked.CompareExchange(ref exportFactories[exportIndex], factory, null) ?? factory;
     }
 }

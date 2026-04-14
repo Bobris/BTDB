@@ -30,31 +30,45 @@ public partial class IocTests
     public sealed class TransientMsDiService;
 
     [Fact]
-    public void ExportedSingletonCanBeResolvedFromServiceProvider()
+    public void BtDbOnlyModeDoesNotCreateServiceProviderForPureBtDbRegistrations()
     {
         var builder = new ContainerBuilder();
         builder.RegisterType<TestLogger>().As<ILogger>().SingleInstance();
 
         var container = builder.Build();
-        var serviceProvider = container.Resolve<IServiceProvider>();
-
-        var logger1 = serviceProvider.GetRequiredService<ILogger>();
-        var logger2 = serviceProvider.GetRequiredService<ILogger>();
-
-        Assert.IsType<TestLogger>(logger1);
-        Assert.Same(logger1, logger2);
-        Assert.Same(container.Resolve<ILogger>(), logger1);
+        Assert.Throws<ArgumentException>(() => container.Resolve<IServiceProvider>());
     }
 
     [Fact]
-    public void ExportedRegistrationsPreserveEnumerableOrderAndLastWins()
+    public void BtDbWithServiceCollectionFallbackDoesNotExportBtDbRegistrationsBackToServiceProvider()
     {
         var builder = new ContainerBuilder();
-        builder.RegisterType<TestLogger>().As<ILogger>();
-        builder.RegisterType<TestLogger2>().As<ILogger>();
+        builder.ServiceCollection.AddScoped<ScopedMsDiService>();
+        builder.RegisterType<TestLogger>().As<ILogger>().SingleInstance();
+        builder.RegisterType<ExportedScopedBtDbService>().AsSelf().Scoped();
 
         var container = builder.Build();
+        Assert.NotNull(container.Resolve<ScopedMsDiService>());
+
         var serviceProvider = container.Resolve<IServiceProvider>();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<ScopedMsDiService>());
+        Assert.Null(serviceProvider.GetService<ILogger>());
+        Assert.Null(serviceProvider.GetService<ExportedScopedBtDbService>());
+        Assert.Null(serviceProvider.GetService<IContainer>());
+        Assert.Null(serviceProvider.GetService<IRootContainer>());
+    }
+
+    [Fact]
+    public void UseBtdbIocPreservesEnumerableOrderAndLastWins()
+    {
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterType<TestLogger>().As<ILogger>();
+        containerBuilder.RegisterType<TestLogger2>().As<ILogger>();
+
+        var services = new ServiceCollection();
+        services.UseBtdbIoc(containerBuilder);
+        var serviceProvider = services.BuildServiceProvider();
 
         var all = serviceProvider.GetServices<ILogger>().Select(logger => logger.GetType().Name).ToArray();
 
@@ -63,14 +77,15 @@ public partial class IocTests
     }
 
     [Fact]
-    public void ExportedKeyedRegistrationsCanBeResolvedFromServiceProvider()
+    public void UseBtdbIocCanResolveKeyedRegistrationsFromAspNetServiceProvider()
     {
-        var builder = new ContainerBuilder();
-        builder.RegisterType<TestLogger>().Keyed<ILogger>("A");
-        builder.RegisterType<TestLogger2>().Keyed<ILogger>("A");
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterType<TestLogger>().Keyed<ILogger>("A");
+        containerBuilder.RegisterType<TestLogger2>().Keyed<ILogger>("A");
 
-        var container = builder.Build();
-        var serviceProvider = container.Resolve<IServiceProvider>();
+        var services = new ServiceCollection();
+        services.UseBtdbIoc(containerBuilder);
+        var serviceProvider = services.BuildServiceProvider();
 
         var all = serviceProvider.GetKeyedServices<ILogger>("A").Select(logger => logger.GetType().Name).ToArray();
 
@@ -79,31 +94,34 @@ public partial class IocTests
     }
 
     [Fact]
-    public async Task ServiceProviderResolvesBtDbContainerPerScope()
+    public async Task UseBtdbIocResolvesBtDbContainerPerScope()
     {
-        var builder = new ContainerBuilder();
-        builder.RegisterType<TestLogger>().As<ILogger>();
-        var container = builder.Build();
-        var serviceProvider = container.Resolve<IServiceProvider>();
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterType<TestLogger>().As<ILogger>();
 
-        Assert.Same(container, serviceProvider.GetRequiredService<IContainer>());
+        var services = new ServiceCollection();
+        services.UseBtdbIoc(containerBuilder);
+        var serviceProvider = services.BuildServiceProvider();
+
+        var rootContainer = serviceProvider.GetRequiredService<IContainer>();
 
         await using var scope = serviceProvider.CreateAsyncScope();
         var scopedContainer1 = scope.ServiceProvider.GetRequiredService<IContainer>();
         var scopedContainer2 = scope.ServiceProvider.GetRequiredService<IContainer>();
 
-        Assert.NotSame(container, scopedContainer1);
+        Assert.NotSame(rootContainer, scopedContainer1);
         Assert.Same(scopedContainer1, scopedContainer2);
     }
 
     [Fact]
-    public async Task ExportedScopedServicesFollowServiceProviderScopes()
+    public async Task UseBtdbIocExportedScopedServicesFollowServiceProviderScopes()
     {
-        var builder = new ContainerBuilder();
-        builder.RegisterType<ExportedScopedBtDbService>().AsSelf().Scoped();
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterType<ExportedScopedBtDbService>().AsSelf().Scoped();
 
-        var container = builder.Build();
-        var serviceProvider = container.Resolve<IServiceProvider>();
+        var services = new ServiceCollection();
+        services.UseBtdbIoc(containerBuilder);
+        var serviceProvider = services.BuildServiceProvider();
 
         var root1 = serviceProvider.GetRequiredService<ExportedScopedBtDbService>();
         var root2 = serviceProvider.GetRequiredService<ExportedScopedBtDbService>();
@@ -122,14 +140,15 @@ public partial class IocTests
     }
 
     [Fact]
-    public async Task ExportedBtDbServicesCanResolveScopedDependenciesFromServiceProvider()
+    public async Task UseBtdbIocExportedBtDbServicesCanResolveScopedDependenciesFromServiceProvider()
     {
-        var builder = new ContainerBuilder();
-        builder.ServiceCollection.AddScoped<ScopedMsDiService>();
-        builder.RegisterType<BtDbServiceWithMsDiScopedDependency>().AsSelf().Scoped();
+        var containerBuilder = new ContainerBuilder();
+        containerBuilder.RegisterType<BtDbServiceWithMsDiScopedDependency>().AsSelf().Scoped();
 
-        var container = builder.Build();
-        var serviceProvider = container.Resolve<IServiceProvider>();
+        var services = new ServiceCollection();
+        services.AddScoped<ScopedMsDiService>();
+        services.UseBtdbIoc(containerBuilder);
+        var serviceProvider = services.BuildServiceProvider();
 
         await using var scope1 = serviceProvider.CreateAsyncScope();
         var scope1Obj1 = scope1.ServiceProvider.GetRequiredService<BtDbServiceWithMsDiScopedDependency>();

@@ -20,9 +20,10 @@
 - BTDB IOC now bypasses export enumeration bookkeeping for the common single-registration `registrationIndex == 0`
   path, which further reduces steady-state resolve overhead for BTDB services exposed through
   `Microsoft.Extensions.DependencyInjection`.
-- BTDB IOC now binds ASP.NET export descriptors to concrete BTDB registration factories when the root container is
-  initialized, skipping per-resolve registration lookups for BTDB services exposed through
-  `Microsoft.Extensions.DependencyInjection`.
+- BTDB IOC now keeps three distinct integration modes: pure BTDB, BTDB resolving services from
+  `ContainerBuilder.ServiceCollection`, and full bidirectional BTDB <-> ASP.NET DI bridging only through
+  `UseBtdbIoc(...)`. Building a plain `ContainerBuilder` no longer auto-exports BTDB registrations into an internal
+  `IServiceProvider`.
 
 ## 35.0.2
 

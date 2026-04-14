@@ -7,7 +7,6 @@ namespace BTDB.IOC;
 
 public sealed class CreateFactoryCtx : ICreateFactoryCtx
 {
-    internal uint SingletonDeepness;
     internal bool VerifySingletons;
     internal int Enumerate = -1;
     int _maxParams;

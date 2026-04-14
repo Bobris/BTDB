@@ -25,6 +25,8 @@ It is available in Nuget <http://www.nuget.org/packages/BTDB>. Source code drops
 ## IOC Container
 
 BTDB IOC can be used directly, or it can be bridged into `Microsoft.Extensions.DependencyInjection`.
+There are three distinct modes: standalone BTDB IOC, BTDB IOC with fallback into services registered through
+`ContainerBuilder.ServiceCollection`, and full bidirectional BTDB <-> ASP.NET DI integration via `UseBtdbIoc(...)`.
 For ASP.NET Core Minimal API, register BTDB services into `ContainerBuilder` and then call `UseBtdbIoc(...)`.
 After that, BTDB registrations are available as normal endpoint parameters, and BTDB `IContainer` can also resolve
 services that `WebApplication` registers automatically.

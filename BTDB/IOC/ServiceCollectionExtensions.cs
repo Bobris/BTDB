@@ -13,7 +13,7 @@ public static class ServiceCollectionExtensions
         {
             foreach (var descriptor in builderServices)
             {
-                ((ICollection<ServiceDescriptor>)services).Add(descriptor);
+                services.Add(descriptor);
             }
         }
 

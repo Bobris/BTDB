@@ -165,33 +165,20 @@ public class ContainerBuilder
         }
 
         IServiceProvider? serviceProvider = null;
-        ServiceProviderIntegration? serviceProviderIntegration = null;
-        var registrationContext = CollectServiceCollectionRegistrations();
-
-        if (_serviceCollection != null || registrationContext.Registrations.Count > 0)
+        if (_serviceCollection is { Count: > 0 })
         {
+            // Plain ContainerBuilder.ServiceCollection enables only BTDB -> MS.DI fallback.
+            // Exporting BTDB registrations back into MS.DI is reserved for UseBtdbIoc(...).
             var serviceCollection = new ServiceCollection();
-            if (_serviceCollection != null)
+            foreach (var descriptor in _serviceCollection)
             {
-                foreach (var descriptor in _serviceCollection)
-                {
-                    ((System.Collections.Generic.ICollection<ServiceDescriptor>)serviceCollection).Add(descriptor);
-                }
+                ((System.Collections.Generic.ICollection<ServiceDescriptor>)serviceCollection).Add(descriptor);
             }
 
-            serviceProviderIntegration = new ServiceProviderIntegration();
-            serviceProviderIntegration.RegisterServices(serviceCollection, registrationContext.Registrations);
             serviceProvider = serviceCollection.BuildServiceProvider();
         }
 
-        var container = new ContainerImpl(_registrations.AsReadOnlySpan(), options, serviceProvider,
-            serviceProviderIntegration);
-        if (serviceProvider != null && serviceProviderIntegration != null)
-        {
-            serviceProviderIntegration.Initialize(container, serviceProvider);
-        }
-
-        return container;
+        return new ContainerImpl(_registrations.AsReadOnlySpan(), options, serviceProvider, null);
     }
 
     internal ServiceCollectionRegistrationContext CollectServiceCollectionRegistrations()

@@ -51,8 +51,10 @@ public class ContainerImpl : IRootContainer
 
     internal readonly object?[] Singletons;
     readonly ContainerImpl _root;
+
     readonly ConcurrentDictionary<ServiceProviderFactoryCacheKey, ServiceProviderFactoryCacheValue>
         _serviceProviderFactoryCache;
+
     readonly IServiceProvider? _serviceProvider;
     readonly IServiceProviderIsKeyedService? _serviceProviderIsKeyedService;
     readonly ServiceProviderIntegration? _serviceProviderIntegration;
@@ -109,7 +111,6 @@ public class ContainerImpl : IRootContainer
                 {
                     var ctx = new CreateFactoryCtx();
                     ctx.VerifySingletons = true;
-                    ctx.SingletonDeepness = 1;
                     reg.Factory(this, ctx);
                 }
             }
@@ -484,17 +485,13 @@ public class ContainerImpl : IRootContainer
             ThrowNotResolvable(key, type);
         }
 
-        if (_serviceProviderIntegration == null)
-        {
-            return key == null
-                ? _serviceProvider.GetRequiredService(type)
-                : _serviceProvider.GetRequiredKeyedService(type, key);
-        }
-
-        return _serviceProviderIntegration.ResolveRequiredFromServiceProvider(_serviceProvider, type, key);
+        return key == null
+            ? _serviceProvider.GetRequiredService(type)
+            : _serviceProvider.GetRequiredKeyedService(type, key);
     }
 
-    Func<IContainer, IResolvingCtx?, object?>? CreateFactoryFromRegistration(CreateFactoryCtx ctxImpl, CReg cReg, object? key,
+    Func<IContainer, IResolvingCtx?, object?>? CreateFactoryFromRegistration(CreateFactoryCtx ctxImpl, CReg cReg,
+        object? key,
         Type type)
     {
         if (ctxImpl.Enumerate >= 0 && cReg.Multi.Count > 1)
@@ -583,15 +580,7 @@ public class ContainerImpl : IRootContainer
                 {
                     using var resolvingCtxRestorer = ctxImpl.ResolvingCtxRestorer();
                     using var enumerableRestorer = ctxImpl.EnumerableRestorer();
-                    ctxImpl.SingletonDeepness++;
-                    try
-                    {
-                        f = cReg.Factory(rootContainer, ctxImpl);
-                    }
-                    finally
-                    {
-                        ctxImpl.SingletonDeepness--;
-                    }
+                    f = cReg.Factory(rootContainer, ctxImpl);
                 }
 
                 return cReg.SingletonFactoryCache;
@@ -599,19 +588,9 @@ public class ContainerImpl : IRootContainer
 
             if (cReg.Lifetime == Lifetime.Scoped && cReg.ScopedId != uint.MaxValue)
             {
-                if (ctxImpl.VerifySingletons && ctxImpl.SingletonDeepness > 0)
+                if (ctxImpl.VerifySingletons)
                 {
                     throw new BTDBException("Scoped dependency " + new KeyAndType(key, type));
-                }
-
-                if (TryGetScopedValue(cReg.ScopedId, out var scopedInstance))
-                {
-                    if (scopedInstance is ScopedLocker)
-                    {
-                        return (container, _) => ((ContainerImpl)container).WaitForScoped(cReg.ScopedId);
-                    }
-
-                    return (_, _) => scopedInstance;
                 }
 
                 var scopedFactoryCache = Volatile.Read(ref cReg.ScopedFactoryCache);
@@ -638,9 +617,8 @@ public class ContainerImpl : IRootContainer
                         currentContainer._scopedInstancesLock.StartWrite();
                         try
                         {
-                            ref var instanceRef = ref currentContainer._scopedInstances.GetOrFakeValueRef(cReg.ScopedId,
-                                out var found);
-                            if (!found)
+                            ref var instanceRef = ref currentContainer._scopedInstances.GetOrAddValueRef(cReg.ScopedId);
+                            if (instanceRef == null)
                             {
                                 instanceRef = myScopedLocker;
                                 instance = null;
@@ -698,8 +676,9 @@ public class ContainerImpl : IRootContainer
                 return cReg.ScopedFactoryCache;
             }
 
-            if (ctxImpl.VerifySingletons && ctxImpl.SingletonDeepness > 0 && cReg.SingletonId != uint.MaxValue)
+            if (ctxImpl.VerifySingletons)
             {
+                if (cReg.SingletonId == uint.MaxValue) return (_, _) => null;
                 throw new BTDBException("Transient dependency " + new KeyAndType(key, type));
             }
 
@@ -718,17 +697,11 @@ public class ContainerImpl : IRootContainer
         return res;
     }
 
-    internal object ResolveRegistration(Type type, object? key, int registrationIndex)
+    internal Func<IContainer, IResolvingCtx?, object?> GetRegistrationFactory(Type type, object? key,
+        int registrationIndex)
     {
         ThrowIfDisposed();
-        var factory = GetRegistrationFactory(type, key, registrationIndex);
-        return factory(this, null)!;
-    }
-
-    internal Func<IContainer, IResolvingCtx?, object?> GetRegistrationFactory(Type type, object? key, int registrationIndex)
-    {
-        ThrowIfDisposed();
-        var factory = CreateRegistrationFactory(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key,
+        var factory = CreateRegistrationFactory(new() { ForbidKeylessFallback = key != null }, type, key,
             registrationIndex);
         if (factory == null)
         {
@@ -744,21 +717,17 @@ public class ContainerImpl : IRootContainer
         return new ContainerImpl(this, serviceProvider, null);
     }
 
-    Func<IContainer, IResolvingCtx?, object?>? CreateRegistrationFactory(CreateFactoryCtx ctxImpl, Type type, object? key,
+    Func<IContainer, IResolvingCtx?, object?>? CreateRegistrationFactory(CreateFactoryCtx ctxImpl, Type type,
+        object? key,
         int registrationIndex)
     {
         if (registrationIndex < 0)
             throw new ArgumentOutOfRangeException(nameof(registrationIndex));
 
-        if (registrationIndex == 0 && TryCreateSingleRegistrationFactory(ctxImpl, type, key, out var factory))
-        {
-            return factory;
-        }
-
         var enumerableBackup = ctxImpl.StartEnumerate();
         try
         {
-            factory = CreateFactory(ctxImpl, type, key);
+            var factory = CreateFactory(ctxImpl, type, key);
             if (factory == null) return null;
 
             for (var i = 0; i < registrationIndex; i++)
@@ -774,33 +743,6 @@ public class ContainerImpl : IRootContainer
         {
             ctxImpl.FinishEnumerate(enumerableBackup);
         }
-    }
-
-    bool TryCreateSingleRegistrationFactory(CreateFactoryCtx ctxImpl, Type type, object? key,
-        [NotNullWhen(true)] out Func<IContainer, IResolvingCtx?, object?>? factory)
-    {
-        if (Registrations.TryGetValue(new(key, type), out var cReg))
-        {
-            if (cReg.Multi.Count != 0)
-            {
-                factory = null;
-                return false;
-            }
-
-            ctxImpl.ForbidKeylessFallback = false;
-            factory = CreateFactoryFromRegistration(ctxImpl, cReg, key, type);
-            return true;
-        }
-
-        if (key != null && !ctxImpl.ForbidKeylessFallback && Registrations.TryGetValue(new(null, type), out cReg) &&
-            cReg.Multi.Count == 0)
-        {
-            factory = CreateFactoryFromRegistration(ctxImpl, cReg, key, type);
-            return true;
-        }
-
-        factory = null;
-        return false;
     }
 
     Func<IContainer, IResolvingCtx?, object?>? CreateArrayFactory(CreateFactoryCtx ctxImpl, object? key,
