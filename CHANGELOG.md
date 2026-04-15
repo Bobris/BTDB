@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.0.5
+
 ### Fixed
 
 - `BTDB.AzureStorage` now reopens existing transaction-log cache files without holding a write handle open until an
