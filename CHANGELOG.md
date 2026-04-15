@@ -33,6 +33,9 @@
   preserving shared instances for alias and multi-registration paths.
 - BTDB IOC now reuses a single lifetime factory-cache slot and a single in-progress locker type for both singleton and
   scoped registrations, reducing per-registration bookkeeping in the resolve hot path.
+- BTDB IOC exports resolved from `Microsoft.Extensions.DependencyInjection` no longer re-resolve
+  `ServiceProviderIntegration` from the service provider on every call, reducing steady-state bridge overhead for
+  `UseBtdbIoc(...)` service exports.
 
 ## 35.0.2
 

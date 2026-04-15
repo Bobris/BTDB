@@ -91,15 +91,13 @@ sealed class ServiceProviderIntegration
             if (export.Service.Key == null)
             {
                 ((ICollection<ServiceDescriptor>)services).Add(ServiceDescriptor.Describe(export.Service.Type,
-                    sp => sp.GetRequiredService<ServiceProviderIntegration>()
-                        .ResolveFromContainer(sp, currentExportIndex), export.Lifetime));
+                    sp => ResolveFromContainer(sp, currentExportIndex), export.Lifetime));
             }
             else
             {
                 ((ICollection<ServiceDescriptor>)services).Add(ServiceDescriptor.DescribeKeyed(export.Service.Type,
                     export.Service.Key,
-                    (sp, serviceKey) => sp.GetRequiredService<ServiceProviderIntegration>()
-                        .ResolveFromContainer(sp, currentExportIndex), export.Lifetime));
+                    (sp, serviceKey) => ResolveFromContainer(sp, currentExportIndex), export.Lifetime));
             }
         }
     }
