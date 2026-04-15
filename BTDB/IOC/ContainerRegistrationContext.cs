@@ -17,7 +17,6 @@ class ContainerRegistrationContext
 
     internal bool ReportNotGeneratedTypes { get; private set; }
 
-    internal uint SingletonCount { get; private set; }
     internal uint ScopedCount { get; private set; }
     internal bool AllowReflectionFallback { get; private set; }
 
@@ -32,11 +31,7 @@ class ContainerRegistrationContext
 
     public void AddCReg(KeyAndType asType, bool preserveExistingDefaults, bool uniqueRegistration, CReg registration)
     {
-        if (registration.Lifetime == Lifetime.Singleton && registration.SingletonId == uint.MaxValue)
-        {
-            registration.SingletonId = SingletonCount++;
-        }
-        else if (registration.Lifetime == Lifetime.Scoped && registration.ScopedId == uint.MaxValue)
+        if (registration.Lifetime == Lifetime.Scoped && registration.ScopedId == uint.MaxValue)
         {
             registration.ScopedId = ScopedCount++;
         }
@@ -60,8 +55,8 @@ class ContainerRegistrationContext
 
         var multi = new CReg
         {
-            Factory = currentReg.Factory, Lifetime = currentReg.Lifetime, SingletonId = currentReg.SingletonId,
-            ScopedId = currentReg.ScopedId
+            Factory = currentReg.Factory, Lifetime = currentReg.Lifetime, SingletonValue = currentReg.SingletonValue,
+            ScopedId = currentReg.ScopedId, DefaultRegistration = currentReg, IsSingletonSafe = currentReg.IsSingletonSafe
         };
         multi.Multi.Add(currentReg);
         multi.Add(registration, preserveExistingDefaults);

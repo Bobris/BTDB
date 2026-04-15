@@ -19,6 +19,13 @@ namespace BTDB.IOC;
 
 public class ContainerImpl : IRootContainer
 {
+    sealed class ResolveFactoryCache
+    {
+        public readonly RefDictionary<nint, Func<IContainer, IResolvingCtx?, object?>?> ByType = new();
+        public readonly RefDictionary<KeyAndType, Func<IContainer, IResolvingCtx?, object?>?> ByKeyAndType = new();
+        public SeqLock Lock;
+    }
+
     readonly struct ServiceProviderFactoryCacheKey(Type type, object? key, bool allowKeylessFallback) :
         IEquatable<ServiceProviderFactoryCacheKey>
     {
@@ -49,8 +56,8 @@ public class ContainerImpl : IRootContainer
 
     internal readonly Dictionary<KeyAndType, CReg> Registrations;
 
-    internal readonly object?[] Singletons;
     readonly ContainerImpl _root;
+    readonly ResolveFactoryCache _resolveFactoryCache;
 
     readonly ConcurrentDictionary<ServiceProviderFactoryCacheKey, ServiceProviderFactoryCacheValue>
         _serviceProviderFactoryCache;
@@ -68,6 +75,7 @@ public class ContainerImpl : IRootContainer
         IServiceProvider? serviceProvider, ServiceProviderIntegration? serviceProviderIntegration)
     {
         _root = this;
+        _resolveFactoryCache = new();
         _serviceProviderFactoryCache = new();
         _serviceProvider = serviceProvider;
         _serviceProviderIsKeyedService = serviceProvider?.GetService<IServiceProviderIsKeyedService>();
@@ -87,19 +95,17 @@ public class ContainerImpl : IRootContainer
             }
         }
 
-        Singletons = new object[context.SingletonCount];
         Registrations[new(null, typeof(IContainer))] = new()
         {
             Factory = (_, _) => (container, _) => container,
             Lifetime = Lifetime.Singleton,
-            SingletonId = uint.MaxValue,
-            ScopedId = uint.MaxValue
+            ScopedId = uint.MaxValue,
+            IsSingletonSafe = true
         };
         Registrations[new(null, typeof(IRootContainer))] = new()
         {
             Factory = (_, _) => (_, _) => _root,
             Lifetime = Lifetime.Singleton,
-            SingletonId = uint.MaxValue,
             ScopedId = uint.MaxValue
         };
         if (containerVerification == ContainerVerification.None) return;
@@ -107,11 +113,12 @@ public class ContainerImpl : IRootContainer
         {
             foreach (var (_, reg) in Registrations)
             {
-                if (reg.Lifetime == Lifetime.Singleton)
+                var singletonReg = reg.DefaultRegistration ?? reg;
+                if (singletonReg.Lifetime == Lifetime.Singleton)
                 {
                     var ctx = new CreateFactoryCtx();
                     ctx.VerifySingletons = true;
-                    reg.Factory(this, ctx);
+                    singletonReg.Factory(this, ctx);
                 }
             }
         }
@@ -120,9 +127,9 @@ public class ContainerImpl : IRootContainer
     ContainerImpl(ContainerImpl parent, IServiceProvider? serviceProvider, AsyncServiceScope? serviceScope)
     {
         _root = parent._root;
+        _resolveFactoryCache = _root._resolveFactoryCache;
         _serviceProviderFactoryCache = _root._serviceProviderFactoryCache;
         Registrations = _root.Registrations;
-        Singletons = _root.Singletons;
         _serviceScope = serviceScope;
         _serviceProvider = serviceProvider ?? serviceScope?.ServiceProvider ?? parent._serviceProvider;
         _serviceProviderIsKeyedService = _serviceProvider?.GetService<IServiceProviderIsKeyedService>();
@@ -147,7 +154,7 @@ public class ContainerImpl : IRootContainer
 
     public object ResolveKeyed(object? key, Type type)
     {
-        var factory = CreateFactory(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key);
+        var factory = GetResolveFactory(key, type);
         if (factory is null)
         {
             ThrowNotResolvable(key, type);
@@ -168,8 +175,68 @@ public class ContainerImpl : IRootContainer
 
     public object? ResolveOptionalKeyed(object? key, Type type)
     {
-        var factory = CreateFactory(new CreateFactoryCtx { ForbidKeylessFallback = key != null }, type, key);
+        var factory = GetResolveFactory(key, type);
         return factory?.Invoke(this, null);
+    }
+
+    Func<IContainer, IResolvingCtx?, object?>? GetResolveFactory(object? key, Type type)
+    {
+        return key == null
+            ? GetOrCreateResolveFactory(type)
+            : GetOrCreateResolveFactory(new KeyAndType(key, type));
+    }
+
+    Func<IContainer, IResolvingCtx?, object?>? GetOrCreateResolveFactory(Type type)
+    {
+        var cache = _resolveFactoryCache;
+        var cacheKey = type.TypeHandle.Value;
+        if (cache.ByType.TryGetValueSeqLock(cacheKey, out var factory, ref cache.Lock))
+        {
+            return factory;
+        }
+
+        factory = CreateFactory(new CreateFactoryCtx(), type, null);
+        cache.Lock.StartWrite();
+        try
+        {
+            if (cache.ByType.TryGetValue(cacheKey, out var cachedFactory))
+            {
+                return cachedFactory;
+            }
+
+            cache.ByType.TryAdd(cacheKey, factory);
+            return factory;
+        }
+        finally
+        {
+            cache.Lock.EndWrite();
+        }
+    }
+
+    Func<IContainer, IResolvingCtx?, object?>? GetOrCreateResolveFactory(KeyAndType keyAndType)
+    {
+        var cache = _resolveFactoryCache;
+        if (cache.ByKeyAndType.TryGetValueSeqLock(keyAndType, out var factory, ref cache.Lock))
+        {
+            return factory;
+        }
+
+        factory = CreateFactory(new CreateFactoryCtx { ForbidKeylessFallback = true }, keyAndType.Type, keyAndType.Key);
+        cache.Lock.StartWrite();
+        try
+        {
+            if (cache.ByKeyAndType.TryGetValue(keyAndType, out var cachedFactory))
+            {
+                return cachedFactory;
+            }
+
+            cache.ByKeyAndType.TryAdd(keyAndType, factory);
+            return factory;
+        }
+        finally
+        {
+            cache.Lock.EndWrite();
+        }
     }
 
     bool HasRegistration(Type type, object? key, bool allowKeylessFallback)
@@ -498,18 +565,22 @@ public class ContainerImpl : IRootContainer
         {
             cReg = ctxImpl.Enumerating(cReg);
         }
+        else if (cReg.DefaultRegistration != null)
+        {
+            cReg = cReg.DefaultRegistration;
+        }
 
         ctxImpl.PushResolving(cReg);
         try
         {
-            if (cReg.Lifetime == Lifetime.Singleton && cReg.SingletonId != uint.MaxValue)
+            if (cReg.Lifetime == Lifetime.Singleton && !cReg.IsSingletonSafe)
             {
                 if (ctxImpl.VerifySingletons) return (_, _) => null;
                 var rootContainer = _root;
-                var singletonInstance = Volatile.Read(ref Singletons[cReg.SingletonId]);
-                if (singletonInstance is SingletonLocker)
+                var singletonInstance = cReg.SingletonValue;
+                if (singletonInstance is InstanceLocker)
                 {
-                    return (_, _) => rootContainer.WaitForSingleton(cReg.SingletonId);
+                    return (_, _) => rootContainer.WaitForSingleton(cReg);
                 }
 
                 if (singletonInstance != null)
@@ -517,26 +588,26 @@ public class ContainerImpl : IRootContainer
                     return (_, _) => singletonInstance;
                 }
 
-                var singletonFactoryCache = Volatile.Read(ref cReg.SingletonFactoryCache);
+                var singletonFactoryCache = Volatile.Read(ref cReg.LifetimeFactoryCache);
                 if (singletonFactoryCache != null) return singletonFactoryCache;
 
                 Func<IContainer, IResolvingCtx?, object>? f = null;
 
                 var ff = (IContainer container, IResolvingCtx? resolvingCtx) =>
                 {
-                    ref var singleton = ref rootContainer.Singletons[cReg.SingletonId];
-                    var instance = Volatile.Read(ref singleton);
+                    ref var singleton = ref cReg.SingletonValue;
+                    var instance = singleton;
                     if (instance != null)
                     {
-                        if (instance is SingletonLocker)
+                        if (instance is InstanceLocker)
                         {
-                            return rootContainer.WaitForSingleton(cReg.SingletonId);
+                            return rootContainer.WaitForSingleton(cReg);
                         }
 
                         return instance;
                     }
 
-                    var mySingletonLocker = new SingletonLocker();
+                    var mySingletonLocker = new InstanceLocker();
                     Monitor.Enter(mySingletonLocker);
                     try
                     {
@@ -554,7 +625,7 @@ public class ContainerImpl : IRootContainer
                                 instance = f1(rootContainer, resolvingCtx);
                                 rootContainer.TrackOwnedInstance(instance);
                                 Volatile.Write(ref singleton, instance);
-                                cReg.SingletonFactoryCache = null;
+                                cReg.LifetimeFactoryCache = null;
                                 return instance;
                             }
                             catch
@@ -569,21 +640,21 @@ public class ContainerImpl : IRootContainer
                         Monitor.Exit(mySingletonLocker);
                     }
 
-                    if (instance is SingletonLocker)
+                    if (instance is InstanceLocker)
                     {
-                        return rootContainer.WaitForSingleton(cReg.SingletonId);
+                        return rootContainer.WaitForSingleton(cReg);
                     }
 
                     return instance;
                 };
-                if (Interlocked.CompareExchange(ref cReg.SingletonFactoryCache, ff, null) == null)
+                if (Interlocked.CompareExchange(ref cReg.LifetimeFactoryCache, ff, null) == null)
                 {
                     using var resolvingCtxRestorer = ctxImpl.ResolvingCtxRestorer();
                     using var enumerableRestorer = ctxImpl.EnumerableRestorer();
                     f = cReg.Factory(rootContainer, ctxImpl);
                 }
 
-                return cReg.SingletonFactoryCache;
+                return cReg.LifetimeFactoryCache;
             }
 
             if (cReg.Lifetime == Lifetime.Scoped && cReg.ScopedId != uint.MaxValue)
@@ -593,7 +664,7 @@ public class ContainerImpl : IRootContainer
                     throw new BTDBException("Scoped dependency " + new KeyAndType(key, type));
                 }
 
-                var scopedFactoryCache = Volatile.Read(ref cReg.ScopedFactoryCache);
+                var scopedFactoryCache = Volatile.Read(ref cReg.LifetimeFactoryCache);
                 if (scopedFactoryCache != null) return scopedFactoryCache;
 
                 Func<IContainer, IResolvingCtx?, object>? f = null;
@@ -602,7 +673,7 @@ public class ContainerImpl : IRootContainer
                     var currentContainer = (ContainerImpl)container;
                     if (currentContainer.TryGetScopedValue(cReg.ScopedId, out var instance))
                     {
-                        if (instance is ScopedLocker)
+                        if (instance is InstanceLocker)
                         {
                             return currentContainer.WaitForScoped(cReg.ScopedId);
                         }
@@ -610,7 +681,7 @@ public class ContainerImpl : IRootContainer
                         return instance;
                     }
 
-                    var myScopedLocker = new ScopedLocker();
+                    var myScopedLocker = new InstanceLocker();
                     Monitor.Enter(myScopedLocker);
                     try
                     {
@@ -646,7 +717,7 @@ public class ContainerImpl : IRootContainer
                                 instance = f1(container, resolvingCtx);
                                 currentContainer.TrackOwnedInstance(instance);
                                 currentContainer.SetScopedValue(cReg.ScopedId, instance);
-                                cReg.ScopedFactoryCache = null;
+                                cReg.LifetimeFactoryCache = null;
                                 return instance;
                             }
                             catch
@@ -661,24 +732,24 @@ public class ContainerImpl : IRootContainer
                         Monitor.Exit(myScopedLocker);
                     }
 
-                    if (instance is ScopedLocker)
+                    if (instance is InstanceLocker)
                     {
                         return currentContainer.WaitForScoped(cReg.ScopedId);
                     }
 
                     return instance;
                 };
-                if (Interlocked.CompareExchange(ref cReg.ScopedFactoryCache, ff, null) == null)
+                if (Interlocked.CompareExchange(ref cReg.LifetimeFactoryCache, ff, null) == null)
                 {
                     f = cReg.Factory(this, ctxImpl);
                 }
 
-                return cReg.ScopedFactoryCache;
+                return cReg.LifetimeFactoryCache;
             }
 
             if (ctxImpl.VerifySingletons)
             {
-                if (cReg.SingletonId == uint.MaxValue) return (_, _) => null;
+                if (cReg.IsSingletonSafe) return (_, _) => null;
                 throw new BTDBException("Transient dependency " + new KeyAndType(key, type));
             }
 
@@ -815,12 +886,12 @@ public class ContainerImpl : IRootContainer
         }
     }
 
-    object WaitForSingleton(uint singletonId)
+    object WaitForSingleton(CReg singletonReg)
     {
         while (true)
         {
-            var instance = Volatile.Read(ref Singletons[singletonId]);
-            if (instance is not SingletonLocker locker)
+            var instance = Volatile.Read(ref singletonReg.SingletonValue);
+            if (instance is not InstanceLocker locker)
             {
                 if (instance == null) throw new InvalidOperationException("Singleton creation failed.");
                 return instance;
@@ -838,7 +909,7 @@ public class ContainerImpl : IRootContainer
         {
             if (!TryGetScopedValue(scopedId, out var instance))
                 throw new InvalidOperationException("Scoped instance creation failed.");
-            if (instance is not ScopedLocker locker)
+            if (instance is not InstanceLocker locker)
             {
                 return instance!;
             }
@@ -903,11 +974,7 @@ public class ContainerImpl : IRootContainer
                 "Tuple<> with value type argument is not supported.");
     }
 
-    sealed class SingletonLocker
-    {
-    }
-
-    sealed class ScopedLocker
+    sealed class InstanceLocker
     {
     }
 

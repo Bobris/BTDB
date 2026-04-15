@@ -26,6 +26,13 @@
   `ContainerBuilder.ServiceCollection`, and full bidirectional BTDB <-> ASP.NET DI bridging only through
   `UseBtdbIoc(...)`. Building a plain `ContainerBuilder` no longer auto-exports BTDB registrations into an internal
   `IServiceProvider`.
+- BTDB IOC root resolves now cache direct BTDB factory lookups separately for keyless `Type` and keyed `KeyAndType`
+  resolutions, and scoped containers reuse those root caches instead of rebuilding the same resolve factories.
+- BTDB IOC singleton registrations now keep their shared singleton instance state on the registration itself instead of
+  in a separate root singleton array, which removes an extra indirection from steady-state singleton resolves while
+  preserving shared instances for alias and multi-registration paths.
+- BTDB IOC now reuses a single lifetime factory-cache slot and a single in-progress locker type for both singleton and
+  scoped registrations, reducing per-registration bookkeeping in the resolve hot path.
 
 ## 35.0.2
 
@@ -131,7 +138,8 @@ relation keys.
 
 ### Fixed
 
-- EventStore2 now deserializes `object`-typed payloads containing plain `new object()` instances without crashing when `System.Object` metadata is registered manually.
+- EventStore2 now deserializes `object`-typed payloads containing plain `new object()` instances without crashing when
+  `System.Object` metadata is registered manually.
 
 ## 34.3.13
 
@@ -170,7 +178,8 @@ relation keys.
 
 ### Fixed
 
-- Object DB relation loading no longer double-reads `Int128`-sized value-type members that are populated through metadata `PropRefSetter` adapters, which fixes corrupted trailing fields when reopening stored rows.
+- Object DB relation loading no longer double-reads `Int128`-sized value-type members that are populated through
+  metadata `PropRefSetter` adapters, which fixes corrupted trailing fields when reopening stored rows.
 
 ## 34.3.9
 
@@ -204,7 +213,8 @@ relation keys.
 
 ### Fixed
 
-- Fixed loading `CommandHistory` records after reopening the database when nested items contain polymorphic `List<UndoableEvent>` values.
+- Fixed loading `CommandHistory` records after reopening the database when nested items contain polymorphic
+  `List<UndoableEvent>` values.
 
 ## 34.3.4
 

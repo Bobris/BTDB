@@ -41,7 +41,6 @@ class SingleFactoryRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, ILive
             new CReg
             {
                 Factory = _factory, Lifetime = _lifetime,
-                SingletonId = _lifetime == Lifetime.Singleton ? uint.MaxValue : 0,
                 ScopedId = _lifetime == Lifetime.Scoped ? uint.MaxValue : 0
             });
     }

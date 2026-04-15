@@ -78,7 +78,7 @@ class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerReg
         context.AddCReg(GetAsTypesFor(_implementationType), PreserveExistingDefaults, UniqueRegistration,
             new()
             {
-                Factory = factory, Lifetime = Lifetime, SingletonId = Lifetime == Lifetime.Singleton ? uint.MaxValue : 0,
+                Factory = factory, Lifetime = Lifetime,
                 ScopedId = Lifetime == Lifetime.Scoped ? uint.MaxValue : 0
             });
     }

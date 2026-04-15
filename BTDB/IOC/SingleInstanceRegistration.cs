@@ -31,8 +31,8 @@ class SingleInstanceRegistration : RegistrationBaseImpl<IAsTrait>, IContanerRegi
         context.AddCReg(GetAsTypesFor(_implementationType), PreserveExistingDefaults, UniqueRegistration,
             new()
             {
-                Factory = FactoryFactory, Lifetime = Lifetime.AlwaysNew, SingletonId = uint.MaxValue,
-                ScopedId = uint.MaxValue
+                Factory = FactoryFactory, Lifetime = Lifetime.AlwaysNew, ScopedId = uint.MaxValue,
+                IsSingletonSafe = true
             });
     }
 
