@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+- `BTDB.AzureStorage` now reopens existing transaction-log cache files without holding a write handle open until an
+  append is actually requested, which fixes Windows startup scenarios that needed to read a locally longer `.trl`
+  file while `AzureBlobFileCollection` queued its initial synchronization.
+
 ## 35.0.4
 
 ## 35.0.3

@@ -325,6 +325,61 @@ public class AzureBlobFileCollectionTests
     }
 
     [Fact]
+    public async Task BTreeKeyValueDbCanWriteAfterReopeningFromAzureBlobBackedFileCollection()
+    {
+        var backend = new InMemoryBlobStorageBackend();
+        var firstKey = new byte[] { 10, 20, 30 };
+        var firstValue = new byte[] { 40, 50, 60, 70 };
+        var secondKey = new byte[] { 11, 21, 31 };
+        var secondValue = new byte[] { 41, 51, 61, 71 };
+
+        await using (var collection = await AzureBlobFileCollection.CreateAsync(new()
+               {
+                   BlobStorageBackend = backend,
+                   TransactionLogFlushPeriod = TimeSpan.FromMilliseconds(50)
+               }))
+        {
+            using var db = new BTreeKeyValueDB(collection);
+            db.DurableTransactions = true;
+            using var tr = db.StartTransaction();
+            using var cursor = tr.CreateCursor();
+            Assert.True(cursor.CreateOrUpdateKeyValue(firstKey, firstValue));
+            tr.Commit();
+            await collection.FlushPendingChangesAsync();
+        }
+
+        await using (var reopenedCollection = await AzureBlobFileCollection.CreateAsync(new()
+               {
+                   BlobStorageBackend = backend,
+                   TransactionLogFlushPeriod = TimeSpan.FromMilliseconds(50)
+               }))
+        {
+            using var reopenedDb = new BTreeKeyValueDB(reopenedCollection);
+            reopenedDb.DurableTransactions = true;
+            using var tr = reopenedDb.StartTransaction();
+            using var cursor = tr.CreateCursor();
+            Assert.True(cursor.CreateOrUpdateKeyValue(secondKey, secondValue));
+            tr.Commit();
+            await reopenedCollection.FlushPendingChangesAsync();
+        }
+
+        await using (var verificationCollection = await AzureBlobFileCollection.CreateAsync(new()
+               {
+                   BlobStorageBackend = backend,
+                   TransactionLogFlushPeriod = TimeSpan.FromMilliseconds(50)
+               }))
+        {
+            using var verificationDb = new BTreeKeyValueDB(verificationCollection);
+            using var tr = verificationDb.StartReadOnlyTransaction();
+            using var cursor = tr.CreateCursor();
+            Assert.Equal(FindResult.Exact, cursor.Find(firstKey, 0));
+            Assert.Equal(firstValue, cursor.SlowGetValue());
+            Assert.Equal(FindResult.Exact, cursor.Find(secondKey, 0));
+            Assert.Equal(secondValue, cursor.SlowGetValue());
+        }
+    }
+
+    [Fact]
     public async Task TemporaryLocalCacheDirectoryIsPreservedByDefault()
     {
         var backend = new InMemoryBlobStorageBackend();

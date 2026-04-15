@@ -407,7 +407,7 @@ public sealed class AzureBlobFileCollection : IFileCollection, IAsyncDisposable
     {
         return humanHint switch
         {
-            "trl" => new TransactionLogBlobFile(this, index, blobName, filePath, remoteLength),
+            "trl" => new TransactionLogBlobFile(this, index, blobName, filePath, remoteLength, openWritable: writable),
             "pvl" => new PureValueBlobFile(this, index, blobName, filePath, remoteLength, writable),
             "kvi" => new KeyIndexBlobFile(this, index, blobName, filePath, remoteLength, writable),
             _ => throw new NotSupportedException(
@@ -532,16 +532,17 @@ public sealed class AzureBlobFileCollection : IFileCollection, IAsyncDisposable
         const long ResizeChunkSize = 4 * 1024 * 1024;
 
         public TransactionLogBlobFile(AzureBlobFileCollection owner, uint index, string blobName, string fileName,
-            long remoteLength) : base(owner, index, blobName, fileName)
+            long remoteLength, bool openWritable) : base(owner, index, blobName, fileName)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(fileName)!);
-            _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1,
-                FileOptions.None);
-            _localLength = _stream.Length;
+            _localLength = File.Exists(fileName) ? new FileInfo(fileName).Length : 0;
             _cachedLength = _localLength;
             _remoteLength = remoteLength;
             _dirtyUntilLength = _localLength > _remoteLength ? _localLength : 0;
-            _writer = new Writer(this);
+            if (openWritable)
+            {
+                OpenWritableCore();
+            }
         }
 
         public override bool IsTransactionLog => true;
@@ -629,7 +630,10 @@ public sealed class AzureBlobFileCollection : IFileCollection, IAsyncDisposable
         {
             lock (_lock)
             {
-                return _writer ?? throw new InvalidOperationException("Transaction log file is read-only.");
+                if (_readOnly)
+                    throw new InvalidOperationException("Transaction log file is read-only.");
+                OpenWritableCore();
+                return _writer!;
             }
         }
 
@@ -655,12 +659,15 @@ public sealed class AzureBlobFileCollection : IFileCollection, IAsyncDisposable
         {
             lock (_lock)
             {
-                if (_stream is null) return;
                 UnmapContent();
-                _stream.SetLength(_localLength);
-                _cachedLength = _localLength;
-                _stream.Dispose();
-                _stream = null;
+                if (_stream is not null)
+                {
+                    _stream.SetLength(_localLength);
+                    _cachedLength = _localLength;
+                    _stream.Dispose();
+                    _stream = null;
+                }
+
                 _writer = null;
                 _readOnly = true;
                 EnsureMapped();
@@ -673,12 +680,15 @@ public sealed class AzureBlobFileCollection : IFileCollection, IAsyncDisposable
         {
             lock (_lock)
             {
-                if (_stream is null) return;
                 UnmapContent();
-                _stream.SetLength(_localLength);
-                _cachedLength = _localLength;
-                _stream.Dispose();
-                _stream = null;
+                if (_stream is not null)
+                {
+                    _stream.SetLength(_localLength);
+                    _cachedLength = _localLength;
+                    _stream.Dispose();
+                    _stream = null;
+                }
+
                 _writer = null;
                 _readOnly = true;
             }
@@ -699,16 +709,28 @@ public sealed class AzureBlobFileCollection : IFileCollection, IAsyncDisposable
                     _stream.Dispose();
                     _stream = null;
                 }
+
+                _writer = null;
             }
+        }
+
+        void OpenWritableCore()
+        {
+            if (_stream is not null) return;
+            UnmapContent();
+            _stream = new FileStream(LocalPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1,
+                FileOptions.None);
+            _localLength = _stream.Length;
+            _cachedLength = _localLength;
+            _writer = new Writer(this);
         }
 
         unsafe void EnsureMapped()
         {
             if (_accessor != null) return;
-            if (_readOnly && _localLength == 0) return;
-
-            if (_readOnly)
+            if (_stream is null)
             {
+                if (_localLength == 0) return;
                 _memoryMappedFile = MemoryMappedFile.CreateFromFile(LocalPath, FileMode.Open, null, 0,
                     MemoryMappedFileAccess.Read);
                 _accessor = _memoryMappedFile.CreateViewAccessor(0, _localLength, MemoryMappedFileAccess.Read);
