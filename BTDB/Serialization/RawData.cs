@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.IL;
@@ -304,17 +303,18 @@ public sealed class RawData
         }
     }
 
-    public static readonly BulkMoveWithWriteBarrierDelegate BulkMoveWithWriteBarrier;
-
-    static RawData()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void BulkMoveWithWriteBarrier(ref byte destination, ref byte source, nuint byteCount)
     {
-        // Rewrite without reflection after this is implemented https://github.com/dotnet/runtime/issues/90081
-        var method =
-            typeof(System.Buffer).GetMethod("BulkMoveWithWriteBarrier", BindingFlags.NonPublic | BindingFlags.Static);
-        BulkMoveWithWriteBarrier = method!.CreateDelegate<BulkMoveWithWriteBarrierDelegate>();
+        BufferBulkMoveWithWriteBarrier(null, ref destination, ref source, byteCount);
     }
 
-    public delegate void BulkMoveWithWriteBarrierDelegate(ref byte destination, ref byte source, nuint byteCount);
+    [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "BulkMoveWithWriteBarrier")]
+    static extern void BufferBulkMoveWithWriteBarrier(
+        [UnsafeAccessorType("System.Buffer")] object? buffer,
+        ref byte destination,
+        ref byte source,
+        nuint byteCount);
 
     public static bool FitsInInt128(Type type)
     {

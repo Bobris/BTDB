@@ -48,6 +48,13 @@ These guidelines summarize how to navigate, build, and contribute to this reposi
 - Run `dotnet test BTDB.sln` before opening a PR that changes core behavior.
 - Run relevant test suites automatically after changes; do not ask for confirmation before running them.
 
+## Before Finishing a Code Change
+
+- Check whether the change is a bug fix, new feature, behavior change, performance improvement, or public/internal API
+  change. If yes, update `CHANGELOG.md` in the same turn before reporting the work complete.
+- Mention the changelog update in the final response, or explicitly state why no changelog entry was needed.
+- Run the relevant build/test command after the final file edits, including documentation and changelog edits.
+
 ## Commit & Pull Request Guidelines
 
 - Commit messages are concise, imperative, sentence case (e.g., "Enhance validation for ...").

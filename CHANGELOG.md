@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Changed
+
+- Raw object-data copying now calls `Buffer.BulkMoveWithWriteBarrier` through `UnsafeAccessor` instead of resolving it
+  with reflection during `RawData` initialization.
+
 ## 35.0.5
 
 ### Fixed
