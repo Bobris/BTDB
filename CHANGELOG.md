@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Added
+
+- Relations can now expose an `AllocateId()` method that allocates persisted `ulong` identifiers independently per
+  relation, starting at `1`.
+
 ### Changed
 
 - Raw object-data copying now calls `Buffer.BulkMoveWithWriteBarrier` through `UnsafeAccessor` instead of resolving it

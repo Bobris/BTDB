@@ -42,6 +42,7 @@ public class ObjectDB : IObjectDB
     internal static readonly byte[] RelationNamesPrefix = [0, 4]; // Name => Index Relation
     const int RelationNamesPrefixLen = 2;
     internal static readonly byte[] RelationVersionsPrefix = [0, 5]; // Index Relation, version number => metadata
+    internal static readonly byte[] RelationLastAllocatedIdPrefix = [0, 6]; // Index Relation => last allocated id
     internal static readonly byte[] AllObjectsPrefix = [1]; // oid => Index Table, version number, Value
     internal const int AllObjectsPrefixLen = 1;
     internal static readonly byte[] AllDictionariesPrefix = [2]; // Index Dictionary, Key => Value

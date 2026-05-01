@@ -48,6 +48,26 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyRelationAllocateId()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class Person
+            {
+                [PrimaryKey] public ulong Id { get; set; }
+                public string Name { get; set; } = null!;
+            }
+
+            public interface IPersonTable : IRelation<Person>
+            {
+                ulong AllocateId();
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyGenerateForClosedRelationInterfaceEmitsRelationItemMetadata()
     {
         // language=cs

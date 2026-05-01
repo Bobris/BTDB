@@ -4702,6 +4702,10 @@ public class SourceGenerator : IIncrementalGenerator
                     declarations.Append("            return base.GetEnumerator();\n");
                 }
             }
+            else if (method.Name == "AllocateId")
+            {
+                declarations.Append("            return base.AllocateId();\n");
+            }
             else
             {
                 declarations.Append("            throw new NotImplementedException();\n");

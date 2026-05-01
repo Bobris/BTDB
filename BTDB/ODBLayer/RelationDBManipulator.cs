@@ -43,6 +43,36 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         _hasSecondaryIndexes = _relationInfo.ClientRelationVersionInfo.HasSecondaryIndexes;
     }
 
+    [SkipLocalsInit]
+    public ulong AllocateId()
+    {
+        Span<byte> keyBuffer = stackalloc byte[16];
+        var keyWriter = MemWriter.CreateFromStackAllocatedSpan(keyBuffer);
+        keyWriter.WriteBlock(ObjectDB.RelationLastAllocatedIdPrefix);
+        keyWriter.WriteVUInt32(_relationInfo.Id);
+        var key = keyWriter.GetSpan();
+
+        using var cursor = _kvtr.CreateCursor();
+        Span<byte> valueBuffer = stackalloc byte[16];
+        var found = cursor.FindFirstKey(key);
+        var lastAllocatedId = found ? PackUnpack.UnpackVUInt(cursor.GetValueSpan(ref valueBuffer)) : 0;
+        var allocatedId = checked(lastAllocatedId + 1);
+
+        var valueLength = PackUnpack.LengthVUInt(allocatedId);
+        PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(valueBuffer), allocatedId, valueLength);
+        var value = valueBuffer[..(int)valueLength];
+        if (found)
+        {
+            cursor.SetValue(value);
+        }
+        else
+        {
+            cursor.CreateOrUpdateKeyValue(key, value);
+        }
+
+        return allocatedId;
+    }
+
     ReadOnlySpan<byte> ValueBytes(T obj, scoped ref MemWriter writer)
     {
         writer.WriteVUInt32(_relationInfo.ClientTypeVersion);
