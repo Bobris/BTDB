@@ -15,6 +15,11 @@ static class Program
             BenchmarkSwitcher.FromTypes([typeof(IocResolveBenchmark)]).Run(args[1..]);
             return;
         }
+        if (args.Length > 0 && string.Equals(args[0], "roaring-benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            BenchmarkSwitcher.FromTypes([typeof(RoaringBitmapsBenchmark)]).Run(args[1..]);
+            return;
+        }
 
         //var b = new EventSerializationBenchmark();
         //b.Complexity = "Complex";

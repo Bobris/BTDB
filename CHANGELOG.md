@@ -6,6 +6,14 @@
 
 - Relations can now expose an `AllocateId()` method that allocates persisted `ulong` identifiers independently per
   relation, starting at `1`.
+- Added low-level `RoaringBitmaps` helpers for 16-bit bitmap containers over `Span<byte>` and `ReadOnlySpan<byte>`,
+  including bit updates, compression, boolean operations, negation, tests, and BenchmarkDotNet scenarios.
+- `RoaringBitmaps` can now enumerate encoded 16-bit containers as `ulong` values with a caller-provided offset through
+  a concrete struct enumerable.
+- `RoaringBitmaps` now has an allocation-free dense bitmap iterator over `ReadOnlySpan<byte>` for callers that already
+  have the raw 8192-byte bitmap.
+- `RoaringBitmaps` now exposes in-place dense bitmap mutation operations for negation, union, intersection, union with
+  complement, and difference against encoded containers.
 
 ### Changed
 
