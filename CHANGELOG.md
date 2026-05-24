@@ -4,6 +4,13 @@
 
 ### Added
 
+- Relations now expose a `Query<T>()` API returning `IQueryable<T>` with initial interpreted `Where` support over
+  expression equality, boolean conjunction, and boolean disjunction.
+- The low-level interpreter now supports try/catch/finally metadata, exception throw/rethrow opcodes, stack struct
+  allocation via resolved `RawData` stack allocators, stack byte allocation, resolved metadata getter/setter calls,
+  resolved type converters, and finally-aware nested `Stop` handling.
+- The low-level interpreter builder now rejects non-empty programs that do not end with `Stop` and programs with
+  unclosed try blocks, and automatically wraps stack allocation nested programs in try/finally `Stop` blocks.
 - Relations can now expose an `AllocateId()` method that allocates persisted `ulong` identifiers independently per
   relation, starting at `1`.
 - Added low-level `RoaringBitmaps` helpers for 16-bit bitmap containers over `Span<byte>` and `ReadOnlySpan<byte>`,

@@ -9,6 +9,7 @@ using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.IL;
 using BTDB.KVDBLayer;
+using BTDB.Serialization;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
@@ -1036,6 +1037,14 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         var loaderInfo = new RelationInfo.ItemLoaderInfo(_relationInfo, typeof(TAs));
         return new RelationEnumerator<TAs>(_transaction, _relationInfo.Prefix, loaderInfo);
+    }
+
+    public IQueryable<TAs> Query<TAs>() where TAs : class
+    {
+        if (ReflectionMetadata.FindByType(typeof(TAs)) == null)
+            throw new BTDBException($"Type {typeof(TAs).ToSimpleName()} does not have registered metadata.");
+        var loaderInfo = new RelationInfo.ItemLoaderInfo(_relationInfo, typeof(TAs));
+        return new RelationQuery<TAs>(_transaction, _relationInfo, loaderInfo);
     }
 
     public TItem FindByIdOrDefault<TItem>(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound, int loaderIndex)

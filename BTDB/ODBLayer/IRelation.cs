@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace BTDB.ODBLayer;
 
@@ -20,6 +21,7 @@ public interface IRelation
     void RemoveAll() => throw new NotSupportedException();
 
     IEnumerable<T> As<T>() => throw new NotSupportedException();
+    IQueryable<T> Query<T>() where T : class => throw new NotSupportedException();
     Type BtdbInternalGetRelationInterfaceType();
     IRelation? BtdbInternalNextInChain { get; set; }
 }

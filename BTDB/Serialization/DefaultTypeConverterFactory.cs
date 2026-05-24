@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Runtime.Serialization;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.IL;
