@@ -327,29 +327,27 @@ public class BonSerializerFactory : ISerializerFactory
             };
         }
 
-        if (type.SpecializationOf(typeof(ValueTuple<,>)) is { } valueTuple2)
+        if (TryGetTupleTypeArguments(type, typeof(ValueTuple), out var valueTupleTypes))
         {
-            var typeParams = valueTuple2.GetGenericArguments();
-            var offsets = RawData.GetOffsets(typeParams[0], typeParams[1]);
-            var serializer0 = CreateCachedSerializerForType(typeParams[0]);
-            var serializer1 = CreateCachedSerializerForType(typeParams[1]);
+            var offsets = RawData.GetOffsets(valueTupleTypes);
+            var serializers = CreateSerializers(valueTupleTypes);
             return (ref SerializerCtx ctx, ref byte value) =>
             {
                 ref var builder = ref AsCtx(ref ctx).Builder;
                 builder.StartTuple();
-                serializer0(ref ctx, ref Unsafe.AddByteOffset(ref value, offsets.Item1));
-                serializer1(ref ctx, ref Unsafe.AddByteOffset(ref value, offsets.Item2));
+                for (var i = 0; i < serializers.Length; i++)
+                {
+                    serializers[i](ref ctx, ref Unsafe.AddByteOffset(ref value, offsets[i]));
+                }
+
                 builder.FinishTuple();
             };
         }
 
-        if (type.SpecializationOf(typeof(Tuple<,>)) is { } tuple2)
+        if (TryGetTupleTypeArguments(type, typeof(Tuple), out var tupleTypes))
         {
-            var typeParams = tuple2.GetGenericArguments();
-            var offsets = RawData.GetOffsets(typeParams[0], typeParams[1]);
-            offsets = (offsets.Item1 + (uint)Unsafe.SizeOf<nint>(), offsets.Item2 + (uint)Unsafe.SizeOf<nint>());
-            var serializer0 = CreateCachedSerializerForType(typeParams[0]);
-            var serializer1 = CreateCachedSerializerForType(typeParams[1]);
+            var offsets = AddObjectDataOffset(RawData.GetOffsets(tupleTypes));
+            var serializers = CreateSerializers(tupleTypes);
             return (ref SerializerCtx ctx, ref byte value) =>
             {
                 if (Unsafe.As<byte, object>(ref value) == null)
@@ -360,8 +358,12 @@ public class BonSerializerFactory : ISerializerFactory
 
                 ref var builder = ref AsCtx(ref ctx).Builder;
                 builder.StartTuple();
-                serializer0(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offsets.Item1));
-                serializer1(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offsets.Item2));
+                var obj = Unsafe.As<byte, object>(ref value);
+                for (var i = 0; i < serializers.Length; i++)
+                {
+                    serializers[i](ref ctx, ref RawData.Ref(obj, offsets[i]));
+                }
+
                 builder.FinishTuple();
             };
         }
@@ -578,6 +580,71 @@ public class BonSerializerFactory : ISerializerFactory
         throw new NotSupportedException("BonSerialization of " + type.ToSimpleName() + " is not supported.");
     }
 
+    static bool TryGetTupleTypeArguments(Type type, Type tupleType, out Type[] typeArguments)
+    {
+        if (type.IsGenericType)
+        {
+            var genericTypeDefinition = type.GetGenericTypeDefinition();
+            typeArguments = type.GetGenericArguments();
+            if (typeArguments.Length is >= 1 and <= 7 &&
+                genericTypeDefinition.Namespace == "System" &&
+                genericTypeDefinition.Name == tupleType.Name + "`" + typeArguments.Length)
+            {
+                return true;
+            }
+        }
+
+        typeArguments = [];
+        return false;
+    }
+
+    Serialize[] CreateSerializers(Type[] types)
+    {
+        var serializers = new Serialize[types.Length];
+        for (var i = 0; i < serializers.Length; i++)
+        {
+            serializers[i] = CreateCachedSerializerForType(types[i]);
+        }
+
+        return serializers;
+    }
+
+    Deserialize[] CreateDeserializers(Type[] types)
+    {
+        var deserializers = new Deserialize[types.Length];
+        for (var i = 0; i < deserializers.Length; i++)
+        {
+            deserializers[i] = CreateCachedDeserializerForType(types[i]);
+        }
+
+        return deserializers;
+    }
+
+    static uint[] AddObjectDataOffset(uint[] offsets)
+    {
+        for (var i = 0; i < offsets.Length; i++)
+        {
+            offsets[i] += (uint)Unsafe.SizeOf<nint>();
+        }
+
+        return offsets;
+    }
+
+    static Type CreateObjectTupleType(uint count)
+    {
+        return count switch
+        {
+            1 => typeof(Tuple<object?>),
+            2 => typeof(Tuple<object?, object?>),
+            3 => typeof(Tuple<object?, object?, object?>),
+            4 => typeof(Tuple<object?, object?, object?, object?>),
+            5 => typeof(Tuple<object?, object?, object?, object?, object?>),
+            6 => typeof(Tuple<object?, object?, object?, object?, object?, object?>),
+            7 => typeof(Tuple<object?, object?, object?, object?, object?, object?, object?>),
+            _ => throw new NotSupportedException("Tuple with " + count + " items is not supported.")
+        };
+    }
+
     public Deserialize CreateCachedDeserializerForType(Type type)
     {
         var typePtr = type.TypeHandle.Value;
@@ -625,18 +692,18 @@ public class BonSerializerFactory : ISerializerFactory
             case BonType.Tuple:
             {
                 AsCtx(ref ctx).Bon.TryGetTuple(out var arrayBon);
-                arrayBon.TryGet(0, out var itemBon);
                 var count = arrayBon.Items;
-                if (count == 2)
+                if (count is < 1 or > 7) throw new NotSupportedException("Tuple with " + count + " items is not supported.");
+                var res = RuntimeHelpers.GetUninitializedObject(CreateObjectTupleType(count));
+                for (var idx = 0u; idx < count; idx++)
                 {
+                    arrayBon.TryGet(idx, out var itemBon);
                     BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
-                    var i0 = AsCtx(ref ctx).Factory.DeserializeObject(ref AsCtx(ref subCtx));
-                    var i1 = AsCtx(ref ctx).Factory.DeserializeObject(ref AsCtx(ref subCtx));
-                    var res = new Tuple<object?, object?>(i0, i1);
-                    return res;
+                    Unsafe.As<byte, object?>(ref RawData.Ref(res, (idx + 1) * (uint)Unsafe.SizeOf<nint>())) =
+                        AsCtx(ref ctx).Factory.DeserializeObject(ref AsCtx(ref subCtx));
                 }
 
-                throw new NotSupportedException("Tuple with " + count + " items is not supported.");
+                return res;
             }
             case BonType.Dictionary:
             {
@@ -1098,55 +1165,52 @@ public class BonSerializerFactory : ISerializerFactory
             };
         }
 
-        if (type.SpecializationOf(typeof(ValueTuple<,>)) is { } valueTuple2)
+        if (TryGetTupleTypeArguments(type, typeof(ValueTuple), out var valueTupleTypes))
         {
-            var typeParams = valueTuple2.GetGenericArguments();
-            var offsets = RawData.GetOffsets(typeParams[0], typeParams[1]);
-            var deserializer0 = CreateCachedDeserializerForType(typeParams[0]);
-            var deserializer1 = CreateCachedDeserializerForType(typeParams[1]);
+            var offsets = RawData.GetOffsets(valueTupleTypes);
+            var deserializers = CreateDeserializers(valueTupleTypes);
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
-                if (AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon) && tupleBon.Items >= 2)
+                if (AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon) && tupleBon.Items >= deserializers.Length)
                 {
-                    tupleBon.TryGet(0, out var itemBon);
-                    BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
-                    if (deserializer0(ref AsCtx(ref subCtx), ref Unsafe.AddByteOffset(ref value, offsets.Item1)))
+                    for (var i = 0; i < deserializers.Length; i++)
                     {
-                        tupleBon.TryGet(1, out itemBon);
-                        if (deserializer1(ref AsCtx(ref subCtx), ref Unsafe.AddByteOffset(ref value, offsets.Item2)))
+                        tupleBon.TryGet((uint)i, out var itemBon);
+                        BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
+                        if (!deserializers[i](ref AsCtx(ref subCtx), ref Unsafe.AddByteOffset(ref value, offsets[i])))
                         {
-                            return true;
+                            return false;
                         }
                     }
+
+                    return true;
                 }
 
                 return false;
             };
         }
 
-        if (type.SpecializationOf(typeof(Tuple<,>)) is { } tuple2)
+        if (TryGetTupleTypeArguments(type, typeof(Tuple), out var tupleTypes))
         {
-            var typeParams = tuple2.GetGenericArguments();
-            var offsets = RawData.GetOffsets(typeParams[0], typeParams[1]);
-            offsets = (offsets.Item1 + (uint)Unsafe.SizeOf<nint>(), offsets.Item2 + (uint)Unsafe.SizeOf<nint>());
-            var deserializer0 = CreateCachedDeserializerForType(typeParams[0]);
-            var deserializer1 = CreateCachedDeserializerForType(typeParams[1]);
+            var offsets = AddObjectDataOffset(RawData.GetOffsets(tupleTypes));
+            var deserializers = CreateDeserializers(tupleTypes);
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
-                if (AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon) && tupleBon.Items >= 2)
+                if (AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon) && tupleBon.Items >= deserializers.Length)
                 {
                     var res = RuntimeHelpers.GetUninitializedObject(type);
-                    tupleBon.TryGet(0, out var itemBon);
-                    BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
-                    if (deserializer0(ref AsCtx(ref subCtx), ref RawData.Ref(res, offsets.Item1)))
+                    for (var i = 0; i < deserializers.Length; i++)
                     {
-                        tupleBon.TryGet(1, out itemBon);
-                        if (deserializer1(ref AsCtx(ref subCtx), ref RawData.Ref(res, offsets.Item2)))
+                        tupleBon.TryGet((uint)i, out var itemBon);
+                        BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref itemBon };
+                        if (!deserializers[i](ref AsCtx(ref subCtx), ref RawData.Ref(res, offsets[i])))
                         {
-                            Unsafe.As<byte, object>(ref value) = res;
-                            return true;
+                            return false;
                         }
                     }
+
+                    Unsafe.As<byte, object>(ref value) = res;
+                    return true;
                 }
 
                 return false;

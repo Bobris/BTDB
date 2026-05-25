@@ -26,6 +26,8 @@
 
 - Raw object-data copying now calls `Buffer.BulkMoveWithWriteBarrier` through `UnsafeAccessor` instead of resolving it
   with reflection during `RawData` initialization.
+- `RawData.GetOffsets` now supports tuple layouts with three or more fields.
+- `BonSerializer` now supports `Tuple` and `ValueTuple` values with three or more items.
 
 ## 35.0.5
 

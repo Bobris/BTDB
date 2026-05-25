@@ -289,18 +289,51 @@ public sealed class RawData
 
     public static (uint Item1, uint Item2) GetOffsets(Type t1, Type t2)
     {
-        var sa1 = GetSizeAndAlign(t1);
-        var sa2 = GetSizeAndAlign(t2);
-        if (!t2.IsValueType && t1.IsValueType || sa2.Align > sa1.Align)
+        var offsets = GetOffsets([t1, t2]);
+        return (offsets[0], offsets[1]);
+    }
+
+    public static uint[] GetOffsets(params Type[] types)
+    {
+        var fields = new OffsetField[types.Length];
+        for (var i = 0; i < types.Length; i++)
         {
-            // T2, T1
-            return (Align(sa2.Size, sa1.Align), 0);
+            var sizeAndAlign = GetSizeAndAlign(types[i]);
+            fields[i] = new()
+            {
+                Index = i,
+                Size = sizeAndAlign.Size,
+                Align = sizeAndAlign.Align,
+                IsReference = !types[i].IsValueType
+            };
         }
-        else
+
+        Array.Sort(fields, static (a, b) =>
         {
-            // T1, T2
-            return (0, Align(sa1.Size, sa2.Align));
+            if (a.IsReference != b.IsReference) return a.IsReference ? -1 : 1;
+            var alignCompare = b.Align.CompareTo(a.Align);
+            if (alignCompare != 0) return alignCompare;
+            return a.Index.CompareTo(b.Index);
+        });
+
+        var offsets = new uint[types.Length];
+        var offset = 0u;
+        foreach (var field in fields)
+        {
+            offset = Align(offset, field.Align);
+            offsets[field.Index] = offset;
+            offset += field.Size;
         }
+
+        return offsets;
+    }
+
+    struct OffsetField
+    {
+        public int Index;
+        public uint Size;
+        public uint Align;
+        public bool IsReference;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
