@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.1.0
+
 ### Added
 
 - Relations now expose a `Query<T>()` API returning `IQueryable<T>` with initial interpreted `Where` support over
