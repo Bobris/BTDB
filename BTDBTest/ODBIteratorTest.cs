@@ -1009,4 +1009,95 @@ public class ODBIteratorTest : IDisposable
             Assert.DoesNotContain("appKey1", text);
         }
     }
+
+    public class BitmapRecord
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public IRoaringBitmap Bits { get; set; }
+    }
+
+    public interface IBitmapRecordRelation : IRelation<BitmapRecord>
+    {
+        void Insert(BitmapRecord value);
+    }
+
+    [Fact]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void IterateRelationWithRoaringBitmap()
+    {
+        ulong bitmapId;
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IBitmapRecordRelation>("BitmapRecord");
+            var table = creator(tr);
+            var bitmap = new ODBRoaringBitmap((IInternalObjectDBTransaction)tr);
+            bitmapId = bitmap.Id;
+            bitmap.Set(1, true);
+            bitmap.Set(65536 + 2, true);
+            bitmap.Set(65536 + 5, true);
+            bitmap.Flush();
+            table.Insert(new BitmapRecord { Id = 1, Bits = bitmap });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var visitor = new ToStringVisitor();
+            var iterator = new ODBIterator(tr, visitor);
+            iterator.Iterate();
+            var text = visitor.ToString();
+            var first = text.IndexOf("ScalarStr 1", StringComparison.Ordinal);
+            var second = text.IndexOf("ScalarStr 65538", StringComparison.Ordinal);
+            var third = text.IndexOf("ScalarStr 65541", StringComparison.Ordinal);
+            Assert.Contains("ScalarStr Count 3", text);
+            Assert.True(first >= 0);
+            Assert.True(second > first);
+            Assert.True(third > second);
+            var keyPrefix = ExternalContentPrefixText(bitmapId);
+            Assert.Contains($"Used key: {keyPrefix} Value len:1", text);
+            Assert.Contains($"Used key: {keyPrefix} 00", text);
+            Assert.Contains($"Used key: {keyPrefix} 01", text);
+        }
+    }
+
+    [Fact]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void IterateRelationWithIncompleteRoaringBitmap()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<IBitmapRecordRelation>("BitmapRecord");
+            var table = creator(tr);
+            var bitmap = new ODBRoaringBitmap((IInternalObjectDBTransaction)tr);
+            bitmap.ApplyCommands(new byte[] { 1, 0, 2, 0, 1, 0 });
+            table.Insert(new BitmapRecord { Id = 1, Bits = bitmap });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var visitor = new ToStringVisitor();
+            var iterator = new ODBIterator(tr, visitor);
+            iterator.Iterate();
+            var text = visitor.ToString();
+            Assert.Contains("ScalarStr 1", text);
+            Assert.Contains("ScalarStr Incomplete", text);
+        }
+    }
+
+    static string ExternalContentPrefixText(ulong id)
+    {
+        var len = PackUnpack.LengthVUInt(id);
+        var array = new byte[1 + len];
+        array[0] = ObjectDB.AllDictionariesPrefixByte;
+        PackUnpack.UnsafePackVUInt(ref array[1], id, len);
+        var builder = new StringBuilder();
+        for (var i = 0; i < array.Length; i++)
+        {
+            if (i > 0) builder.Append(' ');
+            builder.Append(array[i].ToString("X2"));
+        }
+
+        return builder.ToString();
+    }
 }

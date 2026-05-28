@@ -485,9 +485,9 @@ added/recalculated/removed in `InitRelation` call. You can see examples in
 
 ## Free content
 
-During removing or updating of data, all IDictionaries and IOrderedSets present in removed data are automatically
-cleared to avoid data leaks (Also works recursively IDictionaries are freed automatically if they are nested in another
-IDictionary). You can see examples in
+During removing or updating of data, all IDictionaries, IOrderedSets, and IRoaringBitmaps present in removed data are
+automatically cleared to avoid data leaks (Also works recursively IDictionaries are freed automatically if they are
+nested in another IDictionary). You can see examples in
 [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs)
 
 If you have IIndirect property. You are on your own. And that's include any nested IDictionary which needs to be cleared

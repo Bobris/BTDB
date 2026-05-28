@@ -72,6 +72,52 @@ public class RoaringBitmapsTest
     }
 
     [Fact]
+    public void RemoveValuesGreaterThanInPlaceKeepsUnchangedContainers()
+    {
+        var array = new byte[] { 1, 0, 42, 0 };
+        var length = RoaringBitmaps.RemoveValuesGreaterThanInPlace(array, 42);
+        Assert.Equal(4, length);
+        Assert.Equal(new byte[] { 1, 0, 42, 0 }, array);
+
+        var rle = new byte[] { 10, 0, 40, 0, 0 };
+        length = RoaringBitmaps.RemoveValuesGreaterThanInPlace(rle, 50);
+        Assert.Equal(5, length);
+        Assert.Equal(new byte[] { 10, 0, 40, 0, 0 }, rle);
+
+        var bitmap = new byte[RoaringBitmaps.BitmapSize];
+        RoaringBitmaps.SetBit(bitmap, 1);
+        RoaringBitmaps.SetBit(bitmap, 65535);
+        var originalBitmap = bitmap.ToArray();
+        length = RoaringBitmaps.RemoveValuesGreaterThanInPlace(bitmap, ushort.MaxValue);
+        Assert.Equal(RoaringBitmaps.BitmapSize, length);
+        Assert.Equal(originalBitmap, bitmap);
+    }
+
+    [Fact]
+    public void RemoveValuesGreaterThanInPlaceTrimsContainers()
+    {
+        var array = new byte[] { 1, 0, 42, 0, 100, 0 };
+        var length = RoaringBitmaps.RemoveValuesGreaterThanInPlace(array, 42);
+        Assert.Equal(4, length);
+        Assert.Equal(new byte[] { 1, 0, 42, 0 }, array[..length]);
+
+        var rle = new byte[] { 10, 0, 90, 0, 200, 0, 10, 0, 0 };
+        length = RoaringBitmaps.RemoveValuesGreaterThanInPlace(rle, 50);
+        Assert.Equal(5, length);
+        Assert.Equal(new byte[] { 10, 0, 40, 0, 0 }, rle[..length]);
+
+        var bitmap = new byte[RoaringBitmaps.BitmapSize];
+        RoaringBitmaps.SetBit(bitmap, 1);
+        RoaringBitmaps.SetBit(bitmap, 42);
+        RoaringBitmaps.SetBit(bitmap, 100);
+        length = RoaringBitmaps.RemoveValuesGreaterThanInPlace(bitmap, 42);
+        Assert.Equal(RoaringBitmaps.BitmapSize, length);
+        Assert.True(RoaringBitmaps.GetBit(bitmap, 1));
+        Assert.True(RoaringBitmaps.GetBit(bitmap, 42));
+        Assert.False(RoaringBitmaps.GetBit(bitmap, 100));
+    }
+
+    [Fact]
     public void BooleanOperationsWorkAcrossRepresentations()
     {
         var leftBitmap = new byte[RoaringBitmaps.BitmapSize];

@@ -15,6 +15,7 @@ public class DefaultODBFieldHandlerFactory : DefaultFieldHandlerFactory
 
     public override bool TypeSupported(Type type)
     {
+        if (ODBRoaringBitmapFieldHandler.IsCompatibleWithStatic(type, FieldHandlerOptions.None)) return true;
         if (ODBDictionaryFieldHandler.IsCompatibleWithStatic(type, FieldHandlerOptions.None)) return true;
         if (ODBSetFieldHandler.IsCompatibleWithStatic(type, FieldHandlerOptions.None)) return true;
         if (base.TypeSupported(type)) return true;
@@ -24,6 +25,7 @@ public class DefaultODBFieldHandlerFactory : DefaultFieldHandlerFactory
 
     public override IFieldHandler? CreateFromType(Type type, FieldHandlerOptions options)
     {
+        if (ODBRoaringBitmapFieldHandler.IsCompatibleWithStatic(type, options)) return new ODBRoaringBitmapFieldHandler();
         if (ODBDictionaryFieldHandler.IsCompatibleWithStatic(type, options)) return new ODBDictionaryFieldHandler(_odb, type, this);
         if (ODBSetFieldHandler.IsCompatibleWithStatic(type, options)) return new ODBSetFieldHandler(_odb, type, this);
         var result = base.CreateFromType(type, options);
@@ -34,6 +36,7 @@ public class DefaultODBFieldHandlerFactory : DefaultFieldHandlerFactory
 
     public override IFieldHandler? CreateFromName(string handlerName, byte[] configuration, FieldHandlerOptions options)
     {
+        if (handlerName == ODBRoaringBitmapFieldHandler.HandlerName) return new ODBRoaringBitmapFieldHandler();
         if (handlerName == ODBDictionaryFieldHandler.HandlerName) return new ODBDictionaryFieldHandler(_odb, configuration);
         if (handlerName == ODBSetFieldHandler.HandlerName) return new ODBSetFieldHandler(_odb, configuration);
         var result = base.CreateFromName(handlerName, configuration, options);

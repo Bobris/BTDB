@@ -1,10 +1,13 @@
 using System;
 using System.Buffers.Binary;
 using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Jobs;
 using BTDB.Buffer;
+using BTDB.ODBLayer;
 
 namespace SimpleTester;
 
@@ -25,14 +28,21 @@ public class RoaringBitmapsBenchmark
     readonly byte[] _rleLeft = new byte[RoaringBitmaps.BitmapSize];
     readonly byte[] _rleRight = new byte[RoaringBitmaps.BitmapSize];
     readonly byte[] _output = new byte[RoaringBitmaps.BitmapSize];
+    readonly byte[] _buildCommandBuffer = new byte[RoaringBitmaps.BitmapSize + 64];
     RoaringBitmaps.RoaringBitmapEnumerable _sparseEnumerable;
     RoaringBitmaps.RoaringBitmapEnumerable _rleEnumerable;
     OldRoaringBitmapEnumerable _oldSparseEnumerable;
     OldRoaringBitmapEnumerable _oldRleEnumerable;
+    IRoaringBitmapOp _random10000From100000Source = null!;
+    IRoaringBitmapOp _randomOrSource = null!;
+    IRoaringBitmapOp _randomAndSource = null!;
+    IRoaringBitmapOp _randomNotSource = null!;
+    Func<ReadOnlyMemory<byte>, CancellationToken, Task> _buildApplier = null!;
     int _sparseLeftLength;
     int _sparseRightLength;
     int _rleLeftLength;
     int _rleRightLength;
+    int _buildCommandBytes;
 
     [GlobalSetup]
     public void GlobalSetup()
@@ -65,6 +75,13 @@ public class RoaringBitmapsBenchmark
         _rleEnumerable = RoaringBitmaps.Enumerate(_rleLeft.AsMemory(0, _rleLeftLength), 123);
         _oldSparseEnumerable = new(_sparseLeft.AsMemory(0, _sparseLeftLength), 123);
         _oldRleEnumerable = new(_rleLeft.AsMemory(0, _rleLeftLength), 123);
+        var sourceLeft = RoaringBitmap.Source(RandomUniqueSorted(random, 10000, 100000));
+        var sourceRight = RoaringBitmap.Source(RandomUniqueSorted(random, 10000, 100000));
+        _random10000From100000Source = sourceLeft;
+        _randomOrSource = RoaringBitmap.Or(sourceLeft, sourceRight);
+        _randomAndSource = RoaringBitmap.And(sourceLeft, sourceRight);
+        _randomNotSource = RoaringBitmap.Not(sourceLeft);
+        _buildApplier = ApplyBuildCommands;
     }
 
     [Benchmark]
@@ -182,6 +199,42 @@ public class RoaringBitmapsBenchmark
         return result;
     }
 
+    [Benchmark]
+    [BenchmarkCategory("ODBSourceBuild")]
+    public int BuildRandom10000From100000Source()
+    {
+        return Build(_random10000From100000Source);
+    }
+
+    [Benchmark]
+    [BenchmarkCategory("ODBSourceBuild")]
+    public int BuildOrRandom10000From100000Sources()
+    {
+        return Build(_randomOrSource);
+    }
+
+    [Benchmark]
+    [BenchmarkCategory("ODBSourceBuild")]
+    public int BuildAndRandom10000From100000Sources()
+    {
+        return Build(_randomAndSource);
+    }
+
+    [Benchmark]
+    [BenchmarkCategory("ODBSourceBuild")]
+    public int BuildNotRandom10000From100000Source()
+    {
+        return Build(_randomNotSource);
+    }
+
+    int Build(IRoaringBitmapOp operation)
+    {
+        _buildCommandBytes = 0;
+        RoaringBitmap.BuildAsync(operation, _buildApplier, _buildCommandBuffer, 99999, CancellationToken.None)
+            .GetAwaiter().GetResult();
+        return _buildCommandBytes;
+    }
+
     static void AddRuns(byte[] bitmap, params ReadOnlySpan<(int Start, int Length)> runs)
     {
         foreach (var (start, length) in runs)
@@ -200,6 +253,29 @@ public class RoaringBitmapsBenchmark
             (44000, 1024), (52000, 513), (61000, 900));
         for (var i = 17; i < 65536; i += 521)
             RoaringBitmaps.SetBit(bitmap, (ushort)i);
+    }
+
+    Task ApplyBuildCommands(ReadOnlyMemory<byte> commands, CancellationToken cancellation)
+    {
+        _buildCommandBytes += commands.Length;
+        return Task.CompletedTask;
+    }
+
+    static ulong[] RandomUniqueSorted(Random random, int count, int exclusiveMax)
+    {
+        var selected = new bool[exclusiveMax];
+        var result = new ulong[count];
+        for (var i = 0; i < count;)
+        {
+            var value = random.Next(exclusiveMax);
+            if (selected[value])
+                continue;
+            selected[value] = true;
+            result[i++] = (ulong)value;
+        }
+
+        Array.Sort(result);
+        return result;
     }
 
     readonly struct OldRoaringBitmapEnumerable

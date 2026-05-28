@@ -454,6 +454,54 @@ public class ODBIterator
         _visitor?.EndSet();
     }
 
+    unsafe void IterateRoaringBitmap(ulong dictId)
+    {
+        if (_visitor != null && !_visitor.StartSet())
+            return;
+        var o = ObjectDB.AllDictionariesPrefix.Length;
+        var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
+        Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
+        PackUnpack.PackVUInt(prefix, ref o, dictId);
+        using var cursor = _trkv.CreateCursor();
+        Span<byte> keyBuf = stackalloc byte[512];
+        Memory<byte> valueBuf = new byte[RoaringBitmaps.BitmapSize];
+        var countSeen = false;
+        var pageSeen = false;
+        while (cursor.FindNextKey(prefix))
+        {
+            _fastVisitor.MarkCurrentKeyAsUsed(cursor);
+            var keySpan = cursor.GetKeySpan(ref keyBuf);
+            if (keySpan.Length == prefix.Length)
+            {
+                countSeen = true;
+                if (_visitor?.NeedScalarAsText() ?? false)
+                    _visitor.ScalarAsText("Count " +
+                                          PackUnpack.UnpackVUInt(cursor.GetValueMemory(ref valueBuf).Span)
+                                              .ToString(CultureInfo.InvariantCulture));
+                continue;
+            }
+            pageSeen = true;
+            var pageIndex = PackUnpack.UnpackVUInt(keySpan[prefix.Length..]);
+
+            var value = cursor.GetValueMemory(ref valueBuf);
+            foreach (var item in RoaringBitmaps.Enumerate(value, pageIndex << 16))
+            {
+                if (_visitor == null || _visitor.StartSetKey())
+                {
+                    if (_visitor?.NeedScalarAsObject() ?? false)
+                        _visitor.ScalarAsObject(item);
+                    if (_visitor?.NeedScalarAsText() ?? false)
+                        _visitor.ScalarAsText(item.ToString(CultureInfo.InvariantCulture));
+                    _visitor?.EndSetKey();
+                }
+            }
+        }
+
+        if (pageSeen && !countSeen && (_visitor?.NeedScalarAsText() ?? false))
+            _visitor.ScalarAsText("Incomplete");
+        _visitor?.EndSet();
+    }
+
     unsafe void IterateHandler(ref MemReader reader, IFieldHandler handler, bool skipping,
         HashSet<int>? knownInlineRefs)
     {
@@ -475,6 +523,14 @@ public class ODBIterator
                 var keyHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers()
                     .First();
                 IterateSet(dictId, keyHandler);
+            }
+        }
+        else if (handler is ODBRoaringBitmapFieldHandler)
+        {
+            var dictId = reader.ReadVUInt64();
+            if (!skipping)
+            {
+                IterateRoaringBitmap(dictId);
             }
         }
         else if (handler is DBObjectFieldHandler)

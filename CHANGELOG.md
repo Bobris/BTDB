@@ -21,9 +21,17 @@
   have the raw 8192-byte bitmap.
 - `RoaringBitmaps` now exposes in-place dense bitmap mutation operations for negation, union, intersection, union with
   complement, and difference against encoded containers.
+- `RoaringBitmaps` now exposes optimized encoded-container truncation for dropping values above a 16-bit maximum.
+- ObjectDB relations now support lazy `IRoaringBitmap` fields backed by the existing external-content keyspace, with
+  explicit flushing and automatic free-content cleanup on normal relation removes and updates.
+- `IRoaringBitmap` now supports command-buffer initialization through `RoaringBitmap.BuildAsync(...)`, including
+  sorted enumerable sources and fused boolean operations.
 
 ### Changed
 
+- `RoaringBitmap.BuildAsync(...)` now writes generated page payloads directly into the command buffer with fixed
+  `UInt16` page lengths, aligned page data, optimized array-source `Or`, `And`, and `Not` paths, and direct reuse of
+  stored `IRoaringBitmap` page payloads, reducing temporary allocations during bulk `IRoaringBitmap` initialization.
 - Raw object-data copying now calls `Buffer.BulkMoveWithWriteBarrier` through `UnsafeAccessor` instead of resolving it
   with reflection during `RawData` initialization.
 - `RawData.GetOffsets` now supports tuple layouts with three or more fields.

@@ -2301,6 +2301,28 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task RelationSupportsRoaringBitmapField()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class BitmapRow
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+
+                public IRoaringBitmap Bits { get; set; } = null!;
+            }
+
+            public interface IBitmapTable : IRelation<BitmapRow>
+            {
+                void Insert(BitmapRow row);
+                BitmapRow FindById(ulong id);
+            }
+            """);
+    }
+
+    [Fact]
     public Task UpdateByIdDetectsTypeMismatch()
     {
         // language=cs

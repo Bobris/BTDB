@@ -121,6 +121,23 @@ public static class RoaringBitmaps
         return Operate(left, right, output, BinaryOperation.AndNot);
     }
 
+    internal static int RemoveValuesGreaterThanInPlace(Span<byte> input, ushort maxValue)
+    {
+        var kind = ValidateAndGetKind(input);
+        return RemoveValuesGreaterThanInPlace(input, kind, maxValue);
+    }
+
+    static int RemoveValuesGreaterThanInPlace(Span<byte> input, ContainerKind kind, ushort maxValue)
+    {
+        return kind switch
+        {
+            ContainerKind.Empty => 0,
+            ContainerKind.Array => RemoveArrayValuesGreaterThanInPlace(input, maxValue),
+            ContainerKind.Rle => RemoveRleValuesGreaterThanInPlace(input, maxValue),
+            _ => RemoveBitmapValuesGreaterThanInPlace(input, maxValue)
+        };
+    }
+
     public static int Not(ReadOnlySpan<byte> input, Span<byte> output)
     {
         EnsureOutputSize(output);
@@ -324,6 +341,53 @@ public static class RoaringBitmaps
         }
 
         input.CopyTo(output);
+        return BitmapSize;
+    }
+
+    static int RemoveArrayValuesGreaterThanInPlace(ReadOnlySpan<byte> input, ushort maxValue)
+    {
+        var length = input.Length;
+        while (length != 0 && ReadUInt16(input, length - 2) > maxValue)
+            length -= 2;
+        return length;
+    }
+
+    static int RemoveRleValuesGreaterThanInPlace(Span<byte> input, ushort maxValue)
+    {
+        var offset = input.Length - 5;
+        while (offset >= 0)
+        {
+            var start = ReadUInt16(input, offset);
+            if (start > maxValue)
+            {
+                offset -= 4;
+                continue;
+            }
+
+            var lengthMinusOne = ReadUInt16(input, offset + 2);
+            var end = (uint)start + lengthMinusOne;
+            if (end > maxValue)
+            {
+                lengthMinusOne = (ushort)(maxValue - start);
+                WriteUInt16(input, offset + 2, lengthMinusOne);
+            }
+
+            var length = offset + 5;
+            input[offset + 4] = 0;
+            return length;
+        }
+
+        return 0;
+    }
+
+    static int RemoveBitmapValuesGreaterThanInPlace(Span<byte> input, ushort maxValue)
+    {
+        if (maxValue == ushort.MaxValue)
+            return BitmapSize;
+        var lastByte = maxValue >> 3;
+        var validBits = (maxValue & 7) + 1;
+        input[lastByte] &= (byte)((1u << validBits) - 1);
+        input[(lastByte + 1)..BitmapSize].Clear();
         return BitmapSize;
     }
 

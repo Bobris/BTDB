@@ -41,6 +41,8 @@
   number of items, and can be iterated in order)
 - `IOrderedSet<T>` (Lazy loaded, ordered by T set, good for bigger number of items, and can be iterated in order, don't
   use in Event serialization, do not use `OrderedSet<T>` (only as initial constructor of content))
+- `IRoaringBitmap` (Lazy loaded bitmap of `ulong` indexes for ObjectDB relations; call `Flush()` to persist `Set`
+  changes; use `RoaringBitmap.BuildAsync` for initialization and bulk rebuilds)
 
 ## Default conversions on load
 
