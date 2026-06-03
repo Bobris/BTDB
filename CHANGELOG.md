@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- BON builder now keeps nested payload buffers alive while copying them into the root BON buffer, preventing intermittent
+  access violations during class, object, array, tuple, and dictionary finalization.
+
 ## 35.1.0
 
 ### Added

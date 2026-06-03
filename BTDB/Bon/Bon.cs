@@ -559,7 +559,7 @@ public struct BonBuilder
             if (!bytes.GetSpan().IsEmpty)
             {
                 var pos2 = rootData.GetCurrentPosition();
-                rootData.WriteBlock(bytes.GetSpan());
+                WriteMemWriterBlock(ref rootData, bytes);
                 objKeys.Add((ulong)pos2);
             }
 
@@ -585,7 +585,7 @@ public struct BonBuilder
 
             var pos = rootData.GetCurrentPosition();
             rootData.WriteVUInt32(items);
-            rootData.WriteBlock(bytes.GetSpan());
+            WriteMemWriterBlock(ref rootData, bytes);
             _lastBonPos = (ulong)_topData.GetCurrentPosition();
             _topData.WriteUInt8(Helpers.CodeArrayPtr);
             _topData.WriteVUInt64((ulong)pos);
@@ -617,7 +617,7 @@ public struct BonBuilder
 
         var pos = rootData.GetCurrentPosition();
         rootData.WriteVUInt32(items);
-        rootData.WriteBlock(bytes.GetSpan());
+        WriteMemWriterBlock(ref rootData, bytes);
         _lastBonPos = (ulong)_topData.GetCurrentPosition();
         _topData.WriteUInt8(Helpers.CodeTuplePtr);
         _topData.WriteVUInt64((ulong)pos);
@@ -690,7 +690,7 @@ public struct BonBuilder
 
             var pos = rootData.GetCurrentPosition();
             rootData.WriteVUInt64(posKeys);
-            rootData.WriteBlock(bytes.GetSpan());
+            WriteMemWriterBlock(ref rootData, bytes);
             _lastBonPos = (ulong)_topData.GetCurrentPosition();
             _topData.WriteUInt8(Helpers.CodeObjectPtr);
             _topData.WriteVUInt64((ulong)pos);
@@ -745,7 +745,7 @@ public struct BonBuilder
 
         var pos = rootData.GetCurrentPosition();
         rootData.WriteVUInt64(posKeys);
-        rootData.WriteBlock(bytes.GetSpan());
+        WriteMemWriterBlock(ref rootData, bytes);
         _lastBonPos = (ulong)_topData.GetCurrentPosition();
         _topData.WriteUInt8(Helpers.CodeClassPtr);
         _topData.WriteVUInt64((ulong)pos);
@@ -782,7 +782,7 @@ public struct BonBuilder
 
             var pos = rootData.GetCurrentPosition();
             rootData.WriteVUInt32(items / 2);
-            rootData.WriteBlock(bytes.GetSpan());
+            WriteMemWriterBlock(ref rootData, bytes);
             _lastBonPos = (ulong)_topData.GetCurrentPosition();
             _topData.WriteUInt8(Helpers.CodeDictionaryPtr);
             _topData.WriteVUInt64((ulong)pos);
@@ -823,7 +823,7 @@ public struct BonBuilder
             ref var writer = ref _stack[0].Data;
             Debug.Assert(_stack.Count > 0);
             var pos = writer.GetCurrentPosition();
-            writer.WriteBlock(_topData.GetSpan());
+            WriteMemWriterBlock(ref writer, _topData);
             _topData.Reset();
             _objKeys.Add((ulong)pos);
         }
@@ -837,6 +837,12 @@ public struct BonBuilder
         {
             ThrowWrongState();
         }
+    }
+
+    static void WriteMemWriterBlock(scoped ref MemWriter writer, MemWriter source)
+    {
+        writer.WriteBlock(source.GetSpan());
+        GC.KeepAlive(source.Controller);
     }
 
     void BasicWriteString(ref MemWriter data, out ulong bonPos, string? value)
