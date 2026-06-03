@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.1.1
+
 ### Fixed
 
 - BON builder now keeps nested payload buffers alive while copying them into the root BON buffer, preventing intermittent
