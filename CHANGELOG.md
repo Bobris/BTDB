@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 33.6.14
+
 ### Fixed
 
 - KeyValueDB now releases partially built native BTree nodes when loading a KVI fails before falling back to an older
