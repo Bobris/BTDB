@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.2.0
+
 ### Added
 
 - ObjectDB now periodically detects leaked object and dictionary keys during compaction, starting on the fifth
