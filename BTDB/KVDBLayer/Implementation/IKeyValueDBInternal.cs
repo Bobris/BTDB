@@ -11,6 +11,8 @@ public delegate void ValuesIterateAction(uint valueFileId, uint valueOfs, int va
 
 interface IKeyValueDBInternal : IKeyValueDB
 {
+    Func<CancellationToken, ValueTask>? CompactorStartAction { get; }
+
     long GetGeneration(uint fileId);
 
     // Returns true if any marked file was TRL

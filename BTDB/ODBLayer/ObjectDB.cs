@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -65,6 +66,10 @@ public class ObjectDB : IObjectDB
     IRelationInfoResolver _relationsInfoResolver;
     long _lastObjId;
     long _lastDictId;
+    BTreeKeyValueDB? _compactionMaintenanceKeyValueDB;
+    int _compactionLeakCleanupCounter;
+
+    internal long CompactorLeakCleanupMaxKeyBytes { get; set; } = 100L * 1024 * 1024;
 
     // ReSharper disable once NotNullMemberIsNotInitialized
     public ObjectDB()
@@ -100,8 +105,10 @@ public class ObjectDB : IObjectDB
 
     public void Open(IKeyValueDB keyValueDB, bool dispose, DBOptions options)
     {
+        UnregisterCompactionMaintenance();
         _keyValueDB = keyValueDB ?? throw new ArgumentNullException(nameof(keyValueDB));
         _dispose = dispose;
+        _compactionLeakCleanupCounter = 0;
         _type2Name = options.CustomType2NameRegistry ?? new Type2NameRegistry();
         _polymorphicTypesRegistry = new PolymorphicTypesRegistry();
         AutoRegisterTypes = options.AutoRegisterType;
@@ -141,6 +148,8 @@ public class ObjectDB : IObjectDB
                 _lastDictId = (long)PackUnpack.UnpackVUInt(cursor.GetValueSpan(ref buf));
             }
         }
+
+        RegisterCompactionMaintenance();
     }
 
     internal void CommitLastObjIdAndDictId(IKeyValueDBTransaction tr)
@@ -300,11 +309,70 @@ public class ObjectDB : IObjectDB
 
     public void Dispose()
     {
+        UnregisterCompactionMaintenance();
         if (_dispose)
         {
             _keyValueDB.Dispose();
             _dispose = false;
         }
+    }
+
+    void RegisterCompactionMaintenance()
+    {
+        if (ActualOptions.CompactorLeakDetectorMode == CompactorLeakDetectorMode.Off) return;
+        if (_keyValueDB is not BTreeKeyValueDB keyValueDB) return;
+        _compactionMaintenanceKeyValueDB = keyValueDB;
+        keyValueDB.CompactorStartAction = CompactionMaintenance;
+    }
+
+    void UnregisterCompactionMaintenance()
+    {
+        if (_compactionMaintenanceKeyValueDB == null) return;
+        _compactionMaintenanceKeyValueDB.CompactorStartAction = null;
+        _compactionMaintenanceKeyValueDB = null;
+    }
+
+    async ValueTask CompactionMaintenance(CancellationToken cancellation)
+    {
+        var count = Interlocked.Increment(ref _compactionLeakCleanupCounter);
+        if (count < 5 || (count - 5) % 20 != 0) return;
+
+        var stopwatch = Stopwatch.StartNew();
+        CompactorLeakDetector detector;
+        using (var tr = StartReadOnlyTransaction())
+        {
+            detector = new CompactorLeakDetector(tr, CompactorLeakCleanupMaxKeyBytes);
+            detector.FindLeaks(cancellation);
+        }
+
+        if (detector.KeyCountToDelete == 0) return;
+
+        if (ActualOptions.CompactorLeakDetectorMode == CompactorLeakDetectorMode.DetectOnly)
+        {
+            Logger?.CompactorDetectedLeaks(detector.LeakedObjectTypeNames, detector.KeyCountToDelete,
+                stopwatch.Elapsed);
+            return;
+        }
+
+        var removed = 0UL;
+        using (var tr = await StartWritingTransaction().ConfigureAwait(false))
+        {
+            using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+            var keysReader = MemReader.CreateFromPinnedSpan(detector.KeysToDelete.Span);
+            for (var i = 0UL; i < detector.KeyCountToDelete; i++)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                var key = keysReader.ReadBlockAsSpan(keysReader.ReadVUInt32());
+                if (!cursor.FindExactKey(key)) continue;
+                cursor.EraseCurrent();
+                removed++;
+            }
+
+            if (removed > 0) tr.Commit();
+        }
+
+        if (removed > 0)
+            Logger?.CompactorRemovedLeaks(detector.LeakedObjectTypeNames, removed, stopwatch.Elapsed);
     }
 
     class TableInfoResolver : ITableInfoResolver

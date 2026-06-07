@@ -2,6 +2,18 @@
 
 ## [unreleased]
 
+### Added
+
+- ObjectDB now periodically detects leaked object and dictionary keys during compaction, starting on the fifth
+  compaction after opening and then every twentieth compaction, while logging affected object type names and leaked
+  key count with elapsed time spent. `DBOptions.WithCompactorLeakDetectorMode(...)` can disable the detector or enable
+  erasing leaked keys.
+
+### Fixed
+
+- KeyValueDB now releases partially built native BTree nodes when loading a KVI fails before falling back to an older
+  index.
+
 ## 35.1.1
 
 ### Fixed

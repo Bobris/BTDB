@@ -286,12 +286,11 @@ public class BTreeImpl12
 
     internal void BuildTree(RootNode12 rootNode, long keyCount, ref MemReader reader, BuildTreeCallback generator)
     {
-        Dereference(rootNode.Root);
+        var oldRoot = rootNode.Root;
+        rootNode.Root = IntPtr.Zero;
+        Dereference(oldRoot);
         if (keyCount == 0)
-        {
-            rootNode.Root = IntPtr.Zero;
             return;
-        }
 
         rootNode.Root = BuildTreeNode(keyCount, ref reader, generator);
     }
@@ -437,30 +436,52 @@ public class BTreeImpl12
             done = reach;
             var totalSuffixLength = 0UL;
             var recursiveChildCount = 0UL;
-            for (var i = 0; i < todo; i++)
+            var createdChildren = 0;
+            try
             {
-                var child = generator(ref reader);
-                nodes[i] = child;
-                recursiveChildCount += NodeUtils12.Ptr2NodeHeader(child).RecursiveChildCount;
-            }
+                for (var i = 0; i < todo; i++)
+                {
+                    var child = generator(ref reader);
+                    nodes[i] = child;
+                    createdChildren++;
+                    recursiveChildCount += NodeUtils12.Ptr2NodeHeader(child).RecursiveChildCount;
+                }
 
-            for (var i = 1; i < todo; i++)
+                for (var i = 1; i < todo; i++)
+                {
+                    var prefix = NodeUtils12.GetLeftestKey(nodes[i], out var suffix);
+                    totalSuffixLength += (uint)prefix.Length + (uint)suffix.Length;
+                }
+
+                var newNode = AllocateBranch((uint)todo, totalSuffixLength, out var keyPusher);
+                try
+                {
+                    NodeUtils12.Ptr2NodeHeader(newNode)._recursiveChildCount = recursiveChildCount;
+                    for (var i = 1; i < todo; i++)
+                    {
+                        var prefix = NodeUtils12.GetLeftestKey(nodes[i], out var suffix);
+                        keyPusher.AddKey(prefix, suffix);
+                    }
+
+                    keyPusher.Finish();
+                    nodes.AsSpan(0, todo).CopyTo(NodeUtils12.GetBranchValuePtrs(newNode));
+                    createdChildren = 0;
+                    return newNode;
+                }
+                catch
+                {
+                    Dereference(newNode);
+                    throw;
+                }
+            }
+            finally
             {
-                var prefix = NodeUtils12.GetLeftestKey(nodes[i], out var suffix);
-                totalSuffixLength += (uint)prefix.Length + (uint)suffix.Length;
+                for (var i = 0; i < createdChildren; i++)
+                {
+                    Dereference(nodes[i]);
+                    nodes[i] = IntPtr.Zero;
+                }
             }
-
-            var newNode = AllocateBranch((uint)todo, totalSuffixLength, out var keyPusher);
-            NodeUtils12.Ptr2NodeHeader(newNode)._recursiveChildCount = recursiveChildCount;
-            for (var i = 1; i < todo; i++)
-            {
-                var prefix = NodeUtils12.GetLeftestKey(nodes[i], out var suffix);
-                keyPusher.AddKey(prefix, suffix);
-            }
-
-            keyPusher.Finish();
-            nodes.AsSpan(0, todo).CopyTo(NodeUtils12.GetBranchValuePtrs(newNode));
-            return newNode;
         });
     }
 

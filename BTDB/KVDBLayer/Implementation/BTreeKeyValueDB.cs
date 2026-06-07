@@ -1183,6 +1183,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         return _allocator.GetStats();
     }
 
+    internal Func<CancellationToken, ValueTask>? CompactorStartAction { get; set; }
+    Func<CancellationToken, ValueTask>? IKeyValueDBInternal.CompactorStartAction => CompactorStartAction;
+
     public async ValueTask<bool> Compact(CancellationToken cancellation)
     {
         return await new Compactor(this, cancellation).Run();

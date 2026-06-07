@@ -117,6 +117,8 @@ class Compactor
 
     async ValueTask<bool> RunCore()
     {
+        if (_keyValueDB.CompactorStartAction != null)
+            await _keyValueDB.CompactorStartAction(_cancellation).ConfigureAwait(false);
         if (_keyValueDB.FileCollection.GetCount() == 0) return false;
         _root = _keyValueDB.ReferenceAndGetOldestRoot();
         try

@@ -6,12 +6,20 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer;
 
+public enum CompactorLeakDetectorMode
+{
+    Off,
+    DetectOnly,
+    Erase
+}
+
 public class DBOptions
 {
     public DBOptions()
     {
         AutoRegisterType = true;
         AutoRegisterRelations = true;
+        CompactorLeakDetectorMode = CompactorLeakDetectorMode.DetectOnly;
     }
 
     public DBOptions WithoutAutoRegistration()
@@ -74,6 +82,12 @@ public class DBOptions
         return this;
     }
 
+    public DBOptions WithCompactorLeakDetectorMode(CompactorLeakDetectorMode mode)
+    {
+        CompactorLeakDetectorMode = mode;
+        return this;
+    }
+
     public bool AutoRegisterRelations { get; private set; }
     public bool AutoRegisterType { get; private set; }
     public bool AutoSkipUnknownTypes { get; private set; }
@@ -86,6 +100,7 @@ public class DBOptions
     public ISymmetricCipher? SymmetricCipher { get; private set; }
 
     public IObjectDBLogger? Logger { get; private set; }
+    public CompactorLeakDetectorMode CompactorLeakDetectorMode { get; private set; }
 
     [DoesNotReturn]
     public void ThrowBTDBException(string message)
