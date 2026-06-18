@@ -40,6 +40,8 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
     readonly RefWriterFun _keyWriter;
     readonly RefReaderFun _valueReader;
     readonly RefWriterFun _valueWriter;
+    readonly IFieldHandler? _valueHandler;
+    readonly bool _valueHandlerDoesNeedFreeContent;
     readonly IKeyValueDBTransaction _keyValueTr;
     readonly ulong _id;
     readonly byte[] _prefix;
@@ -52,6 +54,8 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
     {
         _tr = tr;
         _id = id;
+        _valueHandler = config.ValueHandler;
+        _valueHandlerDoesNeedFreeContent = config.ValueHandlerDoesNeedFreeContent;
         var len = PackUnpack.LengthVUInt(id);
         var prefix = new byte[ObjectDB.AllDictionariesPrefixLen + len];
         MemoryMarshal.GetReference(prefix.AsSpan()) = ObjectDB.AllDictionariesPrefixByte;
@@ -101,8 +105,20 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
 
     public void Clear()
     {
+        List<ulong>? dictIds = null;
         using var cursor = _keyValueTr.CreateCursor();
+        if (_valueHandlerDoesNeedFreeContent)
+        {
+            dictIds = [];
+            Span<byte> buffer = stackalloc byte[4096];
+            while (cursor.FindNextKey(_prefix))
+            {
+                CollectValueContentToFree(cursor.GetValueSpan(ref buffer), dictIds);
+            }
+        }
+
         cursor.EraseAll(_prefix);
+        FreeDictionaryIds(dictIds);
         _count = 0;
     }
 
@@ -243,7 +259,9 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
     {
         using var cursor = _keyValueTr.CreateCursor();
         if (FindKey(cursor, key) != FindResult.Exact) return false;
+        var dictIds = CollectCurrentValueContentToFree(cursor);
         cursor.EraseCurrent();
+        FreeDictionaryIds(dictIds);
         NotifyRemoved();
         return true;
     }
@@ -301,6 +319,12 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
             var keyBytes = KeyToByteArray(key, ref writer);
             var valueBytes = ValueToByteArray(value, ref writer);
             using var cursor = _keyValueTr.CreateCursor();
+            if (_valueHandlerDoesNeedFreeContent && cursor.FindExactKey(keyBytes))
+            {
+                SetCurrentValue(cursor, valueBytes);
+                return;
+            }
+
             if (cursor.CreateOrUpdateKeyValue(keyBytes, valueBytes))
             {
                 NotifyAdded();
@@ -575,7 +599,123 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         }
 
         _count = -1;
-        return startCursor.EraseUpTo(endCursor);
+        if (startCursor.GetKeyIndex() > endCursor.GetKeyIndex())
+            return 0;
+        var dictIds = CollectValueContentToFree(startCursor, endCursor);
+        var resultCount = startCursor.EraseUpTo(endCursor);
+        FreeDictionaryIds(dictIds);
+        return resultCount;
+    }
+
+    [SkipLocalsInit]
+    List<ulong>? CollectCurrentValueContentToFree(IKeyValueDBCursor cursor)
+    {
+        if (!_valueHandlerDoesNeedFreeContent) return null;
+        var dictIds = new List<ulong>();
+        Span<byte> buffer = stackalloc byte[4096];
+        CollectValueContentToFree(cursor.GetValueSpan(ref buffer), dictIds);
+        return dictIds;
+    }
+
+    [SkipLocalsInit]
+    List<ulong>? CollectValueContentToFree(IKeyValueDBCursor startCursor, IKeyValueDBCursor endCursor)
+    {
+        if (!_valueHandlerDoesNeedFreeContent) return null;
+        var dictIds = new List<ulong>();
+        var endIndex = endCursor.GetKeyIndex();
+        using var cursor = _keyValueTr.CreateCursor();
+        cursor.FindKeyIndex(startCursor.GetKeyIndex());
+        Span<byte> buffer = stackalloc byte[4096];
+        while (true)
+        {
+            CollectValueContentToFree(cursor.GetValueSpan(ref buffer), dictIds);
+            if (cursor.GetKeyIndex() == endIndex)
+                break;
+            if (!cursor.FindNextKey(_prefix))
+                break;
+        }
+
+        return dictIds;
+    }
+
+    [SkipLocalsInit]
+    unsafe void CollectValueContentToFree(ReadOnlySpan<byte> valueBytes, IList<ulong> dictIds)
+    {
+        fixed (void* _ = valueBytes)
+        {
+            var reader = MemReader.CreateFromPinnedSpan(valueBytes);
+            var ctx = new DBReaderWithFreeInfoCtx(_tr, dictIds);
+            _valueHandler!.FreeContent(ref reader, ctx);
+        }
+    }
+
+    [SkipLocalsInit]
+    void SetCurrentValue(IKeyValueDBCursor cursor, TValue value)
+    {
+        var valueWriter = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+        var valueBytes = ValueToByteArray(value, ref valueWriter);
+        SetCurrentValue(cursor, valueBytes);
+    }
+
+    void SetCurrentValue(IKeyValueDBCursor cursor, ReadOnlySpan<byte> valueBytes)
+    {
+        List<ulong>? oldDictIds = null;
+        List<ulong>? newDictIds = null;
+        if (_valueHandlerDoesNeedFreeContent)
+        {
+            oldDictIds = CollectCurrentValueContentToFree(cursor);
+            newDictIds = new List<ulong>();
+            CollectValueContentToFree(valueBytes, newDictIds);
+        }
+
+        cursor.SetValue(valueBytes);
+        CompareAndFreeDictionaryIds(oldDictIds, newDictIds);
+    }
+
+    void CompareAndFreeDictionaryIds(List<ulong>? oldItems, List<ulong>? newItems)
+    {
+        if (oldItems == null || oldItems.Count == 0)
+            return;
+        if (newItems is not { Count: > 0 })
+        {
+            FreeDictionaryIds(oldItems);
+            return;
+        }
+
+        if (newItems.Count < 16)
+        {
+            foreach (var id in oldItems)
+            {
+                if (newItems.Contains(id))
+                    continue;
+                FreeDictionaryId(id);
+            }
+
+            return;
+        }
+
+        var newItemsSet = new HashSet<ulong>(newItems);
+        foreach (var id in oldItems)
+        {
+            if (newItemsSet.Contains(id))
+                continue;
+            FreeDictionaryId(id);
+        }
+    }
+
+    void FreeDictionaryIds(List<ulong>? dictIds)
+    {
+        if (dictIds == null) return;
+        foreach (var dictId in dictIds)
+        {
+            FreeDictionaryId(dictId);
+        }
+    }
+
+    void FreeDictionaryId(ulong dictId)
+    {
+        if (dictId == _id) return;
+        RelationInfo.FreeIDictionary(_tr, dictId);
     }
 
     public IEnumerable<KeyValuePair<uint, uint>> QuerySizeEnumerator()
@@ -704,9 +844,7 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
                 if (_cursor == null) throw new IndexOutOfRangeException();
                 if (_seekState == SeekState.Undefined)
                     throw new BTDBException("Invalid access to uninitialized CurrentValue.");
-                var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
-                var valueBytes = _owner.ValueToByteArray(value, ref writer);
-                _cursor.SetValue(valueBytes);
+                _owner.SetCurrentValue(_cursor, value);
             }
         }
 

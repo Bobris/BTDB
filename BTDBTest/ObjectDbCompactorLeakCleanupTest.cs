@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB;
+using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -171,6 +173,7 @@ public class ObjectDbCompactorLeakCleanupTest : IDisposable
             tr.Commit();
         }
 
+        var leakedRow = CaptureFirstDictionaryRow(db, FindJobsDictionaryId(db, key));
         using (var tr = db.StartTransaction())
         {
             var directory = tr.Singleton<Directory>();
@@ -181,8 +184,43 @@ public class ObjectDbCompactorLeakCleanupTest : IDisposable
                     [0] = new() { Activity = newActivity }
                 }
             };
+            RestoreRow(tr, leakedRow);
             tr.Commit();
         }
+    }
+
+    static ulong FindJobsDictionaryId(IObjectDB db, string key)
+    {
+        using var tr = db.StartReadOnlyTransaction();
+        var directory = tr.Singleton<Directory>();
+        return ((IInternalODBDictionary)directory.Items[key].Jobs).DictId;
+    }
+
+    static (byte[] Key, byte[] Value) CaptureFirstDictionaryRow(IObjectDB db, ulong dictId)
+    {
+        using var tr = db.StartReadOnlyTransaction();
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        var prefix = DictionaryPrefix(dictId);
+        Span<byte> keyBuffer = stackalloc byte[4096];
+        Span<byte> valueBuffer = stackalloc byte[4096];
+        if (!cursor.FindNextKey(prefix)) throw new InvalidOperationException("Dictionary row not found.");
+        return (cursor.GetKeySpan(ref keyBuffer).ToArray(), cursor.GetValueSpan(ref valueBuffer).ToArray());
+    }
+
+    static void RestoreRow(IObjectDBTransaction tr, (byte[] Key, byte[] Value) row)
+    {
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        cursor.CreateOrUpdateKeyValue(row.Key, row.Value);
+    }
+
+    static byte[] DictionaryPrefix(ulong dictId)
+    {
+        var len = PackUnpack.LengthVUInt(dictId);
+        var prefix = new byte[ObjectDB.AllDictionariesPrefixLen + len];
+        MemoryMarshal.GetReference(prefix.AsSpan()) = ObjectDB.AllDictionariesPrefixByte;
+        PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(prefix.AsSpan()[ObjectDB.AllDictionariesPrefixLen..]),
+            dictId, len);
+        return prefix;
     }
 
     void CreateObjectLeak(string oldActivity, string newActivity, IObjectDB? db = null)

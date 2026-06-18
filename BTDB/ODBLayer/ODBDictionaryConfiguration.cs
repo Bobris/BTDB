@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using BTDB.FieldHandler;
 
@@ -69,6 +70,21 @@ public class ODBDictionaryConfiguration
     public RefWriterFun? KeyWriter { get; set; }
     public RefReaderFun? ValueReader { get; set; }
     public RefWriterFun? ValueWriter { get; set; }
+
+    bool? _valueHandlerDoesNeedFreeContent;
+
+    internal bool ValueHandlerDoesNeedFreeContent
+    {
+        get
+        {
+            if (_valueHandlerDoesNeedFreeContent is { } result) return result;
+            lock (this)
+            {
+                return _valueHandlerDoesNeedFreeContent ??=
+                    ValueHandler?.DoesNeedFreeContent(new HashSet<Type>()) ?? false;
+            }
+        }
+    }
 
     internal static void Reset()
     {

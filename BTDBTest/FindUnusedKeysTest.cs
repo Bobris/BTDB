@@ -4,8 +4,10 @@ using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 using BTDB;
+using BTDB.Buffer;
 using Xunit;
 
 namespace BTDBTest;
@@ -120,10 +122,12 @@ public class FindUnusedKeysTest : IDisposable
     {
         StoreJobInDictionary("programming", "code");
         StoreJobInDictionary("chess", "mate");
+        var leakedRow = CaptureFirstDictionaryRow(FindJobsDictionaryId("programming"));
         using (var tr = _db.StartTransaction())
         {
             var sports = tr.Singleton<Directory>();
             sports.Dir["programming"] = new ODBIteratorTest.JobMap();
+            RestoreRow(tr, leakedRow);
             tr.Commit();
         }
 
@@ -168,6 +172,40 @@ public class FindUnusedKeysTest : IDisposable
             };
             tr.Commit();
         }
+    }
+
+    ulong FindJobsDictionaryId(string sport)
+    {
+        using var tr = _db.StartReadOnlyTransaction();
+        var sports = tr.Singleton<Directory>();
+        return ((IInternalODBDictionary)sports.Dir[sport].Jobs).DictId;
+    }
+
+    (byte[] Key, byte[] Value) CaptureFirstDictionaryRow(ulong dictId)
+    {
+        using var tr = _db.StartReadOnlyTransaction();
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        var prefix = DictionaryPrefix(dictId);
+        Span<byte> keyBuffer = stackalloc byte[4096];
+        Span<byte> valueBuffer = stackalloc byte[4096];
+        if (!cursor.FindNextKey(prefix)) throw new InvalidOperationException("Dictionary row not found.");
+        return (cursor.GetKeySpan(ref keyBuffer).ToArray(), cursor.GetValueSpan(ref valueBuffer).ToArray());
+    }
+
+    static void RestoreRow(IObjectDBTransaction tr, (byte[] Key, byte[] Value) row)
+    {
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        cursor.CreateOrUpdateKeyValue(row.Key, row.Value);
+    }
+
+    static byte[] DictionaryPrefix(ulong dictId)
+    {
+        var len = PackUnpack.LengthVUInt(dictId);
+        var prefix = new byte[ObjectDB.AllDictionariesPrefixLen + len];
+        MemoryMarshal.GetReference(prefix.AsSpan()) = ObjectDB.AllDictionariesPrefixByte;
+        PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(prefix.AsSpan()[ObjectDB.AllDictionariesPrefixLen..]),
+            dictId, len);
+        return prefix;
     }
 
     [Fact]

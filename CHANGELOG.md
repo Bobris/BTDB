@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- ObjectDB lazy dictionaries now free nested dictionary content when a stored dictionary value is replaced, removed, or
+  cleared directly through the dictionary API.
+
 ## 35.2.0
 
 ### Added

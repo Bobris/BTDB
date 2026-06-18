@@ -1150,6 +1150,119 @@ public class ObjectDbTableFreeContentTest : IDisposable
         AssertNoLeaksInDb();
     }
 
+    public class LinkInOrderedIDict
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public IOrderedDictionary<int, IDictionary<int, int>> Edges { get; set; }
+    }
+
+    public interface ILinksInOrderedIDict : IRelation<LinkInOrderedIDict>
+    {
+        void Insert(LinkInOrderedIDict link);
+        LinkInOrderedIDict FindById(ulong id);
+    }
+
+    [Fact]
+    public void ReplacingIDictionaryValueFreesNestedIDictionary()
+    {
+        var creator = InitOrderedDictionaryWithNestedDictionaries();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            link.Edges[1] = new Dictionary<int, int> { [30] = 40 };
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void RemovingIDictionaryValueFreesNestedIDictionary()
+    {
+        var creator = InitOrderedDictionaryWithNestedDictionaries();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            Assert.True(link.Edges.Remove(1));
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void ClearingIDictionaryFreesNestedIDictionaries()
+    {
+        var creator = InitOrderedDictionaryWithNestedDictionaries();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            link.Edges.Clear();
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void RemovingIDictionaryRangeFreesNestedIDictionaries()
+    {
+        var creator = InitOrderedDictionaryWithNestedDictionaries();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            Assert.Equal(2, link.Edges.RemoveRange(1, true, 2, true));
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void ReplacingIDictionaryValueThroughAdvancedEnumeratorFreesNestedIDictionary()
+    {
+        var creator = InitOrderedDictionaryWithNestedDictionaries();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            using var enumerator = link.Edges.GetAdvancedEnumerator(new(EnumerationOrder.Ascending, 1,
+                KeyProposition.Included, 1, KeyProposition.Included));
+            Assert.True(enumerator.NextKey(out var key));
+            Assert.Equal(1, key);
+            enumerator.CurrentValue = new Dictionary<int, int> { [50] = 60 };
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    Func<IObjectDBTransaction, ILinksInOrderedIDict> InitOrderedDictionaryWithNestedDictionaries()
+    {
+        Func<IObjectDBTransaction, ILinksInOrderedIDict> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ILinksInOrderedIDict>("OrderedIDictLinksRelation");
+            var links = creator(tr);
+            links.Insert(new LinkInOrderedIDict
+            {
+                Id = 1
+            });
+            var link = links.FindById(1);
+            link.Edges[1] = new Dictionary<int, int> { [10] = 20 };
+            link.Edges[2] = new Dictionary<int, int> { [20] = 30 };
+            link.Edges[3] = new Dictionary<int, int> { [30] = 40 };
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+        return creator;
+    }
+
     public class Nodes
     {
         public IDictionary<ulong, ulong> Edges { get; set; }
@@ -1810,8 +1923,8 @@ public class ObjectDbTableFreeContentTest : IDisposable
         BatchDb FindByIdOrDefault(Guid itemId);
     }
 
-    [Fact(Skip = "prepared for discussion")]
-    public void LeakCanBeMade()
+    [Fact]
+    public void ReplacingDictionaryValueFreesNestedDictionaries()
     {
         Func<IObjectDBTransaction, IBatchTable> creator = null;
         var guid = Guid.NewGuid();
@@ -1848,7 +1961,7 @@ public class ObjectDbTableFreeContentTest : IDisposable
             var table = creator(tr);
             var batch = table.FindByIdOrDefault(guid);
             batch.MailPieces[mailGuid] =
-                null; //LEAK - removed immediately from db, in table.Update don't have previous value
+                null; //the dictionary setter must free nested dictionaries from the replaced value
             table.Update(batch);
             tr.Commit();
         }
