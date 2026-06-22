@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.3.3
+
 ### Fixed
 
 - Source generator hint names are now sanitized for nullable generic type arguments.
