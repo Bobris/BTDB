@@ -15,6 +15,7 @@ namespace TestNamespace;
 [CompilerGenerated]
 file class IFileTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplFileTable : global::BTDB.ODBLayer.RelationDBManipulator<global::TestNamespace.DownloadSectionFile>, global::TestNamespace.IFileTable<global::TestNamespace.DownloadSectionFile>
     {
         public ImplFileTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

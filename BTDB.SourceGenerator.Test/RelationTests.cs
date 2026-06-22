@@ -153,6 +153,31 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyRelationImplementationIsMarkedInternalOnly()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class CompanyRecord
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong Id { get; set; }
+            }
+
+            public interface ICompanyTableBase<out T> : ICovariantRelation<T> where T : class
+            {
+            }
+
+            public interface ICompanyRecordTable : ICompanyTableBase<CompanyRecord>, IRelation<CompanyRecord>
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task Repro_IndexOutOfRange_When_UpdateById_Missing_Pk_Parameter()
     {
         // language=cs

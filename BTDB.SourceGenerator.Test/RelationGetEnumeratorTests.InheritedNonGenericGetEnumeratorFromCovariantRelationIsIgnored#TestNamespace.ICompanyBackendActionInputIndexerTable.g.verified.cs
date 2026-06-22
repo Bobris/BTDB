@@ -18,6 +18,7 @@ namespace TestNamespace;
 [CompilerGenerated]
 file class ICompanyBackendActionInputIndexerTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplCompanyBackendActionInputIndexerTable : global::BTDB.ODBLayer.RelationDBManipulator<global::TestNamespace.CompanyBackendActionInputIndexer>, global::TestNamespace.ICompanyBackendActionInputIndexerTable
     {
         public ImplCompanyBackendActionInputIndexerTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

@@ -12,6 +12,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IEntityTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplEntityTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Entity>, global::IEntityTable
     {
         public ImplEntityTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

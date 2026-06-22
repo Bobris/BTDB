@@ -17,6 +17,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IDataSamePrefixTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplDataSamePrefixTable : global::BTDB.ODBLayer.RelationDBManipulator<global::DataSamePrefix>, global::IDataSamePrefixTable
     {
         public ImplDataSamePrefixTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

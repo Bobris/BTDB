@@ -13,6 +13,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IProductionTableWithContainsRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplProductionTableWithContains : global::BTDB.ODBLayer.RelationDBManipulator<global::ProductionTrackingDaily>, global::IProductionTableWithContains
     {
         public ImplProductionTableWithContains(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

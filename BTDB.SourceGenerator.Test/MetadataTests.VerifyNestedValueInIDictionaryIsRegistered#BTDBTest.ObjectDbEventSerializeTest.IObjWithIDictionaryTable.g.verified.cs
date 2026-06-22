@@ -14,6 +14,7 @@ namespace BTDBTest;
 [CompilerGenerated]
 file class IObjWithIDictionaryTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplObjWithIDictionaryTable : global::BTDB.ODBLayer.RelationDBManipulator<global::BTDBTest.ObjectDbEventSerializeTest.ObjWithIDictionary>, global::BTDBTest.ObjectDbEventSerializeTest.IObjWithIDictionaryTable
     {
         public ImplObjWithIDictionaryTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

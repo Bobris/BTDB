@@ -3805,7 +3805,7 @@ public class SourceGenerator : IIncrementalGenerator
             """;
 
         context.AddSource(
-            $"{generationInfo.FullName.Replace("global::", "").Replace("<", "[").Replace(">", "]").Replace(" ", "")}.g.cs",
+            CreateHintName(generationInfo.FullName, removeSpaces: true),
             SourceText.From(code, Encoding.UTF8));
     }
 
@@ -4053,6 +4053,7 @@ public class SourceGenerator : IIncrementalGenerator
         var constructorBody = new StringBuilder();
         // language=C#
         declarations.Append($$"""
+                [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
                 public class {{implName}} : global::BTDB.ODBLayer.RelationDBManipulator<{{generationInfo.Implements[0].FullyQualifiedName}}>, {{generationInfo.FullName}}
                 {
             """);
@@ -4779,8 +4780,28 @@ public class SourceGenerator : IIncrementalGenerator
         code.Append("}\n");
 
         context.AddSource(
-            $"{generationInfo.FullName.Replace("global::", "").Replace("<", "[").Replace(">", "]")}.g.cs",
+            CreateHintName(generationInfo.FullName, removeSpaces: false),
             SourceText.From(code.ToString(), Encoding.UTF8));
+    }
+
+    static string CreateHintName(string fullName, bool removeSpaces)
+    {
+        var normalized = fullName.Replace("global::", "").Replace("<", "[").Replace(">", "]");
+        if (removeSpaces)
+        {
+            normalized = normalized.Replace(" ", "");
+        }
+
+        var builder = new StringBuilder(normalized.Length + 5);
+        foreach (var c in normalized)
+        {
+            builder.Append(char.IsLetterOrDigit(c) || c is '.' or '_' or '-' or '[' or ']' or ','
+                ? c
+                : '_');
+        }
+
+        builder.Append(".g.cs");
+        return builder.ToString();
     }
 
     static void AppendSkipValue(StringBuilder declarations, string vfType, int vfi, string indent = "            ")

@@ -11,6 +11,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IItemTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplItemTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Item>, global::IItemTable
     {
         public ImplItemTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

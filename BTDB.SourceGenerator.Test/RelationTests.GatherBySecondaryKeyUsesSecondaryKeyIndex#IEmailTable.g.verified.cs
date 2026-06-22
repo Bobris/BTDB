@@ -13,6 +13,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IEmailTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplEmailTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Person>, global::IEmailTable
     {
         public ImplEmailTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

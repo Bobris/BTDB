@@ -12,6 +12,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IContractTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplContractTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Contract>, global::IContractTable
     {
         public ImplContractTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

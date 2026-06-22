@@ -14,6 +14,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IDocumentTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplDocumentTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Document>, global::IDocumentTable
     {
         public ImplDocumentTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

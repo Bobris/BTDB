@@ -15,6 +15,7 @@ namespace TestNamespace;
 [CompilerGenerated]
 file class IWidgetTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplWidgetTable : global::BTDB.ODBLayer.RelationDBManipulator<global::TestNamespace.Widget>, global::TestNamespace.IWidgetTable
     {
         public ImplWidgetTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

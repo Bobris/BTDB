@@ -15,6 +15,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IJobTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplJobTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Job>, global::IJobTable
     {
         public ImplJobTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

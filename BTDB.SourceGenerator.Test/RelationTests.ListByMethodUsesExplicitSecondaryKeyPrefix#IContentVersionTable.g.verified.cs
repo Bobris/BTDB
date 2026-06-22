@@ -18,6 +18,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IContentVersionTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplContentVersionTable : global::BTDB.ODBLayer.RelationDBManipulator<global::ContentVersion>, global::IContentVersionTable
     {
         public ImplContentVersionTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

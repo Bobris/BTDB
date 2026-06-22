@@ -11,6 +11,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IPeripheryMigrationInfoTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplPeripheryMigrationInfoTable : global::BTDB.ODBLayer.RelationDBManipulator<global::ContinentMigrationInfo>, global::IPeripheryMigrationInfoTable
     {
         public ImplPeripheryMigrationInfoTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

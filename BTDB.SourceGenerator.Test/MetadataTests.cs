@@ -107,6 +107,28 @@ public class MetadataTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyNullableGenericTypeArgumentUsesValidHintName()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public class ArchiveNullableValue<T>
+            {
+                public T? Value { get; set; }
+            }
+
+            [BTDB.Generate]
+            public class CommunicationPiece
+            {
+                public ArchiveNullableValue<DateTime?>? Submitted { get; set; }
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyMoreCollections()
     {
         // language=cs

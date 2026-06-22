@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source generator hint names are now sanitized for nullable generic type arguments.
+- Source-generated relation implementation classes are now marked as internal-use-only obsolete types so reflection-based
+  scans do not treat them as user relation contracts.
+
 ## 35.3.2
 
 ### Fixed

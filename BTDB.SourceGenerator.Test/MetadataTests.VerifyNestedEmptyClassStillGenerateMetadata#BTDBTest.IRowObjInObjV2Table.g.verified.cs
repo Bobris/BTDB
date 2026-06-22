@@ -14,6 +14,7 @@ namespace BTDBTest;
 [CompilerGenerated]
 file class IRowObjInObjV2TableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplRowObjInObjV2Table : global::BTDB.ODBLayer.RelationDBManipulator<global::BTDBTest.RowObjInObjV2>, global::BTDBTest.IRowObjInObjV2Table
     {
         public ImplRowObjInObjV2Table(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

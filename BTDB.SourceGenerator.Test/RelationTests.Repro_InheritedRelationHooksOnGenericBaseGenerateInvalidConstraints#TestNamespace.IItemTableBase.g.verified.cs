@@ -15,6 +15,7 @@ namespace TestNamespace;
 [CompilerGenerated]
 file class IItemTableBaseRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplItemTableBase : global::BTDB.ODBLayer.RelationDBManipulator<global::TestNamespace.Item>, global::TestNamespace.IItemTableBase
     {
         public ImplItemTableBase(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

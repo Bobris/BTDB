@@ -15,6 +15,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IUserNoticeTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplUserNoticeTable : global::BTDB.ODBLayer.RelationDBManipulator<global::UserNotice>, global::IUserNoticeTable
     {
         public ImplUserNoticeTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

@@ -13,6 +13,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class ISimpleRelationRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplSimpleRelation : global::BTDB.ODBLayer.RelationDBManipulator<global::SimpleObject>, global::ISimpleRelation
     {
         public ImplSimpleRelation(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

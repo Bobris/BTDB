@@ -13,6 +13,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IDeliveryRuleTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplDeliveryRuleTable : global::BTDB.ODBLayer.RelationDBManipulator<global::DeliveryRuleV1>, global::IDeliveryRuleTable
     {
         public ImplDeliveryRuleTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

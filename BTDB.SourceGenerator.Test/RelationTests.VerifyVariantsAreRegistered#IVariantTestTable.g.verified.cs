@@ -13,6 +13,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IVariantTestTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplVariantTestTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Test>, global::IVariantTestTable
     {
         public ImplVariantTestTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

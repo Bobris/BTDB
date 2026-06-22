@@ -18,6 +18,7 @@ namespace TestNamespace;
 [CompilerGenerated]
 file class IFakeTeamVisibilityTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplFakeTeamVisibilityTable : global::BTDB.ODBLayer.RelationDBManipulator<global::TestNamespace.FakeTeamVisibility>, global::TestNamespace.IFakeTeamVisibilityTable
     {
         public ImplFakeTeamVisibilityTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

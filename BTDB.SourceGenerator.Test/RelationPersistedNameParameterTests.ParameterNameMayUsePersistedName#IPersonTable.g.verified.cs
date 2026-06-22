@@ -13,6 +13,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IPersonTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplPersonTable : global::BTDB.ODBLayer.RelationDBManipulator<global::Person>, global::IPersonTable
     {
         public ImplPersonTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

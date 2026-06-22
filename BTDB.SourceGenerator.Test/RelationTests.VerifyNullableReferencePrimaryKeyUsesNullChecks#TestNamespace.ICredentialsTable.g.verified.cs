@@ -18,6 +18,7 @@ namespace TestNamespace;
 [CompilerGenerated]
 file class ICredentialsTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplCredentialsTable : global::BTDB.ODBLayer.RelationDBManipulator<global::TestNamespace.Credentials>, global::TestNamespace.ICredentialsTable
     {
         public ImplCredentialsTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

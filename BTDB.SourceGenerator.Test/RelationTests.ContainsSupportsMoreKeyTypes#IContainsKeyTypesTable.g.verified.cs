@@ -23,6 +23,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IContainsKeyTypesTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplContainsKeyTypesTable : global::BTDB.ODBLayer.RelationDBManipulator<global::ContainsKeyTypes>, global::IContainsKeyTypesTable
     {
         public ImplContainsKeyTypesTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)

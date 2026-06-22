@@ -12,6 +12,7 @@ using BTDB.ODBLayer;
 [CompilerGenerated]
 file class IBitmapTableRegistration
 {
+    [Obsolete("BTDB generated relation implementation type is for BTDB internal use only.")]
     public class ImplBitmapTable : global::BTDB.ODBLayer.RelationDBManipulator<global::BitmapRow>, global::IBitmapTable
     {
         public ImplBitmapTable(IObjectDBTransaction transaction, RelationInfo relationInfo) : base(transaction, relationInfo)
