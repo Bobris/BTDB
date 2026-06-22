@@ -763,7 +763,7 @@ public class SourceGenerator : IIncrementalGenerator
         {
             methodsList.Add(new(method.Name, IfVoidNull(method.ReturnType),
                 method.Parameters.Select(p =>
-                    new ParameterInfo(p.Name, p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null,
+                    new ParameterInfo(p.Name, p.Type.ToDisplayString(MethodSignatureTypeFormat), null,
                         p.Type.IsReferenceType, p.IsOptional, null,
                         GetEnumUnderlyingType(p.Type))).ToArray(), true,
                 method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
@@ -1406,7 +1406,7 @@ public class SourceGenerator : IIncrementalGenerator
     /// <summary>
     /// Returns null if the return type is void, otherwise returns the fully qualified type name.
     /// </summary>
-    static readonly SymbolDisplayFormat MethodReturnTypeFormat = new(
+    static readonly SymbolDisplayFormat MethodSignatureTypeFormat = new(
         SymbolDisplayGlobalNamespaceStyle.Included,
         SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
         SymbolDisplayGenericsOptions.IncludeTypeParameters,
@@ -1416,7 +1416,7 @@ public class SourceGenerator : IIncrementalGenerator
     static string? IfVoidNull(ITypeSymbol methodReturnType)
     {
         if (methodReturnType.SpecialType == SpecialType.System_Void) return null;
-        return methodReturnType.ToDisplayString(MethodReturnTypeFormat);
+        return methodReturnType.ToDisplayString(MethodSignatureTypeFormat);
     }
 
     static string? DetectDependencyName(ISymbol parameterSymbol)
@@ -4038,11 +4038,9 @@ public class SourceGenerator : IIncrementalGenerator
             }
         }
 
-        if (generationInfo.Namespace != null)
-        {
-            // language=c#
-            code.Append($"\nnamespace {generationInfo.Namespace};\n");
-        }
+        // Keep generated relation implementation types out of user namespaces. Some applications discover
+        // domain types by namespace and Assembly.GetTypes(), and relation implementations are BTDB internals.
+        code.Append("\nnamespace BTDB.GeneratedRelations;\n");
 
         // language=c#
         var declarations = new StringBuilder();

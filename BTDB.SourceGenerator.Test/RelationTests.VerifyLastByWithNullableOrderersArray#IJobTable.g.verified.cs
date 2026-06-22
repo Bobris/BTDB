@@ -12,6 +12,8 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 2
 // Field: LastUpdate global::System.DateTime
 //           SecondaryIndex LastUpdate: 0 IncludePrimaryKeyOrder 1
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IJobTableRegistration
 {
@@ -23,7 +25,7 @@ file class IJobTableRegistration
         }
 
         [SkipLocalsInit]
-        global::Job? global::IJobTable.LastByLastUpdateOrDefault(global::BTDB.ODBLayer.Constraint<ulong> companyId, global::BTDB.ODBLayer.IOrderer[] orderer)
+        global::Job? global::IJobTable.LastByLastUpdateOrDefault(global::BTDB.ODBLayer.Constraint<ulong> companyId, global::BTDB.ODBLayer.IOrderer[]? orderer)
         {
             var c_c = new ConstraintInfo[1];
             c_c[0].Constraint = companyId;

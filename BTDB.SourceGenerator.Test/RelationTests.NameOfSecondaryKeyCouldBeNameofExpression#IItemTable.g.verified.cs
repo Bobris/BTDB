@@ -16,6 +16,8 @@ using BTDB.ODBLayer;
 //           SecondaryIndex LockDeadline: 3 IncludePrimaryKeyOrder 2
 // Field: LockDeadline global::System.DateTime
 //           SecondaryIndex LockDeadline: 4
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IItemTableRegistration
 {

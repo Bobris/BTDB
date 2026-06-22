@@ -9,6 +9,8 @@ using BTDB.ODBLayer;
 // Field: Id ulong
 //           PrimaryIndex: 1
 // Field: Name string reference
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IProductTableRegistration
 {

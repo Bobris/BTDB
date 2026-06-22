@@ -80,6 +80,22 @@ public class GeneratorTestsBase
             .ToArray();
     }
 
+    protected static IReadOnlyList<GeneratedSourceResult> GetGeneratedSources(string sourceCode)
+    {
+        var generator = new SourceGenerator();
+        var driver = CSharpGeneratorDriver.Create([generator.AsSourceGenerator()]);
+        var compilation = CSharpCompilation.Create("test",
+            [CSharpSyntaxTree.ParseText(sourceCode)],
+            GetMetadataReferences(),
+            new(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+
+        return driver.RunGenerators(compilation)
+            .GetRunResult()
+            .Results
+            .SelectMany(result => result.GeneratedSources)
+            .ToArray();
+    }
+
     private static IEnumerable<MetadataReference> GetMetadataReferences()
     {
         var references = new List<MetadataReference>();

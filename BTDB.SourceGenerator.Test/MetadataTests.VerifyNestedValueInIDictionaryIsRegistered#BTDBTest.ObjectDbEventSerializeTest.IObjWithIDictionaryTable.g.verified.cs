@@ -10,7 +10,7 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 1
 // Field: Dict global::System.Collections.Generic.IDictionary<ulong, global::BTDBTest.ObjectDbEventSerializeTest.Item> reference
 
-namespace BTDBTest;
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IObjWithIDictionaryTableRegistration
 {

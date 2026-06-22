@@ -13,6 +13,8 @@ using BTDB.ODBLayer;
 //           SecondaryIndex Name: 1
 // Field: Age uint
 //           SecondaryIndex Name: 2
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IThingWithSKTableRegistration
 {

@@ -12,6 +12,8 @@ using BTDB.ODBLayer;
 // Field: NoticeId ulong
 //           PrimaryIndex: 2
 //           SecondaryIndex NoticeId: 0
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IUserNoticeTableRegistration
 {

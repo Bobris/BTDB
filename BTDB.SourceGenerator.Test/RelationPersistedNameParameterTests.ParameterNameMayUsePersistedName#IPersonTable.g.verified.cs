@@ -10,6 +10,8 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 1
 // Field: Id ulong
 //           PrimaryIndex: 2
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IPersonTableRegistration
 {

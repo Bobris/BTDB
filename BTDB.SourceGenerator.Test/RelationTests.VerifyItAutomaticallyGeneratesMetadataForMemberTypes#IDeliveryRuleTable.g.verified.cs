@@ -10,6 +10,8 @@ using BTDB.ODBLayer;
 // Field: Id ulong
 //           PrimaryIndex: 1
 // Field: Status int
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IDeliveryRuleTableRegistration
 {

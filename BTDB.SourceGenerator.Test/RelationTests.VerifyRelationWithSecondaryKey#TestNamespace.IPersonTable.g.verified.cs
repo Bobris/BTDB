@@ -18,7 +18,7 @@ using BTDB.ODBLayer;
 // Field: Description string reference
 //           PrimaryIndex: 4 InKeyValue
 
-namespace TestNamespace;
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IPersonTableRegistration
 {

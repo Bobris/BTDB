@@ -8,7 +8,7 @@ using BTDB.ODBLayer;
 // Name: IPersonTable
 // Field: Name string reference
 
-namespace TestNamespace;
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IPersonTableRegistration
 {

@@ -10,6 +10,8 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 1
 // Field: Email string reference
 //           SecondaryIndex Email: 0
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IEmailTableRegistration
 {

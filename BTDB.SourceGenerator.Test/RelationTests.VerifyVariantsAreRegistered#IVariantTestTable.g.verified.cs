@@ -10,6 +10,8 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 1
 // Field: Name string reference
 // Field: Age int
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IVariantTestTableRegistration
 {

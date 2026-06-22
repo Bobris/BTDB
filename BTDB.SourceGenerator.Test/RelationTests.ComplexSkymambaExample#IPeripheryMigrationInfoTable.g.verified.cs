@@ -8,6 +8,8 @@ using BTDB.ODBLayer;
 // Name: IPeripheryMigrationInfoTable
 // Field: CompanyId ulong
 //           PrimaryIndex: 1
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IPeripheryMigrationInfoTableRegistration
 {

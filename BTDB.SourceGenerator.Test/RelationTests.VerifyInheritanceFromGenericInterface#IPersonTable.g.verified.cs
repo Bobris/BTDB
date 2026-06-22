@@ -8,6 +8,8 @@ using BTDB.ODBLayer;
 // Name: IPersonTable
 // Field: Name string reference
 //           PrimaryIndex: 1
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IPersonTableRegistration
 {

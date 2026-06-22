@@ -10,6 +10,8 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 1
 // Field: ProductionDate global::System.DateTime
 //           PrimaryIndex: 2
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IProductionTableWithContainsRegistration
 {

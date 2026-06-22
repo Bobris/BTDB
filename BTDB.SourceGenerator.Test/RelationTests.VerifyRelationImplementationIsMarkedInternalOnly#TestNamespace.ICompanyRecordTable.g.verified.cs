@@ -11,7 +11,7 @@ using BTDB.ODBLayer;
 // Field: Id ulong
 //           PrimaryIndex: 2
 
-namespace TestNamespace;
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class ICompanyRecordTableRegistration
 {

@@ -11,7 +11,7 @@ using BTDB.ODBLayer;
 // Field: Status global::Infrastructure.Impress.Status
 //           PrimaryIndex: 2
 
-namespace Gmc.Cloud.Processing;
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IJobTableRegistration
 {

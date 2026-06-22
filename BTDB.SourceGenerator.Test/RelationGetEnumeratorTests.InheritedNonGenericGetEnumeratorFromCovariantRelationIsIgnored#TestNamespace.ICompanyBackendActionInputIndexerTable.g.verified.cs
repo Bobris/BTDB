@@ -14,7 +14,7 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 3
 // Field: ActionId ulong
 
-namespace TestNamespace;
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class ICompanyBackendActionInputIndexerTableRegistration
 {

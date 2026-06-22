@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Xunit;
@@ -330,6 +331,175 @@ public class RelationTests : GeneratorTestsBase
                 Job? LastByLastUpdateOrDefault(Constraint<ulong> companyId, IOrderer[]? orderer);
             }
             """);
+    }
+
+    [Fact]
+    public void GatherByWithNullableOrderersArrayKeepsNullableSignature()
+    {
+        // language=cs
+        var diagnostics = GetGeneratedCompilationDiagnostics("""
+            #nullable enable
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class RecipientInfo
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong OwnerObjectId { get; set; }
+                [PrimaryKey(3)] public uint RecipientId { get; set; }
+            }
+
+            public interface IRecipientInfoTable : IRelation<RecipientInfo>
+            {
+                ulong GatherById(ICollection<RecipientInfo> target, long skip, long take,
+                    Constraint<ulong> companyId, Constraint<ulong> ownerObjectId,
+                    Constraint<uint> recipientId, IOrderer[]? orderers);
+            }
+            """, DiagnosticSeverity.Error);
+
+        Assert.Empty(diagnostics);
+    }
+
+    [Fact]
+    public void RelationImplementationIsGeneratedOutsideUserNamespace()
+    {
+        // language=cs
+        var generatedSources = GetGeneratedSources("""
+            using BTDB.ODBLayer;
+            using System.Collections.Generic;
+
+            namespace TestNamespace;
+
+            public class FakeTeamVisibility : TeamVisibility<ulong>
+            {
+            }
+
+            public abstract class TeamVisibility<TItemId>
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong TeamId { get; set; }
+                [PrimaryKey(3)] [SecondaryKey("Item", IncludePrimaryKeyOrder = 1)]
+                public TItemId ItemId { get; set; } = default!;
+            }
+
+            public interface ITeamVisibilityTable<TItem, in TItemId> : IRelation<TItem>
+                where TItem : TeamVisibility<TItemId>
+            {
+                TItem FindByIdOrDefault(ulong companyId, ulong teamId, TItemId itemId);
+                IEnumerable<TItem> ListById(ulong companyId, ulong teamId);
+                IEnumerable<TItem> ListByItem(ulong companyId, TItemId itemId);
+            }
+
+            public interface IFakeTeamVisibilityTable : ITeamVisibilityTable<FakeTeamVisibility, ulong>
+            {
+            }
+            """);
+
+        var relationSource = generatedSources.Single(source => source.HintName == "TestNamespace.IFakeTeamVisibilityTable.g.cs")
+            .SourceText
+            .ToString();
+
+        Assert.Contains("namespace BTDB.GeneratedRelations;", relationSource);
+        Assert.DoesNotContain("namespace TestNamespace;", relationSource);
+    }
+
+    [Fact]
+    public void RelationItemWithoutDefaultConstructorUsesUninitializedMetadataCreator()
+    {
+        // language=cs
+        var generatedSources = GetGeneratedSources("""
+            using System;
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public interface ICompanyRecord
+            {
+                ulong CompanyId { get; set; }
+            }
+
+            public enum ResourceState
+            {
+                Active
+            }
+
+            public class CostCenterDb : ICompanyRecord
+            {
+                [PrimaryKey(1)]
+                public ulong CompanyId { get; set; }
+
+                [PrimaryKey(2)]
+                public ulong CostCenterId { get; set; }
+
+                [SecondaryKey("Identifier", IncludePrimaryKeyOrder = 1)]
+                public string Identifier { get; set; }
+
+                public string Name { get; set; }
+
+                public DateTime ModifiedDate { get; set; }
+
+                public ResourceState ResourceState { get; set; }
+
+                public CostCenterDb(ulong companyId, ulong costCenterId, string identifier, string name,
+                    DateTime modifiedDate, ResourceState resourceState)
+                {
+                    CompanyId = companyId;
+                    CostCenterId = costCenterId;
+                    Identifier = identifier;
+                    Name = name;
+                    ModifiedDate = modifiedDate;
+                    ResourceState = resourceState;
+                }
+            }
+
+            public interface ICostCenterTable : IRelation<CostCenterDb>
+            {
+            }
+
+            public class JobCategoryDb(
+                ulong companyId,
+                ulong jobCategoryId,
+                string identifier,
+                string name,
+                DateTime createdDate,
+                ResourceState resourceState) : ICompanyRecord
+            {
+                [PrimaryKey(1)]
+                public ulong CompanyId { get; set; } = companyId;
+
+                [PrimaryKey(2)]
+                public ulong JobCategoryId { get; set; } = jobCategoryId;
+
+                [SecondaryKey("Identifier", IncludePrimaryKeyOrder = 1)]
+                public string Identifier { get; set; } = identifier;
+
+                public string Name { get; set; } = name;
+
+                public DateTime CreatedDate { get; set; } = createdDate;
+
+                public ResourceState ResourceState { get; set; } = resourceState;
+            }
+
+            public interface IJobCategoryTable : IRelation<JobCategoryDb>
+            {
+            }
+            """);
+
+        var costCenterSource = generatedSources.Single(source => source.HintName == "TestNamespace.CostCenterDb.g.cs")
+            .SourceText
+            .ToString();
+
+        Assert.Contains("return RuntimeHelpers.GetUninitializedObject(typeof(global::TestNamespace.CostCenterDb));",
+            costCenterSource);
+        Assert.DoesNotContain("extern static global::TestNamespace.CostCenterDb Creator();", costCenterSource);
+
+        var jobCategorySource = generatedSources.Single(source => source.HintName == "TestNamespace.JobCategoryDb.g.cs")
+            .SourceText
+            .ToString();
+
+        Assert.Contains("return RuntimeHelpers.GetUninitializedObject(typeof(global::TestNamespace.JobCategoryDb));",
+            jobCategorySource);
+        Assert.DoesNotContain("extern static global::TestNamespace.JobCategoryDb Creator();", jobCategorySource);
     }
 
     [Fact]

@@ -11,6 +11,8 @@ using BTDB.ODBLayer;
 // Field: Key string reference
 //           PrimaryIndex: 2
 // Field: Value string reference
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IDocumentTableRegistration
 {

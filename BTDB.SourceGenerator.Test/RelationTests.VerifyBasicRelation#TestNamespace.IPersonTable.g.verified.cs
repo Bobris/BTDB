@@ -12,7 +12,7 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 2
 // Field: Name string reference
 
-namespace TestNamespace;
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IPersonTableRegistration
 {

@@ -9,6 +9,8 @@ using BTDB.ODBLayer;
 // Field: Id ulong
 //           PrimaryIndex: 0
 // Field: Name string reference
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IPersonTableRegistration
 {

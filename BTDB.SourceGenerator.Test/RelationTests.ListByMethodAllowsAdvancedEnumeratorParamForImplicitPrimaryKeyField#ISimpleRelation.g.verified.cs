@@ -10,6 +10,8 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 1
 // Field: Name string reference
 //           SecondaryIndex Name: 0
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class ISimpleRelationRegistration
 {

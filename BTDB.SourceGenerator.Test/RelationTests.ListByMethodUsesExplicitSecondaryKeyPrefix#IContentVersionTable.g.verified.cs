@@ -15,6 +15,8 @@ using BTDB.ODBLayer;
 //           SecondaryIndex State: 4
 // Field: State global::ContentVersionState
 //           SecondaryIndex State: 3 IncludePrimaryKeyOrder 2
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IContentVersionTableRegistration
 {

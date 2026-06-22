@@ -14,7 +14,7 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 3
 //           SecondaryIndex Item: 0 IncludePrimaryKeyOrder 1
 
-namespace TestNamespace;
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IFakeTeamVisibilityTableRegistration
 {

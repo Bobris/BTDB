@@ -8,6 +8,8 @@ using BTDB.ODBLayer;
 // Name: ITestTable
 // Field: Id ulong
 //           PrimaryIndex: 1
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class ITestTableRegistration
 {

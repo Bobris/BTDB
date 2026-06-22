@@ -14,6 +14,8 @@ using BTDB.ODBLayer;
 // Field: C int
 //           PrimaryIndex: 3
 //           SecondaryIndex S: 2
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IDataSamePrefixTableRegistration
 {

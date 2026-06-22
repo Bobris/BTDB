@@ -10,7 +10,7 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 1
 // Field: OO global::BTDBTest.ObjInObjV2 reference
 
-namespace BTDBTest;
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IRowObjInObjV2TableRegistration
 {

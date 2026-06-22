@@ -11,7 +11,7 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 0
 // Field: FileName string reference
 
-namespace TestNamespace;
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IFileTableRegistration
 {

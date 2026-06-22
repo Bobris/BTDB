@@ -9,6 +9,8 @@ using BTDB.ODBLayer;
 // Field: TenantId ulong
 //           PrimaryIndex: 1
 // Field: Name string reference
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IEntityTableRegistration
 {

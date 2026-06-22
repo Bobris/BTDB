@@ -20,6 +20,8 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 6
 // Field: Counters global::System.Collections.Generic.List<ulong> reference
 //           PrimaryIndex: 7
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IContainsKeyTypesTableRegistration
 {

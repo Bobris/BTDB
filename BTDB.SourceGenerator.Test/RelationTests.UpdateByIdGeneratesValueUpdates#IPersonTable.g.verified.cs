@@ -12,6 +12,8 @@ using BTDB.ODBLayer;
 //           PrimaryIndex: 2
 // Field: Name string reference
 // Field: Secret global::BTDB.Encrypted.EncryptedString
+
+namespace BTDB.GeneratedRelations;
 [CompilerGenerated]
 file class IPersonTableRegistration
 {
