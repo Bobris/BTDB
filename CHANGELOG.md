@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.3.2
+
 ### Fixed
 
 - Source-generated relations now read primary and secondary key attribute arguments from metadata for external generic
