@@ -22,13 +22,13 @@ file class IUserNoticeTableRegistration
         }
 
         [SkipLocalsInit]
-        void global::IUserNoticeTable.Insert(UserNotice un)
+        void global::IUserNoticeTable.Insert(global::UserNotice un)
         {
             base.InsertUniqueOrThrow(un);
         }
 
         [SkipLocalsInit]
-        global::System.Collections.Generic.IEnumerable<global::UserNotice> global::IUserNoticeTable.ListByNoticeId(BTDB.ODBLayer.AdvancedEnumeratorParam<uint> noticeId)
+        global::System.Collections.Generic.IEnumerable<global::UserNotice> global::IUserNoticeTable.ListByNoticeId(global::BTDB.ODBLayer.AdvancedEnumeratorParam<uint> noticeId)
         {
             var remappedSecondaryKeyIndex = RemapPrimeSK(0u);
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);

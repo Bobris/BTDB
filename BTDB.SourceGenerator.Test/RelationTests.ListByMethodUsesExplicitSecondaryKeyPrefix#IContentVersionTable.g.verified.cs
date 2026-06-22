@@ -25,7 +25,7 @@ file class IContentVersionTableRegistration
         }
 
         [SkipLocalsInit]
-        global::System.Collections.Generic.IEnumerable<global::ContentVersion> global::IContentVersionTable.ListByState(ulong companyId, ulong contentId, ContentVersionState state, BTDB.ODBLayer.AdvancedEnumeratorParam<uint> param)
+        global::System.Collections.Generic.IEnumerable<global::ContentVersion> global::IContentVersionTable.ListByState(ulong companyId, ulong contentId, global::ContentVersionState state, global::BTDB.ODBLayer.AdvancedEnumeratorParam<uint> param)
         {
             var remappedSecondaryKeyIndex = RemapPrimeSK(0u);
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);

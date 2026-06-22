@@ -18,7 +18,7 @@ file class IItemTableRegistration
         }
 
         [SkipLocalsInit]
-        ulong global::IItemTable.GatherById(System.Collections.Generic.List<Item> items, long skip, long take, BTDB.ODBLayer.Constraint<ulong> id)
+        ulong global::IItemTable.GatherById(global::System.Collections.Generic.List<global::Item> items, long skip, long take, global::BTDB.ODBLayer.Constraint<ulong> id)
         {
             var c_c = new ConstraintInfo[1];
             c_c[0].Constraint = id;

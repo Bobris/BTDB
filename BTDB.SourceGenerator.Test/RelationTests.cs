@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using Microsoft.CodeAnalysis;
 using Xunit;
 
 namespace BTDB.SourceGenerator.Tests;
@@ -168,6 +169,67 @@ public class RelationTests : GeneratorTestsBase
                 Credentials? FindByIdOrDefault(ulong connectorId, ulong companyId, string? domain);
             }
             """);
+    }
+
+    [Fact]
+    public Task RelationMethodParametersUseGlobalQualifiedTypes()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            namespace Infrastructure.Impress
+            {
+                public enum Status
+                {
+                    Ready = 1,
+                }
+            }
+
+            namespace Gmc.Cloud.Infrastructure
+            {
+                public class Shadow
+                {
+                }
+            }
+
+            namespace Gmc.Cloud.Processing
+            {
+                public class Job
+                {
+                    [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                    [PrimaryKey(2)] public global::Infrastructure.Impress.Status Status { get; set; }
+                }
+
+                public interface IJobTable : IRelation<Job>
+                {
+                    Job? FindByIdOrDefault(ulong companyId, global::Infrastructure.Impress.Status status);
+                }
+            }
+            """);
+    }
+
+    [Fact]
+    public void FullyQualifiedDateTimeKeyDoesNotGenerateUnsupportedWrite()
+    {
+        // language=cs
+        var diagnostics = GetGeneratedCompilationDiagnostics("""
+            using BTDB.ODBLayer;
+
+            public class Job
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public global::System.DateTime ChangedAt { get; set; }
+                [PrimaryKey(3)] public ulong JobId { get; set; }
+            }
+
+            public interface IJobTable : IRelation<Job>
+            {
+                bool RemoveById(ulong companyId, global::System.DateTime changedAt, ulong jobId);
+            }
+            """, DiagnosticSeverity.Warning);
+
+        Assert.Empty(diagnostics);
     }
 
     [Fact]

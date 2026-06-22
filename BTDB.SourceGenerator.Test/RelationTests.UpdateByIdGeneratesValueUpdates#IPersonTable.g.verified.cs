@@ -70,7 +70,7 @@ file class IPersonTableRegistration
         }
 
         [SkipLocalsInit]
-        void global::IPersonTable.UpdateByIdSecret(ulong tenantId, ulong id, BTDB.Encrypted.EncryptedString secret)
+        void global::IPersonTable.UpdateByIdSecret(ulong tenantId, ulong id, global::BTDB.Encrypted.EncryptedString secret)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);

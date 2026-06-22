@@ -25,13 +25,13 @@ file class ICompanyBackendActionInputIndexerTableRegistration
         }
 
         [SkipLocalsInit]
-        void global::TestNamespace.ICompanyBackendActionInputIndexerTable.Insert(TestNamespace.CompanyBackendActionInputIndexer indexer)
+        void global::TestNamespace.ICompanyBackendActionInputIndexerTable.Insert(global::TestNamespace.CompanyBackendActionInputIndexer indexer)
         {
             base.InsertUniqueOrThrow(indexer);
         }
 
         [SkipLocalsInit]
-        void global::TestNamespace.ICompanyBackendActionInputIndexerTable.Update(TestNamespace.CompanyBackendActionInputIndexer inputIndexer)
+        void global::TestNamespace.ICompanyBackendActionInputIndexerTable.Update(global::TestNamespace.CompanyBackendActionInputIndexer inputIndexer)
         {
             base.Update(inputIndexer);
         }

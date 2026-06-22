@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source-generated relations now fully qualify method parameter types and normalize fully qualified primitive key types
+  before emitting key writer calls.
+
 ## 35.3.0
 
 ### Fixed

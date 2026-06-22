@@ -59,6 +59,27 @@ public class GeneratorTestsBase
         return Verifier.Verify(runResult);
     }
 
+    protected static Diagnostic[] GetGeneratedCompilationDiagnostics(string sourceCode,
+        DiagnosticSeverity minimumSeverity)
+    {
+        var generator = new SourceGenerator();
+        var driver = CSharpGeneratorDriver.Create([generator.AsSourceGenerator()]);
+        var compilation = CSharpCompilation.Create("test",
+            [CSharpSyntaxTree.ParseText(sourceCode)],
+            GetMetadataReferences(),
+            new(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+        var runResult = driver.RunGenerators(compilation);
+        var generatedSources = runResult.GetRunResult().Results
+            .SelectMany(result => result.GeneratedSources)
+            .Select(source => CSharpSyntaxTree.ParseText(source.SourceText, path: source.HintName))
+            .ToList();
+        var generatedCompilation = compilation.AddSyntaxTrees(generatedSources);
+
+        return generatedCompilation.GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity >= minimumSeverity)
+            .ToArray();
+    }
+
     private static IEnumerable<MetadataReference> GetMetadataReferences()
     {
         var references = new List<MetadataReference>();

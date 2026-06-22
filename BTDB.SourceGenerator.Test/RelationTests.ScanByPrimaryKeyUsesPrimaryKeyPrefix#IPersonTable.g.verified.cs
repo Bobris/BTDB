@@ -19,7 +19,7 @@ file class IPersonTableRegistration
         }
 
         [SkipLocalsInit]
-        global::System.Collections.Generic.IEnumerable<global::Person> global::IPersonTable.ScanById(BTDB.ODBLayer.Constraint<ulong> id)
+        global::System.Collections.Generic.IEnumerable<global::Person> global::IPersonTable.ScanById(global::BTDB.ODBLayer.Constraint<ulong> id)
         {
             var c_c = new ConstraintInfo[1];
             c_c[0].Constraint = id;

@@ -19,7 +19,7 @@ file class IProductTableRegistration
         }
 
         [SkipLocalsInit]
-        global::Product global::IProductTable.FirstByIdOrDefault(BTDB.ODBLayer.Constraint<ulong> id)
+        global::Product global::IProductTable.FirstByIdOrDefault(global::BTDB.ODBLayer.Constraint<ulong> id)
         {
             var c_c = new ConstraintInfo[1];
             c_c[0].Constraint = id;

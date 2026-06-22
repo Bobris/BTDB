@@ -19,7 +19,7 @@ file class IBitmapTableRegistration
         }
 
         [SkipLocalsInit]
-        void global::IBitmapTable.Insert(BitmapRow row)
+        void global::IBitmapTable.Insert(global::BitmapRow row)
         {
             base.InsertUniqueOrThrow(row);
         }

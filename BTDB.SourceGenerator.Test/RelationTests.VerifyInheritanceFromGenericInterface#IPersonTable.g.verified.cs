@@ -18,7 +18,7 @@ file class IPersonTableRegistration
         }
 
         [SkipLocalsInit]
-        void global::IWithInsert<global::Person>.Insert(Person user)
+        void global::IWithInsert<global::Person>.Insert(global::Person user)
         {
             base.InsertUniqueOrThrow(user);
         }

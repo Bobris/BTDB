@@ -20,7 +20,7 @@ file class IEmailTableRegistration
         }
 
         [SkipLocalsInit]
-        global::System.Collections.Generic.IEnumerable<global::Person> global::IEmailTable.ScanByEmail(BTDB.ODBLayer.Constraint<string> email)
+        global::System.Collections.Generic.IEnumerable<global::Person> global::IEmailTable.ScanByEmail(global::BTDB.ODBLayer.Constraint<string> email)
         {
             var c_c = new ConstraintInfo[1];
             c_c[0].Constraint = email;

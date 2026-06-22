@@ -30,7 +30,7 @@ file class IContainsKeyTypesTableRegistration
         }
 
         [SkipLocalsInit]
-        bool global::IContainsKeyTypesTable.Contains(string name, System.TimeSpan duration, System.Net.IPAddress address, System.Version apiVersion, Microsoft.Extensions.Primitives.StringValues tags, System.Collections.Generic.List<string> names, System.Collections.Generic.List<ulong> counters)
+        bool global::IContainsKeyTypesTable.Contains(string name, global::System.TimeSpan duration, global::System.Net.IPAddress address, global::System.Version apiVersion, global::Microsoft.Extensions.Primitives.StringValues tags, global::System.Collections.Generic.List<string> names, global::System.Collections.Generic.List<ulong> counters)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);

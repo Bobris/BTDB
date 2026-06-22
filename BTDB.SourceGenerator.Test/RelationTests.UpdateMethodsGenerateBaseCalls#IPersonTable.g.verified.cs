@@ -19,13 +19,13 @@ file class IPersonTableRegistration
         }
 
         [SkipLocalsInit]
-        void global::IPersonTable.Update(Person person)
+        void global::IPersonTable.Update(global::Person person)
         {
             base.Update(person);
         }
 
         [SkipLocalsInit]
-        void global::IPersonTable.ShallowUpdate(Person person)
+        void global::IPersonTable.ShallowUpdate(global::Person person)
         {
             base.ShallowUpdate(person);
         }

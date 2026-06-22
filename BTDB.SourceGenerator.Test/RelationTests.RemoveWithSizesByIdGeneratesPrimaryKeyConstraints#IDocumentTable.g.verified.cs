@@ -21,7 +21,7 @@ file class IDocumentTableRegistration
         }
 
         [SkipLocalsInit]
-        (ulong Count, ulong KeySizes, ulong ValueSizes) global::IDocumentTable.RemoveWithSizesById(BTDB.ODBLayer.Constraint<ulong> tenantId, BTDB.ODBLayer.Constraint<string> key)
+        (ulong Count, ulong KeySizes, ulong ValueSizes) global::IDocumentTable.RemoveWithSizesById(global::BTDB.ODBLayer.Constraint<ulong> tenantId, global::BTDB.ODBLayer.Constraint<string> key)
         {
             var c_c = new ConstraintInfo[2];
             c_c[0].Constraint = tenantId;

@@ -763,7 +763,7 @@ public class SourceGenerator : IIncrementalGenerator
         {
             methodsList.Add(new(method.Name, IfVoidNull(method.ReturnType),
                 method.Parameters.Select(p =>
-                    new ParameterInfo(p.Name, p.Type.ToDisplayString(), null,
+                    new ParameterInfo(p.Name, p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null,
                         p.Type.IsReferenceType, p.IsOptional, null,
                         GetEnumUnderlyingType(p.Type))).ToArray(), true,
                 method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
@@ -4815,6 +4815,12 @@ public class SourceGenerator : IIncrementalGenerator
         return type;
     }
 
+    static string NormalizeSupportedValueType(string type)
+    {
+        var normalized = NormalizeType(type);
+        return TypeUtilities.RemoveGlobalPrefix(normalized);
+    }
+
     static bool IsReflectionMetadataExcluded(string type)
     {
         return type is "global::System.Net.IPAddress" or "System.Net.IPAddress"
@@ -5038,7 +5044,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (enumUnderlyingType != null)
         {
-            var normalizedUnderlying = NormalizeType(enumUnderlyingType);
+            var normalizedUnderlying = NormalizeSupportedValueType(enumUnderlyingType);
             switch (normalizedUnderlying)
             {
                 case "sbyte":
@@ -5060,7 +5066,7 @@ public class SourceGenerator : IIncrementalGenerator
             }
         }
 
-        var normalizedType = NormalizeType(valueType);
+        var normalizedType = NormalizeSupportedValueType(valueType);
         if (TryGetTupleElementTypes(normalizedType, out var tupleElementTypes))
         {
             for (var i = 0; i < tupleElementTypes.Length; i++)
@@ -5168,7 +5174,7 @@ public class SourceGenerator : IIncrementalGenerator
 
         if (enumUnderlyingType != null)
         {
-            var normalizedUnderlying = NormalizeType(enumUnderlyingType);
+            var normalizedUnderlying = NormalizeSupportedValueType(enumUnderlyingType);
             switch (normalizedUnderlying)
             {
                 case "sbyte":
@@ -5190,7 +5196,7 @@ public class SourceGenerator : IIncrementalGenerator
             }
         }
 
-        var normalizedType = NormalizeType(valueType);
+        var normalizedType = NormalizeSupportedValueType(valueType);
         if (TryGetTupleElementTypes(normalizedType, out var tupleElementTypes))
         {
             for (var i = 0; i < tupleElementTypes.Length; i++)
@@ -5416,19 +5422,20 @@ public class SourceGenerator : IIncrementalGenerator
 
     static string? TryGetNullableUnderlyingType(string valueType)
     {
-        if (valueType.EndsWith("?", StringComparison.Ordinal))
+        var normalizedValueType = NormalizeSupportedValueType(valueType);
+        if (normalizedValueType.EndsWith("?", StringComparison.Ordinal))
         {
-            return valueType.Substring(0, valueType.Length - 1);
+            return normalizedValueType.Substring(0, normalizedValueType.Length - 1);
         }
 
         const string prefix = "System.Nullable<";
-        if (valueType.StartsWith(prefix, StringComparison.Ordinal))
+        if (normalizedValueType.StartsWith(prefix, StringComparison.Ordinal))
         {
-            var start = valueType.IndexOf('<');
-            var end = valueType.LastIndexOf('>');
+            var start = normalizedValueType.IndexOf('<');
+            var end = normalizedValueType.LastIndexOf('>');
             if (start >= 0 && end > start)
             {
-                return valueType.Substring(start + 1, end - start - 1).Trim();
+                return normalizedValueType.Substring(start + 1, end - start - 1).Trim();
             }
         }
 

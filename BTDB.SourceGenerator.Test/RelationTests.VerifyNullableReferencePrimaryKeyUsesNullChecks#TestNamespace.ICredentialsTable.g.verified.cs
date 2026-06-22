@@ -25,7 +25,7 @@ file class ICredentialsTableRegistration
         }
 
         [SkipLocalsInit]
-        bool global::TestNamespace.ICredentialsTable.Contains(ulong connectorId, ulong companyId, string? domain)
+        bool global::TestNamespace.ICredentialsTable.Contains(ulong connectorId, ulong companyId, string domain)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);
@@ -36,7 +36,7 @@ file class ICredentialsTableRegistration
         }
 
         [SkipLocalsInit]
-        global::TestNamespace.Credentials? global::TestNamespace.ICredentialsTable.FindByIdOrDefault(ulong connectorId, ulong companyId, string? domain)
+        global::TestNamespace.Credentials? global::TestNamespace.ICredentialsTable.FindByIdOrDefault(ulong connectorId, ulong companyId, string domain)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);

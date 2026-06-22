@@ -23,7 +23,7 @@ file class IThingWithSKTableRegistration
         }
 
         [SkipLocalsInit]
-        global::System.Collections.Generic.IEnumerable<global::ThingWithSK> global::IThingWithSKTable.ScanByName(BTDB.ODBLayer.Constraint<string> name, BTDB.ODBLayer.Constraint<ulong> age, BTDB.ODBLayer.Constraint<ulong> tenant)
+        global::System.Collections.Generic.IEnumerable<global::ThingWithSK> global::IThingWithSKTable.ScanByName(global::BTDB.ODBLayer.Constraint<string> name, global::BTDB.ODBLayer.Constraint<ulong> age, global::BTDB.ODBLayer.Constraint<ulong> tenant)
         {
             var c_c = new ConstraintInfo[3];
             c_c[0].Constraint = name;
@@ -33,7 +33,7 @@ file class IThingWithSKTableRegistration
         }
 
         [SkipLocalsInit]
-        ulong global::IThingWithSKTable.GatherByName(System.Collections.Generic.List<ThingWithSK> target, long skip, long take, BTDB.ODBLayer.Constraint<string> name, BTDB.ODBLayer.Constraint<ulong> age, BTDB.ODBLayer.IOrderer[] orderers)
+        ulong global::IThingWithSKTable.GatherByName(global::System.Collections.Generic.List<global::ThingWithSK> target, long skip, long take, global::BTDB.ODBLayer.Constraint<string> name, global::BTDB.ODBLayer.Constraint<ulong> age, global::BTDB.ODBLayer.IOrderer[] orderers)
         {
             var c_c = new ConstraintInfo[2];
             c_c[0].Constraint = name;
@@ -42,7 +42,7 @@ file class IThingWithSKTableRegistration
         }
 
         [SkipLocalsInit]
-        global::ThingWithSK? global::IThingWithSKTable.FirstByNameOrDefault(BTDB.ODBLayer.Constraint<string> name, BTDB.ODBLayer.Constraint<ulong> age, BTDB.ODBLayer.IOrderer[] orderers)
+        global::ThingWithSK? global::IThingWithSKTable.FirstByNameOrDefault(global::BTDB.ODBLayer.Constraint<string> name, global::BTDB.ODBLayer.Constraint<ulong> age, global::BTDB.ODBLayer.IOrderer[] orderers)
         {
             var c_c = new ConstraintInfo[2];
             c_c[0].Constraint = name;
@@ -51,7 +51,7 @@ file class IThingWithSKTableRegistration
         }
 
         [SkipLocalsInit]
-        global::ThingWithSK global::IThingWithSKTable.FirstByName(BTDB.ODBLayer.Constraint<string> name, BTDB.ODBLayer.Constraint<ulong> age, BTDB.ODBLayer.IOrderer[] orderers)
+        global::ThingWithSK global::IThingWithSKTable.FirstByName(global::BTDB.ODBLayer.Constraint<string> name, global::BTDB.ODBLayer.Constraint<ulong> age, global::BTDB.ODBLayer.IOrderer[] orderers)
         {
             var c_c = new ConstraintInfo[2];
             c_c[0].Constraint = name;

@@ -21,7 +21,7 @@ file class IProductTableRegistration
         }
 
         [SkipLocalsInit]
-        long global::IProductTable.CountById(ulong companyId, BTDB.ODBLayer.AdvancedEnumeratorParam<ulong> productIdParam)
+        long global::IProductTable.CountById(ulong companyId, global::BTDB.ODBLayer.AdvancedEnumeratorParam<ulong> productIdParam)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);

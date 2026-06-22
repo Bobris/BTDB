@@ -20,7 +20,7 @@ file class IEmailTableRegistration
         }
 
         [SkipLocalsInit]
-        ulong global::IEmailTable.GatherByEmail(System.Collections.Generic.ICollection<Person> items, long skip, long take, BTDB.ODBLayer.Constraint<string> email)
+        ulong global::IEmailTable.GatherByEmail(global::System.Collections.Generic.ICollection<global::Person> items, long skip, long take, global::BTDB.ODBLayer.Constraint<string> email)
         {
             var c_c = new ConstraintInfo[1];
             c_c[0].Constraint = email;

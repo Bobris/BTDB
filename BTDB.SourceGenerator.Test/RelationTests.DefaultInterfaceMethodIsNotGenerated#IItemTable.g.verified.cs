@@ -18,7 +18,7 @@ file class IItemTableRegistration
         }
 
         [SkipLocalsInit]
-        void global::IItemTable.Update(Item item)
+        void global::IItemTable.Update(global::Item item)
         {
             base.Update(item);
         }

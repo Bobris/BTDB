@@ -22,7 +22,7 @@ file class IJobTableRegistration
         }
 
         [SkipLocalsInit]
-        global::Job? global::IJobTable.LastByLastUpdateOrDefault(BTDB.ODBLayer.Constraint<ulong> companyId, BTDB.ODBLayer.IOrderer[]? orderer)
+        global::Job? global::IJobTable.LastByLastUpdateOrDefault(global::BTDB.ODBLayer.Constraint<ulong> companyId, global::BTDB.ODBLayer.IOrderer[] orderer)
         {
             var c_c = new ConstraintInfo[1];
             c_c[0].Constraint = companyId;

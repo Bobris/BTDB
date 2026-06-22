@@ -21,7 +21,7 @@ file class IProductTableRegistration
         }
 
         [SkipLocalsInit]
-        bool global::IProductTable.AnyById(ulong companyId, BTDB.ODBLayer.AdvancedEnumeratorParam<ulong> productIdParam)
+        bool global::IProductTable.AnyById(ulong companyId, global::BTDB.ODBLayer.AdvancedEnumeratorParam<ulong> productIdParam)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);

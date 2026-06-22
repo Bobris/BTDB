@@ -20,7 +20,7 @@ file class IProductionTableWithContainsRegistration
         }
 
         [SkipLocalsInit]
-        bool global::IProductionTableWithContains.Contains(ulong companyId, System.DateTime productionDate)
+        bool global::IProductionTableWithContains.Contains(ulong companyId, global::System.DateTime productionDate)
         {
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
             WriteRelationPKPrefix(ref writer);

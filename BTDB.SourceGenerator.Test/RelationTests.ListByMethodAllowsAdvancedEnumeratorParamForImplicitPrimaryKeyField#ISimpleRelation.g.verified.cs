@@ -20,7 +20,7 @@ file class ISimpleRelationRegistration
         }
 
         [SkipLocalsInit]
-        global::System.Collections.Generic.IEnumerable<global::SimpleObject> global::ISimpleRelation.ListByName(string name, BTDB.ODBLayer.AdvancedEnumeratorParam<ulong> param)
+        global::System.Collections.Generic.IEnumerable<global::SimpleObject> global::ISimpleRelation.ListByName(string name, global::BTDB.ODBLayer.AdvancedEnumeratorParam<ulong> param)
         {
             var remappedSecondaryKeyIndex = RemapPrimeSK(0u);
             var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);
