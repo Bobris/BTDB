@@ -2139,6 +2139,11 @@ public class SourceGenerator : IIncrementalGenerator
             }
         }
 
+        if (attributeData is not null && attributeData.ConstructorArguments.Length > index)
+        {
+            return ConvertToUInt(attributeData.ConstructorArguments[index].Value);
+        }
+
         return null;
     }
 
@@ -2167,6 +2172,17 @@ public class SourceGenerator : IIncrementalGenerator
             }
         }
 
+        if (attributeData is not null)
+        {
+            foreach (var namedArgument in attributeData.NamedArguments)
+            {
+                if (namedArgument.Key == name)
+                {
+                    return ConvertToUInt(namedArgument.Value.Value);
+                }
+            }
+        }
+
         return null;
     }
 
@@ -2189,7 +2205,28 @@ public class SourceGenerator : IIncrementalGenerator
             }
         }
 
+        if (attributeData is not null && attributeData.ConstructorArguments.Length > index)
+        {
+            return attributeData.ConstructorArguments[index].Value as bool?;
+        }
+
         return null;
+    }
+
+    static uint? ConvertToUInt(object? value)
+    {
+        return value switch
+        {
+            byte b => b,
+            sbyte sb => (uint)sb,
+            short s => (uint)s,
+            ushort us => us,
+            int i => (uint)i,
+            uint u => u,
+            long l => (uint)l,
+            ulong ul => (uint)ul,
+            _ => null
+        };
     }
 
     static void GatherCollections(SemanticModel model, IEnumerable<ITypeSymbol> types,

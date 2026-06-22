@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Source-generated relations now read primary and secondary key attribute arguments from metadata for external generic
+  base classes, preventing false duplicate-key diagnostics.
+
 ## 35.3.1
 
 ### Fixed

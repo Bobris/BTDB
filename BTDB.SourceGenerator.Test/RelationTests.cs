@@ -98,6 +98,37 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyRelationItemSupportsInheritedGenericPrimaryKeys()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+            using Sample3rdPartyLib;
+            using System.Collections.Generic;
+
+            namespace TestNamespace;
+
+            public class FakeTeamVisibility : ExternalTeamVisibility<ulong>
+            {
+            }
+
+            public interface ITeamVisibilityTable<TItem, in TItemId> : IRelation<TItem>
+                where TItem : ExternalTeamVisibility<TItemId>
+            {
+                TItem FindByIdOrDefault(ulong companyId, ulong teamId, TItemId itemId);
+                IEnumerable<TItem> ListById(ulong companyId, ulong teamId);
+                IEnumerable<TItem> ListByItem(ulong companyId, TItemId itemId);
+                int RemoveById(ulong companyId, ulong teamId);
+                int RemoveById(ulong companyId, ulong teamId, TItemId itemId);
+            }
+
+            public interface IFakeTeamVisibilityTable : ITeamVisibilityTable<FakeTeamVisibility, ulong>
+            {
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyRelationWithSecondaryKey()
     {
         // language=cs
