@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.ODBLayer;
 using BTDB.Serialization;
@@ -49,6 +50,33 @@ public class ObjectDbNoEmitRelationMetadataTest : ObjectDbTestBase
         finally
         {
             metadata.IndexOfInKeyValue = originalIndexOfInKeyValue;
+            IFieldHandler.UseNoEmitForRelations = oldUseNoEmitForRelations;
+            ObjectDB.ResetAllMetadataCaches();
+        }
+    }
+
+    [Fact]
+    public void EmitForRelationsUsesReflectionSaverWhenGeneratedMetadataMissesField()
+    {
+        var oldUseNoEmitForRelations = IFieldHandler.UseNoEmitForRelations;
+        IFieldHandler.UseNoEmitForRelations = false;
+        ObjectDB.ResetAllMetadataCaches();
+        var metadata = ReflectionMetadata.FindByType(typeof(NoEmitMetadataRow))!;
+        var originalFields = metadata.Fields;
+        metadata.Fields = metadata.Fields.Where(f => f.Name != nameof(NoEmitMetadataRow.Name)).ToArray();
+
+        try
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<INoEmitMetadataTable>();
+
+            table.Upsert(new NoEmitMetadataRow { Id = 1, Name = "value" });
+
+            Assert.Equal("value", table.FindById(1).Name);
+        }
+        finally
+        {
+            metadata.Fields = originalFields;
             IFieldHandler.UseNoEmitForRelations = oldUseNoEmitForRelations;
             ObjectDB.ResetAllMetadataCaches();
         }

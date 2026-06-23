@@ -1998,6 +1998,41 @@ public class RelationInfo
         var onSerialize = metadata.OnSerialize;
         if (!forPrimaryKey) onSerialize = null;
 
+        if (!IFieldHandler.UseNoEmitForRelations)
+        {
+            var method = ILBuilder.Instance.NewMethod<RelationSaver>(saverName);
+            var ilGenerator = method.Generator;
+            IILLocal? offsetInKeyValue = null;
+            if (forPrimaryKey)
+            {
+                offsetInKeyValue = ilGenerator.DeclareLocal(typeof(int));
+                ilGenerator
+                    .LdcI4(0)
+                    .Stloc(offsetInKeyValue);
+            }
+
+            CreateSaverIl(ilGenerator, fields,
+                il => il.Ldarg(2).Castclass(ClientType),
+                il => il.Ldarg(1),
+                il => il.Ldarg(0),
+                offsetInKeyValue == null ? null : il => il.Stloc(offsetInKeyValue));
+
+            if (offsetInKeyValue != null)
+                ilGenerator.Ldloc(offsetInKeyValue);
+            else
+                ilGenerator.LdcI4(0);
+            ilGenerator.Ret();
+
+            var saver = method.Create();
+            if (onSerialize == null) return saver;
+
+            return (IInternalObjectDBTransaction transaction, ref MemWriter writer, object value) =>
+            {
+                onSerialize(value);
+                return saver(transaction, ref writer, value);
+            };
+        }
+
         var anyNeedsCtx = false;
         foreach (var field in fields)
         {
