@@ -1984,24 +1984,103 @@ public class RelationInfo
 
     RelationBeforeRemove? CreateBeforeRemove(IContainer? container)
     {
+        if (!IFieldHandler.UseNoEmitForRelations)
+            return CreateBeforeRemoveByReflection(container, $"RelationBeforeRemove_{Name}");
+
         var metadata = ReflectionMetadata.FindByType(ClientType);
         if (metadata == null) throw new BTDBException($"Cannot find metadata for {ClientType.FullName}");
         return metadata.OnBeforeRemoveFactory?.Invoke(container);
     }
 
+    RelationBeforeRemove? CreateBeforeRemoveByReflection(IContainer? container, string functionName)
+    {
+        var hasBeforeRemove = false;
+        foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
+                                                         BindingFlags.NonPublic))
+        {
+            if (methodInfo.GetCustomAttribute<OnBeforeRemoveAttribute>() == null) continue;
+            if (methodInfo.ReturnType != typeof(void) && methodInfo.ReturnType != typeof(bool))
+                throw new BTDBException("OnBeforeRemove method " + ClientType.ToSimpleName() + "." + methodInfo.Name +
+                                        " must return void or bool.");
+            hasBeforeRemove = true;
+        }
+
+        if (!hasBeforeRemove) return null;
+        var method = ILBuilder.Instance.NewMethod<RelationBeforeRemove>(functionName);
+        var ilGenerator = method.Generator;
+        var clientTypeLoc = ilGenerator.DeclareLocal(ClientType);
+        var resultLoc = ilGenerator.DeclareLocal(typeof(bool));
+        StoreNthArgumentOfTypeIntoLoc(ilGenerator, 1, ClientType, (ushort)clientTypeLoc.Index);
+        ilGenerator
+            .LdcI4(0)
+            .Stloc(resultLoc);
+        foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
+                                                         BindingFlags.NonPublic))
+        {
+            if (methodInfo.GetCustomAttribute<OnBeforeRemoveAttribute>() == null) continue;
+            var parameters = methodInfo.GetParameters();
+            var paramLocs = new IILLocal[parameters.Length];
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameter = parameters[i];
+                if (parameter.ParameterType == typeof(IObjectDBTransaction)) continue;
+                if (container == null)
+                    throw new BTDBException("OnBeforeRemove method " + ClientType.ToSimpleName() + "." +
+                                            methodInfo.Name + " requires container to resolve parameter " +
+                                            parameter.Name + ".");
+                paramLocs[i] = ilGenerator.DeclareLocal(parameter.ParameterType);
+                ilGenerator.Ld(() => container);
+                ilGenerator.Ldstr(parameter.Name!);
+                ilGenerator.Ldtoken(parameter.ParameterType);
+                ilGenerator.Call(() => Type.GetTypeFromHandle(new()));
+                ilGenerator.Callvirt(() => default(IContainer).ResolveNamed("", null));
+                ilGenerator.UnboxAny(parameter.ParameterType);
+                ilGenerator.Stloc(paramLocs[i]);
+            }
+
+            var withBoolResult = methodInfo.ReturnType == typeof(bool);
+            if (withBoolResult)
+            {
+                ilGenerator
+                    .Ldloc(resultLoc);
+            }
+
+            ilGenerator
+                .Ldloc(clientTypeLoc);
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameter = parameters[i];
+                if (parameter.ParameterType == typeof(IObjectDBTransaction))
+                {
+                    ilGenerator.Ldarg(0).Castclass(typeof(IObjectDBTransaction));
+                    continue;
+                }
+
+                ilGenerator.Ldloc(paramLocs[i]);
+            }
+
+            ilGenerator
+                .Call(methodInfo);
+            if (withBoolResult)
+            {
+                ilGenerator.Or().Stloc(resultLoc);
+            }
+        }
+
+        ilGenerator
+            .Ldloc(resultLoc)
+            .Ret();
+        return method.Create();
+    }
+
     unsafe RelationSaver CreateSaver(ReadOnlySpan<TableFieldInfo> fields, string saverName, bool forPrimaryKey)
     {
-        var metadata = ReflectionMetadata.FindByType(ClientType);
-        if (metadata == null)
-            throw new BTDBException($"Cannot find metadata for type {ClientType.ToSimpleName()}");
-
-        var onSerialize = metadata.OnSerialize;
-        if (!forPrimaryKey) onSerialize = null;
-
         if (!IFieldHandler.UseNoEmitForRelations)
         {
             var method = ILBuilder.Instance.NewMethod<RelationSaver>(saverName);
             var ilGenerator = method.Generator;
+            var clientTypeLocal = ilGenerator.DeclareLocal(ClientType);
+            StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType, (ushort)clientTypeLocal.Index);
             IILLocal? offsetInKeyValue = null;
             if (forPrimaryKey)
             {
@@ -2009,10 +2088,22 @@ public class RelationInfo
                 ilGenerator
                     .LdcI4(0)
                     .Stloc(offsetInKeyValue);
+                foreach (var methodInfo in ClientType.GetMethods(BindingFlags.Instance | BindingFlags.Public |
+                                                                 BindingFlags.NonPublic))
+                {
+                    if (methodInfo.GetCustomAttribute<OnSerializeAttribute>() == null) continue;
+                    if (methodInfo.GetParameters().Length != 0)
+                        throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." +
+                                                methodInfo.Name + " must have zero parameters.");
+                    if (methodInfo.ReturnType != typeof(void))
+                        throw new BTDBException("OnSerialize method " + ClientType.ToSimpleName() + "." +
+                                                methodInfo.Name + " must return void.");
+                    ilGenerator.Ldloc(clientTypeLocal).Callvirt(methodInfo);
+                }
             }
 
             CreateSaverIl(ilGenerator, fields,
-                il => il.Ldarg(2).Castclass(ClientType),
+                il => il.Ldloc(clientTypeLocal),
                 il => il.Ldarg(1),
                 il => il.Ldarg(0),
                 offsetInKeyValue == null ? null : il => il.Stloc(offsetInKeyValue));
@@ -2023,15 +2114,14 @@ public class RelationInfo
                 ilGenerator.LdcI4(0);
             ilGenerator.Ret();
 
-            var saver = method.Create();
-            if (onSerialize == null) return saver;
-
-            return (IInternalObjectDBTransaction transaction, ref MemWriter writer, object value) =>
-            {
-                onSerialize(value);
-                return saver(transaction, ref writer, value);
-            };
+            return method.Create();
         }
+
+        var metadata = ReflectionMetadata.FindByType(ClientType);
+        if (metadata == null)
+            throw new BTDBException($"Cannot find metadata for type {ClientType.ToSimpleName()}");
+
+        var onSerialize = forPrimaryKey ? metadata.OnSerialize : null;
 
         var anyNeedsCtx = false;
         foreach (var field in fields)
