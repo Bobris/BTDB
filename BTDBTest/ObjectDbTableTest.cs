@@ -2633,12 +2633,40 @@ namespace BTDBTest
         {
         }
 
+        public class PersonWoConstructorWithStaticMember
+        {
+            public static readonly object StaticMember = new();
+
+            public PersonWoConstructorWithStaticMember(ulong tenantId, string name)
+            {
+                TenantId = tenantId;
+                Name = name;
+            }
+
+            [PrimaryKey(1)] public ulong TenantId { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        public interface IPersonWoConstructorWithStaticMemberTable : IRelation<PersonWoConstructorWithStaticMember>
+        {
+        }
+
         [Fact]
         public void ItemsWithoutDefaultConstructorWorks()
         {
             using var tr = _db.StartTransaction();
             var table = tr.GetRelation<IPersonWoConstructorTable>();
             table.Upsert(new(1) { Name = "Boris" });
+            Assert.Equal("Boris", table.First().Name);
+        }
+
+        [Fact]
+        public void SourceGeneratedItemWithStaticConstructorAndWithoutDefaultConstructorWorks()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IPersonWoConstructorWithStaticMemberTable>();
+            table.Upsert(new(1, "Boris"));
             Assert.Equal("Boris", table.First().Name);
         }
 

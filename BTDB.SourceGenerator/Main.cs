@@ -1633,6 +1633,8 @@ public class SourceGenerator : IIncrementalGenerator
         var hasDefaultConstructor = false;
         foreach (var symbolConstructor in symbol.Constructors)
         {
+            if (symbolConstructor.IsStatic)
+                continue;
             if (symbolConstructor.Parameters.Any(p => SymbolEqualityComparer.Default.Equals(p.Type, symbol)))
                 continue;
             if (constructorParameters != null)
