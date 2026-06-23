@@ -1910,6 +1910,38 @@ public class ObjectDbTableFreeContentTest : IDisposable
         public EmailMessage Content { get; set; }
     }
 
+    [Generate]
+    public class PreviewRequestMap
+    {
+        public IDictionary<ulong, PreviewRequestDb> Requests { get; set; }
+    }
+
+    [Generate]
+    public class PreviewRequestDb
+    {
+        public IList<PreviewErrorBase> Errors { get; set; }
+    }
+
+    [Generate]
+    public class PreviewErrorBase
+    {
+        public string Message { get; set; }
+    }
+
+    [Fact]
+    public void SingletonDictionaryValueCanReferenceNotYetVersionedDBObject()
+    {
+        _db.RegisterType(typeof(PreviewRequestDb));
+        _db.RegisterType(typeof(PreviewErrorBase));
+
+        using var tr = _db.StartTransaction();
+        tr.Delete(new PreviewRequestDb());
+        tr.Delete(new PreviewErrorBase());
+        var map = tr.Singleton<PreviewRequestMap>();
+        map.Requests.Add(1, new PreviewRequestDb { Errors = new List<PreviewErrorBase>() });
+        Assert.Single(map.Requests);
+    }
+
     public class BatchDb
     {
         [PrimaryKey(1)] public Guid ItemId { get; set; }

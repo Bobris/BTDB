@@ -357,6 +357,7 @@ public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IField
             return false;
         }
 
+        tableInfo.EnsureClientTypeVersion();
         return tableInfo.IsFreeContentNeeded(tableInfo.ClientTypeVersion);
     }
 
