@@ -100,16 +100,22 @@ public class RelationBuilder : IRelationBuilder
             relationInfoResolver.ActualOptions.ThrowBTDBException(
                 ItemType.ToSimpleName() + " cannot be registered as singleton");
         _name = InterfaceType.ToSimpleName();
-        var v1 = CreateVersionInfoByMetadata();
-        var v2 = CreateVersionInfoByReflection();
-        if (!RelationVersionInfo.Equal(v1, v2))
+        if (!IFieldHandler.UseNoEmitForRelations)
         {
-            throw new InvalidOperationException("" + ItemType.ToSimpleName() +
-                                                " has different metadata and reflection version info: " + v1 + " vs " +
-                                                v2);
+            ClientRelationVersionInfo = CreateVersionInfoByReflection();
+        }
+        else
+        {
+            var v1 = CreateVersionInfoByMetadata();
+            var v2 = CreateVersionInfoByReflection();
+            if (!RelationVersionInfo.Equal(v1, v2))
+                throw new InvalidOperationException("" + ItemType.ToSimpleName() +
+                                                    " has different metadata and reflection version info: " + v1 +
+                                                    " vs " + v2);
+
+            ClientRelationVersionInfo = v1;
         }
 
-        ClientRelationVersionInfo = v1;
         _relationDbManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(ItemType);
         LoadTypes = [ItemType];
         DelegateCreator = Build();
