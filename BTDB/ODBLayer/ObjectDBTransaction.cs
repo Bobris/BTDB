@@ -102,7 +102,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         var tableId = reader.ReadVUInt32();
         var tableVersion = reader.ReadVUInt32();
         var tableInfo = _owner.TablesInfo.FindById(tableId);
-        if (tableInfo == null) throw new UnknownInlineObjectTypeInFreeContentException();
+        if (tableInfo == null) _owner.ActualOptions.ThrowBTDBException($"Unknown TypeId {tableId} of inline object");
         if (TryToEnsureClientTypeNotNull(tableInfo))
         {
             tableInfo.GetLoader(tableVersion); // Create loader eagerly will register all nested types
@@ -1064,8 +1064,4 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         cursor.EraseAll(ObjectDB.AllRelationsPKPrefix);
         cursor.EraseAll(ObjectDB.AllRelationsSKPrefix);
     }
-}
-
-class UnknownInlineObjectTypeInFreeContentException : Exception
-{
 }
