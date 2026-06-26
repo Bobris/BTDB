@@ -2757,9 +2757,10 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
         else
         {
             outsideReader.SetCurrentPosition(startPosition);
-            if (!SkipObject(ref outsideReader))
+            if (!ReadObject(ref outsideReader, out _))
                 return;
 
+            RegisterObject(new object());
             Transaction!.FreeContentInNativeObject(ref outsideReader, this);
             ReadObjectDone(ref outsideReader);
         }

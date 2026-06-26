@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- ObjectDB relation free-content cleanup now registers inline objects before traversing their nested free content,
+  preventing list-held inline objects from being re-read from an invalid reader position.
+
 ## 35.3.10
 
 ### Fixed
