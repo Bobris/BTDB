@@ -6,8 +6,8 @@
 
 ### Fixed
 
-- ObjectDB relation free-content cleanup now aborts traversal when old inline object content references a table type
-  unavailable in the current table map, preventing updates from failing while cleaning obsolete nested content.
+- ObjectDB relation free-content cleanup now aborts traversal when old inline object content references an unknown table
+  type, preventing updates from failing while cleaning obsolete nested content.
 
 ## 35.3.11
 

@@ -2752,11 +2752,6 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
                 var objectDb = (ObjectDB)Transaction.Owner;
                 var tableInfo = objectDb.TablesInfo.FindById(tableId);
                 if (tableInfo == null)
-                {
-                    objectDb.TablesInfo.LoadTables(ObjectDB.LoadTablesEnum(Transaction.KeyValueDBTransaction!));
-                    tableInfo = objectDb.TablesInfo.FindById(tableId);
-                }
-                if (tableInfo == null)
                     return;
                 var tableVersion = reader.ReadVUInt32();
                 var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
