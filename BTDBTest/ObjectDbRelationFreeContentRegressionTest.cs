@@ -103,6 +103,89 @@ public class ObjectDbRelationFreeContentRegressionTest : IDisposable
         bool RemoveById(ulong localOfficeId, ulong itemId);
     }
 
+    public class ReleaseLike
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public string Version { get; set; }
+        public string Label { get; set; }
+        public bool Inactive { get; set; }
+        public uint Build { get; set; }
+        public IList<PackageLike> Packages { get; set; }
+        public string Description { get; set; }
+        public IDictionary<int, string> GroupsModelMapping { get; set; }
+        public IList<int> LegacyModels { get; set; }
+        public ushort LicensedModulesBlockId { get; set; }
+    }
+
+    public class PackageLike
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public bool IsMandatory { get; set; }
+        public uint Version { get; set; }
+        public bool IsActive { get; set; }
+        public IList<string> Applications { get; set; }
+        public IList<CounterLike> Counters { get; set; }
+        public IList<string> Options { get; set; }
+        public IList<string> OtherValues { get; set; }
+        public IList<string> LicensedModules { get; set; }
+        public ISet<string> LicensedAsAServices { get; set; }
+        public ISet<string> LicensedCloudModules { get; set; }
+        public bool IsDisabled { get; set; }
+        public IList<string> Requires { get; set; }
+        public IList<string> ExcludedFromSelection { get; set; }
+        public string Info { get; set; }
+        public IList<int> GroupsToShown { get; set; }
+        public bool Internal { get; set; }
+    }
+
+    public class CounterLike
+    {
+        public string Name { get; set; }
+        public short CounterId { get; set; }
+        public long VolumeAmount { get; set; }
+        public IList<long> VolumeAmounts { get; set; }
+        public string VolumeUnitType { get; set; }
+        public IList<string> VolumeUnitTypes { get; set; }
+        public CounterTypeLike Type { get; set; }
+        public CounterSubTypeLike SubType { get; set; }
+        public bool DisplayChart { get; set; }
+        public bool HideSettingsMode { get; set; }
+        public int Step { get; set; }
+        public ulong MaxValue { get; set; }
+        public ulong MinValue { get; set; }
+        public bool DoNotShowThreshold { get; set; }
+        public short ClientCounterId { get; set; }
+        public IList<short> AddToCounters { get; set; }
+        public IList<short> AddToFirtsActiveCounter { get; set; }
+        public bool HideConsumptionForCustomer { get; set; }
+        public bool IsOutput { get; set; }
+        public bool HasOutputs { get; set; }
+        public string Application { get; set; }
+        public bool NonProdAlertDefault { get; set; }
+    }
+
+    public enum CounterTypeLike
+    {
+        Total,
+        Maximal,
+        Merged,
+        TotalPerDay
+    }
+
+    public enum CounterSubTypeLike
+    {
+        Period,
+        Current
+    }
+
+    public interface IReleaseLikeTable : IRelation<ReleaseLike>
+    {
+        void Insert(ReleaseLike release);
+        ReleaseLike FindById(ulong id);
+        void Update(ReleaseLike release);
+    }
+
     [Fact]
     public void RemoveByIdFreesSampleConfigurationWithNestedDictionaries()
     {
@@ -172,6 +255,59 @@ public class ObjectDbRelationFreeContentRegressionTest : IDisposable
         {
             var table = creator(tr);
             Assert.True(table.RemoveById(1, 2));
+            tr.Commit();
+        }
+    }
+
+    [Fact]
+    public void UpdateFreesReleaseLikeNestedPackageCounters()
+    {
+        Func<IObjectDBTransaction, IReleaseLikeTable> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<IReleaseLikeTable>("ReleaseLike");
+            var table = creator(tr);
+            table.Insert(new ReleaseLike
+            {
+                Id = 1,
+                Packages =
+                [
+                    new PackageLike
+                    {
+                        Id = "PKG1",
+                        Name = "Package 1",
+                        Counters =
+                        [
+                            new CounterLike { CounterId = 1, Name = "a" },
+                            new CounterLike { CounterId = 4, Name = "aa" },
+                            new CounterLike { CounterId = 6, Name = "ab" },
+                            new CounterLike { CounterId = 7, Name = "ab" }
+                        ]
+                    },
+                    new PackageLike
+                    {
+                        Id = "PKG2",
+                        Name = "Package 2",
+                        Counters =
+                        [
+                            new CounterLike { CounterId = 2, Name = "b" },
+                            new CounterLike { CounterId = 1, Name = "bb" },
+                            new CounterLike { CounterId = 5, DoNotShowThreshold = true },
+                            new CounterLike { CounterId = 8 }
+                        ]
+                    }
+                ]
+            });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var release = creator(tr).FindById(1);
+            var counter = release.Packages[1].Counters[1];
+            counter.Type = CounterTypeLike.Maximal;
+            counter.SubType = CounterSubTypeLike.Current;
+            creator(tr).Update(release);
             tr.Commit();
         }
     }

@@ -456,14 +456,16 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
                     ObjectDB.AllDictionariesPrefixLen), dictId, len);
 
             Span<byte> buffer = stackalloc byte[4096];
-            using var cursor = ((DBReaderCtx)ctx).GetTransaction()!.KeyValueDBTransaction.CreateCursor();
+            var freeCtx = (DBReaderWithFreeInfoCtx)ctx;
+            var transaction = freeCtx.GetTransaction()!;
+            using var cursor = transaction.KeyValueDBTransaction.CreateCursor();
             while (cursor.FindNextKey(prefix))
             {
                 var valueSpan = cursor.GetValueSpan(ref buffer);
                 fixed (void* _ = valueSpan)
                 {
                     var valueReader = MemReader.CreateFromPinnedSpan(valueSpan);
-                    _valuesHandler.FreeContent(ref valueReader, ctx);
+                    _valuesHandler.FreeContent(ref valueReader, freeCtx.CreateNestedContext());
                 }
             }
         }

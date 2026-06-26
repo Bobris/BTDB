@@ -2644,13 +2644,7 @@ public class RelationInfo
         {
             var valueReader = MemReader.CreateFromPinnedSpan(valueBytes);
             var version = valueReader.ReadVUInt32();
-            try
-            {
-                GetIDictFinder(version).Invoke(tr, ref valueReader, dictionaries);
-            }
-            catch (UnknownInlineObjectTypeInFreeContentException)
-            {
-            }
+            GetIDictFinder(version).Invoke(tr, ref valueReader, dictionaries);
         }
     }
 
@@ -2712,6 +2706,8 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
 {
     readonly IList<ulong> _freeDictionaries;
     HashSet<int>? _seenObjects;
+    long _lastNativeObjectPosition;
+    long _lastNativeObjectId;
 
     public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, IList<ulong> freeDictionaries,
         bool reuseInlineObjectReferencesInNestedFreeContent = false)
@@ -2724,6 +2720,13 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
     public IList<ulong> DictIds => _freeDictionaries;
 
     internal bool ReuseInlineObjectReferencesInNestedFreeContent { get; }
+
+    internal DBReaderWithFreeInfoCtx CreateNestedContext(
+        bool reuseInlineObjectReferencesInNestedFreeContent = false)
+    {
+        return new DBReaderWithFreeInfoCtx(Transaction!, _freeDictionaries,
+            reuseInlineObjectReferencesInNestedFreeContent);
+    }
 
     public override void RegisterDict(ulong dictId)
     {
@@ -2750,7 +2753,9 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
     [SkipLocalsInit]
     public override unsafe void FreeContentInNativeObject(ref MemReader outsideReader)
     {
+        _lastNativeObjectPosition = outsideReader.GetCurrentPosition();
         var id = outsideReader.ReadVInt64();
+        _lastNativeObjectId = id;
         if (id == 0)
         {
         }
@@ -2774,7 +2779,8 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
                 var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
                 if (freeContentTuple.Item1)
                 {
-                    freeContentTuple.Item2(Transaction, null, ref reader, _freeDictionaries, this);
+                    freeContentTuple.Item2(Transaction, null, ref reader, _freeDictionaries,
+                        CreateNestedContext(reuseInlineObjectReferencesInNestedFreeContent: true));
                 }
             }
         }
@@ -2782,7 +2788,10 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
         {
             var ido = (int)-id - 1;
             if ((_seenObjects ??= []).Add(ido))
-                Transaction!.FreeContentInNativeObject(ref outsideReader, this);
+                Transaction!.FreeContentInNativeObject(ref outsideReader, CreateNestedContext());
         }
     }
+
+    public override string ToString() =>
+        $"free-pos:{_lastNativeObjectPosition} free-id:{_lastNativeObjectId} seen:{_seenObjects?.Count ?? 0}";
 }
