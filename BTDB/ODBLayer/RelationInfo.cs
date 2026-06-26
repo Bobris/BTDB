@@ -2675,7 +2675,7 @@ public class RelationInfo
 
         return (transaction, ref reader, ids) =>
         {
-            var ctx = new DBReaderWithFreeInfoCtx(transaction, ids);
+            var ctx = new DBReaderWithFreeInfoCtx(transaction, ids, preserveInlineObjectReferences: true);
             foreach (var handler in handlers)
             {
                 handler.FreeContent(ref reader, ctx);
@@ -2705,15 +2705,19 @@ public class RelationInfo
 public class DBReaderWithFreeInfoCtx : DBReaderCtx
 {
     readonly IList<ulong> _freeDictionaries;
-    StructList<bool> _seenObjects;
+    HashSet<int>? _seenObjects;
 
-    public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, IList<ulong> freeDictionaries)
+    public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, IList<ulong> freeDictionaries,
+        bool preserveInlineObjectReferences = false)
         : base(transaction)
     {
         _freeDictionaries = freeDictionaries;
+        PreserveInlineObjectReferences = preserveInlineObjectReferences;
     }
 
     public IList<ulong> DictIds => _freeDictionaries;
+
+    internal bool PreserveInlineObjectReferences { get; }
 
     public override void RegisterDict(ulong dictId)
     {
@@ -2746,23 +2750,15 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
                 var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
                 if (freeContentTuple.Item1)
                 {
-                    freeContentTuple.Item2(Transaction, null, ref reader, _freeDictionaries);
+                    freeContentTuple.Item2(Transaction, null, ref reader, _freeDictionaries, null);
                 }
             }
         }
         else
         {
             var ido = (int)-id - 1;
-            if (!AlreadyProcessedInstance(ido))
+            if ((_seenObjects ??= []).Add(ido))
                 Transaction!.FreeContentInNativeObject(ref outsideReader, this);
         }
-    }
-
-    bool AlreadyProcessedInstance(int ido)
-    {
-        while (_seenObjects.Count <= ido) _seenObjects.Add(false);
-        var res = _seenObjects[ido];
-        _seenObjects[ido] = true;
-        return res;
     }
 }

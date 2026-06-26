@@ -110,7 +110,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
         var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
         var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
-        freeContentTuple.Item2(this, null, ref reader, readerWithFree.DictIds);
+        freeContentTuple.Item2(this, null, ref reader, readerWithFree.DictIds, readerWithFree);
     }
 
     public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)

@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- ObjectDB relation row removal now preserves inline object reference tracking while freeing nested dictionary content,
+  preventing reads past the end of complex inline object payloads.
+
 ## 35.3.7
 
 ## 35.3.6

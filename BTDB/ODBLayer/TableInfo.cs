@@ -21,7 +21,7 @@ delegate void ObjectLoader(IInternalObjectDBTransaction transaction, DBObjectMet
     ref MemReader reader, object value);
 
 delegate void ObjectFreeContent(IInternalObjectDBTransaction transaction, DBObjectMetadata? metadata,
-    ref MemReader reader, IList<ulong> dictIds);
+    ref MemReader reader, IList<ulong> dictIds, DBReaderWithFreeInfoCtx? ctx);
 
 public class TableInfo
 {
@@ -887,16 +887,18 @@ public class TableInfo
         var handlers = handlerList.ToArray();
         return anyNeedsCtx
             ? Tuple.Create(doesNeedFreeContent, (ObjectFreeContent)((transaction, metadata,
-                ref reader, dictIds) =>
+                ref reader, dictIds, ctx) =>
             {
-                var ctx = new DBReaderWithFreeInfoCtx(transaction, dictIds);
+                ctx = ctx is { PreserveInlineObjectReferences: true }
+                    ? ctx
+                    : new DBReaderWithFreeInfoCtx(transaction, dictIds);
                 foreach (var handler in handlers)
                 {
                     handler.FreeContent(ref reader, ctx);
                 }
             }))
             : Tuple.Create(doesNeedFreeContent, (ObjectFreeContent)((transaction, metadata,
-                ref reader, dictIds) =>
+                ref reader, dictIds, ctx) =>
             {
                 foreach (var handler in handlers)
                 {
