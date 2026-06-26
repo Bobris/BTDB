@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.3.17
+
 ### Fixed
 
 - ObjectDB relation free-content cleanup again tolerates unknown inline object types while discovering nested
