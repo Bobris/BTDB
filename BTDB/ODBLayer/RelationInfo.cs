@@ -2644,7 +2644,13 @@ public class RelationInfo
         {
             var valueReader = MemReader.CreateFromPinnedSpan(valueBytes);
             var version = valueReader.ReadVUInt32();
-            GetIDictFinder(version).Invoke(tr, ref valueReader, dictionaries);
+            try
+            {
+                GetIDictFinder(version).Invoke(tr, ref valueReader, dictionaries);
+            }
+            catch (UnknownInlineObjectTypeInFreeContentException)
+            {
+            }
         }
     }
 
@@ -2743,7 +2749,13 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
             {
                 var reader = MemReader.CreateFromPinnedSpan(valueSpan);
                 var tableId = reader.ReadVUInt32();
-                var tableInfo = ((ObjectDB)Transaction.Owner).TablesInfo.FindById(tableId);
+                var objectDb = (ObjectDB)Transaction.Owner;
+                var tableInfo = objectDb.TablesInfo.FindById(tableId);
+                if (tableInfo == null)
+                {
+                    objectDb.TablesInfo.LoadTables(ObjectDB.LoadTablesEnum(Transaction.KeyValueDBTransaction!));
+                    tableInfo = objectDb.TablesInfo.FindById(tableId);
+                }
                 if (tableInfo == null)
                     return;
                 var tableVersion = reader.ReadVUInt32();

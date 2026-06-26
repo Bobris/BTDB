@@ -101,8 +101,8 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
     {
         var tableId = reader.ReadVUInt32();
         var tableVersion = reader.ReadVUInt32();
-        var tableInfo = _owner.TablesInfo.FindById(tableId);
-        if (tableInfo == null) _owner.ActualOptions.ThrowBTDBException($"Unknown TypeId {tableId} of inline object");
+        var tableInfo = FindTableInfoById(tableId);
+        if (tableInfo == null) throw new UnknownInlineObjectTypeInFreeContentException();
         if (TryToEnsureClientTypeNotNull(tableInfo))
         {
             tableInfo.GetLoader(tableVersion); // Create loader eagerly will register all nested types
@@ -111,6 +111,15 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
         var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
         freeContentTuple.Item2(this, null, ref reader, readerWithFree.DictIds, readerWithFree);
+    }
+
+    TableInfo? FindTableInfoById(uint tableId)
+    {
+        var tableInfo = _owner.TablesInfo.FindById(tableId);
+        if (tableInfo != null) return tableInfo;
+
+        _owner.TablesInfo.LoadTables(ObjectDB.LoadTablesEnum(_keyValueTr!));
+        return _owner.TablesInfo.FindById(tableId);
     }
 
     public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
@@ -1064,4 +1073,8 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         cursor.EraseAll(ObjectDB.AllRelationsPKPrefix);
         cursor.EraseAll(ObjectDB.AllRelationsSKPrefix);
     }
+}
+
+class UnknownInlineObjectTypeInFreeContentException : Exception
+{
 }
