@@ -2750,7 +2750,7 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
                 var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
                 if (freeContentTuple.Item1)
                 {
-                    freeContentTuple.Item2(Transaction, null, ref reader, _freeDictionaries, null);
+                    freeContentTuple.Item2(Transaction, null, ref reader, _freeDictionaries, this);
                 }
             }
         }
