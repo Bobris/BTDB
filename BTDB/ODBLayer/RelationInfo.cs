@@ -2681,7 +2681,7 @@ public class RelationInfo
 
         return (transaction, ref reader, ids) =>
         {
-            var ctx = new DBReaderWithFreeInfoCtx(transaction, ids, preserveInlineObjectReferences: true);
+            var ctx = new DBReaderWithFreeInfoCtx(transaction, ids, reuseInlineObjectReferencesInNestedFreeContent: true);
             foreach (var handler in handlers)
             {
                 handler.FreeContent(ref reader, ctx);
@@ -2711,28 +2711,45 @@ public class RelationInfo
 public class DBReaderWithFreeInfoCtx : DBReaderCtx
 {
     readonly IList<ulong> _freeDictionaries;
+    HashSet<int>? _seenObjects;
 
     public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, IList<ulong> freeDictionaries,
-        bool preserveInlineObjectReferences = false)
+        bool reuseInlineObjectReferencesInNestedFreeContent = false)
         : base(transaction)
     {
         _freeDictionaries = freeDictionaries;
-        PreserveInlineObjectReferences = preserveInlineObjectReferences;
+        ReuseInlineObjectReferencesInNestedFreeContent = reuseInlineObjectReferencesInNestedFreeContent;
     }
 
     public IList<ulong> DictIds => _freeDictionaries;
 
-    internal bool PreserveInlineObjectReferences { get; }
+    internal bool ReuseInlineObjectReferencesInNestedFreeContent { get; }
 
     public override void RegisterDict(ulong dictId)
     {
         _freeDictionaries.Add(dictId);
     }
 
+    public override bool SkipObject(ref MemReader reader)
+    {
+        var id = reader.ReadVInt64();
+        if (id == 0)
+        {
+            return false;
+        }
+
+        if (id is <= int.MinValue or > 0)
+        {
+            return false;
+        }
+
+        var ido = (int)-id - 1;
+        return (_seenObjects ??= []).Add(ido);
+    }
+
     [SkipLocalsInit]
     public override unsafe void FreeContentInNativeObject(ref MemReader outsideReader)
     {
-        var startPosition = outsideReader.GetCurrentPosition();
         var id = outsideReader.ReadVInt64();
         if (id == 0)
         {
@@ -2763,13 +2780,9 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
         }
         else
         {
-            outsideReader.SetCurrentPosition(startPosition);
-            if (!ReadObject(ref outsideReader, out _))
-                return;
-
-            RegisterObject(new object());
-            Transaction!.FreeContentInNativeObject(ref outsideReader, this);
-            ReadObjectDone(ref outsideReader);
+            var ido = (int)-id - 1;
+            if ((_seenObjects ??= []).Add(ido))
+                Transaction!.FreeContentInNativeObject(ref outsideReader, this);
         }
     }
 }

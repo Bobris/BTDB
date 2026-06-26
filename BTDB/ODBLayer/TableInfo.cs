@@ -889,7 +889,7 @@ public class TableInfo
             ? Tuple.Create(doesNeedFreeContent, (ObjectFreeContent)((transaction, metadata,
                 ref reader, dictIds, ctx) =>
             {
-                ctx = ctx is { PreserveInlineObjectReferences: true }
+                ctx = ctx is { ReuseInlineObjectReferencesInNestedFreeContent: true }
                     ? ctx
                     : new DBReaderWithFreeInfoCtx(transaction, dictIds);
                 foreach (var handler in handlers)

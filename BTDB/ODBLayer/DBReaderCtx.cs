@@ -88,7 +88,7 @@ public class DBReaderCtx : IDBReaderCtx
         return @object;
     }
 
-    public bool SkipObject(ref MemReader reader)
+    public virtual bool SkipObject(ref MemReader reader)
     {
         var id = reader.ReadVInt64();
         if (id == 0)

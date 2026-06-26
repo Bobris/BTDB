@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Simplified ObjectDB relation free-content cleanup for repeated inline native object references without re-reading or
+  skipping object bodies.
+
 ## 35.3.13
 
 ## 35.3.12
