@@ -2705,7 +2705,6 @@ public class RelationInfo
 public class DBReaderWithFreeInfoCtx : DBReaderCtx
 {
     readonly IList<ulong> _freeDictionaries;
-    HashSet<int>? _seenObjects;
 
     public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, IList<ulong> freeDictionaries,
         bool preserveInlineObjectReferences = false)
@@ -2727,6 +2726,7 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
     [SkipLocalsInit]
     public override unsafe void FreeContentInNativeObject(ref MemReader outsideReader)
     {
+        var startPosition = outsideReader.GetCurrentPosition();
         var id = outsideReader.ReadVInt64();
         if (id == 0)
         {
@@ -2756,9 +2756,12 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
         }
         else
         {
-            var ido = (int)-id - 1;
-            if ((_seenObjects ??= []).Add(ido))
-                Transaction!.FreeContentInNativeObject(ref outsideReader, this);
+            outsideReader.SetCurrentPosition(startPosition);
+            if (!SkipObject(ref outsideReader))
+                return;
+
+            Transaction!.FreeContentInNativeObject(ref outsideReader, this);
+            ReadObjectDone(ref outsideReader);
         }
     }
 }

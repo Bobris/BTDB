@@ -140,6 +140,42 @@ public class ObjectDbRelationFreeContentRegressionTest : IDisposable
         }
     }
 
+    [Fact]
+    public void RemoveByIdFreesSampleConfigurationWithSharedInlineObject()
+    {
+        Func<IObjectDBTransaction, ISampleConfigurationTable> creator;
+        var sharedReport = new SampleConfigurationReportDto
+        {
+            Name = "Shared",
+            Error = CreateErrorInfo()
+        };
+
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ISampleConfigurationTable>("SampleConfiguration");
+            var table = creator(tr);
+            table.Insert(new SampleConfigurationDb
+            {
+                LocalOfficeId = 1,
+                ItemId = 2,
+                ReportList = new SampleConfigurationReportListDto
+                {
+                    Items = [sharedReport, sharedReport]
+                },
+                Name = "Preloaded configuration",
+                UsedInCompanyIds = new Dictionary<ulong, bool> { [1] = true, [2] = false }
+            });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var table = creator(tr);
+            Assert.True(table.RemoveById(1, 2));
+            tr.Commit();
+        }
+    }
+
     static ErrorInfo CreateErrorInfo()
     {
         return new ErrorInfo
