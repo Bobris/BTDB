@@ -2644,7 +2644,13 @@ public class RelationInfo
         {
             var valueReader = MemReader.CreateFromPinnedSpan(valueBytes);
             var version = valueReader.ReadVUInt32();
-            GetIDictFinder(version).Invoke(tr, ref valueReader, dictionaries);
+            try
+            {
+                GetIDictFinder(version).Invoke(tr, ref valueReader, dictionaries);
+            }
+            catch (UnknownInlineObjectTypeInFreeContentException)
+            {
+            }
         }
     }
 
