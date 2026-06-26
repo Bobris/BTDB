@@ -2706,8 +2706,6 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
 {
     readonly IList<ulong> _freeDictionaries;
     HashSet<int>? _seenObjects;
-    long _lastNativeObjectPosition;
-    long _lastNativeObjectId;
 
     public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, IList<ulong> freeDictionaries,
         bool reuseInlineObjectReferencesInNestedFreeContent = false)
@@ -2753,9 +2751,7 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
     [SkipLocalsInit]
     public override unsafe void FreeContentInNativeObject(ref MemReader outsideReader)
     {
-        _lastNativeObjectPosition = outsideReader.GetCurrentPosition();
         var id = outsideReader.ReadVInt64();
-        _lastNativeObjectId = id;
         if (id == 0)
         {
         }
@@ -2791,7 +2787,4 @@ public class DBReaderWithFreeInfoCtx : DBReaderCtx
                 Transaction!.FreeContentInNativeObject(ref outsideReader, CreateNestedContext());
         }
     }
-
-    public override string ToString() =>
-        $"free-pos:{_lastNativeObjectPosition} free-id:{_lastNativeObjectId} seen:{_seenObjects?.Count ?? 0}";
 }
