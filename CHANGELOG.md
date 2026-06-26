@@ -2,6 +2,13 @@
 
 ## [unreleased]
 
+## 35.3.10
+
+### Fixed
+
+- ObjectDB relation free-content cleanup now preserves inline object reference tracking while traversing OID-backed
+  native object fields.
+
 ## 35.3.9
 
 ### Fixed
