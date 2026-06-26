@@ -2,6 +2,13 @@
 
 ## [unreleased]
 
+## 35.3.16
+
+### Fixed
+
+- ObjectDB relation free-content cleanup again tolerates unknown inline object types while discovering nested
+  dictionary content to free.
+
 ## 35.3.15
 
 ## 35.3.14
