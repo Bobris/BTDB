@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.3.11
+
 ### Fixed
 
 - ObjectDB relation free-content cleanup now registers inline objects before traversing their nested free content,
