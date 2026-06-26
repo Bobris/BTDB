@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.3.12
+
 ### Fixed
 
 - ObjectDB relation free-content cleanup now aborts traversal when old inline object content references a table type
