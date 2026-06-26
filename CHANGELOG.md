@@ -2,6 +2,13 @@
 
 ## [unreleased]
 
+## 35.3.9
+
+### Fixed
+
+- ObjectDB relation free-content cleanup now reuses the reader's inline object reference tracking for native object
+  fields, preventing repeated inline references from being interpreted as new object bodies.
+
 ## 35.3.8
 
 ### Fixed
