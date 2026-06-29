@@ -11,6 +11,7 @@ using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 using Xunit;
 
 namespace BTDBTest;
@@ -868,8 +869,22 @@ public class ObjectDbTableFreeContentTest : IDisposable
         Span<byte> prefix = stackalloc byte[ObjectDB.AllDictionariesPrefixLen + (int)len];
         prefix[0] = ObjectDB.AllDictionariesPrefixByte;
         PackUnpack.UnsafePackVUInt(ref prefix[ObjectDB.AllDictionariesPrefixLen], id, len);
+        return ToHex(prefix);
+    }
+
+    static string ObjectContentPrefixHex(ulong id)
+    {
+        var len = PackUnpack.LengthVUInt(id);
+        Span<byte> prefix = stackalloc byte[ObjectDB.AllObjectsPrefixLen + (int)len];
+        prefix[0] = ObjectDB.AllObjectsPrefixByte;
+        PackUnpack.UnsafePackVUInt(ref prefix[ObjectDB.AllObjectsPrefixLen], id, len);
+        return ToHex(prefix);
+    }
+
+    static string ToHex(ReadOnlySpan<byte> bytes)
+    {
         var builder = new StringBuilder();
-        foreach (var b in prefix)
+        foreach (var b in bytes)
             builder.Append(b.ToString("X2"));
         return builder.ToString();
     }
@@ -1263,6 +1278,391 @@ public class ObjectDbTableFreeContentTest : IDisposable
         return creator;
     }
 
+    public class LinkWithOrderedNodes
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public IOrderedDictionary<int, NodeWithNestedDictionary> Nodes { get; set; }
+    }
+
+    public class LinkWithDictionaryKeyNeedingFreeContent
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public IOrderedDictionary<IList<NodeWithNestedDictionary>, int> Edges { get; set; }
+    }
+
+    public class LinkWithSetKeyNeedingFreeContent
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public IOrderedSet<IList<NodeWithNestedDictionary>> Edges { get; set; }
+    }
+
+    public class LinkWithOrderedSet
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public IOrderedSet<string> Tags { get; set; }
+    }
+
+    public class LinkWithIndirectNodes
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public IOrderedDictionary<int, IIndirect<RawData>> Nodes { get; set; }
+    }
+
+    public class LinkWithObjectNode
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public object Node { get; set; }
+    }
+
+    public class NodeWithNestedDictionary
+    {
+        public string Name { get; set; }
+        public IDictionary<ulong, ulong> Edges { get; set; }
+    }
+
+    public interface INodeWithPublicField
+    {
+    }
+
+    public class NodeWithPublicField : INodeWithPublicField
+    {
+        public int Value;
+    }
+
+    public class LinkWithPolymorphicNode
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public INodeWithPublicField Node { get; set; }
+    }
+
+    public interface ILinksWithOrderedNodes : IRelation<LinkWithOrderedNodes>
+    {
+        void Insert(LinkWithOrderedNodes link);
+        LinkWithOrderedNodes FindById(ulong id);
+    }
+
+    public interface ILinksWithDictionaryKeyNeedingFreeContent : IRelation<LinkWithDictionaryKeyNeedingFreeContent>
+    {
+        void Insert(LinkWithDictionaryKeyNeedingFreeContent link);
+        bool RemoveById(ulong id);
+    }
+
+    public interface ILinksWithSetKeyNeedingFreeContent : IRelation<LinkWithSetKeyNeedingFreeContent>
+    {
+        void Insert(LinkWithSetKeyNeedingFreeContent link);
+        bool RemoveById(ulong id);
+    }
+
+    public interface ILinksWithOrderedSet : IRelation<LinkWithOrderedSet>
+    {
+        void Insert(LinkWithOrderedSet link);
+        bool RemoveById(ulong id);
+    }
+
+    public interface ILinksWithIndirectNodes : IRelation<LinkWithIndirectNodes>
+    {
+        void Insert(LinkWithIndirectNodes link);
+        LinkWithIndirectNodes FindById(ulong id);
+    }
+
+    public interface ILinksWithObjectNode : IRelation<LinkWithObjectNode>
+    {
+        void Insert(LinkWithObjectNode link);
+        bool RemoveById(ulong id);
+    }
+
+    public interface ILinksWithPolymorphicNode : IRelation<LinkWithPolymorphicNode>
+    {
+        void Insert(LinkWithPolymorphicNode link);
+        bool RemoveById(ulong id);
+    }
+
+    [Fact]
+    public void ReplacingObjectValueFreesNestedIDictionary()
+    {
+        var creator = InitOrderedDictionaryWithNestedObjects();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            link.Nodes[1] = CreateNodeWithNestedDictionary("replacement", 30);
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void RemovingObjectValueFreesNestedIDictionary()
+    {
+        var creator = InitOrderedDictionaryWithNestedObjects();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            Assert.True(link.Nodes.Remove(1));
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void ClearingDictionaryWithObjectValuesFreesNestedIDictionaries()
+    {
+        var creator = InitOrderedDictionaryWithNestedObjects();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            link.Nodes.Clear();
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void ReplacingObjectValueKeepsNestedIDictionaryStillReferencedByNewValue()
+    {
+        var creator = InitOrderedDictionaryWithNestedObjects();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            var oldEdges = link.Nodes[1].Edges;
+            link.Nodes[1] = new NodeWithNestedDictionary
+            {
+                Name = "same edges",
+                Edges = oldEdges
+            };
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            Assert.Equal(11ul, link.Nodes[1].Edges[10]);
+        }
+    }
+
+    [Fact]
+    public void RemovingDictionaryWithKeyNeedingFreeContentThrows()
+    {
+        Func<IObjectDBTransaction, ILinksWithDictionaryKeyNeedingFreeContent> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ILinksWithDictionaryKeyNeedingFreeContent>(
+                "DictionaryKeyNeedingFreeContentRelation");
+            creator(tr).Insert(new LinkWithDictionaryKeyNeedingFreeContent { Id = 1 });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var ex = Assert.Throws<BTDBException>(() => creator(tr).RemoveById(1));
+            Assert.Equal("Not supported 'free content' in IDictionary key", ex.Message);
+        }
+    }
+
+    [Fact]
+    public void RemovingOrderedSetWithKeyNeedingFreeContentThrows()
+    {
+        Func<IObjectDBTransaction, ILinksWithSetKeyNeedingFreeContent> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ILinksWithSetKeyNeedingFreeContent>("SetKeyNeedingFreeContentRelation");
+            creator(tr).Insert(new LinkWithSetKeyNeedingFreeContent { Id = 1 });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var ex = Assert.Throws<BTDBException>(() => creator(tr).RemoveById(1));
+            Assert.Equal("Not supported 'free content' in IOrderedSet", ex.Message);
+        }
+    }
+
+    [Fact]
+    public void RemovingOrderedSetFreesExternalContent()
+    {
+        Func<IObjectDBTransaction, ILinksWithOrderedSet> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ILinksWithOrderedSet>("OrderedSetLinksRelation");
+            creator(tr).Insert(new LinkWithOrderedSet
+            {
+                Id = 1,
+                Tags = new OrderedSet<string> { "first", "second" }
+            });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            Assert.True(creator(tr).RemoveById(1));
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void RemovingDictionaryValueWithIIndirectLeavesObjectAndItsDictionaryAsLeaks()
+    {
+        Func<IObjectDBTransaction, ILinksWithIndirectNodes> creator;
+        ulong oid;
+        ulong dictId;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ILinksWithIndirectNodes>("IndirectNodesLinksRelation");
+            var links = creator(tr);
+            links.Insert(new LinkWithIndirectNodes
+            {
+                Id = 1
+            });
+            var link = links.FindById(1);
+            link.Nodes[1] = new DBIndirect<RawData>(new RawData
+            {
+                Data = new byte[] { 1, 2, 3 },
+                Edges = new Dictionary<ulong, ulong> { [10] = 20 }
+            });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var link = creator(tr).FindById(1);
+            var node = link.Nodes[1];
+            oid = node.Oid;
+            dictId = ((IInternalODBDictionary)node.Value.Edges).DictId;
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var link = creator(tr).FindById(1);
+            Assert.True(link.Nodes.Remove(1));
+            tr.Commit();
+        }
+
+        var leaks = FindLeaks();
+        Assert.Contains(ObjectContentPrefixHex(oid), leaks);
+        Assert.Contains(ExternalContentPrefixHex(dictId), leaks);
+    }
+
+    [Fact]
+    public void RemovingObjectTypedInlineValueFreesNestedIDictionary()
+    {
+        _db.RegisterType(typeof(NodeWithNestedDictionary));
+        Func<IObjectDBTransaction, ILinksWithObjectNode> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ILinksWithObjectNode>("ObjectNodeLinksRelation");
+            creator(tr).Insert(new LinkWithObjectNode
+            {
+                Id = 1,
+                Node = CreateNodeWithNestedDictionary("object", 50)
+            });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            Assert.True(creator(tr).RemoveById(1));
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void RemovingObjectTypedLegacyOidValueTraversesNestedIDictionary()
+    {
+        _db.RegisterType(typeof(NodeWithNestedDictionary));
+        _db.RegisterType(typeof(RawData));
+        ulong oid;
+        Func<IObjectDBTransaction, ILinksWithObjectNode> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            oid = tr.Store(new RawData
+            {
+                Data = new byte[] { 1, 2, 3 },
+                Edges = new Dictionary<ulong, ulong> { [10] = 20 }
+            });
+            Assert.Equal(1u, PackUnpack.LengthVInt((long)oid));
+            creator = tr.InitRelation<ILinksWithObjectNode>("ObjectNodeLegacyOidLinksRelation");
+            creator(tr).Insert(new LinkWithObjectNode
+            {
+                Id = 1,
+                Node = new NodeWithNestedDictionary { Name = "object" }
+            });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            CorruptFirstInlineObjectIdToOid(tr, links, oid);
+            Assert.True(links.RemoveById(1));
+            tr.Delete(oid);
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void RemovingPolymorphicObjectWithPublicFieldFailsFreeContentDetection()
+    {
+        _db.RegisterType(typeof(NodeWithPublicField));
+        Func<IObjectDBTransaction, ILinksWithPolymorphicNode> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ILinksWithPolymorphicNode>("PolymorphicNodeRelation");
+            creator(tr).Insert(new LinkWithPolymorphicNode { Id = 1 });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var ex = Assert.Throws<BTDBException>(() => creator(tr).RemoveById(1));
+            Assert.Contains("NodeWithPublicField.Value must have NotStoredAttribute", ex.Message);
+        }
+    }
+
+    Func<IObjectDBTransaction, ILinksWithOrderedNodes> InitOrderedDictionaryWithNestedObjects()
+    {
+        Func<IObjectDBTransaction, ILinksWithOrderedNodes> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ILinksWithOrderedNodes>("OrderedNodesLinksRelation");
+            var links = creator(tr);
+            links.Insert(new LinkWithOrderedNodes
+            {
+                Id = 1
+            });
+            var link = links.FindById(1);
+            link.Nodes[1] = CreateNodeWithNestedDictionary("first", 10);
+            link.Nodes[2] = CreateNodeWithNestedDictionary("second", 20);
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+        return creator;
+    }
+
+    static NodeWithNestedDictionary CreateNodeWithNestedDictionary(string name, ulong start)
+    {
+        return new NodeWithNestedDictionary
+        {
+            Name = name,
+            Edges = new Dictionary<ulong, ulong> { [start] = start + 1, [start + 2] = start + 3 }
+        };
+    }
+
     public class Nodes
     {
         public IDictionary<ulong, ulong> Edges { get; set; }
@@ -1448,6 +1848,8 @@ public class ObjectDbTableFreeContentTest : IDisposable
     public void IIndirectIsNotFreedAutomatically()
     {
         Func<IObjectDBTransaction, IHddRelation> creator;
+        ulong oid;
+        ulong dictId;
         using (var tr = _db.StartTransaction())
         {
             creator = tr.InitRelation<IHddRelation>("HddRelation");
@@ -1470,11 +1872,15 @@ public class ObjectDbTableFreeContentTest : IDisposable
             var files = creator(tr);
             var file = files.FindById(1);
             Assert.Equal(file.Data.Value.Data, new byte[] { 1, 2, 3 });
+            oid = file.Data.Oid;
+            dictId = ((IInternalODBDictionary)file.Data.Value.Edges).DictId;
             files.RemoveById(1);
             tr.Commit();
         }
 
-        Assert.NotEmpty(FindLeaks());
+        var leaks = FindLeaks();
+        Assert.Contains(ObjectContentPrefixHex(oid), leaks);
+        Assert.Contains(ExternalContentPrefixHex(dictId), leaks);
     }
 
     [Fact]
@@ -1522,6 +1928,84 @@ public class ObjectDbTableFreeContentTest : IDisposable
     {
         void Insert(Setting license);
         bool RemoveById(ulong id);
+    }
+
+    [Fact]
+    public void RemovingInlineObjectWithUnknownTableIdThrowsDuringFreeContent()
+    {
+        Func<IObjectDBTransaction, ISettings> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ISettings>("SettingRelWithUnknownInlineType");
+            var settings = creator(tr);
+            settings.Insert(new Setting
+            {
+                Id = 1,
+                License = new License
+                {
+                    CompanyId = 1,
+                    ConcurrentFeautureItemsSessions =
+                        new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
+                        {
+                            [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo>
+                                { [2] = new ConcurrentFeatureItemInfo() }
+                        }
+                }
+            });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var settings = creator(tr);
+            CorruptFirstInlineObjectTableId(tr, settings, 127);
+
+            var exception = Assert.Throws<BTDBException>(() => settings.RemoveById(1));
+            Assert.Contains("Unknown TypeId 127 of inline object", exception.Message);
+        }
+    }
+
+    static unsafe void CorruptFirstInlineObjectTableId(IObjectDBTransaction tr, IRelation relation, byte unknownTableId)
+    {
+        var manipulator = (IRelationDbManipulator)relation;
+        var prefix = manipulator.RelationInfo.Prefix;
+
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        Assert.True(cursor.FindNextKey(prefix));
+        Span<byte> valueBuffer = stackalloc byte[4096];
+        var value = cursor.GetValueSpan(ref valueBuffer).ToArray();
+        fixed (void* valuePtr = value)
+        {
+            var reader = new MemReader(valuePtr, value.Length);
+            reader.ReadVUInt32(); // Relation version
+            Assert.Equal(-1, reader.ReadVInt64());
+            value[(int)reader.GetCurrentPosition()] = unknownTableId;
+        }
+
+        cursor.SetValue(value);
+    }
+
+    static unsafe void CorruptFirstInlineObjectIdToOid(IObjectDBTransaction tr, IRelation relation, ulong oid)
+    {
+        var manipulator = (IRelationDbManipulator)relation;
+        var prefix = manipulator.RelationInfo.Prefix;
+
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        Assert.True(cursor.FindNextKey(prefix));
+        Span<byte> valueBuffer = stackalloc byte[4096];
+        var value = cursor.GetValueSpan(ref valueBuffer).ToArray();
+        fixed (void* valuePtr = value)
+        {
+            var reader = new MemReader(valuePtr, value.Length);
+            reader.ReadVUInt32(); // Relation version
+            var idOffset = (int)reader.GetCurrentPosition();
+            Assert.Equal(-1, reader.ReadVInt64());
+            var len = PackUnpack.LengthVInt((long)oid);
+            Assert.Equal(1u, len);
+            PackUnpack.UnsafePackVInt(ref value[idOffset], (long)oid, len);
+        }
+
+        cursor.SetValue(value);
     }
 
     [Fact]
