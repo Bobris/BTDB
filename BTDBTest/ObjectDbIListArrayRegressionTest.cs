@@ -25,6 +25,46 @@ public class ObjectDbIListArrayRegressionTest : ObjectDbTestBase
     {
     }
 
+    public class StateItemIndexesWithIList
+    {
+        [PrimaryKey(1)]
+        public ulong CompanyId { get; set; }
+
+        [PrimaryKey(2)]
+        public uint StateGroupId { get; set; }
+
+        [PrimaryKey(3)]
+        public ulong ItemId { get; set; }
+
+        [SecondaryKey("Indexes", IncludePrimaryKeyOrder = 2)]
+        public IList<ulong> Indexes { get; set; } = null!;
+    }
+
+    public interface IStateItemIndexesWithIListTable : IRelation<StateItemIndexesWithIList>
+    {
+        IEnumerable<StateItemIndexesWithIList> ListByIndexes(ulong companyId, uint stateGroupId, List<ulong> indexes);
+    }
+
+    public class StateItemIndexesWithList
+    {
+        [PrimaryKey(1)]
+        public ulong CompanyId { get; set; }
+
+        [PrimaryKey(2)]
+        public uint StateGroupId { get; set; }
+
+        [PrimaryKey(3)]
+        public ulong ItemId { get; set; }
+
+        [SecondaryKey("Indexes", IncludePrimaryKeyOrder = 2)]
+        public List<ulong> Indexes { get; set; } = null!;
+    }
+
+    public interface IStateItemIndexesWithListTable : IRelation<StateItemIndexesWithList>
+    {
+        IEnumerable<StateItemIndexesWithList> ListByIndexes(ulong companyId, uint stateGroupId, List<ulong> indexes);
+    }
+
     [Fact]
     public void UpsertOfIListPropertyBackedByArrayShouldWork()
     {
@@ -38,5 +78,36 @@ public class ObjectDbIListArrayRegressionTest : ObjectDbTestBase
         });
 
         Assert.Equal(new ulong[] { 4 }, table.Single().Phases);
+    }
+
+    [Fact]
+    public void SecondaryKeyCreatedFromIListCanBeOpenedAsList()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var table = tr.InitRelation<IStateItemIndexesWithIListTable>("StateItemIndexes")(tr);
+            table.Upsert(new StateItemIndexesWithIList
+            {
+                CompanyId = 42,
+                StateGroupId = 7,
+                ItemId = 100,
+                Indexes = new List<ulong> { 5, 9 }
+            });
+            tr.Commit();
+        }
+
+        ReopenDb();
+
+        using (var tr = _db.StartTransaction())
+        {
+            var table = tr.InitRelation<IStateItemIndexesWithListTable>("StateItemIndexes")(tr);
+            var item = table.ListByIndexes(42, 7, new List<ulong> { 5, 9 }).Single();
+
+            Assert.Equal(42ul, item.CompanyId);
+            Assert.Equal(7u, item.StateGroupId);
+            Assert.Equal(100ul, item.ItemId);
+            Assert.Equal(new ulong[] { 5, 9 }, item.Indexes);
+            tr.Commit();
+        }
     }
 }

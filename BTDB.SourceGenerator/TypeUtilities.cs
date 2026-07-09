@@ -22,11 +22,45 @@ public static class TypeUtilities
 
         if (IsUnsignedIntegralType(normalizedParamType) && IsUnsignedIntegralType(normalizedFieldType)) return true;
         if (IsSignedIntegralType(normalizedParamType) && IsSignedIntegralType(normalizedFieldType)) return true;
+        if (AreListTypesCompatible(normalizedParamType, normalizedFieldType)) return true;
 
         return false;
     }
 
-/// <summary>
+    static bool AreListTypesCompatible(ReadOnlySpan<char> parameterType, ReadOnlySpan<char> fieldType)
+    {
+        return TryGetListItemType(parameterType, out var parameterItemType) &&
+               TryGetListItemType(fieldType, out var fieldItemType) &&
+               parameterItemType.SequenceEqual(fieldItemType);
+    }
+
+    static bool TryGetListItemType(ReadOnlySpan<char> type, out ReadOnlySpan<char> itemType)
+    {
+        const string listPrefix = "System.Collections.Generic.List<";
+        const string iListPrefix = "System.Collections.Generic.IList<";
+
+        if (type.EndsWith("?", StringComparison.Ordinal))
+        {
+            type = type.Slice(0, type.Length - 1);
+        }
+
+        if (type.StartsWith(listPrefix, StringComparison.Ordinal) && type.EndsWith(">", StringComparison.Ordinal))
+        {
+            itemType = type.Slice(listPrefix.Length, type.Length - listPrefix.Length - 1);
+            return true;
+        }
+
+        if (type.StartsWith(iListPrefix, StringComparison.Ordinal) && type.EndsWith(">", StringComparison.Ordinal))
+        {
+            itemType = type.Slice(iListPrefix.Length, type.Length - iListPrefix.Length - 1);
+            return true;
+        }
+
+        itemType = default;
+        return false;
+    }
+
+    /// <summary>
     /// Removes "global::" prefix from type names (ReadOnlySpan overload for performance)
     /// </summary>
     public static ReadOnlySpan<char> RemoveGlobalPrefix(ReadOnlySpan<char> type)

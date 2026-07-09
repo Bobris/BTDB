@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using DiffEngine;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +18,13 @@ namespace BTDB.SourceGenerator.Tests;
 
 public class GeneratorTestsBase
 {
+    [ModuleInitializer]
+    internal static void InitApprovalTests()
+    {
+        if (AgentTestEnvironment.IsAgentRun)
+            DiffRunner.Disabled = true;
+    }
+
     protected static Task VerifySourceGenerator(string sourceCode,
         string? sourceCodeForCompilationValidation = null)
     {

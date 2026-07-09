@@ -273,6 +273,8 @@ relation keys.
 
 ### Fixed
 
+- Source generated ObjectDB relation methods now accept `List<T>` parameters for `IList<T>` key fields, including
+  secondary keys, so relations can keep querying indexes created with older collection key declarations.
 - ObjectDB relation metadata now appends omitted primary-key parts to secondary keys in declared primary-key order and
   builds reflection-based relation metadata deterministically, which fixes generated relation startup failures for some
   secondary keys that combine explicit fields with implicit primary-key suffixes.

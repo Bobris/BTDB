@@ -154,6 +154,31 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task ListBySecondaryKeyAcceptsListParameterForIListField()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            namespace TestNamespace;
+
+            public class StateItemIndexes
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public uint StateGroupId { get; set; }
+                [PrimaryKey(3)] public ulong ItemId { get; set; }
+                [SecondaryKey("Indexes", IncludePrimaryKeyOrder = 2)] public IList<ulong> Indexes { get; set; } = null!;
+            }
+
+            public interface IStateItemIndexesTable : IRelation<StateItemIndexes>
+            {
+                IEnumerable<StateItemIndexes> ListByIndexes(ulong companyId, uint stateGroupId, List<ulong> indexes);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyRelationImplementationIsMarkedInternalOnly()
     {
         // language=cs
@@ -2001,6 +2026,27 @@ public class RelationTests : GeneratorTestsBase
             {
                 bool Contains(string name, TimeSpan duration, IPAddress address, Version apiVersion,
                     StringValues tags, List<string> names, List<ulong> counters);
+            }
+            """);
+    }
+
+    [Fact]
+    public Task ContainsSupportsIListKey()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System.Collections.Generic;
+            using BTDB.ODBLayer;
+
+            public class ContainsIListKey
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public IList<string> Names { get; set; } = new List<string>();
+            }
+
+            public interface IContainsIListKeyTable : IRelation<ContainsIListKey>
+            {
+                bool Contains(ulong companyId, List<string> names);
             }
             """);
     }

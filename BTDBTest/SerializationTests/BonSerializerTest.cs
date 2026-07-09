@@ -4,6 +4,7 @@ using Assent;
 using BTDB;
 using BTDB.Bon;
 using BTDB.Serialization;
+using BTDBTest;
 using Xunit;
 
 namespace BTDBTest.SerializationTests;
