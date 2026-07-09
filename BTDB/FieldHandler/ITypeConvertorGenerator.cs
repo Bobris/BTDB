@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BTDB.IL;
 
 namespace BTDB.FieldHandler;

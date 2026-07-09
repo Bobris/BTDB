@@ -1,4 +1,4 @@
-﻿namespace ODbDump.Visitor
+namespace ODbDump.Visitor
 {
     class ToConsoleVisitorForComparison : ToConsoleVisitorNice
     {

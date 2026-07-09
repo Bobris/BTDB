@@ -1,4 +1,4 @@
-﻿//using JetBrains.Profiler.Windows.Api;
+//using JetBrains.Profiler.Windows.Api;
 
 using System;
 using System.Threading;

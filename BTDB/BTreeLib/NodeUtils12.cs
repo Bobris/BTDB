@@ -1,4 +1,4 @@
-﻿using BTDB.Buffer;
+using BTDB.Buffer;
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;

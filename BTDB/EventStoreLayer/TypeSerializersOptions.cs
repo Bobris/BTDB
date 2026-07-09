@@ -1,4 +1,4 @@
-﻿using BTDB.Encrypted;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.Serialization;
 

@@ -1,4 +1,4 @@
-﻿using BTDB.Buffer;
+using BTDB.Buffer;
 using BTDB.EventStore2Layer;
 using System;
 using System.Collections.Generic;

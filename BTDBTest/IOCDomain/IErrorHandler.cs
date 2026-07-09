@@ -1,4 +1,4 @@
-﻿using BTDB;
+using BTDB;
 
 namespace BTDBTest.IOCDomain;
 

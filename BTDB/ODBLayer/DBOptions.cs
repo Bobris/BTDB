@@ -1,4 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.CodeAnalysis;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IOC;

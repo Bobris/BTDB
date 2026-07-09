@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using BTDB.Collections;
 using Microsoft.Extensions.DependencyInjection;

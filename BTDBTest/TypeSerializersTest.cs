@@ -1,4 +1,3 @@
-using Assent;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
@@ -9,6 +8,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using BTDB;
 using BTDB.Encrypted;
 using BTDB.Serialization;
@@ -248,7 +248,7 @@ public class TypeSerializersTest
     }
 
     [Fact]
-    public void BasicDescribe()
+    public Task BasicDescribe()
     {
         var ts = new TypeSerializers();
         var res = new object[]
@@ -274,14 +274,14 @@ public class TypeSerializersTest
             (1, 2u),
             new Tuple<int, uint>(1, 2)
         }.Select(o => ts.DescriptorOf(o)!.Describe());
-        this.Assent(string.Join("\n", res) + "\n");
+        return this.VerifyApproval(string.Join("\n", res) + "\n");
     }
 
     [Fact]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public void CheckCompatibilityOfRegistrationOfBasicTypeDescriptors()
+    public Task CheckCompatibilityOfRegistrationOfBasicTypeDescriptors()
     {
-        this.Assent(string.Join("\n", BasicSerializersFactory.TypeDescriptors.Select(o => o.Name)));
+        return this.VerifyApproval(string.Join("\n", BasicSerializersFactory.TypeDescriptors.Select(o => o.Name)));
     }
 
     public class SelfPointing1
@@ -306,7 +306,7 @@ public class TypeSerializersTest
 
     [Fact]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public void ComplexDescribe()
+    public Task ComplexDescribe()
     {
         var ts = new TypeSerializers();
         var res = new object[]
@@ -320,7 +320,7 @@ public class TypeSerializersTest
             new SelfPointing2(),
             new TestEnum()
         }.Select(o => ts.DescriptorOf(o).Describe());
-        this.Assent(string.Join("\n", res));
+        return this.VerifyApproval(string.Join("\n", res));
     }
 
     [Fact]

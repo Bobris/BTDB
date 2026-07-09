@@ -1,4 +1,4 @@
-﻿using BTDB.FieldHandler;
+using BTDB.FieldHandler;
 using BTDB.IOC;
 using BTDB.Serialization;
 

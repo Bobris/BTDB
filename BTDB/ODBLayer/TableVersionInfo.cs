@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 

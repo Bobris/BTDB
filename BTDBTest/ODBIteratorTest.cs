@@ -1,9 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Assent;
 using BTDB;
 using BTDB.Buffer;
 using BTDB.Encrypted;
@@ -413,7 +412,7 @@ public class ODBIteratorTest : IDisposable
             iterator = new ODBIterator(tr, visitor);
             iterator.Iterate();
             var text = visitor.ToString();
-            this.Assent(text, null, testName);
+            this.VerifyApproval(text, testName).GetAwaiter().GetResult();
             Assert.Equal(fastVisitor.Keys.ToByteArray(), visitor.Keys.ToByteArray());
         }
     }

@@ -1,4 +1,4 @@
-﻿using BTDB.ODBLayer;
+using BTDB.ODBLayer;
 using System;
 using System.Collections.Generic;
 

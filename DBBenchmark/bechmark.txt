@@ -1,4 +1,4 @@
-﻿					BTDB memory mapped		LMDB			BTDB inMemmory		BTDB (OnDiskFileCollection)
+					BTDB memory mapped		LMDB			BTDB inMemmory		BTDB (OnDiskFileCollection)
 
 					Sample Data(9mil. párů, klíč-hodnota, cca 1GB dat)
 									

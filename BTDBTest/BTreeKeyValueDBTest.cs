@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BTDB.Allocators;
 using BTDB.KVDBLayer;
 using Xunit;

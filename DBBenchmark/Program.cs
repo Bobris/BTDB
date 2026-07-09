@@ -1,4 +1,4 @@
-﻿namespace DBBenchmark;
+namespace DBBenchmark;
 
 class Program
 {

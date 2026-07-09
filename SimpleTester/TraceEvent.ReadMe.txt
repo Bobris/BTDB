@@ -1,4 +1,4 @@
-﻿
+
 ************* Welcome to the  Microsoft.Diagnostics.Tracing.TraceEvent library!  ***************
 
 This library is designed to make controlling and parsing Event Tracing for Windows (ETW) events easy.  

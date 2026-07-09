@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Assent;
+using System.Threading.Tasks;
 using BTDB;
 using BTDB.Bon;
 using BTDB.Serialization;
@@ -55,7 +55,7 @@ public class BonSerializerTest
     }
 
     [Fact]
-    public void SerializeDeserializeAllSupportedTypes()
+    public async Task SerializeDeserializeAllSupportedTypes()
     {
         var obj = new AllSupportedTypes
         {
@@ -73,7 +73,7 @@ public class BonSerializerTest
         BonSerializerFactory.Serialize(ref builder, obj);
         var bon = new Bon(builder.FinishAsMemory());
         var str = bon.DumpToJson();
-        this.Assent(str);
+        await this.VerifyApproval(str);
         bon = new Bon(builder.FinishAsMemory());
         var deserialized = BonSerializerFactory.Deserialize(ref bon);
         builder = new BonBuilder();
@@ -83,13 +83,13 @@ public class BonSerializerTest
     }
 
     [Fact]
-    public void SerializeDeserializeBoxedValue()
+    public async Task SerializeDeserializeBoxedValue()
     {
         var obj = (object)(42u, 424242424242L);
         var builder = new BonBuilder();
         BonSerializerFactory.Serialize(ref builder, obj);
         var bon = new Bon(builder.FinishAsMemory());
-        this.Assent(bon.DumpToJson());
+        await this.VerifyApproval(bon.DumpToJson());
         bon = new Bon(builder.FinishAsMemory());
         var deserialized = BonSerializerFactory.Deserialize(ref bon);
         Assert.IsType<Tuple<object, object>>(deserialized);
@@ -146,13 +146,13 @@ public class BonSerializerTest
     }
 
     [Fact]
-    public void TypeCouldBeSerializedAsWell()
+    public async Task TypeCouldBeSerializedAsWell()
     {
         Type[] obj = [typeof(int), typeof(AllSupportedTypes)];
         var builder = new BonBuilder();
         BonSerializerFactory.Serialize(ref builder, obj);
         var bon = new Bon(builder.FinishAsMemory());
-        this.Assent(bon.DumpToJson());
+        await this.VerifyApproval(bon.DumpToJson());
         bon = new Bon(builder.FinishAsMemory());
         var deserialized = BonSerializerFactory.Deserialize(ref bon);
         Assert.IsType<object[]>(deserialized);

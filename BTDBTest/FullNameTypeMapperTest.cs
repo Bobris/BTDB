@@ -1,4 +1,4 @@
-﻿using BTDB.EventStoreLayer;
+using BTDB.EventStoreLayer;
 using System;
 using System.Collections.Generic;
 using Xunit;

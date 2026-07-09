@@ -1,4 +1,4 @@
-﻿using BTDB.FieldHandler;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System;

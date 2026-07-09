@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -6,7 +6,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Assent;
 using BTDB;
 using BTDB.Allocators;
 using BTDB.Buffer;
@@ -2768,7 +2767,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             var iterator = new ODBIterator(tr, visitor);
             iterator.Iterate();
             var text = visitor.ToString();
-            this.Assent(text);
+            await this.VerifyApproval(text);
         }
     }
 

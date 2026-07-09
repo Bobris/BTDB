@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using BTDB.EventStoreLayer;
 using BTDB.ODBLayer;

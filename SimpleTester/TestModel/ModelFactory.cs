@@ -1,4 +1,4 @@
-﻿using ProtoBuf.Meta;
+using ProtoBuf.Meta;
 using SimpleTester.TestModel.Events;
 
 namespace SimpleTester.TestModel;

@@ -1,4 +1,4 @@
-﻿using BTDB.Buffer;
+using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using System;
 using System.Collections.Generic;

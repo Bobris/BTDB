@@ -1,4 +1,4 @@
-﻿using BTDB.KVDBLayer;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System;
 using BTDB;

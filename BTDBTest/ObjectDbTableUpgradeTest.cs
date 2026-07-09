@@ -34,8 +34,11 @@ public class ObjectDbTableUpgradeTest : IDisposable
 
     void ApproveFieldHandlerLoggerMessages([CallerMemberName] string? testName = null)
     {
-        Assent.Extensions.Assent(this, string.Join('\n', _fieldHandlerLoggerMessages.AsSpan()) + "\n",
-            ApprovalTestConfiguration.ForAssent(), testName);
+        if (_fieldHandlerLoggerMessages.Count == 0)
+            return;
+
+        this.VerifyApproval(string.Join('\n', _fieldHandlerLoggerMessages.AsSpan()) + "\n", testName)
+            .GetAwaiter().GetResult();
         _fieldHandlerLoggerMessages.Clear();
     }
 

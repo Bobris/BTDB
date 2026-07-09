@@ -1,4 +1,3 @@
-﻿using Assent;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -6,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 using BTDB;
 using BTDB.Buffer;
 using Xunit;
@@ -118,7 +118,7 @@ public class FindUnusedKeysTest : IDisposable
     }
 
     [Fact]
-    public void FindAndRemovesUnusedKeys()
+    public async Task FindAndRemovesUnusedKeys()
     {
         StoreJobInDictionary("programming", "code");
         StoreJobInDictionary("chess", "mate");
@@ -140,7 +140,7 @@ public class FindUnusedKeysTest : IDisposable
             }
 
             var report = DumpUnseenKeys(visitor, "\r\n");
-            this.Assent(report);
+            await this.VerifyApproval(report);
 
             using (var tr = _db.StartTransaction())
             {

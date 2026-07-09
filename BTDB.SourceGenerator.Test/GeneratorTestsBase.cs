@@ -19,7 +19,7 @@ namespace BTDB.SourceGenerator.Tests;
 public class GeneratorTestsBase
 {
     [ModuleInitializer]
-    internal static void InitApprovalTests()
+    internal static void InitVerifyTests()
     {
         if (AgentTestEnvironment.IsAgentRun)
             DiffRunner.Disabled = true;

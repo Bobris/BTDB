@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 using System.Globalization;
-using Assent;
+using System.Threading.Tasks;
 using BTDB.Bon;
 using BTDB.Buffer;
 using BTDB.StreamLayer;
@@ -391,7 +391,7 @@ public class BonTests
     }
 
     [Fact]
-    public void CanStoreComplexArrayObjectCombination()
+    public Task CanStoreComplexArrayObjectCombination()
     {
         var builder = new BonBuilder();
         builder.StartObject();
@@ -409,11 +409,11 @@ public class BonTests
         builder.FinishObject();
         var buffer = builder.FinishAsMemory();
         Assert.Equal(36, buffer.Length);
-        this.Assent(new Bon(buffer).DumpToJson());
+        return this.VerifyApproval(new Bon(buffer).DumpToJson());
     }
 
     [Fact]
-    public void CanStoreClass()
+    public Task CanStoreClass()
     {
         var builder = new BonBuilder();
         builder.StartClass("MyKlass");
@@ -423,7 +423,7 @@ public class BonTests
         builder.Write("last");
         builder.FinishClass();
         var buffer = builder.FinishAsMemory();
-        this.Assent(new Bon(buffer).DumpToJson());
+        return this.VerifyApproval(new Bon(buffer).DumpToJson());
     }
 
     [Fact]
@@ -438,7 +438,7 @@ public class BonTests
     }
 
     [Fact]
-    public void CanStoreSomeDictionary()
+    public Task CanStoreSomeDictionary()
     {
         var builder = new BonBuilder();
         builder.StartDictionary();
@@ -448,7 +448,7 @@ public class BonTests
         builder.Write(4);
         builder.FinishDictionary();
         var buffer = builder.FinishAsMemory();
-        this.Assent(new Bon(buffer).DumpToJson());
+        return this.VerifyApproval(new Bon(buffer).DumpToJson());
     }
 
     [Fact]

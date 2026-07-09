@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BTDB.Allocators;
 using BTDB.BTreeLib;

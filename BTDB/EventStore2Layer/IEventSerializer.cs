@@ -1,4 +1,4 @@
-﻿using BTDB.Buffer;
+using BTDB.Buffer;
 
 namespace BTDB.EventStore2Layer;
 

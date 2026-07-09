@@ -1,4 +1,4 @@
-﻿namespace BTDB.EventStoreLayer;
+namespace BTDB.EventStoreLayer;
 
 public interface IEventStoreManager
 {
