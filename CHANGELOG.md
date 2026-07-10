@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.4.1
+
 ### Fixed
 
 - ObjectDB can remove or update older relation records whose secondary-key collection field changed from
