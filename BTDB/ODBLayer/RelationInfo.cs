@@ -1911,6 +1911,14 @@ public class RelationInfo
     {
         var pushCtx = WriterOrContextForHandler(writerCtxLocal);
         var sourceType = valueHandler.HandledType()!;
+        var specializedHandler = skHandler.SpecializeSaveForType(sourceType);
+        if (specializedHandler.HandledType() == sourceType)
+        {
+            specializedHandler.Save(ilGenerator, pushWriter, pushCtx,
+                il => { valueHandler.Load(il, buffer.PushReader, buffer.PushCtx); });
+            return;
+        }
+
         var targetType = skHandler.HandledType()!;
         if (sourceType == targetType)
             skHandler.Save(ilGenerator, pushWriter, pushCtx,

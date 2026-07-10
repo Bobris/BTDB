@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- ObjectDB can remove or update older relation records whose secondary-key collection field changed from
+  `IList<T>` to `List<T>`, including when another schema change keeps the older record version persisted.
+
 ## 35.4.0
 
 ## 35.3.19
