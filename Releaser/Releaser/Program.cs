@@ -164,8 +164,6 @@ static class Program
             await UploadWithRetry(projDir + "/artifacts/bin/ODbDump/Release/", client, release2, "ODbDump.zip");
         Console.WriteLine("ODbDump url:");
         Console.WriteLine(uploadAsset.BrowserDownloadUrl);
-        Console.WriteLine("Press Enter for finish");
-        Console.ReadLine();
         return 0;
     }
 
