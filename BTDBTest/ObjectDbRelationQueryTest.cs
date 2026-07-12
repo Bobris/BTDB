@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using BTDB;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -31,10 +32,15 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         public int Age { get; set; }
 
         DateTime _uploaded;
+        public static int UploadedSetterCalls;
         public DateTime Uploaded
         {
             get { return _uploaded; }
-            set { _uploaded = value; }
+            set
+            {
+                UploadedSetterCalls++;
+                _uploaded = value;
+            }
         }
     }
 
@@ -62,6 +68,34 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
     public interface IPersonProjection : IRelation<Person>
     {
         PersonProjection FindByIdOrDefault(ulong tenantId, string email);
+    }
+
+    [Generate]
+    public class QueryVersion1
+    {
+        [PrimaryKey(1)] public uint Id { get; set; }
+        public string? Name { get; set; }
+        public int Score { get; set; }
+        public string? Ignored { get; set; }
+    }
+
+    [Generate]
+    public class QueryVersion2
+    {
+        [PrimaryKey(1)] public uint Id { get; set; }
+        public long Score { get; set; }
+        public string? Added { get; set; }
+        public string? Name { get; set; }
+    }
+
+    [PersistedName("RelationQueryVersions")]
+    public interface IQueryVersion1Table : IRelation<QueryVersion1>
+    {
+    }
+
+    [PersistedName("RelationQueryVersions")]
+    public interface IQueryVersion2Table : IRelation<QueryVersion2>
+    {
     }
 
     [Fact]
@@ -113,6 +147,109 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
             .ToArray());
         Assert.Equal(["Bob"], table.Query<Person>()
             .Where(p => "bob@example.com" == p.Email || false)
+            .AsEnumerable()
+            .Select(p => p.Name)
+            .ToArray());
+    }
+
+    [Fact]
+    public void QuerySupportsMultipleWhereCalls()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+
+        Assert.Equal(["Bob"], table.Query<Person>()
+            .Where(p => p.TenantId == 1)
+            .Where(p => p.Age == 35)
+            .Where(p => p.Name == "Bob")
+            .AsEnumerable()
+            .Select(p => p.Name)
+            .ToArray());
+    }
+
+    [Fact]
+    public void QueryDoesNotMaterializeRowsWhileTestingPredicate()
+    {
+        FillPersonData();
+        Person.UploadedSetterCalls = 0;
+
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<IPersonTable>();
+        using var enumerator = table.Query<Person>().Where(p => p.Age == 35).GetEnumerator();
+
+        Assert.True(enumerator.MoveNext());
+        Assert.Equal(0, Person.UploadedSetterCalls);
+        Assert.Equal("Bob", enumerator.Current.Name);
+        Assert.Equal(1, Person.UploadedSetterCalls);
+    }
+
+    [Fact]
+    public async Task QueryDoesNotReadValueForRowsRejectedByKeyPredicate()
+    {
+        FillPersonData();
+        byte[] prefix;
+        using (var tr = _db.StartTransaction())
+        {
+            var table = tr.GetRelation<IPersonTable>();
+            prefix = ((IRelationDbManipulator)table).RelationInfo.Prefix.ToArray();
+        }
+
+        using (var lowTr = await _lowDb.StartWritingTransaction())
+        {
+            using var cursor = lowTr.CreateCursor();
+            Assert.True(cursor.FindFirstKey(prefix));
+            cursor.SetValue([]);
+            lowTr.Commit();
+        }
+
+        using var readTr = _db.StartTransaction();
+        var readTable = readTr.GetRelation<IPersonTable>();
+
+        Assert.Equal(["Dana"], readTable.Query<Person>()
+            .Where(p => p.TenantId == 2)
+            .Where(p => p.Age == 41)
+            .AsEnumerable()
+            .Select(p => p.Name)
+            .ToArray());
+    }
+
+    [Fact]
+    public void QueryProgramHandlesAllPersistedValueVersions()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            tr.GetRelation<IQueryVersion1Table>().Upsert(new()
+            {
+                Id = 1, Name = "old", Score = 11, Ignored = "old ignored"
+            });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using (var tr = _db.StartTransaction())
+        {
+            tr.GetRelation<IQueryVersion2Table>().Upsert(new()
+            {
+                Id = 2, Name = "new", Score = 22, Added = "new added"
+            });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using var readTr = _db.StartTransaction();
+        var table = readTr.GetRelation<IQueryVersion2Table>();
+
+        Assert.Equal(["old"], table.Query<QueryVersion2>()
+            .Where(p => p.Score == 11)
+            .Where(p => p.Name == "old")
+            .AsEnumerable()
+            .Select(p => p.Name)
+            .ToArray());
+        Assert.Equal(["new"], table.Query<QueryVersion2>()
+            .Where(p => p.Score == 22)
+            .Where(p => p.Name == "new")
             .AsEnumerable()
             .Select(p => p.Name)
             .ToArray());

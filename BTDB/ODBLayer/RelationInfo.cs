@@ -1219,6 +1219,18 @@ public class RelationInfo
 
     internal RelationVersionInfo ClientRelationVersionInfo { get; }
 
+    internal IEnumerable<(uint Version, RelationVersionInfo Info)> RelationVersions
+    {
+        get
+        {
+            for (var version = 0u; version < _relationVersions.Length; version++)
+                if (_relationVersions[version] != null)
+                    yield return (version, _relationVersions[version]!);
+        }
+    }
+
+    internal ITypeConverterFactory TypeConverterFactory => _relationInfoResolver.TypeConverterFactory;
+
     internal uint LastPersistedVersion { get; set; }
 
     internal uint ClientTypeVersion { get; }

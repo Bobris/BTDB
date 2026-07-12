@@ -166,7 +166,8 @@ public enum OpCode : byte
     CallGetter = 147,
     CallSetter = 148,
     ConvertParam1ToResult = 149,
-    StackBytesAlloc = 150
+    StackBytesAlloc = 150,
+    EqualDateTime = 151
 }
 
 public enum CodeOp : byte
@@ -973,8 +974,9 @@ static class Interpreter
                 switch ((OpCode)opCode)
                 {
                 case OpCode.Invalid:
-                    throw new InvalidOperationException("Invalid interpreter opcode.");
+                    throw new InvalidOperationException($"Invalid interpreter opcode at {instructionPc}.");
                 case OpCode.Stop:
+                    if (pendingStop) return;
                     if (EnterNextFinallyForStop(ref ctx, ref pc, instructionPc, ref pendingFinallyBlockIndex))
                     {
                         pendingStop = true;
@@ -1008,6 +1010,10 @@ static class Interpreter
                 case OpCode.EqualString:
                     ctx.BoolResult = Unsafe.As<byte, string?>(ref ctx.Param1) ==
                                      Unsafe.As<byte, string?>(ref ctx.Param2);
+                    break;
+                case OpCode.EqualDateTime:
+                    ctx.BoolResult = Unsafe.As<byte, DateTime>(ref ctx.Param1) ==
+                                     Unsafe.As<byte, DateTime>(ref ctx.Param2);
                     break;
                 case OpCode.LessString:
                     ctx.BoolResult = string.CompareOrdinal(Unsafe.As<byte, string?>(ref ctx.Param1),
@@ -2244,6 +2250,7 @@ static class Interpreter
         if (size > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(size));
         var bytes = stackalloc byte[(int)size];
+        new Span<byte>(bytes, (int)size).Clear();
         ctx.Param2 = ref Unsafe.AsRef<byte>(bytes);
         Run(ref ctx, ref pc);
     }

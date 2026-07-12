@@ -562,6 +562,30 @@ TryEnd
     }
 
     [Fact]
+    public void NestedStackAllocationsUnwindOneScopeAtATime()
+    {
+        var builder = new InterpreterBuilder();
+        builder.AddInstruction(OpCode.StackBytesAlloc);
+        builder.AddVUInt64(16);
+        builder.AddInstruction(OpCode.StackAllocObject);
+        builder.AddVUInt64(2);
+        builder.AddInstruction(OpCode.SetBoolResultTrue);
+        builder.AddInstruction(OpCode.Stop);
+        builder.AddInstruction(OpCode.Stop);
+        builder.AddInstruction(OpCode.Stop);
+        var program = builder.Materialize();
+        Span<byte> stack = stackalloc byte[1];
+        byte result = 0;
+        byte param1 = 0;
+        byte param2 = 0;
+        var ctx = new InterpreterCtx(ref result, ref param1, ref param2, stack, program);
+
+        Interpreter.Run(ref ctx);
+
+        Assert.True(ctx.BoolResult);
+    }
+
+    [Fact]
     public unsafe void CallGetterAndSetterUseResolvedFieldAccessors()
     {
         RegisterAccessorTestObjectMetadata();

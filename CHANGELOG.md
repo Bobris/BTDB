@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Changed
+
+- `IRelation.Query<T>()` now evaluates chained `Where` predicates with the bytecode interpreter directly from
+  serialized relation fields, skipping unreferenced fields and materializing only matching rows.
+
 ## 35.4.1
 
 ### Fixed
