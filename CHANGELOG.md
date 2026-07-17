@@ -2,10 +2,19 @@
 
 ## [unreleased]
 
+## 35.5.0
+
 ### Changed
 
 - `IRelation.Query<T>()` now evaluates chained `Where` predicates with the bytecode interpreter directly from
   serialized relation fields, skipping unreferenced fields and materializing only matching rows.
+
+### Added
+
+- `DBOptions.WithoutFreeContentInNativeObject()` disables value free-content handling during direct lazy-dictionary
+  mutations, allowing nested dictionary IDs to be shared by multiple stored objects. Relation free-content cleanup stays
+  enabled, while content that becomes unreferenced can still be reclaimed by the compactor leak detector in
+  `CompactorLeakDetectorMode.Erase` mode.
 
 ## 35.4.1
 
