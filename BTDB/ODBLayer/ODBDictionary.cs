@@ -55,7 +55,8 @@ public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQu
         _tr = tr;
         _id = id;
         _valueHandler = config.ValueHandler;
-        _valueHandlerDoesNeedFreeContent = config.ValueHandlerDoesNeedFreeContent;
+        _valueHandlerDoesNeedFreeContent = tr.Owner.ActualOptions.FreeContentInNativeObject &&
+                                           config.ValueHandlerDoesNeedFreeContent;
         var len = PackUnpack.LengthVUInt(id);
         var prefix = new byte[ObjectDB.AllDictionariesPrefixLen + len];
         MemoryMarshal.GetReference(prefix.AsSpan()) = ObjectDB.AllDictionariesPrefixByte;

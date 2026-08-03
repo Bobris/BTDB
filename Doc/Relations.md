@@ -490,6 +490,13 @@ automatically cleared to avoid data leaks (Also works recursively IDictionaries 
 nested in another IDictionary). You can see examples in
 [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs)
 
+When a lazy `IDictionary<TKey, TValue>` has a class as `TValue`, direct dictionary mutations normally free nested content
+inside removed or replaced values. A nested lazy dictionary can be copied to another object and then share the same
+dictionary ID. Applications using this pattern can open ObjectDB with
+`new DBOptions().WithoutFreeContentInNativeObject()` to disable value free-content handling for direct lazy-dictionary
+mutations. Normal relation free-content cleanup stays enabled. Unreferenced content remains leaked until the compactor
+leak detector runs with `CompactorLeakDetectorMode.Erase`.
+
 If you have IIndirect property. You are on your own. And that's include any nested IDictionary which needs to be cleared
 before. So you need recursively load objects and delete them. See test named `IIndirectMustBeFreedManually`
 in [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs).

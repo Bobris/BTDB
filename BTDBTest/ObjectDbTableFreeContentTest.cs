@@ -27,16 +27,16 @@ public class ObjectDbTableFreeContentTest : IDisposable
         OpenDb();
     }
 
-    void OpenDb()
+    void OpenDb(DBOptions? options = null)
     {
         _db = new ObjectDB();
-        _db.Open(_lowDb, false, new DBOptions().WithoutAutoRegistration());
+        _db.Open(_lowDb, false, options ?? new DBOptions().WithoutAutoRegistration());
     }
 
-    void ReopenDb()
+    void ReopenDb(DBOptions? options = null)
     {
         _db.Dispose();
-        OpenDb();
+        OpenDb(options);
     }
 
     public class Link
@@ -64,6 +64,74 @@ public class ObjectDbTableFreeContentTest : IDisposable
         {
             var links = creator(tr);
             Assert.True(links.RemoveById(1));
+            tr.Commit();
+        }
+
+        AssertNoLeaksInDb();
+    }
+
+    [Fact]
+    public void WithoutFreeContentInNativeObjectPreservesSharedIDictionary()
+    {
+        ReopenDb(new DBOptions().WithoutAutoRegistration().WithoutFreeContentInNativeObject());
+        Func<IObjectDBTransaction, ILinksWithOrderedNodes> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ILinksWithOrderedNodes>("SharedIDictInDictionaryValueRelation");
+            var links = creator(tr);
+            links.Insert(new LinkWithOrderedNodes
+            {
+                Id = 1
+            });
+            var link = links.FindById(1);
+            link.Nodes[1] = CreateNodeWithNestedDictionary("first", 10);
+            var sharedEdges = link.Nodes[1].Edges;
+            link.Nodes[2] = new NodeWithNestedDictionary { Name = "second", Edges = sharedEdges };
+            Assert.Equal(((IInternalODBDictionary)sharedEdges).DictId,
+                ((IInternalODBDictionary)link.Nodes[2].Edges).DictId);
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            Assert.True(link.Nodes.Remove(1));
+            Assert.Equal(2, link.Nodes[2].Edges.Count);
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            var links = creator(tr);
+            var link = links.FindById(1);
+            Assert.Equal(2, link.Nodes[2].Edges.Count);
+            Assert.True(link.Nodes.Remove(2));
+            tr.Commit();
+        }
+
+        Assert.NotEmpty(FindLeaks());
+    }
+
+    [Fact]
+    public void WithoutFreeContentInNativeObjectStillFreesDictionaryInRelationObject()
+    {
+        ReopenDb(new DBOptions().WithoutAutoRegistration().WithoutFreeContentInNativeObject());
+        Func<IObjectDBTransaction, ILinksWithNodes> creator;
+        using (var tr = _db.StartTransaction())
+        {
+            creator = tr.InitRelation<ILinksWithNodes>("IDictObjLinksRelationWithDictionaryValueOptOut");
+            creator(tr).Insert(new Links
+            {
+                Id = 1,
+                Nodes = new Nodes { Edges = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 } }
+            });
+            tr.Commit();
+        }
+
+        using (var tr = _db.StartTransaction())
+        {
+            Assert.True(creator(tr).RemoveById(1));
             tr.Commit();
         }
 

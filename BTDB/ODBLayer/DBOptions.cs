@@ -19,6 +19,7 @@ public class DBOptions
     {
         AutoRegisterType = true;
         AutoRegisterRelations = true;
+        FreeContentInNativeObject = true;
         CompactorLeakDetectorMode = CompactorLeakDetectorMode.DetectOnly;
     }
 
@@ -88,6 +89,12 @@ public class DBOptions
         return this;
     }
 
+    public DBOptions WithoutFreeContentInNativeObject()
+    {
+        FreeContentInNativeObject = false;
+        return this;
+    }
+
     public bool AutoRegisterRelations { get; private set; }
     public bool AutoRegisterType { get; private set; }
     public bool AutoSkipUnknownTypes { get; private set; }
@@ -100,6 +107,7 @@ public class DBOptions
     public ISymmetricCipher? SymmetricCipher { get; private set; }
 
     public IObjectDBLogger? Logger { get; private set; }
+    public bool FreeContentInNativeObject { get; private set; }
     public CompactorLeakDetectorMode CompactorLeakDetectorMode { get; private set; }
 
     [DoesNotReturn]
