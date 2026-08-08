@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.6.0
+
 ### Added
 
 - Added `ILazyUlongList`, an ObjectDB-backed append-only `ulong` list with streaming rebuild support, fast indexed
