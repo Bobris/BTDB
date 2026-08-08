@@ -502,6 +502,47 @@ public class ODBIterator
         _visitor?.EndSet();
     }
 
+    void IterateLazyUlongList(ulong dictId)
+    {
+        if (_visitor != null && !_visitor.StartList())
+            return;
+        var o = ObjectDB.AllDictionariesPrefix.Length;
+        var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
+        Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
+        PackUnpack.PackVUInt(prefix, ref o, dictId);
+        using var cursor = _trkv.CreateCursor();
+        Span<byte> keyBuffer = stackalloc byte[32];
+        Memory<byte> valueBuffer = new byte[LazyUlongList.MaxRecordPayloadLength];
+        var countSeen = false;
+        var recordSeen = false;
+        while (cursor.FindNextKey(prefix))
+        {
+            _fastVisitor.MarkCurrentKeyAsUsed(cursor);
+            if (cursor.GetKeySpan(ref keyBuffer).Length == prefix.Length)
+            {
+                countSeen = true;
+                continue;
+            }
+
+            recordSeen = true;
+            foreach (var item in LazyUlongList.DecodeRecord(cursor.GetValueMemory(ref valueBuffer, copy: true)))
+            {
+                if (_visitor == null || _visitor.StartItem())
+                {
+                    if (_visitor?.NeedScalarAsObject() ?? false)
+                        _visitor.ScalarAsObject(item);
+                    if (_visitor?.NeedScalarAsText() ?? false)
+                        _visitor.ScalarAsText(item.ToString(CultureInfo.InvariantCulture));
+                    _visitor?.EndItem();
+                }
+            }
+        }
+
+        if (recordSeen && !countSeen && (_visitor?.NeedScalarAsText() ?? false))
+            _visitor.ScalarAsText("Incomplete");
+        _visitor?.EndList();
+    }
+
     unsafe void IterateHandler(ref MemReader reader, IFieldHandler handler, bool skipping,
         HashSet<int>? knownInlineRefs)
     {
@@ -523,6 +564,14 @@ public class ODBIterator
                 var keyHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers()
                     .First();
                 IterateSet(dictId, keyHandler);
+            }
+        }
+        else if (handler is ODBLazyUlongListFieldHandler)
+        {
+            var dictId = reader.ReadVUInt64();
+            if (!skipping)
+            {
+                IterateLazyUlongList(dictId);
             }
         }
         else if (handler is ODBRoaringBitmapFieldHandler)

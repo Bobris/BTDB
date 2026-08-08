@@ -2657,6 +2657,28 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task RelationSupportsLazyUlongListField()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using BTDB.ODBLayer;
+
+            public class LazyUlongListRow
+            {
+                [PrimaryKey(1)] public ulong Id { get; set; }
+
+                public ILazyUlongList Values { get; set; } = null!;
+            }
+
+            public interface ILazyUlongListTable : IRelation<LazyUlongListRow>
+            {
+                void Insert(LazyUlongListRow row);
+                LazyUlongListRow FindById(ulong id);
+            }
+            """);
+    }
+
+    [Fact]
     public Task UpdateByIdDetectsTypeMismatch()
     {
         // language=cs

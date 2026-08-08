@@ -43,6 +43,10 @@
   use in Event serialization, do not use `OrderedSet<T>` (only as initial constructor of content))
 - `IRoaringBitmap` (Lazy loaded bitmap of `ulong` indexes for ObjectDB relations; call `Flush()` to persist `Set`
   changes; use `RoaringBitmap.BuildAsync` for initialization and bulk rebuilds)
+- `ILazyUlongList` (Lazy loaded append-only list of `ulong` values for ObjectDB relations; records contain up to 4096
+  values using one absolute `VUInt64` followed by `VInt64` deltas; call `Flush()` after `Add`, or use
+  `LazyUlongList.BuildAsync` for a streaming rebuild; `EnumerateFromIndex` starts directly at the containing record;
+  ideal for speeding up persistence of filtered and sorted lists of indexes)
 
 ## Default conversions on load
 

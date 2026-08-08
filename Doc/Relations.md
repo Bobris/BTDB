@@ -485,7 +485,8 @@ added/recalculated/removed in `InitRelation` call. You can see examples in
 
 ## Free content
 
-During removing or updating of data, all IDictionaries, IOrderedSets, and IRoaringBitmaps present in removed data are
+During removing or updating of data, all IDictionaries, IOrderedSets, IRoaringBitmaps, and ILazyUlongLists present in
+removed data are
 automatically cleared to avoid data leaks (Also works recursively IDictionaries are freed automatically if they are
 nested in another IDictionary). You can see examples in
 [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs)

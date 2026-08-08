@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Added
+
+- Added `ILazyUlongList`, an ObjectDB-backed append-only `ulong` list with streaming rebuild support, fast indexed
+  enumeration, and delta-encoded records of up to 4096 values, ideal for speeding up persistence of filtered and sorted
+  lists of indexes.
+
 ## 35.5.0
 
 ### Changed

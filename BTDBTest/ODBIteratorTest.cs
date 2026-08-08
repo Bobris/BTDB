@@ -1020,6 +1020,54 @@ public class ODBIteratorTest : IDisposable
         void Insert(BitmapRecord value);
     }
 
+    public class LazyUlongListRecord
+    {
+        [PrimaryKey] public ulong Id { get; set; }
+        public ILazyUlongList Values { get; set; }
+    }
+
+    public interface ILazyUlongListRecordRelation : IRelation<LazyUlongListRecord>
+    {
+        void Insert(LazyUlongListRecord value);
+    }
+
+    [Fact]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void IterateRelationWithLazyUlongList()
+    {
+        ulong listId;
+        using (var tr = _db.StartTransaction())
+        {
+            var creator = tr.InitRelation<ILazyUlongListRecordRelation>("LazyUlongListRecord");
+            var list = new ODBLazyUlongList((IInternalObjectDBTransaction)tr);
+            listId = list.Id;
+            list.Add(10);
+            list.Add(7);
+            list.Add(7);
+            list.Add(ulong.MaxValue);
+            list.Flush();
+            creator(tr).Insert(new LazyUlongListRecord { Id = 1, Values = list });
+            tr.Commit();
+        }
+
+        using var readTr = _db.StartTransaction();
+        var visitor = new ToStringVisitor();
+        var iterator = new ODBIterator(readTr, visitor);
+        iterator.Iterate();
+        var text = visitor.ToString();
+        var first = text.IndexOf("ScalarStr 10", StringComparison.Ordinal);
+        var second = text.IndexOf("ScalarStr 7", StringComparison.Ordinal);
+        var duplicate = text.IndexOf("ScalarStr 7", second + 1, StringComparison.Ordinal);
+        var last = text.IndexOf($"ScalarStr {ulong.MaxValue}", StringComparison.Ordinal);
+        Assert.True(first >= 0);
+        Assert.True(second > first);
+        Assert.True(duplicate > second);
+        Assert.True(last > duplicate);
+        var keyPrefix = ExternalContentPrefixText(listId);
+        Assert.Contains($"Used key: {keyPrefix} Value len:1", text);
+        Assert.Contains($"Used key: {keyPrefix} 00", text);
+    }
+
     [Fact]
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void IterateRelationWithRoaringBitmap()
