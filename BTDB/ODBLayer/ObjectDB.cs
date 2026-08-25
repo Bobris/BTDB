@@ -338,12 +338,7 @@ public class ObjectDB : IObjectDB
         if (count < 5 || (count - 5) % 20 != 0) return;
 
         var stopwatch = Stopwatch.StartNew();
-        CompactorLeakDetector detector;
-        using (var tr = StartReadOnlyTransaction())
-        {
-            detector = new CompactorLeakDetector(tr, CompactorLeakCleanupMaxKeyBytes);
-            detector.FindLeaks(cancellation);
-        }
+        var detector = FindLeaks(cancellation);
 
         if (detector.KeyCountToDelete == 0) return;
 
@@ -354,25 +349,53 @@ public class ObjectDB : IObjectDB
             return;
         }
 
-        var removed = 0UL;
-        using (var tr = await StartWritingTransaction().ConfigureAwait(false))
-        {
-            using var cursor = tr.KeyValueDBTransaction.CreateCursor();
-            var keysReader = MemReader.CreateFromPinnedSpan(detector.KeysToDelete.Span);
-            for (var i = 0UL; i < detector.KeyCountToDelete; i++)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                var key = keysReader.ReadBlockAsSpan(keysReader.ReadVUInt32());
-                if (!cursor.FindExactKey(key)) continue;
-                cursor.EraseCurrent();
-                removed++;
-            }
-
-            if (removed > 0) tr.Commit();
-        }
+        var removed = await RemoveLeaks(detector, cancellation).ConfigureAwait(false);
 
         if (removed > 0)
             Logger?.CompactorRemovedLeaks(detector.LeakedObjectTypeNames, removed, stopwatch.Elapsed);
+    }
+
+    public async ValueTask<LeakRemovalResult> RunLeakRemovalAsync(CancellationToken cancellation = default)
+    {
+        var detector = FindLeaks(cancellation);
+        if (detector.KeyCountToDelete == 0)
+            return new(0, 0, detector.LeakedObjectTypeNames);
+
+        var removed = await RemoveLeaks(detector, cancellation).ConfigureAwait(false);
+        return new(detector.KeyCountToDelete, removed, detector.LeakedObjectTypeNames);
+    }
+
+    public LeakDetectionResult RunLeakDetection(CancellationToken cancellation = default)
+    {
+        var detector = FindLeaks(cancellation);
+        return new(detector.KeyCountToDelete, detector.LeakedObjectTypeNames);
+    }
+
+    CompactorLeakDetector FindLeaks(CancellationToken cancellation)
+    {
+        using var tr = StartReadOnlyTransaction();
+        var detector = new CompactorLeakDetector(tr, CompactorLeakCleanupMaxKeyBytes);
+        detector.FindLeaks(cancellation);
+        return detector;
+    }
+
+    async ValueTask<ulong> RemoveLeaks(CompactorLeakDetector detector, CancellationToken cancellation)
+    {
+        var removed = 0UL;
+        using var tr = await StartWritingTransaction().ConfigureAwait(false);
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        var keysReader = MemReader.CreateFromPinnedSpan(detector.KeysToDelete.Span);
+        for (var i = 0UL; i < detector.KeyCountToDelete; i++)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var key = keysReader.ReadBlockAsSpan(keysReader.ReadVUInt32());
+            if (!cursor.FindExactKey(key)) continue;
+            cursor.EraseCurrent();
+            removed++;
+        }
+
+        if (removed > 0) tr.Commit();
+        return removed;
     }
 
     class TableInfoResolver : ITableInfoResolver

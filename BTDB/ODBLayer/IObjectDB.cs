@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
@@ -19,6 +20,10 @@ public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
     IObjectDBTransaction StartReadOnlyTransaction();
 
     ValueTask<IObjectDBTransaction> StartWritingTransaction();
+
+    LeakDetectionResult RunLeakDetection(CancellationToken cancellation = default);
+
+    ValueTask<LeakRemovalResult> RunLeakRemovalAsync(CancellationToken cancellation = default);
 
     string RegisterType(Type type);
 

@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Added
+
+- Added `IObjectDB.RunLeakDetection(...)` and `IObjectDB.RunLeakRemovalAsync(...)` for immediately detecting or
+  removing leaked object and dictionary keys independently of periodic compactor leak detection, with affected key
+  counts and object type names in the returned results.
+
 ## 35.6.0
 
 ### Added

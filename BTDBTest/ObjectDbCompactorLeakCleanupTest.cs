@@ -59,6 +59,54 @@ public class ObjectDbCompactorLeakCleanupTest : IDisposable
     }
 
     [Fact]
+    public async Task ExplicitLeakRemovalRunsImmediatelyAndReturnsResult()
+    {
+        CreateObjectLeak("read", "write");
+        CreateDictionaryLeak("programming", "code", "debug");
+
+        var result = await ((IObjectDB)_db).RunLeakRemovalAsync();
+
+        Assert.Empty(FindLeaks());
+        Assert.True(result.LeakedKeyCount > 0);
+        Assert.Equal(result.LeakedKeyCount, result.RemovedKeyCount);
+        Assert.Contains(nameof(Job), result.LeakedObjectTypeNames);
+        Assert.Empty(_logger.DetectedLeaks);
+        Assert.Empty(_logger.RemovedLeaks);
+    }
+
+    [Fact]
+    public void ExplicitLeakDetectionRunsImmediatelyWithoutRemovingLeaks()
+    {
+        using var context = new TestDbContext(new DBOptions().WithoutAutoRegistration()
+            .WithCompactorLeakDetectorMode(CompactorLeakDetectorMode.Off));
+        CreateObjectLeak("read", "write", context.Db);
+        var leaksBefore = FindLeaks(context.Db);
+
+        var result = context.Db.RunLeakDetection();
+
+        Assert.Equal(leaksBefore, FindLeaks(context.Db));
+        Assert.Equal((ulong)leaksBefore.Count, result.LeakedKeyCount);
+        Assert.Contains(nameof(Job), result.LeakedObjectTypeNames);
+        Assert.Empty(context.Logger.DetectedLeaks);
+        Assert.Empty(context.Logger.RemovedLeaks);
+    }
+
+    [Fact]
+    public async Task ExplicitLeakRemovalIgnoresDisabledPeriodicDetector()
+    {
+        using var context = new TestDbContext(new DBOptions().WithoutAutoRegistration()
+            .WithCompactorLeakDetectorMode(CompactorLeakDetectorMode.Off));
+        CreateDictionaryLeak("programming", "code", "debug", context.Db);
+
+        var result = await context.Db.RunLeakRemovalAsync();
+
+        Assert.Empty(FindLeaks(context.Db));
+        Assert.True(result.RemovedKeyCount > 0);
+        Assert.Empty(context.Logger.DetectedLeaks);
+        Assert.Empty(context.Logger.RemovedLeaks);
+    }
+
+    [Fact]
     public async Task CompactorLogsLeakedObjectTypesOnceAndRemovedKeyCount()
     {
         CreateObjectLeak("read", "write");
