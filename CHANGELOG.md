@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.7.0
+
 ### Added
 
 - Added `IObjectDB.RunLeakDetection(...)` and `IObjectDB.RunLeakRemovalAsync(...)` for immediately detecting or
