@@ -23,7 +23,7 @@ These guidelines summarize how to navigate, build, and contribute to this reposi
 ## Environment Requirements
 
 - Always run `dotnet` commands with network access enabled so package restore and analyzer feeds can complete; request sandbox escalation before invoking `dotnet build`/`dotnet test` if the default environment denies network access.
-- `nuget.config` restores from NuGet plus the `terrafx` feed, so offline restore/build/test runs are incomplete.
+- `nuget.config` restores from NuGet.org, including `TerraFX.Interop.Mimalloc`, so offline restore/build/test runs are incomplete.
 - Example: `dotnet test BTDB.SourceGenerator.Test/BTDB.SourceGenerator.Tests.csproj` must be run with the `sandbox_permissions` flag set to `require_escalated` so NuGet restore can reach the feed.
 
 ## Coding Style & Naming Conventions

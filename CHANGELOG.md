@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Removed the redundant TerraFX package feed whose invalid TLS certificate prevented CI dependency restore.
+  All dependencies, including `TerraFX.Interop.Mimalloc`, are available on NuGet.org.
+
 ## 35.8.0
 
 ### Changed
