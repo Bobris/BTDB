@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.8.0
+
 ### Changed
 
 - Removed the primary-key-only limitation from `IterateById`: reusable projections can now include stored value fields,
