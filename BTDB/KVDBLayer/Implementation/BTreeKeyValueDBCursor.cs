@@ -592,6 +592,24 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         }
     }
 
+    public void FastIterateNoCursor(ref Span<byte> buffer, CursorIterateCallback callback)
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        _modificationForbidden = true;
+        try
+        {
+            if (!_cursor!.IsValid())
+                if (!FindFirstKey([]))
+                    return;
+            if (_keyIndex == -1) _keyIndex = _cursor!.CalcIndex();
+            _cursor!.FastIterateNoCursor(ref buffer, ref _keyIndex, callback);
+        }
+        finally
+        {
+            _modificationForbidden = false;
+        }
+    }
+
     public void NotifyRemove(ulong startIndex, ulong endIndex)
     {
         if (_modificationForbidden) throw new BTDBException("DB modification during FastIterate is forbidden");

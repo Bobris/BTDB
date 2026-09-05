@@ -157,11 +157,21 @@ public interface IKeyValueDBCursor : IDisposable
 
     /// <summary>
     /// From current position it will repeatedly call callback for each key in ascending order.
-    /// It is forbidden to modify database in callback. It is also not allowed to call any Cursor method on this cursor.
+    /// The callback may read the current key and value, but must not move or invalidate this cursor,
+    /// reenter iteration, or modify the database.
     /// </summary>
     /// <param name="buffer">It will be used and enlarged to fit keys</param>
     /// <param name="callback">Iteration will stop if callback returns true</param>
     void FastIterate(ref Span<byte> buffer, CursorIterateCallback callback);
+
+    /// <summary>
+    /// Iterates keys from the current position without maintaining an observable cursor position
+    /// during callbacks. The callback must not use this cursor or modify the database.
+    /// The key span is valid only during the callback. When the callback returns true or throws,
+    /// the cursor is positioned on that key. The buffer may be enlarged to fit keys.
+    /// </summary>
+    void FastIterateNoCursor(ref Span<byte> buffer, CursorIterateCallback callback)
+        => FastIterate(ref buffer, callback);
 }
 
 public delegate bool CursorIterateCallback(long keyIndex, ReadOnlySpan<byte> key);

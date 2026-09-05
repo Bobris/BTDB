@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+### Changed
+
+- Removed the primary-key-only limitation from `IterateById`: reusable projections can now include stored value fields,
+  deserialized using the row's schema version while preserving `[NotStored]` context.
+- Added `FastIterateNoCursor` for callbacks that do not access the cursor, with deferred cursor/index updates
+  and optimized short key suffix copies. Existing `FastIterate` continues to expose the current cursor during callbacks.
+  Primary-key-only `IterateById` scans use the new API.
+- Further optimized `FastIterateNoCursor` with padded short-suffix word copies, fewer bounds checks, and
+  a single per-key iteration counter.
+- Reduced work when scanning prefixed BTree leaves by combining scratch-buffer capacity checks, copying short
+  prefixes with a single word, reusing adjacent suffix offsets, and simplifying branch cursor-position updates.
+
+### Added
+
+- Added `IterateById` relation methods that hydrate a projection into one caller-provided instance for every matching
+  primary-key row, allowing allocation-free callbacks and preserving `[NotStored]` context on the reused instance.
+
 ## 35.7.0
 
 ### Added

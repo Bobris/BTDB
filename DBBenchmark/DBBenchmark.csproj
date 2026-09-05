@@ -5,12 +5,15 @@
         <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
         <Nullable>enable</Nullable>
         <LangVersion>default</LangVersion>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
     <ItemGroup>
+        <ProjectReference Include="..\BTDB.SourceGenerator\BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
         <ProjectReference Include="..\BTDBTest\BTDBTest.csproj"/>
         <ProjectReference Include="..\BTDB\BTDB.csproj"/>
     </ItemGroup>
     <ItemGroup>
+        <PackageReference Include="BenchmarkDotNet" Version="0.14.0"/>
         <PackageReference Include="LightningDB" Version="0.17.0"/>
     </ItemGroup>
 </Project>

@@ -22,7 +22,7 @@ namespace BTDB.ODBLayer;
 
 delegate void RelationLoader(IInternalObjectDBTransaction transaction, ref MemReader reader, object value);
 
-delegate object RelationLoaderFunc(IInternalObjectDBTransaction transaction, ref MemReader reader);
+delegate object RelationLoaderFunc(IInternalObjectDBTransaction transaction, ref MemReader reader, object? value);
 
 delegate int RelationSaver(IInternalObjectDBTransaction transaction, ref MemWriter writer, object value);
 
@@ -69,12 +69,14 @@ public class RelationInfo
         readonly RelationInfo _owner;
         readonly Type _itemType;
         readonly ReadOnlyMemory<TableFieldInfo> _pkFields;
+        readonly ItemLoaderInfo?[] _primaryKeySuffixLoaders;
 
         public ItemLoaderInfo(RelationInfo owner, Type itemType)
         {
             _owner = owner;
             _itemType = itemType;
             _pkFields = _owner.ClientRelationVersionInfo.PrimaryKeyFields;
+            _primaryKeySuffixLoaders = new ItemLoaderInfo?[_pkFields.Length];
             _valueLoaders = new RelationLoader?[_owner._relationVersions.Length];
             _primaryKeysLoader = CreatePkLoader(itemType, _owner.ClientRelationVersionInfo.PrimaryKeyFields.Span,
                 $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough,
@@ -86,6 +88,7 @@ public class RelationInfo
             _owner = owner;
             _itemType = itemType;
             _pkFields = pkFields;
+            _primaryKeySuffixLoaders = new ItemLoaderInfo?[pkFields.Length];
             _valueLoaders = new RelationLoader?[_owner._relationVersions.Length];
             _primaryKeysLoader = CreatePkLoader(itemType, pkFields.Span,
                 $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough,
@@ -113,13 +116,13 @@ public class RelationInfo
 
         [SkipLocalsInit]
         internal unsafe object CreateInstance(IInternalObjectDBTransaction tr, IKeyValueDBCursor cursor,
-            scoped in ReadOnlySpan<byte> keyBytes)
+            scoped in ReadOnlySpan<byte> keyBytes, object? instance = null)
         {
             fixed (void* pKeyBytes = keyBytes)
             {
                 var reader = new MemReader(pKeyBytes, keyBytes.Length);
                 reader.SkipBlock((uint)_owner.Prefix.Length);
-                var obj = _primaryKeysLoader(tr, ref reader);
+                var obj = _primaryKeysLoader(tr, ref reader, instance);
                 if (_primaryKeyIsEnough) return obj;
                 if (_loadAsMemory)
                 {
@@ -145,6 +148,31 @@ public class RelationInfo
             }
         }
 
+        internal ItemLoaderInfo GetPrimaryKeySuffixLoader(int prefixFieldCount)
+        {
+            if (prefixFieldCount == 0) return this;
+            var loader = Volatile.Read(ref _primaryKeySuffixLoaders[prefixFieldCount - 1]);
+            if (loader == null)
+            {
+                loader = new(_owner, _itemType, _pkFields[prefixFieldCount..]);
+                Interlocked.CompareExchange(ref _primaryKeySuffixLoaders[prefixFieldCount - 1], loader, null);
+                loader = _primaryKeySuffixLoaders[prefixFieldCount - 1]!;
+            }
+
+            return loader._primaryKeyIsEnough ? loader : this;
+        }
+
+        internal unsafe void LoadPrimaryKeyInstance(IInternalObjectDBTransaction tr,
+            scoped in ReadOnlySpan<byte> keyBytes, uint keyPrefixLength, object value)
+        {
+            fixed (void* pKeyBytes = keyBytes)
+            {
+                var reader = new MemReader(pKeyBytes, keyBytes.Length);
+                reader.SkipBlock(keyPrefixLength);
+                _primaryKeysLoader(tr, ref reader, value);
+            }
+        }
+
         internal unsafe object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes,
             in ReadOnlySpan<byte> valueBytes)
         {
@@ -153,7 +181,7 @@ public class RelationInfo
                 var reader = new MemReader(pKeyBytes, keyBytes.Length);
                 reader.Skip1Byte(); // 3
                 reader.SkipVUInt64(); // RelationId
-                var obj = _primaryKeysLoader(tr, ref reader);
+                var obj = _primaryKeysLoader(tr, ref reader, null);
                 if (_primaryKeyIsEnough) return obj;
                 fixed (void* _ = valueBytes)
                 {
@@ -322,9 +350,9 @@ public class RelationInfo
                 var loadersArray = loaders.ToArray();
                 if (anyNeedsCtx)
                 {
-                    return (transaction, ref reader) =>
+                    return (transaction, ref reader, value) =>
                     {
-                        var res = that();
+                        var res = value ?? that();
                         var ctx = new DBReaderCtx(transaction);
                         foreach (var loader in loadersArray)
                         {
@@ -335,9 +363,9 @@ public class RelationInfo
                     };
                 }
 
-                return (_, ref reader) =>
+                return (_, ref reader, value) =>
                 {
-                    var res = that();
+                    var res = value ?? that();
                     foreach (var t in loadersArray)
                     {
                         t(res, ref reader, null);
@@ -361,6 +389,12 @@ public class RelationInfo
                 }
 
                 ilGenerator.DeclareLocal(instanceType);
+                var haveInstance = ilGenerator.DefineLabel();
+                ilGenerator
+                    .Ldarg(3)
+                    .Dup()
+                    .BrtrueS(haveInstance)
+                    .Pop();
                 if (that == null)
                 {
                     var defaultConstructor = instanceType.GetDefaultConstructor();
@@ -385,6 +419,8 @@ public class RelationInfo
                 }
 
                 ilGenerator
+                    .Mark(haveInstance)
+                    .Castclass(instanceType)
                     .Stloc(0);
 
                 var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?)>();

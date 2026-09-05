@@ -386,6 +386,10 @@ public class RelationBuilder : IRelationBuilder
                 CreateMethodRemoveWithSizesById(reqMethod.Generator, method.Name, method.GetParameters(),
                     method.ReturnType);
             }
+            else if (method.Name == "IterateById")
+            {
+                BuildIterateByIdMethod(method, reqMethod);
+            }
             else if (method.Name.StartsWith("ScanBy", StringComparison.Ordinal))
             {
                 BuildScanByMethod(method, reqMethod);
@@ -521,6 +525,58 @@ public class RelationBuilder : IRelationBuilder
             CreateMethodScanBy(reqMethod.Generator, method.Name,
                 method.GetParameters(), method.ReturnType);
         }
+    }
+
+    void BuildIterateByIdMethod(MethodInfo method, IILMethod reqMethod)
+    {
+        CheckReturnType(method.Name, typeof(void), method.ReturnType);
+        var parameters = method.GetParameters();
+        if (parameters.Length < 2)
+        {
+            RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                $"Method {method.Name} expects callback and value parameters.");
+        }
+
+        var valueType = parameters[^1].ParameterType;
+        if (!valueType.IsClass)
+        {
+            RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                $"Method {method.Name} value parameter must have class type.");
+        }
+
+        var actionType = parameters[^2].ParameterType.SpecializationOf(typeof(Action<>));
+        if (actionType == null || actionType.GetGenericArguments()[0] != valueType)
+        {
+            RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                $"Method {method.Name} callback parameter must be Action<{valueType.ToSimpleName()}>.");
+        }
+
+        var il = reqMethod.Generator;
+        var (pushWriter, ctxLocFactory) = WriterPushers(il);
+        WriteRelationPKPrefix(il, pushWriter);
+        var primaryKeyFields = FilterOutInKeyValues(ClientRelationVersionInfo.PrimaryKeyFields.Span);
+        var prefixParameters = parameters.AsSpan(..^2);
+        var count = SaveMethodParameters(il, method.Name, prefixParameters, primaryKeyFields, pushWriter,
+            ctxLocFactory);
+        if (count != prefixParameters.Length)
+        {
+            RelationInfoResolver.ActualOptions.ThrowBTDBException(
+                $"Number of parameters in {method.Name} is bigger than primary key count {primaryKeyFields.Length}.");
+        }
+
+        var spanLocal = il.DeclareLocal(typeof(ReadOnlySpan<byte>));
+        il
+            .Ldarg(0)
+            .Do(pushWriter)
+            .Call(MemWriterGetSpanMethodInfo)
+            .Stloc(spanLocal)
+            .Ldloca(spanLocal)
+            .LdcI4(prefixParameters.Length)
+            .LdcI4(RegisterLoadType(valueType))
+            .Ldarg((ushort)(parameters.Length - 1))
+            .Ldarg((ushort)parameters.Length)
+            .Callvirt(_relationDbManipulatorType.GetMethod(
+                nameof(RelationDBManipulator<IRelation>.IterateByPrimaryKeyPrefix))!.MakeGenericMethod(valueType));
     }
 
     void BuildGatherByMethod(MethodInfo method, IILMethod reqMethod)

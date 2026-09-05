@@ -70,6 +70,36 @@ public class RelationTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task IterateByIdGeneratesReusableValueIteration()
+    {
+        // language=cs
+        return VerifySourceGenerator("""
+            using System;
+            using BTDB.ODBLayer;
+
+            public class CompanyUserRole
+            {
+                [PrimaryKey(1)] public ulong CompanyId { get; set; }
+                [PrimaryKey(2)] public ulong UserId { get; set; }
+                [PrimaryKey(3)] public ulong RoleId { get; set; }
+            }
+
+            public class CompanyUserRoleIteration
+            {
+                public ulong UserId { get; set; }
+                public ulong RoleId { get; set; }
+                [NotStored] public object Context { get; set; } = null!;
+            }
+
+            public interface ICompanyUserRoleTable : IRelation<CompanyUserRole>
+            {
+                void IterateById(ulong companyId, Action<CompanyUserRoleIteration> callback,
+                    CompanyUserRoleIteration value);
+            }
+            """);
+    }
+
+    [Fact]
     public Task VerifyGenerateForClosedRelationInterfaceEmitsRelationItemMetadata()
     {
         // language=cs

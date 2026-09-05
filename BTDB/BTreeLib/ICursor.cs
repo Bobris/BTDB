@@ -45,7 +45,21 @@ public interface ICursor
     }
 
     void TestTreeCorrectness();
+    /// <summary>
+    /// Iterates from the current position, maintaining cursor position and keyIndex for every callback.
+    /// The callback may read the current key and value, but must not move or invalidate this cursor,
+    /// reenter iteration, or modify the tree. The key span is valid only during the callback.
+    /// </summary>
     void FastIterate(ref Span<byte> buffer, ref long keyIndex, CursorIterateCallback callback);
+
+    /// <summary>
+    /// Iterates keys from the current position. The callback must not use this cursor,
+    /// access the keyIndex reference, or modify the tree. The key span is valid only during the callback.
+    /// Cursor position and keyIndex are published when iteration returns or throws, and
+    /// identify the current key when the callback returns true or throws.
+    /// </summary>
+    void FastIterateNoCursor(ref Span<byte> buffer, ref long keyIndex, CursorIterateCallback callback)
+        => FastIterate(ref buffer, ref keyIndex, callback);
 }
 
 public delegate void BuildTreeCallback(ref MemReader reader, ref ByteBuffer key, in Span<byte> value);

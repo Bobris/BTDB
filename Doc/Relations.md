@@ -206,6 +206,29 @@ because only fields with matching names and types will be deserialized. Note: Th
 
     IEnumerable<Age> FindByIdJustAge(ulong id);
 
+### Iterate
+
+`IterateById` synchronously visits all rows with the given primary-key prefix without allocating a result object for
+each row. The final two parameters must be an `Action<T>` callback and a caller-provided `T` instance. BTDB loads each
+matching row into that same instance before invoking the callback.
+
+```C#
+    public class UserRole
+    {
+        public ulong UserId { get; set; }
+        public ulong RoleId { get; set; }
+        [NotStored] public HashSet<ulong> ActiveUsers { get; set; } = null!;
+    }
+
+    void IterateById(ulong companyId, Action<UserRole> callback, UserRole value);
+```
+
+The reusable class can contain primary-key fields and stored value fields needed by the callback. Projections with
+only primary-key fields avoid reading the stored value; other projections deserialize it using the stored schema version.
+`[NotStored]` properties and fields are left untouched, so they can carry context into the callback.
+The callback must not retain the row as a snapshot:
+the same instance is overwritten by the next iteration. The callback must not modify the database during iteration.
+
 ### List
 
     IOrderedDictionaryEnumerator<uint, Person> ListById(AdvancedEnumeratorParam<uint> param);
@@ -719,3 +742,14 @@ They are automatically recalculated when needed, it makes updating relation litt
 old value must be deserialized into object to calculate old value of secondary index. But it is faster than storing that
 string twice in value.
 It is not possible to use computed fields in primary key.
+
+### Cursor access during fast iteration
+
+`IKeyValueDBCursor.FastIterate` maintains the current position during each callback, allowing key/value reads.
+The callback must not move or invalidate the cursor, reenter iteration, or modify the database.
+
+`FastIterateNoCursor` is a separate API for callbacks that consume only the supplied key index and key span.
+Its callback must not access the iterating cursor or modify the database. The key span is valid only during
+that callback. Cursor state is published when iteration returns or throws; an early stop or exception leaves
+it on the current key. The lower-level `ICursor` overload also requires that the callback not access its
+`ref keyIndex` argument. Primary-key-only `IterateById` uses this API internally with its private cursor.

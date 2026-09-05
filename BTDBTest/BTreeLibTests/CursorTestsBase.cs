@@ -28,6 +28,256 @@ public abstract class CursorTestsBase : IDisposable
         Assert.Equal(0ul, leaks.Count);
     }
 
+    [Fact]
+    public void FastIterationCallbackCanReadCurrentCursor()
+    {
+        for (var i = 0; i < 300; i++)
+            _cursor.Upsert(new byte[] { (byte)(i >> 8), (byte)i }, GetSampleValue(i));
+        Assert.True(_cursor.SeekIndex(0));
+        long keyIndex = 0;
+        Span<byte> buffer = stackalloc byte[16];
+        _cursor.FastIterate(ref buffer, ref keyIndex, (index, key) =>
+        {
+            Assert.Equal(index, _cursor.CalcIndex());
+            Assert.True(key.SequenceEqual(_cursor.GetKeyAsArray()));
+            Assert.True(_cursor.GetValue().SequenceEqual(GetSampleValue((int)index)));
+            return false;
+        });
+        Assert.Equal(300, keyIndex);
+    }
+
+    public static IEnumerable<object[]> IterationKeySizes()
+    {
+        foreach (var prefixLength in new[] { 0, 16 })
+        foreach (var suffixLength in new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 32, 70000 })
+            yield return new object[] { prefixLength, suffixLength };
+    }
+
+    [Theory]
+    [MemberData(nameof(IterationKeySizes))]
+    public void FastIterationPreservesKeysAndPosition(int prefixLength, int suffixLength)
+    {
+        var count = suffixLength == 0 ? 1 : suffixLength == 1 ? 200 : 600;
+        var keys = new byte[count][];
+        var random = new Random(42);
+        for (var i = 0; i < count; i++)
+        {
+            var key = new byte[prefixLength + suffixLength];
+            key.AsSpan(0, prefixLength).Fill(42);
+            random.NextBytes(key.AsSpan(prefixLength));
+            if (suffixLength == 1)
+                key[prefixLength] = (byte)i;
+            else if (suffixLength >= 2)
+            {
+                key[prefixLength] = (byte)(i >> 8);
+                key[prefixLength + 1] = (byte)i;
+            }
+
+            keys[i] = key;
+            _cursor.Upsert(key, GetSampleValue());
+        }
+
+        var start = count / 3;
+        var stop = count * 2 / 3;
+        Assert.True(_cursor.SeekIndex(start));
+        long keyIndex = start;
+        var expected = start;
+        Span<byte> buffer = [];
+        _cursor.FastIterateNoCursor(ref buffer, ref keyIndex, (index, key) =>
+        {
+            Assert.Equal(expected, index);
+            Assert.True(key.SequenceEqual(keys[expected]));
+            return expected++ == stop;
+        });
+        Assert.Equal(stop, keyIndex);
+        Assert.Equal(stop, _cursor.CalcIndex());
+        Assert.Equal(keys[stop], _cursor.GetKeyAsArray());
+
+        if (stop + 1 < count)
+        {
+            Assert.True(_cursor.MoveNext());
+            keyIndex++;
+            _cursor.FastIterateNoCursor(ref buffer, ref keyIndex, (index, key) =>
+            {
+                Assert.Equal(expected, index);
+                Assert.True(key.SequenceEqual(keys[expected++]));
+                return false;
+            });
+            Assert.Equal(count, expected);
+            Assert.Equal(count, keyIndex);
+            Assert.False(_cursor.IsValid());
+        }
+    }
+
+    [Fact]
+    public void FastIterationRetainsPositionWhenCallbackThrows()
+    {
+        for (var i = 0; i < 300; i++)
+            _cursor.Upsert(new byte[] { (byte)(i >> 8), (byte)i }, GetSampleValue());
+        Assert.True(_cursor.SeekIndex(0));
+        long keyIndex = 0;
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            Span<byte> buffer = stackalloc byte[16];
+            _cursor.FastIterateNoCursor(ref buffer, ref keyIndex, (index, _) =>
+            {
+                if (index == 170) throw new InvalidOperationException();
+                return false;
+            });
+        });
+        Assert.Equal(170, keyIndex);
+        Assert.Equal(170, _cursor.CalcIndex());
+        Assert.Equal(new byte[] { 0, 170 }, _cursor.GetKeyAsArray());
+        Span<byte> resumeBuffer = stackalloc byte[16];
+        _cursor.FastIterateNoCursor(ref resumeBuffer, ref keyIndex, (index, key) =>
+        {
+            Assert.Equal(170, index);
+            Assert.True(key.SequenceEqual(new byte[] { 0, 170 }));
+            return true;
+        });
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(32)]
+    public void NoCursorIterationHandlesMixedSuffixesAndBufferGrowth(int prefixLength)
+    {
+        var keys = new byte[600][];
+        for (var i = 0; i < keys.Length; i++)
+        {
+            var key = new byte[prefixLength + 2 + i % 31];
+            key.AsSpan().Fill((byte)i);
+            key.AsSpan(0, prefixLength).Fill(42);
+            key[prefixLength] = (byte)(i >> 8);
+            key[prefixLength + 1] = (byte)i;
+            keys[i] = key;
+            _cursor.Upsert(key, GetSampleValue(i));
+        }
+
+        var scratch = new byte[32];
+        scratch.AsSpan().Fill(0xa5);
+        Span<byte> buffer = scratch.AsSpan(8, 16);
+        Assert.True(_cursor.SeekIndex(0));
+        long keyIndex = 0;
+        var count = 0;
+        _cursor.FastIterateNoCursor(ref buffer, ref keyIndex, (index, key) =>
+        {
+            Assert.Equal(count, index);
+            Assert.True(key.SequenceEqual(keys[count++]));
+            if (index == 123) GC.Collect();
+            return false;
+        });
+        Assert.Equal(keys.Length, count);
+        Assert.Equal(keys.Length, keyIndex);
+        Assert.False(_cursor.IsValid());
+        Assert.All(scratch[..8], b => Assert.Equal(0xa5, b));
+        Assert.All(scratch[24..], b => Assert.Equal(0xa5, b));
+
+        // Copying padded suffixes must never write into the leaf's adjacent values.
+        for (var i = 0; i < keys.Length; i++)
+        {
+            Assert.True(_cursor.SeekIndex(i));
+            Assert.True(_cursor.GetValue().SequenceEqual(GetSampleValue(i)));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NoCursorIterationPublishesPositionFromUnpositionedCursor(bool throwFromCallback)
+    {
+        const int count = 600;
+        for (var i = 0; i < count; i++)
+            _cursor.Upsert(new byte[] { (byte)(i >> 8), (byte)i }, GetSampleValue(i));
+
+        Span<byte> resumeBuffer = stackalloc byte[16];
+        foreach (var stop in new[] { 0, 14, 15, 29, 30, 449, count - 1 })
+        {
+            // A fresh cursor has neither a search path nor a preallocated stack.
+            var cursor = _root.CreateCursor();
+            long keyIndex = 0;
+            var visited = 0;
+            void Iterate()
+            {
+                Span<byte> buffer = stackalloc byte[16];
+                cursor.FastIterateNoCursor(ref buffer, ref keyIndex, (index, key) =>
+                {
+                    Assert.Equal(visited++, index);
+                    Assert.Equal(2, key.Length);
+                    Assert.Equal((byte)(index >> 8), key[0]);
+                    Assert.Equal((byte)index, key[1]);
+                    if (index != stop) return false;
+                    if (throwFromCallback) throw new InvalidOperationException();
+                    return true;
+                });
+            }
+
+            if (throwFromCallback) Assert.Throws<InvalidOperationException>(Iterate);
+            else Iterate();
+            Assert.Equal(stop + 1, visited);
+            Assert.Equal(stop, keyIndex);
+            Assert.Equal(stop, cursor.CalcIndex());
+            Assert.Equal(new byte[] { (byte)(stop >> 8), (byte)stop }, cursor.GetKeyAsArray());
+            Assert.True(cursor.GetValue().SequenceEqual(GetSampleValue(stop)));
+
+            cursor.FastIterateNoCursor(ref resumeBuffer, ref keyIndex, (index, _) =>
+            {
+                Assert.Equal(stop, index);
+                return true;
+            });
+            if (stop > 0)
+            {
+                Assert.True(cursor.MovePrevious());
+                Assert.Equal(stop - 1, cursor.CalcIndex());
+                Assert.True(cursor.MoveNext());
+            }
+
+            Assert.Equal(stop + 1 < count, cursor.MoveNext());
+            if (stop + 1 == count) continue;
+            keyIndex++;
+            cursor.FastIterateNoCursor(ref resumeBuffer, ref keyIndex, (index, _) =>
+            {
+                Assert.Equal(visited++, index);
+                return false;
+            });
+            Assert.Equal(count, visited);
+            Assert.Equal(count, keyIndex);
+            Assert.False(cursor.IsValid());
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(12345)]
+    [InlineData(-12345)]
+    public void NoCursorIterationPreservesCustomKeyIndexAfterException(long initialKeyIndex)
+    {
+        for (var i = 0; i < 600; i++)
+            _cursor.Upsert(new byte[] { (byte)(i >> 8), (byte)i }, GetSampleValue(i));
+        Assert.True(_cursor.SeekIndex(100));
+        var keyIndex = initialKeyIndex;
+        var failure = new ApplicationException("Callback failure");
+        Assert.Same(failure, Assert.Throws<ApplicationException>(() =>
+        {
+            Span<byte> buffer = stackalloc byte[16];
+            _cursor.FastIterateNoCursor(ref buffer, ref keyIndex, (index, key) =>
+            {
+                var actualIndex = key[0] * 256 + key[1];
+                Assert.Equal(initialKeyIndex + actualIndex - 100, index);
+                if (actualIndex == 450) throw failure;
+                return false;
+            });
+        }));
+        Assert.Equal(initialKeyIndex + 350, keyIndex);
+        Assert.Equal(450, _cursor.CalcIndex());
+        Assert.Equal(new byte[] { 1, 194 }, _cursor.GetKeyAsArray());
+        Assert.True(_cursor.GetValue().SequenceEqual(GetSampleValue(450)));
+        Assert.True(_cursor.MoveNext());
+        Assert.Equal(451, _cursor.CalcIndex());
+    }
+
     public static IEnumerable<object[]> InterestingValues()
     {
         for (var i = 0; i < 12; i++)

@@ -478,7 +478,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             fixed (void* __ = valueBytes)
             {
                 var reader = MemReader.CreateFromPinnedSpan(keyBytes[_relationInfo.Prefix.Length..]);
-                var obj = (T)itemLoader._primaryKeysLoader(_transaction, ref reader);
+                var obj = (T)itemLoader._primaryKeysLoader(_transaction, ref reader, null);
                 var valueReader = MemReader.CreateFromPinnedSpan(valueBytes);
                 valueReader.SkipVUInt32();
                 itemLoader.GetValueLoader(version)(_transaction, ref valueReader, obj);
@@ -1076,6 +1076,42 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     public IEnumerator<TItem> FindByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex)
     {
         return new RelationPrimaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, loaderIndex);
+    }
+
+    [SkipLocalsInit]
+    public void IterateByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int prefixFieldCount,
+        int loaderIndex, Action<TItem> callback, TItem value) where TItem : class
+    {
+        ArgumentNullException.ThrowIfNull(callback);
+        ArgumentNullException.ThrowIfNull(value);
+        _transaction.ThrowIfDisposed();
+        var itemLoader = _relationInfo.ItemLoaderInfos[loaderIndex];
+        using var cursor = _kvtr.CreateCursor();
+        Span<byte> keyBuffer = stackalloc byte[2048];
+        if (!cursor.FindLastKey(keyBytesPrefix)) return;
+        var lastKeyIndex = cursor.GetKeyIndex();
+        cursor.FindFirstKey(keyBytesPrefix);
+        if (!itemLoader._primaryKeyIsEnough)
+        {
+            cursor.FastIterate(ref keyBuffer, (keyIndex, keyBytes) =>
+            {
+                itemLoader.CreateInstance(_transaction, cursor, keyBytes, value);
+                callback(value);
+                return keyIndex == lastKeyIndex;
+            });
+            return;
+        }
+
+        var iterationLoader = itemLoader.GetPrimaryKeySuffixLoader(prefixFieldCount);
+        var keyPrefixLength = ReferenceEquals(iterationLoader, itemLoader)
+            ? (uint)_relationInfo.Prefix.Length
+            : (uint)keyBytesPrefix.Length;
+        cursor.FastIterateNoCursor(ref keyBuffer, (keyIndex, keyBytes) =>
+        {
+            iterationLoader.LoadPrimaryKeyInstance(_transaction, keyBytes, keyPrefixLength, value);
+            callback(value);
+            return keyIndex == lastKeyIndex;
+        });
     }
 
     public TItem FirstByPrimaryKey<TItem>(int loaderIndex, ConstraintInfo[] constraints, ICollection<TItem>? target,

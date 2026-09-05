@@ -282,6 +282,79 @@ public class SourceGenerator : IIncrementalGenerator
         {
             if (method.Name == "GetEnumerator")
                 continue;
+            if (method.Name == "IterateById")
+            {
+                if (!method.ReturnsVoid)
+                {
+                    return GenerationError("BTDB0048", $"Method '{method.Name}' must return void",
+                        method.Locations[0]);
+                }
+
+                if (method.Parameters.Length < 2)
+                {
+                    return GenerationError("BTDB0049",
+                        $"Method '{method.Name}' expects callback and value parameters", method.Locations[0]);
+                }
+
+                var callbackParameter = method.Parameters[method.Parameters.Length - 2];
+                var valueParameter = method.Parameters[method.Parameters.Length - 1];
+                if (valueParameter.Type.TypeKind != TypeKind.Class)
+                {
+                    return GenerationError("BTDB0050",
+                        $"Method '{method.Name}' value parameter must have class type", valueParameter.Locations[0]);
+                }
+
+                if (callbackParameter.Type is not INamedTypeSymbol
+                    {
+                        TypeArguments.Length: 1
+                    } callbackType ||
+                    callbackType.OriginalDefinition is not { Name: "Action", Arity: 1 } ||
+                    callbackType.ContainingNamespace.ToDisplayString() != "System" ||
+                    !SymbolEqualityComparer.Default.Equals(callbackType.TypeArguments[0], valueParameter.Type))
+                {
+                    return GenerationError("BTDB0051",
+                        $"Method '{method.Name}' callback parameter must be Action<{valueParameter.Type.Name}>",
+                        callbackParameter.Locations[0]);
+                }
+
+                if (!SerializableType(valueParameter.Type))
+                {
+                    return GenerationError("BTDB0043",
+                        $"Value type of '{method.Name}' must use serializable class type", valueParameter.Locations[0]);
+                }
+
+                var prefixParameterCount = method.Parameters.Length - 2;
+                if (prefixParameterCount > indexOfInKeyValue)
+                {
+                    return GenerationError("BTDB0016", $"Too many parameters for index 'Id' in method '{method.Name}'",
+                        method.Locations[0]);
+                }
+
+                for (var i = 0; i < prefixParameterCount; i++)
+                {
+                    var parameter = method.Parameters[i];
+                    var field = itemGenInfo.Fields[(int)primaryKeyFields[i]];
+                    if (!parameter.Name.Equals(field.Name, StringComparison.OrdinalIgnoreCase) &&
+                        (field.StoredName == null ||
+                         !parameter.Name.Equals(field.StoredName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return GenerationError("BTDB0014",
+                            $"Parameter '{parameter.Name}' does not match field '{field.Name}' from index 'Id'",
+                            parameter.Locations[0]);
+                    }
+
+                    var parameterType = parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    if (!TypeUtilities.AreTypesCompatible(parameterType, field.Type))
+                    {
+                        return GenerationError("BTDB0015",
+                            $"Parameter '{parameter.Name}' type '{parameterType}' does not match field '{field.Name}' type '{field.Type}' from index 'Id'",
+                            parameter.Locations[0]);
+                    }
+                }
+
+                continue;
+            }
+
             if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
             {
                 var (indexName, hasOrDefault) = StripVariant(secondaryKeys, method.Name, true);
@@ -818,6 +891,17 @@ public class SourceGenerator : IIncrementalGenerator
                             variantsGenerationInfos.Add(variantInfo);
                         }
                     }
+                }
+            }
+            else if (method.Name == "IterateById")
+            {
+                var valueType = method.Parameters[method.Parameters.Length - 1].Type;
+                var variantInfo = GenerationInfoForClass((INamedTypeSymbol)valueType, null, false,
+                    null, semanticModel, [], [], false);
+                if (variantInfo != null)
+                {
+                    loadTypes.Add(new(valueType));
+                    variantsGenerationInfos.Add(variantInfo);
                 }
             }
             else if (method.Name.StartsWith("FindBy") ||
@@ -4223,6 +4307,26 @@ public class SourceGenerator : IIncrementalGenerator
                 }
 
                 declarations.Append("            return base.Contains(writer.GetSpan());\n");
+            }
+            else if (method.Name == "IterateById")
+            {
+                var prefixParameterCount = method.Parameters.Count - 2;
+                var callbackParameter = method.Parameters[method.Parameters.Count - 2];
+                var valueParameter = method.Parameters[method.Parameters.Count - 1];
+                var valueType = StripNullableReferenceType(NormalizeType(valueParameter.Type));
+                var loaderIndex = FindLoaderIndex(generationInfo.Implements, valueType);
+
+                AppendWriterCtxIfNeeded(declarations, method.Parameters.Take(prefixParameterCount), null);
+                declarations.Append(
+                    "            var writer = global::BTDB.StreamLayer.MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[512]);\n");
+                declarations.Append("            WriteRelationPKPrefix(ref writer);\n");
+                for (var i = 0; i < prefixParameterCount; i++)
+                {
+                    AppendWriteOrderableParameter(declarations, method.Parameters[i]);
+                }
+
+                declarations.Append(
+                    $"            base.IterateByPrimaryKeyPrefix<{valueType}>(writer.GetSpan(), {prefixParameterCount}, {loaderIndex}, {callbackParameter.Name}, {valueParameter.Name});\n");
             }
             else if (method.Name.StartsWith("FindBy", StringComparison.Ordinal))
             {

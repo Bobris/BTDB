@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using BTDB.StreamLayer;
 
@@ -2688,6 +2689,161 @@ public class BTreeImpl12
 
         stack.Pop();
         return false;
+    }
+
+    internal static bool FastIterateNoCursor(int deepness, IntPtr top, ref StructList<CursorItem> stack, ref Span<byte> buffer,
+        ref long keyIndex, CursorIterateCallback callback)
+    {
+        if (deepness == stack.Count)
+        {
+            stack.AddRef().Set(top, 0);
+        }
+
+        ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+        if (header.IsNodeLeaf)
+        {
+            var prefixSpan = NodeUtils12.GetPrefixSpan(top);
+            if (prefixSpan.Length + sizeof(ulong) > buffer.Length)
+            {
+                buffer = GC.AllocateUninitializedArray<byte>(NewSize(prefixSpan.Length + sizeof(ulong), buffer.Length));
+            }
+
+            if (prefixSpan.Length <= sizeof(ulong))
+            {
+                // Prefix bytes are followed by key offsets/pointers and leaf values.
+                // The node has at least eight allocated bytes after its leaf header,
+                // including when the prefix is empty.
+                ref var prefixStart = ref Unsafe.Add(ref Unsafe.As<NodeHeader12, byte>(ref header),
+                    NodeHeader12.LeafHeaderSize);
+                Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(buffer),
+                    Unsafe.ReadUnaligned<ulong>(ref prefixStart));
+            }
+            else
+            {
+                prefixSpan.CopyTo(buffer);
+            }
+
+            // Callbacks cannot use this cursor. Publish its position only when leaving
+            // the leaf, including early termination and exceptions.
+            var i = (int)stack.Last._posInNode;
+            var leafKeyIndex = keyIndex - i;
+            try
+            {
+                if (header.HasLongKeys)
+                {
+                    var longKeys = NodeUtils12.GetLongKeyPtrs(top);
+                    for (; i < longKeys.Length; i++)
+                    {
+                        var key = NodeUtils12.LongKeyPtrToSpan(longKeys[i]);
+                        if (key.Length + prefixSpan.Length > buffer.Length)
+                        {
+                            buffer = GC.AllocateUninitializedArray<byte>(NewSize(key.Length + prefixSpan.Length,
+                                buffer.Length));
+                            prefixSpan.CopyTo(buffer);
+                        }
+
+                        CopyIterationKeySuffix(key, buffer[prefixSpan.Length..]);
+                        if (callback.Invoke(leafKeyIndex + i, buffer[..(prefixSpan.Length + key.Length)]))
+                        {
+                            return true;
+                        }
+                    }
+                }
+                else
+                {
+                    var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
+                    // Short-key data is followed by alignment padding and 12 bytes per value.
+                    // Thus even the final suffix has eight readable bytes inside this leaf.
+                    Debug.Assert(NodeUtils12.GetLeafValues(top).Length >= sizeof(ulong));
+                    ref var keyDataStart = ref MemoryMarshal.GetReference(keyData);
+                    ref var destination = ref buffer[prefixSpan.Length];
+                    // Adjacent suffixes share an offset; retain the previous end.
+                    var start = PackUnpack.UnsafeAlignedGet<ushort>(keyOfs, (uint)i);
+                    var keyCount = keyOfs.Length - 1;
+                    for (; i < keyCount; i++)
+                    {
+                        var end = PackUnpack.UnsafeAlignedGet<ushort>(keyOfs, (uint)i + 1);
+                        var length = end - start;
+                        ref var source = ref Unsafe.Add(ref keyDataStart, start);
+                        start = end;
+                        if ((uint)length <= sizeof(ulong))
+                        {
+                            // Only the actual key length is exposed to the callback.
+                            Unsafe.WriteUnaligned(ref destination, Unsafe.ReadUnaligned<ulong>(ref source));
+                        }
+                        else
+                        {
+                            if (length + prefixSpan.Length > buffer.Length)
+                            {
+                                buffer = GC.AllocateUninitializedArray<byte>(NewSize(length + prefixSpan.Length,
+                                    buffer.Length));
+                                prefixSpan.CopyTo(buffer);
+                                destination = ref buffer[prefixSpan.Length];
+                            }
+
+                            MemoryMarshal.CreateReadOnlySpan(ref source, length).CopyTo(buffer[prefixSpan.Length..]);
+                        }
+
+                        var key = MemoryMarshal.CreateReadOnlySpan(ref MemoryMarshal.GetReference(buffer),
+                            prefixSpan.Length + length);
+                        if (callback.Invoke(leafKeyIndex + i, key))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                stack.Last._posInNode = (byte)i;
+                keyIndex = leafKeyIndex + i;
+            }
+        }
+        else
+        {
+            var children = NodeUtils12.GetBranchValuePtrs(top);
+            for (var i = (int)stack[deepness]._posInNode; i < children.Length; i++)
+            {
+                stack[deepness]._posInNode = (byte)i;
+                if (FastIterateNoCursor(deepness + 1, children[i], ref stack, ref buffer, ref keyIndex, callback))
+                {
+                    return true;
+                }
+            }
+        }
+
+        stack.Pop();
+        return false;
+    }
+
+    // Prefix compression commonly leaves only one to eight bytes per key. Avoid the
+    // general-purpose span memmove for these tiny, non-overlapping suffixes.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static void CopyIterationKeySuffix(ReadOnlySpan<byte> key, Span<byte> destination)
+    {
+        if ((uint)key.Length > 8)
+        {
+            key.CopyTo(destination);
+            return;
+        }
+
+        ref var source = ref MemoryMarshal.GetReference(key);
+        ref var target = ref MemoryMarshal.GetReference(destination);
+        if (key.Length >= 4)
+        {
+            Unsafe.WriteUnaligned(ref target, Unsafe.ReadUnaligned<uint>(ref source));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref target, key.Length - 4),
+                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref source, key.Length - 4)));
+        }
+        else if (key.Length >= 2)
+        {
+            Unsafe.WriteUnaligned(ref target, Unsafe.ReadUnaligned<ushort>(ref source));
+            Unsafe.Add(ref target, key.Length - 1) = Unsafe.Add(ref source, key.Length - 1);
+        }
+        else if (key.Length == 1)
+        {
+            target = source;
+        }
     }
 
     static int NewSize(int size, int existingSize)
