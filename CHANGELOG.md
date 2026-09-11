@@ -2,6 +2,18 @@
 
 ## [unreleased]
 
+### Changed
+
+- Reduce secondary-index key allocations during relation deletion and updates by using caller-owned
+  stack-backed writers for serialized keys, reusing their buffers across indexes with heap fallback for long keys.
+  Batch deletion retains these buffers across rows for prefix, partial and range deletion;
+  partial deletion also reuses its secondary-index cursor across rows.
+- Add `MemReader.CopyStringToOrdered` for direct stored-to-ordered string conversion,
+  and use it for built-in string fields when merging serialized rows into secondary keys.
+  Preserve null, Unicode and surrogate handling without materializing an intermediate UTF-16 string.
+- Add direct copying of encoded VInt64/VUInt64 values and use it for matching built-in Signed/Unsigned
+  handlers in secondary-key mergers, avoiding numeric decoding and re-encoding.
+
 ## 35.9.0
 
 ### Changed

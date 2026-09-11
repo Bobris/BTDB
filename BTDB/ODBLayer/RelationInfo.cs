@@ -35,6 +35,33 @@ public delegate bool RelationBeforeRemoveWithContainer(IInternalObjectDBTransact
 
 public class RelationInfo
 {
+    static readonly IFieldHandler StoredStringHandler =
+        BasicSerializersFactory.FieldHandlers.Single(h => h.Name == "String");
+    static readonly IFieldHandler OrderedStringHandler =
+        BasicSerializersFactory.FieldHandlers.Single(h => h.Name == "StringOrderable");
+
+    static readonly IFieldHandler SignedHandler =
+        BasicSerializersFactory.FieldHandlers.Single(h => h.Name == "Signed");
+    static readonly IFieldHandler UnsignedHandler =
+        BasicSerializersFactory.FieldHandlers.Single(h => h.Name == "Unsigned");
+
+    delegate void SerializedFieldCopy(ref MemReader reader, ref MemWriter writer);
+
+    static (SerializedFieldCopy? Copy, string? MethodName) GetSerializedFieldCopy(IFieldHandler source,
+        IFieldHandler target)
+    {
+        if (ReferenceEquals(source, StoredStringHandler) && ReferenceEquals(target, OrderedStringHandler))
+            return (static (ref reader, ref writer) => reader.CopyStringToOrdered(ref writer),
+                nameof(MemReader.CopyStringToOrdered));
+        if (ReferenceEquals(source, SignedHandler) && ReferenceEquals(target, SignedHandler))
+            return (static (ref reader, ref writer) => reader.CopyVInt64ToWriter(ref writer),
+                nameof(MemReader.CopyVInt64ToWriter));
+        if (ReferenceEquals(source, UnsignedHandler) && ReferenceEquals(target, UnsignedHandler))
+            return (static (ref reader, ref writer) => reader.CopyVUInt64ToWriter(ref writer),
+                nameof(MemReader.CopyVUInt64ToWriter));
+        return default;
+    }
+
     public readonly uint _id;
     public readonly string _name;
     readonly IRelationInfoResolver _relationInfoResolver;
@@ -1592,6 +1619,20 @@ public class RelationInfo
                                 var storageIndex = outOfOrderCount;
                                 var handlerTo3 = skFields[storeForSkIndex].Handler!;
                                 needsWriterCtx |= handlerTo3.NeedsCtx();
+                                if (GetSerializedFieldCopy(handler3, handlerTo3).Copy is { } copyToTemp)
+                                {
+                                    actions.Add((ref ctx) =>
+                                    {
+                                        ctx.TempStorageOffsets[storageIndex].FromOfs =
+                                            ctx.TempWriter.NoControllerGetCurrentPosition();
+                                        copyToTemp(ref ctx.ValueReader, ref ctx.TempWriter);
+                                        ctx.TempStorageOffsets[storageIndex].ToOfs =
+                                            ctx.TempWriter.NoControllerGetCurrentPosition();
+                                    });
+                                    outOfOrderCount++;
+                                    continue;
+                                }
+
                                 var fieldType3 = handlerTo3.HandledType()!;
                                 var loader3 = handler3.Load(fieldType3,
                                     _relationInfoResolver.TypeConverterFactory);
@@ -1661,6 +1702,13 @@ public class RelationInfo
                         needsReaderCtx |= handler.NeedsCtx();
                         var handlerTo = skFields[skFieldIdx].Handler!;
                         needsWriterCtx |= handlerTo.NeedsCtx();
+                        if (GetSerializedFieldCopy(handler, handlerTo).Copy is { } copyToOutput)
+                        {
+                            actions.Add((ref ctx) => copyToOutput(ref ctx.ValueReader, ref ctx.Writer));
+                            processedValueFields = valueFieldIdx + 1;
+                            continue;
+                        }
+
                         var fieldType = handlerTo.HandledType()!;
                         var loader = handler.Load(fieldType,
                             _relationInfoResolver.TypeConverterFactory);
@@ -1957,6 +2005,14 @@ public class RelationInfo
         IFieldHandler skHandler, BufferInfo buffer)
 
     {
+        if (GetSerializedFieldCopy(valueHandler, skHandler).MethodName is { } copyMethod)
+        {
+            buffer.PushReader(ilGenerator);
+            pushWriter(ilGenerator);
+            ilGenerator.Call(typeof(MemReader).GetMethod(copyMethod)!);
+            return;
+        }
+
         var pushCtx = WriterOrContextForHandler(writerCtxLocal);
         var sourceType = valueHandler.HandledType()!;
         var specializedHandler = skHandler.SpecializeSaveForType(sourceType);

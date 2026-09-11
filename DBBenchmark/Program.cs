@@ -19,6 +19,30 @@ class Program
             return;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "secondary-key", StringComparison.OrdinalIgnoreCase))
+        {
+            BenchmarkSwitcher.FromTypes([typeof(SecondaryKeyAllocationBenchmark)]).Run(args[1..]);
+            return;
+        }
+
+        if (args.Length > 0 && string.Equals(args[0], "string-conversion", StringComparison.OrdinalIgnoreCase))
+        {
+            BenchmarkSwitcher.FromTypes([typeof(OrderedStringConversionBenchmark)]).Run(args[1..]);
+            return;
+        }
+
+        if (args.Length > 0 && string.Equals(args[0], "integer-secondary", StringComparison.OrdinalIgnoreCase))
+        {
+            BenchmarkSwitcher.FromTypes([typeof(IntegerSecondaryKeyBenchmark)]).Run(args[1..]);
+            return;
+        }
+
+        if (args.Length > 0 && string.Equals(args[0], "integer-copy", StringComparison.OrdinalIgnoreCase))
+        {
+            BenchmarkSwitcher.FromTypes([typeof(VarIntCopyBenchmark)]).Run(args[1..]);
+            return;
+        }
+
         new KeyValueSpeedTest().Run();
     }
 }

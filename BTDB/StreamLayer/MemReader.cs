@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using System.Text;
@@ -401,6 +402,47 @@ public struct MemReader
         SkipBlock(len);
     }
 
+    /// <summary>Copies one encoded VInt64 without decoding or re-encoding its value.</summary>
+    public unsafe void CopyVInt64ToWriter(ref MemWriter writer)
+    {
+        if (Current == End) FillBuf();
+        CopyVarIntToWriter(PackUnpack.LengthVIntByFirstByte(*(byte*)Current), ref writer);
+    }
+
+    /// <summary>Copies one encoded VUInt64 without decoding or re-encoding its value.</summary>
+    public unsafe void CopyVUInt64ToWriter(ref MemWriter writer)
+    {
+        if (Current == End) FillBuf();
+        CopyVarIntToWriter(PackUnpack.LengthVUIntByFirstByte(*(byte*)Current), ref writer);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    unsafe void CopyVarIntToWriter(uint length, ref MemWriter writer)
+    {
+        if (length == 1)
+        {
+            writer.WriteUInt8(*(byte*)Current);
+            Current++;
+        }
+        else if (End - Current >= length)
+        {
+            writer.WriteBlock(new ReadOnlySpan<byte>((void*)Current, (int)length));
+            Current += (int)length;
+        }
+        else
+        {
+            CopyVarIntAcrossBuffers(length, ref writer);
+        }
+    }
+
+    [SkipLocalsInit]
+    void CopyVarIntAcrossBuffers(uint length, ref MemWriter writer)
+    {
+        Span<byte> buffer = stackalloc byte[9];
+        ReadBlock(buffer[..(int)length]);
+        writer.WriteBlock(buffer[..(int)length]);
+    }
+
     public short ReadVInt16()
     {
         var res = ReadVInt64();
@@ -536,6 +578,91 @@ public struct MemReader
         }
 
         return result;
+    }
+
+    /// <summary>Transcodes a stored string to its ordered representation without allocating a string.</summary>
+    public unsafe void CopyStringToOrdered(ref MemWriter writer)
+    {
+        var length = ReadVUInt64();
+        if (length == 0)
+        {
+            writer.WriteVUInt32(0x110001);
+            return;
+        }
+
+        length--;
+        if (length > int.MaxValue)
+            throw new InvalidDataException($"Reading String length overflowed with {length}");
+        var remaining = (int)length;
+        writer.Resize((uint)remaining + 1);
+        uint pendingHighSurrogate = 0;
+        while (remaining > 0)
+        {
+            if (pendingHighSurrogate == 0)
+            {
+                while (Vector128.IsHardwareAccelerated && remaining >= 16 && End - Current >= 16 &&
+                       writer.End - writer.Current >= 16)
+                {
+                    var bytes = Unsafe.ReadUnaligned<Vector128<byte>>((void*)Current);
+                    // 0x7f expands to a multibyte ordered character; only 0..0x7e can be incremented in place.
+                    if (!Vector128.LessThanAll(bytes, Vector128.Create((byte)0x7f))) break;
+                    Unsafe.WriteUnaligned((void*)writer.Current, bytes + Vector128.Create((byte)1));
+                    Current += 16;
+                    writer.Current += 16;
+                    remaining -= 16;
+                }
+
+                while (remaining >= 4 && End - Current >= 4 && writer.End - writer.Current >= 4)
+                {
+                    var bytes = Unsafe.ReadUnaligned<uint>((void*)Current);
+                    var incremented = bytes + 0x01010101u;
+                    if (((bytes | incremented) & 0x80808080u) != 0) break;
+                    Unsafe.WriteUnaligned((void*)writer.Current, incremented);
+                    Current += 4;
+                    writer.Current += 4;
+                    remaining -= 4;
+                }
+
+                if (remaining == 0) break;
+                if (Current < End && *(byte*)Current < 0x7f)
+                {
+                    writer.WriteUInt8((byte)(*(byte*)Current + 1));
+                    Current++;
+                    remaining--;
+                    continue;
+                }
+            }
+
+            var c = ReadVUInt64();
+            if (c > 0x10ffff)
+                throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
+            var charCount = c > 0xffff ? 2 : 1;
+            if (remaining < charCount)
+                throw new InvalidDataException("Reading String surrogate pair exceeds declared length");
+            remaining -= charCount;
+
+            if (pendingHighSurrogate != 0)
+            {
+                if (c is >= 0xdc00 and <= 0xdfff)
+                {
+                    writer.WriteVUInt32((pendingHighSurrogate - 0xd800) * 0x400 + (uint)c - 0xdc00 + 0x10001);
+                    pendingHighSurrogate = 0;
+                    continue;
+                }
+
+                writer.WriteVUInt32(pendingHighSurrogate + 1);
+                pendingHighSurrogate = 0;
+            }
+
+            // Also normalize separately encoded surrogate pairs as ReadString + WriteStringOrdered does.
+            if (c is >= 0xd800 and <= 0xdbff)
+                pendingHighSurrogate = (uint)c;
+            else
+                writer.WriteVUInt32((uint)c + 1);
+        }
+
+        if (pendingHighSurrogate != 0) writer.WriteVUInt32(pendingHighSurrogate + 1);
+        writer.WriteByteZero();
     }
 
     unsafe ReadOnlySpan<byte> PeekTillEnd()

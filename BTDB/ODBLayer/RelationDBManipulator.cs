@@ -735,6 +735,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     [SkipLocalsInit]
     public int RemoveByPrimaryKeyPrefix(in ReadOnlySpan<byte> keyBytesPrefix)
     {
+        var secondaryKeyWriter = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         Span<byte> buf = stackalloc byte[4096];
         Span<byte> keyBuffer = stackalloc byte[1024];
         using var tempCursor = _kvtr.CreateCursor();
@@ -760,7 +761,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
                 {
                     RemoveSecondaryIndexes(tempCursor,
                         ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor!.GetKeySpan(ref keyBuffer, true),
-                        valueBytes);
+                        valueBytes, ref secondaryKeyWriter);
                 }
 
                 if (needImplementFreeContent)
@@ -786,12 +787,14 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     [SkipLocalsInit]
     public int RemoveByPrimaryKeyPrefixPartial(in ReadOnlySpan<byte> keyBytesPrefix, int maxCount)
     {
+        var secondaryKeyWriter = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         Span<byte> buf = stackalloc byte[4096];
         Span<byte> keyBuffer = stackalloc byte[1024];
         var needImplementFreeContent = _relationInfo.NeedImplementFreeContent();
         using var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, 0)
             .GetEnumerator();
         var beforeRemove = _relationInfo.BeforeRemove;
+        using var tempCursor = _kvtr.CreateCursor();
         var removed = 0;
         var idx = 0;
         while (enumerator.MoveNext())
@@ -812,9 +815,9 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
                 if (_hasSecondaryIndexes)
                 {
-                    using var tempCursor = _kvtr.CreateCursor();
                     RemoveSecondaryIndexes(tempCursor,
-                        ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor!.GetKeySpan(ref keyBuffer), valueBytes);
+                        ((RelationPrimaryKeyEnumerator<T>)enumerator).Cursor!.GetKeySpan(ref keyBuffer),
+                        valueBytes, ref secondaryKeyWriter);
                 }
 
                 if (needImplementFreeContent)
@@ -994,6 +997,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
         KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
     {
+        var secondaryKeyWriter = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         using var enumerator = new RelationAdvancedEnumerator<T>(this,
             order, startKeyProposition, prefixLen, startKeyBytes, endKeyProposition, endKeyBytes, 0).GetEnumerator();
         var count = 0;
@@ -1018,7 +1022,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
             if (_hasSecondaryIndexes)
             {
-                RemoveSecondaryIndexes(tempCursor, fullKeyBytes, valueSpan);
+                RemoveSecondaryIndexes(tempCursor, fullKeyBytes, valueSpan, ref secondaryKeyWriter);
             }
 
             _relationInfo.FreeContent(_transaction, valueSpan);
@@ -1673,10 +1677,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         return writer.GetSpan();
     }
 
+    // The returned span is consumed before the caller resets or reuses its writer.
     unsafe ReadOnlySpan<byte> WriteSecondaryKeyKey(uint remappedSecondaryKeyIndex, in ReadOnlySpan<byte> keyBytes,
-        in ReadOnlySpan<byte> valueBytes)
+        in ReadOnlySpan<byte> valueBytes, ref MemWriter keyWriter)
     {
-        var keyWriter = new MemWriter();
         WriteRelationSKPrefix(ref keyWriter, remappedSecondaryKeyIndex);
 
         var version = (uint)PackUnpack.UnpackVUInt(valueBytes);
@@ -1710,10 +1714,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     {
         var changed = false;
         using var cursor = _kvtr.CreateCursor();
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+        var writerOld = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         if (_relationInfo.ClientRelationVersionInfo.HasComputedField)
         {
-            var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
-            var writerOld = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
             var objOld = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, oldKey, oldValue);
             var objNew = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, oldKey, newValue);
 
@@ -1736,8 +1740,10 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         {
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var newKeyBytes = WriteSecondaryKeyKey(key, oldKey, newValue);
-                var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
+                writer.Reset();
+                writerOld.Reset();
+                var newKeyBytes = WriteSecondaryKeyKey(key, oldKey, newValue, ref writer);
+                var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue, ref writerOld);
                 if (oldKeyBytes.SequenceEqual(newKeyBytes))
                     continue;
                 //remove old index
@@ -1757,9 +1763,9 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         ref MemWriter writer)
     {
         var changed = false;
+        var writerOld = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
         if (_relationInfo.ClientRelationVersionInfo.HasComputedField)
         {
-            var writerOld = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
             var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, oldKey, oldValue);
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
@@ -1781,8 +1787,9 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 writer.Reset();
+                writerOld.Reset();
                 var newKeyBytes = WriteSecondaryKeyKey(key, newValue, ref writer);
-                var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
+                var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue, ref writerOld);
                 if (oldKeyBytes.SequenceEqual(newKeyBytes))
                     continue;
                 //remove old index
@@ -1800,9 +1807,15 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     void RemoveSecondaryIndexes(IKeyValueDBCursor cursor, scoped in ReadOnlySpan<byte> oldKey,
         in ReadOnlySpan<byte> oldValue)
     {
+        var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
+        RemoveSecondaryIndexes(cursor, oldKey, oldValue, ref writer);
+    }
+
+    void RemoveSecondaryIndexes(IKeyValueDBCursor cursor, scoped in ReadOnlySpan<byte> oldKey,
+        in ReadOnlySpan<byte> oldValue, ref MemWriter writer)
+    {
         if (_relationInfo.ClientRelationVersionInfo.HasComputedField)
         {
-            var writer = MemWriter.CreateFromStackAllocatedSpan(stackalloc byte[4096]);
             var obj = _relationInfo.ItemLoaderInfos[0].CreateInstance(_transaction, oldKey, oldValue);
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
@@ -1815,7 +1828,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         {
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var keyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
+                writer.Reset();
+                var keyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue, ref writer);
                 EraseOldSecondaryKey(cursor, oldKey, keyBytes, key);
             }
         }
