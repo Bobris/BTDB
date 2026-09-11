@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.9.0
+
 ### Changed
 
 - Added opt-in BTree transaction batching via `StartWritingTransaction(inBatch: true)` (also forwarded by ObjectDB),
