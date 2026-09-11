@@ -61,7 +61,7 @@ public class InMemoryKeyValueDB : IKeyValueDB
         return tr;
     }
 
-    public ValueTask<IKeyValueDBTransaction> StartWritingTransaction()
+    public ValueTask<IKeyValueDBTransaction> StartWritingTransaction(bool inBatch = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_writeLock)

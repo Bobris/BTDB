@@ -226,9 +226,14 @@ public class ObjectDbTableRemoveOptimizeTest : IDisposable
             return new KeyValueDBTransactionWithCount(_keyValueDB.StartReadOnlyTransaction());
         }
 
-        public ValueTask<IKeyValueDBTransaction> StartWritingTransaction()
+        public ValueTask<IKeyValueDBTransaction> StartWritingTransaction(bool inBatch = false)
         {
-            return _keyValueDB.StartWritingTransaction();
+            return _keyValueDB.StartWritingTransaction(inBatch);
+        }
+
+        public void FinishTransactionBatchAfterCurrentTransaction()
+        {
+            _keyValueDB.FinishTransactionBatchAfterCurrentTransaction();
         }
 
         public string CalcStats()

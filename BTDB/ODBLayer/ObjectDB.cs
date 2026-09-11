@@ -229,9 +229,14 @@ public class ObjectDB : IObjectDB
         return new ObjectDBTransaction(this, _keyValueDB.StartReadOnlyTransaction(), true);
     }
 
-    public async ValueTask<IObjectDBTransaction> StartWritingTransaction()
+    public async ValueTask<IObjectDBTransaction> StartWritingTransaction(bool inBatch = false)
     {
-        return new ObjectDBTransaction(this, await _keyValueDB.StartWritingTransaction(), false);
+        return new ObjectDBTransaction(this, await _keyValueDB.StartWritingTransaction(inBatch), false);
+    }
+
+    public void FinishTransactionBatchAfterCurrentTransaction()
+    {
+        _keyValueDB.FinishTransactionBatchAfterCurrentTransaction();
     }
 
     public string RegisterType(Type type)

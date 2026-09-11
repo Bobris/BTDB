@@ -19,7 +19,13 @@ public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
 
     IObjectDBTransaction StartReadOnlyTransaction();
 
-    ValueTask<IObjectDBTransaction> StartWritingTransaction();
+    ValueTask<IObjectDBTransaction> StartWritingTransaction(bool inBatch = false);
+
+    /// <summary>
+    /// Finish the current batch immediately if idle, otherwise after the active writer commits or rolls back,
+    /// before the next queued writer starts. Returns immediately without committing the active transaction.
+    /// </summary>
+    void FinishTransactionBatchAfterCurrentTransaction();
 
     LeakDetectionResult RunLeakDetection(CancellationToken cancellation = default);
 

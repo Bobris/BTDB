@@ -53,7 +53,7 @@ public class ReadOnlyKeyValueDB : IKeyValueDB
         return new ReadOnlyKeyValueDBTransaction(this);
     }
 
-    public ValueTask<IKeyValueDBTransaction> StartWritingTransaction()
+    public ValueTask<IKeyValueDBTransaction> StartWritingTransaction(bool inBatch = false)
     {
         throw new System.NotSupportedException("It is readonly db");
     }

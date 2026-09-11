@@ -13,6 +13,8 @@ interface IKeyValueDBInternal : IKeyValueDB
 {
     Func<CancellationToken, ValueTask>? CompactorStartAction { get; }
 
+    ValueTask FlushTransactionLog();
+
     long GetGeneration(uint fileId);
 
     // Returns true if any marked file was TRL
@@ -25,7 +27,8 @@ interface IKeyValueDBInternal : IKeyValueDB
     // This will reference that root, after use you need to call DereferenceRootNodeInternal
     IRootNodeInternal ReferenceAndGetOldestRoot();
 
-    // This will reference that root, after use you need to call DereferenceRootNodeInternal
+    // References the last published root without publishing a pending batch.
+    // After use you need to call DereferenceRootNodeInternal.
     IRootNodeInternal ReferenceAndGetLastCommitted();
     void DereferenceRootNodeInternal(IRootNodeInternal root);
 

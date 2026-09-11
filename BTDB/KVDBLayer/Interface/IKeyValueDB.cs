@@ -14,7 +14,17 @@ public interface IKeyValueDB : IDisposable
 
     IKeyValueDBTransaction StartReadOnlyTransaction();
 
-    ValueTask<IKeyValueDBTransaction> StartWritingTransaction();
+    /// <summary>
+    /// Start a serialized writer. With inBatch, reuse a pending writable BTree where supported.
+    /// Otherwise finish the pending batch before starting this writer, waiting for the active writer if necessary.
+    /// </summary>
+    ValueTask<IKeyValueDBTransaction> StartWritingTransaction(bool inBatch = false);
+
+    /// <summary>
+    /// Finish the current batch immediately if idle, otherwise after the active writer commits or rolls back,
+    /// before the next queued writer starts. Returns immediately without committing the active transaction.
+    /// </summary>
+    void FinishTransactionBatchAfterCurrentTransaction() { }
 
     string CalcStats();
 

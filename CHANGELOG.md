@@ -2,6 +2,22 @@
 
 ## [unreleased]
 
+### Changed
+
+- Added opt-in BTree transaction batching via `StartWritingTransaction(inBatch: true)` (also forwarded by ObjectDB),
+  preserving per-transaction TRL and durability semantics, reader snapshots, and rollback through committed-prefix replay.
+  Ordinary writer requests finish a pending batch when granted; `FinishTransactionBatchAfterCurrentTransaction()`
+  ends it immediately when idle or after the active writer completes, before granting the next queued writer.
+  The finish method is also available through `IObjectDB`, forwarding to the underlying key-value database.
+  `InMemoryKeyValueDB` accepts and ignores the `inBatch` optimization hint, preserving ordinary transaction semantics.
+  Added regression coverage and a benchmark comparing BTree batching, application batching, and individual transactions.
+  Referencing the last published root, statistics, and checkpoint creation do not implicitly publish a pending batch.
+  Live replay uses buffered reads; memory-mapped file growth and hard flush synchronize with concurrent reads.
+- Added reusable `FileCollectionFileReader`, a bounded `IMemReader` using `RandomRead` directly. Batch replay
+  starts reading at the requested offset and reuses one reader and buffer across TRL files, avoiding the stream adapter.
+- Made the compactor's TRL durability barrier a serialized hard flush without appending an empty transaction or
+  temporary-end marker; the existing temporary-close API and file format remain compatible.
+
 ### Fixed
 
 - Removed the redundant TerraFX package feed whose invalid TLS certificate prevented CI dependency restore.

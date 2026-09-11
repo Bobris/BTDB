@@ -157,11 +157,7 @@ class Compactor
                 _keyValueDB.DereferenceRootNodeInternal(lastCommitted);
             }
 
-            {
-                using var flushingTransaction = await _keyValueDB.StartWritingTransaction();
-                flushingTransaction.NextCommitTemporaryCloseTransactionLog();
-                flushingTransaction.Commit();
-            }
+            await _keyValueDB.FlushTransactionLog();
             var anyTrl = MarkTotallyUselessFilesAsUnknown();
             if (!anyTrl)
                 _keyValueDB.FileCollection.DeleteAllUnknownFiles();

@@ -80,7 +80,10 @@ completely unused files from their own local BTDB file collections, but never ca
 deletion is never distributed: only the node can see all files pinned by its open read-only transactions and retained
 roots. Leader authority alone is not a deletion-safety proof because the lease on `cluster/leader.json` does not
 physically fence a previously dispatched request to another Blob. Every remote deletion candidate must therefore be
-irrevocably unreferenced by all retained manifests/recovery roots so a delayed old-term delete remains harmless.
+absent from the currently published recovery closure, and its key must never be reused. Publish the replacement
+KVI/manifest/tail before deleting superseded objects. Do not wait for follower restores or a grace period: a follower
+losing a file while opening restarts and loads the newest published KVI. Old restore attempts and diagnostic manifests
+do not pin remote files; a delayed old-term delete must remain harmless to the current closure.
 
 The required version-one tail-append capability and provider-specific lease operations are exposed separately from
 the portable coordination operations:
@@ -104,45 +107,22 @@ TRL representation.
 
 ### Transaction-aligned publication above the storage interface
 
-Decision recorded 2026-08-30: every database-state commit must select a complete BTDB transaction boundary, including
-all file segments when the transaction spans several TRL objects.
+The normative [database state publisher](Architecture.md#database-state-publisher) owns tail, checkpoint, genesis, and
+adoption selection. This provider document defines preparation semantics, not another state-publication algorithm.
+Application transactions may each consume several events, or advance past one failed event with metadata only; provider
+publication batching still groups whole committed transactions and ignores discarded attempt bytes.
+`AppendIfCurrent` is atomic for one object. A transaction may span multiple TRL files; only the state CAS selecting its
+complete immutable boundary descriptor makes those prepared cuts durable BTDB progress.
 
-`AppendIfCurrent` is atomic for one physical object, not for one BTDB transaction. BTDB can rotate TRL files while a
-transaction is open, so a canonical transaction is an ordered set of one or more file segments. The authoritative
-durable cursor is defined over that ordered TRL chain and must always be immediately after a complete `Commit` or
-`CommitWithDeltaUlong`; `EndOfFile`, a new-file header, physical object length, and a successful per-file append are not
-transaction boundaries.
+The adapter must preserve every previously selected prefix even when newer prepared bytes are visible. File rotation,
+`EndOfFile`, physical length, and an individual block-list commit never imply transaction closure. A crash before state
+selection leaves the previous boundary authoritative; after selection every referenced segment must already be verified.
+An ambiguous response can remain unresolved while a request could still commit. The common publisher owns reconciliation.
 
-No remote data write for a transaction is dispatched until the leader has locally closed and captured the whole
-transaction. The publisher then:
-
-1. conditionally appends or creates every physical TRL file segment touched by a batch of whole transactions;
-2. verifies the exact accepted length and prefix hash of every touched file;
-3. writes an immutable, hash-addressed boundary descriptor linking the previous accepted boundary and naming every
-   ordered segment, file cut, transaction end, sequence, and frame hash;
-4. conditionally replaces the one database state record so it selects that descriptor and its final closed cursor.
-
-Step 4 is the only durable BTDB publication point. Individual Azure `Put Block List` calls can make prepared file data
-physically visible, and an intermediate TRL object may end at a cross-file continuation point, but those objects remain
-unaccepted staging data until the single state-record CAS selects the complete multi-file transaction. Listings and raw
-object lengths never make staging data authoritative.
-
-This gives a binary crash result despite the lack of a multi-object transaction:
-
-- before the state CAS, recovery selects the previous complete transaction boundary and ignores all new objects;
-- after the state CAS, every referenced file cut and descriptor was already uploaded and verified, so recovery selects
-  the new complete boundary;
-- after an ambiguous state-CAS response, the publisher reads the state and operation identity and chooses one of those
-  two results; it never guesses or publishes a subset.
-
-A publication batch may contain many transactions and one transaction may contain many TRL segments. Batching may
-change request frequency only; it may never cut a transaction or advance state while the replay decoder would still
-hold an open transaction.
-
-The failover core receives these operations through an injected storage port and never references an Azure or S3 SDK
-type. A deterministic in-memory implementation must model opaque version tokens, leases, conditional rejection,
-ambiguous completion, visibility, and independently delayed responses. The in-memory and real-provider adapters must
-pass the same semantic conformance suite; provider tests then add service-specific limits and failure behavior.
+Adapters expose opaque tokens, exact ranges, distinct outcomes, and independently delayed effects/responses through
+injected ports. In-memory and real-provider implementations run the same semantic conformance cases. Transaction and
+checkpoint ancestry validation remains in the core, including rejecting checkpoints ahead of the selected durable tail
+and permitting verified physical checkpoint replacement at equal application position.
 
 ### Conditional-write outcomes
 
@@ -157,7 +137,8 @@ The distinction between the three outcomes is safety-critical:
 
 Every conditional body should carry a unique operation identity, session identity, and intended revision. After an
 ambiguous result, the caller reads the object and decides whether its exact operation landed, a competitor won, or the
-answer is still inconclusive. It must not blindly retry the old conditional request.
+answer is still inconclusive. A read of the old body does not prove an outstanding request cannot still commit.
+Cancellation also does not fence that request. It must not blindly retry the old conditional request.
 
 Transparent retries are particularly dangerous for CAS. The first attempt can commit and lose its response; an
 automatic retry then uses the old token, receives a clean precondition failure against its own update, and falsely
@@ -180,7 +161,9 @@ authority procedure. Availability is sacrificed rather than split-brain safety.
 Even a native provider lease fences only operations against the leased object. Bulk objects remain immutable and
 term-qualified, and followers still validate the leader-record-selected term and session before accepting directly
 streamed TRL frames. Because the leader lease does not fence separate database state blobs, every new term must
-CAS-adopt each database state before canonical work begins. That adoption drains prior requests carrying the old ETag.
+CAS-adopt every active database state before canonical work begins. That adoption excludes prior requests carrying the
+old ETag. Removed databases need no adoption or retirement fence: names are never reused, and a delayed old write to an
+abandoned namespace is accepted. This exception does not weaken fencing for active databases.
 
 ### Live capability probe
 
@@ -610,8 +593,8 @@ takeover procedure rather than risk two leaders.
 - Isolate authority traffic from checkpoint and TRL upload traffic.
 - Run a destructive-but-self-cleaning four-step CAS probe against the real endpoint before enabling leadership.
 - Do not use listing as a correctness primitive; manifests explicitly name the accepted object graph.
-- Expose remote deletion only to leader-owned GC and delete only objects proven permanently unreachable from every
-  retained recovery root; every node independently deletes only its own locally unpinned files, with no distributed
+- Expose remote deletion only to leader-owned GC and delete superseded objects immediately after publishing their complete replacement closure, without restore pins
+  or a grace period; never reuse retired keys; every node independently deletes only its own locally unpinned files, with no distributed
   deletion instruction.
 - Treat per-file writes as preparation only; publish one immutable multi-file descriptor through one state CAS, always
   ending at a complete transaction.

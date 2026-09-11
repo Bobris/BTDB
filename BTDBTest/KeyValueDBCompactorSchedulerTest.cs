@@ -25,7 +25,7 @@ public class KeyValueDBCompactorSchedulerTest
         public bool DurableTransactions { get; set; }
         public IKeyValueDBTransaction StartTransaction() => throw new NotSupportedException();
         public IKeyValueDBTransaction StartReadOnlyTransaction() => throw new NotSupportedException();
-        public ValueTask<IKeyValueDBTransaction> StartWritingTransaction() => throw new NotSupportedException();
+        public ValueTask<IKeyValueDBTransaction> StartWritingTransaction(bool inBatch = false) => throw new NotSupportedException();
         public string CalcStats() => string.Empty;
         public (ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) GetNativeMemoryStats() =>
             default;

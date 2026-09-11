@@ -64,13 +64,16 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
 
         void MapContent()
         {
-            if (_accessor != null) return;
-            var capacity = Math.Max(1, _cachedLength);
-            _memoryMappedFile = MemoryMappedFile.CreateFromFile(_stream, null, capacity,
-                MemoryMappedFileAccess.ReadWrite,
-                HandleInheritability.None, true);
-            _accessor = _memoryMappedFile!.CreateViewAccessor();
-            _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _pointer);
+            lock (_lock)
+            {
+                if (_accessor != null) return;
+                var capacity = Math.Max(1, _cachedLength);
+                _memoryMappedFile = MemoryMappedFile.CreateFromFile(_stream, null, capacity,
+                    MemoryMappedFileAccess.ReadWrite,
+                    HandleInheritability.None, true);
+                _accessor = _memoryMappedFile!.CreateViewAccessor();
+                _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _pointer);
+            }
         }
 
         void UnmapContent()
@@ -149,15 +152,18 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
 
             void ExpandIfNeeded(long size)
             {
-                if (_file._cachedLength < size)
+                lock (_file._lock)
                 {
-                    _file.UnmapContent();
-                    var newSize = ((size - 1) / ResizeChunkSize + 1) * ResizeChunkSize;
-                    _file._stream.SetLength(newSize);
-                    _file._cachedLength = newSize;
-                }
+                    if (_file._cachedLength < size)
+                    {
+                        _file.UnmapContent();
+                        var newSize = ((size - 1) / ResizeChunkSize + 1) * ResizeChunkSize;
+                        _file._stream.SetLength(newSize);
+                        _file._cachedLength = newSize;
+                    }
 
-                _file.MapContent();
+                    _file.MapContent();
+                }
             }
 
             public void Init(ref MemWriter memWriter)
@@ -232,9 +238,12 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
 
         public void HardFlush()
         {
-            UnmapContent();
-            _stream.SetLength(_trueLength);
-            _stream.Flush(true);
+            lock (_lock)
+            {
+                UnmapContent();
+                _stream.SetLength(_trueLength);
+                _stream.Flush(true);
+            }
         }
 
         public void HardFlushTruncateSwitchToReadOnlyMode()

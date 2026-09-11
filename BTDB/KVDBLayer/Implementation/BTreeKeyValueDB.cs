@@ -21,6 +21,15 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     const int MaxValueSizeInlineInMemory = 7;
     const int EndOfIndexFileMarker = 0x1234DEAD;
     IRootNode _lastCommitted;
+    bool _finishBatchAfterCurrentTransaction;
+    // The active writer owns this mutable root; between writers it is parked here for reuse.
+    // The immutable _lastCommitted root pins the recovery prefix until publication.
+    volatile IRootNode? _batchRoot;
+    bool _batchHasCommits;
+    uint _batchEndFileId;
+    uint _batchEndOffset;
+    ulong _batchCommitUlong;
+    ulong[] _batchUlongs = [];
 
     IRootNode? _listHead;
 
@@ -30,7 +39,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     IRootNode? _nextRoot;
     BTreeKeyValueDBTransaction? _writingTransaction;
 
-    readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new();
+    readonly Queue<(TaskCompletionSource<IKeyValueDBTransaction> Completion, bool InBatch)> _writeWaitingQueue = new();
 
     readonly object _writeLock = new();
     uint _fileIdWithTransactionLog;
@@ -705,14 +714,23 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     // Return true if it is suitable for continuing writing new transactions
     bool LoadTransactionLog(uint fileId, uint logOffset, ulong? openUpToCommitUlong)
     {
-        if (openUpToCommitUlong.HasValue && _lastCommitted.CommitUlong >= openUpToCommitUlong)
+        var result = LoadTransactionLogCore(fileId, logOffset, openUpToCommitUlong, ref _lastCommitted,
+            ref _nextRoot);
+        _listHead = _lastCommitted;
+        return result;
+    }
+
+    bool LoadTransactionLogCore(uint fileId, uint logOffset, ulong? openUpToCommitUlong,
+        ref IRootNode committed, ref IRootNode? next, uint endOffset = uint.MaxValue,
+        FileCollectionFileReader? replayReader = null)
+    {
+        if (openUpToCommitUlong.HasValue && committed.CommitUlong >= openUpToCommitUlong)
         {
             return false;
         }
 
         Span<byte> trueValue = stackalloc byte[12];
-        var collectionFile = FileCollection.GetFile(fileId);
-        var readerController = collectionFile!.GetExclusiveReader();
+        var readerController = (IMemReader?)replayReader ?? FileCollection.GetFile(fileId)!.GetExclusiveReader();
         var reader = new MemReader(readerController);
         try
         {
@@ -720,7 +738,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             {
                 FileTransactionLog.SkipHeader(ref reader);
             }
-            else
+            else if (replayReader == null)
             {
                 reader.SkipBlock(logOffset);
             }
@@ -730,18 +748,18 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             var finishReading = false;
             ICursor cursor;
             ICursor cursor2;
-            if (_nextRoot != null)
+            if (next != null)
             {
-                cursor = _nextRoot.CreateCursor();
-                cursor2 = _nextRoot.CreateCursor();
+                cursor = next.CreateCursor();
+                cursor2 = next.CreateCursor();
             }
             else
             {
-                cursor = _lastCommitted.CreateCursor();
-                cursor2 = _lastCommitted.CreateCursor();
+                cursor = committed.CreateCursor();
+                cursor2 = committed.CreateCursor();
             }
 
-            while (!reader.Eof)
+            while (reader.GetCurrentPosition() < endOffset && !reader.Eof)
             {
                 var command = (KVCommandType)reader.ReadUInt8();
 
@@ -756,7 +774,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     case KVCommandType.CreateOrUpdateDeprecated:
                     case KVCommandType.CreateOrUpdate:
                     {
-                        if (_nextRoot == null) return false;
+                        if (next == null) return false;
                         var keyLen = reader.ReadVInt32();
                         var valueLen = reader.ReadVInt32();
                         var key = new byte[keyLen];
@@ -790,7 +808,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     }
                     case KVCommandType.UpdateKeySuffix:
                     {
-                        if (_nextRoot == null) return false;
+                        if (next == null) return false;
                         var keyPrefix = reader.ReadVUInt32();
                         var keyLen = reader.ReadVUInt32();
                         var key = new byte[keyLen];
@@ -799,7 +817,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         {
                             if (!_lenientOpen)
                             {
-                                _nextRoot = null;
+                                next = null;
                                 return false;
                             }
 
@@ -811,7 +829,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     }
                     case KVCommandType.EraseOne:
                     {
-                        if (_nextRoot == null) return false;
+                        if (next == null) return false;
                         var keyLen = reader.ReadVInt32();
                         var key = new byte[keyLen];
                         reader.ReadBlock(key);
@@ -827,7 +845,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         }
                         else if (!_lenientOpen)
                         {
-                            _nextRoot = null;
+                            next = null;
                             return false;
                         }
 
@@ -835,7 +853,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     }
                     case KVCommandType.EraseRange:
                     {
-                        if (_nextRoot == null) return false;
+                        if (next == null) return false;
                         var keyLen1 = reader.ReadVInt32();
                         var keyLen2 = reader.ReadVInt32();
                         var key = new byte[keyLen1];
@@ -849,7 +867,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         var findResult = cursor.Find(keyBuf.AsSyncReadOnlySpan());
                         if (findResult != FindResult.Exact && !_lenientOpen)
                         {
-                            _nextRoot = null;
+                            next = null;
                             return false;
                         }
 
@@ -865,7 +883,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         findResult = cursor2.Find(keyBuf.AsSyncReadOnlySpan());
                         if (findResult != FindResult.Exact && !_lenientOpen)
                         {
-                            _nextRoot = null;
+                            next = null;
                             return false;
                         }
 
@@ -875,66 +893,65 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     }
                     case KVCommandType.DeltaUlongs:
                     {
-                        if (_nextRoot == null) return false;
+                        if (next == null) return false;
                         var idx = reader.ReadVUInt32();
                         var delta = reader.ReadVUInt64();
                         // overflow is expected in case Ulong is decreasing but that should be rare
-                        _nextRoot.SetUlong(idx, unchecked(_nextRoot.GetUlong(idx) + delta));
+                        next.SetUlong(idx, unchecked(next.GetUlong(idx) + delta));
                         break;
                     }
                     case KVCommandType.TransactionStart:
                         if (!reader.CheckMagic(MagicStartOfTransaction[1..]))
                             return false;
-                        if (_nextRoot != null)
+                        if (next != null)
                         {
-                            _nextRoot.Dispose();
-                            _nextRoot = null;
+                            next.Dispose();
+                            next = null;
                             return false;
                         }
 
-                        _nextRoot = _lastCommitted.CreateWritableTransaction();
-                        cursor.SetNewRoot(_nextRoot);
-                        cursor2.SetNewRoot(_nextRoot);
+                        next = committed.CreateWritableTransaction();
+                        cursor.SetNewRoot(next);
+                        cursor2.SetNewRoot(next);
                         break;
                     case KVCommandType.CommitWithDeltaUlong:
-                        if (_nextRoot == null) return false;
+                        if (next == null) return false;
                         unchecked // overflow is expected in case commitUlong is decreasing but that should be rare
                         {
-                            _nextRoot.CommitUlong += reader.ReadVUInt64();
+                            next.CommitUlong += reader.ReadVUInt64();
                         }
 
                         goto case KVCommandType.Commit;
                     case KVCommandType.Commit:
-                        if (_nextRoot == null) return false;
-                        _nextRoot.TrLogFileId = fileId;
-                        _nextRoot.TrLogOffset = (uint)reader.GetCurrentPosition();
-                        _lastCommitted.Dispose();
-                        _nextRoot.Commit();
-                        _lastCommitted = _nextRoot;
-                        _listHead = _lastCommitted;
-                        _nextRoot = null;
-                        if (openUpToCommitUlong.HasValue && _lastCommitted.CommitUlong >= openUpToCommitUlong)
+                        if (next == null) return false;
+                        next.TrLogFileId = fileId;
+                        next.TrLogOffset = (uint)reader.GetCurrentPosition();
+                        committed.Dispose();
+                        next.Commit();
+                        committed = next;
+                        next = null;
+                        if (openUpToCommitUlong.HasValue && committed.CommitUlong >= openUpToCommitUlong)
                         {
                             finishReading = true;
                         }
 
                         break;
                     case KVCommandType.Rollback:
-                        _nextRoot.Dispose();
-                        _nextRoot = null;
+                        next.Dispose();
+                        next = null;
                         break;
                     case KVCommandType.EndOfFile:
                         return false;
                     case KVCommandType.TemporaryEndOfFile:
-                        _lastCommitted.TrLogFileId = fileId;
-                        _lastCommitted.TrLogOffset = (uint)reader.GetCurrentPosition();
+                        committed.TrLogFileId = fileId;
+                        committed.TrLogOffset = (uint)reader.GetCurrentPosition();
                         afterTemporaryEnd = true;
                         break;
                     default:
-                        if (_nextRoot != null)
+                        if (next != null)
                         {
-                            _nextRoot.Dispose();
-                            _nextRoot = null;
+                            next.Dispose();
+                            next = null;
                         }
 
                         return false;
@@ -945,10 +962,10 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
         catch (EndOfStreamException)
         {
-            if (_nextRoot != null)
+            if (next != null)
             {
-                _nextRoot.Dispose();
-                _nextRoot = null;
+                next.Dispose();
+                next = null;
             }
 
             return false;
@@ -987,9 +1004,10 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 throw new BTDBException("Cannot dispose KeyValueDB when writing transaction still running");
             while (_writeWaitingQueue.Count > 0)
             {
-                _writeWaitingQueue.Dequeue().TrySetCanceled();
+                _writeWaitingQueue.Dequeue().Completion.TrySetCanceled();
             }
 
+            PublishBatchUnsafe();
             _lastCommitted.Dereference();
             FreeWaitingToDisposeUnsafe();
         }
@@ -1011,6 +1029,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     public bool DurableTransactions { get; set; }
 
+    // Reference the last published BTree without publishing or replaying a pending batch.
     public IRootNodeInternal ReferenceAndGetLastCommitted()
     {
         while (true)
@@ -1073,6 +1092,10 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     public IKeyValueDBTransaction StartTransaction()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_batchRoot != null)
+        {
+            lock (_writeLock) PublishBatchUnsafe();
+        }
         while (true)
         {
             var node = _lastCommitted;
@@ -1086,6 +1109,136 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
+    /// <summary>
+    /// Finish the batch immediately if idle, or after the current writer commits or rolls back, before granting
+    /// the next queued writer. This request does not wait for that writer and does not commit it on its behalf.
+    /// </summary>
+    public void FinishTransactionBatchAfterCurrentTransaction()
+    {
+        lock (_writeLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_writingTransaction != null)
+            {
+                if (_batchRoot != null) _finishBatchAfterCurrentTransaction = true;
+                return;
+            }
+            PublishBatchUnsafe();
+        }
+    }
+
+    void RememberBatchMetadata(IRootNode root)
+    {
+        _batchCommitUlong = root.CommitUlong;
+        Array.Resize(ref _batchUlongs, (int)root.GetUlongCount());
+        for (var i = 0; i < _batchUlongs.Length; i++)
+            _batchUlongs[i] = root.GetUlong((uint)i);
+    }
+
+    void WriteBatchUlongsDiff(IRootNode root)
+    {
+        for (var i = 0u; i < Math.Max(root.GetUlongCount(), (uint)_batchUlongs.Length); i++)
+        {
+            var delta = unchecked(root.GetUlong(i) - (i < _batchUlongs.Length ? _batchUlongs[i] : 0));
+            if (delta == 0) continue;
+            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.DeltaUlongs);
+            _writerWithTransactionLog.WriteVUInt32(i);
+            _writerWithTransactionLog.WriteVUInt64(delta);
+        }
+    }
+
+    void PublishRootUnsafe(IRootNode root)
+    {
+        root.TransactionId = Math.Max(root.TransactionId, _lastCommitted.TransactionId + 1);
+        root.Commit();
+        _lastCommitted.Dereference();
+        root.Next = _listHead;
+        _listHead = root;
+        _lastCommitted = root;
+        _batchHasCommits = false;
+    }
+
+    void PublishBatchUnsafe()
+    {
+        if (_batchRoot == null) return;
+        if (_writingTransaction != null)
+        {
+            if (_batchHasCommits) PublishReplayedBatchUnsafe();
+            return;
+        }
+        if (_batchHasCommits)
+            PublishRootUnsafe(_batchRoot);
+        else
+            _batchRoot.Dispose();
+        _batchRoot = null;
+    }
+
+    void PublishReplayedBatchUnsafe()
+    {
+        // A private snapshot lets the startup decoder dispose intermediate roots without touching reader pins.
+        var restored = _lastCommitted.Snapshot();
+        IRootNode? next = null;
+        try
+        {
+            var files = new List<uint>();
+            var fileId = _batchEndFileId;
+            while (fileId != 0)
+            {
+                files.Add(fileId);
+                if (fileId == restored.TrLogFileId) break;
+                fileId = ((IFileTransactionLog)_fileCollection.FileInfoByIdx(fileId)).PreviousFileId;
+            }
+            if (restored.TrLogFileId != 0 && fileId == 0)
+                throw new BTDBException("Missing transaction log while rebuilding transaction batch");
+            // RandomRead copies into one reusable buffer; an active writer may remap the underlying file.
+            FileCollectionFileReader? replayReader = null;
+            for (var i = files.Count - 1; i >= 0; i--)
+            {
+                fileId = files[i];
+                var offset = fileId == restored.TrLogFileId ? restored.TrLogOffset : 0;
+                var endOffset = fileId == _batchEndFileId ? _batchEndOffset : uint.MaxValue;
+                var file = FileCollection.GetFile(fileId)!;
+                if (replayReader == null)
+                    replayReader = new FileCollectionFileReader(file, offset, endOffset);
+                else
+                    replayReader.Restart(file, offset, endOffset);
+                LoadTransactionLogCore(fileId, offset, null, ref restored, ref next, endOffset, replayReader);
+            }
+            if (next != null || restored.TrLogFileId != _batchEndFileId || restored.TrLogOffset != _batchEndOffset)
+                throw new BTDBException("Incomplete transaction log while rebuilding transaction batch");
+            PublishRootUnsafe(restored);
+            restored = null!;
+        }
+        finally
+        {
+            restored?.Dispose();
+            next?.Dispose();
+        }
+    }
+
+    async ValueTask IKeyValueDBInternal.FlushTransactionLog()
+    {
+        lock (_writeLock)
+        {
+            if (_writingTransaction == null)
+            {
+                HardFlushTransactionLog();
+                return;
+            }
+        }
+        using var transaction = await StartWritingTransaction().ConfigureAwait(false);
+        HardFlushTransactionLog();
+    }
+
+    void HardFlushTransactionLog()
+    {
+        if (_fileWithTransactionLog == null) return;
+        _writerWithTransactionLog.Flush();
+        _fileWithTransactionLog.HardFlush();
+        // HardFlush may invalidate the appender's buffer.
+        _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
+    }
+
     class DisposedValue
     {
         internal bool Disposed = false;
@@ -1096,6 +1249,10 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     public IKeyValueDBTransaction StartReadOnlyTransaction()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_batchRoot != null)
+        {
+            lock (_writeLock) PublishBatchUnsafe();
+        }
         while (true)
         {
             var node = _lastCommitted;
@@ -1109,21 +1266,21 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    public ValueTask<IKeyValueDBTransaction> StartWritingTransaction()
+    public ValueTask<IKeyValueDBTransaction> StartWritingTransaction(bool inBatch = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_writeLock)
         {
             if (_writingTransaction == null)
             {
-                var tr = NewWritingTransactionUnsafe();
+                var tr = NewWritingTransactionUnsafe(inBatch);
                 _transactions.TryAdd(tr, new());
                 return new(tr);
             }
 
             var tcs = new TaskCompletionSource<IKeyValueDBTransaction>(TaskCreationOptions
                 .RunContinuationsAsynchronously);
-            _writeWaitingQueue.Enqueue(tcs);
+            _writeWaitingQueue.Enqueue((tcs, inBatch));
             return new(tcs.Task);
         }
     }
@@ -1221,6 +1378,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 throw new BTDBTransactionRetryException("Another writing transaction already running");
             if (_lastCommitted != btreeRoot)
                 throw new BTDBTransactionRetryException("Another writing transaction already finished");
+            PublishBatchUnsafe();
+            if (_lastCommitted != btreeRoot)
+                throw new BTDBTransactionRetryException("A transaction batch was published");
             _writingTransaction = keyValueDBTransaction;
             var result = _lastCommitted.CreateWritableTransaction();
             btreeRoot.Dereference();
@@ -1247,8 +1407,12 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         try
         {
-            WriteUlongsDiff(ref _writerWithTransactionLog, root, _lastCommitted);
-            var deltaUlong = unchecked(root.CommitUlong - _lastCommitted.CommitUlong);
+            var batching = ReferenceEquals(root, _batchRoot);
+            if (batching)
+                WriteBatchUlongsDiff(root);
+            else
+                WriteUlongsDiff(ref _writerWithTransactionLog, root, _lastCommitted);
+            var deltaUlong = unchecked(root.CommitUlong - (batching ? _batchCommitUlong : _lastCommitted.CommitUlong));
             if (deltaUlong != 0)
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.CommitWithDeltaUlong);
@@ -1280,6 +1444,16 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             lock (_writeLock)
             {
                 _writingTransaction = null;
+                if (batching)
+                {
+                    _batchHasCommits = true;
+                    _batchEndFileId = root.TrLogFileId;
+                    _batchEndOffset = root.TrLogOffset;
+                    RememberBatchMetadata(root);
+                    root = null;
+                    TryDequeWaiterForWritingTransaction();
+                    return;
+                }
                 _lastCommitted.Dereference();
 
                 _lastCommitted = root;
@@ -1335,12 +1509,17 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     void TryDequeWaiterForWritingTransaction()
     {
+        if (_finishBatchAfterCurrentTransaction)
+        {
+            _finishBatchAfterCurrentTransaction = false;
+            PublishBatchUnsafe();
+        }
         FreeWaitingToDisposeUnsafe();
         if (_writeWaitingQueue.Count == 0) return;
-        var tcs = _writeWaitingQueue.Dequeue();
-        var tr = NewWritingTransactionUnsafe();
+        var (completion, inBatch) = _writeWaitingQueue.Dequeue();
+        var tr = NewWritingTransactionUnsafe(inBatch);
         _transactions.TryAdd(tr, new());
-        tcs.SetResult(tr);
+        completion.SetResult(tr);
     }
 
     void TryFreeWaitingToDispose()
@@ -1361,11 +1540,19 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    BTreeKeyValueDBTransaction NewWritingTransactionUnsafe()
+    BTreeKeyValueDBTransaction NewWritingTransactionUnsafe(bool inBatch)
     {
         if (_readOnly) throw new BTDBException("Database opened in readonly mode");
+        if (!inBatch) PublishBatchUnsafe();
         FreeWaitingToDisposeUnsafe();
-        var newTransactionRoot = _lastCommitted.CreateWritableTransaction();
+        var newTransactionRoot = _batchRoot ?? _lastCommitted.CreateWritableTransaction();
+        if (_batchRoot != null)
+            newTransactionRoot.TransactionId = Math.Max(newTransactionRoot.TransactionId + 1, _lastCommitted.TransactionId + 1);
+        if (inBatch && _batchRoot == null)
+        {
+            _batchRoot = newTransactionRoot;
+            RememberBatchMetadata(newTransactionRoot);
+        }
         try
         {
             var tr = new BTreeKeyValueDBTransaction(this, newTransactionRoot, true, false);
@@ -1407,24 +1594,26 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     internal void RevertWritingTransaction(IRootNode writtenToTransactionLog, bool nothingWrittenToTransactionLog)
     {
-        writtenToTransactionLog.Dispose();
-        if (!nothingWrittenToTransactionLog)
+        lock (_writeLock)
         {
-            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Rollback);
-            lock (_writeLock)
+            if (!nothingWrittenToTransactionLog)
+                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Rollback);
+            if (ReferenceEquals(writtenToTransactionLog, _batchRoot))
             {
-                _writingTransaction = null;
+                if (!nothingWrittenToTransactionLog)
+                {
+                    // The mutable root includes the failed transaction. Rebuild only the committed prefix.
+                    if (_batchHasCommits) PublishReplayedBatchUnsafe();
+                    _batchRoot = null;
+                    writtenToTransactionLog.Dispose();
+                }
+            }
+            else
+                writtenToTransactionLog.Dispose();
+            _writingTransaction = null;
+            if (!nothingWrittenToTransactionLog && _batchRoot == null)
                 UpdateTransactionLogInBTreeRoot(_lastCommitted);
-                TryDequeWaiterForWritingTransaction();
-            }
-        }
-        else
-        {
-            lock (_writeLock)
-            {
-                _writingTransaction = null;
-                TryDequeWaiterForWritingTransaction();
-            }
+            TryDequeWaiterForWritingTransaction();
         }
     }
 

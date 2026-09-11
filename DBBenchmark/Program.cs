@@ -13,6 +13,12 @@ class Program
             return;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "transaction-batching", StringComparison.OrdinalIgnoreCase))
+        {
+            BenchmarkSwitcher.FromTypes([typeof(TransactionBatchingBenchmark)]).Run(args[1..]);
+            return;
+        }
+
         new KeyValueSpeedTest().Run();
     }
 }
