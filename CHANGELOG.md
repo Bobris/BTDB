@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.10.0
+
 ### Changed
 
 - Add npm release scripts for interactive release selection and direct major, minor and patch releases.
