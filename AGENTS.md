@@ -55,6 +55,12 @@ These guidelines summarize how to navigate, build, and contribute to this reposi
 - Mention the changelog update in the final response, or explicitly state why no changelog entry was needed.
 - Run the relevant build/test command after the final file edits, including documentation and changelog edits.
 
+## Branch Workflow
+
+- When working with Boris on BTDB, develop directly on the currently checked-out branch, usually `master`.
+- Create a new branch only when Boris explicitly requests one. Do not create a branch or an isolated worktree automatically for ordinary development tasks.
+- Do not switch to `master` automatically if another branch is currently checked out; use the current branch unless instructed otherwise.
+
 ## Commit & Pull Request Guidelines
 
 - Commit messages are concise, imperative, sentence case (e.g., "Enhance validation for ...").

@@ -12,13 +12,26 @@ namespace Releaser;
 
 static class Program
 {
-    static void Main()
+    static Task<int> Main(string[] args)
     {
-        MainAsync().Wait();
+        return MainAsync(args);
     }
 
-    static async Task<int> MainAsync()
+    static async Task<int> MainAsync(string[] args)
     {
+        var choice = args.Length == 0 ? '\0' : args.Length == 1 ? args[0] switch
+        {
+            "major" => '1',
+            "minor" => '2',
+            "patch" => '3',
+            _ => '?'
+        } : '?';
+        if (choice == '?')
+        {
+            Console.WriteLine("Usage: Releaser [major|minor|patch]");
+            return 1;
+        }
+
         var projDir = Environment.CurrentDirectory;
         while (!File.Exists(projDir + "/CHANGELOG.md"))
         {
@@ -67,12 +80,15 @@ static class Program
             new System.Version(lastVersionNumber.Major, lastVersionNumber.Minor, lastVersionNumber.Build + 1);
         var minorVersionNumber = new System.Version(lastVersionNumber.Major, lastVersionNumber.Minor + 1, 0);
         var majorVersionNumber = new System.Version(lastVersionNumber.Major + 1, 0, 0);
-        Console.WriteLine("Press 1 for Major " + majorVersionNumber.ToString(3));
-        Console.WriteLine("Press 2 for Minor " + minorVersionNumber.ToString(3));
-        Console.WriteLine("Press 3 for Patch " + patchVersionNumber.ToString(3));
-        Console.WriteLine("Press 4 for Nuget repush");
-        var choice = Console.ReadKey().KeyChar;
-        Console.WriteLine();
+        if (choice == '\0')
+        {
+            Console.WriteLine("Press 1 for Major " + majorVersionNumber.ToString(3));
+            Console.WriteLine("Press 2 for Minor " + minorVersionNumber.ToString(3));
+            Console.WriteLine("Press 3 for Patch " + patchVersionNumber.ToString(3));
+            Console.WriteLine("Press 4 for Nuget repush");
+            choice = Console.ReadKey().KeyChar;
+            Console.WriteLine();
+        }
         if (choice < '1' || choice > '4')
         {
             Console.WriteLine("Not pressed 1, 2, 3 or 4. Exiting.");

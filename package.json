@@ -1,0 +1,8 @@
+{
+    "scripts": {
+        "release": "dotnet run --project Releaser/Releaser/Releaser.csproj --",
+        "release-major": "npm run release -- major",
+        "release-minor": "npm run release -- minor",
+        "release-patch": "npm run release -- patch"
+    }
+}

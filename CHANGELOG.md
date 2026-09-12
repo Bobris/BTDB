@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Add npm release scripts for interactive release selection and direct major, minor and patch releases.
 - Reduce secondary-index key allocations during relation deletion and updates by using caller-owned
   stack-backed writers for serialized keys, reusing their buffers across indexes with heap fallback for long keys.
   Batch deletion retains these buffers across rows for prefix, partial and range deletion;
