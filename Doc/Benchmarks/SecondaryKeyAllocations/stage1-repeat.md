@@ -6,8 +6,8 @@ Apple M2 Max, 1 CPU, 12 logical and 12 physical cores
   [Host]   : .NET 10.0.12 (10.0.1226.42308), Arm64 RyuJIT AdvSIMD
   ShortRun : .NET 10.0.12 (10.0.1226.42308), Arm64 RyuJIT AdvSIMD
 
-Job=ShortRun  InvocationCount=16  IterationCount=10  
-LaunchCount=1  UnrollFactor=1  WarmupCount=3  
+Job=ShortRun  InvocationCount=16  IterationCount=10
+LaunchCount=1  UnrollFactor=1  WarmupCount=3
 
 ```
 | Method      | RowCount | CustomFieldLength | Mean         | Error      | StdDev     | Gen0      | Allocated   |
