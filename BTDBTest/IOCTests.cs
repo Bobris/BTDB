@@ -2171,7 +2171,7 @@ public partial class IocTests
         Assert.NotNull(provider.GetKeyedService<ILogger>("A"));
         Assert.Empty(provider.GetKeyedService<IEnumerable<ILogger>>("B"));
         Assert.Null(provider.GetService<ILogger>());
-        Assert.Null(provider.GetKeyedService<ILogger>(KeyedService.AnyKey)); // !!!
+        Assert.Throws<InvalidOperationException>(() => provider.GetKeyedService<ILogger>(KeyedService.AnyKey));
         Assert.Equal(2, provider.GetKeyedService<IEnumerable<ILogger>>(KeyedService.AnyKey).Count());
     }
 }

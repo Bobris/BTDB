@@ -50,7 +50,7 @@ public enum DictValueType
 [RPlotExporter, RankColumn]
 public class RelationFreeContentTest
 {
-    [Params(100ul, 5000ul)] public int Count;
+    [Params(100, 5000)] public int Count;
 
     [Params(DictValueType.Simple, DictValueType.Complex, DictValueType.IndirectSimple, DictValueType.IndirectComplex)]
     public DictValueType ValueType;

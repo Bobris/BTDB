@@ -6,6 +6,10 @@
 
 ### Changed
 
+- Update NuGet dependencies to their latest stable versions.
+  Correct benchmark parameter types for the updated BenchmarkDotNet analyzer.
+  Update the Microsoft DI compatibility test for its .NET 10 `AnyKey` exception behavior.
+
 - Add npm release scripts for interactive release selection and direct major, minor and patch releases.
 - Reduce secondary-index key allocations during relation deletion and updates by using caller-owned
   stack-backed writers for serialized keys, reusing their buffers across indexes with heap fallback for long keys.
