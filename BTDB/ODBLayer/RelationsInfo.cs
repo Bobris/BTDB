@@ -46,15 +46,18 @@ public class RelationsInfo
         {
             id = _freeId++;
             _name2Id[name] = id;
-            Span<byte> buf = stackalloc byte[256];
-            var nameWriter = MemWriter.CreateFromStackAllocatedSpan(buf);
-            nameWriter.WriteBlock(ObjectDB.RelationNamesPrefix);
-            nameWriter.WriteString(name);
-            Span<byte> buf2 = stackalloc byte[8];
-            var idWriter = MemWriter.CreateFromStackAllocatedSpan(buf2);
-            idWriter.WriteVUInt32(id);
-            using var cursor = tr.KeyValueDBTransaction.CreateCursor();
-            cursor.CreateOrUpdateKeyValue(nameWriter.GetSpan(), idWriter.GetSpan());
+            if (!tr.Owner.ActualOptions.DeferNewRelationMetadata)
+            {
+                Span<byte> buf = stackalloc byte[256];
+                var nameWriter = MemWriter.CreateFromStackAllocatedSpan(buf);
+                nameWriter.WriteBlock(ObjectDB.RelationNamesPrefix);
+                nameWriter.WriteString(name);
+                Span<byte> buf2 = stackalloc byte[8];
+                var idWriter = MemWriter.CreateFromStackAllocatedSpan(buf2);
+                idWriter.WriteVUInt32(id);
+                using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+                cursor.CreateOrUpdateKeyValue(nameWriter.GetSpan(), idWriter.GetSpan());
+            }
         }
 
         if (Id2Relation.TryGetValue(id, out var relation))

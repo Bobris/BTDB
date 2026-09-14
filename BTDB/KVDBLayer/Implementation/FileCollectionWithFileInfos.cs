@@ -10,6 +10,7 @@ namespace BTDB.KVDBLayer;
 public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
 {
     readonly IFileCollection _fileCollection;
+    readonly bool _useOddTransactionLogIds;
     readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new();
     long _fileGeneration;
     internal static readonly byte[] MagicStartOfFile = "BTDB2"u8.ToArray();
@@ -36,9 +37,10 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
         }
     }
 
-    public FileCollectionWithFileInfos(IFileCollection fileCollection)
+    public FileCollectionWithFileInfos(IFileCollection fileCollection, bool useOddTransactionLogIds = false)
     {
         _fileCollection = fileCollection;
+        _useOddTransactionLogIds = useOddTransactionLogIds;
         Guid = null;
         LoadInfoAboutFiles();
     }
@@ -163,7 +165,21 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
 
     public IFileCollectionFile AddFile(string humanHint)
     {
-        return _fileCollection.AddFile(humanHint);
+        return _useOddTransactionLogIds
+            ? _fileCollection.AddFile(humanHint, humanHint == "trl" ? FileIdParity.Odd : FileIdParity.Even)
+            : _fileCollection.AddFile(humanHint);
+    }
+
+    public IFileCollectionFile AddFile(string humanHint, FileIdParity parity)
+    {
+        if (_useOddTransactionLogIds)
+        {
+            var required = humanHint == "trl" ? FileIdParity.Odd : FileIdParity.Even;
+            if (parity != FileIdParity.Any && parity != required)
+                throw new ArgumentException("Requested parity conflicts with the database file allocation mode.", nameof(parity));
+            return _fileCollection.AddFile(humanHint, required);
+        }
+        return _fileCollection.AddFile(humanHint, parity);
     }
 
     public long NextGeneration()

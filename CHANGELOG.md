@@ -4,6 +4,16 @@
 
 ### Changed
 
+- Add an optional deterministic TRL-ID size strategy with soft rotation between transactions and a strict hard
+  limit below 4 GiB, including cross-file metadata/commit handling, reopen, and oversized-command rejection.
+
+- Complete replication file-ID allocation: new TRLs are odd and all non-TRL files are even, enforced centrally
+  for KVI, PVL and sub-database allocations; retain unconstrained allocation when the option is disabled.
+- Add core replication preparation APIs: application writers automatically set CommitUlong from eventId; optional
+  explicit transaction admission and odd TRL allocation preserve standalone defaults and legacy even-tail replay.
+- Allow opt-in read-only registration of new ObjectDB relations with metadata persisted on the first data write,
+  retaining metadata after rollback/retry; keep existing relation/index upgrades eager and use read-only ObjectDB
+  startup metadata reads.
 - Require completed PVL and canonical TRL publication through the KVI cursor before starting any KVI upload,
   including remote block staging; completing KVI last alone is insufficient.
 - Consolidate replication lifecycle and publisher state transitions, interruption ordering and KVI cleanup proof

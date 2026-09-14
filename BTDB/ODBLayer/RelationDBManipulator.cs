@@ -29,6 +29,7 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
     readonly IInternalObjectDBTransaction _transaction;
     readonly IKeyValueDBTransaction _kvtr;
     readonly RelationInfo _relationInfo;
+    bool _deferredMetadataPending;
 
     public IInternalObjectDBTransaction Transaction => _transaction;
     public RelationInfo RelationInfo => _relationInfo;
@@ -41,6 +42,8 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
         _transaction = (IInternalObjectDBTransaction)transaction;
         _kvtr = _transaction.KeyValueDBTransaction;
         _relationInfo = relationInfo;
+        _deferredMetadataPending = transaction.Owner.ActualOptions.DeferNewRelationMetadata &&
+                                   relationInfo.LastPersistedVersion == 0;
         _hasSecondaryIndexes = _relationInfo.ClientRelationVersionInfo.HasSecondaryIndexes;
     }
 
@@ -76,6 +79,11 @@ public class RelationDBManipulator<T> : IRelation<T>, IRelationDbManipulator whe
 
     ReadOnlySpan<byte> ValueBytes(T obj, scoped ref MemWriter writer)
     {
+        if (_deferredMetadataPending)
+        {
+            _relationInfo.EnsureDeferredMetadata(_transaction);
+            _deferredMetadataPending = false;
+        }
         writer.WriteVUInt32(_relationInfo.ClientTypeVersion);
         _relationInfo.ValueSaver(_transaction, ref writer, obj);
         return writer.GetScopedSpanAndReset();

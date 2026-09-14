@@ -20,6 +20,23 @@ public interface IKeyValueDB : IDisposable
     /// </summary>
     ValueTask<IKeyValueDBTransaction> StartWritingTransaction(bool inBatch = false);
 
+    /// Start an application writer and set its CommitUlong to eventId. Rollback discards this change.
+    async ValueTask<IKeyValueDBTransaction> StartWritingTransaction(ulong eventId, bool inBatch = false)
+    {
+        var transaction = await StartWritingTransaction(inBatch).ConfigureAwait(false);
+        try
+        {
+            transaction.SetCommitUlong(eventId);
+            return transaction;
+        }
+        catch
+        {
+            transaction.Dispose();
+            throw;
+        }
+    }
+
+
     /// <summary>
     /// Finish the current batch immediately if idle, otherwise after the active writer commits or rolls back,
     /// before the next queued writer starts. Returns immediately without committing the active transaction.

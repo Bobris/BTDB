@@ -124,7 +124,7 @@ public class ObjectDB : IObjectDB
         _relationsInfoResolver = new RelationInfoResolver(this);
         _relationsInfo = new RelationsInfo(_relationsInfoResolver);
 
-        using var tr = _keyValueDB.StartTransaction();
+        using var tr = _keyValueDB.StartReadOnlyTransaction();
         _lastObjId = (long)tr.GetUlong(0);
         _lastDictId = (long)tr.GetUlong(1);
         Span<byte> stackBuffer = stackalloc byte[16];
@@ -232,6 +232,12 @@ public class ObjectDB : IObjectDB
     public async ValueTask<IObjectDBTransaction> StartWritingTransaction(bool inBatch = false)
     {
         return new ObjectDBTransaction(this, await _keyValueDB.StartWritingTransaction(inBatch), false);
+    }
+
+    public async ValueTask<IObjectDBTransaction> StartWritingTransaction(ulong eventId, bool inBatch = false)
+    {
+        return new ObjectDBTransaction(this,
+            await _keyValueDB.StartWritingTransaction(eventId, inBatch).ConfigureAwait(false), false);
     }
 
     public void FinishTransactionBatchAfterCurrentTransaction()
@@ -447,7 +453,7 @@ public class ObjectDB : IObjectDB
 
         public long GetSingletonOid(uint id)
         {
-            using var tr = _keyValueDB.StartTransaction();
+            using var tr = _keyValueDB.StartReadOnlyTransaction();
             using var cursor = tr.CreateCursor();
             var len = PackUnpack.LengthVUInt(id);
             Span<byte> buf = stackalloc byte[16];

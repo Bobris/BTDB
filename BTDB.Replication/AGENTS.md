@@ -101,7 +101,8 @@
   accept a partial transaction. Prepare and verify successor files first, then publish the whole transaction with the predecessor TRL CAS.
   Native KVI-last discovery is selected; TRL continuation and per-object CAS ordering still require proof. Checkpoint metadata never gates each append.
 - Assume the initial existing database is already in Blob Storage. Do not design a local-database import workflow.
-- Newly written replication TRLs use odd numeric file IDs. Accept valid legacy databases with arbitrary file-ID
+- Newly written replication TRLs use odd numeric file IDs; all new non-TRL files use even IDs, including KVI/PVL
+  and sub-database files. Accept valid legacy databases with arbitrary file-ID
   parity unchanged. Before starting a write that would append to an even TRL, close that file and allocate a fresh odd
   TRL immediately, regardless of the size target. Preserve old IDs/value references and normal allocator non-reuse;
   rotate before transaction bytes, without changing CommitUlong or canonical sequence. Remote changes remain leader-only.
@@ -159,3 +160,7 @@
   valid base; unpublished BTDB tail may be regenerated. Do not add client durability acknowledgements or Blob waits.
   Published-boundary tracking is internal restore bookkeeping. Preserve complete-file/transaction, ancestry and CAS
   fencing checks so event replay begins at a valid base/cursor. Distinguish engineering proof tasks from user choices.
+
+- TRL sizing uses an immutable strategy whose only input is the created TRL numeric ID. Soft limits rotate only
+  between transactions; hard limits below 4 GiB permit splitting between commands and include headers/terminators.
+  Keep the production mapping stable across nodes, restarts and application versions; tiny test policies are injectable.

@@ -345,9 +345,11 @@ public class InMemoryFileCollection : IFileCollection
         }
     }
 
-    public IFileCollectionFile AddFile(string humanHint)
+    public IFileCollectionFile AddFile(string humanHint) => AddFile(humanHint, FileIdParity.Any);
+
+    public IFileCollectionFile AddFile(string humanHint, FileIdParity parity)
     {
-        var index = (uint)Interlocked.Increment(ref _maxFileId);
+        var index = FileIdAllocator.Allocate(ref _maxFileId, parity);
         var file = new File(this, index);
         Dictionary<uint, File> newFiles;
         Dictionary<uint, File> oldFiles;

@@ -967,7 +967,8 @@ public class RelationInfo
         {
             ClientTypeVersion = LastPersistedVersion + 1;
             _relationVersions[ClientTypeVersion] = ClientRelationVersionInfo;
-            WriteRelationMetadata(tr);
+            if (!tr.Owner.ActualOptions.DeferNewRelationMetadata || LastPersistedVersion != 0)
+                WriteRelationMetadata(tr);
 
             CreateCreatorLoadersAndSavers(tr.Owner.ActualOptions.Container);
             if (LastPersistedVersion > 0)
@@ -977,6 +978,22 @@ public class RelationInfo
                 UpdateSecondaryKeys(tr, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]!);
             }
         }
+    }
+
+    internal void EnsureDeferredMetadata(IObjectDBTransaction tr)
+    {
+        // Check the transaction's own view: a previous attempt may have rolled back its metadata writes.
+        Span<byte> buffer = stackalloc byte[256];
+        var writer = MemWriter.CreateFromStackAllocatedSpan(buffer);
+        writer.WriteBlock(ObjectDB.RelationNamesPrefix);
+        writer.WriteString(_name);
+        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
+        if (cursor.FindExactKey(writer.GetSpan())) return;
+        Span<byte> idBuffer = stackalloc byte[8];
+        var idWriter = MemWriter.CreateFromStackAllocatedSpan(idBuffer);
+        idWriter.WriteVUInt32(_id);
+        WriteRelationMetadata(tr);
+        cursor.CreateOrUpdateKeyValue(writer.GetSpan(), idWriter.GetSpan());
     }
 
     [SkipLocalsInit]

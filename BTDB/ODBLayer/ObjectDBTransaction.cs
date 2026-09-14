@@ -475,7 +475,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         var name = type.GetCustomAttribute<PersistedNameAttribute>() is { } persistedNameAttribute
             ? persistedNameAttribute.Name
             : type.ToSimpleName();
-        if (!_keyValueTr!.IsReadOnly())
+        if (!_keyValueTr!.IsReadOnly() || _owner.ActualOptions.DeferNewRelationMetadata)
         {
             _owner.RegisterCustomRelation(type, InitRelation(name, type));
         }

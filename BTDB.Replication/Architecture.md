@@ -1,6 +1,7 @@
 # BTDB.Replication Architecture
 
-Status: Architecture proposal; no implementation has started. Normative requirements below describe the intended
+Status: Replication protocol remains an architecture proposal. Opt-in core preparation APIs are implemented; see
+[core preparation](../Doc/ReplicationCore.md). No distributed replication runtime is implemented. Normative requirements below describe the intended
 version one, not verified runtime guarantees. Implementation blockers are listed under [Open decisions](#open-decisions).
 
 Provider research snapshot: 2026-08-29. Architecture consolidated on 2026-09-06. The provider contract,
@@ -863,7 +864,11 @@ The existing code provides useful integration points, but it is not currently a 
   plus correct private TRL/counter handling. Committed structural divergence instead restarts the process.
 - Current standalone code can rotate inside a transaction: command writers call `WriteStartOfNewTransactionLogFile()`
   when reaching `MaxTrLogFileSize`. Replication must capture cross-file transaction ranges and preserve legacy replay.
-  Root/value positions currently use 32-bit offsets; physical rotation must respect those and individual-command limits.
+  The core now supports `ITransactionLogSizeStrategy`: its immutable mapping from TRL numeric ID returns soft and hard
+  limits. Soft-limit rotation happens before the next transaction; the hard limit may split a transaction between
+  commands and includes headers and terminators. `1024 <= SoftLimit <= HardLimit < uint.MaxValue` respects 32-bit
+  root/value offsets. A command must fit the destination file. The mapping must remain identical across all nodes,
+  restarts and deployments; auto-adjustment is incompatible. See [core preparation](../Doc/ReplicationCore.md).
   Odd TRL allocation is an opt-in integration requirement, not permission to change standalone file allocation.
 - `.kvi` and `.pvl` files are written as new files and become immutable after finalization.
 - File IDs and generations are allocated from local collection state. In failover mode, canonical `.trl` and `.pvl`
@@ -1457,7 +1462,8 @@ authority. Unlinked successors are staging and must be protected from premature 
 
 #### Odd-numbered TRL allocation and legacy databases
 
-Decision recorded 2026-09-14: newly written TRL files in replication mode use odd numeric file IDs. Existing databases
+Decision recorded 2026-09-14: newly written TRL files in replication mode use odd numeric file IDs; every newly
+allocated non-TRL file uses an even ID, including KVI, PVL and sub-database files. Existing databases
 need not satisfy this rule: valid historical TRL files with even or odd IDs remain readable with their original IDs,
 contents and value references. Do not reject an existing database, renumber files or rewrite its history to enforce parity.
 The odd-only rule governs new transaction output, not validation of historical file names.

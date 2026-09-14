@@ -63,9 +63,9 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         if (_writing) return;
         if (_preapprovedWriting)
         {
+            KeyValueDB.WriteStartTransaction();
             _writing = true;
             _preapprovedWriting = false;
-            KeyValueDB.WriteStartTransaction();
             return;
         }
 
@@ -77,8 +77,10 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         BTreeRoot = KeyValueDB.MakeWritableTransaction(this, BTreeRoot!);
 
         BTreeRoot.DescriptionForLeaks = _descriptionForLeaks;
-        _writing = true;
+        _preapprovedWriting = true;
         KeyValueDB.WriteStartTransaction();
+        _writing = true;
+        _preapprovedWriting = false;
 
         var cursor = (IKeyValueDBCursorInternal)FirstCursor;
         while (cursor != null)
