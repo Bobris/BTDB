@@ -16,10 +16,10 @@ The object store has three distinct roles:
 - **Coordination plane**: one small shared leader record selects the cluster-wide leader and publishes its
   transport-defined peer endpoint and API key. Azure version one protects it with ETag CAS and one finite native Blob
   lease.
-- **Per-database publication plane**: one small mutable state record per short-named database selects that database's
-  transaction-aligned durable TRL boundary and checkpoint under the shared leadership term.
-- **Data plane**: active TRLs are logically append-only, term-qualified remote files; checkpoints, manifests, and
-  compaction artifacts are immutable or attempt-qualified. Competing terms never share a mutable data key.
+- **Per-database publication**: CAS on canonical TRL directly publishes complete transactions. A native KVI
+  is published after all its prerequisite files; no separate checkpoint pointer or manifest selects it.
+- **Data plane**: active TRLs are logically append-only, term-qualified remote files; native KVIs and
+  compaction artifacts are immutable or attempt-qualified. Takeover fences the writable predecessor TRL by CAS before using a new term-qualified continuation.
 
 The upstream event log permits loss and deterministic replay of a small unpublished application tail. Object storage
 therefore does not need to prove durability before every event is acknowledged, but it must never allow two accepted
@@ -35,8 +35,8 @@ An endpoint is suitable only if it provides all of these properties:
 3. **Strong read-after-write consistency**: after a successful write, subsequent reads observe that write.
 
 No part of the design may assume an atomic transaction across two object keys. The leader record grants authority but
-contains no database progress. Data objects must be completed first; a conditional update of the corresponding
-database state record then makes that database's complete transaction boundary or immutable graph authoritative.
+contains no database progress. Required files must be completed before the canonical TRL CAS exposes a complete
+transaction referencing them. The TRL operation itself establishes durability; no separate state CAS follows it.
 
 ### Candidate provider-neutral interface
 
@@ -73,7 +73,8 @@ ProbeConditionalWrites()
 
 The coordination core needs only `Read`, `CreateIfAbsent`, and `ReplaceIfCurrent`. `Head`, range reads, paginated
 listing, bulk deletion, and multipart upload support checkpoint transfer, restore, and garbage collection. Listings
-must never define the authoritative restore set; an immutable manifest must name every required object explicitly.
+discover published native KVIs. Validate their native file references and canonical ancestry; listing alone does not
+prove arbitrary files belong to a committed history. No separate checkpoint manifest is required.
 
 `DeleteMany` is exposed only to the current leader's remote-garbage-collection state machine. Followers may delete
 completely unused files from their own local BTDB file collections, but never call object-store deletion. Such local
@@ -81,8 +82,8 @@ deletion is never distributed: only the node can see all files pinned by its ope
 roots. Leader authority alone is not a deletion-safety proof because the lease on `cluster/leader.json` does not
 physically fence a previously dispatched request to another Blob. Every remote deletion candidate must therefore be
 absent from the currently published recovery closure, and its key must never be reused. Publish the replacement
-KVI/manifest/tail before deleting superseded objects. Do not wait for follower restores or a grace period: a follower
-losing a file while opening restarts and loads the newest published KVI. Old restore attempts and diagnostic manifests
+required value/log files first and the KVI last before deleting superseded objects. Do not wait for follower restores or a grace period: a follower
+losing a file while opening restarts and loads the newest published KVI. Old restore attempts and diagnostic KVI references
 do not pin remote files; a delayed old-term delete must remain harmless to the current closure.
 
 The required version-one tail-append capability and provider-specific lease operations are exposed separately from
@@ -107,22 +108,25 @@ TRL representation.
 
 ### Transaction-aligned publication above the storage interface
 
-The normative [database state publisher](Architecture.md#database-state-publisher) owns tail, checkpoint, genesis, and
-adoption selection. This provider document defines preparation semantics, not another state-publication algorithm.
-Application transactions may each consume several events, or advance past one failed event with metadata only; provider
-publication batching still groups whole committed transactions and ignores discarded attempt bytes.
-`AppendIfCurrent` is atomic for one object. A transaction may span multiple TRL files; only the state CAS selecting its
-complete immutable boundary descriptor makes those prepared cuts durable BTDB progress.
+The normative [TRL publisher](Architecture.md#trl-publisher) owns append, genesis, rotation/adoption and checkpoint
+selection. A successful conditional publication on the canonical TRL exposing a complete transaction establishes its
+durability. There is no second write to a per-database state record. Staged blocks, unlinked successors, and incomplete
+transactions do not establish additional durable progress.
 
-The adapter must preserve every previously selected prefix even when newer prepared bytes are visible. File rotation,
-`EndOfFile`, physical length, and an individual block-list commit never imply transaction closure. A crash before state
-selection leaves the previous boundary authoritative; after selection every referenced segment must already be verified.
-An ambiguous response can remain unresolved while a request could still commit. The common publisher owns reconciliation.
+Application commits consume input or record an explicit application-selected skip; schema commits preserve the cursor.
+The core validates complete transaction history and rollback evidence, including ordered ranges across TRL files.
+A per-object CAS is not a multi-object transaction: complete recovery closure must be reachable before a cross-file
+commit is reported durable. Prepare successor files first, then expose their complete chain by CAS on the canonical predecessor TRL.
+The selected ordering still requires provider qualification; no second state CAS is added.
 
-Adapters expose opaque tokens, exact ranges, distinct outcomes, and independently delayed effects/responses through
-injected ports. In-memory and real-provider implementations run the same semantic conformance cases. Transaction and
-checkpoint ancestry validation remains in the core, including rejecting checkpoints ahead of the selected durable tail
-and permitting verified physical checkpoint replacement at equal application position.
+Genesis and schema operations immediately request asynchronous canonical TRL publication after local commit, without
+waiting for the CAS or delaying dependent local work. The publisher still includes required predecessor history in
+order. Ordinary application publication may use lazy batching; local commit completion never implies Blob durability. There is no additional database-state acknowledgement.
+
+The adapter preserves every published prefix and treats tokens as opaque. If continuation metadata accompanies a TRL
+publication, content and that metadata must change atomically under the same token, not through an independent later
+metadata update. This is a capability to qualify for the chosen rotation codec, not an assumed multi-object transaction.
+A timeout/cancellation remains ambiguous until the actual TRL operation can be reconciled.
 
 ### Conditional-write outcomes
 
@@ -160,8 +164,8 @@ authority procedure. Availability is sacrificed rather than split-brain safety.
 
 Even a native provider lease fences only operations against the leased object. Bulk objects remain immutable and
 term-qualified, and followers still validate the leader-record-selected term and session before accepting directly
-streamed TRL frames. Because the leader lease does not fence separate database state blobs, every new term must
-CAS-adopt every active database state before canonical work begins. That adoption excludes prior requests carrying the
+streamed TRL frames. Because the leader lease does not fence other blobs, every new term must
+CAS-fence each writable predecessor TRL before canonical work begins. That adoption excludes prior requests carrying the
 old ETag. Removed databases need no adoption or retirement fence: names are never reused, and a delayed old write to an
 abandoned namespace is accepted. This exception does not weaken fencing for active databases.
 
@@ -177,6 +181,9 @@ run these four operations against one unique temporary key:
 
 Delete the probe object afterward. A provider that accepts conditional headers but ignores them is unsafe. An
 ambiguous response makes the probe inconclusive; it is not evidence of conformance.
+
+The application event log supplies input durability/replay. The Blob publication boundary below is a recovery-base
+watermark; it does not introduce a transaction acknowledgement or require application commits to await storage.
 
 ## `denoland/celld` reference study
 
@@ -267,7 +274,7 @@ becomes an error rather than inventing a token.
 
 Azure has one listing-specific limitation in this interface: `common_prefixes_page` rejects `start_after`, because
 Azure listing has no equivalent start-after parameter. Provider continuation tokens still work. This matters for
-bounded operational scans, but not correctness because manifests must link the accepted data graph directly.
+bounded discovery scans, including native KVI discovery; validate the selected files and canonical ancestry independently.
 
 ### Extended blob operations
 
@@ -415,12 +422,12 @@ are last-writer-wins.
 - A read or write returns an ETag. `If-Match: <etag>` applies the next write only if no intervening operation changed
   the blob; a stale ETag produces HTTP `412`.
 - ETags are opaque version tokens. Their formatting and any relationship to content must not be interpreted.
-- Conditions apply to one Blob operation. They do not create a transaction across the leader record, a database state
-  record, a manifest, and its data objects.
+- Conditions apply to one Blob operation. They do not create a transaction across the leader record, a TRL, a KVI, and its prerequisite data objects.
 
-The shared leader object should be a small block blob replaced with `If-Match` only when leadership changes; its finite
-native lease renews independently without changing the ETag. Per-database state objects also use `If-Match` for durable
-transaction-aligned TRL-boundary and checkpoint publication. Bulk objects are immutable or term-qualified, so a stale
+The shared leader object should be a small block blob replaced with `If-Match` when leadership changes or the current
+owner updates timeout skip entries. Its finite native lease renews independently without changing the ETag.
+Canonical TRL publications use `If-Match` directly; their success establishes transaction durability.
+Checkpoint selection remains a separate metadata operation, not a per-append acknowledgement. Bulk objects are immutable or term-qualified, so a stale
 session cannot place its later bytes into a current-term accepted recovery graph.
 
 References:
@@ -434,14 +441,17 @@ References:
 The storage port requires `AppendIfCurrent`: if the opaque token and length still match, atomically expose the old file
 followed by the supplied suffix. Azure version one plans to implement that per-file semantic operation with a Block
 Blob, but the block layout is not part of the failover protocol. The transaction-aware publisher above this adapter
-invokes it only for already completed local transactions and does not treat its success as durable database progress.
+invokes it for completed local transactions. On the canonical chain, success exposing a complete transaction
+establishes durable database progress directly.
 
 The intended adapter keeps completed logical blocks and rebuilds only the final partial 4 MiB block together with any
 new blocks. `Put Block` stages those bytes without changing the visible blob. A final `Put Block List`, guarded by
 `If-Match` against the previously observed blob ETag, atomically publishes the new ordered file. The adapter must also
 verify the expected logical length and preserve every byte before it; a successful operation therefore appears to the
-core as an append, even though Azure committed a new block list. If a transaction spans several TRL blobs, their block
-lists are committed as prepared data and one later database-state CAS publishes their immutable boundary descriptor.
+core as an append, even though Azure committed a new block list. A transaction may span several TRL blobs; the core owns their recovery closure and publication ordering.
+Azure blocks are transport/storage chunks, distinct from TRL file boundaries.
+`Put Block List` can carry blob metadata in the same conditional operation; separate `Set Metadata` afterward must not
+be required for transaction durability. Exact continuation metadata and its size bounds remain adapter/core integration work.
 
 Important Azure constraints remain inside this adapter:
 
@@ -455,10 +465,10 @@ Important Azure constraints remain inside this adapter:
 - an ambiguous conditional commit is reconciled through the resulting ETag, length, committed block list, expected
   suffix hash, and operation identity rather than blindly retried.
 
-If one or more Block Blob updates succeed but the following database-state CAS does not, physical lengths may be greater
-than their accepted cuts and newly rotated files may be present. The append invariant keeps the older state-selected
-boundary byte-identical and readable; the unselected multi-file transaction is ignored as a unit. A takeover starts a
-new term-qualified remote lineage rather than extending an unaccepted predecessor suffix.
+If the canonical block-list CAS succeeds but its response is lost, its complete published transactions are durable;
+reconcile that operation before retrying. Previously staged blocks or unlinked rotated files alone are not canonical.
+The append invariant protects earlier published bytes. Takeover fences the old writable TRL version and creates a
+term-qualified continuation; it cannot discard a successfully published transaction as merely awaiting state selection.
 
 The existing `BTDB.AzureStorage` uses the same general stage-and-commit family with deterministic 128 KiB blocks, but
 its commits are unconditional. That code remains a transfer reference, not the failover concurrency contract.
@@ -486,11 +496,11 @@ immediately renews with that proposed ID to prove ownership and reset the finite
 ID and cannot change the configured duration. Separate leases on every remote TRL file are unnecessary initially: the
 conditional append operation serializes each file, and every new cluster term uses new object keys. The leader lease is
 still not a physical fence on other objects, local disk writes, or direct follower traffic, so term-qualified names,
-per-database state adoption, and follower-side authority validation remain required.
+per-database TRL adoption, and follower-side authority validation remain required.
 
 Graceful shutdown separates the Azure **data plane** from the narrow **authority lane**. After a database reaches its
-shutdown canonical cut, the old leader dispatches no `AppendIfCurrent`, immutable descriptor/artifact upload,
-database-state/checkpoint update, or deletion. It may still read and reconcile earlier operations and may renew or change
+shutdown canonical cut, the old leader dispatches no `AppendIfCurrent`, immutable index/artifact upload,
+KVI publication, or deletion. It may still read and reconcile earlier operations and may renew or change
 the lease on `cluster/leader.json`; those lease calls do not publish database data and are required to keep fencing valid
 until safe handoff. A data request dispatched before the cut may already complete, so its outcome is reconciled rather
 than guessed, but no follow-up data write is issued.
@@ -510,7 +520,8 @@ replay rather than normal transaction latency.
 
 The single leader blob is intentionally a serialization point and must not be overloaded with per-transaction
 updates. Lease/CAS traffic should use an isolated client and connection pool so large uploads cannot starve authority
-renewal. Alert before remote progress lag approaches upstream event retention or the locally retained rollback window.
+renewal. Alert before remote progress lag approaches upstream event retention or available local comparison-log capacity.
+There is no replication-owned historical-root rollback window.
 
 Reference: [Azure Blob Storage scalability targets](https://learn.microsoft.com/en-us/azure/storage/blobs/scalability-targets).
 
@@ -520,17 +531,16 @@ The current preference is:
 
 - one small cluster-wide leader block blob containing endpoint and API key, protected by ETag CAS and a finite native
   Blob lease;
-- one CAS state record and one active term-qualified remote TRL lineage per short-named database;
+- direct conditional publication on the active canonical TRL for each database, with term-qualified continuations;
 - batched conditional atomic tail append, with the Block Blob and block-list mechanics hidden inside the Azure adapter;
-- one immutable multi-file boundary descriptor per publication batch, selected only by a state CAS ending at a complete
-  transaction;
-- immutable checkpoint and compaction-artifact blobs selected by each database's state record;
+- ordered continuation between TRL files, including transactions spanning files; prepared-successor publication through predecessor TRL CAS still to qualify;
+- immutable native KVI and compaction artifacts, with prerequisites uploaded before KVI and no separate checkpoint pointer;
 - a dedicated no-retry CAS/lease transport lane;
 - Azure `Change Lease` for planned handoff to a prepared follower;
 - after the old leader's graceful-shutdown cut, no further database data publication from that session; only
   read/reconciliation and lease renew/change/release remain available for authority transfer;
-- normal BTDB TRL rotation, including transactions that cross files, and reconciliation of every ambiguous append and
-  state publication.
+- replication-mode TRL rotation with complete-transaction recovery, and reconciliation of every ambiguous TRL publication and
+  adoption operation.
 
 The native lease improves the Azure expiry story, while ETag CAS remains the revision serializer and term-qualified
 keys remain the bulk-data fence.
@@ -554,8 +564,8 @@ small future provider-specific leader/state design.
 - S3 has no general-purpose object lease equivalent to Azure Blob leases.
 
 Ordinary S3 cannot append to an existing object. A future S3 canonical TRL representation must therefore use immutable
-range objects, sealed files, or chunks selected through conditional state publication. The same immutable boundary
-descriptor must select only whole transactions even though the physical data representation differs from Azure.
+range objects, sealed files, or chunks with an explicitly qualified conditional publication mechanism. It must
+publish whole transactions; future S3 research does not reintroduce a second state commit into the Azure TRL path.
 
 References:
 
@@ -586,18 +596,19 @@ takeover procedure rather than risk two leaders.
 
 ## Conclusions carried into the architecture
 
-- Use one leased/CAS leader record for cluster authority and separate CAS state records for per-database progress;
-  publish data under immutable or term-qualified keys.
+- Use one leased/CAS leader record for cluster authority; canonical TRL CAS directly publishes per-database progress.
+  Prepare prerequisites under immutable or term-qualified keys and fence predecessor TRL tokens on takeover.
 - Treat version tokens as opaque and preserve `Applied`, `Rejected`, and `Ambiguous` as distinct outcomes.
 - Disable transparent retries for conditional writes and reconcile ambiguity by reading operation identity.
 - Isolate authority traffic from checkpoint and TRL upload traffic.
 - Run a destructive-but-self-cleaning four-step CAS probe against the real endpoint before enabling leadership.
-- Do not use listing as a correctness primitive; manifests explicitly name the accepted object graph.
+- Discover native KVIs through file listing and validate references/ancestry. Publish KVI last; only then delete
+  obsolete files. No separate checkpoint pointer or manifest is required.
 - Expose remote deletion only to leader-owned GC and delete superseded objects immediately after publishing their complete replacement closure, without restore pins
   or a grace period; never reuse retired keys; every node independently deletes only its own locally unpinned files, with no distributed
   deletion instruction.
-- Treat per-file writes as preparation only; publish one immutable multi-file descriptor through one state CAS, always
-  ending at a complete transaction.
+- Treat canonical TRL CAS exposing a complete transaction as durable publication, without a second state CAS.
+  Qualify cross-file transaction publication, continuation discovery and predecessor fencing.
 - Prefer sealed files or immutable chunks as the first portable checkpoint format.
 - Use Azure finite Blob leases to strengthen the Azure implementation, without confusing one-blob lease enforcement
   with a database-wide fence.
@@ -605,3 +616,30 @@ takeover procedure rather than risk two leaders.
   Block Blob block-list publication; S3 may need a different TRL representation.
 - Independently qualify the complete multi-node failover protocol even when a provider already passed `celld`'s
   storage probe.
+
+### Whole-file checksums for cache reuse
+
+For sealed files, startup can skip payload download when the local file's recomputed whole-file SHA-256 and length match trusted metadata
+for the selected remote object version. Store the hash in blob metadata during the same publication as the data; no
+checksum sidecar or checkpoint pointer is needed. Hash sealed files once while reading/uploading. Do not compute or maintain a whole-file hash for a growing TRL.
+Always download the last active TRL again on restore, even when the local length matches or checksum metadata exists.
+After sealing, publish its final checksum for later cache reuse. Version-bound reads and ordinary transfer integrity
+checks still apply to the active tail.
+
+Get Blob Properties returns metadata, length and ETag without the payload. Bind subsequent range reads to that ETag
+with If-Match; a changed version requires reconciliation. ETag is an opaque version token, not a content hash. Azure's
+Content-MD5 is optional: Put Block List stores the supplied whole-blob MD5 without validating it and clears it if omitted.
+Neither the block-list request checksum nor individual block checksums establish an automatically available whole-file
+checksum. Legacy files without a trustworthy digest remain readable, but do not get the no-download optimization.
+
+Use bounded per-file/intra-file transfer concurrency and prioritize ascending TRL replay dependencies. Downloaded bytes
+remain unavailable to replay until their selected version, length and integrity checks pass. Concurrent transfer does
+not authorize application readiness or election before recovery finishes.
+
+Sources: [Get Blob Properties](https://learn.microsoft.com/en-us/rest/api/storageservices/get-blob-properties),
+[Put Block List](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list).
+
+KVI upload has a strict start barrier: all required PVLs and canonical TRL through the KVI's fixed file/offset must
+already be published before the first KVI upload request, including Put Block staging. Successful KVI completion last
+is insufficient if its transfer started earlier. Reconcile ambiguous prerequisite publication before dispatching KVI;
+newer tail bytes beyond the KVI cursor do not extend this barrier. Local KVI preparation can run ahead of it.

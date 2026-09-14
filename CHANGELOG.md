@@ -2,6 +2,50 @@
 
 ## [unreleased]
 
+### Changed
+
+- Require completed PVL and canonical TRL publication through the KVI cursor before starting any KVI upload,
+  including remote block staging; completing KVI last alone is insufficient.
+- Consolidate replication lifecycle and publisher state transitions, interruption ordering and KVI cleanup proof
+  obligations; separate engineering backlog from owner decisions, allow local genesis readiness before async flush,
+  and clarify that the application event log supplies durability while Blob KVI/TRL accelerates recovery.
+- Disqualify schema-detached replication sessions from all leadership contention and handoff; request graceful
+  restart after 15 continuous minutes without a valid observable leader.
+- Clarify replication writer admission automatically sets CommitUlong from eventId; non-application commits trigger
+  immediate asynchronous flush without a durability wait, and recent leader tail reads have a short timeout before
+  input replay fallback. Defer ordinary ObjectDB initialization metadata until first application upsert; keep index upgrades separate.
+- Record remaining replication API choices for writer admission context, non-application commit completion and lazy
+  ObjectDB schema initialization; align remote cleanup wording with optional deferred deletion after KVI publication.
+- Simplify replication cache reuse to sealed files: always redownload the last growing TRL on restore and calculate
+  its whole-file checksum only after sealing.
+- Revise replication startup design to reuse checksum-verified local files, bound parallel downloads by replay
+  dependencies and local disk, and replay every canonical TRL in ascending order when no KVI exists; prioritize
+  local disk space over aggressive remote cleanup and withdraw blanket cache deletion on restart.
+- Simplify replication restore publication to native KVI written after all prerequisite files; allow obsolete-file
+  deletion only after successful KVI publication and remove separate checkpoint manifests, pointers and selection CAS.
+- Select replication prepared-successor TRL publication, CommitUlong-based non-application classification, ordinary
+  rollback log comparison and asynchronous writer admission with readonly-first ObjectDB initialization; use
+  native KVI-last publication for checkpoint discovery without a separate pointer.
+- Review replication recovery and application boundaries: restore cross-file transactions, record publication/discovery,
+  schema metadata, rollback comparison and API choices; clarify activation authority, full-position compaction checks,
+  reader-safe file identity and unbounded graceful waits for application transactions. Existing DB is already in Blob.
+- Define replication compatibility with legacy TRL numbering: preserve existing files and close an even append target
+  before starting a new transaction in a fresh odd-numbered TRL.
+- Simplify replication durability to CAS directly on canonical TRL; remove the additional per-batch state.json CAS
+  and align non-application publication, recovery and takeover rules with the TRL publication point.
+- Require leader authority before replication genesis/schema writes and immediate Blob publication after their commits;
+  initialize CommitUlong before the first applied event and replace provisional new databases with pending initialization.
+- Extend replication design with canonical schema transactions: live followers continue independently in volatile
+  storage, while compatible replacement nodes restore schema changes from TRL or checkpoints.
+- Define application-owned replication transactions, identical rollbacks, failure policy and external effects;
+  use local commit/read semantics, follower-first Blob restore before election, and genesis at the current input end.
+- Select short-lived replication confirmation grants and clarify optional direct confirmation, rejection of predecessor
+  messages after takeover, and grant draining before planned lease transfer.
+- Correct replication design inconsistencies in per-event transactions, shared input ordering, leader revision identity,
+  read visibility during virtual batching, restart recovery, and non-reusable remote object names.
+- Align replication architecture notes with byte-preserving virtual transaction batching and fatal local disk
+  exhaustion: terminate old readers, discard cache, and restore the latest published Blob checkpoint before replay.
+
 ## 35.10.0
 
 ### Changed
