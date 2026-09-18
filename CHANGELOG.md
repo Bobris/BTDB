@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.10.2
+
 ### Fixed
 
 - Keep the source generator compatible with Roslyn 4.11 and later, including .NET 10.0.1xx SDKs,
