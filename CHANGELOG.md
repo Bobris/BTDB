@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.10.1
+
 ### Fixed
 
 - Correct in-memory file reader positions after unaligned seeks or skips across buffers, preventing
