@@ -83,17 +83,21 @@ public class TransactionBatchingTest : IDisposable
     }
 
     [Fact]
-    public async Task ReadersDuringWriterSeeLatestCommitAndKeepTheirSnapshot()
+    public async Task ReadersDuringWriterSeePublishedBatchAndKeepTheirSnapshot()
     {
         using var files = new InMemoryFileCollection();
         using var db = Open(files);
         await Commit(db, 1, 1);
+        db.FinishTransactionBatchAfterCurrentTransaction();
         using var writer = await db.StartWritingTransaction(inBatch: true);
         Put(writer, 1, 2);
         using var reader = db.StartReadOnlyTransaction();
         Assert.All(Read(reader, 1), b => Assert.Equal(1, b));
         Put(writer, 1, 3);
         writer.Commit();
+        using var pendingReader = db.StartTransaction();
+        Assert.All(Read(pendingReader, 1), b => Assert.Equal(1, b));
+        db.FinishTransactionBatchAfterCurrentTransaction();
         using var laterReader = db.StartTransaction();
         Assert.All(Read(laterReader, 1), b => Assert.Equal(3, b));
         Assert.All(Read(reader, 1), b => Assert.Equal(1, b));
@@ -101,7 +105,7 @@ public class TransactionBatchingTest : IDisposable
     }
 
     [Fact]
-    public async Task RollbackAfterReaderPublicationAndEmptyTransactions()
+    public async Task RollbackWithReadersAndEmptyTransactions()
     {
         using var files = new InMemoryFileCollection();
         using var db = Open(files);
@@ -112,7 +116,7 @@ public class TransactionBatchingTest : IDisposable
         {
             Put(failed, 1, 2);
             using var reader = db.StartReadOnlyTransaction();
-            Assert.All(Read(reader, 1), b => Assert.Equal(1, b));
+            Assert.Equal(0, reader.GetKeyValueCount());
         }
         await Commit(db, 2, 2);
         db.FinishTransactionBatchAfterCurrentTransaction();
@@ -244,7 +248,7 @@ public class TransactionBatchingTest : IDisposable
                 {
                     Put(failed, 1, 255);
                     using var reader = db.StartReadOnlyTransaction();
-                    Assert.All(Read(reader, 1), b => Assert.Equal(1, b));
+                    Assert.Equal(0, reader.GetKeyValueCount());
                 }
                 await db.Compact(CancellationToken.None);
                 await Commit(db, 41, 41);
@@ -291,6 +295,7 @@ public class TransactionBatchingTest : IDisposable
         using var files = new InMemoryFileCollection();
         using var db = Open(files);
         await Commit(db, 1, 1);
+        db.FinishTransactionBatchAfterCurrentTransaction();
         var writing = Task.Run(async () =>
         {
             for (var i = 0; i < 300; i++)
@@ -352,7 +357,7 @@ public class TransactionBatchingTest : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task MappedReplaySurvivesConcurrentGrowthAndHardFlush(bool durable)
+    public async Task MappedReadersSurviveConcurrentGrowthAndHardFlush(bool durable)
     {
         var directory = Path.Combine(Path.GetTempPath(), "btdb-batch-concurrent-" + Guid.NewGuid());
         Directory.CreateDirectory(directory);
@@ -361,6 +366,7 @@ public class TransactionBatchingTest : IDisposable
             using var files = new OnDiskMemoryMappedFileCollection(directory);
             using var db = Open(files, int.MaxValue, durable);
             await Commit(db, 1, 1);
+            db.FinishTransactionBatchAfterCurrentTransaction();
             var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var writing = Task.Run(async () =>
             {
@@ -420,6 +426,35 @@ public class TransactionBatchingTest : IDisposable
 
     static RootNode12 Root(IKeyValueDBTransaction transaction) =>
         (RootNode12)((BTreeKeyValueDBTransaction)transaction).BTreeRoot!;
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ReadersDoNotPublishPendingBatch(bool readOnly, bool activeWriter)
+    {
+        using var files = new InMemoryFileCollection();
+        using var db = Open(files);
+        using (var seed = await db.StartWritingTransaction())
+        {
+            Put(seed, 1, 1);
+            seed.Commit();
+        }
+        using var before = db.StartReadOnlyTransaction();
+        await Commit(db, 2, 2);
+        using var current = activeWriter ? await db.StartWritingTransaction(inBatch: true) : null;
+        if (current != null) Put(current, 3, 3);
+        using var during = readOnly ? db.StartReadOnlyTransaction() : db.StartTransaction();
+        Assert.Same(Root(before), Root(during));
+        Assert.Equal(1, during.GetKeyValueCount());
+        current?.Commit();
+        db.FinishTransactionBatchAfterCurrentTransaction();
+        using var after = db.StartReadOnlyTransaction();
+        Assert.Equal(activeWriter ? 3 : 2, after.GetKeyValueCount());
+        Assert.Equal(1, during.GetKeyValueCount());
+        Assert.All(Read(during, 1), b => Assert.Equal(1, b));
+    }
 
     [Fact]
     public async Task OrdinaryWriterImmediatelyFinishesAnIdleBatch()

@@ -1130,10 +1130,6 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_requireExplicitTransactions)
             throw new InvalidOperationException("Use StartReadOnlyTransaction or StartWritingTransaction.");
-        if (_batchRoot != null)
-        {
-            lock (_writeLock) PublishBatchUnsafe();
-        }
         while (true)
         {
             var node = _lastCommitted;
@@ -1201,11 +1197,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     void PublishBatchUnsafe()
     {
         if (_batchRoot == null) return;
-        if (_writingTransaction != null)
-        {
-            if (_batchHasCommits) PublishReplayedBatchUnsafe();
-            return;
-        }
+        System.Diagnostics.Debug.Assert(_writingTransaction == null);
         if (_batchHasCommits)
             PublishRootUnsafe(_batchRoot);
         else
@@ -1289,10 +1281,6 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     public IKeyValueDBTransaction StartReadOnlyTransaction()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_batchRoot != null)
-        {
-            lock (_writeLock) PublishBatchUnsafe();
-        }
         while (true)
         {
             var node = _lastCommitted;

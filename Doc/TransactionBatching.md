@@ -56,10 +56,11 @@ It starts at an absolute offset, caps reads at a captured exclusive end offset, 
 new one with the same controller after restart. The reader does not own the files. Callers must retain each file and
 ensure its selected byte prefix stays immutable while reading.
 
-Reader snapshot semantics stay unchanged. Opening a read-only or ordinary transaction publishes pending commits. If a
-writer is active, BTDB reconstructs the committed prefix from TRL for the reader, leaving that writer's private changes
-invisible. Existing readers retain their snapshots. Consequently, frequent reads and rollbacks reduce the benefit.
-`StartTransaction()` requests a snapshot and introduces a publication boundary; it does not opt into batching.
+Opening a read-only or ordinary transaction references the last published BTree. It does not publish pending batch
+commits, acquire the writer lock, or replay TRL. Readers opened during a batch therefore see the snapshot from before
+that batch until it is published by an explicit finish, an ordinary writer, rollback recovery, or database disposal.
+Existing readers retain their snapshots after publication. `StartTransaction()` follows the same snapshot rule;
+attempting to upgrade an outdated snapshot to a writer still requires a transaction retry.
 
 `ReferenceAndGetLastCommitted()` only references the last published BTree; it never publishes or replays a pending
 batch. Statistics and checkpoint creation use that published state too. A checkpoint may therefore precede successful

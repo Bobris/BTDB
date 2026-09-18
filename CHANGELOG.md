@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Keep read-only and ordinary transaction snapshots on the last published BTree during a transaction batch,
+  avoiding reader-triggered TRL replay and premature batch publication. Existing readers retain their snapshots.
+
 ### Changed
 
 - Add an optional deterministic TRL-ID size strategy with soft rotation between transactions and a strict hard

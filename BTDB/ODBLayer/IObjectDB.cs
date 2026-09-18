@@ -15,8 +15,10 @@ public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
 
     void Open(IKeyValueDB keyValueDB, bool dispose, DBOptions options);
 
+    /// Start a snapshot on the last published BTree; pending batch commits are not published by readers.
     IObjectDBTransaction StartTransaction();
 
+    /// Start a read-only snapshot on the last published BTree without publishing pending batch commits.
     IObjectDBTransaction StartReadOnlyTransaction();
 
     ValueTask<IObjectDBTransaction> StartWritingTransaction(bool inBatch = false);
