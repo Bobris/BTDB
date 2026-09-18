@@ -6,6 +6,8 @@ namespace BTDB.ODBLayer;
 
 public interface IInternalObjectDBTransaction : IObjectDBTransaction
 {
+    /// Runs before rollback releases the writer; discarded on successful commit. Actions must not throw.
+    void RegisterRollbackAction(Action action);
     ulong AllocateDictionaryId();
     object ReadInlineObject(ref MemReader reader, IReaderCtx readerCtx, bool skipping);
     void WriteInlineObject(ref MemWriter writer, object @object, IWriterCtx writerCtx);

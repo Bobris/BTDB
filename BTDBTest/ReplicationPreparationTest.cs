@@ -13,10 +13,10 @@ namespace BTDBTest;
 [Collection("IFieldHandler.UseNoEmitForRelations")]
 public class ReplicationPreparationTest
 {
-    static BTreeKeyValueDB Open(IFileCollection files, bool explicitTransactions = true, bool odd = true) => new(new KeyValueDBOptions
+    static BTreeKeyValueDB Open(IFileCollection files, bool explicitTransactions = true, bool odd = true, TransactionLogCapture? capture = null) => new(new KeyValueDBOptions
     {
         FileCollection = files, CompactorScheduler = null, Compression = new NoCompressionStrategy(),
-        FileSplitSize = 1024, RequireExplicitTransactions = explicitTransactions, UseOddTransactionLogIds = odd
+        TransactionLogCapture = capture, FileSplitSize = 1024, RequireExplicitTransactions = explicitTransactions, UseOddTransactionLogIds = odd
     });
 
     static void Put(IKeyValueDBTransaction tr, byte key, int length = 10)
@@ -128,7 +128,6 @@ public class ReplicationPreparationTest
         using var db = Open(files);
         foreach (var hint in new[] { "kvi", "pvl", "hpv", "hid", "another-type" })
             Assert.Equal(0u, db.FileCollection.AddFile(hint).Index & 1);
-        Assert.Throws<ArgumentException>(() => db.FileCollection.AddFile("pvl", FileIdParity.Odd));
         using (var tr = await db.StartWritingTransaction(1ul))
         {
             Put(tr, 1);
@@ -151,29 +150,41 @@ public class ReplicationPreparationTest
     [PersistedName("Items")]
     public interface IItems : IRelation<Item> { }
 
-    [Fact]
-    public async Task ReadOnlyRegistrationDefersMetadataAndRollbackDoesNotLoseIt()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task StartupPersistsMetadataBeforeApplicationWrites(bool captureEnabled, bool inBatch)
     {
         using var files = new InMemoryFileCollection();
-        using (var kv = Open(files))
+        var capture = new TransactionLogCapture();
+        using (var kv = Open(files, capture: captureEnabled ? capture : null))
         using (var db = new ObjectDB())
         {
-            db.Open(kv, false, new DBOptions { DeferNewRelationMetadata = true });
+            db.Open(kv, false, new DBOptions());
+            await db.InitializeRelations([typeof(IItems)]);
             using (var read = db.StartReadOnlyTransaction()) Assert.Empty(read.GetRelation<IItems>());
-            using (var read = kv.StartReadOnlyTransaction()) Assert.Equal(0, read.GetKeyValueCount());
-            using (var tr = await db.StartWritingTransaction(5ul))
+            using (var read = kv.StartReadOnlyTransaction()) Assert.Equal(2, read.GetKeyValueCount());
+            using (var tr = await db.StartWritingTransaction(5ul, inBatch))
                 tr.GetRelation<IItems>().Upsert(new Item { Id = 1, Name = "rollback" });
-            using (var read = kv.StartReadOnlyTransaction()) Assert.Equal(0, read.GetKeyValueCount());
-            using (var tr = await db.StartWritingTransaction(6ul))
+            using (var read = kv.StartReadOnlyTransaction()) Assert.Equal(2, read.GetKeyValueCount());
+            using (var tr = await db.StartWritingTransaction(6ul, inBatch))
             {
                 tr.GetRelation<IItems>().Upsert(new Item { Id = 2, Name = "committed" });
                 tr.Commit();
+            }
+            if (captureEnabled)
+            {
+                Assert.NotEqual(default, capture.Completed);
+                capture.Acknowledge(capture.Completed);
+                Assert.Equal(capture.Completed, capture.Acknowledged);
             }
         }
         using (var kv = Open(files))
         using (var db = new ObjectDB())
         {
-            db.Open(kv, false, new DBOptions { DeferNewRelationMetadata = true });
+            db.Open(kv, false, new DBOptions());
             using var read = db.StartReadOnlyTransaction();
             Assert.Equal("committed", Assert.Single(read.GetRelation<IItems>()).Name);
             Assert.Equal(6ul, read.GetCommitUlong());
@@ -198,15 +209,16 @@ public class ReplicationPreparationTest
         using (var kv = Open(files))
         using (var db = new ObjectDB())
         {
-            db.Open(kv, false, new DBOptions { DeferNewRelationMetadata = true });
+            db.Open(kv, false, new DBOptions());
             using var tr = await db.StartWritingTransaction(9ul);
             tr.GetRelation<IItems>().Upsert(new Item { Id = 1, Name = "existing" });
             tr.Commit();
         }
-        using (var kv = Open(files))
+        var capture = new TransactionLogCapture();
+        using (var kv = Open(files, capture: capture))
         using (var db = new ObjectDB())
         {
-            db.Open(kv, false, new DBOptions { DeferNewRelationMetadata = true });
+            db.Open(kv, false, new DBOptions());
             using (var read = db.StartReadOnlyTransaction())
                 Assert.Throws<BTDBTransactionRetryException>(() => read.GetRelation<IIndexedItems>());
             using (var upgrade = await db.StartWritingTransaction())
@@ -215,15 +227,50 @@ public class ReplicationPreparationTest
                 Assert.Equal(1ul, upgrade.GetRelation<IIndexedItems>().FindByName("existing").Id);
                 upgrade.Commit();
             }
+            var schemaPosition = capture.Completed;
+            Assert.NotEqual(default, schemaPosition);
+            using (var application = await db.StartWritingTransaction(10ul))
+            {
+                application.GetRelation<IIndexedItems>().Upsert(new IndexedItem { Id = 2, Name = "next" });
+                application.Commit();
+            }
+            Assert.NotEqual(schemaPosition, capture.Completed);
         }
         using (var kv = Open(files))
         using (var db = new ObjectDB())
         {
-            db.Open(kv, false, new DBOptions { DeferNewRelationMetadata = true });
+            db.Open(kv, false, new DBOptions());
             using var read = db.StartReadOnlyTransaction();
-            Assert.Equal(9ul, read.GetCommitUlong());
+            Assert.Equal(10ul, read.GetCommitUlong());
             Assert.Equal(1ul, read.GetRelation<IIndexedItems>().FindByName("existing").Id);
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RollbackActionsRunBeforeNextWriterAndAreDiscardedOnCommit(bool commit)
+    {
+        using var files = new InMemoryFileCollection();
+        using var kv = Open(files);
+        using var db = new ObjectDB();
+        db.Open(kv, false, new DBOptions());
+        var tr = await db.StartWritingTransaction(1ul);
+        var next = db.StartWritingTransaction(2ul).AsTask();
+        var actions = new System.Collections.Generic.List<int>();
+        ((IInternalObjectDBTransaction)tr).RegisterRollbackAction(() =>
+        {
+            Assert.False(next.IsCompleted);
+            actions.Add(1);
+        });
+        ((IInternalObjectDBTransaction)tr).RegisterRollbackAction(() => actions.Add(2));
+        if (commit) tr.Commit();
+        tr.Dispose();
+        tr.Dispose();
+        if (commit) Assert.Empty(actions);
+        else Assert.Equal(new[] { 1, 2 }, actions);
+        using var nextTransaction = await next;
+        nextTransaction.Commit();
     }
 
 }

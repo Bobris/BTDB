@@ -28,6 +28,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
     Dictionary<ulong, object>? _dirtyObjSet;
     HashSet<TableInfo>? _updatedTables;
+    List<Action>? _rollbackActions;
 
     public ObjectDBTransaction(ObjectDB owner, IKeyValueDBTransaction keyValueTr, bool readOnly)
     {
@@ -38,12 +39,29 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         SkipUnknownTypes = owner.AutoSkipUnknownTypes;
     }
 
+    public void RegisterRollbackAction(Action action)
+    {
+        ThrowIfDisposed();
+        (_rollbackActions ??= new()).Add(action);
+    }
+
     public void Dispose()
     {
         if (_keyValueTr == null) return;
-        _keyValueTr.Dispose();
-        _keyValueTr = null;
-        _afterCommitOrDispose = true;
+        try
+        {
+            // Restore shared metadata before disposing the KV transaction releases the next writer.
+            var actions = _rollbackActions;
+            _rollbackActions = null;
+            if (actions != null)
+                foreach (var action in actions) action();
+        }
+        finally
+        {
+            _keyValueTr.Dispose();
+            _keyValueTr = null;
+            _afterCommitOrDispose = true;
+        }
     }
 
     public IObjectDB Owner => _owner;
@@ -475,16 +493,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         var name = type.GetCustomAttribute<PersistedNameAttribute>() is { } persistedNameAttribute
             ? persistedNameAttribute.Name
             : type.ToSimpleName();
-        if (!_keyValueTr!.IsReadOnly() || _owner.ActualOptions.DeferNewRelationMetadata)
-        {
-            _owner.RegisterCustomRelation(type, InitRelation(name, type));
-        }
-        else
-        {
-            using var tr = _owner.StartWritingTransaction().Result;
-            _owner.RegisterCustomRelation(type, ((ObjectDBTransaction)tr).InitRelation(name, type));
-            tr.Commit();
-        }
+        _owner.RegisterCustomRelation(type, InitRelation(name, type));
     }
 
     public unsafe object Singleton(Type type)
@@ -950,6 +959,7 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
 
         _owner.CommitLastObjIdAndDictId(_keyValueTr!);
         _keyValueTr.Commit();
+        _rollbackActions = null;
         if (_updatedTables != null)
             foreach (var updatedTable in _updatedTables)
             {

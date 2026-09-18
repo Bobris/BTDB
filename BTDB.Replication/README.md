@@ -1,6 +1,11 @@
 # BTDB.Replication
 
-Status: Architecture design; no implementation has started.
+Status: Architecture proposal with deterministic tests and an executable authority/TRL publication model
+([testing and coverage](Testing.md), [M1 evidence and remaining work](M1Evidence.md)), plus opt-in
+[core transaction capture, decoding and writer admission](../Doc/ReplicationCore.md#local-transaction-capture).
+The internal canonical TRL lane now publishes real capture ranges with conditional append/adoption and successor-first
+ordering; see [tested behavior and remaining integration](Testing.md#canonical-trl-lane-necessity-and-limits).
+The distributed replication runtime and production adapters are not implemented yet.
 
 `BTDB.Replication` is a planned high-availability layer for running one or more logical BTDB databases on multiple
 compute nodes. It combines a single canonical database history in object storage with fast disposable local caches on
@@ -43,7 +48,9 @@ operational choices.
 
 The application produces identical ordered transactions, including rollback attempts, on nodes hosting the same database.
 Kafka is only one possible application integration. Nodes commit synchronously to their local speculative cache without
-waiting for the leader, object storage, or acknowledgements from other replicas. When leader TRL arrives, replicas compare the same event transaction history.
+waiting for the leader, object storage, or acknowledgements from other replicas. The leader announces only the latest committed event ID and TRL file/position. Followers pull the needed TRL bytes
+and compare the same event transaction history; notifications may be coalesced. Sending bytes with notifications to
+avoid an extra request is a later optimization.
 Virtual memory batching preserves ordinary TRL transaction bytes; real divergence restarts the follower.
 
 Each node may independently use virtual transaction batching to reuse a memory BTree while preserving per-event commits
@@ -73,15 +80,19 @@ Additional nodes can provide read capacity and warm failover candidates while au
 explicitly fenced. Replicas may be temporarily at different confirmed positions, but two ready replicas at the same
 canonical position must expose the same logical state.
 
-### Centralized compaction and recovery
+### Independent local compaction and shared recovery
 
-Only the leader runs and distributes full pointer-rewriting compaction or deletes objects from shared storage. The
-physical rewrite travels out of band over follower sessions rather than adding a BTDB transaction kind. Logical cleanup,
-such as leak removal, is published by the parent system as an ordinary ordered application event. Local-file deletion is
-never distributed: every node independently protects files referenced by its own open readers and reclaims only its own
-proven-unused disposable cache files. A follower receives one KVI when opening or rebuilding the database; later KVIs
-created by the leader are not pushed to the running follower. This avoids unsafe cross-node cleanup decisions and
-per-node durable histories that would otherwise have to be reconciled after a failure.
+Every node, including followers, may compact its own local files independently without creating KVI. Local compaction
+changes only physical storage, protects that node's readers and active file dependencies, and sends no results to peers.
+
+Only the leader compacts remote Blob Storage files. It plans against the remote inventory, reuses or relocates local
+PVL content into remote destinations, and serializes a native KVI with the corresponding remote file IDs and offsets.
+It publishes the required files before KVI and only then deletes superseded remote objects. This export does not change
+the running leader's local file identities or BTree pointers.
+
+Neither compaction mode distributes physical rewrites, PVLs, completion results or deletion instructions to running
+followers. A node obtains the remote KVI and its files through normal open/rebuild. Logical leak removal remains an
+ordinary ordered application event requested through the parent system.
 
 Transactions may span several TRL files. Only a complete transaction with a verified reachable recovery closure can
 be published as durable through canonical TRL CAS; prepare successor files first, then publish their complete chain by CAS on the current canonical TRL.
@@ -120,7 +131,8 @@ the cluster; its detached local suffix is never promoted.
 
 The native KVI upload starts only after all required PVLs and canonical TRL through its saved cursor are published; no separate checkpoint pointer or manifest is needed.
 Old unused files may be deleted only after that KVI write succeeds. Remote cleanup does not wait for followers restoring older checkpoints. After a complete replacement checkpoint is
-published, obsolete remote files may be deleted immediately. A follower whose startup loses a file restarts and loads
+published, obsolete remote files become eligible for deletion. Actual Blob deletion is planned with a configurable
+operational delay, provisionally about one day, to reduce interference with restores. A follower whose startup loses a file restarts and loads
 the newest published KVI; running replicas retain local files according to their own reader lifetimes.
 
 ## Design documents

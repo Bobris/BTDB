@@ -14,6 +14,13 @@ public interface IFileCollection : IDisposable
         return AddFile(humanHint);
     }
 
+    /// Allocate above the given ID, preserving parity without creating intermediate files.
+    IFileCollectionFile AddFile(string humanHint, FileIdParity parity, uint afterFileId)
+    {
+        if (afterFileId != 0) throw new NotSupportedException("This collection cannot allocate above a given file ID.");
+        return AddFile(humanHint, parity);
+    }
+
     uint GetCount();
     IFileCollectionFile GetFile(uint index);
     IEnumerable<IFileCollectionFile> Enumerate();

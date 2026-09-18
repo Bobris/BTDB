@@ -1,0 +1,153 @@
+{
+  "requests": [
+    {
+      "method": "PUT",
+      "blob": "<container>",
+      "operation": "",
+      "status": 201
+    },
+    {
+      "method": "PUT",
+      "blob": "tail",
+      "operation": "block",
+      "status": 201
+    },
+    {
+      "method": "PUT",
+      "blob": "tail",
+      "operation": "blocklist",
+      "status": 201
+    },
+    {
+      "method": "PUT",
+      "blob": "tail",
+      "operation": "block",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "blob": "tail",
+      "operation": "",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "blob": "tail",
+      "operation": "blocklist",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "blob": "tail",
+      "operation": "",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "blob": "tail",
+      "operation": "blocklist",
+      "status": 201
+    },
+    {
+      "method": "PUT",
+      "blob": "tail",
+      "operation": "block",
+      "status": 201
+    },
+    {
+      "method": "PUT",
+      "blob": "tail",
+      "operation": "blocklist",
+      "status": 412
+    },
+    {
+      "method": "PUT",
+      "blob": "successor",
+      "operation": "block",
+      "status": 201
+    },
+    {
+      "method": "PUT",
+      "blob": "successor",
+      "operation": "blocklist",
+      "status": 201
+    },
+    {
+      "method": "PUT",
+      "blob": "tail",
+      "operation": "blocklist",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "blob": "tail",
+      "operation": "",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "blob": "leader.json",
+      "operation": "",
+      "status": 201
+    },
+    {
+      "method": "PUT",
+      "blob": "leader.json",
+      "operation": "lease",
+      "status": 201
+    },
+    {
+      "method": "PUT",
+      "blob": "leader.json",
+      "operation": "",
+      "status": 412
+    },
+    {
+      "method": "PUT",
+      "blob": "unleased",
+      "operation": "",
+      "status": 201
+    },
+    {
+      "method": "PUT",
+      "blob": "leader.json",
+      "operation": "lease",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "blob": "leader.json",
+      "operation": "lease",
+      "status": 409
+    },
+    {
+      "method": "PUT",
+      "blob": "leader.json",
+      "operation": "lease",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "blob": "leader.json",
+      "operation": "",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "blob": "leader.json",
+      "operation": "lease",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "blob": "<container>",
+      "operation": "",
+      "status": 202
+    }
+  ],
+  "container_deleted": true,
+  "subscription": "DEV Sandbox",
+  "region": "westeurope",
+  "date": "2026-09-14",
+  "resource_group_deleted": true
+}

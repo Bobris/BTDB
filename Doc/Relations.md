@@ -64,8 +64,45 @@ But this was "old school" way easier to just always use `GetRelation<T>`:
     }
 ```
 
-It is still good to do first GetRelation for all your relations in first independent transaction, it will calculate all
-changed indexes. To control name of relation by `PersistedNameAttribute` on your `IRelation` interface.
+## Initialize relations at startup
+
+After opening ObjectDB, register the complete list of relation interfaces before starting application transactions:
+
+```C#
+    IObjectDB db = new ObjectDB();
+    db.Open(keyValueDb, false, new DBOptions().WithoutAutoRegistrationOfRelations());
+    await db.InitializeRelations(new[] { typeof(IPersonTable), typeof(IJobTable) });
+
+    using var tr = db.StartReadOnlyTransaction();
+    var people = tr.GetRelation<IPersonTable>();
+```
+
+The `IEnumerable<Type>` argument can be the list collected by an application's relation/IOC registration code
+(such as Skymamba's continent relation list). `InitializeRelations` works with automatic registration disabled and
+does not change that setting. Relation names come from `PersistedNameAttribute` on the interface, or otherwise its
+type name, just like `GetRelation<T>`.
+
+Initialization first checks the schemas and secondary-index counts in one read-only transaction. If any changes
+are needed, it opens one writing transaction for the entire list and commits once. This persists schemas for new
+relations even when they have no rows, upgrades existing schemas, repairs inconsistent secondary-index counts,
+and invokes `IRelationOnCreate<T>` for new relations. All schemas and indexes are ready before creation callbacks
+run, so callbacks can access other registered relations through the same transaction. The startup transaction
+preserves the existing commit ulong/event ID.
+
+If all schemas and indexes already match, no writing transaction is opened. Duplicate interface types are ignored;
+different interfaces claiming the same persisted name are rejected. Already registered factories (including custom
+factories registered with `RegisterCustomRelation`) are preserved and skipped. Register custom factories before
+calling this method; include all ordinary relation interfaces in the startup list.
+
+Call this method before other transactions or concurrent registration. A failed initialization rolls back its database
+changes and discards the new registrations, allowing a retry. Creation callbacks must keep database writes inside
+the supplied transaction; external side effects cannot be rolled back. Await initialization before using the database.
+
+The older transaction-level `InitRelation` and automatic `GetRelation<T>` paths remain available. Creating a new
+relation or upgrading its schema requires a writable transaction and persists its schema immediately, even with no
+rows. Commit that transaction before reusing its relation factory. Rolling it back discards the new registration;
+initialize again in a new transaction. Read-only transactions can initialize only relations whose persisted schemas
+and indexes already match. Row writes and `AllocateId` never create relation schemas.
 
 ## Basic operations
 

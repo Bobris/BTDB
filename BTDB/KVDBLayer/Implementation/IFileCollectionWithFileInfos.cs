@@ -15,12 +15,6 @@ public interface IFileCollectionWithFileInfos
     uint GetCount();
     ulong GetSize(uint key);
     IFileCollectionFile AddFile(string humanHint);
-    IFileCollectionFile AddFile(string humanHint, FileIdParity parity)
-    {
-        if (parity != FileIdParity.Any)
-            throw new NotSupportedException("This file collection does not support constrained file ID parity.");
-        return AddFile(humanHint);
-    }
     long NextGeneration();
     void SetInfo(uint idx, IFileInfo fileInfo);
     void ConcurentTemporaryTruncate(uint idx, uint offset);

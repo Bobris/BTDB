@@ -15,10 +15,6 @@ public enum CompactorLeakDetectorMode
 
 public class DBOptions
 {
-    /// Register new relations in memory and persist their name/version in the first transaction writing data.
-    /// Existing relation upgrades are not deferred. Read-only auto-registration never opens a hidden writer.
-    public bool DeferNewRelationMetadata { get; set; }
-
     public DBOptions()
     {
         AutoRegisterType = true;

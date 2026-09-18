@@ -170,18 +170,6 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
             : _fileCollection.AddFile(humanHint);
     }
 
-    public IFileCollectionFile AddFile(string humanHint, FileIdParity parity)
-    {
-        if (_useOddTransactionLogIds)
-        {
-            var required = humanHint == "trl" ? FileIdParity.Odd : FileIdParity.Even;
-            if (parity != FileIdParity.Any && parity != required)
-                throw new ArgumentException("Requested parity conflicts with the database file allocation mode.", nameof(parity));
-            return _fileCollection.AddFile(humanHint, required);
-        }
-        return _fileCollection.AddFile(humanHint, parity);
-    }
-
     public long NextGeneration()
     {
         return Interlocked.Increment(ref _fileGeneration);

@@ -1,7 +1,23 @@
 # BTDB.Replication Architecture
 
+Current capture rule (2026-09-16): retain only completed and acknowledged (fileId, offset) positions, with no event ID
+or per-transaction side index. Publish/compare contiguous native prefixes to a fixed complete position. Older capture
+queue, index, sequence and wakeup sketches are superseded; native TRL files themselves retain unpublished bytes.
+
+
+Current comparison rule (2026-09-16): compare corresponding native TRL byte ranges directly in bounded chunks.
+Older structural/decoded-command comparison sketches below are superseded. Capture supplies local transaction
+boundaries; the publisher does not parse its own transactions again. Native command decoding belongs to replay.
+
+
+Current local-file rule (2026-09-15): stopping publication leaves ordinary local writes and compaction running.
+Earlier volatile/scratch-generation sketches below are superseded: no scratch file collection, `.temptrl` requirement,
+write barrier or special cleanup. Startup validates the ordinary local cache against selected Blob history.
+
+
 Status: Replication protocol remains an architecture proposal. Opt-in core preparation APIs are implemented; see
-[core preparation](../Doc/ReplicationCore.md). No distributed replication runtime is implemented. Normative requirements below describe the intended
+[core preparation](../Doc/ReplicationCore.md). The [M0 test foundation](Testing.md) is implemented; no distributed
+replication runtime is implemented. Normative requirements below describe the intended
 version one, not verified runtime guarantees. Implementation blockers are listed under [Open decisions](#open-decisions).
 
 Provider research snapshot: 2026-08-29. Architecture consolidated on 2026-09-06. The provider contract,
@@ -32,6 +48,19 @@ PVCs, and local file survival do not establish authority. One replica uses the s
 
 ### How to use this specification
 
+Decision recorded 2026-09-14: implement only mechanisms whose necessity has been established. A proposed field,
+message, state, persisted record or optimization needs a concrete failure of the simpler design or evidence of a
+substantial performance impact. Prefer a reproducible deterministic counterexample for correctness and representative
+measurements for performance. Record the short argument and supporting test/measurement with the decision; a formal
+proof document is not required for every implementation detail.
+
+The agreed external behavior and safety invariants remain requirements. Detailed mechanism/API sketches and backlog
+entries below are candidates, not unconditional implementation requirements merely because they were written down.
+Start from the smallest working path, derive existing information instead of duplicating it, and defer additions
+without evidence. Simplifications must preserve the guarantees and be reflected in the owning section. For example,
+peer progress needs only the committed event/file/position tuple; internal Blob publication bookkeeping does not
+justify sending a separate durability classification to followers.
+
 The following sections own the rules; other sections explain their application and must not define competing algorithms:
 
 | Concern | Normative owner |
@@ -39,9 +68,9 @@ The following sections own the rules; other sections explain their application a
 | Safety and progress identities | [Target safety properties](#target-safety-properties), [Shared identities](#shared-identities) |
 | Bootstrap, takeover, and upgrade | [Cluster transition engine](#cluster-transition-engine) |
 | Every canonical TRL publication | [TRL publisher](#trl-publisher) |
-| Live follower acceptance and repair | [Canonical frame and comparison protocol](#canonical-frame-and-comparison-protocol) |
+| Live follower acceptance and repair | [Progress notification and comparison](#progress-notification-and-pull-based-comparison) |
 | Opening or rebuilding a database | [Per-database replay hierarchy](#per-database-replay-hierarchy), [Restart or new replica](#restart-or-new-replica) |
-| Physical maintenance and file lifetime | [Leader full compaction](#leader-full-compaction-over-the-follower-session) |
+| Physical maintenance and file lifetime | [Local and remote compaction](#independent-local-compaction-and-leader-only-remote-compaction) |
 | Provider behavior | [ObjectStorages.md](ObjectStorages.md) |
 
 DTOs are semantic sketches using the shared types below, not final public APIs or wire layouts. Historical alternatives
@@ -56,9 +85,9 @@ Decision recorded 2026-08-30:
   leader-centered follower sessions.
 - One process may host multiple `BTreeKeyValueDB` instances. Each database has a short, path-safe name unique inside
   the cluster, such as `main`, `users`, or `jobs`; the exact length and character validation remains to be fixed.
-- Leader election is cluster-wide, not per database. The elected node is the only canonical TRL author and the only node
-  that runs full pointer-rewriting compaction for every database active in its selected database set. Followers may run local
-  cleanup-only compaction that cannot change a BTree root or remote state.
+- Leader election is cluster-wide, not per database. The elected node alone authors canonical TRL and runs remote
+  Blob compaction. Every node may independently run full local physical compaction without creating a KVI or sending
+  its results to other nodes.
 - One ordered application-event stream is shared by the whole cluster and all replicas. Database event cursors refer
   to this same stream. Canonical transaction sequence, TRL lineage/offset, KVI, checkpoint, and replay progress remain
   per database; databases may consume the shared input at different speeds and with different transaction boundaries.
@@ -178,7 +207,7 @@ The generation floor prevents the old application from becoming cluster leader a
 
 Every node of the new application generation opens an added database from published initialization or a later canonical
 checkpoint and tail. Pending creation is re-evaluated against that state; it never overwrites an already initialized DB. Later follower transactions use the normal
-canonical-frame comparison protocol.
+native-TRL comparison protocol.
 
 An older follower that lacks a newly added database simply ignores that database's stream and remains non-ready for the
 full new database set; it may still follow and serve compatible continued databases. For a database it still hosts but the
@@ -220,8 +249,9 @@ non-application TRL is recovery, not execution of a new write, and is allowed on
 
 ObjectDB initialization first inspects state using a read-only transaction. Ordinary initialization/registration metadata
 is retained in memory and written by the first application writer that performs an upsert. If a secondary-index upgrade
-requires a separate non-application write, dispose the read transaction, await `StartWritingTransaction()` with the required
-non-application leadership admission, and recheck the condition under the writer before applying changes. Do not upgrade
+requires a separate non-application write, dispose the read transaction and wait for leadership in startup orchestration.
+Then use `StartWritingTransaction()` for all required index reconciliation, at most the first writer after ObjectDB open,
+before processing application events. There is no core admission gate or per-mutation authority check. Do not upgrade
 the read transaction or retain its lock/root while awaiting leadership. Read-only restoration must still complete before
 election without waiting for migrations. Current ObjectDB initialization uses `StartTransaction()` for its initial
 metadata reads; migrating that call and other internal uses is future implementation work. Standalone APIs are unchanged.
@@ -231,7 +261,7 @@ metadata reads; migrating that call and other internal uses is future implementa
 Decision recorded 2026-09-14: a newer application version may create a non-application schema transaction, for example
 adding or removing secondary keys/indexes. Under the leader-only write barrier, the selected leader publishes an ordinary committed BTDB
 transaction in canonical TRL. It uses existing mutation and commit commands, not a new `KVCommandType`. It is an explicit
-exception to identical application-transaction execution on all currently running nodes, not out-of-band compaction.
+exception to identical application-transaction execution on all currently running nodes, not a physical compaction operation.
 
 A non-application committed transaction leaves `CommitUlong` unchanged. Application commits must change
 `CommitUlong`, including commits with no application mutations and explicit skips. The first transaction creating the
@@ -239,14 +269,14 @@ DB is the exception: it is non-application genesis and sets the predecessor inpu
 creation context, not the ordinary unchanged-value rule. Decode the transaction terminator first: a rollback is not a
 committed non-application transaction and must never trigger schema detachment.
 
-Schema commits advance canonical sequence/frame-chain identity without advancing the input cursor. Derive any wire
-`kind` from these native transaction semantics and verify it against the TRL; no reserved Ulong slots, schema-kind
+Schema commits advance internal canonical sequence/history identity without advancing the input cursor. Derive the
+transaction kind by decoding fetched native TRL; no separate wire kind is sent; no reserved Ulong slots, schema-kind
 sidecar, or new KV command is required. This rule compares committed before/after values, not merely presence or absence
 of a metadata command. Application/schema compatibility remains the application's concern and the native ObjectDB
 schema's contract, not an additional replication discriminator.
 
 When an already running follower receives a valid schema transaction for its database, it detaches that local database
-from canonical following before applying or confirming the transaction. This includes a frame reconstructed from a
+from canonical following before applying or confirming the transaction. This includes a transaction decoded from a
 published TRL during live catch-up. The decision does not wait for local speculative event coverage to reach the
 schema boundary. Validate source authority, database/lineage and transaction identity before allowing a message to trigger
 detachment. Duplicates already covered by the installed bootstrap history are harmless duplicates, not a new boundary.
@@ -254,7 +284,7 @@ detachment. Duplicates already covered by the installed bootstrap history are ha
 At its next safe local transaction boundary, the follower switches subsequent writes to disposable `.temptrl` using
 the existing volatile core path. It continues independently from its own local view, including any speculative head,
 and may keep serving application-local reads. It neither applies the schema transaction nor accepts later canonical
-frames or compaction controls for that database; it reports `schemaDetachedVolatile`, not confirmed/canonical readiness.
+frames for that database; it reports `schemaDetachedVolatile`, not confirmed/canonical readiness.
 This is an intentional upgrade transition, not structural divergence requiring an immediate restart. The old application
 will eventually shut down and be replaced. No common frozen event position or reader rollback is required.
 
@@ -309,7 +339,7 @@ volatile byte is transferred or promoted.
 
 ## Provisional non-goals
 
-- Arbitrary logical mutations outside ordered application transactions or explicit leader-only schema transactions. Out-of-band compaction may change only physical
+- Arbitrary logical mutations outside ordered application transactions or explicit leader-only schema transactions. Local compaction may change only physical
   value references while preserving logical contents.
 - Multi-primary conflict resolution or merging independently ordered histories.
 - Providing event ordering, consensus, or retention; the upstream log owns those guarantees.
@@ -393,39 +423,33 @@ volatile byte is transferred or promoted.
 - **Leak-removal event**: an ordinary application event whose normal handler removes the encoded exact keys
   idempotently in the same transaction that stores its event position. It has no special TRL encoding or replication
   path.
-- **Compaction operation**: an authenticated, term-qualified out-of-band control sequence sent by the leader over the
-  existing follower session. It names a confirmed logical base, sealed PVL artifacts, an ordered physical rewrite plan,
-  and a resulting physical-layout identity. It is not a BTDB transaction, consumes no canonical sequence or event
-  position, is never recovered from TRL, and never instructs a follower to delete a local file.
+- **Local compaction operation**: a node-private bounded physical rewrite under its database writer gate. It preserves
+  logical state, emits no TRL or peer message and consumes no canonical sequence or event position.
 - **Bootstrap KVI**: the one canonical KVI obtained from a selected checkpoint when a follower opens or rebuilds a
   database. It establishes that local open's initial physical root. An already running follower never receives a later
   KVI as a live update; a subsequent restart or rebuild may select a newer checkpoint and use its KVI as the new open's
   bootstrap artifact.
-- **Leader compaction-completion KVI**: the valid KVI written by the leader only after all local pointer-rewrite chunks of
-  a full compaction have committed. It seals that physical layout for leader recovery and may become part of a selected
-  checkpoint. It is never pushed to an already running follower; it reaches a node only when that node later opens or
-  rebuilds from a checkpoint that uses it as the bootstrap KVI.
-- **Follower cleanup-only compaction**: the prefix of the normal BTDB compactor that calculates file usefulness and
-  deletes only completely unused files from that follower's local disposable cache. It stops before creating a PVL or
-  replacing BTree value pointers, has no canonical transaction, receives no leader deletion instruction, and never
-  deletes object-store data.
-- **Follower-local KVI**: optional local-cache recovery metadata created by a follower when BTDB requires a newer KVI to
-  make local deletion restart-safe. It is never streamed, uploaded, selected by canonical database state, or allowed to
-  consume a canonical file identity.
+- **Remote compaction KVI**: a native KVI serialized for the Blob file inventory and destination file identities,
+  possibly from the same local compaction pass. PVL references resolve in the remote layout; TRL IDs and offsets remain unchanged.
+  It is published after all prerequisites and is transferred only as a later open/rebuild's bootstrap artifact.
+- **Node-local compaction**: maintenance of the disposable node file inventory without creating a KVI. It preserves
+  current roots, reader pins and in-process replay dependencies; restart uses the selected remote recovery closure.
+  Full local rewrites are allowed on leaders and followers alike, with independent local file layouts.
 - **Replica**: one local `BTreeKeyValueDB`, cache of canonical TRL/PVL and restored checkpoint files, event consumer, and
-  failover coordinator. It need not mirror leader-local KVI files.
+  failover coordinator. Local maintenance creates no KVI; a remote KVI is obtained only for open/rebuild.
 - **Canonical TRL**: the byte stream whose identity is authored only by the current leader. Followers may mirror the
   received bytes or promote byte-identical locally cached transaction bytes after exact comparison, but they never
   publish unmatched speculative output as canonical.
-- **Canonical frame**: a length-delimited, authenticated direct-transfer record containing one protocol control or
-  ordinary committed application or schema transaction and its term, sequence, hashes, and TRL coordinates. Compaction operations use
-  separate control messages and are not canonical frames.
+- **TRL progress notification**: the latest complete `(eventId, trlFileId, trlPosition)` boundary in an established
+  database/authority session. It carries no transaction bytes; the follower fetches native TRL ranges for comparison.
+- **Decoded canonical transaction**: an internal validated transaction reconstructed from fetched native TRL, including
+  its ordering, cursor and ancestry evidence. It is not a separately pushed HTTP transaction envelope.
 - **Checkpoint**: shorthand for a published native KVI and the BTDB files needed to restore from it; it is not a
   separate object, manifest or pointer. The KVI is written successfully only after its prerequisites are available.
 - **Leader**: the session currently named by the leased and CAS-protected leader record. While write-ready, it leads every
-  database in the failover cluster, authors their canonical TRL bytes, publishes checkpoints, runs and distributes full
-  compaction, and owns remote garbage collection. Followers still execute application code
-  speculatively, may serve reads from accepted roots, and may clean completely unused files from their local caches.
+  database in the failover cluster, authors canonical TRL bytes, publishes checkpoints, runs remote compaction and
+  owns remote garbage collection. Followers execute application code speculatively, serve local snapshots and run
+  full local compaction independently.
 - **Stepping-down leader**: the still-named lease holder after its irreversible shutdown switch. It keeps authority only
   long enough to fence and transfer leadership, performs no canonical or database-persistence work, and executes later
   application transactions only against its volatile shutdown generation.
@@ -463,8 +487,8 @@ These invariant IDs are the common vocabulary for transition validation, adapter
 | I6 Publication fence | A serialized publisher validates canonical TRL publication. Adoption on the TRL excludes pending predecessor ETags; ambiguity is reconciled without assuming that cancellation or a read of old state drained an outstanding write. |
 | I7 Database set | Generation never decreases and equal generations require equal name sets and configured instance identities. Published initialization fixes each added database's initial history; unpublished additions may restart from scratch. Removed names are never reused; old nodes continue independently and delayed writes to abandoned state are harmless. Unpublished additions wait for leader-only initialization; no provisional writes. |
 | I8 Recovery | After old readers terminate, restart reuses only sealed files matching the selected Blob identity, length and whole-file checksum; the last growing TRL is always downloaded again, as are missing/mismatching files. Across terms, copy only validated complete optimistic events beyond the adopted canonical end; regenerate unavailable events from retained input. |
-| I9 Reader lifetime | Every live root retains its original readable bytes, including abandoned speculation and optimistic readers. Local deletion depends only on that node's complete pins and recovery cut; remote deletion protects the currently published recovery closure, not in-progress follower restores; superseded files can be deleted immediately and affected followers restart. |
-| I10 Maintenance | Only the leader performs full compaction. Verified PVLs and bounded physical controls are optional for a follower and never carry TRL transactions, later bootstrap KVIs, or local deletion commands. Leak removal enters only as a parent-published ordinary event. |
+| I9 Reader lifetime | Every live root retains its original readable bytes, including abandoned speculation and optimistic readers. Local deletion depends only on that node's complete pins and recovery cut; remote deletion protects the currently published recovery closure, not in-progress follower restores; superseded files become eligible after replacement publication; deletion may be delayed operationally and affected restores restart. |
+| I10 Maintenance | Every node may compact its local files without creating KVI. Only the leader compacts/publishes remote files and remapped KVI. Neither operation distributes physical rewrites, results or local deletion commands to peers. Leak removal enters only as a parent-published ordinary event. |
 | I11 Volatile execution | Shutdown/retirement/schema detachment switches at a transaction boundary to readable `.temptrl` scratch. It never publishes, hard-flushes, checkpoints, acknowledges durable progress, or promotes that suffix. Startup removes scratch before constructing canonical files; cleanup failure prevents opening. |
 | I12 Isolation | Protocol state and every external/nondeterministic boundary are injected and node-scoped. Standalone BTDB format, synchronous semantics, and hot-path cost remain unchanged when replication is disabled. |
 
@@ -512,7 +536,7 @@ ResumeToken
     authority: AuthorityIdentity
     accepted: CanonicalPosition
     cursor: TrlCursor
-    physicalLayoutIdentity / canonicalAllocationWatermark
+    canonicalAllocationWatermark
 ```
 
 A canonical position names application history, not permission to extend it and not a cryptographic audit of the whole
@@ -527,13 +551,14 @@ authority nor permits an older observation to overwrite newer skip decisions.
 
 Positions are ordered only within the same database/stream and proven ancestry. A new term can restart from an older
 durable position; sequence or event position alone does not compare two branches. A read token always includes stream
-and database identity. `physicalLayoutIdentity` preconditions physical work but never changes logical ordering.
+and database identity. `physicalLayoutIdentity` describes a selected remote checkpoint, not a requirement that local
+layouts match. Local compaction results/identities are not reported through resume tokens or follower status.
 
 Every progress surface distinguishes `confirmed: CanonicalPosition`, `durable: RecoveryBoundary`, and a local speculative
 cursor `(nodeSession, speculationGeneration, eventStreamId, eventPosition)`. Pending-initialization, retired-volatile and schema-detached progress
 also has no canonical position. A resume token's authority must be refreshed after takeover; a retained historical
 position can still be the new term's proven base. Peer-supplied deadlines are not authority evidence. `EventRange` denotes contiguous ordered coverage after the base
-cursor through the result cursor, not numeric cursor subtraction. Application frames and TRL-bound recovery metadata bind the same range,
+cursor through the result cursor, not numeric cursor subtraction. Decoded application transactions and TRL-bound recovery metadata bind the same range,
 count, and outcome into their hashes; the decoded transaction's stored cursor must equal the range end. Coverage is
 verified against input when available and against published TRL ancestry during durable replay. Schema transactions
 instead bind their explicit kind and compatibility metadata, preserve the input cursor, and advance canonical sequence.
@@ -555,7 +580,7 @@ The required boundaries include at least:
   collection, and leader leases;
 - the application generation/database set provider, compatibility decisions, pending database initialization, and current-input-end capture for initialization;
 - leader-centered follower sessions, frame/control streaming, follower status reports, artifact reads, handoff responses,
-  compaction-operation results, and their authentication context;
+  and their authentication context;
 - the ordered application-event source, explicit seek/acknowledgement operations, and a parent-system publication port
   for requesting an ordinary bounded leak-removal event;
 - monotonic and wall-clock time, delays, deadlines, and timer scheduling;
@@ -574,13 +599,11 @@ Names and API shapes remain open, but the peer boundary needs semantics equivale
 PeerTransport.OpenLeaderSession(peerEndpoint, credentials, followerHello, resumeVector, cancellation)
 PeerTransport.ReadArtifactRange(peerEndpoint, credentials, artifact, range, cancellation)
 PeerTransport.ReportFollowerStatus(peerEndpoint, credentials, connectionId, status, cancellation)
-PeerTransport.ReportCompactionResult(peerEndpoint, credentials, connectionId, result, cancellation)
 PeerTransport.RespondToHandoff(peerEndpoint, credentials, connectionId, response, cancellation)
 
 PeerEndpoint.HandleLeaderSession(requestContext, followerHello, resumeVector, cancellation)
 PeerEndpoint.HandleArtifactRange(requestContext, artifact, range, cancellation)
 PeerEndpoint.HandleFollowerStatus(requestContext, connectionId, status, cancellation)
-PeerEndpoint.HandleCompactionResult(requestContext, connectionId, result, cancellation)
 PeerEndpoint.HandleHandoffResponse(requestContext, connectionId, response, cancellation)
 
 ParentEventPublisher.RequestLeakRemovalEvent(databaseInstance, candidate, cancellation)
@@ -693,7 +716,7 @@ An explicitly application-selected durable skipped-event transaction replays fro
 at takeover, the successor reconsumes those inputs and may choose different batches or a different applied/skipped outcome
 if the earlier failure was transient. This follows the existing allowance for unpublished-tail rollback. An irrevocable
 skip/result acknowledgement requires its durable boundary or an authoritative upstream outcome record; a local failure
-or a leader-local frame alone cannot promise that stronger guarantee.
+or a leader-local progress notification alone cannot promise that stronger guarantee.
 
 ## Leader-centered follower sessions and election triggering
 
@@ -710,8 +733,8 @@ A joining or reconnecting follower:
    removed databases are excluded from this check and continue independently on old nodes;
 3. opens one long-lived logical leader session carrying its identity, compatibility information, per-database resume
    vector, and candidate endpoint;
-4. receives leader heartbeats, canonical frames, durability progress, and handoff control messages on that session;
-5. periodically reports its accepted and speculative progress and out-of-band compaction-operation results to the same
+4. receives leader heartbeats, latest TRL progress and handoff controls, then pulls TRL bytes needed for comparison;
+5. periodically reports its accepted and speculative progress to the same
    leader through the transport abstraction.
 
 There is no follower-to-follower discovery or health exchange. A stream failure, heartbeat timeout, authentication
@@ -727,8 +750,8 @@ election contention. Transport liveness controls only direct canonical distribut
 coordination; it never gates local application commit and never proves that leadership has ended.
 
 A database-set difference does not reject a session when the follower presents a valid higher-generation database set whose
-predecessor is the leader-selected database set. The old leader streams frames only for continued matching instance IDs. It
-does not send a retired-by-target database to a follower that no longer hosts it, and it sends no frame for the target's
+predecessor is the leader-selected database set. The old leader announces TRL progress only for continued matching instance IDs. It
+does not send a retired-by-target database to a follower that no longer hosts it, and it sends no progress for the target's
 unpublished additions. Such a node is not ready for the old database set as an ordinary same-generation failover candidate,
 but it can become ready for upgrade handoff under its proposed database set.
 
@@ -778,7 +801,7 @@ FollowerStatus
         speculativeTransactionCount
         speculativeBytes
         cursor: TrlCursor?
-        physicalLayoutIdentity / canonicalAllocationWatermark
+        canonicalAllocationWatermark
         initialEventCursor?
     }
 ```
@@ -795,54 +818,45 @@ The leader-to-follower stream carries versioned messages such as:
 LeaderMessage
     authority: AuthorityIdentity
     messageSequence
-    kind = heartbeat | termStart | databaseSet | databaseLifecycle | databaseGenesis | databaseBootstrap |
-           canonicalFrame | trlProgress | compactionStart | compactionChunk | compactionComplete | steppingDown |
+    kind = heartbeat | termStart | databaseSet | databaseLifecycle | databaseGenesis |
+           trlProgress | steppingDown |
            handoffOffer | handoffFinal
     payload
 
 TrlProgress
-    base: CanonicalPosition
-    result: CanonicalPosition
-    transactions[] = { ranges[] = { fileId, startOffset, endOffset, contentHash }, terminator }
-    end: TrlCursor
-    durableBoundary: RecoveryBoundary?
-    rangeHash
-    durability = leaderLocal | objectStorePublished
-    publishedTrlToken
+    eventId
+    trlFileId
+    trlPosition
 ```
 
 `databaseSet` is the first state-bearing message on a new session and must match the names and generation in the
 leader record. `databaseLifecycle` reports additions and removals derived from the generation and name sets, with active instance identities from published per-database metadata. It requires no durable retirement record. `databaseGenesis`
 names the published initialization boundary from which waiting followers restore and open; it never authorizes a follower initialization write.
 
-`databaseBootstrap` is emitted only while a follower database is opening or rebuilding and has no accepted usable local
-KVI. It names exactly one selected published checkpoint KVI plus its required native file set. The follower obtains
-the hash-identified artifacts through the leader's HTTP artifact endpoint, with the same object-store-selected closure
-remaining the authoritative fallback, and opens the database from that one KVI before normal frame streaming. Once the
-database reports running, the leader never sends another `databaseBootstrap` or later-created KVI during that open
-lifetime. A future restart or explicit rebuild begins a new bootstrap and may select a newer checkpoint KVI.
+Database bootstrap reads the selected native KVI and required files directly from Blob Storage. There is no
+`databaseBootstrap` peer message or HTTP KVI/PVL transfer through the leader. A future open/rebuild may select a newer
+remote checkpoint; a running follower does not receive checkpoint updates.
 
-The distinction between `leaderLocal` and `objectStorePublished` prevents fast direct delivery from being mistaken for
-durable remote progress. Because a recent object-store gap is recoverable from the event log, the leader can stream
-local progress immediately and publish remote progress in batches. Duplicate messages are idempotent; gaps or an
-unexpected term/session force resume or authoritative rereads rather than best-effort merging.
+`trlProgress` advertises the latest complete leader-local boundary in the selected database/session context. It can
+be coalesced and carries no transaction bytes or per-transaction envelope. The follower fetches the required TRL ranges
+through the range endpoint, under [progress notification and comparison](#progress-notification-and-pull-based-comparison).
+A numeric event/offset is not evidence of Blob durability. Unexpected authority/lineage forces resume or authoritative
+rereads; missing intermediate notifications alone is not a transaction gap.
 
 The API key is not distributed by peers. A node learns the authoritative leader endpoint and current bearer key only
 by reading the Azure leader record. Possession of that key authorizes requests within the shared storage trust domain,
 but neither a successful HTTP request nor a control message establishes leadership.
 
-The leader primarily distributes exact TRL frames through the authenticated resumable session. A follower falls back
-to the canonical-TRL-derived range of the remote TRL file, then to checkpoint restore and upstream-event replay when
-the direct retained range is unavailable. Large artifacts use separate range requests so stream backpressure does not
-require the leader to retain unbounded data in memory.
+The session carries lightweight progress notifications. Native TRL bytes are pulled in bounded range requests,
+with fallback to verified Blob history and the existing restore/input-replay path when necessary. Neither slow requests
+nor disconnected followers require unbounded leader memory or waiting in application Commit.
 
-Full-compaction controls use the same authenticated session and artifact range endpoint, but a distinct message family.
-They are term-qualified, resumable by compaction operation/chunk identity, and never inserted into `TrlProgress` or the
-canonical frame chain. Losing that delivery may forgo a physical optimization; it cannot create an application gap.
+Compaction produces no peer controls or results. Remote KVI/PVL artifacts are consumed from Blob Storage during
+normal restore; local compaction remains independent of the leader session.
 
 Identical event-transaction payload comparison is the confirmation path. Virtual batching leaves grouping unchanged;
 file identities and physical layouts are validated separately. Canonical frame-chain identity comes from the leader bytes, which stay separate from local
-BTree value files. Followers never initiate pointer rewriting independently.
+BTree value files. Every node may independently rewrite local value pointers without changing logical history.
 
 ## What the current BTDB code implies
 
@@ -873,23 +887,22 @@ The existing code provides useful integration points, but it is not currently a 
 - `.kvi` and `.pvl` files are written as new files and become immutable after finalization.
 - File IDs and generations are allocated from local collection state. In failover mode, canonical `.trl` and `.pvl`
   allocation must instead be leader-assigned for canonical objects. Followers keep separate local allocation and file
-  identity because local allocation, file rotation, and missed compaction can produce different physical layouts. KVI
-  files are not part of live compaction distribution. Any follower-local KVI must use a disjoint cache identity, and a
-  future leader must allocate canonical IDs from canonical cluster state rather than its local maximum file ID.
+  identity because local allocation, file rotation, and independent compaction can produce different physical layouts. KVI
+  files and PVL compaction outputs are not distributed to running peers. Local compaction creates no KVI. Remote export maps source
+  references to a separately planned Blob inventory; a future leader must allocate canonical IDs from canonical
+  cluster state rather than its local maximum file ID.
   Replication TRL allocation uses fresh odd IDs; an even legacy append target is closed before new transaction output,
   under [Odd-numbered TRL allocation and legacy databases](#odd-numbered-trl-allocation-and-legacy-databases).
 - Compaction creates replacement files and removes obsolete files. Remote deletion follows publication of the replacement recoverable KVI; after that it need not wait
-  for followers or a grace period.
+  for followers; an operational deletion delay is configurable.
 - `LoadTransactionLog()` already decodes TRL commands into a writable root, but it is a startup-oriented routine that
   mutates loader fields and publishes commits as it scans files. The structural comparator should share validated command decoding without applying commands to a second tree.
   Restart recovery keeps canonical replay; no live historical-root restoration API is required.
 - Current compaction calls `CommitFromCompactor()`, which swaps a rewritten BTree root without emitting TRL commands.
-  Replication needs an opt-in API that captures and applies bounded physical rewrite chunks under the database writer
-  gate for out-of-band distribution. It does not need a new TRL command or a replay-time skip rule.
-- Before rewriting any values, current `Compactor.RunCore()` calculates file usefulness,
-  `MarkTotallyUselessFilesAsUnknown()`, and conditionally `DeleteAllUnknownFiles()`. Only later does it enter
-  `CompactOnePureValueFileIteration()` and `ReplaceBTreeValues()`. This is the concrete cut where follower compaction
-  stops: local useless-file cleanup is allowed, while PVL creation and pointer replacement remain leader-only.
+  Preserve that mechanism for independent node-local compaction, with bounded writer-gate chunks and no local KVI.
+  It needs neither distributed rewrite messages nor a new TRL command or replay-time skip rule.
+- `Compactor.RunCore()` currently couples local file usefulness, PVL creation, pointer replacement and KVI-based
+  cleanup. Separate local pin-based cleanup without KVI from remote inventory planning and remapped KVI export.
 - Current ObjectDB leak detection scans a read-only transaction and buffers a bounded sequence of length-prefixed exact
   keys. Removal later opens a separate writing transaction, finds each still-present exact key, erases it, and commits.
   Replication mode must split detection from deletion: detection requests that the parent system publish an ordinary
@@ -930,7 +943,7 @@ CommitSkippedEvent(eventIdentity)
 CaptureLeaderCommit()
     -> canonical TRL range with ordinary per-event commits + event coverage/outcomes + comparison metadata
 
-CompareFollowerRange(localEntries, canonicalFrames)
+CompareFollowerRange(localEntries, fetchedCanonicalTransactions)
     -> structurally equal | awaiting coverage | structural mismatch | invalid bytes
 
 ConfirmMatchingRange(canonicalResult)
@@ -945,14 +958,14 @@ RestartDivergentFollower(reason)
 ValidateClosedTransactionBoundary(trlRanges, expectedEnd, expectedSequence, expectedFrameHash)
     -> valid closed transaction | incomplete/corrupt
 
-CaptureLeaderCompactionChunk(basePhysicalLayout, relocationData, cancellation)
-    -> bounded out-of-band rewrite operation + resulting physical-layout identity
+CompactNodeLocalFiles(currentHead, localInventory, pins, cancellation)
+    -> bounded local physical rewrites + unused-file cleanup; no KVI, TRL or peer messages
 
-ApplyLeaderCompactionOperation(currentHead, operation, verifiedPvlFiles)
-    -> applied physical layout | retained older compatible layout | rejected invalid/stale operation
+PlanRemoteCompaction(canonicalBoundary, remoteInventory, sourcePins, destinationAllocator)
+    -> remote destination plan + source-to-remote address map
 
-RunFollowerLocalFileCleanup(retainedRoots, localRecoveryCut, cancellation)
-    -> deleted completely-unused local files + optional follower-local KVI; no canonical or remote effect
+ExportRemoteKvi(capturedRoot, canonicalTrlCursor, addressMap, destination)
+    -> native KVI with remote references + pinned target recovery closure; no mutation of the live local root
 
 ReplayStartupTransaction(kviIdentity, trlTransaction)
     -> applied application/schema transaction state | failed corruption
@@ -980,7 +993,7 @@ These names are descriptive, not proposed public API names. The existing `IKeyVa
 synchronous local operation. During ordinary failover leader/follower operation it may perform only the local work needed
 to append/cache an ordinary application transaction, commit the root, and retain disk-backed comparison metadata.
 In replication mode, synchronous `StartTransaction()` is prohibited. Reads use `StartReadOnlyTransaction()`;
-writes enter through the existing asynchronous `StartWritingTransaction()`. Non-application writer admission waits
+writes enter through the existing asynchronous `StartWritingTransaction()`. Startup orchestration for the initial secondary-index reconciliation waits
 for leadership before taking the writer lock. Ordinary application writers remain available on followers. Supplying
 an eventId on writer admission automatically sets CommitUlong on the writable transaction; no separate comparison
 against an application-assigned value is required. Non-application commits signal immediate asynchronous flush;
@@ -1020,7 +1033,7 @@ validated session/file names; it must never follow links or sweep an ambient ope
 
 Entering volatile shutdown mode is irreversible for that node session. Its commits advance only the disposable BTree
 head and process-local event cursor. Temporary files receive only node-local volatile identities; they do not allocate
-canonical transaction sequences, advance confirmed metadata, emit `leaderLocal` frames, enqueue object-store
+canonical transaction sequences, advance confirmed metadata, advertise leader-local TRL progress, enqueue object-store
 publication, write KVI/PVL files, or acknowledge upstream events at a durability level that the shutdown canonical cut
 did not reach. A successor deterministically re-executes those events from its adopted durable base. If temporary storage
 is full or lost, fail the node and use normal restart/rebuild; never switch that generation to Blob publication.
@@ -1091,7 +1104,7 @@ Updated 2026-09-14: after sequence-zero initialization, canonical TRL contains c
 explicit application-selected skips, and the [schema transactions](#non-application-schema-transactions-during-upgrades)
 used by newer application versions. All use ordinary BTDB command/commit encoding. Schema changes are logical key
 mutations and consume canonical sequence without consuming input. Term changes, checkpoint publication, physical
-compaction controls, artifact transfer, KVI creation and file-retirement decisions remain outside TRL and consume no
+local/remote physical compaction, KVI export and file-retirement decisions remain outside TRL and consume no
 canonical transaction sequence.
 
 Leak reachability is an ObjectDB-level question, while the logical deletion must enter the same ordered input path as
@@ -1135,135 +1148,83 @@ The list-size budget bounds one handler's work; the virtual memory-batch budget 
 Larger results are split by the parent into several bounded ordered events or detected again later; this batching policy is part of the application-event contract rather
 than a replication transaction format.
 
-### Leader full compaction over the follower session
+### Independent local compaction and leader-only remote compaction
 
-Decision recorded 2026-09-01: the CAS-confirmed leader alone runs full BTDB compaction. Sealed PVL artifacts and bounded
-physical pointer-rewrite operations are distributed out of band over the existing authenticated leader-to-follower
-session. They never appear in TRL, never advance application event position or canonical sequence, and require no new
-BTDB command decoder or startup skip support.
+Decision recorded 2026-09-14: every node, including followers, may run full local physical compaction independently.
+Local compaction operates only on that node's disposable files and creates no KVI. Only the selected leader runs remote
+compaction against Blob Storage. Neither kind sends compaction operations, PVL rewrite plans, completion results or
+local deletion instructions to other nodes. The former leader-distributed compaction protocol is withdrawn.
 
-Followers do not initiate pointer rewriting. They may independently run only the initial cleanup part of the compactor
-against their own disposable local files. This local cleanup has no leader, canonical-sequence, TRL, or object-store
-effect.
+Local compaction may create/seal PVLs and replace value pointers on an eligible current head in bounded writer-gate
+chunks. It preserves logical contents, CommitUlong, ordinary transaction bytes and canonical sequence. It requires no
+leader confirmation or agreement on physical layout. Never roll back or replay a committed suffix merely to compact it.
+Each node has independent local file allocation and pin accounting. Local PVL IDs cannot consume or predict canonical
+remote IDs, alter the deterministic TRL sizing policy, or change another node's namespace.
 
-Today one full compaction iteration:
+Local cleanup protects every live root/reader, current tree, pending virtual-batch rollback/replay range, comparison
+range and active export source. No local KVI is created on either the small-waste path or after pointer rewriting.
+Files needed only for a self-contained local restart cut may be removed once no in-process dependency needs them:
+startup always validates/restores the selected remote closure. It must never open an incomplete local set as canonical.
+File-backed values in old readers remain readable until the last local pin is released.
 
-1. calculates file usefulness and marks completely unused files as unknown;
-2. creates and seals a new `.pvl` containing copied live values;
-3. builds an old-position to new-offset map;
-4. repeatedly calls `ReplaceBTreeValues()` in short writable transactions;
-5. publishes each rewritten root through `CommitFromCompactor()` without any TRL command;
-6. creates a `.kvi` and eventually retires obsolete files when old readers no longer reference them.
+Local and remote work may share one physical compaction pass. Its sealed local PVLs feed the publication path below;
+there is no requirement for a second rewrite pass. Remote export does not rewrite the running leader's tree into remote file IDs. A follower need not learn that a remote compaction
+occurred. The resulting PVLs and KVI are published to Blob Storage only; another node obtains that layout through
+normal open/rebuild from the selected remote recovery closure, never through a live compaction message.
 
-Replication preserves that no-TRL behavior and adds an explicit capture/apply surface around the bounded rewrite. One
-operation has semantics equivalent to:
+Local compaction and remote publication have independent cancellation tokens. Losing leadership cancels only the
+remote token (PVL uploads, KVI streaming/finalization and remote deletion), preserving selected remote recovery data.
+The local pass may finish under its own token. Do not link the local token to leader authority or propagate a remote
+cancellation/failure into it. Host shutdown or scratch detachment may separately cancel local maintenance.
+A still-valid local node may continue purely local maintenance under its local lifecycle rules; no canonical authority
+is implied. Graceful shutdown, retirement or schema detachment cancels maintenance at a bounded writer boundary before
+entering volatile mode. After that cut no new PVL/KVI or file-retirement work starts; application scratch writes follow
+the existing volatile-execution rules.
 
-```text
-CompactionOperation
-    protocolVersion
-    authority: AuthorityIdentity
-    operationId / chunkIndex / previousChunkHash
-    base: CanonicalPosition
-    baseLogicalStateIdentity
-    sourcePhysicalLayoutIdentity
-    targetPvlFiles[] = { fileId, length, contentHash, artifactIdentity }
-    orderedRelocationsOrRewritePlan
-    resultingPhysicalLayoutIdentity / chunkHash
-```
+#### Separate node-local and Blob compaction modes
 
-The leader flow is:
+Decision refined 2026-09-15: all nodes compact locally without producing a local KVI; only the selected leader
+publishes the resulting checkpoint remotely. The physical pass can serve both local and remote needs. Local and Blob
+inventories still differ, but that difference does not require a separate physical compactor.
 
-1. While authority is fresh, select a confirmed application boundary and current physical-layout identity, create an
-   operation ID, run ordinary useless-file cleanup, create and seal target PVLs, and build relocation data.
-2. Advertise `compactionStart` on follower sessions. Followers fetch target PVLs through the existing authenticated
-   artifact range endpoint and hash-verify complete files before any root can reference them.
-3. Under the database writer gate, execute one bounded `ReplaceBTreeValues()`/`CommitFromCompactor()` chunk and capture
-   its exact relocation preconditions and resulting physical-layout identity. Send the corresponding
-   `compactionChunk` control after the local chunk commits. This message is ordered in the peer stream but is not a
-   canonical frame and does not enter the frame-chain hash.
-4. Continue in bounded chunks while application commits interleave at safe writer boundaries. After all chunks finish,
-   create the leader completion KVI and send `compactionComplete`. That control reports only operation completion and the
-   resulting physical-layout identity; it contains neither the KVI nor a local-file deletion command.
-5. Retire leader-local sources only after the completion KVI and reader/history pins permit it. Remote objects become
-   collectible as soon as the replacement checkpoint is fully recoverable and selected; old follower restore attempts
-   do not retain the superseded closure.
-   Follower acknowledgements are diagnostic/optimization state, never the remote-deletion proof.
+| Mode | Inventory and allocation | Result |
+| --- | --- | --- |
+| Standalone | Existing database file collection | Existing local PVL rewrites, local KVI and restart-safe cleanup remain unchanged. |
+| Replication node-local | That node's actual files, physical layout and pins | Independent full local PVL/pointer rewrites on every node; no local KVI, including small-waste and cleanup-only paths. |
+| Leader checkpoint publication | Sealed local outputs plus verified Blob inventory | Reuse published PVLs, upload missing PVLs under fresh remote IDs, and stream native KVI with those PVL IDs. |
 
-The base canonical sequence, frame hash, logical identity, and source physical identity are captured separately for
-each chunk while holding the writer gate; they are not one stale base reused for the whole compaction. Leader stream
-ordering places each `compactionChunk` exactly between the application frames that precede and follow its local physical
-commit. A follower that deliberately retains the older layout acknowledges and advances past that control message so a
-missed optimization never becomes a permanent gap in application-frame delivery.
+Before exporting the remote KVI:
 
-A follower applies a compaction operation only if its current head is at the required full canonical position with matching schema compatibility and confirmed ancestry, and its physical
-layout, source files, hashes, and relocation preconditions match. Apply under normal writer serialization while retaining
-ordinary reader pins. Never restore an older root or replay a suffix to make a compaction operation applicable.
+1. Capture a fixed, canonically valid root and pin its source files. Local compaction and application work may continue
+   without invalidating the captured root or bytes. Use distinct local-maintenance and remote-publication tokens.
+2. Remember complete, sealed files verified against Blob Storage during download. A download from the leader also
+   qualifies when the same complete file is confirmed present in Blob Storage. Restore preserves the physical file ID.
+   A known PVL can be reused under that ID without another upload. Partial downloads and active files do not qualify.
+3. For each other sealed local PVL, reuse its confirmed local-to-remote placement from an earlier checkpoint, or
+   reserve a free remote ID and upload the whole file there. Preserve its bytes and offsets; only the KVI file-ID
+   reference changes. Retain the placement after successful upload, including when a subsequent KVI publication fails,
+   so the next compaction does not upload it again. An uncertain upload retains its reserved destination for exact
+   reconciliation/retry. Placement receipts belong to the current verified local database session, not the read path.
+4. TRL IDs, offsets and bytes are never remapped. Ensure canonical TRL publication already covers the snapshot's
+   recovery cursor and all referenced TRL ranges. Arbitrary local TRL bytes cannot become canonical via KVI export.
+5. Once every prerequisite PVL/TRL is confirmed, serialize native KVI directly to a forward-only chunk uploader.
+   No local KVI staging file is required. Preserve keys, values, compression, CommitUlong, Ulong metadata and the
+   unchanged TRL cursor. KVI block staging/upload must not start before this prerequisite barrier. Select/finalize
+   the remote KVI only after all chunks succeed under remote authority. Missing or colliding PVL placements fail export.
+6. Only successful/reconciled remote KVI publication permits delayed deletion of superseded remote files. Failure,
+   cancellation or authority loss preserves the selected closure. It does not cancel local compaction. No results
+   or mappings are sent to running peers; fresh restore downloads the selected files under their remote IDs.
 
-A follower that has already advanced past the required base, has another valid physical layout, misses a control range,
-or cannot satisfy a relocation precondition reports `retainedOlderLayout` and continues normal application processing.
-The leader must not block application progress waiting for compaction acknowledgements. A later selected checkpoint can
-converge that follower's layout only on a future restart or explicit rebuild that transfers its KVI as the new bootstrap;
-it is never pushed into the running database. Until then, ordinary canonical transactions remain logically replayable on
-the older layout, and structural comparison ignores permitted physical-layout differences.
+Remote IDs must be allocated from the Blob inventory, not the local maximum: remote objects can outlive local files.
+A receipt remains reusable only while its remote object is protected from cleanup. The baseline has no remote deletion
+implementation; its integration must account for active publications and selected checkpoints before retiring receipts.
 
-Leader-assigned target PVL file IDs are consumed by canonical allocation even when a follower retains the older layout.
-Resumable session/database progress must expose the resulting canonical allocation watermark independently of whether
-the follower installs the PVL. Before installing later leader-authored files, a follower either proves that its local
-speculative namespace did not collide or restarts/rebuilds the conflicting disposable generation. It must not
-remap file IDs underneath existing roots/readers; separate cache-to-canonical identity mapping stays immutable for them. Learning this metadata
-must not gate local event execution and requires neither synthesizing nor skipping a BTDB transaction.
-
-Follower cleanup-only compaction stops at the source-code boundary before `CompactOnePureValueFileIteration()` and
-`ReplaceBTreeValues()`:
-
-1. Enumerate and protect every root and file pinned by that node's currently open read-only transactions, application
-   reads, the current speculative tree, comparison TRL, compaction application, and any local recovery cut.
-   There are no replication-owned confirmation rollback roots.
-2. Calculate file usefulness and mark only completely unreferenced local files as unknown.
-3. If deleting a useless TRL would invalidate the follower's only restartable local cut, either create a follower-local
-   KVI first or keep that file. Such a KVI is cache metadata only, uses a non-canonical identity, and is not distributed
-   or uploaded.
-4. Delete proven-unused files only from that local file collection, then stop. Do not initiate a PVL, rewrite a pointer,
-   publish a root/checkpoint, or invoke object-store deletion.
-
-A follower may therefore reclaim local source files after a live rewrite while the leader separately owns remote
-retention. The leader neither knows the follower's open read-only transactions nor sends a deletion list; receiving
-`compactionComplete` does not authorize local deletion. If local cleanup intentionally leaves no self-contained older
-local recovery cut, a later process restart must reject that local cache and restore a selected checkpoint from object
-storage; it must never guess around missing files.
-
-Startup requires no compaction awareness in the TRL reader:
-
-1. Use the [per-database replay hierarchy](#per-database-replay-hierarchy) to obtain exactly one selected published bootstrap
-   KVI and its verified closure. Process restart validates reusable files against the selected remote recovery set; a follower-local KVI never selects recovery.
-2. Replay ordinary application and schema transactions after that KVI with a compatible application. There is no
-   physical compaction command to recognize or skip.
-3. A KVI/checkpoint captured before compaction naturally reconstructs the older physical references; a selected
-   checkpoint captured after compaction naturally starts with the newer layout. Both produce the same logical contents
-   at an equal application boundary.
-4. If follower cleanup removed a source file required by its chosen older KVI, that local generation is invalid and is
-   rebuilt from a complete selected checkpoint. Recovery never guesses around the missing file.
-5. An incomplete or unreferenced target PVL and partially received operation metadata are disposable local debris.
-
-If leadership is lost during full compaction, no further operation chunk, KVI/checkpoint, or remote deletion may be
-published by the old leader. Already completed local or follower chunks remain logically valid physical layouts, but
-they grant no authority and need not be reproduced after restart. Without a completion KVI, source files remain retained;
-a later leader may discard the disposable local generation, restore the selected durable boundary, or start a new
-compaction operation.
-
-Graceful shutdown requests cooperative cancellation immediately and prevents another compaction chunk from starting. A
-bounded chunk already inside the writer gate may finish or abort at that safe boundary; the persistent-to-volatile switch
-waits only for this bounded work, not for the whole compaction. Once volatile mode begins, the node sends no further
-compaction control, writes no target PVL or KVI, publishes no compaction artifact, and makes no file-retirement decision.
-Application transactions continue against the current in-memory root throughout the remaining shutdown lifetime.
-
-KVI creation and physical deletion are recovery/retention operations rather than logical BTree mutations, but their
-file-ID allocation and lifetime still need protocol coordination. Canonical TRL/PVL identities remain leader-assigned.
-Leader completion/checkpoint KVIs and follower-local KVIs are not live-mirrored file allocations. A canonical KVI is
-transferred only when selected as the bootstrap KVI for a database open or rebuild; no newer KVI replaces it during that
-open lifetime. Local-only KVIs need a disjoint namespace or mapping so they cannot collide with a future leader-assigned
-canonical data file. Local deletion remains a node-private decision, while remote garbage collection is a
-leader-authorized object-store operation regardless of which nodes have already deleted the equivalent local files.
+`Compactor.RunCore()` currently derives usefulness from the local collection and calls `CreateIndexFile()` both on
+its small-waste path and after physical rewrites. `CreateKeyIndexFile()` currently writes source file IDs/offsets and
+computes generations through that same collection. The core now provides `CaptureKeyIndexSnapshot` and forward-only `WriteTo`, with whole-PVL ID substitution and pinned
+sources. The internal `CheckpointPublisher` tests dependency ordering, upload receipt reuse and retry. Actual no-local-KVI
+compactor mode, production canonical TRL/storage/authority integration and remote GC remain unfinished; these helpers
+do not close B3/B5/Q6. See [Testing.md](Testing.md).
 
 ### Existing `BTDB.AzureStorage` is not the failover protocol
 
@@ -1431,6 +1392,14 @@ ordered ranges; they do not independently advance the committed event cursor. Fu
 bytes even if core rollback rebuilds its working root. A KVI request shares publication ordering checks but does not
 insert a per-transaction state update.
 
+The internal `CanonicalTrlPublisher` implements this bounded lane over real native capture. It holds a fixed source
+cut and checks `LeaseAuthority` before every dispatch. Successor preparation does not advance the selected boundary.
+A returned or reconciled predecessor success acknowledges capture; ambiguous requests retain the same intent and
+block later records. An explicit retry may resend that same CAS while authority is valid. After fencing, only reads
+may reconcile dispatched work. A changed selected version reports conflict for coordinator rediscovery, not an
+implicit rebase. See [lane tests and limits](Testing.md#canonical-trl-lane-necessity-and-limits). Production transport,
+coordinator wiring and cold restore validation are not yet implemented by this helper.
+
 #### Transaction-aligned durable boundary
 
 Decision revised 2026-09-14: transactions may span several TRL files, including their commit or rollback
@@ -1453,7 +1422,7 @@ leaves unlinked staging; ambiguous publication is reconciled from the actual pre
 
 No separate state CAS follows. Protect prepared successors from GC until publication is resolved. Genesis has no existing
 predecessor: prepare its continuation prerequisites first, then conditionally create its discoverable initial TRL.
-Native KVI discovery is selected in R2; the TRL continuation codec still requires integration. Qualify interruption, old-leader races and successor ownership handover
+Native KVI discovery is selected in R2; the TRL continuation codec is exercised by the internal native publication lane. Qualify production interruption, old-leader races and successor ownership handover
 before implementation can claim this invariant. Do not infer canonical ancestry from file numbers alone.
 
 RecoveryBoundary names the last complete verified transaction on the selected published chain. Any required immutable
@@ -1529,11 +1498,11 @@ progress since preparation before activating all databases; the initial download
 | Phase | Permitted work | Completion / failure |
 | --- | --- | --- |
 | `Restoring` | Discover native KVI/TRL, reuse verified sealed files, download and replay; no application speculation over incomplete state | All required published bases restored -> `Following`. Missing/corrupt prerequisites keep the affected DB unavailable. |
-| `Following` | Local application transactions and reads on ready databases; compare canonical history; no remote publication | Eligible preparation -> `Prepared`; schema detachment sets permanent session ineligibility. Link loss alone grants no authority. |
+| `Following` | Local application transactions, reads and node-local compaction on ready databases; compare canonical history; no remote publication | Eligible preparation -> `Prepared`; schema detachment sets permanent session ineligibility. Link loss alone grants no authority. |
 | `Prepared` | Hold verified restore result and candidate configuration; no canonical authoring | Recheck eligibility immediately before lease acquire/transfer. Prove owned lease -> `Selecting`; failed acquisition returns to following/preparation. |
 | `Selecting` | Under owned lease, reread leader record and CAS the next term/session, generation, DB set, endpoint and API key | Only proven CAS selection -> `Activating`. Ambiguity suspends progress and reconciles. Lost ownership -> `Fenced`. |
 | `Activating` | Fence/adopt every existing published base, catch up any intervening durable progress, locally create missing genesis and queue immediate flush | Every existing base adopted/restored and every addition locally initialized -> `Leading`. Genesis/schema flush may still be pending; no remote-durability claim is implied. |
-| `Leading` | Local commits, frame streaming, serialized asynchronous publication, compaction and eligible remote cleanup | Authority loss -> `Fenced`; graceful departure -> `Draining`. |
+| `Leading` | Local commits, progress notifications and TRL range serving, serialized asynchronous publication, leader-only remote compaction and eligible remote cleanup | Authority loss -> `Fenced`; graceful departure -> `Draining`. |
 | `Draining` | Per-DB transaction-boundary cut to `.temptrl`; reconcile previously issued data writes read-only; permitted authority operations only | Transfer/release/expiry then shutdown. No return to canonical writing in this session. |
 | `Fenced` | No canonical authoring/publication under the lost term; reads/local work only where the existing mode permits | Rejoin through discovery/recovery, never resume lost authority. Permanent detachment/draining eligibility flags survive phase changes. |
 | `RestartRequested` | Stop admitting new host work, finish existing work gracefully and close readers/writers; no detached suffix promotion | New process begins in `Restoring`; no assumed exit deadline for an application transaction. |
@@ -1626,11 +1595,11 @@ duplicate, expired or revoked responses cannot extend the follower's deadline. G
 pause/suspend handling must be qualified under B1, not inferred from network arrival time or wall-clock synchronization.
 Expired grants stop new direct confirmation, not speculation or replay of already selected durable history.
 
-Planned handoff stops grant issuance and revokes outstanding grants before changing the lease. A revocation acknowledgement
-must also exclude delayed responses to earlier outstanding challenges for that connection. For an unreachable follower,
-wait out the conservative upper bound of every grant that could still be usable, including in-flight responses.
-Only then transfer authority. No follower acknowledgement is needed for normal event processing or durable publication;
-this bounded drain prevents an old confirmation grant from surviving the planned authority transfer.
+Planned handoff stops grant issuance and waits until the maximum conservative expiry of all grants it issued,
+including disconnected followers and in-flight responses. The M1 model needs only this single deadline, not individual
+revocation messages or acknowledgements. Only then transfer authority. Direct confirmation and ordinary publication
+need no follower acknowledgement. See [M1 authority evidence](M1Evidence.md#supported-mathematical-clock-model) for the
+clock inequalities and named race tests; production clock qualification and role/commit integration remain B1.
 
 As soon as a candidate successfully selects its own new term under the owned lease, it closes the predecessor's live
 acceptance path and invalidates queued predecessor frames, grants and connection callbacks. After all active databases
@@ -1683,31 +1652,23 @@ Exact transaction selection, retry and physical reopen mechanics are part of B3,
 
 ### Fast graceful handoff
 
-A planned process shutdown should avoid both waiting for the finite Blob lease to expire and pausing application
-transactions. It uses an irreversible persistent-to-volatile transition:
+A planned process shutdown stops remote publication while ordinary local transactions and compaction continue.
+No scratch collection, temporary extension, allocation switch or core transaction barrier is required.
 
-1. The leader sends `steppingDown` over its active follower sessions and requests cooperative cancellation of compaction
-   and every background database writer. It prevents new compaction, checkpoint, remote-publication, and
-   garbage-collection work from starting; incomplete unselected artifacts remain harmless debris for later cleanup.
-2. For each database, it closes admission to the persistent canonical writer. A transaction already inside that writer
-   finishes or aborts at its ordinary safe boundary; no later transaction starts in the persistent generation. This
-   produces the database's shutdown canonical cut without ever cutting through a transaction.
-3. At that boundary the database irreversibly switches new allocation and transaction output to its volatile `.temptrl`
-   generation. New application transactions continue immediately with ordinary local single-writer synchronization;
-   their BTree changes and newly written values remain readable from local scratch files. They assign no canonical
-   sequence, emit no canonical frame, enqueue no publication, and perform no hard flush. Different databases may reach
-   this switch independently; the handoff record therefore carries an exact per-database cut vector.
-4. The old leader dispatches no new data-plane storage request after the switch. A request dispatched earlier may already
-   have reached Azure, so the old leader reconciles any ambiguous in-flight canonical TRL CAS using reads only. A TRL
-   CAS that landed publishes its complete transaction; only staging blocks or unlinked objects remain unaccepted.
-   Shutdown does not force the canonical cut to become Blob-durable. The resulting durable-base vector may be older.
-5. In parallel with those bounded switches, the leader builds the eligible set from its connected-follower registry. A
+1. The leader sends `steppingDown` over active follower sessions and stops new remote publication, checkpoint uploads
+   and remote deletion through their independent cancellation/authority controls. Local maintenance may continue.
+2. Already dispatched storage requests may still land. Reconcile ambiguous canonical TRL writes using the existing
+   rules; cancellation cannot undo a completed remote write. No shutdown flush of later local transactions is required.
+3. Application commits and rollbacks continue in ordinary local files. The departing session never resumes publication.
+4. On restart, ordinary cache validation against selected Blob history discards unselected files and replaces divergent
+   tails. There is no special `.temptrl` cleanup, separate directory, or frozen local generation.
+5. In parallel with stopping publication, the leader builds the eligible set from its connected-follower registry. A
    same-generation candidate must match the selected database set, run a compatible protocol/BTDB format, expose a usable
    candidate endpoint, be within the handoff lag limit for every active database, and retain the events needed after
    every final durable base. It chooses randomly and sends the handoff offer over that follower's existing authenticated
    session. A prepared higher-generation target instead follows the database-set transition readiness and initialization rules above
    and has priority over same-generation shutdown targets.
-6. The target obtains and verifies frames and prerequisites through each relevant shutdown canonical cut when available,
+6. The target pulls and verifies TRL bytes and prerequisites through each relevant shutdown canonical cut when available,
    and independently verifies every object-store-selected durable base. A higher-generation target additionally
    verifies starting cursors and input availability for its added databases and explicitly lists retirements. The old leader
    may serve already existing bytes but cannot create or persist new canonical ones. The target responds `prepared` with
@@ -1724,11 +1685,10 @@ transactions. It uses an irreversible persistent-to-volatile transition:
    never a substitute for a published durable base.
 9. The old process may continue executing application events against its volatile generation until exit. It closes its
    sessions after observing the new leader record or reaching its local shutdown deadline, releases the volatile root,
-   and best-effort deletes its `.temptrl` scratch directory. None of its post-cut work needs to be drained or transferred;
+   and leaves disposable local files for ordinary startup cache validation. None of its post-cut work needs to be drained or transferred;
    restart cleanup is authoritative if clean deletion was interrupted.
 
-There is no cluster-wide application quiesce: each database ends its persistent generation at a transaction boundary.
-The wait for an application transaction to commit or roll back has no fixed upper bound. An application/host deadline
+There is no cluster-wide application quiesce and no core transaction-boundary switch. An application/host deadline
 may instead terminate the process through non-graceful recovery; replication does not synthesize a rollback or skip. Once a node session enters volatile shutdown mode it never resumes
 canonical persistence, even if a target disconnects or shutdown cancellation is withdrawn. A failed prepared target is
 removed and another eligible follower may be selected while the old leader continues volatile execution. If no target
@@ -1745,7 +1705,7 @@ execution.
 ### Canonical TRL publication
 
 The leader captures the ordered TRL ranges through the final commit marker of each application transaction or explicit
-schema transaction. Application commits store their input cursor; schema commits preserve it under the upgrade rules. Only a complete transaction gets a canonical position/frame. Local accepted
+schema transaction. Application commits store their input cursor; schema commits preserve it under the upgrade rules. Only a complete transaction gets a canonical position; progress announces its TRL end. Local accepted
 progress for ordinary application transactions can be streamed immediately under valid authority and queued for
 background durability. Non-application commits instead trigger the immediate asynchronous flush request.
 
@@ -1758,47 +1718,63 @@ append is reconciled against actual version, content, length and identity before
 transactions cannot be abandoned as an unselected tail simply because a separate state update was not performed.
 Graceful drain dispatches no new data request and reconciles earlier TRL CAS operations read-only.
 
-### Canonical frame and comparison protocol
+### Progress notification and pull-based comparison
 
-The direct protocol needs its own versioned envelope around raw BTDB bytes. An illustrative frame is:
+Decision recorded 2026-09-14: the baseline peer protocol announces a committed TRL boundary and lets the follower
+fetch the bytes. It does not push per-transaction envelopes or transaction payloads. A notification, within the
+already established database-instance and authority/session context, contains only:
 
 ```text
-CanonicalFrame
-    protocolVersion
-    authority: AuthorityIdentity
-    base: CanonicalPosition
-    result: CanonicalPosition
-    lineageId
-    kind = application | schema
-    input: EventRange?              // application only
-    outcome = applied | skipped     // application only
-    trlRanges[] = { fileId, startOffset, endOffset, contentHash }
-    transactionTerminator
-    logicalChangeDigest?
-    payloadLength
-    payloadHash
-    payload
+TrlProgress
+    eventId
+    trlFileId
+    trlPosition
 ```
 
-`result.canonicalSequence = base.canonicalSequence + 1` for every application or schema frame. Application frames
-advance the input cursor through their range; schema frames have no input range and preserve that cursor exactly. Both `applied` and `skipped` require `eventCount = 1`; `skipped` has no application mutations,
-while an applied event may also have none. Ranges spanning multiple events belong to publication or comparison groups,
-never to one event transaction. `termStart` is a separate
-`LeaderMessage` control, not a BTDB transaction, and consumes neither. Compaction controls and PVL artifacts use their
-separate out-of-band message family and never appear in this envelope. `trlRanges` lists all constituent ranges in transaction order.
-A receiver may stream bounded transport chunks, but accepts the frame only after all ranges and their continuation
-links have been verified through the declared commit terminator. Missing, reordered or unrelated ranges are invalid. The frame kind is derived from and checked against committed `CommitUlong` changes;
-genesis and rollback are handled separately. No extra persistent schema-kind index is required.
+`trlPosition` is the exclusive end of a complete committed transaction in the leader's canonical local TRL, not the
+current length of a writer's partially emitted transaction. `eventId` is its committed CommitUlong. This advertises
+leader-local progress; it does not establish Blob publication or advance a durable recovery boundary. Protocol version,
+database identity and selected authority/lineage are connection/control context, not repeated transaction descriptions.
+No sequence, transaction-kind field, range list, payload or per-notification hash is required in this progress payload.
+Internal canonical ordering/ancestry and storage publication proofs remain separate from this notification format.
+
+A follower retains its last compared position in the leader's TRL namespace, independently of its own local file IDs
+and offsets. It requests bounded byte ranges from there through the announced end and follows verified file
+continuations across rotation. Range requests/responses bind the selected session/term and exact file identity;
+changing leader or reusing a numeric file ID in another lineage must never substitute different bytes. Appending later
+transactions may extend the file but cannot change an already advertised prefix. Transfer pins protect bytes while a
+response is being read; missing retained ranges return an explicit unavailable result rather than fabricated data.
+
+Decode the fetched native TRL to recover transaction boundaries, cursor/metadata changes and ordinary rollback
+attempts. Compare complete equal event coverage, including rollback evidence, with the local history. A partial HTTP
+chunk or a file boundary is not a transaction boundary. Verify closure and continuation before advancing confirmation;
+revalidate authority/grant and session when accepting the result. A read that outlives its session cannot confirm work
+under a replacement leader. Local application commits never wait for these requests or the comparator.
+
+Notifications may be coalesced: the newest complete boundary subsumes earlier notifications on the same verified
+lineage. A schema commit changes the TRL position without changing eventId and must still notify/fetch; never suppress
+progress just because eventId is unchanged. It is discovered from native TRL and follows normal live-follower detachment.
+Rollback bytes preceding the next commit remain in the downloaded interval without a synthetic rollback message.
+A lost notification is recovered by reannouncing the latest boundary on reconnect or subsequent progress.
+
+If leader bytes are unavailable, use the verified published Blob TRL where available; otherwise use the existing
+recovery/input-replay path. Input replay regenerates unavailable unpublished application work, but does not by itself
+prove equality with unavailable leader bytes. Missing evidence never advances confirmation. Blob publication remains
+established by the storage publisher, independently of this local-progress notification.
+
+Defer any optimization that includes bytes with the notification or prefetches them to avoid an extra request. Such
+an optimization must feed the same validated-byte comparison path and preserve the same boundary/authority semantics;
+it is not part of the first implementation or a second transaction protocol.
 
 ### One follower acceptance path
 
 Startup correctness comes from canonical checkpoint/TRL replay; a running follower confirms by structural comparison. The same validated transaction representation
-is reconstructed from a live frame or from published canonical TRL and its bound metadata. Transport/storage adapters
+is reconstructed from leader-fetched native TRL or published canonical TRL and its bound metadata. Transport/storage adapters
 supply bytes and evidence; they do not implement separate acceptance rules.
 
 | Source | Required evidence before transaction validation |
 | --- | --- |
-| Live leader frame | Authenticated session, selected database set/instance, current authority under B1, and valid resume lineage |
+| Leader-fetched TRL range | Authenticated session, selected database set/instance, current authority under B1, and valid resume lineage |
 | Durable replay | TRL-published or explicitly retained recovery closure, canonical TRL ancestry, and exact hash-verified cuts; historical author authority need not still be live |
 | Local speculative bytes | Comparison evidence only over the same event coverage; structural equality does not make these canonical physical bytes |
 
@@ -1813,8 +1789,8 @@ messages before this path can mutate confirmation; historical durable replay use
    a live follower, validate its ancestry against the received canonical chain or verified published TRL chain, then
    detach under the upgrade rules and stop this path. This does not require the local confirmed watermark to have
    caught up with that received chain. A schema transaction already covered by bootstrap is only a duplicate.
-2. Classify its relation to the accepted position. An exact previously accepted duplicate is a no-op. Conflicting frames
-   for the same authority/database/base/sequence are a safety fault: freeze acceptance and retain evidence. A gap cannot
+2. Classify its relation to the accepted position. An exact previously accepted duplicate is a no-op. Conflicting
+   fetched bytes/transactions for the same canonical history are a safety fault: freeze acceptance and retain evidence. A gap cannot
    advance; resume or rebuild. A new transaction must extend the exact confirmed position and validated lineage.
 3. Compatible startup replay applies schema transactions normally. For application transactions, select the action
    from the table below. A successful comparison records the leader result identity while keeping local physical bytes separate. The comparison optimization grants no additional authority.
@@ -1828,7 +1804,7 @@ messages before this path can mutate confirmation; historical durable replay use
 | New schema transaction on a live follower | Detach the affected database into local volatile execution; no schema application, confirmation or mismatch restart. |
 | Schema transaction during compatible startup replay | Apply canonical TRL normally; preserve input cursor and advance canonical sequence. |
 | Complete matching event coverage and validated identical transaction payloads | Advance confirmed metadata; current BTree and local files remain unchanged. |
-| Follower has not consumed the complete leader range | Spool frames and await local coverage; do not restart for lag. |
+| Follower has not consumed the complete leader range | Retain the newest announced end and bounded fetched data; await local coverage, without restarting for lag. |
 | Structural mutation or outcome mismatch | Fence and restart follower; rebuild canonical state in a fresh process. |
 | Unrecoverable missing/corrupt comparison data | Restart/rebuild; do not accept unverified progress. |
 
@@ -1836,7 +1812,8 @@ The [structural comparison rules](#per-event-trl-boundaries-and-independent-batc
 Virtual memory batching does not change log grouping. Physical identity is validated separately from transaction content. A matching result does not grant the
 local bytes canonical physical identity or provide a readable historical root. Comparison encoding is B3.
 
-Compaction is optional: apply only to an eligible current head or retain the older layout. It needs no live rebase.
+Local compaction is optional and independent on every node. It works on an eligible local current head without
+waiting for confirmation or performing live rebase; it never enters follower acceptance.
 
 ### Peer transport abstraction and Kestrel adapter
 
@@ -1845,8 +1822,9 @@ not reference HTTP, ASP.NET Core, Kestrel, URI routing, headers, or sockets. Rec
 of the shared `ResumeToken` and typed transport outcomes.
 
 The preferred version-one production adapter uses resumable server-streaming HTTP plus small follower-to-leader HTTP
-requests rather than WebSockets. Canonical data and control messages flow from leader to follower on one long-lived
-response; status, compaction-operation results, and handoff responses flow back as separate authenticated requests. Together
+requests rather than WebSockets. Progress notifications and controls flow from leader to follower on one long-lived
+response; status and handoff responses flow back as separate authenticated requests. Native TRL data is fetched through
+separate bounded HTTP range requests. Together
 they form one logical leader session and do not require follower-to-follower connections. A small
 `BTDB.Replication.AspNetCore` integration package registers the HTTP adapter and maps it into the parent application's
 existing pipeline, conceptually:
@@ -1874,7 +1852,6 @@ POST /_btdb/replication/v1/session
     response body: length-delimited LeaderMessage stream
 
 POST /_btdb/replication/v1/sessions/{connectionId}/status
-POST /_btdb/replication/v1/sessions/{connectionId}/compaction-results
 POST /_btdb/replication/v1/sessions/{connectionId}/handoff-response
 
 GET /_btdb/replication/v1/databases/{databaseName}/{databaseInstanceId}/artifacts/{artifactId}
@@ -1888,10 +1865,8 @@ database's last direct canonical cut from
 its possibly older durable base and carry initialization/retirement declarations for a database set transition. A target's response is
 cluster-wide and covers every database active in the database set it proposes.
 
-The compaction-result request uses the shared binary DTO and accepts only the current operation/chunk identity for that
-authenticated session. Its typed result distinguishes applied, retained older layout, missing prerequisite, stale base,
-and invalid operation. It is ephemeral optimization feedback and does not acknowledge a canonical transaction. Leak
-removal does not use a replication HTTP route; it is requested through the separately injected parent event publisher.
+There is no compaction-result route: neither local nor remote compaction sends results to running peers. Leak
+removal uses the separately injected parent event publisher, not a replication HTTP route.
 
 The shared codec produces a binary content type and length-delimited frames. The HTTP adapter can expose
 `HttpResponse.BodyWriter` as a high-performance `PipeWriter` and explicitly call `FlushAsync` at bounded byte/time
@@ -1922,12 +1897,14 @@ Decision recorded 2026-09-14: use the native KVI as the published restore point.
 object, manifest, current-checkpoint pointer or checkpoint-selection CAS. References to a checkpoint elsewhere mean
 this KVI and its required BTDB files, not another persisted protocol object.
 
-1. Capture one committed root on durable canonical ancestry and pin the files/byte cuts needed to restore it.
+1. Capture one committed root on durable canonical ancestry and pin its source files/byte cuts. Plan the target Blob
+   inventory and serialize KVI with remote references through the [remote export path](#separate-node-local-and-blob-compaction-modes);
+   this is not a local-compaction checkpoint or a rewrite of the live local root.
 2. Finish uploading every required PVL and publishing the canonical TRL chain through the exact `(fileId, offset)`
    stored in the KVI. Prove those operations completed, including reconciliation of ambiguous responses. Keep these
    prerequisites available throughout KVI upload. Queued writes or uncommitted remote blocks are insufficient.
 3. Only after step 2 completes may any KVI upload request be dispatched, including staging its first remote block.
-   Local KVI capture/serialization may happen earlier; remote KVI transfer must not overlap unfinished prerequisites.
+   Local staging/serialization of the remote KVI may happen earlier; remote KVI transfer must not overlap unfinished prerequisites.
    The barrier uses the KVI's fixed cursor, not a continually moving tail: later TRL bytes need not finish first.
    Under the current leader's serialized publisher, write the complete native KVI to its fresh canonical file identity.
    Successful object publication is the KVI publication point. No subsequent pointer/manifest update is required.
@@ -1969,16 +1946,18 @@ Important properties are more significant than the exact names:
   not uploaded first.
 - Leadership term and lineage are explicit in mutable-TRL or range keys, so an old leader cannot extend a new term's
   accepted lineage.
-- Leader-authored `.trl` bytes and every referenced file must be available on each replica that uses them. Live
-  compaction may give replicas the same `.pvl` layout, while a missed control or recovery from an older KVI naturally
-  retains older references because TRL contains no physical compaction rewrite. Such a replica may have a different physical layout, but
+- Leader-authored `.trl` bytes and every referenced file must be available on each replica that uses them. Local
+  compaction independently changes each replica's `.pvl` layout; remote compaction exports a separately mapped KVI.
+  TRL contains no physical compaction rewrite. Every replica may have a different physical layout, but
   every reference must resolve to the same logical value and remain within files protected by retention rules.
 - Use attempt-qualified immutable object keys. Once retired for deletion, a key is never selected or reused again,
   even for identical bytes; a delayed old delete must not remove a future selected object.
 - The published KVI and canonical TRL must resolve every required file from Blob Storage; recovery must not depend
   on an unpublished local cache file.
-- The current leader may delete superseded remote files immediately after selecting a complete replacement recovery
-  closure. There is no follower acknowledgement, restore lease, grace period, or old-KVI retention delay.
+- The current leader makes superseded remote files eligible for deletion only after publishing a complete replacement
+  recovery closure. Plan a configurable delay, provisionally about one day from becoming obsolete, before actual Blob
+  deletion. This reduces restore/cleanup races without tracking followers or adding restore leases. The delay is an
+  operational policy, not a correctness requirement or a guarantee that an old KVI remains recoverable.
   Local cleanup remains independent and protects ordinary local readers and current-tree references.
 
 ### KVI publication and deletion interruption cases
@@ -2016,8 +1995,8 @@ is not a command to delete those local files.
 No automatic old-KVI fallback retention is required. Keeping an old KVI identity for diagnostics does not pin
 its files or promise recoverability. Backups remain a separate administrative facility. A file missing from the still
 current published closure is a publication/storage fault, not an expected GC race; keep the node unavailable and report
-it instead of serving partial state or asserting a newer checkpoint exists. Repeated restore restarts are observable,
-but must not add a remote deletion grace period.
+it instead of serving partial state or asserting a newer checkpoint exists. Repeated restore restarts are observable.
+The operational deletion delay reduces these races; restore must still handle missing superseded files.
 
 B5 covers direct TRL publication/continuation/fencing as well as publish-before-delete ordering, staging protection
 and permanent key non-reuse. Old-term in-flight deletes must remain harmless to the current closure; follower restore tracking is absent.
@@ -2028,7 +2007,7 @@ and permanent key non-reuse. Old-term in-flight deletes must remain harmless to 
 
 The [event-log contract](#event-log-contract-and-deterministic-replay) owns synchronous event execution.
 [Canonical TRL publication](#canonical-trl-publication) owns the leader's capture/preparation path;
-[canonical frame comparison](#canonical-frame-and-comparison-protocol) owns follower confirmation/repair. These are the
+[pull-based comparison](#progress-notification-and-pull-based-comparison) owns follower confirmation/repair. These are the
 same paths during ordinary operation and catch-up. A draining or retired instance instead follows the
 [volatile core path](#minimum-opt-in-btdb-core-extensions), returning explicitly local results with no canonical position.
 
@@ -2039,15 +2018,15 @@ replay cursor. A replica reconstructs one database in this order:
 
 1. After the previous process/readers terminate, discover the current remote recovery set, reuse matching verified
    local files and download only missing/mismatching files using the startup transfer pipeline below.
-2. Otherwise accept one `databaseBootstrap` naming the selected published native KVI and fetch its verified required
-   files through the leader artifact endpoint or object storage. No separate manifest/pointer selects that KVI.
+2. If a published KVI exists, fetch that selected native KVI and its verified required files directly from Blob Storage.
+   Without KVI, restore the selected genesis/TRL chain. No peer bootstrap message or separate manifest/pointer selects recovery.
 3. Follow the published TRL continuation chain and exact validated cuts from the KVI's TRL cursor. Use the
    [common acceptance path](#one-follower-acceptance-path) in durable-replay mode for ordinary TRL transactions and
    validated file transitions inside or between transactions. Unselected bytes/objects are ignored even when physically present.
 4. Stop exactly at the verified published TRL chain's final `(fileId, offset)`. Require the decoder to have no open transaction and the
    resulting canonical sequence, frame-chain hash, event position, and root identity to match the selected boundary.
-5. After reaching the Azure durable boundary, connect to the endpoint from `cluster/leader.json` and resume direct
-   frames from the exact `ResumeToken`.
+5. After reaching the Azure durable boundary, connect to the endpoint from `cluster/leader.json`, receive the latest
+   TRL progress and pull bytes starting at the verified leader-TRL resume position.
 6. Consume the corresponding upstream application events to build the follower's speculative suffix and divergence
    evidence. A new leader first reuses validated optimistic TRL beyond the adopted end; unavailable events are regenerated
    from the ordered input source.
@@ -2066,7 +2045,7 @@ eligibility and its application generation is not below the current floor.
 
 ### Checkpoint publication
 
-An interval or compaction completion can trigger [checkpoint capture](#native-kvi-publication). Every result uses the common
+A leader-side interval or remote maintenance request can trigger [checkpoint capture](#native-kvi-publication). Every result uses the common
 publisher's `PublishKvi` intent. Follower delivery remains bootstrap-only: selecting a newer checkpoint never
 pushes its KVI into an already running follower.
 
@@ -2074,7 +2053,7 @@ pushes its KVI into an already running follower.
 
 Use the [cluster transition engine](#cluster-transition-engine) for all entry paths. Lease transfer changes only how the
 target proves ownership. It does not bypass per-database activation, initialization, durable-base restoration, or the
-all-active-databases readiness gate. Later checkpoints and full compaction use ordinary leader paths after activation.
+all-active-databases readiness gate. Remote checkpoints/compaction use leader paths after activation; local compaction remains node-private.
 
 ### Restart or new replica
 
@@ -2102,7 +2081,7 @@ all-active-databases readiness gate. Later checkpoints and full compaction use o
    restart discards the partial local generation and rereads current Blob state; a rename is not recovery authority.
 8. Verify that every file referenced by the installed root remains protected, and initialize ObjectDB and
    application state before new event execution (B3). Step 6 already replayed post-KVI transactions; do not apply them
-   again. Later follower-local KVI metadata and useless-file cleanup have no canonical effect.
+   again. Later local cleanup creates no KVI and has no canonical effect.
 9. Read the current endpoint and API key from the leader record, connect the resumable leader session, and start
    proposing the corresponding upstream events from each accepted event position. An unpublished addition instead waits for leader-only initialization; a removed instance is outside cluster recovery and any optional local reopen uses `.temptrl`.
 10. Only after every required published database has been fully downloaded from Blob Storage and validated/restored
@@ -2123,6 +2102,17 @@ object-store and event-retention assumptions, while insufficient durable inputs 
 than a corrupted database.
 
 ### Fast startup with verified cache reuse and ordered replay
+
+Performance target: complete startup within 15 minutes for a large database of approximately 100 GB, including a
+cold Blob-to-local restore. Measure from startup through discovery, download, local writes, validation, KVI open and
+TRL replay to database readiness, not just the transfer interval. This is a target to qualify, not a measured guarantee.
+
+Transferring 100 GB in 900 seconds alone requires about 111 MB/s of sustained payload throughput (decimal units).
+Allow headroom for the remaining work and overlap download, disk writes, validation and ordered replay where possible.
+Optimize bounded cross-file and large-file range concurrency against real Azure/network/disk measurements. Record
+end-to-end time, transferred bytes, sustained throughput, phase times and peak memory; include cold and verified-cache
+starts. Choose transfer sizes and concurrency from these measurements rather than fixed speculative tuning.
+
 
 Decision revised 2026-09-14: local disk is the scarce resource; remote space need not be minimized aggressively.
 The blanket delete-all-cache restart rule is withdrawn. Blob Storage still selects truth; surviving local files only
@@ -2259,7 +2249,7 @@ This table applies the shared state machines; it does not introduce alternate re
 | Missing/duplicate/conflicting canonical data | Gap cannot advance; exact duplicate is idempotent; conflict is a safety fault | Resume from confirmed metadata or restart for canonical rebuild using the common acceptance path. |
 | Event-structure match / mismatch | Validate ordinary transaction framing and payloads; actual structural or outcome mismatch restarts follower | Matches advance metadata only; no live suffix repair. |
 | Long speculative lag or structural mismatch | No speculative state becomes canonical by age or volume | Disk-backed comparison; no historical replication roots. Mismatch restarts and rebuilds. |
-| Lost, stale, or inapplicable compaction controls | Application frame processing continues | Keep older valid layout and its local pins. Future open may bootstrap a newer checkpoint. |
+| Independent local/remote compaction | Application frame processing continues without compaction messages | Keep each node's valid local layout and pins. Future open restores the selected remote KVI. |
 | Shutdown at any transaction/compaction boundary | No new canonical work after the per-database cut | Continue `.temptrl`; cancel compaction at a bounded safe point; use authority lane only. |
 | Failed target or ambiguous lease transfer | Draining never resumes canonical work | Reconcile proposed lease ownership, try another target only when authority permits, or await expiry. |
 | Scratch cleanup failure / scratch I/O failure | No promotion or remote fallback | Cleanup failure stays unavailable; disk exhaustion is fatal and uses restart with old cache removed first. |
@@ -2387,16 +2377,16 @@ on B1, B3, B5, and B6 remain acceptance requirements until those mechanisms are 
 | Invalid comparison cache | Missing/corrupt bytes reject confirmation and trigger restart/rebuild when unrecoverable | I3, I8, I9 |
 | Failed consumption | Identical rollback attempts/content/outcomes versus mismatch; no implicit skip or consumed-cursor advancement; application-directed fail-fast with/without marker; prior batch commits survive; verify ObjectDB caches/counters | I2, I3, I5, I8 |
 | Skip replay | Leader skip versus follower success and reverse; same-outcome exact match; crash before/after skip commit and publication; durable skip never invokes handler; unpublished skip may be re-decided after takeover | I2, I3, I5, I8 |
-| Follower acceptance | Exact match does no BTree work/copy; live input lag spools frames until local coverage; bootstrap replays selected canonical history; duplicate/gap/conflict; logical mismatch; equivalent transactions on different valid physical layouts | I2, I3 |
+| Follower acceptance | Exact match does no BTree work/copy; live input lag coalesces progress until local coverage; bootstrap replays selected canonical history; duplicate/gap/conflict; logical mismatch; equivalent transactions on different valid physical layouts | I2, I3 |
 | Restart recovery | Structural mismatch first/middle/last; fence racing a commit; host termination; canonical rebuild ignores divergent cache; fresh ObjectDB counters/caches; restart-loop diagnostics | I3, I4, I9 |
 | Speculation resources | Extended disconnection and slow delivery; bounded comparison RAM and pending TRL disk growth; bounded streaming comparison; explicit storage failure without remote admission dependencies | I4, I9 |
 | Leak events | Every replica detects only accepted roots; malformed/hash-invalid/duplicate/over-budget candidate; bounded batching; delayed, overlapping and ambiguous parent publication; normal event replay including a transaction spanning several TRLs | I2, I3, I10 |
-| Physical compaction | PVL prerequisite missing/corrupt; duplicate/stale/out-of-order chunks; per-chunk base with interleaved events; partial/full completion; follower retains older layout without application gap | I3, I9, I10 |
-| KVI and local cleanup | Exactly one bootstrap KVI per open; no later live KVI; older/newer local startup layouts; cleanup-only stop before PVL/rewrite; follower KVI disjoint from canonical allocation | I8, I9, I10 |
-| Reader/file lifetime | Long-lived accepted and optimistic readers; ordinary user-reader/current-tree/comparison-file/recovery lifetimes; allocation after missed compaction; no distributed deletion decisions | I9, I10 |
+| Physical compaction | Independent leader/follower rewrites with interleaved events; no KVI/peer output from local mode; remote PVL reuse/repacking and file-ID/offset remapping; different local/remote inventories; interrupted export retains remote closure | I3, I9, I10 |
+| KVI and local cleanup | Exactly one bootstrap KVI per open; no later live KVI; older/newer local startup layouts; full local compaction on followers; zero local KVI creation; independent remote inventory and remapped export | I8, I9, I10 |
+| Reader/file lifetime | Long-lived accepted and optimistic readers; ordinary user-reader/current-tree/comparison-file/recovery lifetimes; independent local/remote allocation after compaction; no distributed deletion decisions | I9, I10 |
 | Startup pipeline | Equal-length corrupt file; valid reusable file; absent/stale checksum; active tail always redownloaded without whole-file hashing; version change during download; sealed tail becomes reusable; reversed download completion; cross-file transaction; no KVI; retained obsolete remote files; bounded lookahead and pinned TRL values | I5, I8, I9 |
 | Cache loss | Delete/truncate/replace/mix local file types before open and while running; all caches lost; disk exhaustion during append/compaction/restore; terminate readers before deletion; reuse only matching identity/length/hash; remove obsolete files before replacement download; interrupted restore revalidates; insufficient space remains unavailable | I1, I8, I9 |
-| Remote GC | Delayed old-term delete; attempted reuse of retired key; unselected initialization upload later published; current published recovery closure; immediate delete during follower download causes restart onto newer KVI; no grace period | I5, I7, I9 |
+| Remote GC | Delayed old-term delete; attempted reuse of retired key; unselected initialization upload later published; current published recovery closure; configured deletion delay; deletion during a long follower download still causes restart onto newer KVI | I5, I7, I9 |
 | Transport | Independent leader links fail while others work; reconnect storms; old status/connection IDs; rotated credentials; unauthorized request; secret logging; bounded queues and unavailable retained ranges | I1, I3, I12 |
 | Input/read contract | One shared stream across databases; slowest required cursor protects retained input; duplicate/gap/expired input; source unavailable with canonical bytes available; read token across term rollback; logged/confirmed 105 with readable batch root 100 cannot satisfy minimum 105; speculative/volatile reads never labeled durable; pending initialization has no reads | I2, I3, I8, I11 |
 | Non-application publication | Follower waits before writer lock/TRL output; genesis predecessor CommitUlong; immediate complete-transaction publication including every required TRL range after any required prior tail; dependent local writes may proceed before CAS; immediate flush bypasses lazy batching without blocking Commit; delayed/ambiguous CAS and lost authority; cancellation and duplicate migration after wakeup | I1, I2, I5, I6 |
@@ -2426,6 +2416,11 @@ safety failure or leave byte-identity integration and fatal disk-exhaustion reco
 
 ### Implementation and proof blockers
 
+[M1 executable evidence](M1Evidence.md) covers bounded authority and direct TRL CAS, including live Azure checks
+linked from the storage research. It does not close production integration. KVI selection is only part of Blob-to-local
+open/restore: publish every dependency before KVI, and restart restore if concurrent cleanup removes a needed file.
+The incomplete-local-copy test does not imply any additional KVI ancestry metadata or selection protocol.
+
 There is currently no pending application-owner policy choice. The following are engineering mechanisms and proof
 obligations under the selected design; they must be resolved before the corresponding implementation is relied on.
 If a proof requires changing agreed behavior, bring back that concrete conflict and alternatives rather than silently
@@ -2433,7 +2428,7 @@ changing policy. The documented state transitions specify intended behavior, not
 
 | ID | Engineering work before the mechanism is relied on | Required evidence |
 | --- | --- | --- |
-| B1 Authority freshness | Short-lived confirmation grants are selected. Specify their exact clock/pause bounds, renewal margins, challenge/revocation bookkeeping and drain bounds, plus in-flight commit fencing. Confirmation is optional consistency evidence; local takeover rejects predecessor live messages. A GET does not establish a fresh lease lifetime. | Old-term acceptance excluded under pauses, delayed grant responses/frames, revocation and takeover races; disconnected-grant drain; takeover without direct confirmation; real-provider conformance. |
+| B1 Authority freshness | Short-lived confirmation grants are selected. Specify their exact clock/pause bounds, renewal margins, challenge invalidation and drain bounds, plus in-flight commit fencing. Confirmation is optional consistency evidence; local takeover rejects predecessor live messages. A GET does not establish a fresh lease lifetime. | Old-term acceptance excluded under pauses, delayed grant responses/frames and takeover races; disconnected-grant drain; takeover without direct confirmation; real-provider conformance. |
 | B3 Replication integration and transaction rollback | Virtual batching preserves ordinary per-transaction TRL and needs no different-batch normalization/reframing. Implement cross-file transaction capture/publication and opt-in odd TRL allocation, including immediate closure of legacy even append targets; specify ordinary rollback TRL retention/comparison without cursor advancement, application transaction integration, file/header identity, ObjectDB state and idempotent tail adoption. | Core byte-equality test covers payloads, not complete distributed operation. Real divergence restarts; rollback preserves prior commits; fenced append/retry does not duplicate events. |
 | B5 Publication/deletion ordering | Qualify direct TRL CAS, rotation/genesis discovery and predecessor fencing without a second state commit; implement publish-before-delete, staging protection, and permanent key non-reuse. Superseded files may be deleted after KVI publication; remote-space savings need not be aggressive and follower restores do not pin them. | Selected KVI and tail remain complete; delayed old deletes cannot remove newly selected data; a follower losing old restore files restarts onto the latest KVI. |
 | B6 Progress and recovery | Separate pending-work watchdogs and follower-first full restore before contention are selected. Define no-progress deadlines, bounded host termination, abdication and activation backoff. The application owns failure classification and optional skip requests; document the application input-retention/replay assumptions without adding a separate durability protocol. | Warm/cold failover budgets; idle streams stay healthy; failed workers cannot hold authority indefinitely; missing unpublished BTDB work is regenerated from retained input. |
@@ -2449,8 +2444,8 @@ are now normative. They require tests but are no longer alternative algorithms t
 | Q2 Core API and codecs | Opt-in capture/pin/replay/export APIs; canonical position persistence separate from reused BTDB TransactionId; exact transaction and logical-change encoding; hashes and redacted diagnostics; independent protocol/leader-record/TRL-metadata/native-format/protocol compatibility; no separate checkpoint-object format. |
 | Q3 Application/read semantics | Local commit success and local snapshot reads are selected; failure policy and external effects belong entirely to the application. Remaining work: native schema lifecycle and compatible startup replay, ordinary local snapshot visibility and application-owned input recovery. Stronger read/durability APIs are not prerequisites for this design. |
 | Q4 Operational budgets | Independent per-replica virtual memory-batch count/bytes/time and independent remote publication-batch bytes/time; checkpoint cadence; local hard-flush policies; root/history and event-retention budgets; warm/cold RTO; handoff lag/grace and long-transaction limits; watchdog thresholds and metric alert levels. |
-| Q5 Transport | Shared binary codec; frame/artifact bounds; heartbeat/status/flush cadence; connection replacement, retry/resume/backpressure and range retention; authorization beyond the shared key. |
-| Q6 Maintenance | Bounded compaction codec/chunk preconditions and canonical allocation watermark; local cleanup inventory and cache-KVI cut; checkpoint scheduling after compaction; leak detector compatibility, trust/reachability validation, exact-key budgets, batching, and deduplication. |
+| Q5 Transport | Three-field progress notification and bounded TRL range pull; native decoding, coalescing and unchanged-eventId schema notification; authority-bound requests, reconnect and range retention; byte piggyback optimization deferred; authorization beyond the shared key. |
+| Q6 Maintenance | Bounded local compaction chunks and separate local/canonical allocation; separate local/remote compaction inventories; no local KVI; remote PVL destination allocation and KVI reference/cursor remapping; leak detector compatibility, trust/reachability validation, exact-key budgets, batching, and deduplication. |
 | Q7 Recovery and storage | TRL continuation, initial/checkpoint discovery and optional index retention without losing ancestry; latest-checkpoint restore and complete event coverage; offline backup restore with new stream/cursor binding and leader-record reset; runtime local-integrity cadence; restart on removed restore files without remote pins; reuse of transfer code without legacy unconditional writes. |
 | Q8 Deployment and lifecycle | Database-name/instance syntax; generation allocation/conflict checks; eligible rollout redundancy; current-input-end capture and retention during genesis publication; abandoned namespace retention/administration; exact scratch namespace/cleanup and fatal disk-exhaustion restart and explicit local commit result. |
 
@@ -2492,8 +2487,8 @@ Idle comparison may wait for the next commit. Capture/retention during virtual-b
 #### R5 Writer admission — selected existing asynchronous API
 
 Use `StartWritingTransaction()`; prohibit synchronous `StartTransaction()` in replication mode. Keep explicit read-only
-transactions. ObjectDB inspects read-only and defers ordinary registration metadata until the first application upsert.
-Secondary-index upgrades alone open a separate leader-admitted writer and revalidate after waiting. Ordinary
+transactions. ObjectDB checks the complete relation list read-only and persists new schemas and index upgrades
+in at most one startup writing transaction. Startup orchestration supplies leader authority before initialization. Ordinary
 application followers retain their writer path. Immediate asynchronous non-application flush after commit remains required; local completion does not await Blob.
 
 ### Application API decisions after storage decisions
@@ -2502,7 +2497,8 @@ application followers retain their writer path. Immediate asynchronous non-appli
 
 Application writer admission supplies eventId to StartWritingTransaction, which immediately sets CommitUlong on the
 writable transaction. No separate validation against a manually set cursor is needed. Without eventId, admission is
-non-application and waits for leadership before writer reservation; genesis sets its predecessor cursor explicitly.
+non-application. Secondary-index reconciliation runs at most once as the first ObjectDB writer after open; startup
+orchestration waits for leadership before opening it. No generic core writer gate is needed. Genesis sets its predecessor cursor explicitly.
 Rollback discards the working cursor with the transaction. No new persisted kind marker is introduced.
 
 #### N2 Publication scheduling — selected asynchronous immediate flush
@@ -2513,15 +2509,15 @@ Followers may request the recent tail from the leader with a short timeout, othe
 unpublished work from application input. The [write admission rules](#leader-only-non-application-write-barrier) own
 publication ordering and ambiguity. Published durability is still established only by the TRL CAS.
 
-#### N3 Deferred ObjectDB initialization writes — selected ordinary metadata deferral
+#### N3 ObjectDB initialization writes — selected eager startup registration
 
-Defer the initialization/registration write until the first application writing transaction that performs an upsert;
-do not force eager preparation or an application retry protocol. Pending in-memory metadata must survive read-only
-inspection without persisting changes and follow normal commit/rollback semantics when first written.
+After ObjectDB opens, `InitializeRelations` checks all registered relation schemas and indexes in a read-only
+transaction. If changes are needed, persist them together in one startup writing transaction, including schemas
+of new empty relations and creation callbacks. Do not create relation schemas during application upserts or ID allocation.
 
-This applies only to ordinary initialization/registration metadata. Secondary-index additions/removals during upgrades
-remain separate leader-only non-application transactions with unchanged CommitUlong, immediate asynchronous flush,
-and the existing live-follower detachment behavior. Do not combine those upgrade changes into an application upsert.
+Startup orchestration waits for leader authority before initialization that may write. These are non-application
+transactions with unchanged CommitUlong, immediate asynchronous flush, and the existing live-follower detachment
+behavior. Follower startup uses compatible published schemas without running migrations.
 
 ## Design history and alternatives
 
@@ -2529,14 +2525,16 @@ Decisions incorporated into the normative sections:
 
 | Date | Adopted direction |
 | --- | --- |
-| 2026-09-14 | Application writer eventId automatically sets CommitUlong; non-application commit triggers immediate asynchronous flush without blocking local work. Defer ordinary initialization metadata until first application upsert, but keep secondary-index upgrades separate. |
+| 2026-09-14 | Plan configurable delayed Blob deletion, provisionally about one day after files become obsolete. Keep dependency-first KVI publication and restore retry; no follower tracking is required. |
+| 2026-09-17 | Replace ordinary metadata deferral with complete startup relation registration: read-only inspection, then at most one writer for new empty schemas, schema/index upgrades and creation callbacks. |
+| 2026-09-14 | Application writer eventId automatically sets CommitUlong; non-application commit triggers immediate asynchronous flush without blocking local work. Ordinary metadata deferral was later superseded by eager startup registration. |
 | 2026-09-14 | Select prepared-successor publication; unchanged CommitUlong identifies non-application commits except genesis; compare retained rollback TRL with later commits; require async writer admission and readonly-first ObjectDB initialization. Native KVI written last is the publication point; no checkpoint pointer or manifest. |
 | 2026-08-30 | Azure-first cluster leadership, transaction-aligned publication, injected adapters, and leader-centered sessions |
 | 2026-08-31 | Initial generation-fenced transition proposal; selected seeds and frozen retirement requirements superseded below |
 | 2026-09-07 | Inline `databaseNames` in the leader JSON; initialization metadata stays per database |
 | 2026-09-07 | Activate with an empty transaction and starting event cursor; unpublished databases may restart from scratch without preserving provisional seeds |
 | 2026-09-07 | Removed names are never reused; old nodes continue independently until shutdown. Exact retirement freeze and blocker B2 removed |
-| 2026-09-01 | Originally event-only TRL; schema transactions added on 2026-09-14. Parent-published leak removal and out-of-band physical compaction remain selected. |
+| 2026-09-01 | Originally event-only TRL; schema transactions added on 2026-09-14. Parent-published leak removal remains selected. Leader-distributed compaction was replaced by independent local and leader-only remote compaction on 2026-09-14. |
 | 2026-09-06 | Leader-only batching and metadata-only skips; the initial retained-root/suffix-repair proposal is superseded below. |
 | 2026-09-07 | Batching-independent structural TRL comparison; follower mismatch restarts/rebuilds. No replication-owned old BTree roots or live suffix repair; B4 removed and B3 narrowed. |
 | 2026-09-07 | Superseded on 2026-09-12: emit event-end Ulong updates inside TRL; all replicas batch independently. Takeover appends only validated optimistic events beyond the adopted canonical end, without duplicate consumption. |
@@ -2548,7 +2546,7 @@ Decisions incorporated into the normative sections:
 | 2026-09-14 | Application-owned identical transactions including rollback; local commit/read semantics; application failure and external-effect policy; follower-first complete Blob restore; new databases start at current input end |
 | 2026-09-14 | Reuse remote-matching local files by length and whole-file checksum; parallel bounded startup transfer with ascending TRL replay; no KVI requires all canonical TRLs. Local disk is prioritized over remote space. |
 | 2026-09-12 | Historical cache policy superseded above. Implemented virtual batching preserves ordinary per-event TRL payloads; no batching normalization/reframing. Disk full is fatal: terminate readers, delete cache, restore latest Blob closure, replay Kafka input. |
-| 2026-09-07 | Delete superseded remote files immediately after publishing the replacement KVI; interrupted follower restores restart onto the newest checkpoint. No restore leases or grace period. |
+| 2026-09-07 | Superseded by the 2026-09-14 operational-delay preference: delete superseded remote files immediately after publishing the replacement KVI; interrupted follower restores restart onto the newest checkpoint. No restore leases or grace period. |
 | 2026-09-06 | Shared identities, one database publisher, one transition engine, and one follower acceptance path; checkpoint selection constrained to durable ancestry and allowed to replace physical layout at equal position |
 
 The following alternatives explain the storage decision. Version one remains conditional atomic TRL tail append with
@@ -2560,7 +2558,7 @@ Historical alternatives: manifest/chunk-based publication below is superseded by
 It does not impose a manifest or pointer on the selected design.
 
 The event log and canonical TRL contain the same ordered application transitions, including a parent-published
-leak-removal event. Out-of-band compaction controls are deliberately absent from both. A valid KVI seals one physical
+leak-removal event. Compaction operations are deliberately absent from both. A valid KVI seals one physical
 layout for recovery; an older KVI naturally reconstructs the older layout by replaying only application transactions,
 while a later selected checkpoint can carry the leader's compacted KVI and files for a future follower open or rebuild.
 It is never pushed into a database that is already running. Azure retains accepted remote TRL boundaries and checkpoints
@@ -2659,60 +2657,10 @@ no correctness benefit over an immutable checkpoint object followed by manifest 
 
 ### Historical candidate: identical event TRL and independent local compaction
 
-Historical discussion on 2026-09-08; the batching questions below are superseded by the verified virtual batching decision of 2026-09-12. The compaction alternatives remain a candidate replacement for the preceding batching and distributed-compaction design,
-not a claim that the existing APIs already implement it. Separate event-log transaction boundaries from publication of
-an in-memory BTree batch. Each event produces the same complete log transaction on every replica given identical
-application execution, while each node independently decides when to publish its working root to local readers.
-Deterministic TRL is a property to validate; nondeterministic handler results still cause divergence and restart.
-
-Current code ties the operations together: `CommitWritingTransaction()` writes metadata/commit bytes, flushes, and swaps
-`_lastCommitted`. Its metadata deltas are relative to that published root. A split implementation needs a separate
-last-logged-event metadata baseline. `Compactor.RunCore()` currently creates a flushing transaction and requests a
-`TemporaryEndOfFile`; the temporary close appends bytes and hard-flushes but does not itself rotate the log. Replace this compactor
-operation with a byte-preserving hard flush; canonical log rotation must remain independent of local compaction.
-TRL headers, rotation thresholds, codec configuration and logical file identities must likewise be independent of local
-PVL/KVI allocation. Identical event-record bytes do not imply identical directory contents after local compaction.
-
-There is a failure-semantics decision: once an event's complete log transaction is accepted as committed, a later
-failure in the same memory batch cannot erase that earlier event. If the working batch root must be discarded, rebuild
-its completed events from their log without rerunning handlers, then handle the failed event. Either this replaces
-whole-application-batch rollback, or log publication must remain provisional until the entire memory batch succeeds.
-The latter needs an explicit acceptance boundary; a commit-shaped provisional byte sequence is not durable history.
-Do not silently claim both independent per-event log commits and atomic rollback of already accepted earlier events.
-
-Independent local compaction produces private PVLs and KVIs, preserving logical state and the event log. Running nodes
-need no pointer-rewrite/PVL distribution. Local file cleanup continues to respect current roots, user readers, and any
-unpublished log ranges needed for comparison or takeover.
-
-Remote compaction can use one of two producers with the same checkpoint-publication contract:
-
-- Export an existing node's locally compacted checkpoint, preferably the current leader at a canonical event boundary.
-  Serialize a pinned current root into KVI, record its full value-file closure and log cursor, pin those files, then
-  release the root after serialization. Upload every referenced file or exact immutable prefix not already available.
-  This does not need an independent full in-memory BTree. Temporary copy-on-write retention during KVI serialization
-  still consumes memory; pinning files for upload must not unnecessarily retain the root for network duration.
-- A newly starting replica, or a dedicated job, opens the currently published canonical checkpoint and log through a
-  fixed durable boundary C, compacts its own copy, and emits a candidate KVI/PVL closure. It does not execute application
-  events or become event leader. A starting replica can use its one BTree for this work and subsequently catch up/join;
-  a dedicated process moves the extra BTree's memory out of an application node, but still needs that memory somewhere.
-
-A locally compacted BTree cannot describe the original remote physical reachability graph, but it can describe a
-complete replacement snapshot. Existing `CreateKeyIndexFile()` serializes actual file IDs/value offsets and enumerates
-used files; `CreateIndexFile()` temporarily pins one existing root. An export API would reuse those capabilities while
-keeping the captured file closure alive. This is not permission to upload just a KVI whose referenced local PVLs are
-missing remotely. Snapshot-scoped file-ID mapping and the connection to canonical future TRL must be explicit so local
-compaction IDs cannot collide with later log/PVL IDs. Copying KVI bytes alone does not solve that integration.
-
-Whichever producer is used, only the current leader publishes the replacement through its serialized checkpoint publisher. The candidate supplies its canonical event boundary, ancestry identity, KVI, full file closure and canonical
-log cursor. Boundary C must be on the currently selected durable history and no later than its durable end D. Keep the
-canonical log from C to D and onward; selecting a new physical checkpoint must never move durable progress backward.
-Reject a stale or unrelated candidate and preserve current publisher fields on CAS retry. Upload the complete closure
-before selection; delete superseded objects immediately afterward using the agreed no-restore-grace policy. A job or
-starting replica whose input files disappear restarts from the newest published KVI, just like another restoring node.
-
-The architectural simplification to evaluate first is exporting a complete locally compacted leader snapshot. A job is
-useful when isolating compaction CPU/memory is worth another deployment path, or when no existing node can supply a
-suitable canonical snapshot. Neither producer requires maintaining a permanent second BTree in every application node.
+The 2026-09-08 discussion explored independent event-log framing, local compaction and remote checkpoint producers.
+Virtual batching was selected on 2026-09-12. On 2026-09-14 independent full local compaction without KVI and leader-only
+remote compaction with remapped KVI were selected; see the [normative maintenance section](#independent-local-compaction-and-leader-only-remote-compaction).
+The earlier local-KVI, follower-result distribution and dedicated remote-compaction job alternatives are not selected.
 
 ### Verified compactor flush simplification
 

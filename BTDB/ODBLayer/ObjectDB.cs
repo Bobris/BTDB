@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -9,6 +10,7 @@ using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
+using BTDB.IL;
 using BTDB.IOC;
 using BTDB.KVDBLayer;
 using BTDB.Serialization;
@@ -298,6 +300,79 @@ public class ObjectDB : IObjectDB
     public IObjectDBLogger? Logger { get; set; }
 
     public ISymmetricCipher GetSymmetricCipher() => SymmetricCipher;
+
+    public async ValueTask InitializeRelations(IEnumerable<Type> relationTypes)
+    {
+        ArgumentNullException.ThrowIfNull(relationTypes);
+        var previousRelations = _relationsInfo;
+        var previousFactories = RelationFactories;
+        var relations = new RelationsInfo(previousRelations);
+        var factories = new Dictionary<Type, Func<IObjectDBTransaction, IRelation>>(previousFactories);
+        var prepared = new List<RelationInfo>();
+        var needsWriting = false;
+        using (var read = (IInternalObjectDBTransaction)StartReadOnlyTransaction())
+        {
+            foreach (var type in relationTypes)
+            {
+                ArgumentNullException.ThrowIfNull(type);
+                if (factories.ContainsKey(type)) continue;
+                if (!type.IsInterface || type.ContainsGenericParameters ||
+                    type.SpecializationOf(typeof(ICovariantRelation<>)) == null)
+                    ActualOptions.ThrowBTDBException("Relation type " + type.ToSimpleName() +
+                                                    " must be a closed interface implementing ICovariantRelation<>");
+                var name = type.GetCustomAttribute<PersistedNameAttribute>()?.Name ?? type.ToSimpleName();
+                var builder = RelationBuilder.GetFromCache(type, RelationInfoResolver);
+                var relation = relations.CreateByName(read, name, type, builder, false);
+                factories.Add(type, (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator(relation));
+                prepared.Add(relation);
+                needsWriting |= relation.NeedsInitialization(read);
+            }
+        }
+
+        if (!needsWriting)
+        {
+            _relationsInfo = relations;
+            RelationFactories = factories;
+            return;
+        }
+
+        using var write = (IInternalObjectDBTransaction)await StartWritingTransaction().ConfigureAwait(false);
+        // Publish all factories together so OnCreate can access any relation in this registration set.
+        _relationsInfo = relations;
+        RelationFactories = factories;
+        try
+        {
+            foreach (var relation in prepared) relation.Initialize(write);
+            foreach (var relation in prepared)
+            {
+                if (relation.LastPersistedVersion != 0) continue;
+                var onCreate = ActualOptions.Container?.ResolveOptional(
+                    typeof(IRelationOnCreate<>).MakeGenericType(relation.InterfaceType!));
+                if (onCreate is IInternalRelationOnCreate callback)
+                    callback.InternalOnCreate(write, write.GetRelation(relation.InterfaceType!));
+            }
+
+            write.Commit();
+        }
+        catch
+        {
+            _relationsInfo = previousRelations;
+            RelationFactories = previousFactories;
+            throw;
+        }
+    }
+
+    internal void UnregisterRelation(Type type)
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref RelationFactories);
+            if (!current.ContainsKey(type)) return;
+            var updated = new Dictionary<Type, Func<IObjectDBTransaction, IRelation>>(current);
+            updated.Remove(type);
+            if (Interlocked.CompareExchange(ref RelationFactories, updated, current) == current) return;
+        }
+    }
 
     public void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, IRelation> factory)
     {

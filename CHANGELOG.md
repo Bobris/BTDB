@@ -21,6 +21,77 @@
 
 ### Changed
 
+- Allow AutoAdjustFileSize with a transaction-log size strategy. Keep PVL compaction and chunk-storage sizing
+  independent of the active TRL limit; autosizing changes local file targets without changing strategy-controlled TRLs.
+
+- Add ObjectDB.InitializeRelations for startup registration of a complete relation-type list. Check schemas and
+  indexes read-only, then persist all changes, including new empty relation schemas and OnCreate callbacks, in
+  at most one writing transaction. Preserve registrations and database contents on failed initialization.
+
+- Reduce TRL capture to completed and acknowledged (fileId, offset) positions. Remove per-transaction records,
+  index files, sequence counters, capture I/O failure state and wakeups. Coalesce publication into complete native
+  prefixes and retain unacknowledged TRLs through the compactor boundary.
+
+- Decode TRL commands directly in the replay loop; remove the intermediate command struct and decoder layer.
+  Preserve length/flag validation and copy inline values directly into their BTree representation.
+
+- Remove TransactionLogReader and redundant command decoding from native TRL publication. Use byte-range equality
+  for replication comparisons; keep command decoding only in database startup and batch replay.
+
+- Remove lazy relation-schema creation and its per-write pending checks. Persist schemas, including empty relations,
+  during initialization; legacy transaction registration requires a writer for new or changed schemas. Rollback
+  discards the affected registrations so initialization can be retried.
+
+- Defer size-triggered TRL rotation on database reopen until the next transaction, also without a custom size strategy.
+
+- Remove the redundant parity argument from the database-aware file collection API; derive parity from file type
+  and the database allocation mode. Add real-compaction coverage showing why unpublished capture bytes need retention.
+
+- Add an internal capture-backed canonical TRL publication lane with streamed conditional append, successor-first
+  cross-file/genesis publication and metadata-only tail adoption. Retain ambiguous intents and source retention, reconcile
+  exact native prefixes in bounded chunks, and fence new writes after lease loss without stopping local execution.
+  Add native restore/interruption/race coverage; production Azure transport and coordinator integration remain pending.
+
+- Add pinned native KVI export directly to a forward-only writer for chunked Blob upload, preserving TRL identities
+  and offsets while substituting only whole-PVL file IDs. Keep local compaction and remote export cancellation separate.
+- Add an internal checkpoint publication helper that reuses verified downloaded/uploaded PVLs across checkpoints,
+  retains uncertain upload destinations for retry, and waits for all PVL/TRL prerequisites before KVI upload starts.
+  Production storage, canonical authority and remote cleanup integration remain pending.
+
+- Remove ScratchFileCollection, the core scratch switch and special temporary-file cleanup. Local writes and
+  compaction continue normally when remote publication stops; startup cache validation uses Blob history.
+  Keep native file-ID restore coverage and verify publication cancellation leaves local execution running.
+
+
+- Keep native command decoding internal to replay, with validation of command lengths and flags.
+- Remove generalized non-application writer admission: replication reconciles secondary indexes in at most the first
+  ObjectDB writing transaction, with leadership handled at startup. Keep ordinary writer-queue cancellation.
+- Replace per-file pin counting with the compactor's existing used-file protection from the oldest required TRL.
+  KVI export sources are retained by their referenced BTree root.
+
+- Set the replication startup performance target to at most 15 minutes for approximately 100 GB, including cold Blob
+  restore, validation and replay; qualify download concurrency and pipeline overlap with end-to-end measurements.
+
+- Plan configurable delayed Blob cleanup, provisionally about one day after replacement publication makes files
+  obsolete, to reduce restore races while retaining missing-file retry and avoiding follower tracking.
+
+- Add internal replication M1 lease/grant deadlines and native TRL metadata/CAS intents, with deterministic race tests,
+  native multifile commit/rollback replay and a live Azure capability probe. Use one bounded grant-drain deadline
+  instead of peer revocation messages. Production integration remains open; KVI uses the existing dependency-first
+  publication and restore-retry rules without an additional selection protocol.
+
+- Simplify planned peer replication to committed `(eventId, trlFileId, trlPosition)` notifications followed by native
+  TRL range pulls. Defer byte piggyback optimizations and remove per-transaction push envelopes; bootstrap KVI/PVL
+  is fetched directly from Blob Storage.
+
+- Revise planned replication compaction: every node performs local physical compaction without KVI; only the leader
+  compacts Blob files using a separate inventory and a native KVI exported with remote file-ID/offset mappings.
+  Remove compaction operation/result distribution to running peers; remote outputs serve ordinary restore only.
+
+- Add the BTDB.Replication M0 test foundation: deterministic node scheduling, seeded fault injection, isolated native
+  BTDB application fixtures and independent model-history checks, with an explicit coverage register. The distributed
+  replication protocol and production adapters remain unimplemented.
+
 - Add an optional deterministic TRL-ID size strategy with soft rotation between transactions and a strict hard
   limit below 4 GiB, including cross-file metadata/commit handling, reopen, and oversized-command rejection.
 
@@ -28,9 +99,6 @@
   for KVI, PVL and sub-database allocations; retain unconstrained allocation when the option is disabled.
 - Add core replication preparation APIs: application writers automatically set CommitUlong from eventId; optional
   explicit transaction admission and odd TRL allocation preserve standalone defaults and legacy even-tail replay.
-- Allow opt-in read-only registration of new ObjectDB relations with metadata persisted on the first data write,
-  retaining metadata after rollback/retry; keep existing relation/index upgrades eager and use read-only ObjectDB
-  startup metadata reads.
 - Require completed PVL and canonical TRL publication through the KVI cursor before starting any KVI upload,
   including remote block staging; completing KVI last alone is insufficient.
 - Consolidate replication lifecycle and publisher state transitions, interruption ordering and KVI cleanup proof
@@ -40,9 +108,9 @@
   restart after 15 continuous minutes without a valid observable leader.
 - Clarify replication writer admission automatically sets CommitUlong from eventId; non-application commits trigger
   immediate asynchronous flush without a durability wait, and recent leader tail reads have a short timeout before
-  input replay fallback. Defer ordinary ObjectDB initialization metadata until first application upsert; keep index upgrades separate.
-- Record remaining replication API choices for writer admission context, non-application commit completion and lazy
-  ObjectDB schema initialization; align remote cleanup wording with optional deferred deletion after KVI publication.
+  input replay fallback. Initialize relation schemas and indexes together before application processing.
+- Record replication API choices for writer admission context, non-application commit completion and ObjectDB
+  schema initialization; align remote cleanup wording with optional deferred deletion after KVI publication.
 - Simplify replication cache reuse to sealed files: always redownload the last growing TRL on restore and calculate
   its whole-file checksum only after sealing.
 - Revise replication startup design to reuse checksum-verified local files, bound parallel downloads by replay

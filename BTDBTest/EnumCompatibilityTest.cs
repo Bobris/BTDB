@@ -36,6 +36,11 @@ public class EnumCompatibilityTest : IDisposable
         }
 
         odb = CreateObjectDB();
+        using (var upgrade = await odb.StartWritingTransaction())
+        {
+            upgrade.GetRelation<IFlagTable>();
+            upgrade.Commit();
+        }
         using (var tr = odb.StartReadOnlyTransaction())
         {
             var flagRelation = tr.GetRelation<IFlagTable>();

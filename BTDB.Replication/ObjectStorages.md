@@ -82,7 +82,8 @@ deletion is never distributed: only the node can see all files pinned by its ope
 roots. Leader authority alone is not a deletion-safety proof because the lease on `cluster/leader.json` does not
 physically fence a previously dispatched request to another Blob. Every remote deletion candidate must therefore be
 absent from the currently published recovery closure, and its key must never be reused. Publish the replacement
-required value/log files first and the KVI last before deleting superseded objects. Do not wait for follower restores or a grace period: a follower
+required value/log files first and the KVI last before superseded objects become deletion candidates. Plan a configurable
+operational delay of about one day from obsolescence before actual deletion, without tracking follower restores. A follower
 losing a file while opening restarts and loads the newest published KVI. Old restore attempts and diagnostic KVI references
 do not pin remote files; a delayed old-term delete must remain harmless to the current closure.
 
@@ -604,8 +605,7 @@ takeover procedure rather than risk two leaders.
 - Run a destructive-but-self-cleaning four-step CAS probe against the real endpoint before enabling leadership.
 - Discover native KVIs through file listing and validate references/ancestry. Publish KVI last; only then delete
   obsolete files. No separate checkpoint pointer or manifest is required.
-- Expose remote deletion only to leader-owned GC and delete superseded objects immediately after publishing their complete replacement closure, without restore pins
-  or a grace period; never reuse retired keys; every node independently deletes only its own locally unpinned files, with no distributed
+- Expose remote deletion only to leader-owned GC and apply the configured deletion delay after publishing the complete replacement closure, without restore pins; never reuse retired keys; every node independently deletes only its own locally unpinned files, with no distributed
   deletion instruction.
 - Treat canonical TRL CAS exposing a complete transaction as durable publication, without a second state CAS.
   Qualify cross-file transaction publication, continuation discovery and predecessor fencing.
@@ -642,4 +642,37 @@ Sources: [Get Blob Properties](https://learn.microsoft.com/en-us/rest/api/storag
 KVI upload has a strict start barrier: all required PVLs and canonical TRL through the KVI's fixed file/offset must
 already be published before the first KVI upload request, including Put Block staging. Successful KVI completion last
 is insufficient if its transfer started earlier. Reconcile ambiguous prerequisite publication before dispatching KVI;
-newer tail bytes beyond the KVI cursor do not extend this barrier. Local KVI preparation can run ahead of it.
+newer tail bytes beyond the KVI cursor do not extend this barrier. Local staging of the remote KVI can run ahead of it; node-local compaction creates no KVI.
+
+### Separate remote compaction inventory
+
+Remote compaction is leader-only and plans against verified Blob objects and the selected recovery closure, not the
+node's local file listing. Local PVL IDs/generations can differ from remote destinations. The native KVI export maps
+source references into the planned remote namespace before serialization; see
+[local and remote compaction](Architecture.md#independent-local-compaction-and-leader-only-remote-compaction).
+Neither compaction mode distributes results to running peers. Remote PVL/KVI output is consumed through normal Blob
+restore. Conditional publication, KVI-last ordering, source/destination pins and key non-reuse still apply; exact mapping
+and interruption semantics require B3/B5/Q6 tests.
+
+
+## M1 live Azure capability evidence — 2026-09-14
+
+Ran [azure_probe.py](../BTDB.Replication.Test/Integration/azure_probe.py) against a temporary Standard_LRS StorageV2
+account in DEV Sandbox / West Europe, using REST version `2023-11-03` and Azure CLI account-key access.
+The probe makes individual HTTP calls without retries and keeps credentials in memory.
+[Recorded results](../BTDB.Replication.Test/Integration/azure-2026-09-14.json) contain 24 requests, all with expected
+status codes. The private test container was deleted in `finally`; the temporary resource group/account was then
+deleted, and `az group exists` returned `false`.
+
+Observed directly: staged bytes did not change the committed body/ETag; Put Block List changed content and metadata
+together; same-byte term adoption changed the ETag and rejected an old append with 412. Lease acquire/change/renew
+left the leader blob ETag unchanged, blocked an unleased write to that blob, and did not block another blob. Renewal
+with the old ID after change returned 409; the new ID succeeded.
+
+These observations exercise the relevant [Put Block List](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list)
+and [Lease Blob](https://learn.microsoft.com/en-us/rest/api/storageservices/lease-blob) contracts. They do not qualify
+all concurrency schedules, network failures, real clock drift/suspend, expiry timing, credential renewal or throughput.
+The ambiguity case discards a known successful response locally; genuinely pending effects after timeout are covered
+by the deterministic simulator, not claimed as a real Azure network-fault experiment. Payloads are small diagnostic
+bytes; separate native tests establish TRL/KVI compatibility. The probe's extra `btdb_format` diagnostic metadata is
+not a required field in the candidate `TrlMetadata` codec.

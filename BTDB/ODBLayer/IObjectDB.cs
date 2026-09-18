@@ -69,6 +69,15 @@ public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
 
     ISymmetricCipher GetSymmetricCipher();
 
+    /// <summary>
+    /// Register relation interfaces after Open and before starting application transactions.
+    /// Checks schemas and secondary indexes in a read-only transaction, then commits all required changes,
+    /// including schemas of new empty relations and OnCreate callbacks, in at most one writing transaction.
+    /// Uses PersistedNameAttribute or the interface name. Already registered factories are preserved.
+    /// Do not run concurrently with transactions or other relation registration.
+    /// </summary>
+    ValueTask InitializeRelations(IEnumerable<Type> relationTypes);
+
     void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, IRelation> factory);
 
     bool AllowAutoRegistrationOfRelations { get; set; }

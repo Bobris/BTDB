@@ -55,8 +55,9 @@ public class ObjectDbRelationIdAllocatorTest : ObjectDbTestBase
 
         using (var tr = _db.StartTransaction())
         {
-            Assert.Equal(4ul, tr.GetRelation<IFirstTable>().AllocateId());
+            // Registration order after reopen must not exchange the persisted counters.
             Assert.Equal(3ul, tr.GetRelation<ISecondTable>().AllocateId());
+            Assert.Equal(4ul, tr.GetRelation<IFirstTable>().AllocateId());
             tr.Commit();
         }
 

@@ -165,7 +165,7 @@ class Compactor
             _keyValueDB.Logger?.CompactionStart(totalWaste);
             if (IsWasteSmall(totalWaste, maxInOneFile))
             {
-                if (anyTrl || _keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.MaxTrLogFileSize / 4))
+                if (anyTrl || _keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.FileSplitSize / 4))
                     _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
                 _keyValueDB.FileCollection.DeleteAllUnknownFiles();
                 return false;
@@ -239,7 +239,7 @@ class Compactor
             var wastefulFileId =
                 FindMostWastefulFile(firstIteration
                     ? uint.MaxValue
-                    : _keyValueDB.MaxTrLogFileSize - writer.GetCurrentPosition());
+                    : _keyValueDB.FileSplitSize - writer.GetCurrentPosition());
             firstIteration = false;
             if (wastefulFileId == 0) break;
             MoveValuesContent(ref writer, wastefulFileId);
@@ -269,8 +269,8 @@ class Compactor
 
     bool IsWasteSmall(ulong totalWaste, ulong maxInOneFile)
     {
-        return maxInOneFile < (ulong)_keyValueDB.MaxTrLogFileSize / 4 ||
-               totalWaste < (ulong)_keyValueDB.MaxTrLogFileSize;
+        return maxInOneFile < (ulong)_keyValueDB.FileSplitSize / 4 ||
+               totalWaste < (ulong)_keyValueDB.FileSplitSize;
     }
 
     void MoveValuesContent(ref MemWriter writerIn, uint wastefulFileId)
@@ -353,6 +353,7 @@ class Compactor
     void InitFileStats(long dontTouchGeneration)
     {
         _fileStats = new();
+        var oldestRequiredTrl = _keyValueDB.OldestRequiredTransactionLogFileId;
         foreach (var (key, value) in _keyValueDB.FileCollection.FileInfos)
         {
             if (value.SubDBId != 0) continue;
@@ -363,6 +364,8 @@ class Compactor
 
             _fileStats.GetOrAddValueRef(key) =
                 new FileStat((uint)_keyValueDB.FileCollection.GetSize(key));
+            if (oldestRequiredTrl != 0 && key >= oldestRequiredTrl && value.FileType == KVFileType.TransactionLog)
+                _fileStats.GetOrFakeValueRef(key).MarkForbidToDelete();
         }
     }
 

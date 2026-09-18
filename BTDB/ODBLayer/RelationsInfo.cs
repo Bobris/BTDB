@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using BTDB.FieldHandler;
 using BTDB.IOC;
 using BTDB.Serialization;
-using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer;
 
@@ -37,27 +35,22 @@ public class RelationsInfo
         _relationInfoResolver = relationInfoResolver;
     }
 
-    [SkipLocalsInit]
+    internal RelationsInfo(RelationsInfo source)
+    {
+        _relationInfoResolver = source._relationInfoResolver;
+        _freeId = source._freeId;
+        foreach (var pair in source._name2Id) _name2Id.Add(pair.Key, pair.Value);
+        foreach (var pair in source.Id2Relation) Id2Relation.Add(pair.Key, pair.Value);
+    }
+
     internal RelationInfo CreateByName(IInternalObjectDBTransaction tr, string name, Type interfaceType,
-        IRelationBuilder builder)
+        IRelationBuilder builder, bool initialize = true)
     {
         name = string.Intern(name);
         if (!_name2Id.TryGetValue(name, out var id))
         {
             id = _freeId++;
             _name2Id[name] = id;
-            if (!tr.Owner.ActualOptions.DeferNewRelationMetadata)
-            {
-                Span<byte> buf = stackalloc byte[256];
-                var nameWriter = MemWriter.CreateFromStackAllocatedSpan(buf);
-                nameWriter.WriteBlock(ObjectDB.RelationNamesPrefix);
-                nameWriter.WriteString(name);
-                Span<byte> buf2 = stackalloc byte[8];
-                var idWriter = MemWriter.CreateFromStackAllocatedSpan(buf2);
-                idWriter.WriteVUInt32(id);
-                using var cursor = tr.KeyValueDBTransaction.CreateCursor();
-                cursor.CreateOrUpdateKeyValue(nameWriter.GetSpan(), idWriter.GetSpan());
-            }
         }
 
         if (Id2Relation.TryGetValue(id, out var relation))
@@ -66,7 +59,20 @@ public class RelationsInfo
                 $"Relation with name '{name}' was already initialized");
         }
 
-        relation = new(id, name, builder, tr);
+        relation = new(id, name, builder, tr, false);
+        if (initialize)
+        {
+            var needsInitialization = relation.NeedsInitialization(tr);
+            relation.Initialize(tr);
+            if (needsInitialization)
+            {
+                tr.RegisterRollbackAction(() =>
+                {
+                    Id2Relation.Remove(id);
+                    ((ObjectDB)tr.Owner).UnregisterRelation(interfaceType);
+                });
+            }
+        }
         Id2Relation[id] = relation;
         return relation;
     }

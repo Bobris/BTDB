@@ -81,22 +81,83 @@ public class TransactionLogSizeStrategyTest
             Assert.Equal(active, Assert.Single(strategy.Calls));
             Assert.Equal(Limit(active), db.MaxTrLogFileSize);
             Assert.Throws<InvalidOperationException>(() => db.MaxTrLogFileSize = 4096);
-            Assert.Throws<InvalidOperationException>(() => db.AutoAdjustFileSize = true);
+            db.AutoAdjustFileSize = true;
             using var tr = await db.StartWritingTransaction(2ul);
             Put(tr, 2);
             tr.Commit();
+            Assert.Equal(Limit(active), db.MaxTrLogFileSize);
+            db.CreateKvi(default);
+            Assert.Equal(32 * 1024 * 1024, ((IKeyValueDBInternal)db).FileSplitSize);
+            Assert.Equal(Limit(active), db.MaxTrLogFileSize);
         }
     }
 
     [Fact]
-    public void AutomaticSizingIsRejectedBeforeOpeningFiles()
+    public async Task AutomaticSizingDoesNotChangeStrategyLimits()
     {
         using var files = new InMemoryFileCollection();
-        Assert.Throws<ArgumentException>(() => new BTreeKeyValueDB(new KeyValueDBOptions
+        var strategy = new Strategy(Limit);
+        using var db = new BTreeKeyValueDB(new KeyValueDBOptions
         {
-            FileCollection = files, TransactionLogSizeStrategy = new Strategy(Limit), AutoAdjustFileSize = true
-        }));
-        Assert.Equal(0u, files.GetCount());
+            FileCollection = files, TransactionLogSizeStrategy = strategy, AutoAdjustFileSize = true,
+            FileSplitSize = 1024, CompactorScheduler = null, Compression = new NoCompressionStrategy()
+        });
+        Assert.Equal(32 * 1024 * 1024, ((IKeyValueDBInternal)db).FileSplitSize);
+        for (byte i = 0; i < 12; i++)
+        {
+            using var tr = await db.StartWritingTransaction();
+            Put(tr, i);
+            tr.Commit();
+            Assert.Equal(Limit(strategy.Calls[^1]), db.MaxTrLogFileSize);
+            Assert.Equal(32 * 1024 * 1024, ((IKeyValueDBInternal)db).FileSplitSize);
+        }
+        Assert.True(strategy.Calls.Count > 1);
+        db.AutoAdjustFileSize = false;
+        db.AutoAdjustFileSize = true;
+        Assert.Equal(Limit(strategy.Calls[^1]), db.MaxTrLogFileSize);
+    }
+
+    [Fact]
+    public async Task CompactionUsesAutosizedPvlsWithStrategySizedTrls()
+    {
+        const uint mib = 1024 * 1024;
+        using var files = new InMemoryFileCollection();
+        var strategy = new FixedStrategy(20 * mib, 24 * mib);
+        using (var db = new BTreeKeyValueDB(new KeyValueDBOptions
+        {
+            FileCollection = files, Compression = new NoCompressionStrategy(), CompactorScheduler = null,
+            TransactionLogSizeStrategy = strategy, AutoAdjustFileSize = true, FileSplitSize = 1024
+        }))
+        {
+            var value = new byte[mib];
+            // Leave more than one autosized file's worth of waste in sealed TRLs; the active TRL is excluded.
+            for (byte i = 1; i <= 100; i++)
+            {
+                value[0] = i;
+                using var tr = await db.StartWritingTransaction();
+                using var cursor = tr.CreateCursor();
+                cursor.CreateOrUpdateKeyValue([i % 2 == 0 ? i : (byte)0], value);
+                tr.Commit();
+            }
+            Assert.True(await db.Compact(default));
+            Assert.Equal(32 * mib, ((IKeyValueDBInternal)db).FileSplitSize);
+            Assert.Equal(20 * mib, db.MaxTrLogFileSize);
+            var pvls = db.FileCollection.FileInfos.Where(p => p.Value.FileType == KVFileType.PureValues).ToArray();
+            Assert.NotEmpty(pvls);
+            Assert.Contains(pvls, p => files.GetFile(p.Key)!.GetSize() > 20 * mib);
+            Assert.All(pvls, p => Assert.InRange(files.GetFile(p.Key)!.GetSize(), 1ul, 32ul * mib));
+            Assert.All(db.FileCollection.FileInfos.Where(p => p.Value is IFileTransactionLog),
+                p => Assert.InRange(files.GetFile(p.Key)!.GetSize(), 1ul, 24ul * mib));
+        }
+        using var reopened = Open(files, strategy);
+        using var read = reopened.StartReadOnlyTransaction();
+        Assert.Equal(51, read.GetKeyValueCount());
+        using var result = read.CreateCursor();
+        Assert.True(result.FindExactKey([100]));
+        Span<byte> buffer = default;
+        var expected = new byte[mib];
+        expected[0] = 100;
+        Assert.Equal(expected, result.GetValueSpan(ref buffer).ToArray());
     }
 
     [Theory]
@@ -139,6 +200,44 @@ public class TransactionLogSizeStrategyTest
             Assert.Equal(2u, files.GetCount());
             using var read = db.StartReadOnlyTransaction();
             Assert.Equal(4L, read.GetKeyValueCount());
+        }
+    }
+
+    [Fact]
+    public async Task FixedFileSizeDoesNotRotateOnOpenOnlyBeforeTheNextTransaction()
+    {
+        using var files = new InMemoryFileCollection();
+        BTreeKeyValueDB OpenFixed() => new(new KeyValueDBOptions
+        {
+            FileCollection = files, Compression = new NoCompressionStrategy(),
+            CompactorScheduler = null, FileSplitSize = 1024
+        });
+        using (var db = OpenFixed())
+        {
+            using var tr = await db.StartWritingTransaction();
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue("key"u8, new byte[1500]);
+            tr.Commit();
+        }
+        var original = Assert.Single(files.Enumerate());
+        var originalSize = original.GetSize();
+        Assert.True(originalSize >= 1024);
+        using (var db = OpenFixed())
+        {
+            Assert.Equal(original.Index, Assert.Single(files.Enumerate()).Index);
+            Assert.Equal(originalSize, original.GetSize());
+            using var read = db.StartReadOnlyTransaction();
+            Assert.Equal(1L, read.GetKeyValueCount());
+        }
+        using (var db = OpenFixed())
+        {
+            Assert.Single(files.Enumerate());
+            using var tr = await db.StartWritingTransaction();
+            Put(tr, 2);
+            tr.Commit();
+            Assert.Equal(2u, files.GetCount());
+            using var read = db.StartReadOnlyTransaction();
+            Assert.Equal(2L, read.GetKeyValueCount());
         }
     }
 

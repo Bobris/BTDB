@@ -152,8 +152,8 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         }
         else if (_writing)
         {
-            KeyValueDB.CommitWritingTransaction(currentRoot!, _temporaryCloseTransactionLog);
-            _writing = false;
+            try { KeyValueDB.CommitWritingTransaction(currentRoot!, _temporaryCloseTransactionLog); }
+            finally { _writing = false; }
         }
         else
         {
@@ -188,9 +188,15 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         var currentRoot = Interlocked.Exchange(ref BTreeRoot, null);
         if (_writing || _preapprovedWriting)
         {
-            KeyValueDB.RevertWritingTransaction(currentRoot!, _preapprovedWriting);
-            _writing = false;
-            _preapprovedWriting = false;
+            try { KeyValueDB.RevertWritingTransaction(currentRoot!, _preapprovedWriting); }
+            finally
+            {
+                _writing = false;
+                _preapprovedWriting = false;
+                KeyValueDB.TransactionDisposed(this);
+                GC.SuppressFinalize(this);
+            }
+            return;
         }
         else if (currentRoot != null)
         {
