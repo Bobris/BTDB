@@ -112,8 +112,8 @@ public class InMemoryFileCollection : IFileCollection
                 _ofs += _pos;
                 _pos = 0;
                 var bufOfs = (int)(_ofs % OneBufSize);
-                reader.Start = (nint)Unsafe.AsPointer(ref _file._data[(int)(_ofs / OneBufSize)][0]);
-                reader.Current = reader.Start + bufOfs;
+                reader.Start = (nint)Unsafe.AsPointer(ref _file._data[(int)(_ofs / OneBufSize)][bufOfs]);
+                reader.Current = reader.Start;
                 reader.End = reader.Current + (int)Math.Min(_totalSize - _ofs, (ulong)(OneBufSize - bufOfs));
             }
 

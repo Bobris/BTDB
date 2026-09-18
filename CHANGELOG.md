@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Correct in-memory file reader positions after unaligned seeks or skips across buffers, preventing
+  skipped bytes and incomplete transaction-log replay.
+
 - Keep read-only and ordinary transaction snapshots on the last published BTree during a transaction batch,
   avoiding reader-triggered TRL replay and premature batch publication. Existing readers retain their snapshots.
 
