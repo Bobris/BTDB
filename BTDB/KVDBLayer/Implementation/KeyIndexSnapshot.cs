@@ -41,17 +41,19 @@ public sealed class KeyIndexSnapshot : IDisposable
             lengths[id] = Math.Max(lengths.GetValueOrDefault(id), end);
         });
         var sources = new List<KeyIndexFileSource>();
+        var types = db.IsReplication ? db.FileCollection.FileTypes.ToDictionary(p => p.Key, p => p.Value) : null;
         foreach (var (id, length) in lengths.OrderBy(p => p.Key))
         {
             cancellation.ThrowIfCancellationRequested();
-            var info = db.FileCollection.FileInfoByIdx(id);
-            if (info?.FileType is not (KVFileType.PureValues or KVFileType.TransactionLog))
+            var info = db.IsReplication ? null : db.FileCollection.FileInfoByIdx(id);
+            var type = types?.GetValueOrDefault(id, KVFileType.Unknown) ?? info?.FileType;
+            if (type is not (KVFileType.PureValues or KVFileType.TransactionLog))
                 throw new BTDBException("KVI dependency is missing or has an unexpected file type.");
             var file = db.FileCollection.GetFile(id);
             var fileSize = file.GetSize();
             if (fileSize < length) throw new BTDBException("KVI dependency is truncated.");
-            sources.Add(new(id, info.FileType, info.FileType == KVFileType.PureValues ? fileSize : length,
-                info.Generation, file));
+            sources.Add(new(id, type.Value, type == KVFileType.PureValues ? fileSize : length,
+                info?.Generation ?? 0, file));
         }
         Sources = sources.AsReadOnly();
     }
@@ -62,7 +64,8 @@ public sealed class KeyIndexSnapshot : IDisposable
     public uint TransactionLogOffset => _root.TrLogOffset;
 
     /// <summary>Write native KVI with whole-PVL file-ID substitutions. Offsets and all TRL references stay unchanged.
-    /// The forward-only destination can stream chunks directly to Blob Storage without local disk staging.</summary>
+    /// The forward-only destination can stream chunks directly to Blob Storage without local disk staging.
+    /// Replication ignores generation and writes zero in the legacy header field.</summary>
     public void WriteTo(IMemWriter destination, long generation,
         IReadOnlyDictionary<uint, uint> pureValueFileIds, CancellationToken cancellation = default)
     {
@@ -72,7 +75,7 @@ public sealed class KeyIndexSnapshot : IDisposable
         var pvlCount = 0;
         foreach (var source in Sources)
         {
-            if (generation <= source.Generation) throw new ArgumentOutOfRangeException(nameof(generation));
+            if (!_db.IsReplication && generation <= source.Generation) throw new ArgumentOutOfRangeException(nameof(generation));
             var id = source.FileId;
             if (source.FileType == KVFileType.PureValues)
             {
@@ -85,7 +88,7 @@ public sealed class KeyIndexSnapshot : IDisposable
         }
         if (pureValueFileIds.Count != pvlCount)
             throw new ArgumentException("Only PVL file IDs can be remapped.", nameof(pureValueFileIds));
-        _db.WriteKeyIndexFile(_root, destination, generation, cancellation, true, pureValueFileIds);
+        _db.WriteKeyIndexFile(_root, destination, _db.IsReplication ? 0 : generation, cancellation, true, pureValueFileIds);
     }
 
     public void Dispose()

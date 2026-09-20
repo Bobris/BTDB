@@ -151,7 +151,13 @@ replication-owned historical root is introduced. Standalone suites still pass.
 Dependencies: M1, M2. Owners: B3/B5.
 
 Implemented slice: pinned native KVI snapshots with direct `IMemWriter` output, whole-PVL ID substitution, and an
-internal publication-order/receipt helper. Tests restore actual native KVI (plain/Brotli) using only remote files,
+internal publication-order helper backed by a `ReplicationFileSet` with separate local and asynchronous remote
+inventories through `IFileReplicatedCollection` passed to the `BTreeKeyValueDB.OpenAsync` replication path.
+The collection owner awaits `InitializeAsync` before opening; neither open nor prefetch performs implicit initialization.
+Its inherited count/lookup/enumeration remain local-only; the explicit remote counterparts drive recovery discovery.
+Existing constructors keep the original synchronous opening and eager metadata loading. In the async path, metadata is lazy, and final
+prefetch requests all accepted KVI references (or all TRLs without a valid KVI) in parallel. Shared, bounded downloads
+and checksum-verified cache reuse hide exact-ID imports inside the collection. Tests restore actual native KVI (plain/Brotli) through this remote boundary,
 reuse confirmed downloaded/uploaded PVLs, retry uncertain PVL uploads at the same ID, and reject premature KVI upload.
 Local compaction and remote export accept independent tokens. The internal `CanonicalTrlPublisher` now consumes real
 capture records, conditionally publishes native suffixes, prepares successors before selecting the predecessor,
@@ -230,8 +236,7 @@ Dependencies: M4/M5 and M3 publication/recovery. Owner: remaining B5 and Q6.
 2. Let leader checkpoint publication share the local physical pass and its sealed PVLs. Reuse verified downloaded
    files and successful upload placements; send only missing whole PVLs under fresh remote IDs. Preserve offsets and
    all TRL identities. Use independent local/remote cancellation tokens; leadership loss cancels only remote work.
-3. Stream native KVI directly to Blob chunks, with placed PVL references, unchanged TRL cursor and target generation/dependency
-   bookkeeping. Publish required PVLs/TRL first, then KVI; verify restore with every local source absent. Implement
+3. Stream native KVI directly to Blob chunks, with placed PVL references, unchanged TRL cursor and dependency fileIds. Publish required PVLs/TRL first, then KVI; verify restore with every local source absent. Implement
    leader-only remote GC and abandoned staging reconciliation with permanent key non-reuse.
 4. Remove the former compaction control/result transport requirements from implementation scope: no compaction
    operations, PVLs, rewrites or completion results are sent to running peers. Remote outputs serve normal Blob restore.

@@ -20,7 +20,7 @@ internal sealed class NodeFixture : IDisposable
     readonly Dictionary<string, List<ApplicationInput>> _committed = [];
     readonly Dictionary<string, List<ApplicationInput>> _visible = [];
     readonly Dictionary<string, BTreeKeyValueDB> _databases = [];
-    readonly Dictionary<string, InMemoryFileCollection> _files = [];
+    readonly Dictionary<string, InMemoryReplicationFileStorage> _files = [];
 
     public NodeFixture(DeterministicScheduler scheduler, string name, ulong seed, IEnumerable<string> databases,
         Func<string, Guid> databaseIdentity)
@@ -30,14 +30,14 @@ internal sealed class NodeFixture : IDisposable
         SessionId = $"{name}-{Random.NextUInt64():x16}";
         foreach (var database in databases)
         {
-            var files = new InMemoryFileCollection();
+            var files = new InMemoryReplicationFileStorage();
             SeedNativeHeader(files, databaseIdentity(database));
             _files.Add(database, files);
             _databases.Add(database, new(new KeyValueDBOptions
             {
                 FileCollection = files, CompactorScheduler = null, Allocator = _allocator,
                 Compression = new NoCompressionStrategy(), RequireExplicitTransactions = true,
-                UseOddTransactionLogIds = true, FileSplitSize = 1024
+                FileSplitSize = 1024
             }));
             _committed.Add(database, []);
             _visible.Add(database, []);
@@ -49,7 +49,7 @@ internal sealed class NodeFixture : IDisposable
     public string SessionId { get; }
     public BTreeKeyValueDB Database(string database) => _databases[database];
 
-    internal static void SeedNativeHeader(InMemoryFileCollection files, Guid identity)
+    internal static void SeedNativeHeader(InMemoryReplicationFileStorage files, Guid identity)
     {
         // Existing BTDB3 empty TRL header. Seeding a known native fixture avoids the core's Guid.NewGuid()
         // fallback without introducing a production API or changing core behavior during M0.

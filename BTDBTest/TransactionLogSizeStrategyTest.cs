@@ -27,7 +27,7 @@ public class TransactionLogSizeStrategyTest
     static BTreeKeyValueDB Open(IFileCollection files, ITransactionLogSizeStrategy strategy, uint fallback = 1024) => new(new KeyValueDBOptions
     {
         FileCollection = files, Compression = new NoCompressionStrategy(), CompactorScheduler = null,
-        UseOddTransactionLogIds = true, FileSplitSize = fallback, TransactionLogSizeStrategy = strategy
+        FileSplitSize = fallback, TransactionLogSizeStrategy = strategy
     });
 
     static uint Limit(uint fileId) => 1024u * (1 + fileId % 3);

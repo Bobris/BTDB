@@ -1151,7 +1151,9 @@ than a replication transaction format.
 ### Independent local compaction and leader-only remote compaction
 
 Decision recorded 2026-09-14: every node, including followers, may run full local physical compaction independently.
-Local compaction operates only on that node's disposable files and creates no KVI. Only the selected leader runs remote
+Local compaction uses a separate `ReplicationCompactor`, operates only on that node's disposable files and creates no KVI.
+Standalone opening and generation-based compaction retain their existing behavior. Replication tracks concrete fileId
+references instead of native generations for both PVL and old TRL lifetime; all live readers and export roots are protected. Only the selected leader runs remote
 compaction against Blob Storage. Neither kind sends compaction operations, PVL rewrite plans, completion results or
 local deletion instructions to other nodes. The former leader-distributed compaction protocol is withdrawn.
 
@@ -1165,7 +1167,10 @@ Local cleanup protects every live root/reader, current tree, pending virtual-bat
 range and active export source. No local KVI is created on either the small-waste path or after pointer rewriting.
 Files needed only for a self-contained local restart cut may be removed once no in-process dependency needs them:
 startup always validates/restores the selected remote closure. It must never open an incomplete local set as canonical.
-File-backed values in old readers remain readable until the last local pin is released.
+File-backed values in old readers remain readable until the last local pin is released. The fileId references decoded
+from KVI protect both PVL and old TRL and are retained with only the KVI TRL fileId and offset, without storing its
+root. Release this set once every live root has advanced beyond that position. Pointer rewrites may preserve the TRL
+position, so live roots also supply their current physical references, including newly compacted PVLs.
 
 Local and remote work may share one physical compaction pass. Its sealed local PVLs feed the publication path below;
 there is no requirement for a second rewrite pass. Remote export does not rewrite the running leader's tree into remote file IDs. A follower need not learn that a remote compaction
@@ -1216,6 +1221,16 @@ Before exporting the remote KVI:
    or mappings are sent to running peers; fresh restore downloads the selected files under their remote IDs.
 
 Remote IDs must be allocated from the Blob inventory, not the local maximum: remote objects can outlive local files.
+The implemented `ReplicationFileSet` exposes `IFileReplicatedCollection` to BTDB. The inherited count, lookup and
+enumeration methods access local cache/storage only; `GetRemoteCount`, `GetRemoteFile`, and `RemoteEnumerate`
+expose the selected remote inventory separately. A numeric ID alone never proves that their contents match. Exact-ID imports
+are an internal cache-population operation, not a caller-driven restore workflow. The session's verified cache/download
+and successful upload receipts supply the publisher's local-to-remote map. These mappings live only in the current
+session; restart may discard a differently numbered cached copy and download it again. `GetLocalFileId` exposes the
+remote-to-local assignment, and KVI loading translates PVL references accordingly. Leader checkpoint publication
+uses `IFileReplicatedCollection.PublishPureValuesAsync` to publish unmapped sealed local PVLs and retain confirmed
+mappings, while node-local compaction remains independent of publication. See the implemented storage boundary in
+[ObjectStorages.md](ObjectStorages.md#implemented-file-inventory-boundary).
 A receipt remains reusable only while its remote object is protected from cleanup. The baseline has no remote deletion
 implementation; its integration must account for active publications and selected checkpoints before retiring receipts.
 
@@ -2103,6 +2118,21 @@ than a corrupted database.
 
 ### Fast startup with verified cache reuse and ordered replay
 
+Standalone constructors retain their original synchronous opening and eager metadata loading. Replication explicitly
+initializes its collection before calling `BTreeKeyValueDB.OpenAsync`. Open uses a separate lazy metadata
+implementation and reads the already initialized remote inventory through `RemoteEnumerate` without fetching file
+bodies. Neither open nor prefetch initializes the collection implicitly; premature remote inventory access fails. Local-only files cannot become recovery candidates;
+`PrefetchAsync` validates/downloads selected bodies before local `GetFile` is used. Metadata is lazy:
+filename extensions identify KVI/TRL candidates without header reads. Replication ignores native file generations.
+Higher fileIds order TRLs and KVIs within their respective sequences; TRL headers link the predecessor fileId.
+Try KVIs in descending fileId order and read metadata only for attempted candidates and required TRL ancestry back
+to the selected cursor. HID/HPV are currently unsupported in replication mode. Variable-length native headers can be fetched through small version-bound ranges. KVI selection and ordered TRL replay await their needed bodies.
+At the end of open, request prefetch for all files referenced by the accepted KVI (including its TRL cursor), or all
+TRLs if no valid KVI was accepted. Start those requests in parallel and await completion before returning the database.
+The collection deduplicates and bounds actual transfers and checksum work; BTDB does not orchestrate explicit cache
+imports. Synchronous reads of a file not already prefetched wait for its lazy cache population. This implements local
+availability, not the coordinator's proof of canonical history or leadership readiness.
+
 Performance target: complete startup within 15 minutes for a large database of approximately 100 GB, including a
 cold Blob-to-local restore. Measure from startup through discovery, download, local writes, validation, KVI open and
 TRL replay to database readiness, not just the transfer interval. This is a target to qualify, not a measured guarantee.
@@ -2146,8 +2176,9 @@ keeps its decoder state until its commit/rollback terminator is available, witho
 With no KVI, all canonical TRLs are required: start at the lowest ID and replay upward while subsequent files download.
 Exclude unlinked staging and abandoned branches using canonical lineage, not number alone. With a KVI, fetch it and its
 required value/log files and replay the selected suffix; old retained remote KVIs/TRLs outside that recovery set need
-not consume local disk. KVI restore can start once its prerequisites are available; background download/replay may
-continue, but election remains forbidden until all required databases are fully restored and verified.
+not consume local disk. KVI parsing can start before its referenced value-file bodies are downloaded. The final
+parallel prefetch in `OpenAsync` ensures those references are available before the database is returned; election
+remains forbidden until all required databases are fully restored and canonically verified.
 
 Use one local file per download, marked incomplete until length/hash/version checks pass; installation can rename it
 without copying. After old readers terminate, delete an unusable old destination before fetching its replacement when

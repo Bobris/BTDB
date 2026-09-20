@@ -9,7 +9,6 @@ using var kv = new BTreeKeyValueDB(new KeyValueDBOptions
 {
     FileCollection = files,
     RequireExplicitTransactions = true,
-    UseOddTransactionLogIds = true,
     CompactorScheduler = null
 });
 using var db = new ObjectDB();
@@ -28,28 +27,29 @@ non-application work before calling the existing writer API. Commit remains sync
 
 `RequireExplicitTransactions` rejects `StartTransaction()` before it publishes a pending virtual batch or acquires a
 root. Use `StartReadOnlyTransaction()` or the asynchronous writer APIs. ObjectDB's startup metadata and singleton-ID
-lookup now use explicitly read-only transactions. Both new KeyValueDB options default to false.
+lookup now use explicitly read-only transactions. `RequireExplicitTransactions` defaults to false.
 
-`UseOddTransactionLogIds` assigns fresh odd IDs to TRLs and fresh even IDs to every other file type (including
-KVI, PVL and chunk-storage files), without allocating intermediate dummy files. The policy is enforced by the
-database file collection, including calls made by sub-databases. A valid
+Replication mode (`IFileReplicatedCollection`) automatically assigns fresh odd IDs to TRLs and fresh even IDs to KVI and PVL files, without allocating intermediate dummy files. Odd and even IDs have independent
+allocation sequences: allocating a PVL or KVI does not advance the next TRL ID, and vice versa. `FileIdParity.Any` allocates above both maxima and advances the sequence matching the allocated ID. The policy is enforced by the replicated
+database file collection; standalone collections keep unconstrained allocation. Replication does not support sub-databases. A valid
 legacy even tail is closed before the first new transaction bytes and linked to a fresh odd TRL. Existing file IDs and
-value references are preserved; size-based rotation may still happen inside transactions. InMemoryFileCollection,
-OnDiskFileCollection and OnDiskMemoryMappedFileCollection implement the new `AddFile(hint, FileIdParity)` overload.
-Custom collections must implement it before opting into parity-constrained allocation; its default implementation rejects an
-unsupported constrained allocation rather than silently using the wrong parity. This is not a distributed file allocator.
+value references are preserved; size-based rotation may still happen inside transactions. `InMemoryReplicationFileStorage` is a dedicated clone for replication cache/restore and implements
+`AddFile(hint, FileIdParity)`. Existing in-memory and disk collections keep their standalone API and allocation. This is not a distributed file allocator.
 
-New relation names/versions are always registered in
-memory by a read-only transaction; no hidden writer is opened. Its metadata is written inside the first transaction
-that writes relation data (insert/upsert/update), before data serialization, or allocates an ID with `AllocateId()`. A read or an empty commit does not persist
-it. A shared pending flag is reset by a rollback action, so retries persist metadata without repeated lookups.
-Object/table metadata already uses its normal data-write persistence path.
+`InMemoryReplicationFileStorage.ImportFile(fileId, hint)` creates an empty file under the exact nonzero ID. Use it for native-file
+restore rather than approximating an identity through the allocation sequence. Imports can complete in any order,
+including below existing maxima, and advance only the matching parity's maximum when necessary. Existing IDs are
+rejected without opening or overwriting the file, even with a different hint. Import and allocation are serialized
+per collection to prevent duplicate creation. The caller fills and validates the imported file before opening the
+database and removes it on failure. Custom collections opt in by implementing the import operation.
 
-Existing relation-version changes and secondary-index rebuilds are deliberately not deferred. Prepare these in an
-explicit non-application writer; trying to initialize a write-requiring upgrade from a read-only transaction throws
-BTDBTransactionRetryException rather than blocking through a hidden `.Result` writer. The future replication layer
-must obtain leadership before that writer starts. Custom relation creation callbacks that write also require explicit
-writer admission; metadata deferral does not silently defer or rerun application callbacks.
+Read-only relation registration stays in memory without opening a hidden writer. The first writing transaction
+that accesses the relation persists its name/version, applies pending schema/index changes, and invokes its
+creation callback. This also applies when that writer only reads the relation. An unrelated writer does not
+initialize it. Rollback resets pending initialization so a later writer retries it. Before deferred index upgrades
+have run, read-only transactions still see the stored indexes. Use explicit startup initialization when application
+reads require the upgraded indexes. Object/table metadata retains its normal data-write persistence path.
+
 
 Tests in ReplicationPreparationTest cover queued writer cursor assignment, rollback with and without virtual batching,
 legacy even-tail rotation and cross-file replay, persistent/memory-mapped odd/even allocation, concurrent mixed allocation,
@@ -87,7 +87,9 @@ boundaries, hard-limit cross-file commit/rollback and metadata replay, oversized
 
 ## Local TRL positions
 
-`KeyValueDBOptions.TransactionLogCapture` accepts a parameterless `TransactionLogCapture`. It stores only two
+`KeyValueDBOptions.TransactionLogCapture` accepts a parameterless `TransactionLogCapture` only through the replication
+`BTreeKeyValueDB.OpenAsync` path. Synchronous constructors reject this option before accessing files. Capture initializes
+from the remote inventory without reading TRL headers. It stores only two
 `TransactionLogPosition(FileId, Offset)` values: `Completed`, the latest fully written commit or rollback, and
 `Acknowledged`, the prefix consumed by publication or comparison. No transaction queue, sequence number, event ID,
 classification, index file, wakeup or disposal protocol is needed. Memory usage is independent of backlog size.
@@ -146,15 +148,97 @@ confirming those dependencies in Blob Storage, call `WriteTo(IMemWriter, generat
 The output is forward-only and can upload chunks directly; no local KVI file, seek or complete in-memory KVI is required.
 The serializer preserves native compression, values, offsets, CommitUlong, metadata and the TRL recovery cursor.
 The supplied map must cover every PVL exactly once and must not contain TRLs, zero IDs or colliding destinations.
-Generation must exceed the source generations; remote destination allocation/finalization remains the caller's job.
+For standalone snapshots, generation must exceed the source generations. Replication snapshots ignore the legacy
+generation argument and write zero in the native header field; remote destination allocation/finalization remains the caller's job.
 Neither the live BTree nor its local file IDs are changed.
 
-The internal replication `CheckpointPublisher` retains session-local placements for whole PVLs. Verified complete
-sealed downloads are recorded with the same remote ID; newly uploaded PVLs retain their allocated remote ID for
-later checkpoints. Successful PVL uploads remain reusable even if KVI upload fails. An uncertain upload retries its
-reserved destination through the storage adapter's exact reconciliation. No receipt is inferred from a partial
-transfer or unconfirmed result. Receipts contain IDs and lengths, not retained file bytes or roots. Restore validation,
-remote lifetime/GC, canonical TRL publication and production authority enforcement still need integration.
+The internal `ReplicationFileSet` implements `IFileReplicatedCollection` with two separate inventories.
+Inherited `GetCount`, `GetFile`, and `Enumerate` expose only physical local cache/storage, including unverified
+cache files; none downloads a remote body. After `InitializeAsync`, `GetRemoteCount`, `GetRemoteFile`, and
+`RemoteEnumerate` expose the selected remote inventory, independent of local cache contents. Remote handles are
+read-only and bound to the selected remote version; reading one does not populate local storage. Equal numeric IDs
+alone never establish that cached and remote bytes match. Initialization validates existing local counterparts. `PrefetchAsync` downloads missing counterparts before BTDB
+reads them; it validates any cache candidate introduced after initialization. Creating or removing a local file does not change remote inventory. Remote deletion remains
+part of the publication protocol. No caller-driven file-restore phase is required.
+
+Existing `BTreeKeyValueDB` constructors retain the original synchronous opening, eager metadata loading and advisory
+prefetch for ordinary collections. They reject `IFileReplicatedCollection` before reading files; use `OpenAsync`
+for that interface. `IFileCollection` retains only its original operations. Replication adds parity allocation,
+`InitializeAsync`, `PrefetchAsync`, `GetFileType`, `ReadFileInfoAsync`, and the three remote inventory operations
+on `IFileReplicatedCollection`. Type/header lookup uses the selected remote metadata, or local metadata for newly
+created files without a remote counterpart.
+`GetLocalFileId(remoteFileId)` exposes the session's stable remote-to-local ID assignment, even before a file is
+cached. Initialization normally assigns identical IDs; verified PVL placements can retain a different local ID.
+KVI loading translates remote PVL references into local IDs, and prefetch resolves those IDs back to the selected
+remote objects. TRL and KVI IDs remain unchanged. Local eviction removes cached bytes but keeps the assignment
+stable for a later prefetch. The mapping is memory-only: after restart a differently numbered local copy may be
+removed and downloaded again under the remote ID. There is no persisted mapping or search across local file contents.
+
+Leader checkpoint publication calls `PublishPureValuesAsync(source, cancellation)` for each complete sealed local
+PVL pinned by its snapshot. It returns a confirmed remote ID, reusing a verified placement or reserving and uploading
+to a fresh remote ID. Only confirmed uploads establish a mapping; uncertain outcomes retain their reserved ID for
+retry. Calls are serialized by the owner and use its fenced remote adapter. Follower/local compaction never invokes
+publication. Native KVI upload still starts only after every PVL and required canonical TRL is confirmed.
+
+The prototype uses dedicated `InMemoryReplicationFileStorage` for exact-ID cache population, parity allocation,
+and filename type hints. Existing standalone collections are not replication storage backends. `ImportFile` is not a logical replication operation.
+`OpenAsync` on an ordinary collection retains standalone semantics, including historical opening and retention.
+
+The collection owner first calls and awaits `InitializeAsync(cancellation)` to discover the remote inventory,
+removing local files without a mapping to the complete remote listing. Mapped candidates are checked during initialization: compare the filename extension first, then length, then calculate the local SHA-256 and
+compare it with remote metadata. Remove mismatches without downloading a replacement. Validated files remain cached
+and prefetch reuses them without hashing again. Active files or files without trustworthy SHA metadata are removed
+for later download. Failed or cancelled discovery leaves local files untouched; repeated initialization after success does not
+remove files created in the current session. The owner then passes the initialized collection to `BTreeKeyValueDB.OpenAsync(options, cancellation)`. Neither `OpenAsync`
+nor `PrefetchAsync` invokes initialization. Remote inventory/metadata access and prefetch throw
+`InvalidOperationException` while initialization is incomplete, including after a failed or cancelled attempt;
+local cache lookup remains available. Retry initialization explicitly before retrying open.
+
+`ReplicationFileSet` accepts `IKeyValueDBLogger` through its `logger` constructor argument or `Logger` property.
+Pass the same instance to `KeyValueDBOptions.Logger` so initialization and database operation share logging.
+Each cache removal logs its local ID, mapped remote ID when available, and reason: absent from remote inventory,
+extension mismatch, length mismatch, SHA validation failure, active remote file, missing SHA metadata, or failed
+download. Downloads use canonical native extensions (`.trl`, `.kvi`, `.pvl`, `.hid`, `.hpv`).
+
+```csharp
+await files.InitializeAsync(cancellation);
+using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions { FileCollection = files }, cancellation);
+```
+
+`OpenAsync` reads the initialized remote inventory through `RemoteEnumerate` without fetching file bodies.
+Local-only cache files are not recovery candidates. Its separate `LazyFileCollectionWithFileInfos` caches metadata only when requested;
+`GetFileType` derives types from filename extensions. Replication does not use generation: higher fileIds identify newer
+TRLs within the TRL sequence and newer KVIs within the KVI sequence. TRLs retain their predecessor fileId links.
+PVL IDs carry no age relative to TRLs. KVI candidates are tried in descending fileId order without scanning their
+headers first. HID/HPV inventories and sub-database creation are unsupported in this mode.
+Only a candidate being tried has its header/body read. TRL linkage reads back from the latest file only as far as the
+accepted KVI cursor, or through the whole chain if there is no valid KVI. Older unused KVI/TRL headers stay unread.
+Replication opening rejects `OpenUpToCommitUlong` and `PreserveHistoryUpToCommitUlong` before accessing files.
+Use the existing synchronous constructors for either feature. History retention cannot be enabled later on a database
+opened with `IFileReplicatedCollection`.
+`ReadFileInfoAsync` reads required variable-length native headers through small version-bound ranges. Full KVI/TRL bodies needed to select a KVI and replay are fetched
+asynchronously before decoding.
+
+At the end of `OpenAsync`, issue `PrefetchAsync` for every value/log file referenced by the selected valid KVI,
+including its TRL cursor file. If no valid KVI was accepted, request every TRL instead. Issue all requests before
+awaiting them, and do not return the database until all finish. Unreferenced PVLs need neither header reads nor full
+downloads during open. Later writes, snapshot export, diagnostics and local compaction do not inspect PVL headers
+to recover generations. New replication files retain the native header layout with zero in its unused generation field.
+Failed or cancelled opening releases its native roots without flushing an appender or changing the downloaded TRL.
+
+The collection shares concurrent prefetch requests for the same file and limits active cache verification/downloads
+(`maxConcurrentDownloads`, default 4); requesting the entire recovery set does not allocate one transfer buffer per
+queued file. Cancellation of one waiter does not cancel another waiter's shared transfer; disposing the collection
+cancels and drains remaining work. The caller still owns the physical cache and remote adapter. Synchronous reads
+on an unprefetched logical file wait for its cache population; normal reads of the prefetched recovery set stay local.
+
+A sealed cache candidate is reused only after a fresh whole-file checksum matches selected remote metadata.
+A mismatching file is replaced; an active TRL is always downloaded again. Version-bound downloads use assigned local-ID
+imports internally and remove partial files on failure. Only complete checksum-verified sealed PVLs establish reuse
+receipts. `CheckpointPublisher` uses those receipts and confirmed upload placements, reserving new destinations from
+the remote inventory. An uncertain upload retries the same destination through the storage adapter's reconciliation.
+Receipts retain IDs and lengths, not file bytes or roots; their destinations must remain protected from remote cleanup.
+Production Azure transport, canonical history/authority orchestration and remote lifetime/GC still need integration.
 
 Local `Compact(localToken)` and remote `PublishAsync(snapshot, remoteToken)` / `WriteTo(..., remoteToken)` use
 independent cancellation. Loss of leadership cancels remote operations; it does not cancel or roll back local maintenance.
@@ -177,8 +261,21 @@ The lane does not acquire leadership, allocate canonical IDs, implement Azure I/
 
 ### Allocation and compaction retention
 
+Local replication compaction considers only files present in the local cache; it never downloads or deletes a
+remote-only entry. Evicted remote entries remain available for explicit prefetch.
+
+Standalone databases retain the original generation-based `Compactor`. Databases backed by `IFileReplicatedCollection` use a
+separate `ReplicationCompactor`: it can compact physical values independently, creates no local KVI, and protects
+file IDs used by live roots, readers and export snapshots. The fileId set decoded from KVI is retained with only its
+TRL fileId and offset, without storing its root. It is released once every live root has advanced beyond that position.
+Pointer rewrites can leave the TRL position unchanged, so live roots also supply their current physical references. A disposable local cache need not remain independently reopenable. The capture boundary additionally retains unacknowledged
+TRLs even when no current value points into them. Both PVL and old TRL can contain live values; neither is released
+merely because its ID is numerically old. Concurrent replication compaction calls are serialized so one pass cannot
+mistake another pass's newly created, unreferenced PVL for garbage. `CreateKvi` is unsupported in replication mode;
+remote publication uses snapshot export. Native generation handling and HID/HPV remain unchanged for standalone use.
+
 The database-aware `IFileCollectionWithFileInfos.AddFile(hint)` derives parity from the file type and database mode.
-Only the underlying generic `IFileCollection` accepts an explicit parity, since it does not own that database policy.
+The underlying `IFileReplicatedCollection` and dedicated `InMemoryReplicationFileStorage` accept explicit parity.
 
 `TransactionLogCaptureTest.CompactionRetainsUnacknowledgedHistory` overwrites the only
 value repeatedly and runs the actual compactor. With capture disabled the obsolete first TRL is deleted; with capture
@@ -197,3 +294,12 @@ use compatible published schemas. The core API does not implement leader admissi
 Application row writes and ID allocation never create relation metadata. The legacy transaction initialization path
 also persists schemas eagerly; rollback removes affected cached registrations before releasing the writer so a retry
 initializes them again. Internal rollback actions must not throw.
+
+All `IFileReplicatedCollection` members require explicit implementations, including identity mapping and
+initialization for already-ready collections. The interface provides no fallback behavior.
+
+Before admitting writes after a leader transition, the role owner quiesces collection operations, discards old
+remote handles, and awaits `RefreshRemoteInventoryAsync`. Refresh requires prior initialization and replaces
+remote membership/ETags only after successful discovery. It preserves local files and session mappings, including
+unpublished local PVLs; it does not rerun startup cleanup. Changed objects are revalidated on prefetch. Leadership
+acquisition and recovery/catch-up of the database are separate prerequisites, not effects of inventory refresh.

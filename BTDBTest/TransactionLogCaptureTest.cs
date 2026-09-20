@@ -23,18 +23,52 @@ public class TransactionLogCaptureTest
         cursor.CreateOrUpdateKeyValue([key], new byte[700]);
     }
 
+    [Fact]
+    public async Task AsyncOpenInitializesCaptureFromExistingTransactionLogs()
+    {
+        using var files = new InMemoryReplicationFileStorage();
+        var options = new KeyValueDBOptions
+        {
+            FileCollection = files, CompactorScheduler = null, Compression = new NoCompressionStrategy(),
+            TransactionLogSizeStrategy = new TinyLogs()
+        };
+        using (var seed = new BTreeKeyValueDB(options))
+        {
+            for (ulong i = 1; i <= 4; i++)
+            {
+                using var tr = await seed.StartWritingTransaction(i);
+                Put(tr, (byte)i);
+                tr.Commit();
+            }
+            seed.CreateKvi(default);
+        }
+        var capture = new TransactionLogCapture();
+        options.TransactionLogCapture = capture;
+        options.FileCollection = new LocalReplicatedCollection(files);
+        using var db = await BTreeKeyValueDB.OpenAsync(options);
+        Assert.Equal(new TransactionLogPosition(1, 0), capture.Acknowledged);
+        using (var tr = await db.StartWritingTransaction(5ul))
+        {
+            Put(tr, 5);
+            tr.Commit();
+        }
+        Assert.True(capture.Completed.FileId > capture.Acknowledged.FileId);
+        Assert.True(capture.Completed.Offset > 0);
+        Assert.Equal(new TransactionLogPosition(1, 0), capture.Acknowledged);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task CompactionRetainsUnacknowledgedHistory(bool captureEnabled)
     {
-        using var files = new InMemoryFileCollection();
+        using var files = new InMemoryReplicationFileStorage();
         var capture = new TransactionLogCapture();
-        using var db = new BTreeKeyValueDB(new KeyValueDBOptions
+        using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         {
-            FileCollection = files, TransactionLogCapture = captureEnabled ? capture : null,
+            FileCollection = new LocalReplicatedCollection(files), TransactionLogCapture = captureEnabled ? capture : null,
             CompactorScheduler = null, Compression = new NoCompressionStrategy(),
-            UseOddTransactionLogIds = true, TransactionLogSizeStrategy = new TinyLogs()
+            TransactionLogSizeStrategy = new TinyLogs()
         });
         TransactionLogPosition earlier = default;
         for (ulong i = 1; i <= 20; i++)
@@ -64,11 +98,11 @@ public class TransactionLogCaptureTest
     [InlineData(true)]
     public async Task PositionAdvancesOnlyAtCompleteCommitOrRollback(bool batch)
     {
-        using var files = new InMemoryFileCollection();
+        using var files = new InMemoryReplicationFileStorage();
         var capture = new TransactionLogCapture();
-        using var db = new BTreeKeyValueDB(new KeyValueDBOptions
+        using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         {
-            FileCollection = files, TransactionLogCapture = capture, CompactorScheduler = null,
+            FileCollection = new LocalReplicatedCollection(files), TransactionLogCapture = capture, CompactorScheduler = null,
             TransactionLogSizeStrategy = new TinyLogs(), Compression = new NoCompressionStrategy()
         });
         using (var tr = await db.StartWritingTransaction()) { }
@@ -103,7 +137,7 @@ public class TransactionLogCaptureTest
     {
         static async Task<byte[]> Run(bool enabled)
         {
-            using var files = new InMemoryFileCollection();
+            using var files = new InMemoryReplicationFileStorage();
             var capture = new TransactionLogCapture();
             var file = files.AddFile("trl", FileIdParity.Odd);
             var writer = new MemWriter(file.GetAppenderWriter());
@@ -113,11 +147,10 @@ public class TransactionLogCaptureTest
             writer.WriteVInt64(1);
             writer.WriteVInt32(0);
             writer.Flush();
-            using (var db = new BTreeKeyValueDB(new KeyValueDBOptions
+            using (var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
             {
-                FileCollection = files, TransactionLogCapture = enabled ? capture : null, CompactorScheduler = null,
-                Compression = new NoCompressionStrategy(), UseOddTransactionLogIds = true,
-                TransactionLogSizeStrategy = new TinyLogs()
+                FileCollection = new LocalReplicatedCollection(files), TransactionLogCapture = enabled ? capture : null, CompactorScheduler = null,
+                Compression = new NoCompressionStrategy(), TransactionLogSizeStrategy = new TinyLogs()
             }))
             {
                 for (ulong i = 1; i <= 4; i++)

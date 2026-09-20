@@ -1055,6 +1055,27 @@ class ObjectDBTransaction : IInternalObjectDBTransaction
         var builder = RelationBuilder.GetFromCache(interfaceType, _owner.RelationInfoResolver);
         var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType, builder);
         var factory = (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator(relationInfo);
+        if (relationInfo.DeferredInitialization)
+        {
+            return transaction =>
+            {
+                var tr = (IInternalObjectDBTransaction)transaction;
+                if (!tr.KeyValueDBTransaction.IsReadOnly() && relationInfo.DeferredInitialization)
+                {
+                    // Clear before callbacks, which can access this relation recursively.
+                    relationInfo.DeferredInitialization = false;
+                    tr.RegisterRollbackAction(() => relationInfo.DeferredInitialization = true);
+                    relationInfo.Initialize(tr);
+                    var instance = factory(transaction);
+                    if (relationInfo.LastPersistedVersion == 0 &&
+                        tr.Owner.ActualOptions.Container?.ResolveOptional(
+                            typeof(IRelationOnCreate<>).MakeGenericType(interfaceType)) is IInternalRelationOnCreate callback)
+                        callback.InternalOnCreate(transaction, instance);
+                    return instance;
+                }
+                return factory(transaction);
+            };
+        }
         if (relationInfo.LastPersistedVersion == 0)
         {
             var upgrader =

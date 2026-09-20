@@ -1,6 +1,6 @@
 # BTDB.Replication Object Storage Research
 
-Status: Brainstorming; no implementation has started.
+Status: Provider research plus an implemented provider-neutral file inventory boundary; production Azure transport remains pending.
 
 The `denoland/celld` research snapshot is 2026-08-29 and is pinned to release `v0.4.0`, commit
 `a52f9905425bc41134d817694bdc2c50bcc5e856`. Azure details were rechecked on 2026-08-30. Provider behavior and limits
@@ -24,6 +24,38 @@ The object store has three distinct roles:
 The upstream event log permits loss and deterministic replay of a small unpublished application tail. Object storage
 therefore does not need to prove durability before every event is acknowledged, but it must never allow two accepted
 canonical histories or an accepted prefix ending inside a transaction.
+
+### Implemented file inventory boundary
+
+`IRemoteFileCollection` exposes asynchronous inventory enumeration, version-bound range reads and fresh remote ID
+reservation. `RemoteFile` describes the numeric ID, native type, length, opaque version, sealed state and optional
+whole-file SHA-256. The adapter must reject a read if the selected version changed or disappeared; partial range
+success must never silently combine versions. Reservation uses remote inventory and authority, never a local maximum,
+and must preserve non-reuse across retirement and reconcile uncertain outcomes before returning an ID.
+`ICheckpointStorage` extends that boundary with confirmed PVL/TRL prerequisites and native KVI publication.
+
+`ReplicationFileSet` implements `IFileReplicatedCollection` exposed to BTDB. `GetCount`, `GetFile`, and `Enumerate`
+operate only on physical local cache/storage; `GetRemoteCount`, `GetRemoteFile`, and `RemoteEnumerate` expose the
+selected remote inventory after initialization. Remote handles are read-only and version-bound. Neither inventory
+lookup nor local lookup downloads a body. Local additions/deletions leave the remote inventory unchanged. After a complete successful listing, initialization removes local files without a selected remote mapping and retains
+only mapped files whose extension, then length, then locally calculated SHA-256 match remote metadata. Invalid or unverifiable
+cache files are removed without downloading replacements; prefetch reuses validated files without hashing again.
+The collection uses `IKeyValueDBLogger` (the same instance may be passed to `KeyValueDBOptions.Logger`) to report
+why each local file is removed, including local/remote IDs and mismatched metadata. Downloads retain canonical native
+filename extensions so a verified cached file can pass subsequent startup validation. `GetLocalFileId` exposes memory-only session assignments; a fresh session loses
+different-ID placements and may remove/redownload such cached files. KVI recovery translates PVL references to local
+IDs. `PublishPureValuesAsync` is the leader checkpoint path for unmapped sealed local PVLs; it records confirmed
+placements and retains reserved remote IDs for retries. Failed discovery does not delete local files; repeated initialization preserves new
+session-local files. The owner awaits `InitializeAsync` before calling `BTreeKeyValueDB.OpenAsync`. Open and prefetch never initialize
+implicitly; remote inventory/metadata access fails until initialization succeeds. Standalone constructors retain their original
+synchronous opening and eager metadata loading. File IDs and types are parsed from numeric filenames and extensions;
+higher fileIds identify newer TRLs and KVIs within each sequence, without using native generation. Inventory discovery reads no bodies; lazy native metadata reads use small version-bound ranges.
+`PrefetchAsync(fileId)` shares one bounded cache-population transfer between callers, verifies cache candidates and
+uses exact-ID imports internally. The checkpoint publisher uses the same verified PVL placements. Matching numbers or lengths do not imply equal bytes. Tests reproduce distinct local/remote contents
+under the same ID, remote allocation independent of a higher local maximum, out-of-order downloads, version changes,
+checksum failures, cancellation and retry. This is the concrete reason for separate inventories and exact imports.
+The checkpoint/receipt lifetime rules remain owned by [Architecture.md](Architecture.md); this interface is not an
+Azure transport or a complete startup/authority implementation.
 
 ### Minimum coordination properties
 
@@ -647,7 +679,7 @@ newer tail bytes beyond the KVI cursor do not extend this barrier. Local staging
 ### Separate remote compaction inventory
 
 Remote compaction is leader-only and plans against verified Blob objects and the selected recovery closure, not the
-node's local file listing. Local PVL IDs/generations can differ from remote destinations. The native KVI export maps
+node's local file listing. Local PVL IDs can differ from remote destinations; replication does not use native file generations. The native KVI export maps
 source references into the planned remote namespace before serialization; see
 [local and remote compaction](Architecture.md#independent-local-compaction-and-leader-only-remote-compaction).
 Neither compaction mode distributes results to running peers. Remote PVL/KVI output is consumed through normal Blob

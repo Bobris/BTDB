@@ -63,6 +63,12 @@ public class RelationsInfo
         if (initialize)
         {
             var needsInitialization = relation.NeedsInitialization(tr);
+            if (tr.KeyValueDBTransaction.IsReadOnly())
+            {
+                relation.DeferredInitialization = needsInitialization;
+                Id2Relation[id] = relation;
+                return relation;
+            }
             relation.Initialize(tr);
             if (needsInitialization)
             {

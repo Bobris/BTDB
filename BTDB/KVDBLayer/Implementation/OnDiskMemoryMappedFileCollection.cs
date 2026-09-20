@@ -301,13 +301,9 @@ public class OnDiskMemoryMappedFileCollection : IFileCollection
         return uint.TryParse(fileName, out var result) ? result : 0;
     }
 
-    public IFileCollectionFile AddFile(string? humanHint) => AddFile(humanHint, FileIdParity.Any);
-
-    public IFileCollectionFile AddFile(string? humanHint, FileIdParity parity) => AddFile(humanHint, parity, 0);
-
-    public IFileCollectionFile AddFile(string? humanHint, FileIdParity parity, uint afterFileId)
+    public IFileCollectionFile AddFile(string? humanHint)
     {
-        var index = FileIdAllocator.Allocate(ref _maxFileId, parity, afterFileId);
+        var index = (uint)Interlocked.Increment(ref _maxFileId);
         var fileName = index.ToString("D8") + "." + (humanHint ?? "");
         var file = new File(this, index, Path.Combine(_directory, fileName));
         Dictionary<uint, File> newFiles;

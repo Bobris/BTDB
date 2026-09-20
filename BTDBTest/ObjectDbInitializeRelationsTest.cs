@@ -45,6 +45,57 @@ public class ObjectDbInitializeRelationsTest : ObjectDbTestBase
 
     public interface IOtherItems : IRelation<Item>;
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void SkymambaStartupInitializesRelationsInOrdinaryTransaction(bool upgrade, bool readBeforeStartup)
+    {
+        if (upgrade)
+        {
+            _db.AllowAutoRegistrationOfRelations = true;
+            using (var seed = _db.StartTransaction())
+            {
+                seed.GetRelation<IItems>().Upsert(new Item { Id = 1, Name = "existing" });
+                seed.Commit();
+            }
+            ReopenDb(new DBOptions().WithoutAutoRegistrationOfRelations());
+        }
+        var relationType = upgrade ? typeof(IIndexedItems) : typeof(IItems);
+        if (readBeforeStartup)
+        {
+            _db.AllowAutoRegistrationOfRelations = true;
+            using var read = _db.StartReadOnlyTransaction();
+            read.GetRelation(relationType);
+        }
+
+        // ContinentInBTDB.InitializeData/InitializeRelations uses this sequence.
+        using (var tr = _db.StartTransaction())
+        {
+            Assert.False(tr.KeyValueDBTransaction.IsReadOnly());
+            _db.AllowAutoRegistrationOfRelations = true;
+            _db.RegisterCustomRelation(typeof(IOtherItems), _ => throw new InvalidOperationException("Custom factory"));
+            tr.GetRelation(relationType);
+            _db.AllowAutoRegistrationOfRelations = false;
+            tr.Commit();
+        }
+        using (var read = _db.StartReadOnlyTransaction())
+        {
+            if (upgrade) Assert.Equal(1ul, read.GetRelation<IIndexedItems>().FindByName("existing").Id);
+            else Assert.Empty(read.GetRelation<IItems>());
+            Assert.Equal("Custom factory", Assert.Throws<InvalidOperationException>(() => read.GetRelation<IOtherItems>()).Message);
+        }
+        ReopenDb(new DBOptions());
+        using var reopened = _db.StartReadOnlyTransaction();
+        if (upgrade) Assert.Equal(1ul, reopened.GetRelation<IIndexedItems>().FindByName("existing").Id);
+        else
+        {
+            Assert.Empty(reopened.GetRelation<IItems>());
+            Assert.Equal(2, reopened.KeyValueDBTransaction.GetKeyValueCount());
+        }
+    }
+
     [Fact]
     public async Task PersistsEmptyRelationsInOneWriterAndReopensReadOnly()
     {
@@ -242,15 +293,58 @@ public class ObjectDbInitializeRelationsTest : ObjectDbTestBase
     }
 
     [Fact]
-    public async Task NewRelationCannotBeInitializedReadOnly()
+    public async Task ReadOnlyRegistrationDefersSchemaUntilWriterTouchesRelationAndRetriesRollback()
     {
         _db.AllowAutoRegistrationOfRelations = true;
+        _countingDb.Starts.Clear();
         using (var read = _db.StartReadOnlyTransaction())
-            Assert.Throws<BTDBTransactionRetryException>(() => read.GetRelation<IItems>());
+            Assert.Empty(read.GetRelation<IItems>());
+        Assert.Equal(["read"], _countingDb.Starts);
         using (var read = _lowDb.StartReadOnlyTransaction()) Assert.Equal(0, read.GetKeyValueCount());
-        await _db.InitializeRelations([typeof(IItems)]);
-        using var tr = _db.StartReadOnlyTransaction();
-        Assert.Empty(tr.GetRelation<IItems>());
+        using (var write = await _db.StartWritingTransaction()) write.Commit();
+        using (var read = _lowDb.StartReadOnlyTransaction()) Assert.Equal(0, read.GetKeyValueCount());
+        using (var write = await _db.StartWritingTransaction())
+        {
+            Assert.Empty(write.GetRelation<IItems>());
+            Assert.Equal(2, write.KeyValueDBTransaction.GetKeyValueCount());
+        }
+        using (var read = _lowDb.StartReadOnlyTransaction()) Assert.Equal(0, read.GetKeyValueCount());
+        using (var write = await _db.StartWritingTransaction())
+        {
+            Assert.Empty(write.GetRelation<IItems>());
+            write.Commit();
+        }
+        ReopenDb(new DBOptions());
+        using var reopened = _db.StartReadOnlyTransaction();
+        Assert.Empty(reopened.GetRelation<IItems>());
+        Assert.Equal(2, reopened.KeyValueDBTransaction.GetKeyValueCount());
+    }
+
+    [Fact]
+    public async Task DeferredOnCreateRunsInWriterAndRetriesAfterFailure()
+    {
+        var callback = new ItemsOnCreate { Fail = true };
+        var builder = new ContainerBuilder();
+        builder.RegisterInstance(callback).As<IRelationOnCreate<IItems>>();
+        _container = builder.Build();
+        ReopenDb(new DBOptions().WithContainer(_container));
+        using (var read = _db.StartReadOnlyTransaction()) Assert.Empty(read.GetRelation<IItems>());
+        Assert.Equal(0, callback.Calls);
+        using (var write = await _db.StartWritingTransaction())
+            Assert.Throws<InvalidOperationException>(() => write.GetRelation<IItems>());
+        using (var read = _lowDb.StartReadOnlyTransaction()) Assert.Equal(0, read.GetKeyValueCount());
+        callback.Fail = false;
+        using (var write = await _db.StartWritingTransaction())
+        {
+            Assert.Equal("created", Assert.Single(write.GetRelation<IItems>()).Name);
+            write.Commit();
+        }
+        using (var write = await _db.StartWritingTransaction())
+        {
+            Assert.Single(write.GetRelation<IItems>());
+            write.Commit();
+        }
+        Assert.Equal(2, callback.Calls);
     }
 
     [Theory]

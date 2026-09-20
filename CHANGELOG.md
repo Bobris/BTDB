@@ -2,6 +2,79 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Defer relation schema initialization and creation callbacks requested by read-only transactions until a writing
+  transaction first accesses the relation. Retry deferred initialization after rollback without opening a hidden writer.
+
+- Allocate odd TRL and even non-TRL file IDs from independent sequences in dedicated in-memory replication
+  storage, including after importing an exact file ID.
+
+### Changed
+
+- Add explicit remote inventory refresh before leader writes, preserving local files and session mappings while
+  atomically replacing remote membership and versions after successful discovery.
+
+- Require explicit implementations for every `IFileReplicatedCollection` method; remove default interface behavior.
+
+- Keep existing in-memory and disk collections standalone, with their original allocation implementations. Clone
+  in-memory storage for replication cache/restore instead of adding a shared storage capability interface.
+
+- Enable odd TRL/even non-TRL allocation automatically only for `IFileReplicatedCollection`. Remove the
+  `UseOddTransactionLogIds` option and keep standalone collection allocation unchanged.
+
+- Check local cache filename extensions before length and SHA validation. Download files with canonical native
+  extensions and remove mismatched/unknown extensions without reading file sizes or bodies.
+- Accept BTDB's `IKeyValueDBLogger` in the replicated collection and log local file removal reasons and IDs,
+  including failed-download cleanup. The caller can share the logger with `KeyValueDBOptions.Logger`.
+
+- Validate existing mapped cache files during replicated collection initialization: compare extension and length before reading
+  bytes, then compare local SHA-256 with remote metadata. Remove mismatches or unverifiable candidates without
+  downloading replacements; prefetch downloads missing files and reuses validated files without a second hash.
+
+- Track remote-to-local file ID assignments in memory for each replication session and expose `GetLocalFileId`.
+  Use mappings for startup cleanup, cache population and KVI PVL references. Keep assignments stable across eviction;
+  after restart, differently numbered local copies may be discarded and downloaded again.
+- Expose leader PVL publication as `IFileReplicatedCollection.PublishPureValuesAsync` and use it for checkpoint
+  publication. Reuse confirmed mappings, record new ones after upload confirmation, and retry uncertain uploads
+  with the same reserved remote ID. Local/follower compaction performs no remote publication.
+
+- Remove local files without a selected remote mapping during replicated collection initialization, after remote
+  discovery succeeds. Validate mapped files before retaining them and preserve all local files if discovery fails.
+  Repeated initialization keeps files created in the current initialized session.
+
+- Require explicit replicated collection initialization before `BTreeKeyValueDB.OpenAsync`. Neither open nor prefetch
+  calls `InitializeAsync`; remote inventory and metadata access reject incomplete initialization instead of reporting
+  an empty database. Local cache access stays independent, and cancelled initialization can be retried explicitly.
+
+- Separate replicated collection inventories: `GetCount`, `GetFile`, and `Enumerate` expose local storage only;
+  `GetRemoteCount`, `GetRemoteFile`, and `RemoteEnumerate` expose the selected remote inventory. Recovery discovers
+  remote files and explicitly prefetches required bodies; local creation/deletion does not change remote inventory,
+  and local compaction skips remote-only files.
+
+- Restore the original `IFileCollection` contract. Move replication discovery, metadata, prefetch and parity allocation
+  to `IFileReplicatedCollection`; its presence selects replication semantics. `OpenAsync` retains standalone behavior
+  for ordinary collections, and synchronous constructors reject replicated collections. Keep exact-ID `ImportFile`
+  on the dedicated `InMemoryReplicationFileStorage` implementation, outside the logical replication interface.
+
+- Replace the file-allocation floor overload with `InMemoryReplicationFileStorage.ImportFile(fileId, hint)`, which restores
+  exact IDs in any order and rejects collisions without opening or overwriting existing files.
+- Add an opt-in replication `BTreeKeyValueDB.OpenAsync` with lazy file metadata over an explicitly initialized remote inventory.
+  Discover KVI/TRL candidates from filename extensions and numeric IDs,
+  trying newest KVIs first without scanning all headers. Read only attempted KVI and required TRL metadata.
+  Historical opening and history retention remain exclusive to standalone collections; replicated opening rejects both options.
+  Log capture is initialized only in this replication path; synchronous constructors reject `TransactionLogCapture`.
+  Existing constructors retain synchronous opening, eager metadata loading and advisory prefetch. At the end of async open,
+  request all files referenced by the selected valid KVI in parallel, or all TRLs when no valid KVI is available,
+  and await their availability before returning. Failed or cancelled open releases native roots without appending to TRL.
+- Separate replication compaction from the unchanged standalone compactor. Replication ignores native generations,
+  retains PVL and old TRL by concrete references and capture boundaries, and creates no local KVI. Reject HID/HPV and
+  sub-database creation in replication mode. Serialize local compaction passes and protect all live snapshot roots.
+  Retain KVI file references by TRL fileId and offset instead of storing its root, including across pointer-only compaction.
+- Expose replication's remote inventory and verified local cache through one transparent `IFileCollection`.
+  Read metadata through small version-bound ranges; share and bound lazy downloads, reuse checksum-verified cache
+  entries, and retain confirmed PVL placements across checkpoint attempts. Checkpoint destinations remain remote-allocated.
+
 ## 35.10.2
 
 ### Fixed
@@ -33,7 +106,9 @@
   prefixes and retain unacknowledged TRLs through the compactor boundary.
 
 - Decode TRL commands directly in the replay loop; remove the intermediate command struct and decoder layer.
-  Preserve length/flag validation and copy inline values directly into their BTree representation.
+  Copy inline values directly into their BTree representation. Remove added command-flag and length validation
+  from the hot loop; leave invalid lengths to the existing allocation and reader operations.
+  Restore the original end-of-stream-only catch in TRL replay after removing those validations.
 
 - Remove TransactionLogReader and redundant command decoding from native TRL publication. Use byte-range equality
   for replication comparisons; keep command decoding only in database startup and batch replay.
@@ -63,7 +138,7 @@
   Keep native file-ID restore coverage and verify publication cancellation leaves local execution running.
 
 
-- Keep native command decoding internal to replay, with validation of command lengths and flags.
+- Keep native command decoding internal to replay.
 - Remove generalized non-application writer admission: replication reconciles secondary indexes in at most the first
   ObjectDB writing transaction, with leadership handled at startup. Keep ordinary writer-queue cancellation.
 - Replace per-file pin counting with the compactor's existing used-file protection from the oldest required TRL.

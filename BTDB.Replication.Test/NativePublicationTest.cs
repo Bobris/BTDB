@@ -16,10 +16,10 @@ public class NativePublicationTest
         public TransactionLogSizeLimits GetLimits(uint transactionLogFileId) => new(1024, 1536);
     }
 
-    static BTreeKeyValueDB Open(InMemoryFileCollection files) => new(new KeyValueDBOptions
+    static BTreeKeyValueDB Open(InMemoryReplicationFileStorage files) => new(new KeyValueDBOptions
     {
         FileCollection = files, Compression = new NoCompressionStrategy(), CompactorScheduler = null,
-        UseOddTransactionLogIds = true, TransactionLogSizeStrategy = new TinyLogs()
+        TransactionLogSizeStrategy = new TinyLogs()
     });
 
     [Theory]
@@ -27,7 +27,7 @@ public class NativePublicationTest
     [InlineData(true)]
     public async Task SelectedMultiFileTransactionReopensWithoutChangingNativeBytes(bool rollback)
     {
-        using var source = new InMemoryFileCollection();
+        using var source = new InMemoryReplicationFileStorage();
         NodeFixture.SeedNativeHeader(source, new Guid("b0e93627-7632-4dd9-914c-a79e112e8656"));
         byte[] initial;
         uint firstId;
@@ -76,7 +76,7 @@ public class NativePublicationTest
     [Fact]
     public async Task NativeCheckpointStillNeedsItsReferencedValueFiles()
     {
-        using var source = new InMemoryFileCollection();
+        using var source = new InMemoryReplicationFileStorage();
         NodeFixture.SeedNativeHeader(source, new Guid("b0e93627-7632-4dd9-914c-a79e112e8656"));
         using (var db = Open(source))
         {
@@ -97,7 +97,7 @@ public class NativePublicationTest
         Assert.Contains(snapshots, f => f.Index % 2 == 0);
         (ulong EventId, byte[]? Value) ReadState(bool omitValueFiles)
         {
-            using var restoredFiles = new InMemoryFileCollection();
+            using var restoredFiles = new InMemoryReplicationFileStorage();
             foreach (var snapshot in snapshots)
             {
                 // Preserve IDs; delete the value-bearing TRL only after allocating the native file inventory.
@@ -128,7 +128,7 @@ public class NativePublicationTest
 
     static void VerifyRestore(Dictionary<string, TrlSnapshot> remote, uint firstId, ulong eventId, int count)
     {
-        using var files = new InMemoryFileCollection();
+        using var files = new InMemoryReplicationFileStorage();
         var key = "genesis";
         var id = firstId;
         var visited = new HashSet<string>();
@@ -136,7 +136,7 @@ public class NativePublicationTest
         {
             Assert.True(visited.Add(key));
             var blob = remote[key];
-            var file = files.AddFile("trl", FileIdParity.Odd);
+            var file = files.ImportFile(id, "trl");
             Assert.Equal(id, file.Index);
             var writer = new MemWriter(file.GetAppenderWriter());
             writer.WriteBlock(blob.Content);

@@ -88,19 +88,27 @@ public class CanonicalTrlPublisherTest
 
     sealed class Fixture : IDisposable
     {
-        public readonly InMemoryFileCollection Files = new();
+        public readonly InMemoryReplicationFileStorage Files;
         public readonly TransactionLogCapture Capture;
         public readonly BTreeKeyValueDB Db;
         public readonly Storage Remote = new();
         public readonly DeterministicScheduler Clock = new(781);
         public readonly LeaseAuthority Authority;
         public readonly CanonicalTrlPublisher Publisher;
-        public Fixture(bool tinyLogs = true)
+        Fixture(InMemoryReplicationFileStorage files, TransactionLogCapture capture, BTreeKeyValueDB db)
         {
-            Capture = new();
-            Db = Open(Files, Capture, tinyLogs);
+            Files = files;
+            Capture = capture;
+            Db = db;
             Authority = Lease(Clock);
             Publisher = new(Db, Capture, Remote, Authority, 1, Key);
+        }
+        public static async Task<Fixture> CreateAsync(bool tinyLogs = true)
+        {
+            var files = new InMemoryReplicationFileStorage();
+            var capture = new TransactionLogCapture();
+            try { return new(files, capture, await OpenAsync(files, capture, tinyLogs)); }
+            catch { files.Dispose(); throw; }
         }
         public void Dispose()
         {
@@ -117,10 +125,10 @@ public class CanonicalTrlPublisherTest
         Assert.True(authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromSeconds(10)));
         return authority;
     }
-    static BTreeKeyValueDB Open(IFileCollection files, TransactionLogCapture? capture = null, bool tinyLogs = true) => new(new KeyValueDBOptions
+    static ValueTask<BTreeKeyValueDB> OpenAsync(InMemoryReplicationFileStorage files, TransactionLogCapture? capture = null, bool tinyLogs = true) => BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
     {
-        FileCollection = files, TransactionLogCapture = capture, Compression = new NoCompressionStrategy(),
-        CompactorScheduler = null, UseOddTransactionLogIds = true, FileSplitSize = 1024 * 1024,
+        FileCollection = new LocalReplicatedCollection(files), TransactionLogCapture = capture, Compression = new NoCompressionStrategy(),
+        CompactorScheduler = null, FileSplitSize = 1024 * 1024,
         TransactionLogSizeStrategy = tinyLogs ? new TinyLogs() : null
     });
     static async Task Write(Fixture f, ulong id, int count = 1, bool rollback = false, bool batch = false)
@@ -131,9 +139,9 @@ public class CanonicalTrlPublisherTest
         if (!rollback) tr.Commit();
     }
 
-    static (ulong EventId, long Keys) Restore(Storage storage, bool tinyLogs = true)
+    static async Task<(ulong EventId, long Keys)> Restore(Storage storage, bool tinyLogs = true)
     {
-        using var files = new InMemoryFileCollection();
+        using var files = new InMemoryReplicationFileStorage();
         var key = Key(1);
         var id = 1u;
         var closure = new Dictionary<uint, Blob>();
@@ -146,13 +154,13 @@ public class CanonicalTrlPublisherTest
         }
         foreach (var (fileId, blob) in closure.OrderBy(p => p.Key))
         {
-            var file = files.AddFile("trl", FileIdParity.Any, fileId - 1);
+            var file = files.ImportFile(fileId, "trl");
             Assert.Equal(fileId, file.Index);
             var writer = new MemWriter(file.GetAppenderWriter());
             writer.WriteBlock(blob.Bytes);
             writer.Flush();
         }
-        using var db = Open(files, tinyLogs: tinyLogs);
+        using var db = await OpenAsync(files, tinyLogs: tinyLogs);
         using var tr = db.StartReadOnlyTransaction();
         using var cursor = tr.CreateCursor();
         Span<byte> keyBuffer = default;
@@ -174,7 +182,7 @@ public class CanonicalTrlPublisherTest
     [InlineData(true, true)]
     public async Task PublishesRealNativeCommitsAndRollbackAcrossFiles(bool batch, bool rollback)
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1, batch: batch);
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         var prefix = f.Remote.Blobs[Key(1)].Bytes.ToArray();
@@ -182,19 +190,19 @@ public class CanonicalTrlPublisherTest
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         Assert.True(f.Remote.Requests.Count > 3);
         Assert.Equal(prefix, f.Remote.Blobs[Key(1)].Bytes[..prefix.Length]);
-        Assert.Equal((rollback ? 1ul : 2ul, rollback ? 1L : 11L), Restore(f.Remote));
+        Assert.Equal((rollback ? 1ul : 2ul, rollback ? 1L : 11L), await Restore(f.Remote));
         Assert.Equal(f.Capture.Completed, f.Publisher.PublishedPosition);
         Assert.Equal(TrlPublishResult.Idle, await f.Publisher.PublishNextAsync());
         // A later transaction may start in another file without an in-transaction rotation record.
         await Write(f, 3);
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
-        Assert.Equal((3ul, rollback ? 2L : 12L), Restore(f.Remote));
+        Assert.Equal((3ul, rollback ? 2L : 12L), await Restore(f.Remote));
     }
 
     [Fact]
     public async Task MultiFileGenesisSelectsItsRootOnlyAfterSuccessors()
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1, 10);
         f.Remote.BeforeEffect = write =>
         {
@@ -203,7 +211,7 @@ public class CanonicalTrlPublisherTest
         };
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         Assert.Equal(1u, f.Remote.Requests[^1].Write.FileId);
-        Assert.Equal((1ul, 10L), Restore(f.Remote));
+        Assert.Equal((1ul, 10L), await Restore(f.Remote));
     }
 
     [Fact]
@@ -212,30 +220,30 @@ public class CanonicalTrlPublisherTest
         // Five successor/predecessor boundaries in this native transaction; interruption occurs before each effect.
         for (var stop = 1; stop <= 5; stop++)
         {
-            using var f = new Fixture();
+            using var f = await Fixture.CreateAsync();
             await Write(f, 1);
             await f.Publisher.PublishNextAsync();
             await Write(f, 2, 8);
             var faultAt = f.Remote.Requests.Count + stop;
             f.Remote.Inject = request => request == faultAt ? Fault.DelayEffect : Fault.None;
             Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishNextAsync());
-            Assert.Equal((1ul, 1L), Restore(f.Remote));
+            Assert.Equal((1ul, 1L), await Restore(f.Remote));
             var dispatched = f.Remote.Requests.Count;
             await Write(f, 3); // Local execution continues while remote publication is unresolved.
             Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishNextAsync());
             Assert.Equal(dispatched, f.Remote.Requests.Count);
             f.Remote.CompleteDelayed();
             Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
-            Assert.Equal((2ul, 9L), Restore(f.Remote));
+            Assert.Equal((2ul, 9L), await Restore(f.Remote));
             Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
-            Assert.Equal((3ul, 10L), Restore(f.Remote));
+            Assert.Equal((3ul, 10L), await Restore(f.Remote));
         }
     }
 
     [Fact]
     public async Task ExactRetryCannotDuplicateBytesWhenOriginalRequestLandsLate()
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1);
         f.Remote.Inject = request => request == 1 ? Fault.DelayEffect : Fault.None;
         Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishNextAsync());
@@ -243,7 +251,7 @@ public class CanonicalTrlPublisherTest
         Assert.Equal(f.Remote.Requests[0].Write, f.Remote.Requests[1].Write);
         f.Remote.CompleteDelayed();
         Assert.Equal(1, f.Remote.Applied);
-        Assert.Equal((1ul, 1L), Restore(f.Remote));
+        Assert.Equal((1ul, 1L), await Restore(f.Remote));
     }
 
     [Theory]
@@ -251,7 +259,7 @@ public class CanonicalTrlPublisherTest
     [InlineData(true)]
     public async Task LostOrCancelledReplyReconcilesTheLandedWrite(bool cancel)
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1);
         f.Remote.Inject = _ => cancel ? Fault.CancelAfterEffect : Fault.LostResponse;
         if (cancel)
@@ -259,13 +267,13 @@ public class CanonicalTrlPublisherTest
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         Assert.Single(f.Remote.Requests);
         Assert.True(f.Remote.MaximumRangeRead <= 64 * 1024);
-        Assert.Equal((1ul, 1L), Restore(f.Remote));
+        Assert.Equal((1ul, 1L), await Restore(f.Remote));
     }
 
     [Fact]
     public async Task StoppingPublicationLeavesLocalWritesRollbackAndCompactionRunning()
     {
-        using var f = new Fixture(false);
+        using var f = await Fixture.CreateAsync(false);
         await Write(f, 1);
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         var tail = f.Publisher.Tail!;
@@ -284,13 +292,13 @@ public class CanonicalTrlPublisherTest
         Assert.Equal(2L, read.GetKeyValueCount());
         Assert.Equal(requests, f.Remote.Requests.Count);
         Assert.Same(blob, f.Remote.Blobs[tail.Key]);
-        Assert.Equal((1ul, 1L), Restore(f.Remote, false));
+        Assert.Equal((1ul, 1L), await Restore(f.Remote, false));
     }
 
     [Fact]
     public async Task ExpiredAuthorityOnlyReconcilesAndNeverDispatchesLaterWrites()
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1);
         f.Remote.Inject = _ => Fault.DelayEffect;
         Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishNextAsync());
@@ -307,7 +315,7 @@ public class CanonicalTrlPublisherTest
     [Fact]
     public async Task AdoptionChangesOnlyMetadataAndFencesDelayedOldTermAppend()
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1);
         await f.Publisher.PublishNextAsync();
         var selected = f.Publisher.Tail!;
@@ -322,13 +330,13 @@ public class CanonicalTrlPublisherTest
         Assert.Equal(2ul, next.Tail!.State.Metadata.Term);
         f.Remote.CompleteDelayed();
         Assert.Equal(TrlPublishResult.Conflict, await f.Publisher.PublishNextAsync());
-        Assert.Equal((1ul, 1L), Restore(f.Remote));
+        Assert.Equal((1ul, 1L), await Restore(f.Remote));
     }
 
     [Fact]
     public async Task AuthorityLossAfterPreparingASuccessorNeverSelectsIt()
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1);
         await f.Publisher.PublishNextAsync();
         await Write(f, 2, 8);
@@ -336,7 +344,7 @@ public class CanonicalTrlPublisherTest
         Assert.Equal(TrlPublishResult.AuthorityLost, await f.Publisher.PublishNextAsync());
         Assert.Equal(2, f.Remote.Requests.Count); // Genesis plus one prepared successor, no predecessor CAS.
         Assert.Equal(f.Capture.Acknowledged, f.Publisher.PublishedPosition);
-        Assert.Equal((1ul, 1L), Restore(f.Remote));
+        Assert.Equal((1ul, 1L), await Restore(f.Remote));
         await Write(f, 3);
         using var reader = f.Db.StartReadOnlyTransaction();
         Assert.Equal(3ul, reader.GetCommitUlong());
@@ -345,7 +353,7 @@ public class CanonicalTrlPublisherTest
     [Fact]
     public async Task SchemaCommitWithUnchangedEventCursorStillPublishesItsNativeBytes()
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1);
         await f.Publisher.PublishNextAsync();
         using (var tr = await f.Db.StartWritingTransaction())
@@ -356,13 +364,13 @@ public class CanonicalTrlPublisherTest
         }
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         Assert.Equal(f.Capture.Completed, f.Publisher.PublishedPosition);
-        Assert.Equal((1ul, 2L), Restore(f.Remote));
+        Assert.Equal((1ul, 2L), await Restore(f.Remote));
     }
 
     [Fact]
     public async Task CleanRejectionStopsTheLaneWithoutReleasingOrRetryingCapture()
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1);
         f.Remote.Inject = _ => Fault.Reject;
         Assert.Equal(TrlPublishResult.Conflict, await f.Publisher.PublishNextAsync());
@@ -377,7 +385,7 @@ public class CanonicalTrlPublisherTest
     [InlineData(65536)]
     public async Task ReconciliationRejectsAnyDifferentByteWithoutDecoding(int offset)
     {
-        using var f = new Fixture(tinyLogs: false);
+        using var f = await Fixture.CreateAsync(tinyLogs: false);
         await Write(f, 1, 100);
         f.Remote.Inject = _ => Fault.DelayEffect;
         Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishNextAsync());
@@ -391,25 +399,25 @@ public class CanonicalTrlPublisherTest
     [Fact]
     public async Task ReconciliationReadsLargeNativePrefixesInBoundedChunks()
     {
-        using var f = new Fixture(tinyLogs: false);
+        using var f = await Fixture.CreateAsync(tinyLogs: false);
         await Write(f, 1, 100);
         f.Remote.Inject = _ => Fault.LostResponse;
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         Assert.Single(f.Remote.Requests);
         Assert.Equal(64 * 1024, f.Remote.MaximumRangeRead);
-        Assert.Equal((1ul, 100L), Restore(f.Remote, tinyLogs: false));
+        Assert.Equal((1ul, 100L), await Restore(f.Remote, tinyLogs: false));
     }
 
     [Fact]
     public async Task CoalescesSeveralTransactionsIncludingRollbackIntoOnePrefix()
     {
-        using var f = new Fixture(false);
+        using var f = await Fixture.CreateAsync(false);
         await Write(f, 1);
         await Write(f, 2, rollback: true);
         await Write(f, 3);
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         Assert.Single(f.Remote.Requests);
-        Assert.Equal((3ul, 2L), Restore(f.Remote, false));
+        Assert.Equal((3ul, 2L), await Restore(f.Remote, false));
         Assert.Equal(f.Capture.Completed, f.Capture.Acknowledged);
         Assert.Equal(TrlPublishResult.Idle, await f.Publisher.PublishNextAsync());
     }
@@ -417,7 +425,7 @@ public class CanonicalTrlPublisherTest
     [Fact]
     public async Task OldAppendWinningFirstForcesTheAdopterToRediscoverInsteadOfDroppingHistory()
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1);
         await f.Publisher.PublishNextAsync();
         var oldTail = f.Publisher.Tail!;
@@ -426,13 +434,13 @@ public class CanonicalTrlPublisherTest
         var unusedCapture = new TransactionLogCapture();
         using var next = new CanonicalTrlPublisher(f.Db, unusedCapture, f.Remote, Lease(f.Clock), 2, Key, oldTail);
         Assert.Equal(TrlPublishResult.Conflict, await next.PublishNextAsync());
-        Assert.Equal((2ul, 2L), Restore(f.Remote));
+        Assert.Equal((2ul, 2L), await Restore(f.Remote));
     }
 
     [Fact]
     public async Task ChangedContentNeverCountsAsAnExactResultOrAllowsLaterMutation()
     {
-        using var f = new Fixture();
+        using var f = await Fixture.CreateAsync();
         await Write(f, 1);
         f.Remote.Inject = _ => Fault.DelayEffect;
         Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishNextAsync());

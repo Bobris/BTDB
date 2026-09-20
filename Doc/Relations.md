@@ -790,3 +790,9 @@ Its callback must not access the iterating cursor or modify the database. The ke
 that callback. Cursor state is published when iteration returns or throws; an early stop or exception leaves
 it on the current key. The lower-level `ICursor` overload also requires that the callback not access its
 `ref keyIndex` argument. Primary-key-only `IterateById` uses this API internally with its private cursor.
+
+Automatic relation registration from a read-only transaction stays in memory without opening a hidden writer.
+The first writing transaction that accesses the relation persists its schema, applies pending index upgrades,
+and runs its creation callback. An unrelated writing transaction does not initialize the relation. Rollback leaves
+initialization pending for the next writer. Reads before an index upgrade use the existing stored indexes; call
+`InitializeRelations` before application access when all indexes must be ready at startup.

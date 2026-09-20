@@ -977,6 +977,8 @@ public class RelationInfo
         if (initialize) Initialize(tr);
     }
 
+    internal bool DeferredInitialization;
+
     internal bool NeedsInitialization(IInternalObjectDBTransaction tr)
     {
         if (ClientTypeVersion != LastPersistedVersion) return true;

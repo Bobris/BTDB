@@ -15,11 +15,10 @@ public class NativeFileRestoreTest
         public TransactionLogSizeLimits GetLimits(uint transactionLogFileId) => new(1024, 1536);
     }
 
-    static BTreeKeyValueDB Open(IFileCollection files, TransactionLogCapture? capture = null) => new(new KeyValueDBOptions
+    static BTreeKeyValueDB Open(IFileCollection files) => new(new KeyValueDBOptions
     {
-        FileCollection = files, TransactionLogCapture = capture, CompactorScheduler = null,
-        Compression = new NoCompressionStrategy(), UseOddTransactionLogIds = true,
-        TransactionLogSizeStrategy = new TinyLogs()
+        FileCollection = files, CompactorScheduler = null,
+        Compression = new NoCompressionStrategy(), TransactionLogSizeStrategy = new TinyLogs()
     });
 
     static void Put(IKeyValueDBTransaction tr, byte key)
@@ -44,7 +43,7 @@ public class NativeFileRestoreTest
     [Fact]
     public async Task RestoredNativeIdsRemainPhysicalIdsThroughKviAndTrl()
     {
-        using var original = new InMemoryFileCollection();
+        using var original = new InMemoryReplicationFileStorage();
         using (var db = Open(original))
         {
             for (byte i = 1; i < 10; i++)
@@ -55,10 +54,10 @@ public class NativeFileRestoreTest
             }
             db.CreateKvi(CancellationToken.None);
         }
-        using var cache = new InMemoryFileCollection();
+        using var cache = new InMemoryReplicationFileStorage();
         foreach (var file in original.Enumerate().OrderBy(f => f.Index))
         {
-            var target = cache.AddFile("cache", FileIdParity.Any, file.Index - 1);
+            var target = cache.ImportFile(file.Index, "cache");
             var writer = new MemWriter(target.GetAppenderWriter());
             writer.WriteBlock(Bytes(file));
             writer.Flush();

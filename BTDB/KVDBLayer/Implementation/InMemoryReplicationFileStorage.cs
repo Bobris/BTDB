@@ -11,18 +11,16 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer;
 
-public class InMemoryFileCollection : IFileCollection
+/// In-memory local storage for replication and native restore. Separate from standalone file collections.
+/// This storage does not itself select replication mode; the replicated collection owns remote inventory and mappings.
+public class InMemoryReplicationFileStorage : IFileCollection
 {
     // disable invalid warning about using volatile inside Interlocked.CompareExchange
 #pragma warning disable 420
 
     volatile Dictionary<uint, File> _files = new Dictionary<uint, File>();
-    int _maxFileId;
-
-    public InMemoryFileCollection()
-    {
-        _maxFileId = 0;
-    }
+    FileIdAllocator _fileIdAllocator;
+    readonly object _creationLock = new();
 
     public void SimulateDataLossOfNotFlushedData()
     {
@@ -69,7 +67,7 @@ public class InMemoryFileCollection : IFileCollection
 
     class File : IFileCollectionFile
     {
-        readonly InMemoryFileCollection _owner;
+        readonly InMemoryReplicationFileStorage _owner;
         readonly uint _index;
         byte[][] _data = Array.Empty<byte[]>();
         readonly Writer _writer;
@@ -77,10 +75,11 @@ public class InMemoryFileCollection : IFileCollection
         long _lastTrueFlushedSize;
         const int OneBufSize = 128 * 1024;
 
-        public File(InMemoryFileCollection owner, uint index)
+        public File(InMemoryReplicationFileStorage owner, uint index, string humanHint)
         {
             _owner = owner;
             _index = index;
+            FileType = FileCollectionWithFileInfos.FileTypeFromHint(humanHint);
             _writer = new Writer(this);
         }
 
@@ -91,6 +90,7 @@ public class InMemoryFileCollection : IFileCollection
         }
 
         public uint Index => _index;
+        internal KVFileType? FileType { get; }
 
         sealed class Reader : IMemReader
         {
@@ -345,10 +345,30 @@ public class InMemoryFileCollection : IFileCollection
         }
     }
 
-    public IFileCollectionFile AddFile(string humanHint)
+    public virtual IFileCollectionFile AddFile(string humanHint) => AddFile(humanHint, FileIdParity.Any);
+
+    public virtual IFileCollectionFile AddFile(string humanHint, FileIdParity parity)
     {
-        var index = (uint)Interlocked.Increment(ref _maxFileId);
-        var file = new File(this, index);
+        lock (_creationLock)
+            return CreateFile(_fileIdAllocator.Allocate(parity), humanHint);
+    }
+
+    public virtual IFileCollectionFile ImportFile(uint fileId, string humanHint)
+    {
+        if (fileId == 0) throw new ArgumentOutOfRangeException(nameof(fileId));
+        // Serialize exact-ID imports with allocation, including imports below the current maximum.
+        lock (_creationLock)
+        {
+            if (_files.ContainsKey(fileId)) throw new InvalidOperationException("The file ID already exists.");
+            var file = CreateFile(fileId, humanHint);
+            _fileIdAllocator.Observe(fileId);
+            return file;
+        }
+    }
+
+    IFileCollectionFile CreateFile(uint index, string humanHint)
+    {
+        var file = new File(this, index, humanHint);
         Dictionary<uint, File> newFiles;
         Dictionary<uint, File> oldFiles;
         do
@@ -360,27 +380,29 @@ public class InMemoryFileCollection : IFileCollection
         return file;
     }
 
-    public uint GetCount()
+    public virtual KVFileType? GetFileType(uint fileId) => _files.GetValueOrDefault(fileId)?.FileType;
+
+    public virtual uint GetCount()
     {
         return (uint)_files.Count;
     }
 
-    public IFileCollectionFile? GetFile(uint index)
+    public virtual IFileCollectionFile GetFile(uint index)
     {
-        return _files.TryGetValue(index, out var value) ? value : null;
+        return _files.TryGetValue(index, out var value) ? value : null!;
     }
 
-    public IEnumerable<IFileCollectionFile> Enumerate()
+    public virtual IEnumerable<IFileCollectionFile> Enumerate()
     {
         return _files.Values;
     }
 
-    public void ConcurrentTemporaryTruncate(uint index, uint offset)
+    public virtual void ConcurrentTemporaryTruncate(uint index, uint offset)
     {
         // Nothing to do
     }
 
-    public void Dispose()
+    public virtual void Dispose()
     {
     }
 

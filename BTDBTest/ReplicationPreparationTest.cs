@@ -13,11 +13,18 @@ namespace BTDBTest;
 [Collection("IFieldHandler.UseNoEmitForRelations")]
 public class ReplicationPreparationTest
 {
-    static BTreeKeyValueDB Open(IFileCollection files, bool explicitTransactions = true, bool odd = true, TransactionLogCapture? capture = null) => new(new KeyValueDBOptions
+    static BTreeKeyValueDB Open(IFileCollection files, bool explicitTransactions = true) => new(new KeyValueDBOptions
     {
         FileCollection = files, CompactorScheduler = null, Compression = new NoCompressionStrategy(),
-        TransactionLogCapture = capture, FileSplitSize = 1024, RequireExplicitTransactions = explicitTransactions, UseOddTransactionLogIds = odd
+        FileSplitSize = 1024, RequireExplicitTransactions = explicitTransactions
     });
+
+    static ValueTask<BTreeKeyValueDB> OpenAsync(InMemoryReplicationFileStorage files, TransactionLogCapture? capture) =>
+        BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        {
+            FileCollection = new LocalReplicatedCollection(files), CompactorScheduler = null, Compression = new NoCompressionStrategy(),
+            TransactionLogCapture = capture, FileSplitSize = 1024, RequireExplicitTransactions = true
+            });
 
     static void Put(IKeyValueDBTransaction tr, byte key, int length = 10)
     {
@@ -30,7 +37,7 @@ public class ReplicationPreparationTest
     [InlineData(true)]
     public async Task EventCursorWaitsForWriterAndRollsBackWithIt(bool batch)
     {
-        using var files = new InMemoryFileCollection();
+        using var files = new InMemoryReplicationFileStorage();
         using var db = Open(files);
         using (var first = await db.StartWritingTransaction(41ul, batch))
         {
@@ -52,10 +59,10 @@ public class ReplicationPreparationTest
     [Fact]
     public async Task LegacyEvenTailRotatesAndLargeTransactionSpansOddFiles()
     {
-        using var files = new InMemoryFileCollection();
+        using var files = new InMemoryReplicationFileStorage();
         files.AddFile("reserved");
         uint legacy;
-        using (var db = Open(files, false, false))
+        using (var db = Open(files, false))
         {
             using var tr = await db.StartWritingTransaction(1ul);
             Put(tr, 1);
@@ -63,18 +70,19 @@ public class ReplicationPreparationTest
             legacy = Assert.Single(db.FileCollection.FileInfos, f => f.Value is IFileTransactionLog).Key;
             Assert.Equal(0u, legacy & 1);
         }
-        using (var db = Open(files))
+        using (var db = await OpenAsync(files, null))
         {
             using var tr = await db.StartWritingTransaction(2ul);
             for (byte i = 2; i < 12; i++) Put(tr, i, 700);
             tr.Commit();
-            var logs = db.FileCollection.FileInfos.Where(f => f.Value is IFileTransactionLog).ToArray();
+            var logs = files.Enumerate().Where(f => files.GetFileType(f.Index) == KVFileType.TransactionLog)
+                .Select(f => new System.Collections.Generic.KeyValuePair<uint, IFileInfo>(f.Index, FileCollectionWithFileInfos.ReadFileInfo(f))).ToArray();
             Assert.True(logs.Length > 3);
             Assert.All(logs.Where(f => f.Key != legacy), f => Assert.Equal(1u, f.Key & 1));
             var firstNew = logs.Where(f => f.Key != legacy).MinBy(f => f.Key);
             Assert.Equal(legacy, ((IFileTransactionLog)firstNew.Value).PreviousFileId);
         }
-        using (var db = Open(files))
+        using (var db = await OpenAsync(files, null))
         using (var tr = db.StartReadOnlyTransaction())
         {
             Assert.Equal(2ul, tr.GetCommitUlong());
@@ -83,34 +91,69 @@ public class ReplicationPreparationTest
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void DiskCollectionsAllocateParityWithoutIntermediateFiles(bool mapped)
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void AnyRetainsSequentialAllocationAcrossFileTypes(int storage)
     {
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
+        IFileCollection OpenCollection() => storage switch
+        {
+            0 => new InMemoryFileCollection(),
+            1 => new OnDiskFileCollection(path),
+            _ => new OnDiskMemoryMappedFileCollection(path)
+        };
         try
         {
-            using (IFileCollection files = mapped ? new OnDiskMemoryMappedFileCollection(path) : new OnDiskFileCollection(path))
+            using (var files = OpenCollection())
             {
-                Assert.Equal(1u, files.AddFile("trl", FileIdParity.Odd).Index);
-                Assert.Equal(2u, files.AddFile("pvl", FileIdParity.Even).Index);
-                Assert.Equal(3u, files.AddFile("trl", FileIdParity.Odd).Index);
-                Assert.Equal(5u, files.AddFile("trl", FileIdParity.Odd).Index);
-                Assert.Equal(6u, files.AddFile("kvi", FileIdParity.Even).Index);
-                Assert.Equal(8u, files.AddFile("pvl", FileIdParity.Even).Index);
-                Assert.Equal(6u, files.GetCount());
+                Assert.Equal(1u, files.AddFile("trl").Index);
+                Assert.Equal(2u, files.AddFile("trl").Index);
+                Assert.Equal(3u, files.AddFile("pvl").Index);
+                Assert.Equal(4u, files.AddFile("kvi").Index);
+                Assert.Equal(5u, files.AddFile("pvl").Index);
             }
-            using (IFileCollection files = mapped ? new OnDiskMemoryMappedFileCollection(path) : new OnDiskFileCollection(path))
-                Assert.Equal(9u, files.AddFile("trl", FileIdParity.Odd).Index);
+            if (storage != 0)
+            {
+                using var files = OpenCollection();
+                Assert.Equal(6u, files.AddFile("trl").Index);
+                Assert.Equal(7u, files.AddFile("pvl").Index);
+            }
         }
         finally { Directory.Delete(path, true); }
     }
 
     [Fact]
-    public async Task ConcurrentMixedAllocationDoesNotReuseSkippedIds()
+    public void ImportedIdsAndExhaustionOnlyAffectSelectedParity()
     {
-        using var files = new InMemoryFileCollection();
+        using var files = new InMemoryReplicationFileStorage();
+        Assert.Equal(101u, files.ImportFile(101, "trl").Index);
+        Assert.Equal(2u, files.AddFile("pvl", FileIdParity.Even).Index);
+        Assert.Equal(200u, files.ImportFile(200, "kvi").Index);
+        Assert.Equal(103u, files.AddFile("trl", FileIdParity.Odd).Index);
+        Assert.Equal(201u, files.AddFile("legacy").Index);
+        Assert.Equal(202u, files.AddFile("pvl", FileIdParity.Even).Index);
+        Assert.Equal(uint.MaxValue, files.ImportFile(uint.MaxValue, "trl").Index);
+        Assert.Throws<InvalidOperationException>(() => files.AddFile("trl", FileIdParity.Odd));
+        Assert.Throws<InvalidOperationException>(() => files.AddFile("legacy"));
+        Assert.Equal(204u, files.AddFile("pvl", FileIdParity.Even).Index);
+    }
+
+    [Fact]
+    public async Task ConcurrentAnyAndParityAllocationsDoNotCollide()
+    {
+        using var files = new InMemoryReplicationFileStorage();
+        var allocated = await Task.WhenAll(Enumerable.Range(0, 600).Select(i => Task.Run(() =>
+            files.AddFile("mixed", (FileIdParity)(i % 3)).Index)));
+        Assert.Equal(600, allocated.Distinct().Count());
+        Assert.Equal(allocated.Max() + 1, files.AddFile("legacy").Index);
+    }
+
+    [Fact]
+    public async Task ConcurrentParityAllocationUsesIndependentSequences()
+    {
+        using var files = new InMemoryReplicationFileStorage();
         var allocated = await Task.WhenAll(Enumerable.Range(0, 200).Select(i => Task.Run(() =>
         {
             var file = files.AddFile(i % 2 == 0 ? "trl" : "pvl", i % 2 == 0 ? FileIdParity.Odd : FileIdParity.Even);
@@ -119,25 +162,22 @@ public class ReplicationPreparationTest
         })));
         Assert.Equal(200, allocated.Distinct().Count());
         Assert.Equal(200u, files.GetCount());
+        Assert.Equal(Enumerable.Range(1, 200).Select(i => (uint)i), allocated.OrderBy(id => id));
     }
 
     [Fact]
-    public async Task DatabaseAllocationUsesEvenIdsForEveryNonTrlFile()
+    public async Task ReplicationAllocationUsesEvenIdsForSupportedNonTrlFiles()
     {
-        using var files = new InMemoryFileCollection();
-        using var db = Open(files);
-        foreach (var hint in new[] { "kvi", "pvl", "hpv", "hid", "another-type" })
+        using var files = new InMemoryReplicationFileStorage();
+        using var db = await OpenAsync(files, null);
+        foreach (var hint in new[] { "kvi", "pvl" })
             Assert.Equal(0u, db.FileCollection.AddFile(hint).Index & 1);
-        using (var tr = await db.StartWritingTransaction(1ul))
+        using var tr = await db.StartWritingTransaction(1ul);
+        Put(tr, 1);
+        tr.Commit();
+        Assert.All(files.Enumerate(), file =>
         {
-            Put(tr, 1);
-            tr.Commit();
-        }
-        db.CreateKvi(System.Threading.CancellationToken.None);
-        Assert.All(db.FileCollection.FileInfos, entry =>
-        {
-            if (entry.Value is IFileTransactionLog) Assert.Equal(1u, entry.Key & 1);
-            else Assert.Equal(0u, entry.Key & 1);
+            Assert.Equal(files.GetFileType(file.Index) == KVFileType.TransactionLog ? 1u : 0u, file.Index & 1);
         });
     }
 
@@ -157,9 +197,9 @@ public class ReplicationPreparationTest
     [InlineData(true, true)]
     public async Task StartupPersistsMetadataBeforeApplicationWrites(bool captureEnabled, bool inBatch)
     {
-        using var files = new InMemoryFileCollection();
+        using var files = new InMemoryReplicationFileStorage();
         var capture = new TransactionLogCapture();
-        using (var kv = Open(files, capture: captureEnabled ? capture : null))
+        using (var kv = await OpenAsync(files, capture: captureEnabled ? capture : null))
         using (var db = new ObjectDB())
         {
             db.Open(kv, false, new DBOptions());
@@ -203,9 +243,9 @@ public class ReplicationPreparationTest
     }
 
     [Fact]
-    public async Task ExistingIndexUpgradeIsNotDeferredIntoApplicationUpsert()
+    public async Task ReadOnlyIndexUpgradeIsDeferredUntilWriterTouchesRelation()
     {
-        using var files = new InMemoryFileCollection();
+        using var files = new InMemoryReplicationFileStorage();
         using (var kv = Open(files))
         using (var db = new ObjectDB())
         {
@@ -215,12 +255,12 @@ public class ReplicationPreparationTest
             tr.Commit();
         }
         var capture = new TransactionLogCapture();
-        using (var kv = Open(files, capture: capture))
+        using (var kv = await OpenAsync(files, capture: capture))
         using (var db = new ObjectDB())
         {
             db.Open(kv, false, new DBOptions());
             using (var read = db.StartReadOnlyTransaction())
-                Assert.Throws<BTDBTransactionRetryException>(() => read.GetRelation<IIndexedItems>());
+                Assert.Equal("existing", Assert.Single(read.GetRelation<IIndexedItems>()).Name);
             using (var upgrade = await db.StartWritingTransaction())
             {
                 Assert.Equal(9ul, upgrade.GetCommitUlong());
@@ -251,7 +291,7 @@ public class ReplicationPreparationTest
     [InlineData(true)]
     public async Task RollbackActionsRunBeforeNextWriterAndAreDiscardedOnCommit(bool commit)
     {
-        using var files = new InMemoryFileCollection();
+        using var files = new InMemoryReplicationFileStorage();
         using var kv = Open(files);
         using var db = new ObjectDB();
         db.Open(kv, false, new DBOptions());

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using System.Threading;
 using BTDB.StreamLayer;
 
@@ -10,7 +11,6 @@ namespace BTDB.KVDBLayer;
 public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
 {
     readonly IFileCollection _fileCollection;
-    readonly bool _useOddTransactionLogIds;
     readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new();
     long _fileGeneration;
     internal static readonly byte[] MagicStartOfFile = "BTDB2"u8.ToArray();
@@ -37,10 +37,9 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
         }
     }
 
-    public FileCollectionWithFileInfos(IFileCollection fileCollection, bool useOddTransactionLogIds = false)
+    public FileCollectionWithFileInfos(IFileCollection fileCollection)
     {
         _fileCollection = fileCollection;
-        _useOddTransactionLogIds = useOddTransactionLogIds;
         Guid = null;
         LoadInfoAboutFiles();
     }
@@ -120,6 +119,55 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
         }
     }
 
+    internal static KVFileType? FileTypeFromHint(string? hint) => hint switch
+    {
+        "trl" => KVFileType.TransactionLog,
+        "kvi" => KVFileType.KeyIndex,
+        "pvl" => KVFileType.PureValues,
+        "hpv" => KVFileType.PureValuesWithId,
+        "hid" => KVFileType.HashKeyIndex,
+        _ => null
+    };
+
+    /// Parse native metadata only. Remote collections can provide a bounded header reader.
+    public static IFileInfo ReadFileInfo(ref MemReader reader, bool throwOnEndOfStream = false)
+    {
+        try { return ParseFileInfo(ref reader); }
+        catch (EndOfStreamException) when (!throwOnEndOfStream) { return UnknownFile.Instance; }
+        catch (InvalidDataException) { return UnknownFile.Instance; }
+        catch (OverflowException) { return UnknownFile.Instance; }
+    }
+
+    static IFileInfo ParseFileInfo(ref MemReader reader)
+    {
+        var magic = reader.ReadByteArrayRaw(MagicStartOfFile.Length);
+        Guid? guid = null;
+        if (magic.AsSpan().SequenceEqual(MagicStartOfFileWithGuid)) guid = reader.ReadGuid();
+        else if (!magic.AsSpan().SequenceEqual(MagicStartOfFile)) return UnknownFile.Instance;
+        return (KVFileType)reader.ReadUInt8() switch
+        {
+            KVFileType.TransactionLog => new FileTransactionLog(ref reader, guid),
+            KVFileType.KeyIndex => new FileKeyIndex(ref reader, guid, false, false, false),
+            KVFileType.KeyIndexWithCommitUlong => new FileKeyIndex(ref reader, guid, true, false, false),
+            KVFileType.ModernKeyIndex => new FileKeyIndex(ref reader, guid, true, true, false),
+            KVFileType.ModernKeyIndexWithUlongs => new FileKeyIndex(ref reader, guid, true, true, true),
+            KVFileType.PureValues => new FilePureValues(ref reader, guid),
+            KVFileType.PureValuesWithId => new FilePureValuesWithId(ref reader, guid),
+            KVFileType.HashKeyIndex => new HashKeyIndex(ref reader, guid),
+            _ => UnknownFile.Instance
+        };
+    }
+
+    public static IFileInfo ReadFileInfo(IFileCollectionFile file)
+    {
+        try
+        {
+            var reader = new MemReader(file.GetExclusiveReader());
+            return ReadFileInfo(ref reader);
+        }
+        catch (Exception) { return UnknownFile.Instance; }
+    }
+
     public IEnumerable<KeyValuePair<uint, IFileInfo>> FileInfos => _fileInfos;
 
     public long LastFileGeneration => _fileGeneration;
@@ -165,9 +213,7 @@ public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
 
     public IFileCollectionFile AddFile(string humanHint)
     {
-        return _useOddTransactionLogIds
-            ? _fileCollection.AddFile(humanHint, humanHint == "trl" ? FileIdParity.Odd : FileIdParity.Even)
-            : _fileCollection.AddFile(humanHint);
+        return _fileCollection.AddFile(humanHint);
     }
 
     public long NextGeneration()

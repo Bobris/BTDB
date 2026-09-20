@@ -18,10 +18,10 @@ public sealed class TransactionLogCapture
     public TransactionLogPosition Acknowledged { get { lock (_lock) return _acknowledged; } }
     internal uint OldestRequiredFileId { get { lock (_lock) return _acknowledged.FileId; } }
 
-    internal void Initialize(FileCollectionWithFileInfos files)
+    internal void Initialize(IFileCollectionWithFileInfos files)
     {
-        foreach (var (id, info) in files.FileInfos)
-            if (info.FileType == KVFileType.TransactionLog &&
+        foreach (var (id, type) in files.FileTypes)
+            if (type == KVFileType.TransactionLog &&
                 (_acknowledged.FileId == 0 || id < _acknowledged.FileId))
                 _acknowledged = new(id, 0);
     }

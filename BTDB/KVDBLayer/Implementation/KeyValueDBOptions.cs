@@ -16,11 +16,14 @@ public class KeyValueDBOptions
     /// The strategy and its ID-to-size mapping must remain unchanged for the database's lifetime.
     public ITransactionLogSizeStrategy? TransactionLogSizeStrategy;
     /// Optional tracking of complete and acknowledged TRL positions for replication and compaction retention.
+    /// Requires IFileReplicatedCollection and BTreeKeyValueDB.OpenAsync.
     public TransactionLogCapture? TransactionLogCapture;
 
     public ICompactorScheduler? CompactorScheduler = KVDBLayer.CompactorScheduler.Instance;
     public IKeyValueDBLogger? Logger;
+    /// Historical opening is supported only with standalone file collections.
     public ulong? OpenUpToCommitUlong;
+    /// History retention is supported only with standalone file collections.
     public ulong? PreserveHistoryUpToCommitUlong;
     public ulong? CompactorReadBytesPerSecondLimit;
     public ulong? CompactorWriteBytesPerSecondLimit;
@@ -29,9 +32,6 @@ public class KeyValueDBOptions
 
     /// Require explicit read-only or asynchronous writing transactions instead of StartTransaction.
     public bool RequireExplicitTransactions;
-
-    /// Allocate new TRLs with odd IDs and all other files with even IDs. Rotate an existing even TRL before writing.
-    public bool UseOddTransactionLogIds;
 
     /// If true it will try to recover data in DB as much as possible
     public bool LenientOpen;

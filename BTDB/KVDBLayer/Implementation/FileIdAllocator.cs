@@ -1,39 +1,32 @@
 using System;
-using System.Threading;
 
 namespace BTDB.KVDBLayer;
 
-internal static class FileIdAllocator
+// Accessed during initial loading or under the collection's creation lock.
+internal struct FileIdAllocator
 {
-    internal static uint Allocate(ref int lastId, FileIdParity parity, uint afterFileId)
+    uint _lastOddId;
+    uint _lastEvenId;
+
+    internal void Observe(uint id)
     {
-        if (afterFileId == 0) return Allocate(ref lastId, parity);
-        if (parity is not (FileIdParity.Any or FileIdParity.Odd or FileIdParity.Even))
-            throw new ArgumentOutOfRangeException(nameof(parity));
-        while (true)
-        {
-            var previous = Volatile.Read(ref lastId);
-            var next = (ulong)Math.Max((uint)previous, afterFileId) + 1;
-            if (parity != FileIdParity.Any && (next & 1) != (parity == FileIdParity.Odd ? 1ul : 0ul)) next++;
-            if (next > uint.MaxValue) throw new InvalidOperationException("File IDs exhausted.");
-            if (Interlocked.CompareExchange(ref lastId, unchecked((int)next), previous) == previous)
-                return (uint)next;
-        }
+        if ((id & 1) != 0) _lastOddId = Math.Max(_lastOddId, id);
+        else _lastEvenId = Math.Max(_lastEvenId, id);
     }
 
-    internal static uint Allocate(ref int lastId, FileIdParity parity)
+    internal uint Allocate(FileIdParity parity)
     {
-        if (parity == FileIdParity.Any) return (uint)Interlocked.Increment(ref lastId);
-        if (parity is not (FileIdParity.Odd or FileIdParity.Even))
-            throw new ArgumentOutOfRangeException(nameof(parity));
-        while (true)
+        var lastId = parity switch
         {
-            var previous = Volatile.Read(ref lastId);
-            var next = (ulong)(uint)previous + 1;
-            if ((next & 1) != (parity == FileIdParity.Odd ? 1ul : 0ul)) next++;
-            if (next > uint.MaxValue) throw new InvalidOperationException("File IDs exhausted.");
-            if (Interlocked.CompareExchange(ref lastId, unchecked((int)next), previous) == previous)
-                return (uint)next;
-        }
+            FileIdParity.Odd => _lastOddId,
+            FileIdParity.Even => _lastEvenId,
+            FileIdParity.Any => Math.Max(_lastOddId, _lastEvenId),
+            _ => throw new ArgumentOutOfRangeException(nameof(parity))
+        };
+        var next = (ulong)lastId + 1;
+        if (parity != FileIdParity.Any && (next & 1) != (parity == FileIdParity.Odd ? 1ul : 0ul)) next++;
+        if (next > uint.MaxValue) throw new InvalidOperationException("File IDs exhausted.");
+        Observe((uint)next);
+        return (uint)next;
     }
 }
