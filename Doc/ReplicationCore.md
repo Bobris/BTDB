@@ -234,7 +234,7 @@ on an unprefetched logical file wait for its cache population; normal reads of t
 
 A sealed cache candidate is reused only after a fresh whole-file checksum matches selected remote metadata.
 A mismatching file is replaced; an active TRL is always downloaded again. Version-bound downloads use assigned local-ID
-imports internally and remove partial files on failure. Only complete checksum-verified sealed PVLs establish reuse
+imports internally and remove partial files on failure. Complete version-bound downloads of sealed PVLs with checksum metadata establish reuse
 receipts. `CheckpointPublisher` uses those receipts and confirmed upload placements, reserving new destinations from
 the remote inventory. An uncertain upload retries the same destination through the storage adapter's reconciliation.
 Receipts retain IDs and lengths, not file bytes or roots; their destinations must remain protected from remote cleanup.
@@ -319,3 +319,10 @@ Ordinary KVI-based restart already uses collection initialization followed by `O
 state, then resumes publication using tail metadata read from remote storage. The genesis-only helper is not required
 for that path. Durable allocation, disk-backed replication storage, production adapters and recovery-race
 qualification remain pending.
+
+Remote downloads fetch up to four 256 KiB blocks concurrently per active file and append completed batches in order.
+They do not recompute or validate SHA; checksum validation still applies to preexisting cache candidates. A failed block
+cancels and drains sibling reads before partial-file cleanup and pooled-buffer return.
+
+Downloaded files always retain their remote IDs. Earlier cross-ID upload placements may reuse an existing local file,
+but a redownload installs the remote ID and replaces the old placement rather than allocating another local ID.

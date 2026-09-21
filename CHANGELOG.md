@@ -12,6 +12,10 @@
 
 ### Changed
 
+- Download remote files in bounded parallel 256 KiB blocks without recomputing their checksum; preserve ordered
+  local writes, version-bound reads, short-read handling and cancellation/failure cleanup. Downloads always use the
+  remote file ID, even when an earlier upload mapped it to a different local source.
+
 - Simplify checkpoint retries by reusing their validated mapping, track remote placement IDs with a set, and
   rely on the allocator for nonzero/even ID guarantees while retaining collision and prerequisite checks.
 

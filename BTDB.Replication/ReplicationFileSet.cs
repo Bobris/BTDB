@@ -123,36 +123,59 @@ internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage 
         finally { ArrayPool<byte>.Shared.Return(buffer); }
     }
 
-    /// <summary>Restore under the assigned local ID, using the remote ID for a new identity mapping.
+    /// <summary>Download under the exact remote file ID, independently of earlier upload placements.
     /// A collision fails without touching
     /// the existing local file. Partial/invalid downloads are removed and never establish a placement.</summary>
     internal async ValueTask<IFileCollectionFile> DownloadAsync(RemoteFile file, CancellationToken cancellation = default)
     {
         cancellation.ThrowIfCancellationRequested();
-        var localId = GetOrAssignLocalFileId(file.FileId, file.FileType);
-        var target = Local.ImportFile(localId, FileExtension(file.FileType));
-        byte[]? buffer = null;
+        var target = Local.ImportFile(file.FileId, FileExtension(file.FileType));
+        const int blockSize = 256 * 1024;
+        const int parallelBlocks = 4;
+        var buffers = new byte[parallelBlocks][];
+        var reads = new Task<int>[parallelBlocks];
+        using var transfer = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         try
         {
-            buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-            using var hash = file.IsSealed && file.Sha256 != null
-                ? IncrementalHash.CreateHash(HashAlgorithmName.SHA256) : null;
             if (file.Length == 0)
-                await Remote.ReadAsync(file, 0, Memory<byte>.Empty, cancellation).ConfigureAwait(false);
+                await Remote.ReadAsync(file, 0, Memory<byte>.Empty, transfer.Token).ConfigureAwait(false);
+            var count = (int)Math.Min((ulong)parallelBlocks, (file.Length == 0 ? 0 : (file.Length - 1) / blockSize + 1));
+            for (var i = 0; i < count; i++) buffers[i] = ArrayPool<byte>.Shared.Rent(blockSize);
             for (ulong offset = 0; offset < file.Length;)
             {
-                var count = (int)Math.Min((ulong)buffer.Length, file.Length - offset);
-                var read = await Remote.ReadAsync(file, offset, buffer.AsMemory(0, count), cancellation).ConfigureAwait(false);
-                if (read <= 0 || read > count) throw new IOException("Remote file is truncated or returned an invalid read length.");
-                hash?.AppendData(buffer, 0, read);
-                WriteBlock(target, buffer.AsSpan(0, read));
-                offset += (uint)read;
+                var active = (int)Math.Min((ulong)parallelBlocks, ((file.Length - offset - 1) / blockSize + 1));
+                for (var i = 0; i < active; i++)
+                {
+                    var start = offset + (ulong)i * blockSize;
+                    var length = (int)Math.Min((ulong)blockSize, file.Length - start);
+                    reads[i] = ReadBlockAsync(start, buffers[i].AsMemory(0, length));
+                }
+                // Drain every read before writing or returning pooled buffers, including on failure.
+                await Task.WhenAll(reads.AsSpan(0, active).ToArray()).ConfigureAwait(false);
+                for (var i = 0; i < active; i++)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    WriteBlock(target, buffers[i].AsSpan(0, reads[i].Result));
+                    offset += (uint)reads[i].Result;
+                }
             }
             cancellation.ThrowIfCancellationRequested();
-            if (hash != null) VerifyChecksum(hash, file);
             target.HardFlush();
-            if (file.FileType == KVFileType.PureValues && hash != null)
-                AddPlacement(localId, new(file.Length, file.FileId, true));
+            lock (_placementLock)
+            {
+                // Upload placements can point to differently numbered local sources. A fresh download always
+                // installs the remote identity, so discard any former receipt for this remote destination.
+                if (_remoteToLocal.TryGetValue(file.FileId, out var previous) && previous != file.FileId &&
+                    _placements.TryGetValue(previous, out var placement) && placement.RemoteId == file.FileId)
+                {
+                    _placements.Remove(previous);
+                    _placedRemoteIds.Remove(file.FileId);
+                }
+                _remoteToLocal[file.FileId] = file.FileId;
+                _mappedLocalIds.Add(file.FileId);
+                if (file.FileType == KVFileType.PureValues && file.IsSealed && file.Sha256 != null)
+                    AddPlacement(file.FileId, new(file.Length, file.FileId, true));
+            }
             return target;
         }
         catch (Exception error)
@@ -162,7 +185,31 @@ internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage 
         }
         finally
         {
-            if (buffer != null) ArrayPool<byte>.Shared.Return(buffer);
+            foreach (var buffer in buffers)
+                if (buffer != null) ArrayPool<byte>.Shared.Return(buffer);
+        }
+
+        async Task<int> ReadBlockAsync(ulong offset, Memory<byte> destination)
+        {
+            try
+            {
+                var filled = 0;
+                while (filled < destination.Length)
+                {
+                    transfer.Token.ThrowIfCancellationRequested();
+                    var read = await Remote.ReadAsync(file, offset + (uint)filled, destination[filled..], transfer.Token)
+                        .ConfigureAwait(false);
+                    if (read <= 0 || read > destination.Length - filled)
+                        throw new IOException("Remote file is truncated or returned an invalid read length.");
+                    filled += read;
+                }
+                return filled;
+            }
+            catch
+            {
+                transfer.Cancel();
+                throw;
+            }
         }
     }
 

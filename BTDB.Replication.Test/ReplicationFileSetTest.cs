@@ -38,7 +38,7 @@ public class ReplicationFileSetTest
         Assert.Same(unpublished, local.GetFile(6));
         Assert.NotEqual(6u, files.GetLocalFileId(6));
         await files.PrefetchAsync(2);
-        await files.PrefetchAsync(6);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => files.PrefetchAsync(6).AsTask());
         var bytes = new byte[2];
         local.GetFile(2).RandomRead(bytes, 0, false);
         Assert.Equal(new byte[] { 3, 4 }, bytes);
@@ -213,12 +213,11 @@ public class ReplicationFileSetTest
         var secondLocalId = files.GetLocalFileId(100);
         Assert.NotEqual(100u, secondLocalId);
         await files.PrefetchAsync(2);
-        await files.PrefetchAsync(100);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => files.PrefetchAsync(100).AsTask());
         var bytes = new byte[1];
         files.GetFile(100).RandomRead(bytes, 0, false);
         Assert.Equal(1, bytes[0]);
-        files.GetFile(secondLocalId).RandomRead(bytes, 0, false);
-        Assert.Equal(9, bytes[0]);
+        Assert.Null(files.GetFile(secondLocalId)); // Never download under a substitute local ID.
     }
 
     [Fact]
@@ -241,7 +240,7 @@ public class ReplicationFileSetTest
     }
 
     [Fact]
-    public async Task SessionMappingRetainsMappedCacheButIsLostOnRestart()
+    public async Task RedownloadUsesRemoteIdentityInsteadOfPreviousUploadMapping()
     {
         using var local = new InMemoryReplicationFileStorage();
         using var remote = new CheckpointPublisherTest.Storage();
@@ -260,9 +259,12 @@ public class ReplicationFileSetTest
             Assert.Null(files.GetFile(2));
             Assert.Equal(2u, await files.PublishPureValuesAsync(Source(cached), default));
             cached.Remove();
-            Assert.Equal(100u, files.GetLocalFileId(2)); // The ID assignment is stable even while its cache is absent.
             await files.PrefetchAsync(2);
-            Assert.NotNull(files.GetFile(100));
+            Assert.Null(files.GetFile(100));
+            Assert.NotNull(files.GetFile(2));
+            Assert.Equal(2u, files.GetLocalFileId(2));
+            Assert.Equal(2u, await files.PublishPureValuesAsync(Source(files.GetFile(2)), default));
+            Assert.Empty(remote.PvlAttempts);
             Assert.Equal(1, reads);
         }
         await using var restarted = new ReplicationFileSet(local, remote);
@@ -271,7 +273,7 @@ public class ReplicationFileSetTest
         Assert.Null(restarted.GetFile(100));
         await restarted.PrefetchAsync(2);
         Assert.NotNull(restarted.GetFile(2));
-        Assert.Equal(2, reads); // No persisted map or cross-ID content search.
+        Assert.Equal(1, reads); // The exact-ID download is reusable without any persisted mapping.
     }
 
     [Theory]
@@ -482,7 +484,6 @@ public class ReplicationFileSetTest
     }
 
     [Theory]
-    [InlineData("checksum")]
     [InlineData("version")]
     [InlineData("missing")]
     [InlineData("truncated")]
@@ -493,7 +494,6 @@ public class ReplicationFileSetTest
         using var remote = new CheckpointPublisherTest.Storage { ReadChunkSize = 2 };
         var file = AddRemote(remote, 2, [1, 2, 3, 4]);
         using var cancellation = new CancellationTokenSource();
-        remote.CorruptRead = fault == "checksum";
         remote.BeforeRead = (selected, offset, ct) =>
         {
             if (offset != 0)
@@ -520,6 +520,67 @@ public class ReplicationFileSetTest
         var restored = await files.DownloadAsync(remote.Describe(2));
         Assert.Equal(2u, await files.PublishPureValuesAsync(Source(restored), CancellationToken.None));
         Assert.Empty(remote.PvlAttempts);
+    }
+
+    [Fact]
+    public async Task DownloadUsesBoundedParallelBlocksAndPreservesOrderWithoutChecksumValidation()
+    {
+        const int blockSize = 256 * 1024;
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage { ReadChunkSize = 8192 };
+        var bytes = Enumerable.Range(0, blockSize * 5 + 17).Select(i => (byte)(i / blockSize + i % 251)).ToArray();
+        var selected = AddRemote(remote, 2, bytes) with { Sha256 = "intentionally not a checksum" };
+        var entered = Enumerable.Range(0, 4).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        remote.BeforeRead = async (_, offset, ct) =>
+        {
+            if (offset < 4ul * blockSize && offset % blockSize == 0)
+            {
+                entered[(int)(offset / blockSize)].TrySetResult();
+                if (offset == 0) await release.Task.WaitAsync(ct); // Later blocks finish before the first.
+            }
+            if (offset >= 4ul * blockSize) Assert.True(release.Task.IsCompleted);
+        };
+        await using var files = new ReplicationFileSet(local, remote);
+        var download = files.DownloadAsync(selected).AsTask();
+        try
+        {
+            await Task.WhenAll(entered.Select(e => e.Task)).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(download.IsCompleted);
+        }
+        finally { release.TrySetResult(); }
+        var restored = await download;
+        var actual = new byte[bytes.Length];
+        restored.RandomRead(actual, 0, false);
+        Assert.Equal(bytes, actual);
+    }
+
+    [Fact]
+    public async Task FailedParallelBlockCancelsOtherReadsAndRemovesPartialFile()
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage();
+        var selected = AddRemote(remote, 2, new byte[4 * 256 * 1024]);
+        var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        remote.BeforeRead = async (_, offset, ct) =>
+        {
+            if (offset == 0)
+            {
+                waiting.TrySetResult();
+                try { await Task.Delay(Timeout.Infinite, ct); }
+                finally { stopped.TrySetResult(); }
+            }
+            else
+            {
+                await waiting.Task.WaitAsync(ct);
+                throw new IOException("Block unavailable");
+            }
+        };
+        await using var files = new ReplicationFileSet(local, remote);
+        await Assert.ThrowsAsync<IOException>(() => files.DownloadAsync(selected).AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.True(stopped.Task.IsCompleted);
+        Assert.Null(local.GetFile(2));
     }
 
     [Fact]

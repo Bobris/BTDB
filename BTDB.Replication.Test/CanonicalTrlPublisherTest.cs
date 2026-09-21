@@ -668,16 +668,16 @@ public class CanonicalTrlPublisherTest
     public async Task InterruptedRestoreRetriesWithoutUsingPartialCache(bool cancel)
     {
         using var f = await Fixture.CreateAsync(false);
-        await Write(f, 1, 200);
+        await Write(f, 1, 800);
         await f.Publisher.PublishNextAsync();
         var selected = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
         using var local = new InMemoryReplicationFileStorage();
         using var cancellation = new CancellationTokenSource();
         f.Remote.BeforeRangeRead = offset =>
         {
-            if (offset < 65536) return;
+            if (offset < 256 * 1024) return;
             if (cancel) cancellation.Cancel();
-            else throw new IOException("Transfer interrupted after first chunk.");
+            else throw new IOException("Transfer interrupted in a later block.");
         };
         await using (var files = new ReplicationFileSet(local, selected))
         {
@@ -705,9 +705,9 @@ public class CanonicalTrlPublisherTest
         });
         using var read = db.StartReadOnlyTransaction();
         Assert.Equal(1ul, read.GetCommitUlong());
-        Assert.Equal(200L, read.GetKeyValueCount());
+        Assert.Equal(256L, read.GetKeyValueCount());
         Assert.Single(f.Remote.Requests); // Restore never publishes anything.
-        Assert.InRange(f.Remote.MaximumRangeRead, 1, 65536);
+        Assert.InRange(f.Remote.MaximumRangeRead, 1, 256 * 1024);
     }
 
 }
