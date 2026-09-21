@@ -227,7 +227,13 @@ Tests read the live leader's retained local files, including bytes never uploade
 The caller must validate the advertised complete cut and session authority and cancel on session replacement.
 A match supplies neither a confirmation grant nor durability. Blob validation of candidate history belongs to
 becoming leader before adoption/publication; bootstrap/recovery also retains its existing Blob path. The takeover
-coordinator, peer transport authentication, schema detachment, grant coordination and restart orchestration remain pending.
+coordinator, peer transport authentication, schema detachment, leader grant coordination and host restart orchestration remain pending.
+
+`FollowerComparisonSession` now coalesces three-field progress, retries the latest cut after local completion,
+reuses `ConfirmationWindow` for live confirmation, and cancels reads on closure. Divergence closes the session and
+requests restart once. Tests cover lag, unchanged-event-ID progress, expiry, interrupted reads and retryable I/O.
+The owner still supplies authenticated messages, comparison scheduling and the host restart callback; this component
+does not execute application work or implement election/takeover.
 
 1. Implement follower-first restoration of every required database, then the shared transition engine for selection,
    adoption and activation. Reconcile progress since preparation before admitting canonical work.

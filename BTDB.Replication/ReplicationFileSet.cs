@@ -123,7 +123,7 @@ internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage 
         finally { ArrayPool<byte>.Shared.Return(buffer); }
     }
 
-    /// <summary>Download under the exact remote file ID, independently of earlier upload placements.
+    /// <summary>Restore under the exact remote file ID before publication starts.
     /// A collision fails without touching
     /// the existing local file. Partial/invalid downloads are removed and never establish a placement.</summary>
     internal async ValueTask<IFileCollectionFile> DownloadAsync(RemoteFile file, CancellationToken cancellation = default)
@@ -161,21 +161,9 @@ internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage 
             }
             cancellation.ThrowIfCancellationRequested();
             target.HardFlush();
-            lock (_placementLock)
-            {
-                // Upload placements can point to differently numbered local sources. A fresh download always
-                // installs the remote identity, so discard any former receipt for this remote destination.
-                if (_remoteToLocal.TryGetValue(file.FileId, out var previous) && previous != file.FileId &&
-                    _placements.TryGetValue(previous, out var placement) && placement.RemoteId == file.FileId)
-                {
-                    _placements.Remove(previous);
-                    _placedRemoteIds.Remove(file.FileId);
-                }
-                _remoteToLocal[file.FileId] = file.FileId;
-                _mappedLocalIds.Add(file.FileId);
-                if (file.FileType == KVFileType.PureValues && file.IsSealed && file.Sha256 != null)
-                    AddPlacement(file.FileId, new(file.Length, file.FileId, true));
-            }
+            RememberMapping(file.FileId, file.FileId);
+            if (file.FileType == KVFileType.PureValues && file.IsSealed && file.Sha256 != null)
+                AddPlacement(file.FileId, new(file.Length, file.FileId, true));
             return target;
         }
         catch (Exception error)

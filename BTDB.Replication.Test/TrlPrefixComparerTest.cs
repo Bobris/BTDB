@@ -17,7 +17,7 @@ public class TrlPrefixComparerTest
         public TransactionLogSizeLimits GetLimits(uint fileId) => new(1024, 1536);
     }
 
-    sealed class Node : IDisposable
+    internal sealed class Node : IDisposable
     {
         public readonly InMemoryReplicationFileStorage Files = new();
         public readonly TransactionLogCapture Capture = new();
@@ -55,7 +55,7 @@ public class TrlPrefixComparerTest
         public void Dispose() { Db.Dispose(); Files.Dispose(); }
     }
 
-    sealed class LeaderReader(InMemoryReplicationFileStorage files) : ILeaderTrlReader, IDisposable
+    internal sealed class LeaderReader(InMemoryReplicationFileStorage files) : ILeaderTrlReader, IDisposable
     {
         public int ReadChunkSize = int.MaxValue;
         public bool CorruptRead, TruncateRead;

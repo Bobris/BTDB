@@ -12,13 +12,16 @@
 
 ### Changed
 
+- Add follower comparison sessions with coalesced leader progress, expiring live confirmation, cancellation on
+  connection closure and a single restart request on divergence. Local transactions remain independent.
+
 - Compare follower TRL prefixes directly against a leader-session range reader, with no Blob listing or header
   parsing. Preserve bounded reads, capture acknowledgement, lag, sticky divergence and cancellation; Blob history
-  validation belongs to takeover and recovery. Peer session/coordinator integration remains pending.
+  validation belongs to takeover and recovery. Transport/coordinator integration remains pending.
 
 - Download remote files in bounded parallel 256 KiB blocks without recomputing their checksum; preserve ordered
   local writes, version-bound reads, short-read handling and cancellation/failure cleanup. Downloads always use the
-  remote file ID, even when an earlier upload mapped it to a different local source.
+  remote file ID. Restore records identity mappings without replacing prior upload receipts; publication follows restore.
 
 - Simplify checkpoint retries by reusing their validated mapping, track remote placement IDs with a set, and
   rely on the allocator for nonzero/even ID guarantees while retaining collision and prerequisite checks.

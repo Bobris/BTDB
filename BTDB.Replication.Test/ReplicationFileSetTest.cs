@@ -240,29 +240,19 @@ public class ReplicationFileSetTest
     }
 
     [Fact]
-    public async Task RedownloadUsesRemoteIdentityInsteadOfPreviousUploadMapping()
+    public async Task DownloadUsesRemoteIdentityAndIsReusableAfterRestart()
     {
         using var local = new InMemoryReplicationFileStorage();
         using var remote = new CheckpointPublisherTest.Storage();
-        var cached = Add(local, 100, [1, 2, 3]);
-        var selected = AddRemote(remote, 2, [1, 2, 3]);
+        AddRemote(remote, 2, [1, 2, 3]);
         var reads = 0;
         remote.BeforeRead = (_, _, _) => { reads++; return ValueTask.CompletedTask; };
         await using (var files = new ReplicationFileSet(local, remote))
         {
-            files.RememberVerifiedPureValues(Source(cached), selected);
             await files.InitializeAsync();
-            Assert.Equal(100u, files.GetLocalFileId(2));
-            Assert.Same(cached, files.GetFile(100));
             await files.PrefetchAsync(2);
-            Assert.Equal(0, reads);
-            Assert.Null(files.GetFile(2));
-            Assert.Equal(2u, await files.PublishPureValuesAsync(Source(cached), default));
-            cached.Remove();
-            await files.PrefetchAsync(2);
-            Assert.Null(files.GetFile(100));
-            Assert.NotNull(files.GetFile(2));
             Assert.Equal(2u, files.GetLocalFileId(2));
+            Assert.Equal(2u, files.GetFile(2).Index);
             Assert.Equal(2u, await files.PublishPureValuesAsync(Source(files.GetFile(2)), default));
             Assert.Empty(remote.PvlAttempts);
             Assert.Equal(1, reads);
@@ -270,10 +260,9 @@ public class ReplicationFileSetTest
         await using var restarted = new ReplicationFileSet(local, remote);
         await restarted.InitializeAsync();
         Assert.Equal(2u, restarted.GetLocalFileId(2));
-        Assert.Null(restarted.GetFile(100));
         await restarted.PrefetchAsync(2);
         Assert.NotNull(restarted.GetFile(2));
-        Assert.Equal(1, reads); // The exact-ID download is reusable without any persisted mapping.
+        Assert.Equal(1, reads); // Reuse requires no persisted upload mapping.
     }
 
     [Theory]
