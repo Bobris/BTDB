@@ -49,7 +49,7 @@ internal sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, Transactio
     {
         public readonly TransactionLogPosition? Position = position;
         public readonly TrlWrite[] Writes = writes;
-        public readonly TrlObjectState?[] Results = new TrlObjectState?[writes.Length];
+        public TrlObjectState? TailState;
         public int Index = writes.Length - 1; // Prepare the final successor first; select the predecessor last.
         public bool Dispatched;
     }
@@ -77,6 +77,7 @@ internal sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, Transactio
     }
 
 
+    public bool HasAuthority => authority.IsValid;
     public TrlHead? Tail => _tail;
     public TransactionLogPosition PublishedPosition => _tail is { } tail ? new(tail.FileId, tail.State.Length) : default;
 
@@ -92,70 +93,108 @@ internal sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, Transactio
         await _lane.WaitAsync(remoteCancellation).ConfigureAwait(false);
         try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_conflict) return TrlPublishResult.Conflict;
-            if (_plan == null)
-            {
-                if (!authority.IsValid) return TrlPublishResult.AuthorityLost;
-                if (term == 0) throw new InvalidOperationException("A selected term is required.");
-                if (_tail is { } tail && tail.State.Metadata.Term != term)
-                {
-                    if (tail.State.Metadata.Term > term || tail.State.Metadata.Next != null)
-                        return Conflict(); // Rediscover/follow the selected chain; never overwrite it.
-                    var source = Source(tail.FileId);
-                    _plan = new(null, [new(tail.FileId, tail.Key, tail.State.Token, tail.State.Length,
-                        tail.State.Length, new(term), source)]);
-                }
-                else
-                {
-                    var end = capture.Completed;
-                    if (end.FileId == 0 || end == PublishedPosition) return TrlPublishResult.Idle;
-                    _plan = BuildPlan(end, remoteCancellation);
-                }
-            }
-            while (_plan != null)
-            {
-                var plan = _plan;
-                var write = plan.Writes[plan.Index];
-                if (plan.Dispatched)
-                {
-                    var resolution = await ReconcileAsync(write, remoteCancellation).ConfigureAwait(false);
-                    if (resolution.Result == TrlPublishResult.Conflict) return Conflict();
-                    if (resolution.State != null)
-                    {
-                        if (Accept(plan, resolution.State)) return TrlPublishResult.Published;
-                        continue;
-                    }
-                    if (!authority.IsValid) return TrlPublishResult.AuthorityLost;
-                    if (!retryPending) return TrlPublishResult.Pending;
-                }
-                if (!authority.IsValid) return TrlPublishResult.AuthorityLost;
-                remoteCancellation.ThrowIfCancellationRequested();
-                var hadUnresolvedRequest = plan.Dispatched;
-                plan.Dispatched = true; // Set BEFORE the await: even cancellation/IOException may follow a landed effect.
-                var result = await storage.WriteAsync(write, remoteCancellation).ConfigureAwait(false);
-                if (result.Outcome == TrlWriteOutcome.Applied)
-                {
-                    if (result.State == null || result.State.Token == write.ExpectedToken ||
-                        result.State.Length != write.Length || result.State.Metadata != write.Metadata)
-                        throw new InvalidDataException("Invalid TRL write receipt; reconcile before continuing.");
-                    if (Accept(plan, result.State)) return TrlPublishResult.Published;
-                    continue;
-                }
-                var observed = await ReconcileAsync(write, remoteCancellation).ConfigureAwait(false);
-                if (observed.State != null)
-                {
-                    if (Accept(plan, observed.State)) return TrlPublishResult.Published;
-                    continue;
-                }
-                if (observed.Result == TrlPublishResult.Conflict ||
-                    (result.Outcome == TrlWriteOutcome.Rejected && !hadUnresolvedRequest)) return Conflict();
-                // An old read is not proof that an earlier request will never land, including after a retry rejection.
-                return authority.IsValid ? TrlPublishResult.Pending : TrlPublishResult.AuthorityLost;
-            }
-            return TrlPublishResult.Adopted; // A completed adoption does not advance the local acknowledgement.
+            return await PublishCoreAsync(null, retryPending, remoteCancellation).ConfigureAwait(false);
         }
         finally { _lane.Release(); }
+    }
+
+    /// <summary>
+    /// Publish through a complete position captured from this database (for example a pinned KVI snapshot's cut).
+    /// The caller must retain that cut and establish its transaction boundary; arbitrary byte offsets are not valid.
+    /// Later local commits are excluded from a new plan. An already dispatched plan must finish unchanged, even if
+    /// it extends past the requested cut. Pending, authority loss and conflict never establish the barrier.
+    /// </summary>
+    public async ValueTask<TrlPublishResult> PublishThroughAsync(TransactionLogPosition position,
+        bool retryPending = false, CancellationToken remoteCancellation = default)
+    {
+        await _lane.WaitAsync(remoteCancellation).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            // Restore supplies a verified canonical tail before this session has made any local commit.
+            if (position.FileId == 0 ||
+                (Order(position) > Order(capture.Completed) && Order(position) > Order(PublishedPosition)))
+                throw new ArgumentOutOfRangeException(nameof(position));
+            if (_conflict) return TrlPublishResult.Conflict;
+            var progressed = false;
+            while (Order(PublishedPosition) < Order(position))
+            {
+                var result = await PublishCoreAsync(position, retryPending, remoteCancellation).ConfigureAwait(false);
+                if (result is not (TrlPublishResult.Published or TrlPublishResult.Adopted)) return result;
+                progressed = true;
+            }
+            return progressed ? TrlPublishResult.Published : TrlPublishResult.Idle;
+        }
+        finally { _lane.Release(); }
+    }
+
+    static ulong Order(TransactionLogPosition position) => ((ulong)position.FileId << 32) | position.Offset;
+
+    async ValueTask<TrlPublishResult> PublishCoreAsync(TransactionLogPosition? requestedEnd, bool retryPending,
+        CancellationToken remoteCancellation)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_conflict) return TrlPublishResult.Conflict;
+        if (_plan == null)
+        {
+            if (!authority.IsValid) return TrlPublishResult.AuthorityLost;
+            if (term == 0) throw new InvalidOperationException("A selected term is required.");
+            if (_tail is { } tail && tail.State.Metadata.Term != term)
+            {
+                if (tail.State.Metadata.Term > term || tail.State.Metadata.Next != null)
+                    return Conflict(); // Rediscover/follow the selected chain; never overwrite it.
+                var source = Source(tail.FileId);
+                _plan = new(null, [new(tail.FileId, tail.Key, tail.State.Token, tail.State.Length,
+                    tail.State.Length, new(term), source)]);
+            }
+            else
+            {
+                var end = requestedEnd ?? capture.Completed;
+                if (end.FileId == 0 || end == PublishedPosition) return TrlPublishResult.Idle;
+                _plan = BuildPlan(end, remoteCancellation);
+            }
+        }
+        while (_plan != null)
+        {
+            var plan = _plan;
+            var write = plan.Writes[plan.Index];
+            if (plan.Dispatched)
+            {
+                var resolution = await ReconcileAsync(write, remoteCancellation).ConfigureAwait(false);
+                if (resolution.Result == TrlPublishResult.Conflict) return Conflict();
+                if (resolution.State != null)
+                {
+                    if (Accept(plan, resolution.State)) return TrlPublishResult.Published;
+                    continue;
+                }
+                if (!authority.IsValid) return TrlPublishResult.AuthorityLost;
+                if (!retryPending) return TrlPublishResult.Pending;
+            }
+            if (!authority.IsValid) return TrlPublishResult.AuthorityLost;
+            remoteCancellation.ThrowIfCancellationRequested();
+            var hadUnresolvedRequest = plan.Dispatched;
+            plan.Dispatched = true; // Set BEFORE the await: even cancellation/IOException may follow a landed effect.
+            var result = await storage.WriteAsync(write, remoteCancellation).ConfigureAwait(false);
+            if (result.Outcome == TrlWriteOutcome.Applied)
+            {
+                if (result.State == null || result.State.Token == write.ExpectedToken ||
+                    result.State.Length != write.Length || result.State.Metadata != write.Metadata)
+                    throw new InvalidDataException("Invalid TRL write receipt; reconcile before continuing.");
+                if (Accept(plan, result.State)) return TrlPublishResult.Published;
+                continue;
+            }
+            var observed = await ReconcileAsync(write, remoteCancellation).ConfigureAwait(false);
+            if (observed.State != null)
+            {
+                if (Accept(plan, observed.State)) return TrlPublishResult.Published;
+                continue;
+            }
+            if (observed.Result == TrlPublishResult.Conflict ||
+                (result.Outcome == TrlWriteOutcome.Rejected && !hadUnresolvedRequest)) return Conflict();
+            // An old read is not proof that an earlier request will never land, including after a retry rejection.
+            return authority.IsValid ? TrlPublishResult.Pending : TrlPublishResult.AuthorityLost;
+        }
+        return TrlPublishResult.Adopted; // A completed adoption does not advance the local acknowledgement.
     }
 
     TrlPublishResult Conflict()
@@ -166,11 +205,12 @@ internal sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, Transactio
 
     bool Accept(Plan plan, TrlObjectState state)
     {
-        plan.Results[plan.Index] = state;
+        // Successors are confirmed backwards; only the final tail receipt survives the plan.
+        if (plan.Index == plan.Writes.Length - 1) plan.TailState = state;
         plan.Dispatched = false;
         if (--plan.Index >= 0) return false;
         var tailWrite = plan.Writes[^1];
-        _tail = new(tailWrite.FileId, tailWrite.Key, plan.Results[^1]!);
+        _tail = new(tailWrite.FileId, tailWrite.Key, plan.TailState!);
         _plan = null;
         if (plan.Position is not { } position) return false;
         capture.Acknowledge(position);

@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
+using BTDB.Replication.Test.Simulation;
 using BTDB.StreamLayer;
 using Xunit;
 
@@ -20,6 +21,27 @@ public class CheckpointPublisherTest
         KviCompressionStrategy = new DefaultCompressionKviStrategy(compressed ? 3 : -1, thresholdKeysToEnableCompression: 0),
         CompactorScheduler = null
     });
+
+    internal static ValueTask<BTreeKeyValueDB> OpenForPublication(InMemoryReplicationFileStorage files,
+        TransactionLogCapture capture, bool compressed = false) => BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+    {
+        FileCollection = new LocalReplicatedCollection(files), TransactionLogCapture = capture,
+        Compression = new NoCompressionStrategy(), FileSplitSize = 8096,
+        KviCompressionStrategy = new DefaultCompressionKviStrategy(compressed ? 3 : -1, thresholdKeysToEnableCompression: 0),
+        CompactorScheduler = null
+    });
+
+    internal static LeaseAuthority CreateAuthority()
+    {
+        var clock = new DeterministicScheduler(17);
+        var authority = new LeaseAuthority(clock.CreateScope("checkpoint"), 0, TimeSpan.FromTicks(1));
+        Assert.True(authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromSeconds(10)));
+        return authority;
+    }
+
+    internal static CanonicalTrlPublisher CreateCanonical(BTreeKeyValueDB db, TransactionLogCapture capture,
+        Storage storage, LeaseAuthority? authority = null) => new(db, capture, storage, authority ?? CreateAuthority(),
+        1, id => $"trl/{id}");
 
     internal static async Task Populate(BTreeKeyValueDB db)
     {
@@ -73,7 +95,7 @@ public class CheckpointPublisherTest
         public void Dispose() => Flush();
     }
 
-    internal sealed class Storage : ICheckpointStorage, IDisposable
+    internal sealed class Storage : ICheckpointStorage, ICanonicalTrlStorage, IDisposable
     {
         public readonly InMemoryReplicationFileStorage Files = new();
         public readonly Dictionary<uint, KVFileType> Types = new();
@@ -82,6 +104,15 @@ public class CheckpointPublisherTest
         public IReadOnlyDictionary<uint, uint>? LastMap;
         public bool FailPvl, FailKvi, FailTrl, FailChunk;
         public int Chunks;
+        readonly Dictionary<string, (uint Id, TrlObjectState State)> _trls = new();
+        int _version;
+        public bool DelayTrl;
+        public bool CancelAfterTrl;
+        public bool RejectTrl;
+        public readonly Queue<Action> Delayed = new();
+        public Action? AfterPvl;
+        public Action<TrlWrite>? AfterTrl;
+        public Action? BeforeKvi;
         public int ReadChunkSize = int.MaxValue;
         public bool CorruptRead, TruncateRead;
         public bool OmitChecksum;
@@ -92,6 +123,32 @@ public class CheckpointPublisherTest
 
         public Storage() { }
 
+        // Reconstruct the remote service from persisted object bodies/metadata only. No publisher, capture,
+        // authority, receipts, pending requests or test callbacks survive a simulated process restart.
+        public Storage CopyPersistedObjects()
+        {
+            var copy = new Storage { _version = _version };
+            foreach (var file in Files.Enumerate())
+            {
+                var type = Types[file.Index];
+                var hint = type switch
+                {
+                    KVFileType.TransactionLog => "trl",
+                    KVFileType.PureValues => "pvl",
+                    _ => "kvi"
+                };
+                var destination = copy.Files.ImportFile(file.Index, hint);
+                Copy(new(file.Index, type, file.GetSize(), 0, file), destination);
+                copy.Types.Add(file.Index, type);
+            }
+            foreach (var (key, (id, state)) in _trls)
+            {
+                if (copy.Files.GetFile(id) == null) continue;
+                copy._trls.Add(key, (id, new(state.Token, state.Length, TrlMetadata.Decode(state.Metadata.Encode()))));
+            }
+            return copy;
+        }
+
         public Storage(KeyIndexSnapshot snapshot, uint? reusedPvl = null)
         {
             // A remote file can survive after local compaction removed its ID.
@@ -100,7 +157,7 @@ public class CheckpointPublisherTest
             Types.Add(1000, KVFileType.PureValues);
             foreach (var source in snapshot.Sources.OrderBy(s => s.FileId))
             {
-                if (source.FileType != KVFileType.TransactionLog && source.FileId != reusedPvl) continue;
+                if (source.FileType != KVFileType.PureValues || source.FileId != reusedPvl) continue;
                 var destination = Files.ImportFile(source.FileId, "remote");
                 Assert.Equal(source.FileId, destination.Index);
                 Copy(source, destination);
@@ -171,16 +228,61 @@ public class CheckpointPublisherTest
             if (target.GetSize() == 0) Copy(source, target);
             if (FailPvl) throw new IOException("Response lost after PVL upload");
             Assert.Equal(source.Length, target.GetSize());
+            AfterPvl?.Invoke();
         }
-        public ValueTask EnsureTransactionLogAsync(uint id, ulong length, CancellationToken ct)
+        public ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken ct)
         {
-            Events.Add("trl");
-            if (FailTrl) throw new IOException("Canonical TRL cut not yet published");
-            Assert.True(Files.GetFile(id)!.GetSize() >= length);
+            ct.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(_trls.TryGetValue(key, out var value) ? value.State : null);
+        }
+        public ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            var (id, state) = _trls[key];
+            Assert.Equal(token, state.Token);
+            Files.GetFile(id)!.RandomRead(destination.Span, offset, false);
             return ValueTask.CompletedTask;
+        }
+        public ValueTask<TrlWriteResult> WriteAsync(TrlWrite write, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            Events.Add("trl");
+            if (FailTrl) throw new IOException("Canonical TRL request failed");
+            var suffix = new byte[write.AppendLength];
+            write.ReadAppend(0, suffix);
+            if (DelayTrl)
+            {
+                Delayed.Enqueue(() => Apply(write, suffix));
+                return ValueTask.FromResult(new TrlWriteResult(TrlWriteOutcome.Ambiguous));
+            }
+            if (RejectTrl) return ValueTask.FromResult(new TrlWriteResult(TrlWriteOutcome.Rejected));
+            var result = Apply(write, suffix);
+            if (CancelAfterTrl) throw new OperationCanceledException("TRL response lost after effect");
+            return ValueTask.FromResult(result);
+        }
+        TrlWriteResult Apply(TrlWrite write, byte[] suffix)
+        {
+            var existing = _trls.GetValueOrDefault(write.Key).State;
+            if (existing?.Token != write.ExpectedToken || (existing?.Length ?? 0) != write.ExpectedLength)
+                return new(TrlWriteOutcome.Rejected);
+            var file = Files.GetFile(write.FileId);
+            if (file == null)
+            {
+                file = Files.ImportFile(write.FileId, "trl");
+                Types.Add(write.FileId, KVFileType.TransactionLog);
+            }
+            Assert.Equal((ulong)write.ExpectedLength, file.GetSize());
+            var writer = new MemWriter(file.GetAppenderWriter());
+            writer.WriteBlock(suffix);
+            writer.Flush();
+            var state = new TrlObjectState((++_version).ToString(), write.Length, write.Metadata);
+            _trls[write.Key] = (write.FileId, state);
+            AfterTrl?.Invoke(write);
+            return new(TrlWriteOutcome.Applied, state);
         }
         public async ValueTask PublishKeyIndexAsync(KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map, CancellationToken ct)
         {
+            BeforeKvi?.Invoke();
             Events.Add("kvi");
             if (FailKvi) throw new IOException("KVI publication rejected");
             var id = await ReserveFileIdAsync(KVFileType.KeyIndex, ct);
@@ -200,6 +302,162 @@ public class CheckpointPublisherTest
         public void Dispose() => Files.Dispose();
     }
 
+    sealed class PublicationFixture : IDisposable
+    {
+        public readonly InMemoryReplicationFileStorage Local;
+        public readonly BTreeKeyValueDB Db;
+        public readonly Storage Remote = new();
+        public readonly LeaseAuthority Authority = CreateAuthority();
+        public readonly CanonicalTrlPublisher Canonical;
+        public readonly CheckpointPublisher Publisher;
+        PublicationFixture(InMemoryReplicationFileStorage local, BTreeKeyValueDB db, TransactionLogCapture capture)
+        {
+            Local = local;
+            Db = db;
+            Canonical = CreateCanonical(db, capture, Remote, Authority);
+            Publisher = new(new ReplicationFileSet(local, Remote), Canonical);
+        }
+        public static async Task<PublicationFixture> Create()
+        {
+            var local = new InMemoryReplicationFileStorage();
+            var capture = new TransactionLogCapture();
+            var db = await OpenForPublication(local, capture);
+            var fixture = new PublicationFixture(local, db, capture);
+            try { await Populate(db); return fixture; }
+            catch { fixture.Dispose(); throw; }
+        }
+        public void Dispose()
+        {
+            Canonical.Dispose();
+            Db.Dispose();
+            Local.Dispose();
+            Remote.Dispose();
+        }
+        public async Task AssertRestoresSnapshot(KeyIndexSnapshot snapshot)
+        {
+            using var cache = new InMemoryReplicationFileStorage();
+            await using var files = new ReplicationFileSet(cache, Remote);
+            await files.InitializeAsync();
+            using var restored = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+            {
+                FileCollection = files, Compression = new NoCompressionStrategy(), CompactorScheduler = null
+            });
+            using var reader = restored.StartReadOnlyTransaction();
+            Assert.Equal(snapshot.CommitUlong, reader.GetCommitUlong());
+            Assert.Equal(63, reader.GetKeyValueCount());
+            Assert.Equal(1234ul, reader.GetUlong(2));
+        }
+    }
+
+    [Fact]
+    public async Task PendingCanonicalSelectionBlocksAllCheckpointUploadsUntilReconciled()
+    {
+        using var f = await PublicationFixture.Create();
+        using var snapshot = f.Db.CaptureKeyIndexSnapshot();
+        f.Remote.DelayTrl = true;
+        Assert.Equal(CheckpointPublishResult.Pending, await f.Publisher.PublishAsync(snapshot));
+        Assert.Single(f.Remote.Delayed);
+        Assert.Equal(default, f.Canonical.PublishedPosition);
+        Assert.Equal(new[] { "trl" }, f.Remote.Events);
+        Assert.Equal(0, f.Remote.Chunks);
+
+        // The pending request prepares a successor, but its presence must not permit a KVI upload.
+        f.Remote.Delayed.Dequeue()();
+        Assert.NotEmpty(f.Remote.Files.Enumerate());
+        using (var tr = await f.Db.StartWritingTransaction(63ul))
+        {
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue([250], "later"u8);
+            tr.Commit();
+        }
+        f.Remote.DelayTrl = false;
+        f.Remote.BeforeKvi = () =>
+        {
+            Assert.Equal(new TransactionLogPosition(snapshot.TransactionLogFileId, snapshot.TransactionLogOffset),
+                f.Canonical.PublishedPosition);
+            Assert.All(snapshot.Sources.Where(s => s.FileType == KVFileType.TransactionLog),
+                source => Assert.True(f.Remote.Files.GetFile(source.FileId)!.GetSize() >= source.Length));
+        };
+        Assert.Equal(CheckpointPublishResult.Published, await f.Publisher.PublishAsync(snapshot));
+        Assert.Equal("kvi", f.Remote.Events[^1]);
+        await f.AssertRestoresSnapshot(snapshot);
+    }
+
+    [Theory]
+    [InlineData("before")]
+    [InlineData("trl")]
+    [InlineData("pvl")]
+    public async Task AuthorityLossStopsCheckpointBeforeFirstKviChunk(string boundary)
+    {
+        using var f = await PublicationFixture.Create();
+        using var snapshot = f.Db.CaptureKeyIndexSnapshot();
+        if (boundary == "before") f.Authority.Fence();
+        if (boundary == "trl") f.Remote.AfterTrl = write => { if (write.FileId == 1) f.Authority.Fence(); };
+        if (boundary == "pvl") f.Remote.AfterPvl = f.Authority.Fence;
+        Assert.Equal(CheckpointPublishResult.AuthorityLost, await f.Publisher.PublishAsync(snapshot));
+        Assert.DoesNotContain("kvi", f.Remote.Events);
+        Assert.Equal(0, f.Remote.Chunks);
+        if (boundary == "before") Assert.Empty(f.Remote.Events);
+        if (boundary == "trl") Assert.DoesNotContain("pvl", f.Remote.Events);
+        if (boundary == "pvl") Assert.Single(f.Remote.PvlAttempts);
+        using var tr = await f.Db.StartWritingTransaction(63ul);
+        tr.Commit(); // Fencing remote work does not gate local application commits.
+    }
+
+    [Fact]
+    public async Task RestoredCanonicalCutCanPublishCheckpointBeforeAnyNewLocalCommit()
+    {
+        using var f = await PublicationFixture.Create();
+        using (var initial = f.Db.CaptureKeyIndexSnapshot())
+            Assert.Equal(CheckpointPublishResult.Published, await f.Publisher.PublishAsync(initial));
+        using var cache = new InMemoryReplicationFileStorage();
+        await using var files = new ReplicationFileSet(cache, f.Remote);
+        await files.InitializeAsync();
+        var capture = new TransactionLogCapture();
+        using var restored = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        {
+            FileCollection = files, TransactionLogCapture = capture,
+            Compression = new NoCompressionStrategy(), CompactorScheduler = null
+        });
+        Assert.Equal(default, capture.Completed);
+        using var snapshot = restored.CaptureKeyIndexSnapshot();
+        using var canonical = new CanonicalTrlPublisher(restored, capture, f.Remote, f.Authority, 1,
+            id => $"trl/{id}", f.Canonical.Tail);
+        var previousTrlWrites = f.Remote.Events.Count(e => e == "trl");
+        var previousPvlWrites = f.Remote.PvlAttempts.Count;
+        Assert.Equal(CheckpointPublishResult.Published, await new CheckpointPublisher(files, canonical).PublishAsync(snapshot));
+        Assert.Equal(previousTrlWrites, f.Remote.Events.Count(e => e == "trl"));
+        Assert.Equal(previousPvlWrites, f.Remote.PvlAttempts.Count);
+        await f.AssertRestoresSnapshot(snapshot);
+    }
+
+    [Fact]
+    public async Task CanonicalConflictPermanentlyPreventsCheckpointUpload()
+    {
+        using var f = await PublicationFixture.Create();
+        using var snapshot = f.Db.CaptureKeyIndexSnapshot();
+        f.Remote.RejectTrl = true;
+        Assert.Equal(CheckpointPublishResult.Conflict, await f.Publisher.PublishAsync(snapshot));
+        f.Remote.RejectTrl = false;
+        Assert.Equal(CheckpointPublishResult.Conflict, await f.Publisher.PublishAsync(snapshot, retryPending: true));
+        Assert.Equal(new[] { "trl" }, f.Remote.Events);
+        Assert.Equal(0, f.Remote.Chunks);
+    }
+
+    [Fact]
+    public async Task CancelledCanonicalReplyDoesNotStartKviAndCanResumeTheSameSnapshot()
+    {
+        using var f = await PublicationFixture.Create();
+        using var snapshot = f.Db.CaptureKeyIndexSnapshot();
+        f.Remote.CancelAfterTrl = true;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => f.Publisher.PublishAsync(snapshot).AsTask());
+        Assert.Equal(new[] { "trl" }, f.Remote.Events);
+        Assert.Equal(0, f.Remote.Chunks);
+        f.Remote.CancelAfterTrl = false;
+        Assert.Equal(CheckpointPublishResult.Published, await f.Publisher.PublishAsync(snapshot));
+        await f.AssertRestoresSnapshot(snapshot);
+    }
+
     static byte[] Value(IKeyValueDBCursor cursor)
     {
         Span<byte> buffer = default;
@@ -212,7 +470,8 @@ public class CheckpointPublisherTest
     public async Task StreamedKviRestoresWithRemappedPvlUnchangedTrlAndStableLocalReaders(bool compressed)
     {
         using var local = new InMemoryReplicationFileStorage();
-        using var db = Open(local, compressed);
+        var capture = new TransactionLogCapture();
+        using var db = await OpenForPublication(local, capture, compressed);
         await Populate(db);
         using var oldReader = db.StartReadOnlyTransaction();
         using var snapshot = db.CaptureKeyIndexSnapshot();
@@ -220,8 +479,9 @@ public class CheckpointPublisherTest
         Assert.Contains(snapshot.Sources, s => s.FileType == KVFileType.TransactionLog);
         var localFiles = local.Enumerate().Select(f => f.Index).Order().ToArray();
         using var storage = new Storage(snapshot);
-        var publisher = new CheckpointPublisher(new ReplicationFileSet(local, storage));
-        await publisher.PublishAsync(snapshot);
+        using var canonical = CreateCanonical(db, capture, storage);
+        var publisher = new CheckpointPublisher(new ReplicationFileSet(local, storage), canonical);
+        Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(snapshot, retryPending: true));
         Assert.Equal("kvi", storage.Events[^1]);
         Assert.True(storage.Chunks > 1);
         Assert.All(storage.LastMap!, p => Assert.NotEqual(p.Key, p.Value));
@@ -280,20 +540,22 @@ public class CheckpointPublisherTest
     public async Task DownloadedPvlKeepsIdAndSuccessfulUploadsAreReusedAcrossSnapshots()
     {
         using var local = new InMemoryReplicationFileStorage();
-        using var db = Open(local);
+        var capture = new TransactionLogCapture();
+        using var db = await OpenForPublication(local, capture);
         await Populate(db);
         using var snapshot = db.CaptureKeyIndexSnapshot();
         var downloaded = snapshot.Sources.First(s => s.FileType == KVFileType.PureValues);
         using var storage = new Storage(snapshot, downloaded.FileId);
         var files = new ReplicationFileSet(local, storage);
-        var publisher = new CheckpointPublisher(files);
+        using var canonical = CreateCanonical(db, capture, storage);
+        var publisher = new CheckpointPublisher(files, canonical);
         files.RememberVerifiedPureValues(downloaded, storage.Describe(downloaded.FileId));
-        await publisher.PublishAsync(snapshot);
+        Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(snapshot, retryPending: true));
         Assert.Equal(downloaded.FileId, storage.LastMap![downloaded.FileId]);
         var uploaded = storage.PvlAttempts.Count;
         await db.Compact(CancellationToken.None);
         using var next = db.CaptureKeyIndexSnapshot();
-        await publisher.PublishAsync(next);
+        Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(next));
         Assert.Equal(uploaded, storage.PvlAttempts.Count);
     }
 
@@ -305,19 +567,21 @@ public class CheckpointPublisherTest
     public async Task FailedPublicationRetainsPlacementsAndNeverStartsKviBeforeDependencies(string failure)
     {
         using var local = new InMemoryReplicationFileStorage();
-        using var db = Open(local);
+        var capture = new TransactionLogCapture();
+        using var db = await OpenForPublication(local, capture);
         await Populate(db);
         using var snapshot = db.CaptureKeyIndexSnapshot();
         using var storage = new Storage(snapshot)
         {
             FailPvl = failure == "pvl", FailTrl = failure == "trl", FailKvi = failure == "kvi", FailChunk = failure == "chunk"
         };
-        var publisher = new CheckpointPublisher(new ReplicationFileSet(local, storage));
+        using var canonical = CreateCanonical(db, capture, storage);
+        var publisher = new CheckpointPublisher(new ReplicationFileSet(local, storage), canonical);
         await Assert.ThrowsAsync<IOException>(() => publisher.PublishAsync(snapshot).AsTask());
         if (failure is "pvl" or "trl") Assert.DoesNotContain("kvi", storage.Events);
         var attempts = storage.PvlAttempts.ToArray();
         storage.FailPvl = storage.FailTrl = storage.FailKvi = storage.FailChunk = false;
-        await publisher.PublishAsync(snapshot);
+        Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(snapshot, retryPending: true));
         if (failure is "kvi" or "chunk") Assert.Equal(attempts, storage.PvlAttempts);
         if (failure == "pvl") Assert.Equal(attempts[0], storage.PvlAttempts[1]);
         using var restored = Open(storage.Files);
@@ -329,7 +593,8 @@ public class CheckpointPublisherTest
     public async Task CancellationDuringPvlUploadDoesNotStartKvi()
     {
         using var local = new InMemoryReplicationFileStorage();
-        using var db = Open(local);
+        var capture = new TransactionLogCapture();
+        using var db = await OpenForPublication(local, capture);
         await Populate(db);
         using var snapshot = db.CaptureKeyIndexSnapshot();
         using var storage = new Storage(snapshot)
@@ -338,7 +603,8 @@ public class CheckpointPublisherTest
             ContinueUpload = new(TaskCreationOptions.RunContinuationsAsynchronously)
         };
         using var cancellation = new CancellationTokenSource();
-        var publish = new CheckpointPublisher(new ReplicationFileSet(local, storage)).PublishAsync(snapshot, cancellation.Token).AsTask();
+        using var canonical = CreateCanonical(db, capture, storage);
+        var publish = new CheckpointPublisher(new ReplicationFileSet(local, storage), canonical).PublishAsync(snapshot, cancellation.Token).AsTask();
         await storage.UploadEntered.Task;
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => publish);
@@ -349,7 +615,8 @@ public class CheckpointPublisherTest
     public async Task ExportRejectsMissingPvlAndAnyTrlRemapBeforeWriting()
     {
         using var local = new InMemoryReplicationFileStorage();
-        using var db = Open(local);
+        var capture = new TransactionLogCapture();
+        using var db = await OpenForPublication(local, capture);
         await Populate(db);
         using var snapshot = db.CaptureKeyIndexSnapshot();
         using var remote = new InMemoryReplicationFileStorage();

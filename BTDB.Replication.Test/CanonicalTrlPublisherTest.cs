@@ -24,6 +24,7 @@ public class CanonicalTrlPublisherTest
         public readonly Queue<Action> Delayed = new();
         public Func<int, Fault>? Inject;
         public Action<TrlWrite>? BeforeEffect;
+        public Action<uint>? BeforeRangeRead;
         int _version;
         public int Applied;
         public int MaximumRangeRead;
@@ -36,8 +37,10 @@ public class CanonicalTrlPublisherTest
         public ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
+            BeforeRangeRead?.Invoke(offset);
+            ct.ThrowIfCancellationRequested();
             var blob = Blobs[key];
-            Assert.Equal(token, blob.State.Token);
+            if (token != blob.State.Token) throw new IOException("Selected TRL version changed.");
             MaximumRangeRead = Math.Max(MaximumRangeRead, destination.Length);
             blob.Bytes.AsMemory((int)offset, destination.Length).CopyTo(destination);
             return ValueTask.CompletedTask;
@@ -142,25 +145,15 @@ public class CanonicalTrlPublisherTest
     static async Task<(ulong EventId, long Keys)> Restore(Storage storage, bool tinyLogs = true)
     {
         using var files = new InMemoryReplicationFileStorage();
-        var key = Key(1);
-        var id = 1u;
-        var closure = new Dictionary<uint, Blob>();
-        while (storage.Blobs.TryGetValue(key, out var blob))
+        var selected = await CanonicalTrlInventory.DiscoverAsync(storage, new(Key(1), 1));
+        await using var collection = new ReplicationFileSet(files, selected);
+        await collection.InitializeAsync();
+        using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         {
-            Assert.True(closure.TryAdd(id, blob));
-            if (blob.State.Metadata.Next is not { } next) break;
-            (id, key) = (next.FileId, next.Key);
-            Assert.True(storage.Blobs.ContainsKey(key));
-        }
-        foreach (var (fileId, blob) in closure.OrderBy(p => p.Key))
-        {
-            var file = files.ImportFile(fileId, "trl");
-            Assert.Equal(fileId, file.Index);
-            var writer = new MemWriter(file.GetAppenderWriter());
-            writer.WriteBlock(blob.Bytes);
-            writer.Flush();
-        }
-        using var db = await OpenAsync(files, tinyLogs: tinyLogs);
+            FileCollection = collection,
+            Compression = new NoCompressionStrategy(), CompactorScheduler = null,
+            TransactionLogSizeStrategy = tinyLogs ? new TinyLogs() : null
+        });
         using var tr = db.StartReadOnlyTransaction();
         using var cursor = tr.CreateCursor();
         Span<byte> keyBuffer = default;
@@ -173,6 +166,133 @@ public class CanonicalTrlPublisherTest
             else Assert.Equal("metadata"u8.ToArray(), value.ToArray());
         }
         return (tr.GetCommitUlong(), tr.GetKeyValueCount());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CheckpointCutPublishesWithoutWaitingForLaterLocalTransactions(bool tinyLogs)
+    {
+        using var f = await Fixture.CreateAsync(tinyLogs);
+        await Write(f, 1, 8);
+        using var snapshot = f.Db.CaptureKeyIndexSnapshot();
+        var cut = new TransactionLogPosition(snapshot.TransactionLogFileId, snapshot.TransactionLogOffset);
+        await Write(f, 2, 8);
+        var latest = f.Capture.Completed;
+        Assert.NotEqual(cut, latest);
+
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishThroughAsync(cut));
+        Assert.Equal(cut, f.Publisher.PublishedPosition);
+        Assert.Equal(cut, f.Capture.Acknowledged);
+        Assert.Equal((1ul, 8L), await Restore(f.Remote, tinyLogs));
+        var requests = f.Remote.Requests.Count;
+        Assert.Equal(TrlPublishResult.Idle, await f.Publisher.PublishThroughAsync(cut));
+        Assert.Equal(requests, f.Remote.Requests.Count);
+
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
+        Assert.Equal(latest, f.Publisher.PublishedPosition);
+        Assert.Equal((2ul, 16L), await Restore(f.Remote, tinyLogs));
+    }
+
+    [Fact]
+    public async Task CheckpointCutFinishesEarlierAmbiguityBeforePublishingItsOwnPrefix()
+    {
+        using var f = await Fixture.CreateAsync();
+        await Write(f, 1, 8);
+        f.Remote.Inject = n => n == 1 ? Fault.DelayEffect : Fault.None;
+        Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishNextAsync());
+        await Write(f, 2, 8);
+        var cut = f.Capture.Completed;
+        await Write(f, 3);
+        Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishThroughAsync(cut));
+        Assert.Single(f.Remote.Requests);
+        f.Remote.CompleteDelayed();
+
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishThroughAsync(cut));
+        Assert.Equal(cut, f.Publisher.PublishedPosition);
+        Assert.Equal((2ul, 16L), await Restore(f.Remote));
+    }
+
+    [Fact]
+    public async Task CheckpointCutDoesNotReplaceAnAlreadyDispatchedLaterPrefix()
+    {
+        using var f = await Fixture.CreateAsync(false);
+        await Write(f, 1);
+        var cut = f.Capture.Completed;
+        await Write(f, 2);
+        var dispatched = f.Capture.Completed;
+        f.Remote.Inject = n => n == 1 ? Fault.DelayEffect : Fault.None;
+        Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishNextAsync());
+        await Write(f, 3);
+
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishThroughAsync(cut, retryPending: true));
+        Assert.Equal(dispatched, f.Publisher.PublishedPosition);
+        Assert.Equal(f.Remote.Requests[0].Write, f.Remote.Requests[1].Write);
+        f.Remote.CompleteDelayed();
+        Assert.Equal((2ul, 2L), await Restore(f.Remote, false));
+    }
+
+    [Fact]
+    public async Task CheckpointCutDoesNotReportSuccessWhenAuthorityIsLostWithPreparedSuccessors()
+    {
+        using var f = await Fixture.CreateAsync();
+        await Write(f, 1);
+        await f.Publisher.PublishNextAsync();
+        var published = f.Publisher.PublishedPosition;
+        await Write(f, 2, 8);
+        var cut = f.Capture.Completed;
+        f.Remote.BeforeEffect = _ => f.Authority.Fence();
+
+        Assert.Equal(TrlPublishResult.AuthorityLost, await f.Publisher.PublishThroughAsync(cut));
+        Assert.Equal(published, f.Publisher.PublishedPosition);
+        Assert.Equal((1ul, 1L), await Restore(f.Remote));
+    }
+
+    [Fact]
+    public async Task CheckpointCutAdoptsTheRestoredTailBeforeAppendingInTheSelectedTerm()
+    {
+        using var f = await Fixture.CreateAsync(false);
+        await Write(f, 1);
+        await f.Publisher.PublishNextAsync();
+        var selected = f.Publisher.Tail!;
+        await Write(f, 2);
+        var cut = f.Capture.Completed;
+        await Write(f, 3);
+        using var next = new CanonicalTrlPublisher(f.Db, f.Capture, f.Remote, Lease(f.Clock), 2, Key, selected);
+
+        Assert.Equal(TrlPublishResult.Published, await next.PublishThroughAsync(cut));
+        Assert.Equal(0u, f.Remote.Requests[1].Write.AppendLength);
+        Assert.Equal(2ul, f.Remote.Requests[1].Write.Metadata.Term);
+        Assert.Equal(cut, next.PublishedPosition);
+        Assert.Equal((2ul, 2L), await Restore(f.Remote, false));
+    }
+
+    [Fact]
+    public async Task CancelledCheckpointReplyRetainsTheOriginalCutWhileLocalWorkContinues()
+    {
+        using var f = await Fixture.CreateAsync(false);
+        await Write(f, 1);
+        var cut = f.Capture.Completed;
+        f.Remote.Inject = _ => Fault.CancelAfterEffect;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => f.Publisher.PublishThroughAsync(cut).AsTask());
+        await Write(f, 2);
+
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishThroughAsync(cut));
+        Assert.Single(f.Remote.Requests);
+        Assert.Equal(cut, f.Capture.Acknowledged);
+        Assert.Equal((1ul, 1L), await Restore(f.Remote, false));
+    }
+
+    [Fact]
+    public async Task CheckpointCutRejectsUnknownOrFuturePositionsBeforeDispatch()
+    {
+        using var f = await Fixture.CreateAsync();
+        await Write(f, 1);
+        var completed = f.Capture.Completed;
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => f.Publisher.PublishThroughAsync(default).AsTask());
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            f.Publisher.PublishThroughAsync(completed with { Offset = completed.Offset + 1 }).AsTask());
+        Assert.Empty(f.Remote.Requests);
     }
 
     [Theory]
@@ -452,4 +572,142 @@ public class CanonicalTrlPublisherTest
         Assert.Equal(TrlPublishResult.Conflict, await f.Publisher.PublishNextAsync(retryPending: true));
         Assert.Single(f.Remote.Requests);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DiscoveredRestoreResumesPublicationInANewTerm(bool rollback)
+    {
+        using var f = await Fixture.CreateAsync();
+        await Write(f, 1, 8);
+        await Write(f, 2, 8, rollback);
+        await f.Publisher.PublishNextAsync();
+        // An unselected prepared object must never participate in recovery, regardless of its numeric ID.
+        f.Remote.Blobs[Key(999)] = new(new("orphan", 1, new(99)), [255]);
+        var selected = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
+        using var local = new InMemoryReplicationFileStorage();
+        await using var files = new ReplicationFileSet(local, selected);
+        await files.InitializeAsync();
+        var capture = new TransactionLogCapture();
+        using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        {
+            FileCollection = files, TransactionLogCapture = capture,
+            CompactorScheduler = null, Compression = new NoCompressionStrategy(), TransactionLogSizeStrategy = new TinyLogs()
+        });
+        Assert.Null(local.GetFile(999));
+        using var publisher = new CanonicalTrlPublisher(db, capture, f.Remote, Lease(f.Clock), 2, Key, selected.Tail);
+        Assert.Equal(TrlPublishResult.Adopted, await publisher.PublishNextAsync());
+        using (var tr = await db.StartWritingTransaction(3))
+        {
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue([3, 0], Enumerable.Repeat((byte)3, 700).ToArray());
+            tr.Commit();
+        }
+        Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+        Assert.Equal((3ul, rollback ? 9L : 17L), await Restore(f.Remote));
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("cycle")]
+    [InlineData("decreasing-id")]
+    [InlineData("decreasing-term")]
+    public async Task InventoryRejectsBrokenSelectedLinks(string fault)
+    {
+        using var f = await Fixture.CreateAsync();
+        await Write(f, 1, 8);
+        await f.Publisher.PublishNextAsync();
+        var root = f.Remote.Blobs[Key(1)];
+        var next = root.State.Metadata.Next!;
+        switch (fault)
+        {
+            case "missing": f.Remote.Blobs.Remove(next.Key); break;
+            case "cycle":
+                f.Remote.Blobs[Key(1)] = root with { State = root.State with { Metadata = new(1, new(Key(1), next.FileId)) } };
+                break;
+            case "decreasing-id":
+                f.Remote.Blobs[Key(1)] = root with { State = root.State with { Metadata = new(1, new(next.Key, 1)) } };
+                break;
+            case "decreasing-term":
+                f.Remote.Blobs[Key(1)] = root with { State = root.State with { Metadata = new(2, next) } };
+                break;
+
+        }
+        if (fault == "missing") await Assert.ThrowsAsync<FileNotFoundException>(() => Restore(f.Remote));
+        else await Assert.ThrowsAsync<InvalidDataException>(() => Restore(f.Remote));
+    }
+
+    [Fact]
+    public async Task MissingPublishedGenesisDoesNotBecomeAnEmptyDatabase()
+    {
+        await Assert.ThrowsAsync<FileNotFoundException>(() =>
+            CanonicalTrlInventory.DiscoverAsync(new Storage(), new(Key(1), 1)).AsTask());
+    }
+
+    [Fact]
+    public async Task ChangedVersionFailsRestoreAndRediscoveryUsesTheNewCompleteHistory()
+    {
+        using var f = await Fixture.CreateAsync(false);
+        await Write(f, 1);
+        await f.Publisher.PublishNextAsync();
+        var selected = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
+        await Write(f, 2);
+        await f.Publisher.PublishNextAsync();
+        using var local = new InMemoryReplicationFileStorage();
+        await using var files = new ReplicationFileSet(local, selected);
+        await files.InitializeAsync();
+        await Assert.ThrowsAsync<IOException>(() => BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        {
+            FileCollection = files, CompactorScheduler = null
+        }).AsTask());
+        Assert.Equal((2ul, 2L), await Restore(f.Remote, false));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InterruptedRestoreRetriesWithoutUsingPartialCache(bool cancel)
+    {
+        using var f = await Fixture.CreateAsync(false);
+        await Write(f, 1, 200);
+        await f.Publisher.PublishNextAsync();
+        var selected = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
+        using var local = new InMemoryReplicationFileStorage();
+        using var cancellation = new CancellationTokenSource();
+        f.Remote.BeforeRangeRead = offset =>
+        {
+            if (offset < 65536) return;
+            if (cancel) cancellation.Cancel();
+            else throw new IOException("Transfer interrupted after first chunk.");
+        };
+        await using (var files = new ReplicationFileSet(local, selected))
+        {
+            var options = new KeyValueDBOptions
+            {
+                FileCollection = files,
+                Compression = new NoCompressionStrategy(), CompactorScheduler = null
+            };
+            await files.InitializeAsync();
+            if (cancel) await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                BTreeKeyValueDB.OpenAsync(options, cancellation.Token).AsTask());
+            else await Assert.ThrowsAsync<IOException>(() => BTreeKeyValueDB.OpenAsync(options).AsTask());
+        }
+        // A canceled waiter does not cancel a shared transfer. It may have completed synchronously;
+        // disposal drains it, and a later initialization still revalidates/redownloads the active tail.
+        if (local.GetFile(1) is { } completed) Assert.Equal((ulong)selected.Tail.State.Length, completed.GetSize());
+        f.Remote.BeforeRangeRead = null;
+        selected = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
+        await using var retryFiles = new ReplicationFileSet(local, selected);
+        await retryFiles.InitializeAsync();
+        using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        {
+            FileCollection = retryFiles,
+            Compression = new NoCompressionStrategy(), CompactorScheduler = null
+        });
+        using var read = db.StartReadOnlyTransaction();
+        Assert.Equal(1ul, read.GetCommitUlong());
+        Assert.Equal(200L, read.GetKeyValueCount());
+        Assert.Single(f.Remote.Requests); // Restore never publishes anything.
+        Assert.InRange(f.Remote.MaximumRangeRead, 1, 65536);
+    }
+
 }

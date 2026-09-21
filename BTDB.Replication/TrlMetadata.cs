@@ -44,7 +44,7 @@ internal sealed record TrlMetadata(ulong Term, TrlSuccessor? Next = null)
         return new(term, next);
     }
 
-    static void Validate(TrlSuccessor next)
+    internal static void Validate(TrlSuccessor next)
     {
         if (next.FileId == 0 || string.IsNullOrEmpty(next.Key) || next.Key.Length > 256 ||
             next.Key.StartsWith('/') || next.Key.Contains("..", StringComparison.Ordinal))

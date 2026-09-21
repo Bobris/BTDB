@@ -12,6 +12,20 @@
 
 ### Changed
 
+- Simplify replication bookkeeping: retain only the canonical tail write receipt, keep one selected-inventory
+  lookup, and validate TRL identities directly without allocating encoded metadata.
+
+- Select published genesis/TRL links through a version-bound remote inventory adapter. Use ordinary file-set
+  initialization and native `OpenAsync` for recovery and new-term publisher resumption; remove the separate restore
+  wrapper and duplicate header-validation pass without changing core recovery semantics.
+
+- Connect checkpoint publication to the canonical TRL publisher. Confirm the fixed snapshot cut before PVL/KVI
+  uploads, return pending/conflict/authority-loss outcomes, and recheck leadership between uploads. Allow an already
+  verified restored cut to satisfy the barrier before the first new local commit.
+
+- Allow the canonical replication publisher to publish through a fixed complete checkpoint cut without waiting for
+  later local commits. Preserve unresolved CAS intents, term adoption and authority fencing in the same mutation lane.
+
 - Add explicit remote inventory refresh before leader writes, preserving local files and session mappings while
   atomically replacing remote membership and versions after successful discovery.
 

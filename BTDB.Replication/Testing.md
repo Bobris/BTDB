@@ -1,6 +1,6 @@
 # Replication test foundation
 
-M0 and the bounded M1 authority/TRL model are implemented in `BTDB.Replication.Test` (46 test cases).
+M0 and the bounded M1 authority/TRL model are implemented in `BTDB.Replication.Test`.
 See [M1Evidence.md](M1Evidence.md) for mechanism necessity, clock assumptions and the integration preconditions.
 M2 now adds core capture/cancellation tests in `BTDBTest`: [capture](../BTDBTest/TransactionLogCaptureTest.cs),
 [writer cancellation](../BTDBTest/WriterCancellationTest.cs), and ObjectDB metadata
@@ -47,8 +47,8 @@ The trace is diagnostic evidence, not a serialized program that can replay arbit
 After every scheduled callback and explicit time advance, the cluster checks the observable storage journal and each
 node's published native root. Local expected values come from independent dictionary replay of application inputs.
 The observer briefly references the root and resolves actual values, including file-backed values, then releases it.
-It does not open a normal read transaction: that API can publish a pending virtual batch. It retains no root between
-steps. The application fixture models the existing rollback behavior that publishes the committed batch prefix.
+It retains no root between steps. Ordinary readers also leave pending virtual batches unpublished, as covered by
+`TransactionBatchingTest.ReadersDoNotPublishPendingBatch`. The application fixture models the existing rollback behavior that publishes the committed batch prefix.
 
 `SimulatedBlobStore` separates dispatch, remote effect and response. CAS uses opaque model versions which are never
 reused. Delay, response loss and a timeout before the effect are independent controls. An old read after timeout does
@@ -78,15 +78,15 @@ Status describes partial evidence for the listed aspect, never completion of the
 | Invariant | Current evidence | Remaining implementation |
 | --- | --- | --- |
 | I1 Authority | Model oracle, lease/grant deadline inequalities, pause/delayed-response tests and bounded grant drain. | Production clock qualification and serialized role/commit fencing: M1/M4. |
-| I2 Ordered history | Model sequence/cursor checks; real BTDB values, cursors and rollback prefix checked per step. | Core range capture/shared decoding implemented; distributed comparison remains M4. |
+| I2 Ordered history | Model sequence/cursor checks; real BTDB values, cursors and rollback prefix checked per step. | Completed/acknowledged native positions implemented; distributed byte comparison remains M4. |
 | I3 Confirmation | Challenge expiry, stale response and closed-session rejection helpers. | Structural comparator, confirmation and mismatch restart: M4. |
-| I4 Local execution | Real node transactions run independently with no storage work; non-perturbing batch observation. | Completed positions, compactor retention and writer cancellation tested; publisher/comparator integration remains M3/M4. |
-| I5 Durable closure | Model rejects missing/corrupt ranges, partial transactions and prefix changes. | Native TRL/KVI discovery and publication: M1/M3. |
-| I6 Publication fence | Append/adoption races, lost success reconciliation and competing genesis. | Serialized production publisher and adoption integration: M3/M4. |
+| I4 Local execution | Real node transactions run independently with no storage work; non-perturbing batch observation. | Completed positions, compactor retention and writer cancellation tested; canonical publisher tested; coordinator/comparator integration remains M4. |
+| I5 Durable closure | Model rejects missing/corrupt ranges, partial transactions and prefix changes. | Native publication, KVI restart and TRL-only restore tested; concurrent recovery races and adapters remain M3/M7. |
+| I6 Publication fence | Append/adoption races, lost success reconciliation and competing genesis. | Serialized canonical lane tested; coordinator and production adapter integration remain M3/M4/M7. |
 | I7 Database set | Independent local databases only. | Generation, activation and upgrades: M5. |
-| I8 Recovery | Real native multifile commit/rollback replay through selected links; incomplete local KVI-copy fixture. | Native restore/cache validation and optimistic adoption: M3/M4. |
+| I8 Recovery | Real native multifile commit/rollback replay through selected links; incomplete local KVI-copy fixture. | Native restore/cache validation tested; concurrent recovery races and optimistic adoption remain M3/M4. |
 | I9 Reader lifetime | Real old reader survives batch commit/rollback; observer releases roots per step. | Capture boundary protects TRLs during compaction; NativeFileRestoreTest covers unchanged physical IDs; compaction integration remains M6. |
-| I10 Maintenance | Unimplemented. | Independent local compaction without KVI, leader-only remapped remote export, no peer results, leak events and cleanup: M6. |
+| I10 Maintenance | ReplicationCompactorTest, KeyIndexSnapshotTest and CheckpointPublisherTest cover no-local-KVI compaction, pins, remapped export, receipts and cancellation. | Maintenance scheduling, remote GC and leak-event integration: M6. |
 | I11 Volatile execution | Publisher cancellation with continued local execution. | Distributed detachment and drain remain M5. |
 | I12 Isolation | Three native nodes, separate scopes/files/allocators, reproducible schedules and bounded queues. | Complete runtime/codec isolation and adapter conformance: M4/M7. |
 
@@ -98,40 +98,40 @@ planned and do not imply files exist. No scenario currently has production-adapt
 | Architecture family | Test group | Status / next milestone |
 | --- | --- | --- |
 | Authority | [AuthorityTest](../BTDB.Replication.Test/AuthorityTest.cs), [LeaseServiceTest](../BTDB.Replication.Test/LeaseServiceTest.cs) | Bounded M1 model; production clock/role integration M4. |
-| Publisher | [PublicationTest](../BTDB.Replication.Test/PublicationTest.cs), [NativePublicationTest](../BTDB.Replication.Test/NativePublicationTest.cs) | TRL CAS races and native chain replay; publisher runtime M3. |
-| Durable boundaries | HistoryOracleTest, TransactionCaptureTest | Core captured commit/rollback ranges and native decoder tested; publisher integration M3. |
+| Publisher | [PublicationTest](../BTDB.Replication.Test/PublicationTest.cs), [NativePublicationTest](../BTDB.Replication.Test/NativePublicationTest.cs) | TRL CAS races and native chain replay; CanonicalTrlPublisherTest covers the actual lane. Coordinator/adapters remain M3/M4/M7. |
+| Durable boundaries | HistoryOracleTest, [TransactionLogCaptureTest](../BTDBTest/TransactionLogCaptureTest.cs) | Completed/acknowledged positions, retention and native publication tested; coordinator integration remains. |
 | Legacy TRL parity | [ReplicationPreparationTest](../BTDBTest/ReplicationPreparationTest.cs), LegacyRestoreTest | Existing native parity tests; distributed interruption cases M3. |
-| Checkpoints | NativePublicationTest, CheckpointPublicationTest | Incomplete local KVI-copy fixture only; dependency-first publication and restore retry in M3. |
+| Checkpoints | [CheckpointPublisherTest](../BTDB.Replication.Test/CheckpointPublisherTest.cs), CanonicalTrlPublisherTest | Real canonical fixed-cut barrier before PVL/KVI publication; pending/cancelled/rejected CAS, authority loss and empty-cache native restore covered. Production KVI ambiguity reconciliation and restore retry remain M3/M7. |
 | Transition recovery | TransitionRecoveryTest | Unimplemented, M4. |
 | Upgrade | GenerationUpgradeTest | Unimplemented, M5. |
 | Retirement | RetirementTest | Unimplemented, M5. |
 | Graceful drain | GracefulDrainTest | Unimplemented, M5. |
 | Stopped publication | CanonicalTrlPublisherTest | Ordinary local writes, rollback and compaction continue without further Blob changes. |
-| Application batches | [ClusterIsolationTest](../BTDB.Replication.Test/ClusterIsolationTest.cs), [TransactionBatchingTest](../BTDBTest/TransactionBatchingTest.cs) | Native local batching/rollback evidence; distributed capture M2. |
+| Application batches | [ClusterIsolationTest](../BTDB.Replication.Test/ClusterIsolationTest.cs), [TransactionBatchingTest](../BTDBTest/TransactionBatchingTest.cs) | Native local batching/rollback evidence; distributed comparison/coordinator integration M4. |
 | Structural comparison/restart | StructuralComparisonTest | Unimplemented, M4. |
 | Optimistic tail adoption | OptimisticAdoptionTest | Unimplemented, M4. |
 | Invalid comparison cache | ComparisonCacheTest | Unimplemented, M4. |
 | Failed consumption | ClusterIsolationTest, ApplicationFailureTest | Native rollback prefix only; distributed outcomes M4/M5. |
 | Skip replay | SkipReplayTest | Unimplemented, M5. |
 | Follower acceptance | FollowerAcceptanceTest | Unimplemented, M4: coalesced three-field progress, native TRL pull, unchanged-eventId schema notification and stale-session rejection. |
-| Restart recovery | RestartRecoveryTest | Unimplemented, M3/M4. |
+| Restart recovery | [RestartRecoveryTest](../BTDB.Replication.Test/RestartRecoveryTest.cs) | Native checkpoint restart after obsolete history removal, empty/corrupt cache, new-term publication and second restart pass; production adapters and concurrent recovery races remain. |
 | Speculation resources | SpeculationResourceTest | Unimplemented, M4/M7. |
-| Leak events | LeakEventTest | Unimplemented, M6. |
-| Physical compaction | CheckpointPublisherTest, KeyIndexSnapshotTest | Native remapped KVI restore and independent local/remote tokens covered; no-local-KVI mode and production/GC integration remain M6. |
-| KVI and local cleanup | LocalCleanupTest, RemoteCompactionExportTest | Unimplemented, M6: no local KVI; pinned local sources and target-file mapping; KVI-last remote publication. |
-| Reader/file lifetime | ClusterIsolationTest, ReaderLifetimeTest | Native old-reader evidence; distributed pins/cleanup M2/M6. |
-| Startup pipeline | StartupPipelineTest | Unimplemented, M3. |
-| Cache loss | CacheLossTest | Unimplemented, M3. |
+| Leak events | LeakEventTest | Core bounded detector and idempotent erase exist; candidate-access seam and ordered application-event integration remain M6. |
+| Physical compaction | CheckpointPublisherTest, KeyIndexSnapshotTest | Native remapped KVI restore and independent local/remote tokens covered; ReplicationCompactorTest covers no-local-KVI mode; scheduling and production/GC integration remain M6. |
+| KVI and local cleanup | [ReplicationCompactorTest](../BTDBTest/ReplicationCompactorTest.cs), [KeyIndexSnapshotTest](../BTDBTest/KeyIndexSnapshotTest.cs), CheckpointPublisherTest | No local KVI, source pins, whole-PVL mapping and KVI-last publication tested; remote GC remains M6. |
+| Reader/file lifetime | ClusterIsolationTest, ReaderLifetimeTest | Native old-reader, capture and snapshot retention tested; comparison integration and remote GC remain M4/M6. |
+| Startup pipeline | [AsyncOpenTest](../BTDB.Replication.Test/AsyncOpenTest.cs), [ReplicationFileSetTest](../BTDB.Replication.Test/ReplicationFileSetTest.cs) | Lazy discovery, prefetch and bounded shared downloads tested; coordinator retry and throughput qualification remain M3/M7. |
+| Cache loss | ReplicationFileSetTest, RestartRecoveryTest | Missing/corrupt cache and interrupted downloads tested; disk/process and concurrent remote-change qualification remain M3/M7. |
 | Remote GC | HistoryOracleTest, RemoteGcTest | Model rejects deletion of reachable ranges; actual GC unimplemented, M6. |
 | Transport | StorageFaultTest, TransportConformanceTest | Opaque-byte fault fixture only; progress/control codec, authority-bound TRL pull and auth/resume M4/M7; piggyback deferred. |
 | Input/read contract | ClusterIsolationTest, InputReadContractTest | Native input cursor and snapshot evidence; replay/retention M3/M5. |
-| Startup secondary-index reconciliation | ReplicationPreparationTest | One initial schema transaction with unchanged cursor, followed by ordinary application writes. Coordinator authority integration remains pending. |
+| Startup secondary-index reconciliation | ReplicationPreparationTest, [ObjectDbInitializeRelationsTest](../BTDBTest/ObjectDbInitializeRelationsTest.cs) | Read-only full schema check, empty schema/index upgrades, at most one writer and rollback tested. Coordinator authority/publication timing remains pending. |
 | Detached liveness | DetachedLivenessTest | Unimplemented, M5. |
 | Schema upgrade | SchemaUpgradeTest | Unimplemented, M5. |
 | Same-term control revision | ControlRevisionTest | Unimplemented, M4/M5. |
 | Liveness | [SchedulerTest](../BTDB.Replication.Test/SchedulerTest.cs), LivenessTest | Virtual-time/step-budget fixture only; watchdogs M4. |
 
-The next step is M3 production restore/storage integration and connecting the canonical TRL lane to checkpoint prerequisite checks and the coordinator. Keep interfaces internal until their semantics are
+The next step is M3 production restore/storage integration, recovery-race qualification and coordinator wiring. Ordinary KVI-based restart is covered by RestartRecoveryTest. Checkpoint prerequisite checks already use the canonical TRL lane. Keep interfaces internal until their semantics are
 exercised; publication, remote allocation, restore retry and role integration remain M3–M4.
 The [live Azure capability probe](../BTDB.Replication.Test/Integration/azure_probe.py) is an explicit opt-in script,
 not an automatically run cloud test or a production adapter. Its recorded run and cleanup are linked from ObjectStorages.md.
@@ -154,3 +154,34 @@ The storage seam still needs a production conditional Azure adapter. Tests use a
 store with delayed effects and native BTDB reopen, not a live Azure publisher. ID/key allocation and verified restored
 input are coordinator preconditions. The lane reports conflict instead of inventing a new continuation after another
 term wins. Production discovery, abandoned staging cleanup and cross-component coordinator integration remain pending.
+
+
+### Genesis/TRL discovery and restore
+
+`CanonicalTrlPublisherTest` now restores its publication/race fixtures through `CanonicalTrlInventory`, file-set initialization and
+ordinary native `OpenAsync`. `DiscoveredRestoreResumesPublicationInANewTerm` covers native cross-file commit/rollback
+recovery followed by adoption and a fresh application commit. Unselected prepared objects never enter the inventory.
+`InventoryRejectsBrokenSelectedLinks` covers missing successors, key cycles and decreasing IDs/terms. A missing published genesis fails instead of returning an empty database.
+
+The inventory adapter does not open the database or validate native headers separately. Version-bound reads do not
+add a separate guarantee that malformed transaction bytes will be rejected rather than recovered by the existing decoder.
+Version-change and interruption tests fail the attempt, then rediscover/restore without any remote mutation. Caller
+cancellation may leave a completed shared download; disposal drains transfer work and the next initialization validates
+cache again. Downloads remain bounded to 64 KiB reads. These tests cover the in-memory storage seam, not Azure or
+power-loss recovery of a disk cache. Ordinary KVI restart is tested separately below; cleanup-race retry remains pending.
+
+
+### Checkpoint restart without previous process state
+
+`RestartRecoveryTest.RestartFromCheckpointAfterHistoryCleanupResumesPublication` tests the existing collection
+initialization and native `OpenAsync` path. Four cases combine plain/Brotli KVI with an empty or corrupt local cache.
+The fixture publishes a compacted checkpoint, deletes unneeded TRLs including genesis, publishes a subsequent commit
+and rollback, and leaves an unpublished local suffix. It disposes the old database, publisher, captures and local
+storage. Only remote object bodies and metadata are copied to a new storage fixture; no authority, receipts, tail
+objects, pending requests or callbacks are carried forward.
+
+Restart checks all values and cursors, removes an unselected local file and redownloads same-size corrupted cache
+files. The test reads the restored tail's metadata through the existing storage interface, adopts a fresh term,
+publishes a new transaction and KVI, then verifies them through a second fresh restart. No production change was
+required. This is ordinary restart evidence at the in-memory storage boundary, not qualification of concurrent remote
+publication/deletion races, remote orphan selection, Azure or physical process/disk failure.

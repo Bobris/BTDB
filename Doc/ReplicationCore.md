@@ -303,3 +303,19 @@ remote handles, and awaits `RefreshRemoteInventoryAsync`. Refresh requires prior
 remote membership/ETags only after successful discovery. It preserves local files and session mappings, including
 unpublished local PVLs; it does not rerun startup cleanup. Changed objects are revalidated on prefetch. Leadership
 acquisition and recovery/catch-up of the database are separate prerequisites, not effects of inventory refresh.
+
+
+### Canonical restore integration
+
+The replication owner selects published canonical links and binds downloads to observed
+object versions through `CanonicalTrlInventory`, a remote inventory adapter for genesis/TRL-only history.
+Initialize `ReplicationFileSet`, then call ordinary `BTreeKeyValueDB.OpenAsync` directly. Native header loading and
+replay stay in core; there is no separate restore wrapper or header-validation pass. A missing published root fails the attempt; a changed remote
+version or failed transfer requires disposal and rediscovery before retrying. Native transaction recovery retains its
+existing behavior, with no additional expected-end option or strict replay mode in core BTDB.
+
+Ordinary KVI-based restart already uses collection initialization followed by `OpenAsync`.
+`RestartRecoveryTest` verifies it after deleting obsolete history, including genesis, and discarding the old process
+state, then resumes publication using tail metadata read from remote storage. The genesis-only helper is not required
+for that path. Durable allocation, disk-backed replication storage, production adapters and recovery-race
+qualification remain pending.
