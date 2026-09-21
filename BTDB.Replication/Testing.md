@@ -108,7 +108,7 @@ planned and do not imply files exist. No scenario currently has production-adapt
 | Graceful drain | GracefulDrainTest | Unimplemented, M5. |
 | Stopped publication | CanonicalTrlPublisherTest | Ordinary local writes, rollback and compaction continue without further Blob changes. |
 | Application batches | [ClusterIsolationTest](../BTDB.Replication.Test/ClusterIsolationTest.cs), [TransactionBatchingTest](../BTDBTest/TransactionBatchingTest.cs) | Native local batching/rollback evidence; distributed comparison/coordinator integration M4. |
-| Structural comparison/restart | StructuralComparisonTest | Unimplemented, M4. |
+| Structural comparison/restart | [TrlPrefixComparerTest](../BTDB.Replication.Test/TrlPrefixComparerTest.cs) | Native bounded byte comparison, lag, sticky divergence and retry tested; peer/grant/role and restart orchestration remain M4. |
 | Optimistic tail adoption | OptimisticAdoptionTest | Unimplemented, M4. |
 | Invalid comparison cache | ComparisonCacheTest | Unimplemented, M4. |
 | Failed consumption | ClusterIsolationTest, ApplicationFailureTest | Native rollback prefix only; distributed outcomes M4/M5. |
@@ -218,3 +218,15 @@ blocks complete, exercises short reads and a partial final block, and accepts de
 `FailedParallelBlockCancelsOtherReadsAndRemovesPartialFile` verifies cancellation/draining before cleanup. Downloads
 use four 256 KiB buffers per file; existing file-level concurrency still bounds simultaneous files. This verifies
 concurrency and byte order, not a measured Azure throughput improvement. Existing cache checksum tests remain.
+
+
+### Native prefix comparison
+
+`TrlPrefixComparerTest` executes independent native databases with the same bootstrap identity and reads directly from
+the leader's local files through `ILeaderTrlReader`; no Blob fixture or upload is involved. It covers cross-file
+commits/rollbacks with different batching, legacy even-to-odd rotation, lag, fixed cuts before later local work,
+unchanged event IDs, divergence, bounded/short reads, cancellation, missing leader files and stale-session errors.
+Only a full match advances capture acknowledgement; reader-visible state is unchanged. No listing or native-header
+validation is performed by the comparer. Authenticated transport, grants and host restart remain coordinator work.
+Blob history validation is required when becoming leader before adoption/publication, not for routine follower checks;
+that takeover coordinator remains pending. Ordinary bootstrap/recovery still uses the existing Blob path.

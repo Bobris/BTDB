@@ -219,6 +219,16 @@ provisionally about one day after files become obsolete; keep restore retry inde
 
 Dependencies: M3 and M1 authority rules. Owners: B1/B3/B6.
 
+Implemented component: `TrlPrefixComparer` pulls native bytes through `ILeaderTrlReader`, bound to the current
+leader/database session. It uses two bounded buffers and existing capture acknowledgement, waits for local coverage,
+and preserves acknowledgement on failure or divergence without changing the BTree. Native TRL IDs advance by two
+(or one from a legacy even tail); no Blob listing, sorting or predecessor-header decoding occurs in follower comparison.
+Tests read the live leader's retained local files, including bytes never uploaded to Blob.
+The caller must validate the advertised complete cut and session authority and cancel on session replacement.
+A match supplies neither a confirmation grant nor durability. Blob validation of candidate history belongs to
+becoming leader before adoption/publication; bootstrap/recovery also retains its existing Blob path. The takeover
+coordinator, peer transport authentication, schema detachment, grant coordination and restart orchestration remain pending.
+
 1. Implement follower-first restoration of every required database, then the shared transition engine for selection,
    adoption and activation. Reconcile progress since preparation before admitting canonical work.
 2. Wire the existing lease/challenge/grant helpers into leader-centered sessions, three-field TRL progress notifications, bounded range
@@ -228,7 +238,9 @@ Dependencies: M3 and M1 authority rules. Owners: B1/B3/B6.
 3. Compare equal event coverage and rollback history. Matching advances metadata only; lag waits; binary
    divergence fences and requests restart/rebuild. Track local committed, reader-visible, confirmed and published
    positions separately.
-4. Implement optimistic-tail adoption after the actual adopted boundary. Validate overlap, skip decisions and file
+4. On becoming leader, validate candidate history against selected Blob history before adoption/publication; never
+   treat follower comparison acknowledgement as Blob durability. Implement optimistic-tail adoption after the actual
+   adopted boundary. Validate overlap, skip decisions and file
    lineage; reuse complete eligible transactions, then reopen/replay canonical files before fresh handlers.
 5. Add isolated lease renewal and pending-work watchdogs. Distinguish idle input and progressing restore from stalled
    activation/publication. Model fatal host termination separately from graceful restart requests.

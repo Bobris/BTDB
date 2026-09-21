@@ -4,9 +4,11 @@ Current capture rule (2026-09-16): retain only completed and acknowledged (fileI
 or per-transaction side index. Publish/compare contiguous native prefixes to a fixed complete position. Native TRL files themselves retain unpublished bytes; no capture queue or wakeup API is required.
 
 
-Current comparison rule (2026-09-16): compare corresponding native TRL byte ranges directly in bounded chunks.
-Capture supplies local transaction
-boundaries; the publisher does not parse its own transactions again. Native command decoding belongs to replay.
+Current comparison rule: followers pull corresponding native TRL byte ranges directly from the current leader,
+through the authenticated database/session, and compare in bounded buffers. Routine comparison does not list or read
+Blob storage and does not parse predecessor headers. Native file IDs advance by two, or one from a legacy even tail.
+When becoming leader, validate candidate history against Blob before adoption/publication; comparison acknowledgement
+alone is not durability. Bootstrap and restart retain their ordinary Blob recovery path.
 
 
 Current local-file rule (2026-09-15): stopping publication leaves ordinary local writes and compaction running.

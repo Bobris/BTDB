@@ -12,6 +12,10 @@
 
 ### Changed
 
+- Compare follower TRL prefixes directly against a leader-session range reader, with no Blob listing or header
+  parsing. Preserve bounded reads, capture acknowledgement, lag, sticky divergence and cancellation; Blob history
+  validation belongs to takeover and recovery. Peer session/coordinator integration remains pending.
+
 - Download remote files in bounded parallel 256 KiB blocks without recomputing their checksum; preserve ordered
   local writes, version-bound reads, short-read handling and cancellation/failure cleanup. Downloads always use the
   remote file ID, even when an earlier upload mapped it to a different local source.
