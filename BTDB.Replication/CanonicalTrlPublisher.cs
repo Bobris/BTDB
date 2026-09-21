@@ -82,6 +82,22 @@ internal sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, Transactio
     public TrlHead? Tail => _tail;
     public TransactionLogPosition PublishedPosition => _tail is { } tail ? new(tail.FileId, tail.State.Length) : default;
 
+    /// <summary>Fence the verified predecessor without publishing any optimistic local suffix.</summary>
+    internal async ValueTask<TrlPublishResult> AdoptAsync(CancellationToken cancellation = default)
+    {
+        await _lane.WaitAsync(cancellation).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!authority.IsValid) return TrlPublishResult.AuthorityLost;
+            if (_conflict) return TrlPublishResult.Conflict;
+            if (_plan?.Position != null) throw new InvalidOperationException("Publication has already started.");
+            if (_plan == null && (_tail == null || _tail.State.Metadata.Term == term)) return TrlPublishResult.Idle;
+            return await PublishCoreAsync(null, true, cancellation).ConfigureAwait(false);
+        }
+        finally { _lane.Release(); }
+    }
+
     /// <summary>
     /// Publish the latest complete local prefix, coalescing transactions. An ambiguous operation is reconciled before any later mutation.
     /// retryPending resends only the exact unresolved CAS, with unchanged token/content, while authority is live.

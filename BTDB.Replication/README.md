@@ -5,7 +5,12 @@ Status: Architecture proposal with deterministic tests and an executable authori
 [core transaction capture, decoding and writer admission](../Doc/ReplicationCore.md#local-transaction-capture).
 The internal canonical TRL lane now publishes real capture ranges with conditional append/adoption and successor-first
 ordering; see [tested behavior and remaining integration](Testing.md#canonical-trl-lane-necessity-and-limits).
-The distributed replication runtime and production adapters are not implemented yet.
+Azure lease, leader-record selection, canonical TRL and immutable PVL/KVI adapters now live in
+[`BTDB.Replication.Azure`](../BTDB.Replication.Azure/README.md), with pre-publication history validation and adoption.
+An internal node coordinator now connects restore, authenticated in-process following, automatic election/takeover
+and publication, with lease maintenance independent of application work. Its host supplies native restore, fresh
+session identities and atomic completed event/cut snapshots, and owns event execution and restart.
+Network hosting, application lifecycle/schema orchestration, remote GC and live-Azure qualification remain.
 
 `BTDB.Replication` is a planned high-availability layer for running one or more logical BTDB databases on multiple
 compute nodes. It combines a single canonical database history in object storage with fast disposable local caches on

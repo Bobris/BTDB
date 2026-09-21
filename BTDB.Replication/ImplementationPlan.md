@@ -1,7 +1,7 @@
 # BTDB.Replication implementation plan
 
-Date: 2026-09-14. Status: M0 implemented; M1 authority/TRL model and Azure experiment implemented; M2 core position tracking/cancellation implemented; M3 native streamed KVI export, PVL receipt/order helper and capture-backed canonical TRL lane implemented; full M3–M7 runtime integration pending.
-See [Testing.md](Testing.md) for current evidence and limitations. No distributed replication runtime exists yet.
+Date: 2026-09-21. Status: core capture, native restore/checkpoint publication, Azure storage adapters and M4 node coordination are implemented internally. Application lifecycle/schema orchestration, remote GC, network hosting and production qualification remain.
+See [Testing.md](Testing.md) for current evidence and limitations. An in-process multi-node coordinator now exercises the actual components together.
 
 ## Scope and source of truth
 
@@ -133,7 +133,7 @@ Dependencies: M0 and M1's identities/representation. Owner: B3.
 
 Implemented core slice: constant-memory completed/acknowledged TRL positions and compactor retention.
 The publisher coalesces native bytes through a fixed complete position; no per-transaction side index is needed.
-Local execution continues independently when publication stops. Coordinator integration remains pending.
+Local execution continues independently when publication stops. The node coordinator wires publication and comparison to the existing capture.
 
 1. Wire the existing completed/acknowledged positions into coordinator publication and comparison (M4).
 2. Wait for leadership before calling `ObjectDB.InitializeRelations`; schedule publication after it returns.
@@ -190,7 +190,7 @@ obsolete TRLs deleted, all original process state discarded, empty/corrupt cache
 commit/rollback replay, new-term publication and a second fresh restart. Tail metadata is read from the remote
 object through the existing storage interface; no previous publisher state or genesis-only helper is needed.
 This is verified restart coverage, not a missing KVI discovery mechanism. Concurrent publication/GC races,
-automatic recovery orchestration and production allocation/adapters remain pending.
+automatic recovery orchestration remains separate; Azure allocation/storage paths are covered by the adapter described under M4.
 Deterministic `RestartRecoveryTest` schedules now also cover replacement-checkpoint cleanup and active-tail append
 after discovery. Stale opens fail and ordinary rediscovery/open restores the new history, reusing valid cache files.
 These are native-code/in-memory-storage checks, not production-provider or exhaustive race qualification.
@@ -198,7 +198,7 @@ These are native-code/in-memory-storage checks, not production-provider or exhau
 Remote PVL/KVI allocation now refreshes inventory and chooses the next even ID without reservation state.
 Conditional creation confirms matching SHA metadata on retry; a mismatch fences the session. Checkpoint publication
 retains its KVI ID/snapshot/map across uncertain responses. Restart reconciles normal files. TRLs retain native IDs.
-Provider adapters and coordinator integration remain pending.
+Azure provider support is described under M4; full maintenance scheduling remains separate.
 
 Remaining work:
 
@@ -227,13 +227,67 @@ Tests read the live leader's retained local files, including bytes never uploade
 The caller must validate the advertised complete cut and session authority and cancel on session replacement.
 A match supplies neither a confirmation grant nor durability. Blob validation of candidate history belongs to
 becoming leader before adoption/publication; bootstrap/recovery also retains its existing Blob path. The takeover
-coordinator, peer transport authentication, schema detachment, leader grant coordination and host restart orchestration remain pending.
+coordinator and authenticated in-process sessions are implemented below. Schema detachment and actual host restart execution remain application lifecycle work.
 
 `FollowerComparisonSession` now coalesces three-field progress, retries the latest cut after local completion,
 reuses `ConfirmationWindow` for live confirmation, and cancels reads on closure. Divergence closes the session and
 requests restart once. Tests cover lag, unchanged-event-ID progress, expiry, interrupted reads and retryable I/O.
 The owner still supplies authenticated messages, comparison scheduling and the host restart callback; this component
 does not execute application work or implement election/takeover.
+
+`LeaderTrlReader` now serves retained native TRLs directly from the leader, bounded by the capture's complete
+prefix. Closed connections and expired authority reject reads; missing files do not fall back to Blob. A real-BTDB
+leader/two-follower test connects this endpoint to comparison sessions and existing shared confirmation grants,
+including grant drain and continuing local writes. This is component integration, not the M4 cluster exit test:
+transport binding and full lifecycle transitions remain separate work; lease maintenance and selected-history activation are implemented below.
+
+`LeaseSessionController` now retries acquisition after an expired authority session and renews the current
+session while its deadline remains valid. Unconfirmed renewal does not extend the deadline; late renewal cannot
+revive expired references. Tests cover short outages, reacquisition after expiry and closure during acquisition.
+The injected provider must confirm exclusive ownership with fresh handles. `RunAsync` schedules acquisition/renewal through the injected monotonic scheduler, retries I/O failures without
+extending authority, serializes pending requests and cancels maintenance on shutdown. Healthy renewals run by
+half the remaining conservative lifetime; failed/unconfirmed attempts use the configured retry interval.
+Deterministic tests cover outage recovery, repeated renewal and cancellation of an outstanding renewal.
+The previously pending Azure storage integration, term selection and pre-activation Blob validation are implemented:
+
+- `AzureLeaderStorage` creates the initial leader blob conditionally, acquires/renews finite leases, reconciles lost
+  acquire responses using the proposed lease ID, and writes leader JSON under both lease ID and ETag.
+- `LeaderSelection` preserves skip entries and unknown JSON fields, enforces the generation floor, selects one next
+  term/session, and reconciles ambiguous writes against its exact retained JSON intent.
+- `LeadershipSession` exposes publishers only after `LeadershipActivation` has checked every selected database.
+  Validation starts at the fixed verified restore cut, independently of peer acknowledgement, and compares selected
+  version-bound Blob bytes. Tail adoption publishes no optimistic suffix. A changed/unresolved adoption retries by
+  rediscovery; divergence or missing retained bytes requires ordinary restore. Earlier adoptions in a multi-database
+  attempt may remain, but no publisher is returned until the whole set succeeds.
+- `AzureCanonicalTrlStorage` performs conditional block-list commits with atomic TRL metadata, bounded staging,
+  immutable random block IDs, prefix reuse and version-bound reads. `AzureCheckpointStorage` lists native numeric
+  PVL/KVI files, streams KVI using the existing serializer and performs conditional create/SHA reconciliation.
+- `BTDB.Replication.Azure.Test` runs the actual SDK against an isolated Azurite process, including lost acquire,
+  leader-record and TRL adoption replies, stale ETags/lease IDs, a real finite-lease expiry during an outage,
+  immutable SHA collision fencing, checkpoint restore and lease-selection-activation-publication integration.
+
+These close the three features named in the preceding implementation update. Live Azure qualification, peer hosting,
+application lifecycle/schema orchestration and remote GC remain their own later milestones; emulator tests do not
+establish those acceptance criteria.
+
+Implemented node integration: `ReplicationNodeCoordinator` restores all required databases before acquiring a lease,
+authenticates leader sessions, polls coalesced progress, compares native ranges, and automatically selects, validates,
+adopts and publishes on takeover. Lease requests run independently with their own deadlines; timed-out publication
+or peer requests retry without stopping local work. Restart requests stop replication and leave databases with the host.
+`IReplicationNodeHost` supplies ordinary restore, fresh candidate identity and atomic completed event/cut snapshots;
+it retains ownership of event execution, database disposal and process restart. `InProcessReplicationPeerTransport`
+provides an isolated injectable transport. Network hosting and wire encoding are not implemented by this registry.
+Every new peer session compares again from the verified restore cut, so acknowledgement by a previous leader cannot
+confirm a different leader's bytes. Missing retained ranges request ordinary restart; no extra retention mechanism is added.
+
+`ReplicationNodeCoordinatorTest` runs three real native databases through automatic failover with competing candidates,
+peer/storage partitions and a delayed former leader CAS. The optimistic event is published without rerunning handlers.
+Other cases cover startup outages before election, divergence/restart with continuing local writes, independent renewal
+during blocked publication, cancelled peer replies and authentication. This is deterministic component integration;
+physical process pauses, exhaustive schedules and production network behavior still require qualification.
+
+Remaining M4 acceptance work includes broader schedule exploration, host-visible position/status APIs and fatal-host
+watchdog policy. The original milestone requirements below also include lifecycle work shared with M5:
 
 1. Implement follower-first restoration of every required database, then the shared transition engine for selection,
    adoption and activation. Reconcile progress since preparation before admitting canonical work.
@@ -329,9 +383,7 @@ remaining limitations are explicit. Only then update the README from architectur
 - Protocol safety and measured performance are separate exit criteria. Benchmark disabled replication as well as
   enabled paths, and do not infer production latency or GC improvements from allocation measurements alone.
 
-The next work is M3 recovery-race qualification, inventory-based conditional creation and coordinator wiring of the existing
-publisher/restore paths, followed by M4 peer comparison and takeover. Core capture, ordinary restart, local compaction
-and streamed checkpoint export are implemented baselines.
+The next work is application lifecycle/schema orchestration (M5), followed by remote GC (M6) and network hosting/production qualification (M7). The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
 [M1Evidence.md](M1Evidence.md) records the tested mechanisms and their integration preconditions. KVI publication
 and restore follow the existing M3 ordering; there is no separate KVI ancestry/selection prerequisite for M2. Do not begin with
 HTTP controllers or reuse unconditional Azure uploads as canonical publication.

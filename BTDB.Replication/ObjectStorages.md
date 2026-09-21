@@ -1,6 +1,8 @@
 # BTDB.Replication Object Storage Research
 
-Status: Provider research plus an implemented provider-neutral file inventory boundary; production Azure transport remains pending.
+Status: Provider research plus implemented provider-neutral inventory and Azure SDK lease, leader-record,
+canonical TRL and immutable PVL/KVI adapters. See [adapter usage and validation](../BTDB.Replication.Azure/README.md).
+The SDK path is tested against Azurite; live Azure qualification remains separate.
 
 The `denoland/celld` research snapshot is 2026-08-29 and is pinned to release `v0.4.0`, commit
 `a52f9905425bc41134d817694bdc2c50bcc5e856`. Azure details were rechecked on 2026-08-30. Provider behavior and limits

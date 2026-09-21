@@ -20,6 +20,8 @@ jobs:
                 uses: actions/setup-dotnet@v1
                 with:
                     dotnet-version: 10.0.x
+            -   name: Install Azurite for replication adapter tests
+                run: npm install --global azurite@3.35.0
             -   name: Restore dependencies
                 run: dotnet restore
             -   name: Build

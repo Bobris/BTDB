@@ -12,6 +12,27 @@
 
 ### Changed
 
+- Connect native restore, authenticated in-process peer following, automatic election/takeover and canonical
+  publication through an internal node coordinator. Keep renewal independent of blocked publication, bound requests
+  with cancellation, and recheck a new leader from the verified restore cut before accepting its history.
+  Cover three-node failover, delayed former-leader writes, outages, authentication and divergence with real BTDB.
+
+- Implement Azure replication storage for finite leases, leader-record CAS, canonical TRL append/adoption and
+  immutable PVL/KVI publication with SHA reconciliation. Add an Azurite-backed adapter suite to the solution and CI.
+- Select fresh leadership terms under lease, preserve leader-record skip entries, and validate/adopt every selected
+  database against Blob history before exposing publishers. Peer acknowledgement does not bypass Blob validation;
+  retries preserve optimistic local work and ordinary restart remains the recovery path for divergence.
+- Synchronize lease authority and handle snapshots so independent renewal and activation lanes cannot mix sessions.
+
+- Schedule lease maintenance with deterministic renewal timing, outage retries, non-overlapping requests and
+  shutdown cancellation, independently of database publication and application work.
+
+- Add lease session recovery after storage outages: renew before expiry or acquire fresh authority after expiry,
+  keeping old publisher/reader authority fenced.
+
+- Serve follower TRL reads directly from retained leader files, bounded by the completed capture position;
+  reject reads after connection closure or lease expiry without blocking local transactions.
+
 - Add follower comparison sessions with coalesced leader progress, expiring live confirmation, cancellation on
   connection closure and a single restart request on divergence. Local transactions remain independent.
 

@@ -10,7 +10,7 @@ namespace BTDB.Replication;
 internal enum TrlCompareResult { Matched, LocalBehind, Diverged }
 
 /// <summary>A range reader bound to one authenticated leader/database session. Reads must reject stale sessions
-/// and unavailable files, return at most the requested length, and return zero only at file EOF. The owner retains
+/// and unavailable files, return at most the requested length, and return zero only at the end of the available complete prefix. The owner retains
 /// requested native bytes and cancels outstanding calls when the leader session changes. No Blob inventory is used.</summary>
 internal interface ILeaderTrlReader
 {
@@ -22,10 +22,15 @@ internal interface ILeaderTrlReader
 /// cut. A byte match is not a confirmation grant or Blob durability acknowledgement. Blob validation belongs to
 /// becoming leader (and bootstrap/recovery), not routine follower comparison. No native headers/commands are decoded.
 /// </summary>
-internal sealed class TrlPrefixComparer(IFileCollection local, TransactionLogCapture capture)
+internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile, TransactionLogCapture capture,
+    TransactionLogPosition? compareFrom = null)
 {
+    public TrlPrefixComparer(IFileCollection local, TransactionLogCapture capture, TransactionLogPosition? compareFrom = null)
+        : this(local.GetFile, capture, compareFrom) { }
+
     readonly SemaphoreSlim _lane = new(1);
     bool _diverged;
+    TransactionLogPosition? _comparisonPosition = compareFrom;
 
     public async ValueTask<TrlCompareResult> CompareAsync(ILeaderTrlReader leader, TransactionLogPosition end,
         CancellationToken cancellation = default)
@@ -37,7 +42,7 @@ internal sealed class TrlPrefixComparer(IFileCollection local, TransactionLogCap
         try
         {
             if (_diverged) return TrlCompareResult.Diverged;
-            var start = capture.Acknowledged;
+            var start = _comparisonPosition ?? capture.Acknowledged;
             if (Order(end) <= Order(start)) return TrlCompareResult.Matched;
             if (Order(end) > Order(capture.Completed)) return TrlCompareResult.LocalBehind;
             if (start.FileId == 0) throw new InvalidOperationException("Comparison requires a retained native starting position.");
@@ -49,7 +54,7 @@ internal sealed class TrlPrefixComparer(IFileCollection local, TransactionLogCap
             while (true)
             {
                 cancellation.ThrowIfCancellationRequested();
-                var source = local.GetFile(fileId)
+                var source = getFile(fileId)
                     ?? throw new FileNotFoundException("Missing retained local TRL for comparison.", fileId.ToString());
                 var offset = fileId == start.FileId ? (ulong)start.Offset : 0;
                 var limit = fileId == end.FileId ? end.Offset : source.GetSize();
@@ -85,7 +90,10 @@ internal sealed class TrlPrefixComparer(IFileCollection local, TransactionLogCap
                 fileId = (uint)next;
             }
             cancellation.ThrowIfCancellationRequested();
-            capture.Acknowledge(end);
+            // A new leader can disagree with bytes acknowledged by its predecessor. Recheck from the
+            // restored base without rewinding core retention; missing retained files require restart.
+            if (Order(end) > Order(capture.Acknowledged)) capture.Acknowledge(end);
+            if (_comparisonPosition.HasValue) _comparisonPosition = end;
             return TrlCompareResult.Matched;
         }
         finally

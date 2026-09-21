@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BTDB.Replication/BTDB.Replication.csproj" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.29.2" />
+    <InternalsVisibleTo Include="BTDB.Replication.Azure.Test" />
+  </ItemGroup>
+</Project>

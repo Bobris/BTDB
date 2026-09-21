@@ -13,11 +13,11 @@ namespace BTDB.Replication.Test;
 
 public class CanonicalTrlPublisherTest
 {
-    enum Fault { None, LostResponse, DelayEffect, CancelAfterEffect, Reject }
-    sealed record Blob(TrlObjectState State, byte[] Bytes);
-    sealed record Request(TrlWrite Write, byte[] Suffix);
+    internal enum Fault { None, LostResponse, DelayEffect, CancelAfterEffect, Reject }
+    internal sealed record Blob(TrlObjectState State, byte[] Bytes);
+    internal sealed record Request(TrlWrite Write, byte[] Suffix);
 
-    sealed class Storage : ICanonicalTrlStorage
+    internal sealed class Storage : ICanonicalTrlStorage
     {
         public readonly Dictionary<string, Blob> Blobs = new();
         public readonly List<Request> Requests = new();

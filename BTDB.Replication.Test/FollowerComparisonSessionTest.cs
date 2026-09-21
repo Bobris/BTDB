@@ -13,6 +13,26 @@ public class FollowerComparisonSessionTest
         new(eventId, node.Capture.Completed.FileId, node.Capture.Completed.Offset);
 
     [Fact]
+    public async Task NewLeaderCannotConfirmBytesOnlyAcknowledgedByItsPredecessor()
+    {
+        using var follower = await Node.Create(false);
+        using var leader = await Node.Create(false);
+        var restoredBase = follower.Capture.Acknowledged;
+        await follower.Write(1, 1);
+        await leader.Write(1, 9);
+        follower.Capture.Acknowledge(follower.Capture.Completed);
+        using var reader = leader.Reader();
+        var clock = new DeterministicScheduler(305);
+        var restarts = 0;
+        var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
+            clock.CreateScope("follower"), () => restarts++, restoredBase);
+        session.NotifyProgress(Progress(leader));
+        Assert.Equal(TrlCompareResult.Diverged, await session.CompareLatestAsync());
+        Assert.Equal(1, restarts);
+        Assert.Null(session.Confirmed);
+    }
+
+    [Fact]
     public async Task CoalescesProgressRetriesLagAndExpiresOnlyLiveConfirmation()
     {
         using var leader = await Node.Create(false);

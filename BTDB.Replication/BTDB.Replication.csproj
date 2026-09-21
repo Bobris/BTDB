@@ -9,5 +9,7 @@
     <ItemGroup>
         <ProjectReference Include="../BTDB/BTDB.csproj"/>
         <InternalsVisibleTo Include="BTDB.Replication.Test"/>
+        <InternalsVisibleTo Include="BTDB.Replication.Azure"/>
+        <InternalsVisibleTo Include="BTDB.Replication.Azure.Test"/>
     </ItemGroup>
 </Project>

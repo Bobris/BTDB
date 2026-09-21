@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+    </PropertyGroup>
+    <ItemGroup>
+        <Compile Include="../BTDB.Replication.Test/LocalReplicatedCollection.cs" Link="LocalReplicatedCollection.cs" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0"/>
+        <PackageReference Include="xunit" Version="2.9.3"/>
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <ProjectReference Include="../BTDB.Replication.Azure/BTDB.Replication.Azure.csproj"/>
+        <ProjectReference Include="../BTDB/BTDB.csproj"/>
+    </ItemGroup>
+</Project>

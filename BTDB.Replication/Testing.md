@@ -131,8 +131,7 @@ planned and do not imply files exist. No scenario currently has production-adapt
 | Same-term control revision | ControlRevisionTest | Unimplemented, M4/M5. |
 | Liveness | [SchedulerTest](../BTDB.Replication.Test/SchedulerTest.cs), LivenessTest | Virtual-time/step-budget fixture only; watchdogs M4. |
 
-The next step is M3 production restore/storage integration, recovery-race qualification and coordinator wiring. Ordinary KVI-based restart is covered by RestartRecoveryTest. Checkpoint prerequisite checks already use the canonical TRL lane. Keep interfaces internal until their semantics are
-exercised; publication, remote allocation, restore retry and role integration remain M3–M4.
+The tables above describe the original milestone coverage; the integration sections below record subsequent implementation. Ordinary KVI-based restart is covered by RestartRecoveryTest. The current next steps are lifecycle/schema orchestration, remote GC and network/production qualification.
 The [live Azure capability probe](../BTDB.Replication.Test/Integration/azure_probe.py) is an explicit opt-in script,
 not an automatically run cloud test or a production adapter. Its recorded run and cleanup are linked from ObjectStorages.md.
 
@@ -227,6 +226,44 @@ the leader's local files through `ILeaderTrlReader`; no Blob fixture or upload i
 commits/rollbacks with different batching, legacy even-to-odd rotation, lag, fixed cuts before later local work,
 unchanged event IDs, divergence, bounded/short reads, cancellation, missing leader files and stale-session errors.
 Only a full match advances capture acknowledgement; reader-visible state is unchanged. No listing or native-header
-validation is performed by the comparer. Authenticated transport, grants and host restart remain coordinator work.
+validation is performed by the comparer. The coordinator now connects authenticated in-process transport, grants and the host restart callback.
 Blob history validation is required when becoming leader before adoption/publication, not for routine follower checks;
-that takeover coordinator remains pending. Ordinary bootstrap/recovery still uses the existing Blob path.
+the coordinator now performs this through LeadershipSession. Ordinary bootstrap/recovery still uses the existing Blob path.
+
+## Azure selection and activation coverage
+
+`LeaderSelectionTest` covers exact JSON reconciliation, retained skip entries and generation fencing.
+`LeadershipActivationTest` covers peer acknowledgement ahead of Blob, binary divergence, adoption/append races,
+partial multi-database failure and retry without premature optimistic publication.
+`BTDB.Replication.Azure.Test` uses Azure.Storage.Blobs 12.29.2 against its own loopback Azurite process. It covers
+finite lease expiry and reacquisition, lost response reconciliation, stale lease/ETag rejection, bounded block
+append/adoption, native KVI streaming and immutable SHA conflict fencing. Its end-to-end test acquires a lease,
+selects a term, validates/adopts native history, publishes the optimistic suffix, publishes a KVI and restores event 2
+through ordinary `InitializeAsync` / `BTreeKeyValueDB.OpenAsync`.
+
+Install Azurite 3.35.0 (`npm install --global azurite@3.35.0`) before running that project or the full solution.
+The test fixture uses temporary local storage and fresh development credentials; it neither reads cloud credentials
+nor creates Azure resources. The CI workflow installs the same version. Real Azure latency, throttling, failover and
+throughput qualification have not been performed by these tests.
+
+
+## Automatic node coordination
+
+`ReplicationNodeCoordinatorTest` uses three independent real BTDB instances restored from one canonical store,
+the actual lease/selection/activation/publisher components and an isolated in-process peer transport. Applications
+execute transactions directly; the coordinator never invokes their handlers.
+
+- Automatic takeover after peer/storage partition publishes an optimistic event once. Competing candidates select
+  one replacement; a delayed predecessor CAS from the old term cannot overwrite adopted history. Healing converges.
+- Startup storage failure prevents lease acquisition until ordinary restore succeeds. Divergence requests restart
+  once and stops replication while ordinary local writes remain available.
+- Blocking publication beyond a lease lifetime does not block renewal. Timed-out peer replies cannot acknowledge
+  history; resuming traffic converges without changing term or rerunning handlers.
+- Wrong API keys and stale session identities fail authentication. API keys are omitted from identity diagnostics.
+
+`FollowerComparisonSessionTest.NewLeaderCannotConfirmBytesOnlyAcknowledgedByItsPredecessor` verifies that a new
+leader is compared from the verified restore cut even when capture was already acknowledged by its predecessor.
+Missing retained bytes require ordinary restart; the coordinator does not introduce extra roots or file pins.
+
+These tests use deterministic time and injected faults. They do not qualify HTTP encoding/hosting, physical process
+pauses, schema transitions, remote GC or live Azure service behavior. Those remain separate acceptance work.

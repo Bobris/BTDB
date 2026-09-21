@@ -16,13 +16,17 @@ internal readonly record struct LeaderTrlProgress(ulong EventId, uint TrlFileId,
 /// There is no application execution, Blob access or background retry loop here.
 /// </summary>
 internal sealed class FollowerComparisonSession(
-    IFileCollection local, TransactionLogCapture capture, ILeaderTrlReader leader,
-    IReplicationScheduler clock, Action requestRestart)
+    Func<uint, IFileCollectionFile?> getFile, TransactionLogCapture capture, ILeaderTrlReader leader,
+    IReplicationScheduler clock, Action requestRestart, TransactionLogPosition? compareFrom = null)
 {
+    public FollowerComparisonSession(IFileCollection local, TransactionLogCapture capture, ILeaderTrlReader leader,
+        IReplicationScheduler clock, Action requestRestart, TransactionLogPosition? compareFrom = null)
+        : this(local.GetFile, capture, leader, clock, requestRestart, compareFrom) { }
+
     readonly object _lock = new();
     readonly SemaphoreSlim _lane = new(1);
     readonly CancellationTokenSource _closedCancellation = new();
-    readonly TrlPrefixComparer _comparer = new(local, capture);
+    readonly TrlPrefixComparer _comparer = new(getFile, capture, compareFrom);
     readonly ConfirmationWindow _window = new(clock);
     LeaderTrlProgress? _latest, _compared;
     bool _closed;

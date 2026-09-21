@@ -8,6 +8,7 @@ namespace BTDB.Replication;
 /// </summary>
 internal sealed class LeaseAuthority
 {
+    readonly object _lock = new();
     const long Scale = 1_000_000;
     readonly IReplicationScheduler _clock;
     readonly long _slowRate;
@@ -34,50 +35,62 @@ internal sealed class LeaseAuthority
     {
         get
         {
-            if (_held && _clock.Elapsed.Ticks >= _deadline) Fence();
-            return _held && !_fenced;
+            lock (_lock)
+            {
+                if (_held && _clock.Elapsed.Ticks >= _deadline) Fence();
+                return _held && !_fenced;
+            }
         }
     }
 
-    public bool IsFenced => _fenced;
-    public TimeSpan Deadline => TimeSpan.FromTicks(_deadline);
+    public bool IsFenced { get { lock (_lock) return _fenced; } }
+    public TimeSpan Deadline { get { lock (_lock) return TimeSpan.FromTicks(_deadline); } }
 
     /// <summary>Call immediately before dispatch, not when the acquire/renew response arrives.</summary>
     public long BeginRequest()
     {
-        _ = IsValid;
-        if (_fenced) throw new InvalidOperationException("A fenced session cannot renew its way back into authority.");
-        _requestStarted = _clock.Elapsed.Ticks;
-        return checked(++_request);
+        lock (_lock)
+        {
+            _ = IsValid;
+            if (_fenced) throw new InvalidOperationException("A fenced session cannot renew its way back into authority.");
+            _requestStarted = _clock.Elapsed.Ticks;
+            return checked(++_request);
+        }
     }
 
     public bool AcceptSuccess(long request, TimeSpan guaranteedLeaseDuration)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(guaranteedLeaseDuration.Ticks);
-        _ = IsValid;
-        if (_fenced || request == 0 || request != _request) return false;
-        var duration = (long)((Int128)guaranteedLeaseDuration.Ticks * _slowRate / Scale) - _margin;
-        if (duration <= 0 || (Int128)_requestStarted + duration > long.MaxValue)
+        lock (_lock)
         {
-            Fence();
-            return false;
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(guaranteedLeaseDuration.Ticks);
+            _ = IsValid;
+            if (_fenced || request == 0 || request != _request) return false;
+            var duration = (long)((Int128)guaranteedLeaseDuration.Ticks * _slowRate / Scale) - _margin;
+            if (duration <= 0 || (Int128)_requestStarted + duration > long.MaxValue)
+            {
+                Fence();
+                return false;
+            }
+            var deadline = _requestStarted + duration;
+            if (_clock.Elapsed.Ticks >= deadline)
+            {
+                Fence();
+                return false;
+            }
+            _held = true;
+            _deadline = deadline;
+            return true;
         }
-        var deadline = _requestStarted + duration;
-        if (_clock.Elapsed.Ticks >= deadline)
-        {
-            Fence();
-            return false;
-        }
-        _held = true;
-        _deadline = deadline;
-        return true;
     }
 
     // Ambiguous acquire supplies no authority. Ambiguous renewal leaves only the previously proven deadline.
     public void Fence()
     {
-        _fenced = true;
-        _held = false;
+        lock (_lock)
+        {
+            _fenced = true;
+            _held = false;
+        }
     }
 
     /// <summary>
@@ -91,6 +104,9 @@ internal sealed class LeaseAuthority
         return TimeSpan.FromTicks(checked((long)((numerator + _slowRate - 1) / _slowRate)));
     }
 
-    public bool CanGrant(TimeSpan peerDuration) => IsValid &&
-        (Int128)_clock.Elapsed.Ticks + BoundPeerWindow(peerDuration).Ticks < _deadline;
+    public bool CanGrant(TimeSpan peerDuration)
+    {
+        lock (_lock) return IsValid &&
+            (Int128)_clock.Elapsed.Ticks + BoundPeerWindow(peerDuration).Ticks < _deadline;
+    }
 }
