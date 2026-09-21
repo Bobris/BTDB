@@ -38,13 +38,30 @@ See [ReplicationCore.md](../Doc/ReplicationCore.md) and [Testing.md](Testing.md)
 | Event-ID writer admission, explicit transactions, virtual batching and native commit/rollback | Coordinator scheduling and distributed comparison. Preserve ordinary per-event TRL and rollback semantics. |
 | `TransactionLogCapture.Completed` / `Acknowledged` and compactor retention | Schedule publication of a complete native prefix. No transaction queue, side index, extra root or capture record. |
 | `ObjectDB.InitializeRelations` read-only schema check and at most one startup writer | Wait for leadership before initialization; publish afterward. No second initializer or generic writer gate. |
-| Odd/even `FileIdAllocator`, soft/hard TRL limits and cross-file transactions | Durable remote key non-reuse across restart, deletion and competing terms. Local parity does not solve distributed allocation. |
+| Odd/even `FileIdAllocator`, soft/hard TRL limits and cross-file transactions | Remote PVL/KVI IDs come from refreshed inventory with conditional creation; TRLs retain native IDs. No durable reservation counter. |
 | `ReplicationFileSet.InitializeAsync` and native `BTreeKeyValueDB.OpenAsync` | Orchestrate retries when remote history changes. Existing cache validation, downloads, KVI selection and replay implement ordinary restart. |
 | `CanonicalTrlPublisher.PublishNextAsync` / `PublishThroughAsync` | Wire authority, allocation and application/startup scheduling; qualify provider failures. |
 | `ReplicationCompactor` via ordinary `Compact` | Schedule existing local maintenance. Reader/tree/capture/snapshot retention and no-local-KVI behavior already exist. |
 | `KeyIndexSnapshot`, file-set PVL receipts and `CheckpointPublisher` | Wire remote export and GC. Existing pinned closure, streaming serializer, whole-PVL remapping and prerequisite barrier need no manifest or staging serializer. |
 | Ordinary local writes after publication stops | Keep standard `.trl` files; irreversibly stop remote publication and mark the node session ineligible for leadership. No scratch collection, temporary extension, write barrier or special cleanup. |
 | `CompactorLeakDetector` bounded exact-key collection and idempotent erase logic | Expose candidates through a small seam and integrate the application event. Public `RunLeakDetection` exposes only a summary; do not run local leak removal independently on replicas. |
+
+## Simplifications to preserve in remaining work
+
+| Concern | Baseline implementation / next step | Do not introduce without a failing scenario |
+| --- | --- | --- |
+| PVL/KVI publication retry | Conditional create with atomically bound SHA metadata; matching SHA confirms intended content. Keep pending ID/snapshot/map only in the live publisher. | Durable reservation counter, operation ID, persisted upload receipt, or restart-time reservation cleanup. |
+| Remote discovery versus local refresh | Use fresh remote enumeration to choose upload IDs. `RefreshRemoteInventoryAsync` separately reconciles local mappings and invalidates placement confirmations. | Full local refresh or cache cleanup before every upload; it would repeat work and invalidate receipts during a checkpoint. |
+| Object naming | Numeric native PVL/KVI identities, type and existing database scope; preserve the selected TRL key/metadata contract. SHA belongs in metadata. | Mandatory attempt directories, content-addressed keys, separate format object or uploaded GC ledger. |
+| Confirmation and handoff drain | Wire `LeaseAuthority`, `ConfirmationWindow` and `ConfirmationGrants`; the latter already retains the maximum grant expiry. | A second deadline calculator, persisted grants, or per-follower revocation/acknowledgement protocol. |
+| Restart | Fresh initialization/open and remote metadata reconstruct state; failed attempts dispose and repeat. | Persisting session receipts, pending snapshots, local-to-remote maps or confirmation state just to survive restart. |
+| Provider qualification | Run conformance/fault tests against supported endpoints; use normal lease/CAS failures for runtime errors. | A mandatory extra four-write capability probe on every process startup. |
+| Cleanup | Derive candidates from native checkpoint dependencies and current publication state; delete observed versions under authority. | Reservation cleanup, follower restore leases, a second checkpoint manifest, or a persistent cleanup state machine by default. |
+
+SHA matching applies to immutable PVL/KVI creation, not to a growing TRL. Keep the canonical lane's exact conditional
+intent and version-bound reconciliation. Likewise, an elapsed deletion delay alone does not prove a file is unused;
+remote GC must still exclude the current closure and pending publication dependencies. These simplifications do not
+close the production-provider or cross-session deletion proof work.
 
 ## Implementation structure
 
@@ -93,15 +110,15 @@ admission rule; no operation ID or general version/identity framework was added 
 
 1. Reuse database/stream identity, term/session, native file/offset positions and opaque CAS tokens. Do not add
    operation IDs, canonical counters, frame hashes or a version framework without a demonstrated failure case.
-2. Specify how native TRL bytes and atomically bound blob metadata encode continuation and adoption,
-   genesis discovery and the allocation watermark. Demonstrate compatibility with existing native TRL/KVI files.
-   Listing and numeric maximum alone cannot select history or allocate a new canonical branch safely.
+2. Specify how native TRL bytes and atomically bound blob metadata encode continuation, adoption
+   and genesis discovery. Demonstrate compatibility with existing native TRL/KVI files. Listing maxima choose
+   PVL/KVI candidates, but do not select canonical TRL history; no allocation watermark is required.
 3. Model `Applied`, `Rejected` and `Ambiguous`, including a write still pending after a read returns the old version.
    Specify reconciliation and abandonment rules for every mutation and prepared successor.
 4. Derive conservative authority/grant deadlines, clock drift and pause assumptions, renewal margins, challenge
    invalidation and disconnected-grant drain bounds. Serialize role changes with confirmation and publication dispatch.
-5. Exercise predecessor append versus adoption, competing genesis and cross-file linkage. In M3, implement key
-   non-reuse, dependency-first KVI publication and restart of restore when concurrent cleanup removes a needed file.
+5. Exercise predecessor append versus adoption, competing genesis and cross-file linkage. In M3, qualify conditional
+   creation, version-bound deletion, dependency-first KVI publication and restart of restore when concurrent cleanup removes a needed file.
 6. Run a focused Azure capability/conformance experiment for the exact chosen atomic content/metadata operation,
    conditional append and lease outcomes. Verify current official provider contracts at that time and record evidence
    in ObjectStorages.md. This experiment precedes the complete production adapter.
@@ -166,7 +183,7 @@ validator or restore wrapper.
 Native transaction recovery uses ordinary `OpenAsync`; no extra core replay option or strict decoder mode is added.
 Tests resume a new-term publisher from the restored tail, ignore orphan prepared objects, reject broken selected metadata links,
 and retry after version changes or interrupted downloads. The caller still supplies the database-scoped genesis
-identity and expected database GUID. This seam provides no checksum metadata, so cached TRLs are redownloaded.
+identity; native opening reads database identity from native headers. This seam provides no checksum metadata, so cached TRLs are redownloaded.
 Ordinary KVI-based restart already uses `ReplicationFileSet.InitializeAsync` and `BTreeKeyValueDB.OpenAsync`.
 `RestartRecoveryTest.RestartFromCheckpointAfterHistoryCleanupResumesPublication` verifies this with genesis and
 obsolete TRLs deleted, all original process state discarded, empty/corrupt cache, plain/Brotli KVI, post-checkpoint
@@ -174,16 +191,24 @@ commit/rollback replay, new-term publication and a second fresh restart. Tail me
 object through the existing storage interface; no previous publisher state or genesis-only helper is needed.
 This is verified restart coverage, not a missing KVI discovery mechanism. Concurrent publication/GC races,
 automatic recovery orchestration and production allocation/adapters remain pending.
+Deterministic `RestartRecoveryTest` schedules now also cover replacement-checkpoint cleanup and active-tail append
+after discovery. Stale opens fail and ordinary rediscovery/open restores the new history, reusing valid cache files.
+These are native-code/in-memory-storage checks, not production-provider or exhaustive race qualification.
+
+Remote PVL/KVI allocation now refreshes inventory and chooses the next even ID without reservation state.
+Conditional creation confirms matching SHA metadata on retry; a mismatch fences the session. Checkpoint publication
+retains its KVI ID/snapshot/map across uncertain responses. Restart reconciles normal files. TRLs retain native IDs.
+Provider adapters and coordinator integration remain pending.
 
 Remaining work:
 
-1. Wire the existing serialized mutation lane to coordinator authority and durable remote allocation. Preserve exact
+1. Wire the existing serialized mutation lane to coordinator authority and inventory-based conditional creation. Preserve exact
    unresolved intents and existing fixed-cut publication; do not implement a second publisher.
 2. Orchestrate existing file-set initialization and native open for KVI restart; use TRL-only discovery where applicable.
    Retry discovery/open when concurrent publication or cleanup invalidates the selected inventory. No new core replay mode.
 3. Qualify concurrent cleanup/publication, ambiguous checkpoint finalization and process/disk failures against actual
    adapters. Existing cache verification, shared bounded downloads, receipt reuse and checkpoint ordering remain baseline.
-4. Maintain input-retention error reporting and permanent remote key non-reuse. Missing retained input is not a skip.
+4. Maintain input-retention error reporting and version-bound remote deletion. Missing retained input is not a skip.
 
 Exit: a single publishing node can die at every storage boundary and a fresh node restores exactly the selected
 complete history. Old prefixes never change, partial transactions never advance cursors, and ambiguous retries never
@@ -196,7 +221,7 @@ Dependencies: M3 and M1 authority rules. Owners: B1/B3/B6.
 
 1. Implement follower-first restoration of every required database, then the shared transition engine for selection,
    adoption and activation. Reconcile progress since preparation before admitting canonical work.
-2. Implement leader-centered sessions, short-lived grants, three-field TRL progress notifications, bounded range
+2. Wire the existing lease/challenge/grant helpers into leader-centered sessions, three-field TRL progress notifications, bounded range
    pulls, status and resume. Coalesce notifications and compare pulled TRL byte ranges directly.
    Cover unchanged-eventId schema progress, cross-file reads, vanished ranges and stale-session responses. Defer
    sending bytes with notifications to a later optimization; restore KVI/PVL directly from Blob.
@@ -224,8 +249,9 @@ Dependencies: M4 and independent publication cancellation.
    initialization. Do not allow provisional follower writes or election blocked on pending migrations.
 3. Wire explicit index/schema writes and immediate asynchronous publication. Live schema reception detaches the
    database before application/confirmation and permanently disqualifies that node session from leadership.
-4. Implement removed-database volatile continuation, graceful leader drain and lease transfer. Bound compaction
-   cancellation points; application transactions retain their selected shutdown semantics.
+4. Wire removed-database local continuation, graceful leader drain and lease transfer. Reuse the existing grant
+   drain deadline; no per-follower revoke/ack protocol. Stop remote work independently of ordinary local execution;
+   only host shutdown needs to cancel local maintenance.
 5. Add the detached-session 15-minute monotonic no-valid-leader graceful restart rule, input/progress ports and
    application-requested exact skips. Preserve skip history across ordinary failover; test the separate backup
    restore procedure with a new stream and leader-record reset.
@@ -241,7 +267,7 @@ Dependencies: M4/M5 and M3 publication/recovery. Owner: remaining B5 and Q6.
    lifetimes and allocator; add no pin registry, compaction transaction or peer compaction protocol.
 2. Wire the existing snapshot/receipt/checkpoint pipeline to leader maintenance, keeping local and remote tokens
    independent. Reuse sealed whole PVLs and direct KVI streaming; no second serializer or manifest.
-3. Implement leader-only remote GC and abandoned staging reconciliation, permanent key non-reuse and restore retry
+3. Implement leader-only remote GC from native dependencies and pending publication state, version-bound deletion and restore retry
    when selected files disappear. A failed or ambiguous checkpoint must not authorize deletion.
 4. Add a small candidate-access seam to the existing bounded `CompactorLeakDetector`, then publish exact keys as an
    application-owned event. Reuse idempotent exact-key erase behavior when consuming it on every replica. The public
@@ -256,7 +282,8 @@ rediscovery. No distributed local-delete command, compaction TRL transaction or 
 
 Dependencies: M4 for adapter development; M5/M6 for complete version-one acceptance.
 
-1. Implement the Azure adapter against the qualified M1 semantics, with opaque tokens, explicit ambiguity and no
+1. Implement the Azure adapter against the qualified M1 semantics, with conditional immutable create/SHA reconciliation,
+   opaque tokens, explicit ambiguity and no
    hidden conditional-write retries. Isolate authority traffic from data transfers. Run reusable storage suites
    against real Azure, including response loss and stale in-flight operations.
 2. Implement ASP.NET Core/Kestrel hosting through `AddBTDBReplication`, `MapBTDBReplication` and the selected endpoint.
@@ -284,7 +311,7 @@ remaining limitations are explicit. Only then update the README from architectur
 - Protocol safety and measured performance are separate exit criteria. Benchmark disabled replication as well as
   enabled paths, and do not infer production latency or GC improvements from allocation measurements alone.
 
-The next work is M3 recovery-race qualification, durable remote allocation and coordinator wiring of the existing
+The next work is M3 recovery-race qualification, inventory-based conditional creation and coordinator wiring of the existing
 publisher/restore paths, followed by M4 peer comparison and takeover. Core capture, ordinary restart, local compaction
 and streamed checkpoint export are implemented baselines.
 [M1Evidence.md](M1Evidence.md) records the tested mechanisms and their integration preconditions. KVI publication

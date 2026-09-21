@@ -12,6 +12,17 @@
 
 ### Changed
 
+- Simplify checkpoint retries by reusing their validated mapping, track remote placement IDs with a set, and
+  rely on the allocator for nonzero/even ID guarantees while retaining collision and prerequisite checks.
+
+- Remove TRL/parity selection from remote ID reservation; preserve deterministic native TRL IDs unchanged.
+
+- Reserve checkpoint KVI identities before upload and retain the exact snapshot/ID/mapping across uncertain
+  responses; block later checkpoints until the pending one is reconciled.
+
+- Allocate remote PVL/KVI IDs from refreshed inventory and conditionally create files with SHA metadata;
+  remove separate durable reservation state and fence mismatching or missing SHA on retries.
+
 - Simplify replication bookkeeping: retain only the canonical tail write receipt, keep one selected-inventory
   lookup, and validate TRL identities directly without allocating encoded metadata.
 

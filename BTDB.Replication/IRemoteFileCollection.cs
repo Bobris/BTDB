@@ -14,14 +14,10 @@ internal sealed record RemoteFile(uint FileId, KVFileType FileType, ulong Length
     bool IsSealed, string? Sha256);
 
 /// <summary>A remote inventory, distinct from the local cache even when numeric IDs coincide.
-/// The adapter owns authority, conditional I/O and durable ID reservation, including non-reuse of retired IDs.</summary>
+/// The adapter owns authority, conditional I/O and conditional creation and SHA-metadata reconciliation.</summary>
 internal interface IRemoteFileCollection
 {
     IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation);
-
-    /// <summary>Reserve a fresh ID from the remote inventory, never from local maxima.
-    /// New TRLs use odd IDs and other files use even IDs. An uncertain reservation must be reconciled by the adapter.</summary>
-    ValueTask<uint> ReserveFileIdAsync(KVFileType fileType, CancellationToken cancellation);
 
     /// <summary>Read at most buffer.Length bytes from exactly file.Version. Fail if it changed or disappeared;
     /// never silently read a newer object. Return zero only at end of file.</summary>

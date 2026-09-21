@@ -28,7 +28,7 @@ internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage 
         throw new ArgumentOutOfRangeException(nameof(maxConcurrentDownloads)), maxConcurrentDownloads);
     readonly object _placementLock = new();
     readonly Dictionary<uint, Placement> _placements = new();
-    readonly Dictionary<uint, uint> _remoteOwners = new();
+    readonly HashSet<uint> _placedRemoteIds = new();
     readonly Dictionary<uint, uint> _remoteToLocal = new();
     readonly HashSet<uint> _mappedLocalIds = new();
 
@@ -90,10 +90,10 @@ internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage 
                     existing.Confirmed && placement.Confirmed) return;
                 throw new InvalidOperationException("The local file already has a placement.");
             }
-            if (_remoteOwners.ContainsKey(placement.RemoteId))
+            if (_placedRemoteIds.Contains(placement.RemoteId))
                 throw new InvalidOperationException("Remote file IDs collide.");
             if (placement.Confirmed) RememberMapping(placement.RemoteId, localId);
-            _remoteOwners.Add(placement.RemoteId, localId);
+            _placedRemoteIds.Add(placement.RemoteId);
             _placements.Add(localId, placement);
         }
     }
@@ -179,6 +179,20 @@ internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage 
             throw new IOException("The local file does not match the remote whole-file checksum.");
     }
 
+    uint _lastRemoteEvenId;
+
+    // Called under the publication lane. Refresh only remote discovery: refreshing local mappings here would
+    // invalidate confirmed PVL receipts during the same checkpoint. No remote reservation object is created.
+    internal async ValueTask<uint> AllocateRemoteFileIdAsync(CancellationToken cancellation = default)
+    {
+        await foreach (var file in Remote.EnumerateAsync(cancellation).ConfigureAwait(false))
+            if ((file.FileId & 1) == 0) _lastRemoteEvenId = Math.Max(_lastRemoteEvenId, file.FileId);
+        cancellation.ThrowIfCancellationRequested();
+        var next = (ulong)_lastRemoteEvenId + 2;
+        if (next > uint.MaxValue) throw new InvalidOperationException("Remote PVL/KVI IDs exhausted.");
+        return _lastRemoteEvenId = (uint)next;
+    }
+
     public async ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default)
     {
         if (source.FileType != KVFileType.PureValues ||
@@ -186,9 +200,7 @@ internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage 
             throw new InvalidOperationException("The snapshot does not refer to a complete file in this local inventory.");
         if (!_placements.TryGetValue(source.FileId, out var placement))
         {
-            var remoteId = await Remote.ReserveFileIdAsync(KVFileType.PureValues, cancellation).ConfigureAwait(false);
-            if (remoteId == 0 || (remoteId & 1) != 0)
-                throw new InvalidOperationException("A new remote PVL requires a nonzero even file ID.");
+            var remoteId = await AllocateRemoteFileIdAsync(cancellation).ConfigureAwait(false);
             placement = new(source.Length, remoteId, false);
             AddPlacement(source.FileId, placement);
         }

@@ -185,3 +185,27 @@ files. The test reads the restored tail's metadata through the existing storage 
 publishes a new transaction and KVI, then verifies them through a second fresh restart. No production change was
 required. This is ordinary restart evidence at the in-memory storage boundary, not qualification of concurrent remote
 publication/deletion races, remote orphan selection, Azure or physical process/disk failure.
+
+
+### Remote changes during native open
+
+`RestartRecoveryTest.CleanupAfterDiscoveryRetriesAgainstNewCheckpoint` schedules replacement checkpoint publication
+and deletion after the old inventory has been initialized. Plain/Brotli cases delete either the selected KVI or one
+of its required PVLs. The stale attempt fails; disposing it and repeating ordinary initialization/open selects the new
+checkpoint, preserves a verified sealed TRL without downloading it again, removes obsolete cache files and restores
+all values/cursors without remote writes.
+
+`TailPublicationAfterDiscoveryRetriesWithoutMixingVersions` appends to the selected active TRL after discovery.
+Version-bound reads reject the stale attempt; rediscovery/open recovers the new committed event without mixing object
+versions. Both tests exercise existing production file-set/native-open code through the in-memory storage seam.
+They do not implement automatic coordinator retry or qualify Azure, physical disk/process failure, GC scheduling or
+all publication/deletion interleavings. No additional recovery algorithm or core option was needed.
+
+
+### Inventory allocation and uncertain publication
+
+`RemoteAllocationRefreshesInventoryWithoutReservationObjects` verifies fresh remote discovery, even IDs, session-local
+choices and restart without reservation objects. Existing lost-response tests retry the same PVL/KVI identity.
+`ConflictingOrMissingShaFencesCheckpointSession` covers mismatching and absent SHA metadata for both file types;
+matching SHA confirms the intended content. KVI retries retain the snapshot and mapping and block later snapshots.
+These tests exercise native checkpoint publication against the in-memory storage adapter, not a production provider.

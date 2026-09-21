@@ -1068,9 +1068,9 @@ Before exporting the remote KVI:
    qualifies when the same complete file is confirmed present in Blob Storage. Restore preserves the physical file ID.
    A known PVL can be reused under that ID without another upload. Partial downloads and active files do not qualify.
 3. For each other sealed local PVL, reuse its confirmed local-to-remote placement from an earlier checkpoint, or
-   reserve a free remote ID and upload the whole file there. Preserve its bytes and offsets; only the KVI file-ID
+   choose the next free even remote ID and conditionally upload the whole file there. Preserve its bytes and offsets; only the KVI file-ID
    reference changes. Retain the placement after successful upload, including when a subsequent KVI publication fails,
-   so the next compaction does not upload it again. An uncertain upload retains its reserved destination for exact
+   so the next compaction does not upload it again. An uncertain upload retains its chosen destination for exact
    reconciliation/retry. Placement receipts belong to the current verified local database session, not the read path.
 4. TRL IDs, offsets and bytes are never remapped. Ensure canonical TRL publication already covers the snapshot's
    recovery cursor and all referenced TRL ranges. Arbitrary local TRL bytes cannot become canonical via KVI export.
@@ -1103,7 +1103,7 @@ sources. The internal `CheckpointPublisher` establishes the snapshot's complete 
 before publishing PVLs or starting any KVI chunk. A prepared successor's existence/length cannot establish that cut:
 its predecessor CAS must have selected the complete chain. Pending/conflict/authority loss blocks KVI, and the helper
 rechecks session authority between uploads. Storage adapters must check authority at every actual dispatch and
-reconcile uncertain PVL/KVI publication using the same reserved identity. Tests cover real canonical publication,
+reconcile uncertain PVL/KVI publication using the same chosen identity. Tests cover real canonical publication,
 receipt reuse, retry, authority loss and empty-cache restore. The separate `ReplicationCompactor` suppresses local
 KVI creation. Production storage/role integration and remote GC remain unfinished; these helpers do not close
 B3/B5/Q6. See [Testing.md](Testing.md).
@@ -1134,7 +1134,8 @@ The architecture depends on these conclusions:
 - the Azure version-one data plane exposes conditional atomic tail append as a semantic operation; physical layout,
   staging, and commit details remain inside the provider adapter;
 - bulk data is immutable or term-qualified; listing discovers published KVIs, while native references and canonical lineage validate their required files;
-- a live four-step capability probe qualifies each real endpoint before leadership is enabled;
+- provider conformance and fault tests qualify supported endpoint behavior; a live experiment is qualification
+  tooling, not a mandatory extra mutation sequence on every startup;
 - leader-session loss never expires authority, and takeover freezes unless the storage service makes the lease
   available or its expiry can otherwise be proven safely;
 - authority traffic is isolated from bulk uploads so checkpoint pressure cannot starve renewal or fencing.
@@ -1325,7 +1326,7 @@ and allocate a fresh odd-numbered TRL. Start the new transaction only in the odd
 for the file-size target. It applies when opening an existing database, restoring or adopting its canonical tail,
 and whenever the writer would otherwise resume an even TRL. A valid odd append target needs no parity-driven rotation.
 
-Use the normal allocator's collision/non-reuse rules and canonical allocation watermark, adjusted to choose a fresh
+Use the normal allocator's collision/non-reuse rules and native TRL sequence, adjusted to choose a fresh
 odd ID. Legacy files of any type remain reserved; an odd number alone does not make an existing identity reusable.
 For example, an even tail 42 may continue in new TRL 43 only if allocation permits 43; otherwise use the next valid fresh
 odd ID. This rule does not impose a new parity rule on historical KVI/PVL files or invalidate their reader pins.
@@ -1805,19 +1806,11 @@ Before the first KVI exists, recovery uses the complete published genesis TRL ch
 
 ## Candidate object layout
 
-An illustrative, deliberately non-final namespace is:
-
-```text
-cluster/
-    format.json
-    leader.json
-databases/<database-name>/<database-instance-id>/
-    kvi/<generation>-<file-id>.kvi # native KVI, published after its prerequisite files
-    trl/terms/<term>/<file-id>-<lineage-id>.trl
-    objects/<term>/<attempt-id>/sha256/<content-hash>
-    attempts/<term>/<leader-session>/<attempt-id>/...
-    gc/...
-```
+The baseline needs the leader record, database-scoped native file identities and the existing selected TRL key/metadata
+contract. PVL/KVI SHA values live in object metadata. Native headers already identify native formats; configured/session
+compatibility belongs to its existing owner. A separate `format.json`, content-addressed object hierarchy, attempt
+namespace or GC ledger is not a required artifact. Introduce one only for a demonstrated provider or compatibility
+constraint. Exact provider key spelling remains an adapter detail and must preserve existing remote databases.
 
 Important properties are more significant than the exact names:
 
@@ -1830,8 +1823,9 @@ Important properties are more significant than the exact names:
   compaction independently changes each replica's `.pvl` layout; remote compaction exports a separately mapped KVI.
   TRL contains no physical compaction rewrite. Every replica may have a different physical layout, but
   every reference must resolve to the same logical value and remain within files protected by retention rules.
-- Use attempt-qualified immutable object keys. Once retired for deletion, a key is never selected or reused again,
-  even for identical bytes; a delayed old delete must not remove a future selected object.
+- Choose PVL/KVI IDs from refreshed inventory and create conditionally. Reconcile uncertain creation from SHA
+  metadata. Delete only the observed object version so a delayed request cannot delete replacement content.
+  No separate reservation or attempt record is required.
 - The published KVI and canonical TRL must resolve every required file from Blob Storage; recovery must not depend
   on an unpublished local cache file.
 - The current leader makes superseded remote files eligible for deletion only after publishing a complete replacement
@@ -1853,8 +1847,8 @@ Important properties are more significant than the exact names:
 
 Native KVI publication removes the need for a pointer/manifest; it does not by itself prove cross-session GC fencing.
 B5 must establish how file generation, canonical lineage and stale publication are qualified during native discovery.
-Local publisher serialization alone cannot fence another session. Likewise, permanent key non-reuse protects newly
-allocated objects from old deletes, but does not by itself protect old objects that a successor still needs. The protocol
+Local publisher serialization alone cannot fence another session. Version-bound deletes protect replacement objects
+from old requests, but do not by themselves protect old objects that a successor still needs. The protocol
 must qualify inherited in-flight deletes against the successor's recovery set before relying on them being harmless.
 These are proof/codec tasks within KVI-last publication, not authorization to introduce another state CAS.
 
@@ -1879,7 +1873,7 @@ it instead of serving partial state or asserting a newer checkpoint exists. Repe
 The operational deletion delay reduces these races; restore must still handle missing superseded files.
 
 B5 covers direct TRL publication/continuation/fencing as well as publish-before-delete ordering, staging protection
-and permanent key non-reuse. Old-term in-flight deletes must remain harmless to the current closure; follower restore tracking is absent.
+and version-bound deletion. Old-term in-flight deletes must remain harmless to the current closure; follower restore tracking is absent.
 
 ## Event application, checkpoint, and recovery sequences
 
@@ -2158,7 +2152,7 @@ This table applies the shared state machines; it does not introduce alternate re
 | Event source gap, unavailable source, or expired retention | Never skip required events | Accepted reads and available canonical replay may continue; expose degraded readiness or unrecoverable gap. |
 | Missing/corrupt local files or disk full | No inferred local truth | Fail node; terminate old readers, remove obsolete/invalid cache, reuse verified files and restore latest Blob closure and replay input. If space remains insufficient, stay unavailable. |
 | Remote object disappears during restore | No incomplete database is served | Restart; reread latest state and use its published KVI. If the current closure itself is broken, report unavailability. |
-| Restore/publication races GC | Publish replacement closure before deleting superseded files; no restore pin | Follower restarts on missing old files. B5 verifies staging protection and key non-reuse, not delayed deletion. |
+| Restore/publication races GC | Publish replacement closure before deleting superseded files; no restore pin | Follower restarts on missing old files. B5 verifies pending publication protection and version-bound deletion, not delayed deletion. |
 
 ### Availability and progress budgets
 
@@ -2331,7 +2325,7 @@ changing policy. The documented state transitions specify intended behavior, not
 | --- | --- | --- |
 | B1 Authority freshness | Short-lived confirmation grants are selected. Specify their exact clock/pause bounds, renewal margins, challenge invalidation and drain bounds, plus in-flight commit fencing. Confirmation is optional consistency evidence; local takeover rejects predecessor live messages. A GET does not establish a fresh lease lifetime. | Old-term acceptance excluded under pauses, delayed grant responses/frames and takeover races; disconnected-grant drain; takeover without direct confirmation; real-provider conformance. |
 | B3 Replication integration and transaction rollback | Virtual batching preserves ordinary per-transaction TRL and needs no different-batch normalization/reframing. Implement cross-file transaction capture/publication and opt-in odd TRL allocation, including immediate closure of legacy even append targets; specify ordinary rollback TRL retention/comparison without cursor advancement, application transaction integration, file/header identity, ObjectDB state and idempotent tail adoption. | Core byte-equality test covers payloads, not complete distributed operation. Real divergence restarts; rollback preserves prior commits; fenced append/retry does not duplicate events. |
-| B5 Publication/deletion ordering | Qualify direct TRL CAS, rotation/genesis discovery and predecessor fencing without a second state commit; implement publish-before-delete, staging protection, and permanent key non-reuse. Superseded files may be deleted after KVI publication; remote-space savings need not be aggressive and follower restores do not pin them. | Selected KVI and tail remain complete; delayed old deletes cannot remove newly selected data; a follower losing old restore files restarts onto the latest KVI. |
+| B5 Publication/deletion ordering | Qualify direct TRL CAS, rotation/genesis discovery and predecessor fencing without a second state commit; implement publish-before-delete, staging protection, and version-bound deletion. Superseded files may be deleted after KVI publication; remote-space savings need not be aggressive and follower restores do not pin them. | Selected KVI and tail remain complete; delayed old deletes cannot remove newly selected data; a follower losing old restore files restarts onto the latest KVI. |
 | B6 Progress and recovery | Separate pending-work watchdogs and follower-first full restore before contention are selected. Define no-progress deadlines, bounded host termination, abdication and activation backoff. The application owns failure classification and optional skip requests; document the application input-retention/replay assumptions without adding a separate durability protocol. | Warm/cold failover budgets; idle streams stay healthy; failed workers cannot hold authority indefinitely; missing unpublished BTDB work is regenerated from retained input. |
 
 The selected checkpoint rules (durable ancestry and equal-position physical replacement) and idempotent activation cases
@@ -2342,7 +2336,7 @@ are now normative. They require tests but are no longer alternative algorithms t
 | ID | Work remaining within the selected design |
 | --- | --- |
 | Q1 Input integration | Application-owned identical transactions and rollbacks are selected; Kafka is illustrative only. Remaining work: injected transaction/progress/replay and current-input-end interfaces, application-requested skip integration, eventId admission with automatic CommitUlong, stream/cursor encoding and ordinary rollback TRL capture; no separate attempt protocol. |
-| Q2 Core API and codecs | Opt-in capture/pin/replay/export APIs; canonical position persistence separate from reused BTDB TransactionId; exact transaction and logical-change encoding; hashes and redacted diagnostics; independent protocol/leader-record/TRL-metadata/native-format/protocol compatibility; no separate checkpoint-object format. |
+| Q2 Core API and codecs | Opt-in capture/pin/replay/export APIs; native positions separate from reused BTDB TransactionId; existing native transaction encoding and bounded byte comparison; redacted diagnostics; only compatibility distinctions justified by actual consumers; no separate checkpoint-object format. |
 | Q3 Application/read semantics | Local commit success and local snapshot reads are selected; failure policy and external effects belong entirely to the application. Remaining work: native schema lifecycle and compatible startup replay, ordinary local snapshot visibility and application-owned input recovery. Stronger read/durability APIs are not prerequisites for this design. |
 | Q4 Operational budgets | Independent per-replica virtual memory-batch count/bytes/time and independent remote publication-batch bytes/time; checkpoint cadence; local hard-flush policies; root/history and event-retention budgets; warm/cold RTO; handoff lag/grace and long-transaction limits; watchdog thresholds and metric alert levels. |
 | Q5 Transport | Three-field progress notification and bounded TRL range pull; native decoding, coalescing and unchanged-eventId schema notification; authority-bound requests, reconnect and range retention; byte piggyback optimization deferred; authorization beyond the shared key. |
@@ -2596,6 +2590,14 @@ Retain the public temporary-close API and `TemporaryEndOfFile` decoder for compa
 to recognize a safely appendable tail when scanning a file, and `Dispose()` also emits it. Removing one compactor call
 is different from removing the format command globally. A KVI whose saved cursor is exactly at a file's EOF is already
 accepted for continuation by `LoadTransactionLog()` without requiring that marker.
+
+## Remote PVL/KVI allocation
+
+Refresh remote discovery and choose the next even ID; no durable reservation counter or reservation object is needed.
+Create only if absent, with SHA metadata atomically bound to content. Matching SHA after an uncertain response confirms
+publication; missing or different SHA fences the session. Keep the chosen ID for in-session retries. Restart uses
+ordinary inventory/cache reconciliation. TRLs retain their deterministic native IDs. See
+[the storage contract](ObjectStorages.md#remote-pvlkvi-creation) for conditional-create and version-bound-delete rules.
 
 ## Provider-specific object-storage behavior
 

@@ -441,7 +441,7 @@ public class ReplicationFileSetTest
         Assert.Equal(2u, files.GetLocalFileId(4));
         Assert.Equal(new uint[] { 4 }, remote.PvlAttempts);
         Assert.Equal(10002u, local.AddFile("pvl", FileIdParity.Even).Index);
-        Assert.Equal(6u, await remote.ReserveFileIdAsync(KVFileType.PureValues, CancellationToken.None));
+        Assert.Equal(6u, await files.AllocateRemoteFileIdAsync(CancellationToken.None));
         Assert.Equal(4u, await files.PublishPureValuesAsync(source, CancellationToken.None));
         Assert.Single(remote.PvlAttempts);
     }

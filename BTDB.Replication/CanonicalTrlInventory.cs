@@ -83,10 +83,8 @@ internal sealed class CanonicalTrlInventory : ICheckpointStorage
         return count;
     }
 
-    public ValueTask<uint> ReserveFileIdAsync(KVFileType type, CancellationToken cancellation) =>
-        throw new NotSupportedException("The selected inventory does not allocate canonical identities.");
     public ValueTask EnsurePureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) =>
         throw new NotSupportedException("The selected inventory does not publish files.");
-    public ValueTask PublishKeyIndexAsync(KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map,
+    public ValueTask PublishKeyIndexAsync(uint remoteFileId, KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map,
         CancellationToken cancellation) => throw new NotSupportedException("The selected inventory does not publish files.");
 }

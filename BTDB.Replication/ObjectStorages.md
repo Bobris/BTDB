@@ -27,11 +27,9 @@ canonical histories or an accepted prefix ending inside a transaction.
 
 ### Implemented file inventory boundary
 
-`IRemoteFileCollection` exposes asynchronous inventory enumeration, version-bound range reads and fresh remote ID
-reservation. `RemoteFile` describes the numeric ID, native type, length, opaque version, sealed state and optional
+`IRemoteFileCollection` exposes asynchronous inventory enumeration and version-bound range reads. `RemoteFile` describes the numeric ID, native type, length, opaque version, sealed state and optional
 whole-file SHA-256. The adapter must reject a read if the selected version changed or disappeared; partial range
-success must never silently combine versions. Reservation uses remote inventory and authority, never a local maximum,
-and must preserve non-reuse across retirement and reconcile uncertain outcomes before returning an ID.
+success must never silently combine versions. Allocation uses refreshed remote inventory, never a local maximum; conditional creation and SHA metadata reconcile retries.
 `ICheckpointStorage` extends that boundary with confirmed PVL/TRL prerequisites and native KVI publication.
 
 `ReplicationFileSet` implements `IFileReplicatedCollection` exposed to BTDB. `GetCount`, `GetFile`, and `Enumerate`
@@ -708,3 +706,29 @@ The ambiguity case discards a known successful response locally; genuinely pendi
 by the deterministic simulator, not claimed as a real Azure network-fault experiment. Payloads are small diagnostic
 bytes; separate native tests establish TRL/KVI compatibility. The probe's extra `btdb_format` diagnostic metadata is
 not a required field in the candidate `TrlMetadata` codec.
+
+
+### Remote PVL/KVI creation
+
+The file set refreshes remote discovery and chooses the next even ID above the observed remote IDs and this session's
+previous choices. No reservation object, durable counter or reservation cleanup is needed. TRLs retain their native
+IDs (+2, or +1 after a legacy even TRL). Existing even legacy IDs are also excluded from new allocations.
+
+Adapters create PVL/KVI objects only if absent and bind whole-file SHA metadata atomically to the content. After a lost
+response, matching SHA metadata confirms the intended content; missing or different SHA is a conflict that fences the
+session. Do not overwrite conflicting content. `CheckpointPublisher` keeps its KVI ID/snapshot/map until confirmation;
+PVL placements likewise retain their chosen IDs across retries. Restart rediscovers and reconciles normal remote files.
+No separate allocation-state seeding or retention rule is required. Remote GC must use version-bound deletes so an old
+request cannot remove a replacement object at the same key. Production provider adapters remain pending.
+
+
+### Integration scope after simplification
+
+Fresh remote enumeration for an upload ID is distinct from `RefreshRemoteInventoryAsync`: the latter reconciles local
+mappings and clears receipt confirmations. Do not refresh local cache state before every upload. Session receipts and
+pending KVI arguments need no persisted journal; restart already revalidates cache and reconstructs remote state.
+
+A provider capability probe is qualification tooling, not a mandatory startup transaction sequence. Production still
+needs lease/conditional-I/O errors handled normally, and actual provider fault tests remain required. Likewise, GC can
+start from native dependency closure and current pending publications without a separate persistent ledger; this does
+not waive authority, version-bound deletion, or protection of dependencies needed by an unresolved publication.

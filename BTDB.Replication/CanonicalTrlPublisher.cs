@@ -78,6 +78,7 @@ internal sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, Transactio
 
 
     public bool HasAuthority => authority.IsValid;
+    internal void Fence() => authority.Fence();
     public TrlHead? Tail => _tail;
     public TransactionLogPosition PublishedPosition => _tail is { } tail ? new(tail.FileId, tail.State.Length) : default;
 

@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.IO;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
@@ -144,4 +146,111 @@ public class RestartRecoveryTest
         using var restored = await BTreeKeyValueDB.OpenAsync(Options(restoredFiles));
         AssertContents(restored, resumed: true);
     }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task CleanupAfterDiscoveryRetriesAgainstNewCheckpoint(bool compressed, bool deletePvl)
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage();
+        var capture = new TransactionLogCapture();
+        using var db = await CheckpointPublisherTest.OpenForPublication(local, capture, compressed);
+        await CheckpointPublisherTest.Populate(db);
+        using var canonical = CheckpointPublisherTest.CreateCanonical(db, capture, remote);
+        await using var originalPublication = new ReplicationFileSet(local, remote);
+        using (var snapshot = db.CaptureKeyIndexSnapshot())
+            Assert.Equal(CheckpointPublishResult.Published,
+                await new CheckpointPublisher(originalPublication, canonical).PublishAsync(snapshot));
+        var oldKvi = remote.Types.Single(p => p.Value == KVFileType.KeyIndex).Key;
+        var oldPvls = remote.Types.Where(p => p.Value == KVFileType.PureValues).Select(p => p.Key).ToArray();
+        Assert.NotEmpty(oldPvls);
+
+        using var cache = new InMemoryReplicationFileStorage();
+        uint reusableId;
+        IFileCollectionFile reusableFile;
+        await using (var attempt = new ReplicationFileSet(cache, remote))
+        {
+            await attempt.InitializeAsync();
+            // Keep a verified, sealed historical TRL across attempts. Retry should not redownload it.
+            reusableId = remote.Types.Where(p => p.Value == KVFileType.TransactionLog).Min(p => p.Key);
+            await attempt.PrefetchAsync(reusableId);
+            reusableFile = cache.GetFile(reusableId)!;
+            if (deletePvl) await attempt.PrefetchAsync(oldKvi);
+
+            // A new checkpoint replaces the discovered closure before its remaining downloads start.
+            await Write(db, 63, 250, "after checkpoint"u8.ToArray());
+            await using var replacementPublication = new ReplicationFileSet(local, remote);
+            using (var snapshot = db.CaptureKeyIndexSnapshot())
+                Assert.Equal(CheckpointPublishResult.Published,
+                    await new CheckpointPublisher(replacementPublication, canonical).PublishAsync(snapshot));
+            var obsolete = deletePvl ? oldPvls[0] : oldKvi;
+            remote.Files.GetFile(obsolete)!.Remove();
+            remote.Types.Remove(obsolete);
+            await Assert.ThrowsAsync<IOException>(() => BTreeKeyValueDB.OpenAsync(Options(attempt)).AsTask());
+            Assert.Null(cache.GetFile(obsolete));
+        }
+
+        // Finish old-closure cleanup, then rediscover using the same cache, without any restore wrapper.
+        foreach (var id in oldPvls.Append(oldKvi))
+        {
+            remote.Files.GetFile(id)?.Remove();
+            remote.Types.Remove(id);
+        }
+        var reads = new List<uint>();
+        remote.BeforeRead = (file, _, _) =>
+        {
+            reads.Add(file.FileId);
+            return ValueTask.CompletedTask;
+        };
+        var writesBeforeRetry = remote.Events.Count;
+        await using var retry = new ReplicationFileSet(cache, remote);
+        await retry.InitializeAsync();
+        Assert.Same(reusableFile, cache.GetFile(reusableId));
+        using var restored = await BTreeKeyValueDB.OpenAsync(Options(retry));
+        AssertContents(restored, resumed: false);
+        Assert.DoesNotContain(reusableId, reads);
+        Assert.Equal(writesBeforeRetry, remote.Events.Count);
+        Assert.All(oldPvls.Append(oldKvi), id => Assert.Null(cache.GetFile(id)));
+    }
+
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TailPublicationAfterDiscoveryRetriesWithoutMixingVersions(bool compressed)
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage();
+        var capture = new TransactionLogCapture();
+        using var db = await CheckpointPublisherTest.OpenForPublication(local, capture, compressed);
+        await CheckpointPublisherTest.Populate(db);
+        using var canonical = CheckpointPublisherTest.CreateCanonical(db, capture, remote);
+        await using var publication = new ReplicationFileSet(local, remote);
+        using (var snapshot = db.CaptureKeyIndexSnapshot())
+            Assert.Equal(CheckpointPublishResult.Published,
+                await new CheckpointPublisher(publication, canonical).PublishAsync(snapshot));
+        var originalTail = canonical.Tail!;
+        using var cache = new InMemoryReplicationFileStorage();
+        await using (var attempt = new ReplicationFileSet(cache, remote))
+        {
+            await attempt.InitializeAsync();
+            await Write(db, 63, 250, "after checkpoint"u8.ToArray());
+            Assert.Equal(TrlPublishResult.Published, await canonical.PublishNextAsync());
+            Assert.Equal(originalTail.FileId, canonical.Tail!.FileId);
+            Assert.NotEqual(originalTail.State.Token, canonical.Tail.State.Token);
+            await Assert.ThrowsAsync<IOException>(() => BTreeKeyValueDB.OpenAsync(Options(attempt)).AsTask());
+            Assert.Null(cache.GetFile(originalTail.FileId));
+        }
+
+        var writesBeforeRetry = remote.Events.Count;
+        await using var retry = new ReplicationFileSet(cache, remote);
+        await retry.InitializeAsync();
+        using var restored = await BTreeKeyValueDB.OpenAsync(Options(retry));
+        AssertContents(restored, resumed: false);
+        Assert.Equal(writesBeforeRetry, remote.Events.Count);
+    }
+
 }

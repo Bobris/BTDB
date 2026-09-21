@@ -251,7 +251,7 @@ internal sealed partial class ReplicationFileSet : IFileReplicatedCollection, IA
         candidate.Remove();
         lock (_placementLock)
         {
-            if (_placements.Remove(candidate.Index, out var placement)) _remoteOwners.Remove(placement.RemoteId);
+            if (_placements.Remove(candidate.Index, out var placement)) _placedRemoteIds.Remove(placement.RemoteId);
         }
     }
 

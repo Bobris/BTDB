@@ -101,6 +101,8 @@ public class CheckpointPublisherTest
         public readonly Dictionary<uint, KVFileType> Types = new();
         public readonly List<string> Events = new();
         public readonly List<uint> PvlAttempts = new();
+        public readonly List<uint> KviAttempts = new();
+        public bool LoseKviResponse;
         public IReadOnlyDictionary<uint, uint>? LastMap;
         public bool FailPvl, FailKvi, FailTrl, FailChunk;
         public int Chunks;
@@ -179,6 +181,13 @@ public class CheckpointPublisherTest
             writer.Flush();
         }
 
+        static string Hash(IFileCollectionFile file)
+        {
+            var bytes = new byte[checked((int)file.GetSize())];
+            file.RandomRead(bytes, 0, false);
+            return Convert.ToHexString(SHA256.HashData(bytes));
+        }
+
         public RemoteFile Describe(uint id)
         {
             var file = Files.GetFile(id)!;
@@ -211,21 +220,27 @@ public class CheckpointPublisherTest
             return count;
         }
 
-        public ValueTask<uint> ReserveFileIdAsync(KVFileType type, CancellationToken ct)
-        {
-            ct.ThrowIfCancellationRequested();
-            var file = Files.AddFile(type.ToString(), type == KVFileType.TransactionLog ? FileIdParity.Odd : FileIdParity.Even);
-            Types.Add(file.Index, type);
-            return ValueTask.FromResult(file.Index);
-        }
         public async ValueTask EnsurePureValuesAsync(uint remoteId, KeyIndexFileSource source, CancellationToken ct)
         {
             Events.Add("pvl");
             PvlAttempts.Add(remoteId);
             UploadEntered?.TrySetResult();
             if (ContinueUpload != null) await ContinueUpload.Task.WaitAsync(ct);
-            var target = Files.GetFile(remoteId)!;
-            if (target.GetSize() == 0) Copy(source, target);
+            using var expected = new InMemoryReplicationFileStorage();
+            var expectedFile = expected.ImportFile(remoteId, "pvl");
+            Copy(source, expectedFile);
+            var sha = Hash(expectedFile);
+            var target = Files.GetFile(remoteId);
+            if (target != null)
+            {
+                if (Describe(remoteId).Sha256 != sha) throw new RemoteFileConflictException();
+            }
+            else
+            {
+                target = Files.ImportFile(remoteId, "pvl");
+                Copy(source, target);
+                Types.Add(remoteId, KVFileType.PureValues);
+            }
             if (FailPvl) throw new IOException("Response lost after PVL upload");
             Assert.Equal(source.Length, target.GetSize());
             AfterPvl?.Invoke();
@@ -280,13 +295,22 @@ public class CheckpointPublisherTest
             AfterTrl?.Invoke(write);
             return new(TrlWriteOutcome.Applied, state);
         }
-        public async ValueTask PublishKeyIndexAsync(KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map, CancellationToken ct)
+        public ValueTask PublishKeyIndexAsync(uint id, KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map, CancellationToken ct)
         {
+            KviAttempts.Add(id);
             BeforeKvi?.Invoke();
             Events.Add("kvi");
             if (FailKvi) throw new IOException("KVI publication rejected");
-            var id = await ReserveFileIdAsync(KVFileType.KeyIndex, ct);
-            var file = Files.GetFile(id)!;
+            using var expected = new InMemoryReplicationFileStorage();
+            var expectedFile = expected.ImportFile(id, "kvi");
+            snapshot.WriteTo(expectedFile.GetAppenderWriter(), 10000 + id, map, ct);
+            var sha = Hash(expectedFile);
+            if (Files.GetFile(id) != null)
+            {
+                if (Describe(id).Sha256 != sha) throw new RemoteFileConflictException();
+                return ValueTask.CompletedTask;
+            }
+            var file = Files.ImportFile(id, "kvi");
             try
             {
                 using var writer = new PositionLessStreamWriter(new UploadStream(file, () =>
@@ -296,8 +320,15 @@ public class CheckpointPublisherTest
                 }));
                 snapshot.WriteTo(writer, 10000 + file.Index, map, ct);
                 LastMap = map;
+                Types.Add(id, KVFileType.KeyIndex);
             }
             catch { file.Remove(); throw; } // The test store never selects a partial KVI.
+            if (LoseKviResponse)
+            {
+                LoseKviResponse = false;
+                throw new IOException("KVI response lost after publication");
+            }
+            return ValueTask.CompletedTask;
         }
         public void Dispose() => Files.Dispose();
     }
@@ -456,6 +487,78 @@ public class CheckpointPublisherTest
         f.Remote.CancelAfterTrl = false;
         Assert.Equal(CheckpointPublishResult.Published, await f.Publisher.PublishAsync(snapshot));
         await f.AssertRestoresSnapshot(snapshot);
+    }
+
+    [Fact]
+    public async Task LostKviResponseRetainsIdentityAndBlocksAnotherSnapshotUntilReconciled()
+    {
+        using var f = await PublicationFixture.Create();
+        using var snapshot = f.Db.CaptureKeyIndexSnapshot();
+        f.Remote.LoseKviResponse = true;
+        await Assert.ThrowsAsync<IOException>(() => f.Publisher.PublishAsync(snapshot).AsTask());
+        var id = Assert.Single(f.Remote.KviAttempts);
+        var chunks = f.Remote.Chunks;
+        var pvlUploads = f.Remote.PvlAttempts.Count;
+        using var other = f.Db.CaptureKeyIndexSnapshot();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Publisher.PublishAsync(other).AsTask());
+        Assert.Single(f.Remote.KviAttempts);
+        Assert.Equal(CheckpointPublishResult.Published, await f.Publisher.PublishAsync(snapshot));
+        Assert.Equal(new[] { id, id }, f.Remote.KviAttempts);
+        Assert.Equal(chunks, f.Remote.Chunks);
+        Assert.Equal(pvlUploads, f.Remote.PvlAttempts.Count);
+        await f.AssertRestoresSnapshot(snapshot);
+        Assert.Equal(CheckpointPublishResult.Published, await f.Publisher.PublishAsync(other));
+        Assert.True(f.Remote.KviAttempts[^1] > id);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ConflictingOrMissingShaFencesCheckpointSession(bool kvi, bool missingSha)
+    {
+        using var f = await PublicationFixture.Create();
+        using var snapshot = f.Db.CaptureKeyIndexSnapshot();
+        f.Remote.LoseKviResponse = kvi;
+        f.Remote.FailPvl = !kvi;
+        await Assert.ThrowsAsync<IOException>(() => f.Publisher.PublishAsync(snapshot).AsTask());
+        var id = kvi ? Assert.Single(f.Remote.KviAttempts) : Assert.Single(f.Remote.PvlAttempts);
+        f.Remote.FailPvl = false;
+        if (missingSha) f.Remote.OmitChecksum = true;
+        else
+        {
+            var file = f.Remote.Files.GetFile(id)!;
+            var bytes = new byte[checked((int)file.GetSize())];
+            file.RandomRead(bytes, 0, false);
+            bytes[^1] ^= 1;
+            file.Remove();
+            var writer = new MemWriter(f.Remote.Files.ImportFile(id, kvi ? "kvi" : "pvl").GetAppenderWriter());
+            writer.WriteBlock(bytes);
+            writer.Flush();
+        }
+        Assert.Equal(CheckpointPublishResult.Conflict, await f.Publisher.PublishAsync(snapshot));
+        Assert.False(f.Canonical.HasAuthority);
+        Assert.Equal(CheckpointPublishResult.AuthorityLost, await f.Publisher.PublishAsync(snapshot));
+    }
+
+    [Fact]
+    public async Task RemoteAllocationRefreshesInventoryWithoutReservationObjects()
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new Storage();
+        await using var files = new ReplicationFileSet(local, remote);
+        Assert.Equal(2u, await files.AllocateRemoteFileIdAsync());
+        Assert.Empty(remote.Files.Enumerate());
+        // Another publication since the previous allocation must be observed.
+        var writer = new MemWriter(remote.Files.ImportFile(100, "pvl").GetAppenderWriter());
+        writer.WriteUInt8(1);
+        writer.Flush();
+        remote.Types.Add(100, KVFileType.PureValues);
+        Assert.Equal(102u, await files.AllocateRemoteFileIdAsync());
+        Assert.Equal(104u, await files.AllocateRemoteFileIdAsync());
+        await using var restarted = new ReplicationFileSet(local, remote);
+        Assert.Equal(102u, await restarted.AllocateRemoteFileIdAsync()); // Unpublished choices need no cleanup.
     }
 
     static byte[] Value(IKeyValueDBCursor cursor)
