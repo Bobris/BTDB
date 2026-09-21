@@ -328,7 +328,7 @@ An old leader treats a connected higher-generation follower as an upgrade target
 
 The target does not need to host databases its own database set retires. As soon as such a follower is prepared, the leader
 voluntarily starts a planned upgrade handoff; it does not wait for process shutdown. If several compatible newer
-generations are prepared, select the highest observed generation and randomize among equivalent targets. During the
+generations are prepared, select the highest observed generation and retain the first prepared offer among equivalent targets. A randomized tie-break is deferred until a concrete need is demonstrated. During the
 transfer the old leader uses the same remote-publication stop and authority-only lease lane as
 graceful shutdown. After the new leader is ready, the old process may remain alive: it discards temporary suffixes and
 reopens continued databases as a follower, while every retired database remains in local-only execution. No

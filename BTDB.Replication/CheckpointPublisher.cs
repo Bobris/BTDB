@@ -32,12 +32,14 @@ internal enum CheckpointPublishResult { Published, Pending, AuthorityLost, Confl
 /// Publish a fixed native checkpoint using the session file set for verified local-to-remote placements.
 /// The live database keeps its local IDs; KVI publication starts only after all dependencies are confirmed.
 /// </summary>
-internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrlPublisher canonical)
+internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrlPublisher canonical, ICheckpointStorage? storage = null)
 {
     sealed record PendingCheckpoint(KeyIndexSnapshot Snapshot, uint FileId, IReadOnlyDictionary<uint, uint> Map);
 
     readonly SemaphoreSlim _lane = new(1);
     PendingCheckpoint? _pending;
+    readonly ICheckpointStorage _storage = storage ?? files.Remote;
+    public PublishedCheckpoint? Published { get; private set; }
 
     /// <summary>The caller retains a snapshot from the canonical publisher's database until completion, including retries.
     /// Pending leaves the canonical intent intact and starts no KVI upload. Storage adapters must also check authority
@@ -76,7 +78,7 @@ internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrl
                 // The canonical lane selected the complete recovery prefix, including historical TRL dependencies.
                 // File existence/length alone would also accept an unselected prepared successor.
                 if (source.FileType == KVFileType.TransactionLog) continue;
-                var remoteId = await files.PublishPureValuesAsync(source, cancellation).ConfigureAwait(false);
+                var remoteId = await files.PublishPureValuesAsync(source, _storage, cancellation).ConfigureAwait(false);
                 if (_pending != null)
                 {
                     if (_pending.Map[source.FileId] != remoteId)
@@ -92,7 +94,7 @@ internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrl
             if (!canonical.HasAuthority) return CheckpointPublishResult.AuthorityLost;
             if (_pending == null)
             {
-                var id = await files.AllocateRemoteFileIdAsync(cancellation).ConfigureAwait(false);
+                var id = await files.AllocateRemoteFileIdAsync(cancellation, _storage).ConfigureAwait(false);
                 if (destinations!.Contains(id))
                     throw new InvalidOperationException("Remote file IDs collide.");
                 _pending = new(snapshot, id, new ReadOnlyDictionary<uint, uint>(map!));
@@ -101,8 +103,12 @@ internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrl
             if (!canonical.HasAuthority) return CheckpointPublishResult.AuthorityLost;
             // Retain the exact identity and mapping across exceptions, including a lost successful response.
             // The adapter must reconcile the same immutable object before returning success.
-            await files.Remote.PublishKeyIndexAsync(_pending.FileId, snapshot, _pending.Map, cancellation)
+            await _storage.PublishKeyIndexAsync(_pending.FileId, snapshot, _pending.Map, cancellation)
                 .ConfigureAwait(false);
+            var dependencies = new HashSet<uint>(_pending.Map.Values);
+            foreach (var source in snapshot.Sources)
+                if (source.FileType == KVFileType.TransactionLog) dependencies.Add(source.FileId);
+            Published = new(_pending.FileId, snapshot.TransactionLogFileId, dependencies);
             _pending = null;
             return CheckpointPublishResult.Published;
         }

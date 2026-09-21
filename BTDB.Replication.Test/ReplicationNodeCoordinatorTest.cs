@@ -44,9 +44,13 @@ public class ReplicationNodeCoordinatorTest
             return cluster;
         }
 
-        public Host Start(string name, bool unavailable = false)
+        public Host Start(string name, bool unavailable = false, ulong generation = 1, bool coordinatesMain = true, ulong inputEnd = 42, long? compactionTicks = null)
         {
             var host = new Host(this, name);
+            host.Generation = generation;
+            host.InputEnd = inputEnd;
+            host.CompactionTicks = compactionTicks;
+            host.CoordinatesMain = coordinatesMain;
             host.Storage.Unavailable = unavailable;
             Nodes.Add(host);
             host.Start();
@@ -91,15 +95,23 @@ public class ReplicationNodeCoordinatorTest
             }
         }
 
-        public sealed class Store(Cluster cluster) : IReplicationLeaseStorage, ILeaderRecordStorage, ICanonicalTrlStorage
+        public sealed class Store(Cluster cluster) : IReplicationLeaseStorage, IReplicationLeaseTransferStorage, ILeaderRecordStorage, ICanonicalTrlStorage
         {
             public bool Unavailable;
             public TaskCompletionSource? HoldWrites;
-            public int Acquires;
+            public int Acquires, Transfers;
             void Check(CancellationToken cancellation)
             {
                 cancellation.ThrowIfCancellationRequested();
                 if (Unavailable) throw new IOException("Node cannot reach Blob storage.");
+            }
+            public ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation)
+            {
+                Check(cancellation);
+                if (cluster._lease != currentHandle || cluster._expiry <= cluster.Clock.Elapsed.Ticks) throw new IOException("Stale transfer.");
+                Transfers++;
+                cluster._lease = proposedHandle;
+                return ValueTask.CompletedTask;
             }
             public ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation)
             {
@@ -141,7 +153,7 @@ public class ReplicationNodeCoordinatorTest
         }
     }
 
-    sealed class Host : IReplicationNodeHost
+    sealed class Host : IReplicationNodeHost, IKeyValueDBLogger
     {
         readonly Cluster _cluster;
         readonly string _name;
@@ -158,7 +170,16 @@ public class ReplicationNodeCoordinatorTest
         public ReplicationFileSet? Collection;
         public ReplicationNodeCoordinator Coordinator = null!;
         public Task Run = null!;
-        public int Restarts, Applied;
+        public int Restarts, Applied, Initializations, Compactions, LocalKvis;
+        public long? CompactionTicks;
+        public ulong InputEnd = 42;
+        public bool SchemaOnActivation;
+        public PreparedHandoff? PreparedUpgrade { get; set; }
+        public readonly List<string> Detached = new();
+        public bool Paused { set => _scope.Paused = value; }
+        public ulong Generation = 1;
+        public bool CoordinatesMain = true;
+        public readonly List<string> Removed = new();
 
         public Host(Cluster cluster, string name)
         {
@@ -172,27 +193,75 @@ public class ReplicationNodeCoordinatorTest
         {
             var leases = new LeaseSessionController(Storage, _scope, 0, TimeSpan.Zero);
             Coordinator = new(new("cluster", _name, TimeSpan.FromTicks(10), TimeSpan.FromTicks(20),
-                TimeSpan.FromTicks(15), TimeSpan.FromTicks(10)), this, Storage, leases, Peers, _scope);
+                TimeSpan.FromTicks(15), TimeSpan.FromTicks(10), Generation, CompactionTicks is { } ticks ? TimeSpan.FromTicks(ticks) : null), this, Storage, leases, Peers, _scope);
             Run = Coordinator.RunAsync(Cancellation.Token);
         }
         public async ValueTask<IReadOnlyList<ActivationDatabase>> RestoreAsync(CancellationToken cancellation)
         {
+            if (await Storage.ReadAsync(Cluster.Genesis(1), cancellation) == null)
+            {
+                Db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+                {
+                    FileCollection = new LocalReplicatedCollection(Files), TransactionLogCapture = Capture,
+                    Compression = new NoCompressionStrategy(), CompactorScheduler = null
+                }, cancellation);
+                return [new("main", Db, Capture, Storage, new(Cluster.Genesis(1), 1), default,
+                    id => $"{_name}-{_session}/{id}")];
+            }
             var inventory = await CanonicalTrlInventory.DiscoverAsync(Storage, new(Cluster.Genesis(1), 1), cancellation);
             Collection = new(Files, inventory);
             await Collection.InitializeAsync(cancellation);
             Db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
             {
-                FileCollection = Collection, TransactionLogCapture = Capture,
+                FileCollection = Collection, TransactionLogCapture = Capture, Logger = this,
                 Compression = new NoCompressionStrategy(), CompactorScheduler = null
             }, cancellation);
+            if (!CoordinatesMain) return [];
             return [new("main", Db, Capture, Storage, new(Cluster.Genesis(1), 1),
                 new(inventory.Tail.FileId, inventory.Tail.State.Length), id => $"{_name}-{_session}/{id}")];
         }
-        public LeaderCandidate CreateCandidate() => new("cluster", _name, $"{_name}-{++_session}", 1,
-            ["main"], _name, $"secret-{_name}-{_session}");
+        public LeaderCandidate CreateCandidate() => new("cluster", _name, $"{_name}-{++_session}", Generation,
+            CoordinatesMain ? ["main"] : [], _name, $"secret-{_name}-{_session}");
         public LeaderTrlProgress? GetProgress(string database) { lock (_progressLock) return _progress; }
         public void RequestRestart(string reason) => Restarts++;
         public void ReportStatus(ReplicationNodeRole role) { }
+        public void CompactionStart(ulong totalWaste) => Compactions++;
+        public void KeyValueIndexCreated(uint id, long count, ulong size, TimeSpan elapsed, ulong beforeCompressionSize) => LocalKvis++;
+        public void ReportTransactionLeak(IKeyValueDBTransaction transaction) { }
+        public void CompactionCreatedPureValueFile(uint id, ulong size, uint count, ulong memory) { }
+        public void TransactionLogCreated(uint id) { }
+        public void FileMarkedForDelete(uint id) { }
+
+        public void DatabaseRemoved(string database) => Removed.Add(database);
+        public void SchemaDetached(string database) => Detached.Add(database);
+        public ValueTask<ulong> CaptureInitializationCursorAsync(string database, CancellationToken cancellation)
+        { Initializations++; return ValueTask.FromResult(InputEnd); }
+        public async ValueTask PrepareSchemaAsync(ActivationDatabase database, LeaseAuthority authority, CancellationToken cancellation)
+        {
+            if (SchemaOnActivation)
+            {
+                SchemaOnActivation = false;
+                await Schema();
+            }
+            else if (Capture.Completed.FileId != 0)
+            {
+                using var read = Db!.StartReadOnlyTransaction();
+                var end = Capture.Completed;
+                lock (_progressLock) _progress = new(read.GetCommitUlong(), end.FileId, end.Offset);
+            }
+        }
+        public async Task Schema(bool rollback = false)
+        {
+            using (var transaction = await Db!.StartWritingTransaction())
+            {
+                using var cursor = transaction.CreateCursor();
+                cursor.CreateOrUpdateKeyValue([99], [9]);
+                if (!rollback) transaction.Commit();
+            }
+            using var read = Db.StartReadOnlyTransaction();
+            var end = Capture.Completed;
+            lock (_progressLock) _progress = new(read.GetCommitUlong(), end.FileId, end.Offset);
+        }
         public async Task Write(ulong id, byte value)
         {
             using (var transaction = await Db!.StartWritingTransaction(id))
@@ -225,7 +294,7 @@ public class ReplicationNodeCoordinatorTest
         sealed class Session(PeerTransport owner, string endpoint, IReplicationPeerSession inner) : IReplicationPeerSession
         {
             public void Dispose() => inner.Dispose();
-            public async ValueTask<ReplicationPeerProgress> PollAsync(string database, long challenge, TimeSpan duration, CancellationToken cancellation)
+            public async ValueTask<ReplicationPeerProgress> PollAsync(string? database, long challenge, TimeSpan duration, CancellationToken cancellation)
             {
                 owner.Check(endpoint, cancellation);
                 var result = await inner.PollAsync(database, challenge, duration, cancellation).ConfigureAwait(false);
@@ -233,6 +302,8 @@ public class ReplicationNodeCoordinatorTest
                 owner.Check(endpoint, cancellation);
                 return result;
             }
+            public ValueTask OfferHandoffAsync(PreparedHandoff offer, CancellationToken cancellation)
+            { owner.Check(endpoint, cancellation); return inner.OfferHandoffAsync(offer, cancellation); }
             public ILeaderTrlReader Reader(string database) => new ReaderProxy(owner, endpoint, inner.Reader(database));
         }
         sealed class ReaderProxy(PeerTransport owner, string endpoint, ILeaderTrlReader inner) : ILeaderTrlReader
@@ -244,6 +315,193 @@ public class ReplicationNodeCoordinatorTest
                 return inner.ReadAsync(fileId, offset, destination, cancellation);
             }
         }
+    }
+
+    [Fact]
+    public async Task ScheduledLocalCompactionContinuesOnFollowersAndDuringPublicationFailure()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader", compactionTicks: 10);
+        var follower = cluster.Start("follower", compactionTicks: 10);
+        leader.Storage.HoldWrites = new();
+        await leader.Write(2, 2);
+        await follower.Write(2, 2);
+        cluster.Advance(100);
+        Assert.True(leader.Compactions >= 5);
+        Assert.True(follower.Compactions >= 5);
+        Assert.Equal(0, leader.LocalKvis);
+        Assert.Equal(0, follower.LocalKvis);
+        Assert.Equal(ReplicationNodeRole.Leader, leader.Coordinator.Role);
+        Assert.Equal(1ul, await cluster.RestoreEvent());
+        await follower.Write(3, 3);
+    }
+
+    [Fact]
+    public async Task PreparedHighestGenerationDrainsAndReceivesLeaseWithoutWaitingForExpiry()
+    {
+        await using var cluster = await Cluster.Create();
+        var old = cluster.Start("old");
+        var next = cluster.Start("next", generation: 2);
+        var newest = cluster.Start("newest", generation: 3);
+        next.PreparedUpgrade = new(2, "10000000-0000-0000-0000-000000000002");
+        newest.SchemaOnActivation = true;
+        newest.PreparedUpgrade = new(3, "10000000-0000-0000-0000-000000000003");
+        cluster.Advance(10);
+        Assert.Equal(0, old.Storage.Transfers);
+        cluster.Advance(50);
+        Assert.Equal(1, old.Storage.Transfers);
+        Assert.Equal(ReplicationNodeRole.Leader, newest.Coordinator.Role);
+        Assert.Equal(3ul, JsonNode.Parse(cluster.Record.Json)!["applicationGeneration"]!.GetValue<ulong>());
+        Assert.NotEqual(ReplicationNodeRole.Leader, old.Coordinator.Role);
+        Assert.Equal(new[] { "main" }, old.Detached);
+        Assert.Equal(1ul, await cluster.RestoreEvent());
+        await old.Write(2, 2);
+        Assert.Equal(1, old.Applied);
+        Assert.Equal(0, old.Restarts);
+    }
+
+    [Theory]
+    [InlineData(0ul)]
+    [InlineData(42ul)]
+    public async Task NewDatabaseInitializesOnlyOnLeaderAndLostPublicationKeepsCapturedCursor(ulong inputEnd)
+    {
+        await using var cluster = new Cluster();
+        cluster.Trls.Inject = _ => Fault.DelayEffect;
+        var leader = cluster.Start("leader", inputEnd: inputEnd);
+        var follower = cluster.Start("follower");
+        cluster.Advance(30);
+        Assert.Equal(1, leader.Initializations);
+        Assert.Equal(0, follower.Initializations);
+        Assert.Equal(default, follower.Capture.Completed);
+        Assert.Equal(ReplicationNodeRole.Activating, leader.Coordinator.Role);
+        leader.InputEnd = 99;
+        cluster.Trls.CompleteDelayed();
+        cluster.Trls.Inject = null;
+        cluster.Advance(30);
+        Assert.Equal(inputEnd, await cluster.RestoreEvent());
+        Assert.Equal(1, leader.Initializations);
+        Assert.Equal(1, follower.Restarts);
+        var restored = cluster.Start("restored");
+        Assert.Equal(0, restored.Initializations);
+        using var read = restored.Db!.StartReadOnlyTransaction();
+        Assert.Equal(inputEnd, read.GetCommitUlong());
+    }
+
+    [Fact]
+    public async Task UnpublishedInitializationCanBeRecreatedAtNewInputEndAfterLeaderLoss()
+    {
+        await using var cluster = new Cluster();
+        cluster.Trls.Inject = _ => Fault.DelayEffect;
+        var old = cluster.Start("old");
+        var next = cluster.Start("next");
+        next.InputEnd = 99;
+        old.Storage.Unavailable = true;
+        cluster.Trls.Inject = null;
+        cluster.Advance(140);
+        Assert.Equal(ReplicationNodeRole.Leader, next.Coordinator.Role);
+        Assert.Equal(1, next.Initializations);
+        Assert.Equal(99ul, await cluster.RestoreEvent());
+        cluster.Trls.CompleteDelayed();
+        Assert.Equal(99ul, await cluster.RestoreEvent());
+    }
+
+    [Fact]
+    public async Task CoalescedSchemaDetachesLaggingFollowerAndNeverPromotesItsLocalWork()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader");
+        var follower = cluster.Start("follower");
+        await leader.Write(2, 2);
+        await leader.Schema();
+        await leader.Write(3, 3);
+        cluster.Advance(20);
+        Assert.Equal(new[] { "main" }, follower.Detached);
+        Assert.Equal(0, follower.Restarts);
+        await follower.Write(2, 9);
+        cluster.Isolated.Add("follower");
+        cluster.Advance(30);
+        cluster.Isolated.Clear();
+        cluster.Advance(30);
+        Assert.Single(follower.Detached);
+        Assert.Equal(0, follower.Restarts);
+        var attempts = follower.Storage.Acquires;
+        leader.Paused = true;
+        follower.Paused = true;
+        cluster.Advance(TimeSpan.FromMinutes(15).Ticks + 100);
+        follower.Paused = false;
+        cluster.Advance(10);
+        Assert.Equal(1, follower.Restarts);
+        Assert.Equal(attempts, follower.Storage.Acquires);
+        await follower.Write(3, 9);
+        Assert.Equal(2, follower.Applied);
+    }
+
+    [Fact]
+    public async Task OlderGenerationFollowsButNeverContendsEvenAfterNewLeaderDisappears()
+    {
+        await using var cluster = await Cluster.Create();
+        var current = cluster.Start("current", generation: 2);
+        var older = cluster.Start("older");
+        await current.Write(2, 2);
+        await older.Write(2, 2);
+        cluster.Advance(30);
+        Assert.Equal(ReplicationNodeRole.Leader, current.Coordinator.Role);
+        Assert.Equal(older.Capture.Completed, older.Capture.Acknowledged);
+        Assert.Equal(0, older.Storage.Acquires);
+        current.Storage.Unavailable = true;
+        cluster.Isolated.Add("current");
+        cluster.Advance(300);
+        Assert.Equal(0, older.Storage.Acquires);
+        Assert.Equal(ReplicationNodeRole.Follower, older.Coordinator.Role);
+        await older.Write(3, 3);
+        Assert.Equal(2, older.Applied);
+        Assert.Equal(0, older.Restarts);
+    }
+
+    [Fact]
+    public async Task RemovedDatabaseContinuesLocallyWithoutPeerReadsOrElection()
+    {
+        await using var cluster = await Cluster.Create();
+        var current = cluster.Start("current", generation: 2, coordinatesMain: false);
+        var older = cluster.Start("older");
+        cluster.Advance(300);
+        Assert.Equal(ReplicationNodeRole.Leader, current.Coordinator.Role);
+        Assert.Equal(new[] { "main" }, older.Removed);
+        Assert.Equal(0, older.Storage.Acquires);
+        Assert.Equal(0, older.Peers.Reads);
+        await older.Write(2, 9);
+        Assert.Equal(1, older.Applied);
+        Assert.Equal(1ul, await cluster.RestoreEvent());
+        Assert.Equal(0, older.Restarts);
+        Assert.False(older.Run.IsCompleted);
+    }
+
+    [Fact]
+    public async Task RunningOldGenerationLosesEligibilityWhenItDiscoversUpgrade()
+    {
+        await using var cluster = await Cluster.Create();
+        var older = cluster.Start("older");
+        cluster.Advance(10);
+        Assert.Equal(ReplicationNodeRole.Leader, older.Coordinator.Role);
+        older.Storage.Unavailable = true;
+        cluster.Isolated.Add("older");
+        var current = cluster.Start("current", generation: 2);
+        cluster.Advance(140);
+        Assert.Equal(ReplicationNodeRole.Leader, current.Coordinator.Role);
+        older.Storage.Unavailable = false;
+        cluster.Isolated.Clear();
+        cluster.Advance(30);
+        await current.Write(2, 2);
+        await older.Write(2, 2);
+        cluster.Advance(30);
+        Assert.Equal(older.Capture.Completed, older.Capture.Acknowledged);
+        var attempts = older.Storage.Acquires;
+        current.Storage.Unavailable = true;
+        cluster.Isolated.Add("current");
+        cluster.Advance(300);
+        Assert.Equal(attempts, older.Storage.Acquires);
+        Assert.Equal(0, older.Restarts);
+        Assert.False(older.Run.IsCompleted);
     }
 
     [Fact]

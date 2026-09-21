@@ -407,6 +407,8 @@ public class ObjectDB : IObjectDB
     {
         if (ActualOptions.CompactorLeakDetectorMode == CompactorLeakDetectorMode.Off) return;
         if (_keyValueDB is not BTreeKeyValueDB keyValueDB) return;
+        // Replicas consume the same application-owned exact-key event; independent compactor scans must not erase.
+        if (keyValueDB.IsReplication) return;
         _compactionMaintenanceKeyValueDB = keyValueDB;
         keyValueDB.CompactorStartAction = CompactionMaintenance;
     }
@@ -457,6 +459,12 @@ public class ObjectDB : IObjectDB
         return new(detector.KeyCountToDelete, detector.LeakedObjectTypeNames);
     }
 
+    public LeakRemovalCandidates CollectLeakRemovalCandidates(CancellationToken cancellation = default)
+    {
+        var detector = FindLeaks(cancellation);
+        return new(detector.KeysToDelete, detector.KeyCountToDelete);
+    }
+
     CompactorLeakDetector FindLeaks(CancellationToken cancellation)
     {
         using var tr = StartReadOnlyTransaction();
@@ -467,18 +475,8 @@ public class ObjectDB : IObjectDB
 
     async ValueTask<ulong> RemoveLeaks(CompactorLeakDetector detector, CancellationToken cancellation)
     {
-        var removed = 0UL;
         using var tr = await StartWritingTransaction().ConfigureAwait(false);
-        using var cursor = tr.KeyValueDBTransaction.CreateCursor();
-        var keysReader = MemReader.CreateFromPinnedSpan(detector.KeysToDelete.Span);
-        for (var i = 0UL; i < detector.KeyCountToDelete; i++)
-        {
-            cancellation.ThrowIfCancellationRequested();
-            var key = keysReader.ReadBlockAsSpan(keysReader.ReadVUInt32());
-            if (!cursor.FindExactKey(key)) continue;
-            cursor.EraseCurrent();
-            removed++;
-        }
+        var removed = new LeakRemovalCandidates(detector.KeysToDelete, detector.KeyCountToDelete).ApplyTo(tr, cancellation);
 
         if (removed > 0) tr.Commit();
         return removed;

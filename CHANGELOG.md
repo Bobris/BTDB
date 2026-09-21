@@ -12,6 +12,23 @@
 
 ### Changed
 
+- Schedule native replication compaction independently on every node and connect leader checkpoint publication,
+  delayed dependency-aware remote cleanup and application-owned exact leak-removal events. Preserve pending
+  snapshots across upload failures, condition remote deletion on object versions, and protect reused PVLs against
+  stale deletes. Replicated ObjectDB compaction no longer erases leaks independently of the ordered event stream.
+
+- Implement prepared newer-generation handoff with grant drain and Azure lease transfer; confirm transferred
+  ownership by target renewal even after a lost response. Bootstrap the initial leader record during discovery.
+- Initialize unpublished databases only under selected leadership after existing histories are adopted. Capture
+  the input cursor once per completed initialization and publish genesis/startup schema before leader service.
+- Detect live schema commits from bounded native TRL inspection before comparison, including lagging followers.
+  Preserve rollback semantics, permanently disable detached-node takeover, keep local work running, and request
+  graceful restart after fifteen minutes without valid leader evidence.
+
+- Permanently stop lease contention after observing a newer application generation while continuing to follow
+  shared databases. Removed databases remain available for local work and receive no further peer comparisons;
+  delayed lease replies cannot restore eligibility.
+
 - Connect native restore, authenticated in-process peer following, automatic election/takeover and canonical
   publication through an internal node coordinator. Keep renewal independent of blocked publication, bound requests
   with cancellation, and recheck a new leader from the verified restore cut before accepting its history.

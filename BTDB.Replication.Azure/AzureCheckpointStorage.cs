@@ -19,7 +19,7 @@ namespace BTDB.Replication.Azure;
 /// <summary>Immutable numeric PVL/KVI files plus a separately selected canonical TRL inventory.
 /// Publication is conditional create with atomic SHA metadata. Restore requires no authority.</summary>
 internal sealed class AzureCheckpointStorage(BlobContainerClient container, string prefix,
-    IRemoteFileCollection canonical, LeaseAuthority? authority = null) : ICheckpointStorage
+    IRemoteFileCollection canonical, LeaseAuthority? authority = null) : IRemoteMaintenanceStorage
 {
     string Directory => string.IsNullOrEmpty(prefix) ? "files/" : prefix.TrimEnd('/') + "/files/";
     BlockBlobClient Blob(uint id, string extension) => container.GetBlockBlobClient(Directory + id.ToString(CultureInfo.InvariantCulture) + extension);
@@ -39,6 +39,71 @@ internal sealed class AzureCheckpointStorage(BlobContainerClient container, stri
             yield return new(id, type, checked((ulong)blob.Properties.ContentLength!.Value),
                 blob.Properties.ETag!.Value.ToString(), true, blob.Metadata.TryGetValue("btdb_sha256", out var sha) ? sha : null);
         }
+    }
+
+    string Root => string.IsNullOrEmpty(prefix) ? "" : prefix.TrimEnd('/') + "/";
+
+    void RequireAuthority(CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        if (authority is not { IsValid: true }) throw new InvalidOperationException("Remote maintenance requires live authority.");
+    }
+
+    public async IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync([EnumeratorCancellation] CancellationToken cancellation)
+    {
+        await foreach (var blob in container.GetBlobsAsync(BlobTraits.Metadata, BlobStates.None, prefix: Root,
+                           cancellationToken: cancellation).ConfigureAwait(false))
+        {
+            var key = blob.Name[Root.Length..];
+            if (key.StartsWith("files/", StringComparison.Ordinal))
+            {
+                var name = key[6..];
+                var dot = name.LastIndexOf('.');
+                if (dot <= 0 || !uint.TryParse(name.AsSpan(0, dot), NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id == 0) continue;
+                var type = name[dot..] switch { ".pvl" => KVFileType.PureValues, ".kvi" => KVFileType.KeyIndex, _ => KVFileType.Unknown };
+                if (type != KVFileType.Unknown) yield return new(key, id, type, blob.Properties.ETag!.Value.ToString());
+            }
+            else if (blob.Metadata.ContainsKey("btdb_term") && blob.Metadata.TryGetValue("btdb_file_id", out var value) &&
+                     uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id != 0)
+                // This adapter discovers canonical history from a supplied root. Keep its links traversable.
+                yield return new(key, id, KVFileType.TransactionLog, blob.Properties.ETag!.Value.ToString(), true);
+        }
+    }
+
+    public async ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation)
+    {
+        TrlMetadata.Validate(new(file.Key, file.FileId));
+        RequireAuthority(cancellation);
+        try
+        {
+            await container.GetBlobClient(Root + file.Key).DeleteIfExistsAsync(DeleteSnapshotsOption.IncludeSnapshots,
+                new BlobRequestConditions { IfMatch = new ETag(file.Version) }, cancellation).ConfigureAwait(false);
+        }
+        catch (RequestFailedException error) when (error.Status is 404 or 412) { }
+        catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+        { throw new IOException("Remote cleanup result is unresolved.", error); }
+    }
+
+    public async ValueTask<bool> ProtectPureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation)
+    {
+        RequireAuthority(cancellation);
+        var blob = Blob(id, ".pvl");
+        try
+        {
+            var properties = (await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false)).Value;
+            if ((ulong)properties.ContentLength != source.Length || !properties.Metadata.ContainsKey("btdb_sha256"))
+                throw new RemoteFileConflictException();
+            // Contents were verified on upload/download. Metadata-only CAS invalidates any old delete token.
+            RequireAuthority(cancellation);
+            await blob.SetMetadataAsync(properties.Metadata, new BlobRequestConditions { IfMatch = properties.ETag }, cancellation)
+                .ConfigureAwait(false);
+            return true;
+        }
+        catch (RequestFailedException error) when (error.Status == 404) { return false; }
+        catch (RequestFailedException error) when (error.Status == 412)
+        { throw new IOException("PVL protection raced another version; retry the checkpoint.", error); }
+        catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+        { throw new IOException("PVL protection is unresolved.", error); }
     }
 
     public async ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation)

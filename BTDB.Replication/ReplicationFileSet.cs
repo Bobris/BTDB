@@ -218,9 +218,9 @@ internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage 
 
     // Called under the publication lane. Refresh only remote discovery: refreshing local mappings here would
     // invalidate confirmed PVL receipts during the same checkpoint. No remote reservation object is created.
-    internal async ValueTask<uint> AllocateRemoteFileIdAsync(CancellationToken cancellation = default)
+    internal async ValueTask<uint> AllocateRemoteFileIdAsync(CancellationToken cancellation = default, ICheckpointStorage? storage = null)
     {
-        await foreach (var file in Remote.EnumerateAsync(cancellation).ConfigureAwait(false))
+        await foreach (var file in (storage ?? Remote).EnumerateAsync(cancellation).ConfigureAwait(false))
             if ((file.FileId & 1) == 0) _lastRemoteEvenId = Math.Max(_lastRemoteEvenId, file.FileId);
         cancellation.ThrowIfCancellationRequested();
         var next = (ulong)_lastRemoteEvenId + 2;
@@ -228,25 +228,39 @@ internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage 
         return _lastRemoteEvenId = (uint)next;
     }
 
-    public async ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default)
+    public ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default) =>
+        PublishPureValuesAsync(source, Remote, cancellation);
+
+    internal async ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, ICheckpointStorage storage, CancellationToken cancellation)
     {
         if (source.FileType != KVFileType.PureValues ||
             !OwnsSource(source) || source.Length != source.File.GetSize())
             throw new InvalidOperationException("The snapshot does not refer to a complete file in this local inventory.");
-        if (!_placements.TryGetValue(source.FileId, out var placement))
+        while (true)
         {
-            var remoteId = await AllocateRemoteFileIdAsync(cancellation).ConfigureAwait(false);
-            placement = new(source.Length, remoteId, false);
-            AddPlacement(source.FileId, placement);
+            cancellation.ThrowIfCancellationRequested();
+            if (!_placements.TryGetValue(source.FileId, out var placement))
+            {
+                var remoteId = await AllocateRemoteFileIdAsync(cancellation, storage).ConfigureAwait(false);
+                placement = new(source.Length, remoteId, false);
+                AddPlacement(source.FileId, placement);
+            }
+            if (placement.Length != source.Length)
+                throw new InvalidOperationException("A sealed local PVL identity changed; start a new restore session.");
+            if (!placement.Confirmed)
+            {
+                await storage.EnsurePureValuesAsync(placement.RemoteId, source, cancellation).ConfigureAwait(false);
+                RememberMapping(placement.RemoteId, source.FileId);
+                placement.Confirmed = true;
+            }
+            if (storage is IRemoteMaintenanceStorage maintenance &&
+                !await maintenance.ProtectPureValuesAsync(placement.RemoteId, source, cancellation).ConfigureAwait(false))
+            {
+                _placements.Remove(source.FileId);
+                _placedRemoteIds.Remove(placement.RemoteId);
+                continue;
+            }
+            return placement.RemoteId;
         }
-        if (placement.Length != source.Length)
-            throw new InvalidOperationException("A sealed local PVL identity changed; start a new restore session.");
-        if (!placement.Confirmed)
-        {
-            await Remote.EnsurePureValuesAsync(placement.RemoteId, source, cancellation).ConfigureAwait(false);
-            RememberMapping(placement.RemoteId, source.FileId);
-            placement.Confirmed = true;
-        }
-        return placement.RemoteId;
     }
 }

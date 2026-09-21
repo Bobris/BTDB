@@ -19,6 +19,11 @@ internal interface IReplicationLeaseStorage
     ValueTask<TimeSpan?> RenewAsync(string handle, CancellationToken cancellation);
 }
 
+internal interface IReplicationLeaseTransferStorage
+{
+    ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation);
+}
+
 /// <summary>
 /// Node lifetime lease acquisition/renewal. Maintenance is serialized by the owner; authority/handle snapshots
 /// are synchronized with independent activation and publication lanes. Acquiring a lease does not activate publication: each new authority
@@ -31,6 +36,37 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
     LeaseAuthority? _authority;
     string? _handle;
     volatile bool _closed;
+    bool _ineligible;
+    string? _proposedHandle;
+
+    public void ProposeTransfer(string handle)
+    {
+        lock (_stateLock) if (!_ineligible && !_closed) _proposedHandle = handle;
+    }
+
+    public async ValueTask TransferAsync(string proposedHandle, CancellationToken cancellation)
+    {
+        if (storage is not IReplicationLeaseTransferStorage transfer)
+            throw new NotSupportedException("The lease provider does not support transfer.");
+        string handle;
+        lock (_stateLock)
+        {
+            if (Current == null) throw new InvalidOperationException("Transfer requires live authority.");
+            handle = _handle!;
+            Disqualify(); // Stop renewal and publication even if the response is lost.
+        }
+        await transfer.TransferAsync(handle, proposedHandle, cancellation).ConfigureAwait(false);
+    }
+
+    // Permanent for this node lifetime. A delayed acquisition/renewal cannot restore eligibility.
+    public void Disqualify()
+    {
+        lock (_stateLock)
+        {
+            _ineligible = true;
+            _authority?.Fence();
+        }
+    }
 
     public LeaseAuthority? Current { get { lock (_stateLock) return _authority is { IsValid: true } ? _authority : null; } }
 
@@ -95,6 +131,7 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
     {
         if (_closed) throw new InvalidOperationException("Lease acquisition is closed for this node session.");
         cancellation.ThrowIfCancellationRequested();
+        lock (_stateLock) if (_ineligible) return null;
         if (Current is { } current)
         {
             var request = current.BeginRequest();
@@ -113,11 +150,16 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
         }
         var candidate = new LeaseAuthority(clock, maximumClockDriftPpm, safetyMargin);
         var acquire = candidate.BeginRequest();
-        var grant = await storage.AcquireAsync(cancellation).ConfigureAwait(false);
+        string? proposed;
+        lock (_stateLock) proposed = _proposedHandle;
+        LeaseGrant? grant = null;
+        if (proposed != null && await storage.RenewAsync(proposed, cancellation).ConfigureAwait(false) is { } transferred)
+            grant = new(proposed, transferred);
+        grant ??= await storage.AcquireAsync(cancellation).ConfigureAwait(false);
         cancellation.ThrowIfCancellationRequested();
         lock (_stateLock)
         {
-            if (_closed || grant == null || !candidate.AcceptSuccess(acquire, grant.GuaranteedDuration)) return null;
+            if (_closed || _ineligible || grant == null || !candidate.AcceptSuccess(acquire, grant.GuaranteedDuration)) return null;
             _handle = grant.Handle;
             _authority = candidate;
             return candidate;

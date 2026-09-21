@@ -59,6 +59,50 @@ public class ObjectDbCompactorLeakCleanupTest : IDisposable
     }
 
     [Fact]
+    public async Task ExactLeakEventIsCollectedOnceAndAppliedIdempotentlyInApplicationTransactions()
+    {
+        using var first = new TestDbContext(new DBOptions().WithoutAutoRegistration().WithCompactorLeakDetectorMode(CompactorLeakDetectorMode.Off));
+        using var second = new TestDbContext(new DBOptions().WithoutAutoRegistration().WithCompactorLeakDetectorMode(CompactorLeakDetectorMode.Off));
+        foreach (var context in new[] { first, second })
+            CreateDictionaryLeak("programming", "old", "new", context.Db);
+        var candidates = first.Db.CollectLeakRemovalCandidates();
+        Assert.True(candidates.KeyCount > 0);
+        Assert.NotEmpty(FindLeaks(first.Db));
+        foreach (var context in new[] { first, second })
+        {
+            using (var rollback = await context.Db.StartWritingTransaction(100ul))
+                Assert.Equal(candidates.KeyCount, candidates.ApplyTo(rollback));
+            Assert.NotEmpty(FindLeaks(context.Db));
+            using (var apply = await context.Db.StartWritingTransaction(100ul))
+            {
+                Assert.Equal(candidates.KeyCount, candidates.ApplyTo(apply));
+                apply.Commit();
+            }
+            using (var repeat = await context.Db.StartWritingTransaction(101ul))
+            {
+                Assert.Equal(0ul, candidates.ApplyTo(repeat));
+                repeat.Commit();
+            }
+            Assert.Empty(FindLeaks(context.Db));
+            using var read = context.Db.StartReadOnlyTransaction();
+            Assert.Equal(101ul, read.GetCommitUlong());
+        }
+    }
+
+    [Fact]
+    public async Task ReplicatedCompactorDoesNotIndependentlyEraseDetectedLeaks()
+    {
+        using var files = new InMemoryReplicationFileStorage();
+        using var low = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        { FileCollection = new LocalReplicatedCollection(files), CompactorScheduler = null });
+        using var objects = new ObjectDB();
+        objects.Open(low, false, new DBOptions().WithoutAutoRegistration().WithCompactorLeakDetectorMode(CompactorLeakDetectorMode.Erase));
+        CreateDictionaryLeak("programming", "old", "new", objects);
+        for (var i = 0; i < 6; i++) await low.Compact(default);
+        Assert.True(objects.CollectLeakRemovalCandidates().KeyCount > 0);
+    }
+
+    [Fact]
     public async Task ExplicitLeakRemovalRunsImmediatelyAndReturnsResult()
     {
         CreateObjectLeak("read", "write");

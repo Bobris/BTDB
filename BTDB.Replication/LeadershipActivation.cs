@@ -33,6 +33,14 @@ internal static class LeadershipActivation
             foreach (var database in databases)
             {
                 RequireAuthority(selected);
+                if (database.RestoredBase.FileId == 0)
+                {
+                    if (await database.Storage.ReadAsync(database.Genesis.Key, cancellation).ConfigureAwait(false) != null)
+                        throw new InvalidDataException("Initialization was published; restore its fixed history before activation.");
+                    publishers.Add(new(database.Database, database.Capture, database.Storage, selected.Authority,
+                        selected.Term, id => id == database.Genesis.FileId ? database.Genesis.Key : database.KeyForFile(id)));
+                    continue;
+                }
                 var inventory = await CanonicalTrlInventory.DiscoverAsync(database.Storage, database.Genesis, cancellation)
                     .ConfigureAwait(false);
                 if (inventory.Tail.State.Metadata.Term > selected.Term)

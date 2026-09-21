@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -118,7 +119,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
 
     sealed class Faults : HttpPipelineSynchronousPolicy
     {
-        public bool Outage, LoseAcquire, LoseSelection, LoseCommit;
+        public bool Outage, LoseAcquire, LoseSelection, LoseCommit, LoseTransfer;
         public override void OnSendingRequest(HttpMessage message)
         {
             if (Outage) throw new IOException("Injected storage outage.");
@@ -130,6 +131,11 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
             {
                 LoseAcquire = false;
                 throw new IOException("Lost acquire response after Azure applied it.");
+            }
+            if (LoseTransfer && message.Request.Headers.TryGetValue("x-ms-lease-action", out var transferAction) && transferAction == "change")
+            {
+                LoseTransfer = false;
+                throw new IOException("Lost lease transfer response after Azure applied it.");
             }
             if (LoseSelection && message.Request.Headers.TryGetValue("If-Match", out _))
             {
@@ -143,6 +149,35 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
                 throw new IOException("Lost canonical commit response after Azure applied it.");
             }
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PreparedLeaseTransferIsConfirmedByTargetRenewalEvenAfterLostResponse(bool loseResponse)
+    {
+        var faults = new Faults();
+        var container = await fixture.ContainerAsync(faults);
+        var storage = new AzureLeaderStorage(container.GetBlobClient("cluster/leader.json"), TimeSpan.FromSeconds(15), Initial);
+        Assert.Contains("\"term\":0", (await storage.ReadAsync(default)).Json); // Discovery bootstraps before acquisition.
+        var old = new LeaseSessionController(storage, new Clock(), 0, TimeSpan.Zero);
+        var authority = (await old.MaintainAsync())!;
+        var handle = old.GetHandle(authority);
+        var targetStorage = new AzureLeaderStorage(container.GetBlobClient("cluster/leader.json"), TimeSpan.FromSeconds(60), Initial);
+        var targetClock = new Clock();
+        var target = new LeaseSessionController(targetStorage, targetClock, 0, TimeSpan.Zero);
+        var proposed = "b0000000-0000-0000-0000-000000000001";
+        target.ProposeTransfer(proposed);
+        faults.LoseTransfer = loseResponse;
+        if (loseResponse) await Assert.ThrowsAsync<IOException>(() => old.TransferAsync(proposed, default).AsTask());
+        else await old.TransferAsync(proposed, default);
+        Assert.False(authority.IsValid);
+        Assert.Null(await old.MaintainAsync());
+        var received = await target.MaintainAsync();
+        Assert.NotNull(received);
+        Assert.Equal(proposed, target.GetHandle(received));
+        Assert.True(received.Deadline - targetClock.Elapsed <= TimeSpan.FromSeconds(15));
+        Assert.Null(await storage.RenewAsync(handle, default));
     }
 
     [Fact]
@@ -230,12 +265,29 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var bytes = new byte[3];
         Assert.Equal(3, await storage.ReadAsync(file, 0, bytes, default));
         Assert.Equal(new byte[] { 2, 3, 4 }, bytes);
+        var physical = new List<RemoteMaintenanceFile>();
+        await foreach (var item in storage.EnumerateMaintenanceAsync(default)) physical.Add(item);
+        Assert.Contains(physical, item => item.FileType == KVFileType.TransactionLog && item.RetainForDiscovery);
+        var oldVersion = Assert.Single(physical, item => item.FileId == 100);
+        Assert.True(await storage.ProtectPureValuesAsync(100, source, default));
+        await storage.DeleteAsync(oldVersion, default);
+        Assert.True((await container.GetBlobClient("db/files/100.pvl").ExistsAsync()).Value);
+        physical.Clear();
+        await foreach (var item in storage.EnumerateMaintenanceAsync(default)) physical.Add(item);
+        var protectedVersion = Assert.Single(physical, item => item.FileId == 100);
+        Assert.NotEqual(oldVersion.Version, protectedVersion.Version);
+        await storage.DeleteAsync(protectedVersion, default);
+        Assert.False(await storage.ProtectPureValuesAsync(100, source, default));
+        // Recreate only for the independent content-conflict assertion below.
+        await storage.EnsurePureValuesAsync(100, source, default);
+        await foreach (var item in storage.EnumerateAsync(default)) if (item.FileId == 100) file = item;
         writer = new MemWriter(pvl.GetAppenderWriter());
         writer.WriteUInt8(5);
         writer.Flush();
         await Assert.ThrowsAsync<RemoteFileConflictException>(() => storage.EnsurePureValuesAsync(100,
             source with { Length = pvl.GetSize() }, default).AsTask());
         Assert.True(authority.IsFenced);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => storage.DeleteAsync(protectedVersion, default).AsTask());
         Assert.Equal(3, await storage.ReadAsync(file, 0, bytes, default));
         Assert.Equal(new byte[] { 2, 3, 4 }, bytes);
     }

@@ -48,6 +48,9 @@ public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
 
     LeakDetectionResult RunLeakDetection(CancellationToken cancellation = default);
 
+    /// <summary>Collect bounded exact keys for an application-owned ordered removal event. Does not erase or commit.</summary>
+    LeakRemovalCandidates CollectLeakRemovalCandidates(CancellationToken cancellation = default);
+
     ValueTask<LeakRemovalResult> RunLeakRemovalAsync(CancellationToken cancellation = default);
 
     string RegisterType(Type type);

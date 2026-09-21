@@ -10,7 +10,10 @@ Azure lease, leader-record selection, canonical TRL and immutable PVL/KVI adapte
 An internal node coordinator now connects restore, authenticated in-process following, automatic election/takeover
 and publication, with lease maintenance independent of application work. Its host supplies native restore, fresh
 session identities and atomic completed event/cut snapshots, and owns event execution and restart.
-Network hosting, application lifecycle/schema orchestration, remote GC and live-Azure qualification remain.
+Older generations permanently stop contending after discovering an upgrade, while shared databases keep following
+and removed databases continue locally. Native local compaction, leader checkpoint maintenance, conditional
+PVL/KVI cleanup and exact leak-event integration are implemented. Network hosting, Azure retained-root discovery
+for TRL pruning, production API packaging and live-Azure qualification remain.
 
 `BTDB.Replication` is a planned high-availability layer for running one or more logical BTDB databases on multiple
 compute nodes. It combines a single canonical database history in object storage with fast disposable local caches on
@@ -153,3 +156,50 @@ the newest published KVI; running replicas retain local files according to their
 A schema-detached follower never contends for leadership or accepts handoff during that session. If no valid leader is
 observable for 15 continuous minutes, it requests a graceful restart. A fresh compatible session must restore normally
 before becoming eligible; ordinary network disconnection alone does not disable failover.
+
+
+## Internal lifecycle integration
+
+`IReplicationNodeHost.RestoreAsync` returns every configured database. Published databases use ordinary file-set
+initialization and native open. An explicitly unpublished addition has an empty local database and default
+`RestoredBase`; a missing dependency of published history must still fail restore. The host keeps application input
+for additions stopped until initialization completes. It owns database identities, canonical genesis keys and disposal.
+
+After selecting authority and adopting every existing database, the coordinator calls
+`CaptureInitializationCursorAsync` for a new database, commits that predecessor input cursor through the ordinary
+native writer (including zero, using the existing temporary-close operation), then calls `PrepareSchemaAsync`. The latter reuses the application's ObjectDB `InitializeRelations`
+and must be idempotent across interrupted attempts and revalidate authority before writing/commit. It also updates
+`GetProgress` with the atomic completed event/cut, including genesis or schema-only work. Preparation is published
+asynchronously at its fixed complete cut before leader service opens; ordinary application commits stay local.
+
+Set `PreparedUpgrade` only when the host has validated compatibility, bounded lag/retained replay input, and all
+added/removed database requirements. Its transfer UUID is fresh for this prepared target and retained across retries.
+The selected leader drains grants and transfers through `IReplicationLeaseTransferStorage`; Azure implements native
+lease Change. The receiver proves ownership by renewal, then performs normal term selection and Blob validation.
+Equal-generation offers do not cause upgrade handoff. Equal higher-generation offers retain the first observed target.
+
+Live native schema commits call `SchemaDetached` before comparison/confirmation. The host reports this database as
+local-only and continues its ordinary reads/writes; replication permanently disables takeover for the node session.
+Other databases may keep following. Missing current leader evidence for fifteen minutes requests graceful restart.
+Schema transactions are identified from native commit semantics, with no wire kind, per-event capture queue or new
+core transaction commands. The scanner uses one reusable bounded buffer; byte equality still uses the existing comparer.
+
+## Maintenance integration
+
+The coordinator runs ordinary native `Compact` on every node (five-minute default, configurable through
+`CompactionInterval`). Its cancellation belongs to host lifetime, independent of remote authority and upload failure.
+Implement `IReplicationNodeHost.CreateMaintenance` to return a session-scoped `ReplicationMaintenance` for each
+published database, using its original file set, selected canonical publisher, authority-bound maintenance storage,
+and configured checkpoint interval/deletion delay. The coordinator disposes the job on leadership replacement.
+The default host hook disables remote maintenance; application database wrappers and storage clients remain host-owned.
+
+Checkpoint publication retains one native snapshot across retries. Only confirmed publication permits cleanup,
+which retains native dependencies, replay suffix and the highest even allocation identity. Conditional metadata
+protection of reused PVLs prevents delayed old deletes from destroying a newer checkpoint. Candidate age is
+session-local: restart safely restarts the deletion delay. Azure retains canonical links needed for root discovery.
+
+Supply the ObjectDB and `publishLeakEvent` callback to submit bounded `LeakRemovalCandidates` as an application
+event. Transport its `EncodedKeys` and `KeyCount`; apply it on every replica using `ApplyTo(transaction)` inside
+that event's ordinary transaction, including its cursor and commit. The application owns ordering and retries.
+Candidates must not be used after restoring a different database history. Replicated compaction disables automatic
+leak erasure; standalone ObjectDB behavior is unchanged.

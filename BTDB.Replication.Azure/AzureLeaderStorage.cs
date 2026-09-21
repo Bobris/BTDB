@@ -12,9 +12,19 @@ namespace BTDB.Replication.Azure;
 /// <summary>Finite lease and conditional JSON selection on the same leader blob. The caller supplies an
 /// authenticated BlobClient and initial cluster JSON. No container creation or credential discovery occurs here.</summary>
 internal sealed class AzureLeaderStorage(BlobClient blob, TimeSpan duration, string initialJson,
-    Func<Guid>? newLeaseId = null) : IReplicationLeaseStorage, ILeaderRecordStorage
+    Func<Guid>? newLeaseId = null) : IReplicationLeaseStorage, IReplicationLeaseTransferStorage, ILeaderRecordStorage
 {
     bool _initialized;
+    string? _acquiredHandle;
+
+    public async ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation)
+    {
+        try { await blob.GetBlobLeaseClient(currentHandle).ChangeAsync(proposedHandle, cancellationToken: cancellation).ConfigureAwait(false); }
+        catch (RequestFailedException error) when (error.Status is 404 or 409 or 412)
+        { throw new IOException("Azure lease transfer lost ownership.", error); }
+        catch (Exception error) when (IsTransient(error, cancellation))
+        { throw new IOException("Azure lease transfer is unresolved; the target must confirm ownership by renewal.", error); }
+    }
 
     public async ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation)
     {
@@ -22,19 +32,9 @@ internal sealed class AzureLeaderStorage(BlobClient blob, TimeSpan duration, str
             throw new ArgumentOutOfRangeException(nameof(duration), "Azure finite leases require 15–60 whole seconds.");
         try
         {
-            if (!_initialized)
-            {
-                try
-                {
-                    await blob.UploadAsync(BinaryData.FromString(initialJson), new BlobUploadOptions
-                    {
-                        Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All }
-                    }, cancellation).ConfigureAwait(false);
-                }
-                catch (RequestFailedException error) when (error.Status is 409 or 412) { }
-                _initialized = true;
-            }
+            await InitializeAsync(cancellation).ConfigureAwait(false);
             var id = (newLeaseId?.Invoke() ?? Guid.NewGuid()).ToString();
+            _acquiredHandle = id;
             var lease = blob.GetBlobLeaseClient(id);
             try
             {
@@ -60,7 +60,8 @@ internal sealed class AzureLeaderStorage(BlobClient blob, TimeSpan duration, str
         try
         {
             await blob.GetBlobLeaseClient(handle).RenewAsync(cancellationToken: cancellation).ConfigureAwait(false);
-            return duration;
+            // Change preserves the source lease duration, which may differ from this adapter's configuration.
+            return handle == _acquiredHandle ? duration : TimeSpan.FromSeconds(15);
         }
         catch (RequestFailedException error) when (error.Status is 404 or 409 or 412) { return null; }
         catch (Exception error) when (IsTransient(error, cancellation))
@@ -69,10 +70,25 @@ internal sealed class AzureLeaderStorage(BlobClient blob, TimeSpan duration, str
         }
     }
 
+    async ValueTask InitializeAsync(CancellationToken cancellation)
+    {
+        if (_initialized) return;
+        try
+        {
+            await blob.UploadAsync(BinaryData.FromString(initialJson), new BlobUploadOptions
+            {
+                Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All }
+            }, cancellation).ConfigureAwait(false);
+        }
+        catch (RequestFailedException error) when (error.Status is 409 or 412) { }
+        _initialized = true;
+    }
+
     public async ValueTask<LeaderRecord> ReadAsync(CancellationToken cancellation)
     {
         try
         {
+            await InitializeAsync(cancellation).ConfigureAwait(false);
             var result = await blob.DownloadContentAsync(cancellation).ConfigureAwait(false);
             return new(result.Value.Details.ETag.ToString(), result.Value.Content.ToString());
         }

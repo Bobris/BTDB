@@ -61,3 +61,16 @@ Provider semantics were checked against Microsoft's [Lease Blob](https://learn.m
 [Get Block List](https://learn.microsoft.com/rest/api/storageservices/get-block-list) and
 [Put Block List](https://learn.microsoft.com/rest/api/storageservices/put-block-list) documentation.
 Azurite results are not live Azure availability, throttling or throughput qualification.
+
+
+Prepared handoff uses native lease Change after confirmation-grant drain. The target renews its proposed UUID to
+confirm ownership, including when the source lost the Change response. Renewal of an unknown/transferred handle
+uses a conservative fifteen-second duration because Change retains the source lease's duration. Leader discovery
+conditionally creates the initial record before the first acquisition, allowing empty-cluster bootstrap.
+
+Maintenance uses a physical, database-scoped listing and ETag-bound deletion under live session authority.
+Reusing a PVL conditionally touches its metadata before KVI publication so a delayed delete from an earlier leader
+cannot erase that dependency. Canonical writes include `btdb_file_id` metadata for native identity; older objects
+without it are conservatively ignored by cleanup. Canonical TRL links are retained because this adapter discovers
+history from a supplied root. PVL/KVI cleanup is supported; TRL pruning requires independently resolvable retained
+roots and is not enabled by this adapter. Restore still uses the existing selected inventory and native open path.

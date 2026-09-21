@@ -12,13 +12,16 @@ internal sealed record ReplicationPeerIdentity(string ClusterId, ulong Term, str
 }
 
 internal sealed record ReplicationPeerProgress(long Challenge, bool Granted, LeaderTrlProgress? Progress);
+internal sealed record PreparedHandoff(ulong ApplicationGeneration, string TransferId);
 
 /// <summary>One authenticated leader connection. Implementations bind every request to that connection and
 /// honor cancellation even when a remote effect or response may still arrive. Poll returns latest coalesced progress.</summary>
 internal interface IReplicationPeerSession : IDisposable
 {
-    ValueTask<ReplicationPeerProgress> PollAsync(string database, long challenge, TimeSpan duration, CancellationToken cancellation);
+    // A null database is an authority-only heartbeat, including after every local database was detached/removed.
+    ValueTask<ReplicationPeerProgress> PollAsync(string? database, long challenge, TimeSpan duration, CancellationToken cancellation);
     ILeaderTrlReader Reader(string database);
+    ValueTask OfferHandoffAsync(PreparedHandoff offer, CancellationToken cancellation);
 }
 
 internal interface IReplicationPeerTransport

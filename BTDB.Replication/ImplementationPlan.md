@@ -1,6 +1,6 @@
 # BTDB.Replication implementation plan
 
-Date: 2026-09-21. Status: core capture, native restore/checkpoint publication, Azure storage adapters and M4 node coordination are implemented internally. Application lifecycle/schema orchestration, remote GC, network hosting and production qualification remain.
+Date: 2026-09-21. Status: core capture, native restore/checkpoint publication, Azure storage adapters and M4 node coordination are implemented internally. Prepared handoff, leader-only genesis/startup schema and live schema detachment are implemented. Remaining lifecycle APIs, remote GC, network hosting and production qualification remain.
 See [Testing.md](Testing.md) for current evidence and limitations. An in-process multi-node coordinator now exercises the actual components together.
 
 ## Scope and source of truth
@@ -315,6 +315,32 @@ This is the first complete functional milestone. It is not production qualificat
 
 Dependencies: M4 and independent publication cancellation.
 
+Implemented lifecycle slice: the coordinator reads the selected generation/database set before its first lease request
+and on peer rediscovery. Observing a newer generation permanently disqualifies that node's lease controller, including
+late acquisition/renewal replies. It still follows shared databases. Removed databases notify the host once, stay open
+for ordinary local work, and never re-enter peer comparison in that node lifetime. No retirement record or writer gate
+is added. Real-node tests cover startup and live upgrades, loss of the newer leader, and an empty selected database set.
+Prepared handoff, leader-only genesis and startup schema publication, plus live schema detachment are now implemented
+by the coordinator and native scanner:
+
+- The host advertises `PreparedUpgrade` only after application compatibility, retained input and additions are ready.
+  The leader chooses the highest observed newer generation, keeps the first offer among equal generations, stops
+  publication, drains the existing shared grant deadline, then changes the lease to the proposed UUID. The target
+  confirms ownership by renewal before selection/activation. A lost transfer response never revives the old authority.
+- `RestoredBase == default` explicitly denotes an unpublished addition returned by the host, never a missing published
+  database. All existing databases are validated/adopted first. The selected leader captures the predecessor input cursor,
+  commits ordinary native genesis, prepares schema through the host's existing ObjectDB initialization, and publishes
+  the fixed completed cut before serving. Retries do not rerun completed preparation; published initialization is restored,
+  while a successor may recreate unpublished initialization with a new input end. No follower migration or core writer gate.
+- `SchemaTrlScanner` inspects native command boundaries and commit terminators through authenticated range reads before
+  comparison, even while local execution is behind. Rollbacks do not detach; unchanged committed cursors do. Detachment
+  permanently disables election, stops only that database's following, and leaves ordinary local work intact. Reconnection
+  cannot clear it. Fifteen minutes without current leader evidence requests graceful host restart.
+
+The remaining M5 scope is application-requested exact skips and backup-stream-reset integration, explicit host shutdown
+coordination, and broader multi-database/physical-failure qualification. These are distinct from the three implemented
+lifecycle features; the original milestone requirements below remain the acceptance checklist.
+
 1. Wire monotonic application generation and the inline database set into the existing transition engine; implement
    prepared newer-generation handoff preference and lower-generation ineligibility.
 2. Add leader-only genesis with current-input-end capture, fixed published initialization and restartable unpublished
@@ -334,6 +360,22 @@ all recover through the same engine. Detached local work cannot be published or 
 ### M6 — Add compaction, leak events and safe cleanup
 
 Dependencies: M4/M5 and M3 publication/recovery. Owner: remaining B5 and Q6.
+
+Implemented internally: the coordinator schedules native local compaction on every node; the host's
+`CreateMaintenance` supplies a leader-session `ReplicationMaintenance` using the existing file set and an
+authority-bound storage adapter. It retains the native snapshot through unresolved KVI publication, then collects
+obsolete files only against the confirmed checkpoint closure. PVL reuse conditionally changes metadata version
+before publication, defeating stale in-flight deletes; missing PVLs receive fresh IDs. Cleanup preserves the highest
+even ID as the allocation anchor and restarts its configured age delay after session replacement.
+
+`CollectLeakRemovalCandidates` exposes the existing bounded detector encoding. The maintenance callback submits
+those exact bytes to the application's ordered event stream; consumers call `ApplyTo` in their ordinary event
+transaction. Replicated compaction never runs independent leak erasure, even when automatic Erase mode is configured.
+
+Azure cleanup currently retains canonical TRL links because its inventory follows a caller-supplied root; removing
+those links would break restart discovery. Obsolete PVL/KVI cleanup is enabled, while adapters with independently
+resolvable retained roots may also prune obsolete TRLs. Changing Azure root discovery and live-Azure qualification
+remain explicit follow-up work; there is no change to native KVI open/replay.
 
 1. Schedule the existing replication `Compact` path on all nodes. Reuse its native reader/tree/capture/export
    lifetimes and allocator; add no pin registry, compaction transaction or peer compaction protocol.
@@ -383,7 +425,7 @@ remaining limitations are explicit. Only then update the README from architectur
 - Protocol safety and measured performance are separate exit criteria. Benchmark disabled replication as well as
   enabled paths, and do not infer production latency or GC improvements from allocation measurements alone.
 
-The next work is application lifecycle/schema orchestration (M5), followed by remote GC (M6) and network hosting/production qualification (M7). The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
+The next work is network hosting/production qualification (M7), plus Azure retained-root discovery before pruning canonical TRL links. The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
 [M1Evidence.md](M1Evidence.md) records the tested mechanisms and their integration preconditions. KVI publication
 and restore follow the existing M3 ordering; there is no separate KVI ancestry/selection prerequisite for M2. Do not begin with
 HTTP controllers or reuse unconditional Azure uploads as canonical publication.

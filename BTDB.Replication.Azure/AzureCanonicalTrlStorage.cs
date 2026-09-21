@@ -108,7 +108,7 @@ internal sealed class AzureCanonicalTrlStorage(BlobContainerClient container, st
             var result = await blob.CommitBlockListAsync(ids, new CommitBlockListOptions
             {
                 Conditions = conditions,
-                Metadata = new Dictionary<string, string>(write.Metadata.Encode())
+                Metadata = new Dictionary<string, string>(write.Metadata.Encode()) { ["btdb_file_id"] = write.FileId.ToString(System.Globalization.CultureInfo.InvariantCulture) }
             }, cancellation).ConfigureAwait(false);
             return new(TrlWriteOutcome.Applied,
                 new(result.Value.ETag.ToString(), write.Length, write.Metadata));

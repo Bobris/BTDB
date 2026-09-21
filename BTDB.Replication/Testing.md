@@ -267,3 +267,40 @@ Missing retained bytes require ordinary restart; the coordinator does not introd
 
 These tests use deterministic time and injected faults. They do not qualify HTTP encoding/hosting, physical process
 pauses, schema transitions, remote GC or live Azure service behavior. Those remain separate acceptance work.
+
+
+### Generation changes and removed databases
+
+`ReplicationNodeCoordinatorTest` covers older binaries starting after a newer leader, a running former leader
+rediscovering an upgrade, continued comparison of shared history, and no renewed contention after the newer leader
+becomes unreachable. A newer leader selecting an empty database set leaves the older node's database locally writable
+without peer range reads or remote publication. Removal is reported to the host once.
+`LeaseSessionControllerTest.DisqualificationRejectsLateAcquireOrRenewalAndAllFutureAttempts` checks both delayed
+acquisition and renewal success: neither can revive a permanently disqualified node. No storage counter, retirement
+record, core writer gate or local database disposal is introduced.
+
+
+### Prepared handoff, genesis and live schema detachment
+
+`ReplicationNodeCoordinatorTest` now covers highest-generation prepared handoff before ordinary lease expiry, grant
+drain before transfer, startup schema publication and continued old-node local work. New-database cases hold genesis
+publication, verify followers perform no initialization writes, preserve the first captured cursor (including zero) after a lost reply,
+and restore it on replacement. A separate leader-loss case recreates an unpublished genesis at a newer input end and
+rejects the delayed old create. A coalesced application/schema/application range detaches a lagging follower before
+comparison; reconnection cannot reattach it, and a fifteen-minute absence of current leader evidence requests restart.
+
+`SchemaTrlScannerTest` uses real native transactions with rollback, unchanged cursor commits, large payloads,
+short range reads, file rotation and legacy even file IDs. A wrong database identity is rejected before detachment. The scanner skips payloads and reads native headers and
+terminators; it never normalizes mutations or creates a second database tree.
+
+Azure adapter tests cover discovery of an initially absent leader blob and native lease Change with both delivered
+and lost responses. Only successful renewal by the target establishes transferred authority. The target also uses a
+different configured lease duration: unknown transferred handles use Azure's conservative fifteen-second minimum.
+These tests use Azurite, not live-Azure production qualification.
+
+`RemoteMaintenanceTest` covers native compaction/export/restore after cleanup, failed KVI retries without deletion,
+closure retention, delayed deletion, allocation anchors and stale-delete protection. Coordinator tests keep local
+compaction running on leaders and followers during blocked publication, without local KVI creation. ObjectDB
+regressions apply identical leak candidates in two databases, including rollback and duplicate delivery, and ensure
+replicated compaction cannot erase leaks independently. Azurite tests verify metadata protection changes the ETag,
+old-token deletion leaves the PVL intact, current-token deletion succeeds, and fenced authority cannot dispatch it.

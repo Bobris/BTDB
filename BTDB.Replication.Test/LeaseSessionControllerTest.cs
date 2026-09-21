@@ -8,6 +8,27 @@ namespace BTDB.Replication.Test;
 
 public class LeaseSessionControllerTest
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DisqualificationRejectsLateAcquireOrRenewalAndAllFutureAttempts(bool renewal)
+    {
+        var clock = new DeterministicScheduler(505);
+        var storage = new Storage();
+        var controller = new LeaseSessionController(storage, clock.CreateScope("node"), 0, TimeSpan.Zero);
+        var previous = renewal ? await controller.MaintainAsync() : null;
+        Func<Task> disqualify = () => { controller.Disqualify(); return Task.CompletedTask; };
+        if (renewal) storage.BeforeRenew = disqualify;
+        else storage.BeforeAcquire = disqualify;
+        Assert.Null(await controller.MaintainAsync());
+        Assert.Null(controller.Current);
+        if (previous != null) Assert.True(previous.IsFenced);
+        var attempts = storage.Acquires + storage.Renews;
+        clock.AdvanceBy(TimeSpan.FromTicks(1000));
+        Assert.Null(await controller.MaintainAsync());
+        Assert.Equal(attempts, storage.Acquires + storage.Renews);
+    }
+
     sealed class Storage : IReplicationLeaseStorage
     {
         public bool Available = true;
