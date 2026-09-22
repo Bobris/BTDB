@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <GenerateProgramFile>false</GenerateProgramFile>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+    </PropertyGroup>
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+        <Compile Include="../BTDB.Replication.Azure.Test/AzuriteFixture.cs" Link="AzuriteFixture.cs"/>
+        <Compile Include="../BTDB.Replication.Test/LocalReplicatedCollection.cs" Link="LocalReplicatedCollection.cs"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0"/>
+        <PackageReference Include="xunit" Version="2.9.3"/>
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <ProjectReference Include="../BTDB.Replication.Http/BTDB.Replication.Http.csproj"/>
+        <ProjectReference Include="../BTDB.Replication.Azure/BTDB.Replication.Azure.csproj"/>
+    </ItemGroup>
+</Project>

@@ -1604,6 +1604,15 @@ Graceful drain dispatches no new data request and reconciles earlier TRL CAS ope
 
 ### Progress notification and pull-based comparison
 
+Implementation evidence (2026-09-22): the internal [HTTP adapter](../BTDB.Replication.Http/README.md) now carries
+these existing peer operations across ASP.NET Core/Kestrel. Stateless requests bind to the selected core identity;
+post-await reauthentication rejects a leader replacement during a request without adding persistent connection state.
+Loopback tests cover cancellation, overload and native-history comparison. Subprocess tests now cover leader death,
+lease-expiry takeover, optimistic-tail publication, cold restore and divergence against Azurite. Broader multi-process
+fault schedules and deployment qualification remain M7 work; this does not change the protocol rules below. Internal host integration now starts coordination
+after Kestrel is listening, fences lease authority synchronously when host stopping begins, and joins cleanup. Host
+restart and fatal worker exits stop the ASP.NET lifetime; application database ownership remains outside replication.
+
 Decision recorded 2026-09-14: the baseline peer protocol announces a committed TRL boundary and lets the follower
 fetch the bytes. It does not push per-transaction envelopes or transaction payloads. A notification, within the
 already established database-instance and authority/session context, contains only:

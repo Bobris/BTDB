@@ -12,8 +12,14 @@ and publication, with lease maintenance independent of application work. Its hos
 session identities and atomic completed event/cut snapshots, and owns event execution and restart.
 Older generations permanently stop contending after discovering an upgrade, while shared databases keep following
 and removed databases continue locally. Native local compaction, leader checkpoint maintenance, conditional
-PVL/KVI cleanup and exact leak-event integration are implemented. Network hosting, Azure retained-root discovery
-for TRL pruning, production API packaging and live-Azure qualification remain.
+PVL/KVI cleanup and exact leak-event integration are implemented. An internal
+[HTTP peer adapter](../BTDB.Replication.Http/README.md) now connects the same interfaces through ASP.NET Core/Kestrel,
+with real socket and native-history tests. Internal DI/host lifecycle integration starts after Kestrel, fences authority
+on shutdown and stops the host on restart/fatal worker exits.
+[Subprocess tests](../BTDB.Replication.Process.Test/README.md) now cover real process death, lease-expiry takeover,
+optimistic-tail publication, cold restore and divergence against Azurite. Public API promotion, broader multi-process
+qualification, Azure retained-root
+discovery for TRL pruning, production API packaging and live-Azure qualification remain.
 
 `BTDB.Replication` is a planned high-availability layer for running one or more logical BTDB databases on multiple
 compute nodes. It combines a single canonical database history in object storage with fast disposable local caches on

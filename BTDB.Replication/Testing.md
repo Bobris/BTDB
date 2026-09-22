@@ -304,3 +304,33 @@ compaction running on leaders and followers during blocked publication, without 
 regressions apply identical leak candidates in two databases, including rollback and duplicate delivery, and ensure
 replicated compaction cannot erase leaks independently. Azurite tests verify metadata protection changes the ETag,
 old-token deletion leaves the PVL intact, current-token deletion succeeds, and fenced authority cannot dispatch it.
+
+## HTTP peer boundary
+
+`BTDB.Replication.Http.Test` runs real loopback Kestrel listeners, with no mocked HTTP handler. It covers selected
+cluster/term/session/key validation on every request, credential rotation, replaced in-flight sessions, peer cancellation,
+missing retained files, bounded requests/responses, immediate overload rejection, redirect rejection and malformed or
+truncated replies. Native BTDB comparison crosses the socket boundary through `LeaderTrlReader`, including multiple
+TRL files, rollback and differing virtual batching; divergence cannot advance acknowledgement.
+These tests qualify the adapter components, not multi-process coordinator failover or production TLS/proxy deployment.
+See the [adapter instructions and limits](../BTDB.Replication.Http/README.md).
+
+`ReplicationHostingTest` additionally runs the actual coordinator and lease controller inside a real ASP.NET host.
+Restore probes the bound endpoint, proving it starts only after Kestrel. Tests cover retry-before-contention,
+authenticated leader heartbeat, cancellation during restore, immediate shutdown fencing while renewal ignores
+cancellation, late renewal rejection, restart-required host shutdown, fatal worker exceptions under the host's `Ignore`
+policy, and startup rejection for missing routes or invalid/duplicate configuration. The injected manual scheduler
+controls lease callbacks without relying on real lease expiry. These remain single-process lifecycle integration tests.
+
+## Independent process failover
+
+[`BTDB.Replication.Process.Test`](../BTDB.Replication.Process.Test/README.md) launches independent .NET/Kestrel nodes
+with real Azure SDK adapters against isolated Azurite. It kills the leader without lease release/break, waits for actual
+lease expiry, verifies takeover publishes matching unpublished native history without rerunning the handler, restores
+a fresh process and compares subsequent work. A second scenario verifies a divergent follower exits without publishing
+its local outcome. These tests assert values, invocation counts, comparison cuts, leader identity/term and canonical
+restore cursors. They do not qualify process suspension, live Azure, production TLS or performance.
+
+The first process scenario exposed a restore append mismatch. `AsyncOpenTest` now reproduces the exact committed
+physical EOF case and checks native positions/bytes after the next event, plus non-appendable partial, corrupt and
+explicitly sealed tails. The fix is replication-only; standalone recovery retains its existing end-marker rule.

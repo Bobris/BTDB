@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- Continue replicated writes in a restored TRL whose physical EOF is the exact complete committed boundary.
+  Previously, restoring a published tail without a local shutdown marker rotated the follower's TRL and made its
+  next identical event diverge from the live leader. Preserve existing handling of incomplete/corrupt/sealed tails
+  and standalone recovery.
+
 - Defer relation schema initialization and creation callbacks requested by read-only transactions until a writing
   transaction first accesses the relation. Retry deferred initialization after rollback without opening a hidden writer.
 
@@ -11,6 +16,19 @@
   storage, including after importing an exact file ID.
 
 ### Changed
+
+- Add real subprocess replication qualification against Azurite: leader process death and lease-expiry takeover,
+  publication of a matching optimistic tail without handler reexecution, cold restore and continued HTTP comparison,
+  plus process termination for a divergent follower.
+
+- Add internal replication DI and ASP.NET hosted lifecycle integration. Start coordination after Kestrel is listening,
+  reject missing peer routes before lease acquisition, fence leadership immediately on host shutdown, and stop the
+  host on rebuild requests or fatal worker exits. Keep application databases owned by the host and reject invalid
+  or duplicate configuration before startup.
+
+- Add an internal ASP.NET Core/HTTP replication peer adapter for authenticated progress, bounded native TRL reads
+  and prepared handoff. Revalidate leader sessions after asynchronous work, propagate cancellation, reject redirects
+  and overload, and preserve missing-file recovery semantics. Test real socket transport and native-history comparison.
 
 - Schedule native replication compaction independently on every node and connect leader checkpoint publication,
   delayed dependency-aware remote cleanup and application-owned exact leak-removal events. Preserve pending

@@ -1,6 +1,6 @@
 # BTDB.Replication implementation plan
 
-Date: 2026-09-21. Status: core capture, native restore/checkpoint publication, Azure storage adapters and M4 node coordination are implemented internally. Prepared handoff, leader-only genesis/startup schema and live schema detachment are implemented. Remaining lifecycle APIs, remote GC, network hosting and production qualification remain.
+Date: 2026-09-22. Status: core capture, native restore/checkpoint publication, Azure storage adapters and M4 node coordination are implemented internally. Prepared handoff, leader-only genesis/startup schema and live schema detachment are implemented. Remaining lifecycle APIs, Azure TRL pruning, public API promotion and production qualification remain.
 See [Testing.md](Testing.md) for current evidence and limitations. An in-process multi-node coordinator now exercises the actual components together.
 
 ## Scope and source of truth
@@ -337,8 +337,9 @@ by the coordinator and native scanner:
   permanently disables election, stops only that database's following, and leaves ordinary local work intact. Reconnection
   cannot clear it. Fifteen minutes without current leader evidence requests graceful host restart.
 
-The remaining M5 scope is application-requested exact skips and backup-stream-reset integration, explicit host shutdown
-coordination, and broader multi-database/physical-failure qualification. These are distinct from the three implemented
+The remaining M5 scope is application-requested exact skips and backup-stream-reset integration, bounded process-termination policy
+and broader multi-database/physical-failure qualification. The internal HTTP hosted service now coordinates startup,
+immediate lease fencing on host shutdown and cleanup; the application still owns database disposal and process restart. These are distinct from the three implemented
 lifecycle features; the original milestone requirements below remain the acceptance checklist.
 
 1. Wire monotonic application generation and the inline database set into the existing transition engine; implement
@@ -396,12 +397,29 @@ rediscovery. No distributed local-delete command, compaction TRL transaction or 
 
 Dependencies: M4 for adapter development; M5/M6 for complete version-one acceptance.
 
+Implemented internally: [`BTDB.Replication.Http`](../BTDB.Replication.Http/README.md) maps the existing peer
+interface to ASP.NET Core/Kestrel and HTTP requests. Every request authenticates the exact selected identity;
+post-await revalidation rejects replaced leader sessions. Bounded control/range messages, immediate overload rejection,
+no redirects, cancellation through body reads and explicit missing-file results preserve the existing core behavior.
+Real loopback tests cover these boundaries and compare native BTDB histories across rotation/rollback/batching.
+Internal `AddBTDBReplication`/`MapBTDBReplication` extensions now compose the coordinator, leases and transport.
+Startup waits for Kestrel, missing routes fail before contention, shutdown fences synchronously before joining cleanup,
+and restart/fatal worker exits stop the host. The host supplies the qualified clock, storage and application interfaces.
+Real hosted tests exercise these transitions, including a provider that ignores cancellation during renewal.
+`BTDB.Replication.Process.Test` now runs independent node processes against Azurite. It verifies real leader death,
+lease-expiry takeover, optimistic-tail publication without handler reexecution, cold restore and subsequent comparison.
+A divergent follower exits through the hosted restart path. This exposed and fixed replication restore rotating an
+exact committed EOF instead of appending in the leader's existing native file.
+Public contract promotion, readiness/metrics, broader multi-process fault schedules and production acceptance remain.
+
 1. Implement the Azure adapter against the qualified M1 semantics, with conditional immutable create/SHA reconciliation,
    opaque tokens, explicit ambiguity and no
    hidden conditional-write retries. Isolate authority traffic from data transfers. Run reusable storage suites
    against real Azure, including response loss and stale in-flight operations.
-2. Implement ASP.NET Core/Kestrel hosting through `AddBTDBReplication`, `MapBTDBReplication` and the selected endpoint.
-   Run the same codec/authentication/resume/backpressure suites as the in-process transport, then multi-process tests.
+2. Promote the internal ASP.NET Core/Kestrel hosting and application contracts to a reviewed public API.
+   `AddBTDBReplication`, `MapBTDBReplication` and hosted startup/shutdown are implemented internally.
+   Extend the implemented subprocess crash/divergence tests to network partitions, process suspension, rolling-upgrade
+   handoff and production deployment scenarios.
 3. Add bounded/redacted diagnostics, readiness, progress and recovery metrics, configuration validation and examples
    for application-owned event execution. Document clock assumptions, input retention and host restart requirements.
 4. Measure baseline versus replication allocations, throughput, commit latency, comparison RAM/disk growth,
@@ -425,7 +443,7 @@ remaining limitations are explicit. Only then update the README from architectur
 - Protocol safety and measured performance are separate exit criteria. Benchmark disabled replication as well as
   enabled paths, and do not infer production latency or GC improvements from allocation measurements alone.
 
-The next work is network hosting/production qualification (M7), plus Azure retained-root discovery before pruning canonical TRL links. The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
+The next work is public API promotion and broader multi-process/production qualification (M7), plus Azure retained-root discovery before pruning canonical TRL links. The internal HTTP adapter, DI/host lifecycle and real socket/host component tests and subprocess crash/divergence scenarios are implemented; public contracts and operational acceptance remain. The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
 [M1Evidence.md](M1Evidence.md) records the tested mechanisms and their integration preconditions. KVI publication
 and restore follow the existing M3 ordering; there is no separate KVI ancestry/selection prerequisite for M2. Do not begin with
 HTTP controllers or reuse unconditional Azure uploads as canonical publication.

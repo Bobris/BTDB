@@ -1207,7 +1207,12 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
             }
 
-            return afterTemporaryEnd;
+            // Canonical replication uploads end at a complete commit, without the local shutdown marker.
+            // Rotating that restored tail would give identical subsequent events different native file IDs.
+            // Only reuse the exact committed EOF; partial transactions, trailing garbage and sealed EOF markers
+            // still take the existing non-appendable path. Standalone crash recovery remains unchanged.
+            return afterTemporaryEnd || IsReplication && next == null && reader.Eof &&
+                committed.TrLogFileId == fileId && committed.TrLogOffset == reader.GetCurrentPosition();
         }
         catch (EndOfStreamException)
         {
