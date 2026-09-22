@@ -11,7 +11,7 @@ namespace BTDB.Replication.ProcessTests;
 internal sealed record NodeStatus(string Role, ulong EventId, int Value, int Applied, uint CompletedFile,
     uint CompletedOffset, uint AcknowledgedFile, uint AcknowledgedOffset);
 
-internal sealed class TestNodeHost(string endpoint, IReplicationStorage canonical) : IReplicationNodeHost, IAsyncDisposable
+internal sealed class TestNodeHost(string endpoint, IReplicationStorage canonical) : IReplicationNodeHost, IAsyncDisposable, IReplicationFatalRecovery
 {
     readonly InMemoryReplicationFileStorage _files = new();
     readonly TransactionLogCapture _capture = new();
@@ -58,6 +58,11 @@ internal sealed class TestNodeHost(string endpoint, IReplicationStorage canonica
     }
     public LeaderTrlProgress? GetProgress(string database) { lock (_progressLock) return _progress; }
     public void RequestRestart(string reason) => Console.Error.WriteLine("RESTART " + reason);
+    public void RequestFatalRestart(string reason)
+    {
+        Console.Error.WriteLine("FATAL " + reason);
+        Environment.Exit(75); // Test-host fatal policy: no await of the deliberately stuck publication task.
+    }
     public ReplicationNodeRole Role { get; private set; } = ReplicationNodeRole.Restoring;
     public void ReportStatus(ReplicationNodeRole role) => Role = role;
     public void DatabaseRemoved(string database) { }

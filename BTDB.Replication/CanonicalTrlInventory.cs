@@ -29,8 +29,11 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
 
     internal bool IsFrom(IReplicationStorage storage) => ReferenceEquals(_storage, storage);
 
-    public static async ValueTask<CanonicalTrlInventory> DiscoverAsync(IReplicationStorage storage,
-        TrlSuccessor genesis, CancellationToken cancellation = default)
+    public static ValueTask<CanonicalTrlInventory> DiscoverAsync(IReplicationStorage storage,
+        TrlSuccessor genesis, CancellationToken cancellation = default) => DiscoverAsync(storage, genesis, cancellation, null);
+
+    internal static async ValueTask<CanonicalTrlInventory> DiscoverAsync(IReplicationStorage storage,
+        TrlSuccessor genesis, CancellationToken cancellation, Action<uint>? progress)
     {
         var byId = new Dictionary<uint, TrlHead>();
         TrlHead tail;
@@ -52,6 +55,7 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
                 throw new InvalidDataException("Invalid canonical TRL state or decreasing authority term.");
             tail = new(current.FileId, current.Key, state);
             byId.Add(current.FileId, tail);
+            progress?.Invoke(current.FileId);
             if (state.Metadata.Next is not { } next) break;
             previousId = current.FileId;
             previousTerm = state.Metadata.Term;

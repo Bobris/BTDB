@@ -286,8 +286,15 @@ Other cases cover startup outages before election, divergence/restart with conti
 during blocked publication, cancelled peer replies and authentication. This is deterministic component integration;
 physical process pauses, exhaustive schedules and production network behavior still require qualification.
 
-Remaining M4 acceptance work includes broader schedule exploration, host-visible position/status APIs and fatal-host
-watchdog policy. The original milestone requirements below also include lifecycle work shared with M5:
+Opt-in activation and per-database canonical publication watchdogs now fence the lease and readiness before an
+explicit `IReplicationFatalRecovery` callback. They use injected monotonic scheduling independently of the worker;
+unchanged retries do not advance the deadline, validated canonical ranges do, and idle input/follower restore do not
+arm publication deadlines. Cancellation-resistant providers cannot delay the callback. Native deterministic tests
+cover these boundaries, and a subprocess test verifies fatal leader exit followed by optimistic-tail takeover.
+
+Remaining M4 acceptance work includes application execution/commit watchdog arbitration, failed-activation restart
+backoff, checkpoint-maintenance stalls and broader schedule exploration. Public sampled position/status APIs are
+implemented; reader-visible progress and input lag remain application-owned. The original milestone requirements below also include lifecycle work shared with M5:
 
 1. Implement follower-first restoration of every required database, then the shared transition engine for selection,
    adoption and activation. Reconcile progress since preparation before admitting canonical work.
@@ -337,8 +344,9 @@ by the coordinator and native scanner:
   permanently disables election, stops only that database's following, and leaves ordinary local work intact. Reconnection
   cannot clear it. Fifteen minutes without current leader evidence requests graceful host restart.
 
-The remaining M5 scope is application-requested exact skips and backup-stream-reset integration, bounded process-termination policy
-and broader multi-database/physical-failure qualification. The internal HTTP hosted service now coordinates startup,
+The remaining M5 scope is application-requested exact skips and backup-stream-reset integration, application-execution
+watchdog/commit arbitration and broader multi-database/physical-failure qualification. Activation/publication stalls now
+use an explicit fatal host callback, exercised with bounded subprocess termination. The internal HTTP hosted service now coordinates startup,
 immediate lease fencing on host shutdown and cleanup; the application still owns database disposal and process restart. These are distinct from the three implemented
 lifecycle features; the original milestone requirements below remain the acceptance checklist.
 
@@ -414,7 +422,13 @@ The host, restore/maintenance and provider contracts are now public; Azure adapt
 The subprocess application has no friend-assembly access and compiles/runs exclusively against this public surface.
 Authority construction/renewal and coordinator/election/peer-session machinery remain internal. Credential-bearing
 public records redact `ToString` output, and the public hosting guide documents ownership and clock/storage contracts.
-Readiness/metrics, broader multi-process fault schedules, release packaging and production acceptance remain.
+Public `ReplicationStatus` now exposes immutable sampled role, local readiness and per-database local/comparison/
+published cuts with removal/detachment flags. Hosting registers an opt-in standard health-check route integration
+and host-scoped readiness/role/sample-age metrics without unbounded labels. Shutdown clears readiness before joining
+uncooperative providers. Comparison is historical equality, not a live grant; reader-visible progress remains owned
+by the application. The POSIX subprocess suite also suspends/resumes the former leader across lease-expiry takeover.
+Network partitions, rolling-upgrade process schedules, recovery/throughput measurements, release packaging and
+production acceptance remain.
 
 1. Implement the Azure adapter against the qualified M1 semantics, with conditional immutable create/SHA reconciliation,
    opaque tokens, explicit ambiguity and no
@@ -447,7 +461,7 @@ remaining limitations are explicit. Only then update the README from architectur
 - Protocol safety and measured performance are separate exit criteria. Benchmark disabled replication as well as
   enabled paths, and do not infer production latency or GC improvements from allocation measurements alone.
 
-The next work is readiness/progress observability and broader multi-process/production qualification (M7), plus Azure retained-root discovery before pruning canonical TRL links. The HTTP adapter, public DI/host/provider contracts, real socket/host component tests and subprocess crash/divergence scenarios are implemented; operational acceptance and release packaging remain. The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
+The next work is application execution/commit arbitration and exact-input skip/backup-reset integration (M5), activation restart backoff and checkpoint-maintenance progress (M4/M6), broader multi-process/production qualification and measured recovery/throughput (M7), plus Azure retained-root discovery before pruning canonical TRL links. Activation and observed pending-publication deadlines with explicit fatal host recovery are implemented. Sampled readiness/progress and bounded operational metrics are implemented; application-owned reader visibility/input lag and detailed recovery metrics remain separate. The HTTP adapter, public DI/host/provider contracts, real socket/host component tests and subprocess crash/divergence scenarios are implemented; operational acceptance and release packaging remain. The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
 [M1Evidence.md](M1Evidence.md) records the tested mechanisms and their integration preconditions. KVI publication
 and restore follow the existing M3 ordering; there is no separate KVI ancestry/selection prerequisite for M2. Do not begin with
 HTTP controllers or reuse unconditional Azure uploads as canonical publication.

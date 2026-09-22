@@ -17,6 +17,17 @@
 
 ### Changed
 
+- Add opt-in replication activation and per-database publication progress deadlines. Repeated retries do not
+  extend deadlines; idle input and follower restore are excluded. Fence leases and readiness before invoking
+  an explicit fatal-recovery host callback, independently of cancellation cooperation. Cover delayed callbacks,
+  progressing canonical validation, stalled providers, and real subprocess termination followed by takeover.
+
+- Add public sampled replication readiness/progress, ASP.NET health-check integration and bounded host-scoped
+  readiness/role/sample-age metrics. Clear readiness synchronously on shutdown and distinguish historical byte
+  comparison from Blob publication and live confirmation. Add native progress and hosted shutdown regression coverage.
+- Extend subprocess failover qualification to POSIX process suspension/resumption across real lease expiry,
+  verifying takeover without optimistic-tail reexecution and canonical rebuild of the resumed genesis owner.
+
 - Merge Azure canonical TRL and checkpoint adapters into `AzureReplicationStorage`, and their publication/cleanup
   contracts into `IReplicationStorage`. Bind selected inventories and leadership authority in separate immutable
   session views. Keep `IRemoteFileCollection` read-only and accept it directly for replicated restore.

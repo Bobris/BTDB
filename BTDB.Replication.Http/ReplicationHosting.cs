@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace BTDB.Replication.Http;
 
@@ -19,6 +20,7 @@ public static class ReplicationHosting
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
+        options.ProgressTimeouts?.Validate();
         ArgumentException.ThrowIfNullOrWhiteSpace(options.ClusterId);
         HttpReplicationPeerTransport.ValidateEndpoint(options.Endpoint);
         foreach (var duration in new[] { options.PollInterval, options.LeaseRetryInterval, options.RequestTimeout,
@@ -32,12 +34,17 @@ public static class ReplicationHosting
             throw new InvalidOperationException("Register only one replication node per host.");
 
         services.AddSingleton(options);
+        services.AddSingleton<ReplicationStatus>();
+        services.AddMetrics();
+        services.AddSingleton<ReplicationMetrics>();
+        services.AddHealthChecks().AddCheck<ReplicationReadinessCheck>("btdb-replication", tags: new[] { "ready" });
         services.AddSingleton(_ => new HttpReplicationPeerTransport(maximumConcurrentPeerRequests));
         services.AddSingleton(sp => new LeaseSessionController(sp.GetRequiredService<IReplicationLeaseStorage>(),
             sp.GetRequiredService<IReplicationScheduler>(), maximumClockDriftPpm, safetyMargin));
         services.AddSingleton(sp => new ReplicationNodeCoordinator(options, sp.GetRequiredService<IReplicationNodeHost>(),
             sp.GetRequiredService<ILeaderRecordStorage>(), sp.GetRequiredService<LeaseSessionController>(),
-            sp.GetRequiredService<HttpReplicationPeerTransport>(), sp.GetRequiredService<IReplicationScheduler>()));
+            sp.GetRequiredService<HttpReplicationPeerTransport>(), sp.GetRequiredService<IReplicationScheduler>(),
+            sp.GetRequiredService<ReplicationStatus>()));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, ReplicationHostedService>());
         return services;
     }
@@ -49,10 +56,11 @@ public static class ReplicationHosting
 /// <summary>Starts only after the HTTP host is listening. ApplicationStopping fences synchronously even if a
 /// provider ignores cancellation; the hosted task then joins coordinator cleanup without owning application databases.</summary>
 internal sealed class ReplicationHostedService(ReplicationNodeCoordinator coordinator, LeaseSessionController leases,
-    IHostApplicationLifetime lifetime, HttpReplicationPeerTransport transport) : BackgroundService
+    IHostApplicationLifetime lifetime, HttpReplicationPeerTransport transport, ReplicationStatus status, ReplicationMetrics metrics) : BackgroundService
 {
     public override Task StartAsync(CancellationToken cancellationToken)
     {
+        _ = metrics; // Instantiate the host-scoped instruments with the worker.
         if (!transport.IsMapped)
             throw new InvalidOperationException("Call MapBTDBReplication before starting the host.");
         return base.StartAsync(cancellationToken);
@@ -61,7 +69,7 @@ internal sealed class ReplicationHostedService(ReplicationNodeCoordinator coordi
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var stopping = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, lifetime.ApplicationStopping);
-        using var fence = stopping.Token.Register(leases.Close);
+        using var fence = stopping.Token.Register(() => { status.Stop(); leases.Close(); });
         try
         {
             var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -83,7 +91,17 @@ internal sealed class ReplicationHostedService(ReplicationNodeCoordinator coordi
 
     public override Task StopAsync(CancellationToken cancellationToken)
     {
+        status.Stop();
         leases.Close();
         return base.StopAsync(cancellationToken);
     }
+}
+
+/// <summary>Local availability only; remote publication and live confirmation are not readiness prerequisites.</summary>
+internal sealed class ReplicationReadinessCheck(ReplicationStatus status) : IHealthCheck
+{
+    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context,
+        CancellationToken cancellationToken = default) => Task.FromResult(status.Current.Ready
+        ? HealthCheckResult.Healthy()
+        : HealthCheckResult.Unhealthy("Replication restore, activation, detachment or shutdown prevents readiness."));
 }

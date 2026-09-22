@@ -116,3 +116,61 @@ internal. The public surface provides application and provider integration, not 
 Still pending: production clock qualification, full readiness/metrics, broader network/process-pause/upgrade scenarios,
 exact-skip and backup-reset integration, Azure retained-root discovery for TRL pruning, live-Azure/performance
 qualification and release packaging. Public accessibility does not mark replication production-ready.
+
+## Readiness and progress
+
+`AddBTDBReplication` registers a thread-safe `ReplicationStatus` singleton and the standard ASP.NET health check
+`btdb-replication` with the `ready` tag. Map it explicitly using the application's routing/access policy:
+
+```csharp
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready")
+});
+// Application diagnostics can read this without contacting storage or peers:
+var status = app.Services.GetRequiredService<ReplicationStatus>().Current;
+```
+
+Readiness means restoration/initialization finished and the node can serve ordinary local work. Restore, activation,
+schema detachment, restart and shutdown are unhealthy. A disconnected restored follower may remain ready: neither
+live confirmation nor Blob publication is required for local work. This check does not grant leadership authority.
+Shutdown clears readiness synchronously even if a provider ignores cancellation; late callbacks cannot restore it.
+
+Each immutable sample reports the monotonic sample time, role and per-database completed local, compared and published
+cuts plus removal/detachment flags. Null cuts are unavailable. `Compared` is historical byte equality, not an unexpired
+confirmation grant. `Published` is available only from this node's active publisher. Local completed progress comes
+from the host and does not claim reader visibility during virtual batching. Do not use these sampled cuts to gate
+writes, confirmed-only reads or external effects. Samples update on coordinator transitions/polls; blocked operations
+can make them stale. The application owns reader-visible progress and input lag reporting.
+
+The host-scoped `BTDB.Replication` meter exports `btdb.replication.ready` (0/1), `btdb.replication.role`
+(`ReplicationNodeRole` numeric value), and `btdb.replication.status.age` (seconds since the last sample).
+Instruments have no database/node/endpoint labels or credential values. Configure collection/export through the host's
+normal .NET metrics pipeline. No diagnostic HTTP endpoint is automatically exposed.
+
+## Pending-work deadlines and fatal recovery
+
+Set `ReplicationNodeOptions.ProgressTimeouts` to a `ReplicationProgressTimeouts` with deployment-qualified activation
+and publication no-progress budgets. Both values must be positive. The default is disabled; replication does not
+infer an application handler timeout. When enabled, the registered `IReplicationNodeHost` must also implement
+`IReplicationFatalRecovery`. Missing support fails before restore or lease acquisition.
+
+Activation starts its deadline after acquisition, before candidate preparation. Forward selection, canonical inventory
+links, validated byte ranges, adoption and initialization/schema preparation/publication advance a local watermark.
+Repeating earlier steps after I/O failure does not renew the budget. Each database gets a publication deadline only
+when the coordinator observes a completed local cut beyond its publisher's confirmed cut. Confirmed cut advancement
+extends that budget; reaching the local cut clears it. Staged upload bytes and ambiguous writes are not confirmed
+publication. Choose a budget that accommodates the largest whole transaction's transfer and reconciliation.
+
+On expiry, the coordinator permanently fences lease acquisition/renewal and publication and clears readiness before
+calling `RequestFatalRestart`. This runs independently of the stalled worker and does not wait for its cancellation
+callbacks. The host must immediately initiate bounded non-graceful termination/restart, must not wait for handlers or
+coordinator disposal, and must never reuse the failed session. A bounded best-effort diagnostic flush may precede
+termination. Merely calling `StopApplication` is insufficient when providers or handlers ignore cancellation.
+The subprocess test host demonstrates an immediate process exit; production logging/termination policy belongs to
+the application. Late provider replies cannot restore authority. Graceful shutdown cancels outstanding watchdogs.
+
+These deadlines monitor activation and already-observed pending canonical publication. They do not classify application
+failures, generate skip markers, watch idle input, or time follower restore. Application execution/commit arbitration,
+checkpoint-maintenance stalls, input retention and restart backoff remain separate integration work. The injected
+scheduler must continue servicing deadlines while a worker is blocked, and callbacks must be serialized as usual.

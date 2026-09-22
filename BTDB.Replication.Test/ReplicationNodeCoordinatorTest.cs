@@ -44,12 +44,14 @@ public class ReplicationNodeCoordinatorTest
             return cluster;
         }
 
-        public Host Start(string name, bool unavailable = false, ulong generation = 1, bool coordinatesMain = true, ulong inputEnd = 42, long? compactionTicks = null)
+        public Host Start(string name, bool unavailable = false, ulong generation = 1, bool coordinatesMain = true, ulong inputEnd = 42, long? compactionTicks = null, long? progressTimeoutTicks = null, bool blockActivation = false)
         {
             var host = new Host(this, name);
             host.Generation = generation;
             host.InputEnd = inputEnd;
             host.CompactionTicks = compactionTicks;
+            host.ProgressTimeoutTicks = progressTimeoutTicks;
+            if (blockActivation) host.Storage.HoldWrites = new();
             host.CoordinatesMain = coordinatesMain;
             host.Storage.Unavailable = unavailable;
             Nodes.Add(host);
@@ -83,7 +85,11 @@ public class ReplicationNodeCoordinatorTest
 
         public async ValueTask DisposeAsync()
         {
-            foreach (var node in Nodes) node.Cancellation.Cancel();
+            foreach (var node in Nodes)
+            {
+                node.Cancellation.Cancel();
+                node.Storage.HoldWrites?.TrySetResult();
+            }
             foreach (var node in Nodes)
             {
                 try { await node.Run; }
@@ -107,6 +113,8 @@ public class ReplicationNodeCoordinatorTest
 
             public bool Unavailable;
             public TaskCompletionSource? HoldWrites;
+            public bool IgnoreWriteCancellation;
+            public int Renews;
             public int Acquires, Transfers;
             void Check(CancellationToken cancellation)
             {
@@ -133,6 +141,7 @@ public class ReplicationNodeCoordinatorTest
             public ValueTask<TimeSpan?> RenewAsync(string handle, CancellationToken cancellation)
             {
                 Check(cancellation);
+                Renews++;
                 if (handle != cluster._lease || cluster._expiry <= cluster.Clock.Elapsed.Ticks) return ValueTask.FromResult<TimeSpan?>(null);
                 cluster._expiry = cluster.Clock.Elapsed.Ticks + 100;
                 return ValueTask.FromResult<TimeSpan?>(TimeSpan.FromTicks(100));
@@ -154,14 +163,18 @@ public class ReplicationNodeCoordinatorTest
             public async ValueTask<TrlWriteResult> WriteAsync(TrlWrite write, CancellationToken cancellation)
             {
                 Check(cancellation);
-                if (HoldWrites != null) await HoldWrites.Task.WaitAsync(cancellation).ConfigureAwait(false);
+                if (HoldWrites != null)
+                {
+                    if (IgnoreWriteCancellation) await HoldWrites.Task.ConfigureAwait(false);
+                    else await HoldWrites.Task.WaitAsync(cancellation).ConfigureAwait(false);
+                }
                 Check(cancellation);
                 return await cluster.Trls.WriteAsync(write, cancellation).ConfigureAwait(false);
             }
         }
     }
 
-    sealed class Host : IReplicationNodeHost, IKeyValueDBLogger
+    sealed class Host : IReplicationNodeHost, IKeyValueDBLogger, IReplicationFatalRecovery
     {
         readonly Cluster _cluster;
         readonly string _name;
@@ -176,10 +189,14 @@ public class ReplicationNodeCoordinatorTest
         public readonly PeerTransport Peers;
         public BTreeKeyValueDB? Db;
         public ReplicationFileSet? Collection;
+        public readonly ReplicationStatus Status = new();
         public ReplicationNodeCoordinator Coordinator = null!;
         public Task Run = null!;
         public int Restarts, Applied, Initializations, Compactions, LocalKvis;
-        public long? CompactionTicks;
+        public long? CompactionTicks, ProgressTimeoutTicks;
+        public int FatalRestarts;
+        public string? FatalReason;
+        public LeaseSessionController Leases = null!;
         public ulong InputEnd = 42;
         public bool SchemaOnActivation;
         public PreparedHandoff? PreparedUpgrade { get; set; }
@@ -199,9 +216,10 @@ public class ReplicationNodeCoordinatorTest
         }
         public void Start()
         {
-            var leases = new LeaseSessionController(Storage, _scope, 0, TimeSpan.Zero);
+            var leases = Leases = new LeaseSessionController(Storage, _scope, 0, TimeSpan.Zero);
             Coordinator = new(new("cluster", _name, TimeSpan.FromTicks(10), TimeSpan.FromTicks(20),
-                TimeSpan.FromTicks(15), TimeSpan.FromTicks(10), Generation, CompactionTicks is { } ticks ? TimeSpan.FromTicks(ticks) : null), this, Storage, leases, Peers, _scope);
+                TimeSpan.FromTicks(15), TimeSpan.FromTicks(10), Generation, CompactionTicks is { } ticks ? TimeSpan.FromTicks(ticks) : null,
+                ProgressTimeoutTicks is { } timeout ? new(TimeSpan.FromTicks(timeout), TimeSpan.FromTicks(timeout)) : null), this, Storage, leases, Peers, _scope, Status);
             Run = Coordinator.RunAsync(Cancellation.Token);
         }
         public async ValueTask<IReadOnlyList<ActivationDatabase>> RestoreAsync(CancellationToken cancellation)
@@ -232,6 +250,13 @@ public class ReplicationNodeCoordinatorTest
             CoordinatesMain ? ["main"] : [], _name, $"secret-{_name}-{_session}");
         public LeaderTrlProgress? GetProgress(string database) { lock (_progressLock) return _progress; }
         public void RequestRestart(string reason) => Restarts++;
+        public void RequestFatalRestart(string reason)
+        {
+            Assert.Null(Leases.Current);
+            Assert.False(Status.Current.Ready);
+            FatalRestarts++;
+            FatalReason = reason;
+        }
         public void ReportStatus(ReplicationNodeRole role) { }
         public void CompactionStart(ulong totalWaste) => Compactions++;
         public void KeyValueIndexCreated(uint id, long count, ulong size, TimeSpan elapsed, ulong beforeCompressionSize) => LocalKvis++;
@@ -323,6 +348,38 @@ public class ReplicationNodeCoordinatorTest
                 return inner.ReadAsync(fileId, offset, destination, cancellation);
             }
         }
+    }
+
+    [Fact]
+    public async Task StatusSeparatesLocalComparedAndPublishedCutsAndKeepsPriorSnapshotsImmutable()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader");
+        var follower = cluster.Start("follower");
+        cluster.Advance(20);
+        var previous = follower.Status.Current;
+        Assert.True(previous.Ready);
+        Assert.Null(Assert.Single(previous.Databases).LocalCommitted);
+        cluster.Trls.Inject = _ => Fault.DelayEffect;
+        await leader.Write(2, 2);
+        await follower.Write(2, 2);
+        cluster.Advance(10);
+        var following = Assert.Single(follower.Status.Current.Databases);
+        Assert.True(follower.Status.Current.Ready);
+        Assert.Equal(2ul, following.LocalCommitted!.Value.EventId);
+        Assert.Equal(following.LocalCommitted, following.Compared);
+        Assert.Null(following.Published); // Comparison says nothing about Blob durability.
+        Assert.Equal(1ul, await cluster.RestoreEvent());
+        Assert.Null(Assert.Single(previous.Databases).LocalCommitted);
+        cluster.Trls.Inject = null;
+        cluster.Trls.CompleteDelayed();
+        cluster.Advance(30);
+        var publishing = Assert.Single(leader.Status.Current.Databases);
+        Assert.Equal(publishing.LocalCommitted!.Value.Position, publishing.Published);
+        follower.Cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => follower.Run);
+        Assert.False(follower.Status.Current.Ready);
+        Assert.Equal(ReplicationNodeRole.Stopped, follower.Status.Current.Role);
     }
 
     [Fact]
@@ -424,6 +481,8 @@ public class ReplicationNodeCoordinatorTest
         await leader.Write(3, 3);
         cluster.Advance(20);
         Assert.Equal(new[] { "main" }, follower.Detached);
+        Assert.False(follower.Status.Current.Ready);
+        Assert.True(Assert.Single(follower.Status.Current.Databases).Detached);
         Assert.Equal(0, follower.Restarts);
         await follower.Write(2, 9);
         cluster.Isolated.Add("follower");
@@ -549,6 +608,89 @@ public class ReplicationNodeCoordinatorTest
         Assert.All(cluster.Nodes, n => { Assert.Equal(2, n.Applied); Assert.Equal(0, n.Restarts); Assert.False(n.Run.IsCompleted); });
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PublicationWatchdogFencesDespiteSuccessfulRenewalsAndUncooperativeStorage(bool ignoreCancellation)
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader", progressTimeoutTicks: 60);
+        cluster.Advance(10);
+        var authority = leader.Leases.Current!;
+        leader.Storage.HoldWrites = new();
+        leader.Storage.IgnoreWriteCancellation = ignoreCancellation;
+        await leader.Write(2, 2);
+        cluster.Advance(100);
+        Assert.Equal(1, leader.FatalRestarts);
+        Assert.Contains("publication", leader.FatalReason);
+        Assert.True(leader.Storage.Renews > 0);
+        Assert.True(authority.IsFenced);
+        Assert.False(leader.Status.Current.Ready);
+        Assert.Equal(0, leader.Restarts);
+        Assert.Equal(1ul, await cluster.RestoreEvent());
+        var renewals = leader.Storage.Renews;
+        cluster.Advance(200);
+        Assert.Equal(renewals, leader.Storage.Renews);
+        Assert.Equal(1, leader.FatalRestarts);
+        leader.Storage.HoldWrites.SetResult();
+        leader.Storage.HoldWrites = null;
+        await leader.Run;
+        Assert.Equal(1ul, await cluster.RestoreEvent()); // The late write did not become canonical.
+    }
+
+    [Fact]
+    public async Task RepeatedActivationRetriesDoNotResetTheProgressDeadline()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader", progressTimeoutTicks: 60, blockActivation: true);
+        cluster.Advance(100);
+        Assert.Equal(1, leader.FatalRestarts);
+        Assert.Contains("activation", leader.FatalReason);
+        Assert.Null(leader.Leases.Current);
+        Assert.Equal(1ul, await cluster.RestoreEvent());
+        Assert.False(leader.Status.Current.Ready);
+        Assert.Equal(0, leader.Applied);
+    }
+
+    [Fact]
+    public async Task IdleLeaderAndUnavailableFollowerRestoreDoNotTriggerProgressRecovery()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader", progressTimeoutTicks: 60);
+        var follower = cluster.Start("follower", unavailable: true, progressTimeoutTicks: 60);
+        cluster.Advance(500);
+        Assert.True(leader.Status.Current.Ready);
+        Assert.Equal(0, leader.FatalRestarts);
+        Assert.Equal(0, follower.FatalRestarts);
+        Assert.Equal(0, follower.Storage.Acquires);
+        Assert.Equal(ReplicationNodeRole.Restoring, follower.Coordinator.Role);
+    }
+
+    [Fact]
+    public async Task SuccessfulPublicationClearsDeadlineAndShutdownCannotTriggerFatalRecovery()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader", progressTimeoutTicks: 60);
+        cluster.Advance(10);
+        cluster.Trls.Inject = _ => Fault.DelayEffect;
+        await leader.Write(2, 2);
+        cluster.Advance(20);
+        cluster.Trls.CompleteDelayed();
+        cluster.Trls.Inject = null;
+        cluster.Advance(200);
+        Assert.Equal(2ul, await cluster.RestoreEvent());
+        Assert.Equal(0, leader.FatalRestarts);
+        leader.Storage.HoldWrites = new();
+        leader.Storage.IgnoreWriteCancellation = true;
+        await leader.Write(3, 3);
+        cluster.Advance(10);
+        leader.Cancellation.Cancel();
+        cluster.Advance(200);
+        Assert.Equal(0, leader.FatalRestarts);
+        leader.Storage.HoldWrites.SetResult();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => leader.Run);
+    }
+
     [Fact]
     public async Task RenewalIsIndependentOfBlockedPublicationAndLatePeerRepliesCannotAcknowledge()
     {
@@ -602,6 +744,7 @@ public class ReplicationNodeCoordinatorTest
         cluster.Advance(20);
         Assert.Equal(ReplicationNodeRole.Restoring, second.Coordinator.Role);
         Assert.Equal(0, second.Storage.Acquires);
+        Assert.False(second.Status.Current.Ready);
         second.Storage.Unavailable = false;
         cluster.Advance(10);
         await first.Write(2, 2);
@@ -609,6 +752,7 @@ public class ReplicationNodeCoordinatorTest
         cluster.Advance(20);
         Assert.Equal(1, second.Restarts);
         Assert.Equal(ReplicationNodeRole.RestartRequired, second.Coordinator.Role);
+        Assert.False(second.Status.Current.Ready);
         await second.Run;
         await second.Write(3, 3);
         Assert.Equal(2, second.Applied);

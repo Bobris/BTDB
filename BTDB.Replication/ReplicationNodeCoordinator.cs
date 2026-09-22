@@ -14,7 +14,8 @@ namespace BTDB.Replication;
 public enum ReplicationNodeRole { Restoring, Follower, Activating, Leader, RestartRequired, Stopped }
 
 public sealed record ReplicationNodeOptions(string ClusterId, string Endpoint, TimeSpan PollInterval,
-    TimeSpan LeaseRetryInterval, TimeSpan RequestTimeout, TimeSpan ConfirmationDuration, ulong ApplicationGeneration, TimeSpan? CompactionInterval = null);
+    TimeSpan LeaseRetryInterval, TimeSpan RequestTimeout, TimeSpan ConfirmationDuration, ulong ApplicationGeneration, TimeSpan? CompactionInterval = null,
+    ReplicationProgressTimeouts? ProgressTimeouts = null);
 
 /// <summary>Application-owned restore, event progress and lifecycle integration. Databases and input processing
 /// remain owned by the host. Callbacks may run concurrently with local application work; publish progress atomically.</summary>
@@ -50,8 +51,10 @@ public interface IReplicationNodeHost
 /// divergence stop replication without disposing databases or cancelling ordinary local application work.</summary>
 internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options, IReplicationNodeHost host,
     ILeaderRecordStorage records, LeaseSessionController leases, IReplicationPeerTransport transport,
-    IReplicationScheduler scheduler)
+    IReplicationScheduler scheduler, ReplicationStatus? status = null)
 {
+    IReadOnlyList<ActivationDatabase> _databases = Array.Empty<ActivationDatabase>();
+    IReadOnlyList<CanonicalTrlPublisher>? _publishers;
     readonly Dictionary<string, FollowerComparisonSession> _followers = new(StringComparer.Ordinal);
     readonly HashSet<string> _removed = new(StringComparer.Ordinal);
     readonly HashSet<string> _detached = new(StringComparer.Ordinal);
@@ -61,6 +64,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     readonly object _remoteLock = new();
     CancellationTokenSource? _remoteWork;
     readonly List<ReplicationMaintenance> _remoteMaintenance = new();
+    ReplicationProgressWatchdog? _activationWatchdog;
+    readonly List<(ReplicationProgressWatchdog? Watchdog, TransactionLogPosition Position)> _publicationWatchdogs = new();
+    int _recoveryState; // 0 running, 1 fatal recovery won, 2 graceful shutdown/restart won.
     IReplicationPeerSession? _peer;
     LeaseAuthority? _sessionAuthority;
     LeaderCandidate? _candidate;
@@ -74,6 +80,10 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     {
         foreach (var duration in new[] { options.PollInterval, options.LeaseRetryInterval, options.RequestTimeout, options.ConfirmationDuration })
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(duration.Ticks);
+        options.ProgressTimeouts?.Validate();
+        if (options.ProgressTimeouts != null && host is not IReplicationFatalRecovery)
+            throw new ArgumentException("Progress deadlines require a host implementing IReplicationFatalRecovery.");
+        using var shutdown = cancellation.Register(StopWatchdogs);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         Task? maintenance = null;
         Task? localMaintenance = null;
@@ -87,6 +97,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 try { databases = await host.RestoreAsync(cancellation).ConfigureAwait(false); break; }
                 catch (IOException) { await WaitAsync(cancellation).ConfigureAwait(false); }
             }
+            _databases = databases;
             localMaintenance = RunLocalMaintenanceAsync(databases, lifetime.Token);
             listener = transport.Listen(options.Endpoint, Accept);
             // Observe the durable generation floor before the first lease request.
@@ -125,6 +136,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         }
         finally
         {
+            StopWatchdogs();
+            status?.Stop();
             lifetime.Cancel();
             leases.Close();
             Disconnect();
@@ -141,7 +154,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
             }
             Role = _restart ? ReplicationNodeRole.RestartRequired : ReplicationNodeRole.Stopped;
-            host.ReportStatus(Role);
+            ReportStatus();
         }
     }
 
@@ -157,12 +170,22 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 {
                     _sessionAuthority = authority;
                     _remoteWork = new();
+                    if (options.ProgressTimeouts is { } deadlines && Volatile.Read(ref _recoveryState) == 0)
+                    {
+                        _activationWatchdog = new(scheduler, deadlines.Activation,
+                            () => FatalRecovery(authority, "Replication activation made no forward progress."), "replication activation watchdog");
+                        _activationWatchdog.Progress();
+                    }
                 }
                 _candidate = host.CreateCandidate();
                 if (_candidate.ClusterId != options.ClusterId || _candidate.PeerEndpoint != options.Endpoint ||
                     _candidate.ApplicationGeneration != options.ApplicationGeneration)
                     throw new InvalidDataException("Candidate identity differs from the configured node.");
-                _leadership = new(new LeaderSelection(records, leases, authority, _candidate), databases, PrepareDatabaseAsync);
+                lock (_remoteLock)
+                {
+                    _leadership = new(new LeaderSelection(records, leases, authority, _candidate), databases,
+                        PrepareDatabaseAsync, _activationWatchdog == null ? null : _activationWatchdog.Progress);
+                }
             }
             using var remoteRequest = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _remoteWork!.Token);
             cancellation = remoteRequest.Token;
@@ -176,9 +199,16 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 }
                 return; // No publication after the drain starts; application work remains independent.
             }
+            if (Role == ReplicationNodeRole.Activating) ReportStatus();
             var publishers = await _leadership!.ActivateAsync(cancellation).ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
             if (publishers == null) return;
+            _publishers = publishers;
+            lock (_remoteLock)
+            {
+                _activationWatchdog?.Dispose();
+                _activationWatchdog = null;
+            }
             if (!authority.IsValid) { DropLeadership(); return; }
             if (_serving == null)
             {
@@ -197,9 +227,12 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 }
                 Volatile.Write(ref _serving, new(identity, authority, databases, host, scheduler, options.ApplicationGeneration));
             }
-            foreach (var publisher in publishers)
+            ObservePublication(databases, publishers, authority);
+            for (var i = 0; i < publishers.Count; i++)
             {
+                var publisher = publishers[i];
                 var result = await publisher.PublishNextAsync(true, cancellation).ConfigureAwait(false);
+                ObservePublication(databases, publishers, authority, i);
                 if (result is TrlPublishResult.Conflict or TrlPublishResult.AuthorityLost)
                 {
                     authority.Fence();
@@ -353,8 +386,31 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         var ready = new TaskCompletionSource();
         using var timer = scheduler.Schedule(options.PollInterval, () => ready.TrySetResult(), "replication node poll");
         using var registration = cancellation.Register(() => ready.TrySetCanceled(cancellation));
-        host.ReportStatus(Role);
+        ReportStatus();
         await ready.Task.ConfigureAwait(false);
+    }
+
+    void ReportStatus()
+    {
+        if (status != null)
+        {
+            var databases = new ReplicationDatabaseStatus[_databases.Count];
+            var initialized = true;
+            for (var i = 0; i < databases.Length; i++)
+            {
+                var name = _databases[i].Name;
+                initialized &= _removed.Contains(name) || _databases[i].RestoredBase.FileId != 0 ||
+                    _publishers != null && _publishers[i].PublishedPosition.FileId != 0;
+                databases[i] = new(name, host.GetProgress(name),
+                    _followers.TryGetValue(name, out var follower) ? follower.Compared : null,
+                    _publishers is { } publishers ? publishers[i].PublishedPosition : null,
+                    _removed.Contains(name), _detached.Contains(name));
+            }
+            var ready = initialized && !_restart && _detached.Count == 0 &&
+                Role is ReplicationNodeRole.Follower or ReplicationNodeRole.Leader;
+            status.Update(new(Role, ready, scheduler.Elapsed, Array.AsReadOnly(databases)));
+        }
+        host.ReportStatus(Role);
     }
 
     IReplicationPeerSession Accept(ReplicationPeerIdentity identity)
@@ -367,6 +423,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     {
         if (_restart) return;
         _restart = true;
+        StopWatchdogs();
+        status?.Stop();
         leases.Close();
         host.RequestRestart(reason);
     }
@@ -380,8 +438,77 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         _peer = null;
     }
 
+    void ObservePublication(IReadOnlyList<ActivationDatabase> databases,
+        IReadOnlyList<CanonicalTrlPublisher> publishers, LeaseAuthority authority, int? databaseIndex = null)
+    {
+        if (options.ProgressTimeouts is not { } deadlines) return;
+        lock (_remoteLock)
+        {
+            if (Volatile.Read(ref _recoveryState) != 0) return;
+            while (_publicationWatchdogs.Count < publishers.Count) _publicationWatchdogs.Add(default);
+            var end = databaseIndex is { } index ? index + 1 : publishers.Count;
+            for (var i = databaseIndex ?? 0; i < end; i++)
+            {
+                var position = publishers[i].PublishedPosition;
+                var previous = _publicationWatchdogs[i];
+                var completed = databases[i].Capture.Completed;
+                var pending = completed.FileId > position.FileId ||
+                    completed.FileId == position.FileId && completed.Offset > position.Offset;
+                if (!pending)
+                {
+                    previous.Watchdog?.Dispose();
+                    _publicationWatchdogs[i] = (null, position);
+                    continue;
+                }
+                var watchdog = previous.Watchdog;
+                if (watchdog == null)
+                {
+                    watchdog = new(scheduler, deadlines.Publication,
+                        () => FatalRecovery(authority, "Replication publication made no forward progress."), "replication publication watchdog");
+                    watchdog.Progress();
+                }
+                else if (position != previous.Position) watchdog.Progress();
+                _publicationWatchdogs[i] = (watchdog, position);
+            }
+        }
+    }
+
+    void FatalRecovery(LeaseAuthority authority, string reason)
+    {
+        lock (_remoteLock)
+        {
+            if (!ReferenceEquals(_sessionAuthority, authority) ||
+                Interlocked.CompareExchange(ref _recoveryState, 1, 0) != 0) return;
+            _restart = true;
+            status?.Stop();
+            leases.Close(); // Fence before entering the host, without waiting for cancellation callbacks.
+            DisposeWatchdogs();
+        }
+        ((IReplicationFatalRecovery)host).RequestFatalRestart(reason);
+    }
+
+    void StopWatchdogs()
+    {
+        Interlocked.CompareExchange(ref _recoveryState, 2, 0);
+        lock (_remoteLock) DisposeWatchdogs();
+    }
+
+    // Caller holds _remoteLock. Disposing a deadline never waits for the worker it monitors.
+    void DisposeWatchdogs()
+    {
+        _activationWatchdog?.Dispose();
+        _activationWatchdog = null;
+        foreach (var (watchdog, _) in _publicationWatchdogs) watchdog?.Dispose();
+        _publicationWatchdogs.Clear();
+    }
+
     void DropLeadership()
     {
+        lock (_remoteLock)
+        {
+            DisposeWatchdogs();
+            _sessionAuthority = null; // Already-dispatched old deadlines cannot recover a replacement session.
+        }
         var serving = Interlocked.Exchange(ref _serving, null);
         serving?.Close();
         foreach (var job in _remoteMaintenance) job.Dispose();
@@ -394,6 +521,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             _remoteWork = null;
             _sessionAuthority = null;
         }
+        _publishers = null;
         _leadership = null;
         _candidate = null;
     }

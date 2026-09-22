@@ -21,7 +21,8 @@ internal static class LeadershipActivation
     /// retry through fresh discovery; divergence requires ordinary restore. The caller must not publish from any
     /// database until this method succeeds. Lease maintenance continues independently during activation.</summary>
     public static async ValueTask<IReadOnlyList<CanonicalTrlPublisher>> ActivateAsync(SelectedLeadership selected,
-        IReadOnlyList<ActivationDatabase> databases, CancellationToken cancellation = default)
+        IReadOnlyList<ActivationDatabase> databases, CancellationToken cancellation = default,
+        Action<int, int, uint, ulong>? progress = null)
     {
         var required = new HashSet<string>(selected.DatabaseNames, StringComparer.Ordinal);
         if (required.Count != databases.Count) throw new ArgumentException("Activation must include every selected database exactly once.");
@@ -30,8 +31,9 @@ internal static class LeadershipActivation
         var publishers = new List<CanonicalTrlPublisher>();
         try
         {
-            foreach (var database in databases)
+            for (var index = 0; index < databases.Count; index++)
             {
+                var database = databases[index];
                 RequireAuthority(selected);
                 if (database.RestoredBase.FileId == 0)
                 {
@@ -39,22 +41,26 @@ internal static class LeadershipActivation
                         throw new InvalidDataException("Initialization was published; restore its fixed history before activation.");
                     publishers.Add(new(database.Database, database.Capture, database.Storage, selected.Authority,
                         selected.Term, id => id == database.Genesis.FileId ? database.Genesis.Key : database.KeyForFile(id)));
+                    progress?.Invoke(index, 2, 0, 0);
                     continue;
                 }
-                var inventory = await CanonicalTrlInventory.DiscoverAsync(database.Storage, database.Genesis, cancellation)
+                var inventory = await CanonicalTrlInventory.DiscoverAsync(database.Storage, database.Genesis, cancellation,
+                    progress == null ? null : id => progress(index, 0, id, 0))
                     .ConfigureAwait(false);
                 if (inventory.Tail.State.Metadata.Term > selected.Term)
                 {
                     selected.Authority.Fence();
                     throw new InvalidDataException("Canonical history has a newer authority term.");
                 }
-                await ValidateAsync(database, inventory, selected, cancellation).ConfigureAwait(false);
+                await ValidateAsync(database, inventory, selected, cancellation,
+                    progress == null ? null : (id, offset) => progress(index, 1, id, offset)).ConfigureAwait(false);
                 var publisher = new CanonicalTrlPublisher(database.Database, database.Capture, database.Storage,
                     selected.Authority, selected.Term, database.KeyForFile, inventory.Tail);
                 publishers.Add(publisher);
                 var result = await publisher.AdoptAsync(cancellation).ConfigureAwait(false);
                 if (result is not (TrlPublishResult.Adopted or TrlPublishResult.Idle))
                     throw new IOException("Canonical adoption changed or is unresolved; rediscover before activation.");
+                progress?.Invoke(index, 2, 0, 0);
             }
             cancellation.ThrowIfCancellationRequested();
             RequireAuthority(selected);
@@ -68,7 +74,7 @@ internal static class LeadershipActivation
     }
 
     static async ValueTask ValidateAsync(ActivationDatabase database, CanonicalTrlInventory inventory,
-        SelectedLeadership selected, CancellationToken cancellation)
+        SelectedLeadership selected, CancellationToken cancellation, Action<uint, ulong>? progress)
     {
         var baseline = database.RestoredBase;
         if (baseline.FileId == 0) throw new ArgumentException("Activation requires a verified restored base.");
@@ -101,6 +107,7 @@ internal static class LeadershipActivation
                     if (read != count || !localBuffer.AsSpan(0, count).SequenceEqual(remoteBuffer.AsSpan(0, count)))
                         throw new InvalidDataException("Candidate diverges from canonical Blob history; restore is required.");
                     offset += (uint)count;
+                    progress?.Invoke(file.FileId, offset);
                 }
                 if (file.IsSealed) expectedId = checked(file.FileId + ((file.FileId & 1) == 0 ? 1u : 2u));
             }

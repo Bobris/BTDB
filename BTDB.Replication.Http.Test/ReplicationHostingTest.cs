@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -15,6 +16,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Xunit;
 
 namespace BTDB.Replication.Http.Test;
@@ -129,11 +131,13 @@ public class ReplicationHostingTest
         public readonly NodeHost Node = new();
         public readonly WebApplication App;
         public IHostApplicationLifetime Lifetime => App.Services.GetRequiredService<IHostApplicationLifetime>();
+        public ReplicationStatus Status => App.Services.GetRequiredService<ReplicationStatus>();
+        public Task<HealthReport> Health() => App.Services.GetRequiredService<HealthCheckService>().CheckHealthAsync();
         public LeaseSessionController Leases => App.Services.GetRequiredService<LeaseSessionController>();
         public ReplicationNodeCoordinator Coordinator => App.Services.GetRequiredService<ReplicationNodeCoordinator>();
         public ReplicationHostedService Worker => App.Services.GetServices<IHostedService>().OfType<ReplicationHostedService>().Single();
         public string Address => App.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
-        public RunningHost(bool map = true)
+        public RunningHost(bool map = true, ReplicationProgressTimeouts? progressTimeouts = null)
         {
             var builder = WebApplication.CreateSlimBuilder();
             builder.Logging.ClearProviders();
@@ -144,7 +148,7 @@ public class ReplicationHostingTest
             builder.Services.AddSingleton<IReplicationLeaseStorage>(Storage);
             builder.Services.AddSingleton<ILeaderRecordStorage>(Storage);
             builder.Services.AddSingleton<IReplicationNodeHost>(Node);
-            builder.Services.AddBTDBReplication(Options, 0, TimeSpan.Zero);
+            builder.Services.AddBTDBReplication(Options with { ProgressTimeouts = progressTimeouts }, 0, TimeSpan.Zero);
             App = builder.Build();
             if (map) App.MapBTDBReplication();
         }
@@ -173,7 +177,12 @@ public class ReplicationHostingTest
             using var response = await probe.PostAsync(host.Address + HttpReplicationPeerTransport.Path, null, cancellation);
             Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode); // Listening, but restore has not registered a leader.
         };
+        Assert.False(host.Status.Current.Ready);
+        Assert.Equal(HealthStatus.Unhealthy, (await host.Health()).Status);
         await host.StartLeader();
+        Assert.True(host.Status.Current.Ready);
+        Assert.Equal(ReplicationNodeRole.Leader, host.Status.Current.Role);
+        Assert.Equal(HealthStatus.Healthy, (await host.Health()).Status);
         using var client = new HttpClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
         var request = new HttpReplicationPeerTransport.Request("cluster", 1, "session", Options.Endpoint,
@@ -192,6 +201,32 @@ public class ReplicationHostingTest
     }
 
     [Fact]
+    public async Task ReadinessMetricsHaveNoLabelsAndObserveImmediateShutdown()
+    {
+        await using var host = new RunningHost();
+        var values = new List<int>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, observer) =>
+        {
+            if (instrument.Meter.Name == "BTDB.Replication" && instrument.Name == "btdb.replication.ready")
+                observer.EnableMeasurementEvents(instrument);
+        };
+        listener.SetMeasurementEventCallback<int>((_, value, tags, _) =>
+        {
+            Assert.True(tags.IsEmpty);
+            values.Add(value);
+        });
+        listener.Start();
+        await host.StartLeader();
+        listener.RecordObservableInstruments();
+        Assert.Equal(new[] { 1 }, values);
+        values.Clear();
+        host.Lifetime.StopApplication();
+        listener.RecordObservableInstruments();
+        Assert.Equal(new[] { 0 }, values);
+    }
+
+    [Fact]
     public async Task ShutdownFencesBeforeAnUncooperativeRenewalReturns()
     {
         await using var host = new RunningHost();
@@ -202,6 +237,8 @@ public class ReplicationHostingTest
         await host.Storage.Renewing.Task.WaitAsync(Timeout);
         host.Lifetime.StopApplication();
         Assert.False(authority.IsValid);
+        Assert.False(host.Status.Current.Ready);
+        Assert.Equal(HealthStatus.Unhealthy, (await host.Health()).Status);
         Assert.Null(host.Leases.Current);
         Assert.False(host.Worker.ExecuteTask!.IsCompleted);
         host.Storage.ReleaseRenewal.SetResult();
@@ -226,6 +263,17 @@ public class ReplicationHostingTest
     }
 
     [Fact]
+    public async Task ProgressDeadlinesRequireAnExplicitFatalRecoveryHostBeforeRestoringOrAcquiring()
+    {
+        await using var host = new RunningHost(progressTimeouts: new(TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30)));
+        await host.App.StartAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() => host.Worker.ExecuteTask!.WaitAsync(Timeout));
+        Assert.True(host.Lifetime.ApplicationStopping.IsCancellationRequested);
+        Assert.Equal(0, host.Node.Restores);
+        Assert.Equal(0, host.Storage.Acquires);
+    }
+
+    [Fact]
     public async Task FatalRestoreFailureStopsHostEvenWithIgnoreBackgroundFailurePolicy()
     {
         await using var host = new RunningHost();
@@ -234,6 +282,8 @@ public class ReplicationHostingTest
         await Assert.ThrowsAsync<InvalidOperationException>(() => host.Worker.ExecuteTask!.WaitAsync(Timeout));
         Assert.True(host.Lifetime.ApplicationStopping.IsCancellationRequested);
         Assert.Equal(0, host.Storage.Acquires);
+        Assert.False(host.Status.Current.Ready);
+        Assert.Equal(HealthStatus.Unhealthy, (await host.Health()).Status);
         Assert.Null(host.Leases.Current);
     }
 
@@ -263,6 +313,8 @@ public class ReplicationHostingTest
         };
         await host.App.StartAsync();
         await entered.Task.WaitAsync(Timeout);
+        Assert.False(host.Status.Current.Ready);
+        Assert.Equal(HealthStatus.Unhealthy, (await host.Health()).Status);
         using var deadline = new CancellationTokenSource(Timeout);
         await host.App.StopAsync(deadline.Token);
         await host.Worker.ExecuteTask!.WaitAsync(Timeout);
@@ -296,6 +348,10 @@ public class ReplicationHostingTest
         Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(Options, 1_000_000, TimeSpan.Zero));
         Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(Options, 0, TimeSpan.FromTicks(-1)));
         Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(Options, 0, TimeSpan.Zero, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(
+            Options with { ProgressTimeouts = new(TimeSpan.Zero, TimeSpan.FromSeconds(1)) }, 0, TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(
+            Options with { ProgressTimeouts = new(TimeSpan.FromSeconds(1), TimeSpan.FromTicks(-1)) }, 0, TimeSpan.Zero));
         services.AddBTDBReplication(Options, 0, TimeSpan.Zero);
         Assert.Throws<InvalidOperationException>(() => services.AddBTDBReplication(Options, 0, TimeSpan.Zero));
     }

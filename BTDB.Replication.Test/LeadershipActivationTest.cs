@@ -53,6 +53,31 @@ public class LeadershipActivationTest
     }
 
     [Fact]
+    public async Task ProgressingCanonicalValidationDoesNotExpireActivationDeadline()
+    {
+        using var node = await Node.Create(false);
+        await node.Write(1, 1, size: 1024 * 1024);
+        var remote = new Storage();
+        var clock = new DeterministicScheduler(709);
+        using var original = new CanonicalTrlPublisher(node.Db, node.Capture, remote, Lease(clock, "old"), 1, Key);
+        await original.PublishNextAsync();
+        var control = new LeaderSelectionTest.Storage();
+        var scope = clock.CreateScope("new");
+        var leases = new LeaseSessionController(control, scope, 0, TimeSpan.Zero);
+        var authority = (await leases.MaintainAsync())!;
+        var expired = 0;
+        using var watchdog = new ReplicationProgressWatchdog(scope, TimeSpan.FromTicks(10), () => expired++, "activation");
+        watchdog.Progress();
+        // Each individual read progresses, but the complete activation lasts several deadline intervals.
+        remote.BeforeRangeRead = _ => clock.AdvanceBy(TimeSpan.FromTicks(9));
+        using var session = new LeadershipSession(new(control, leases, authority, LeaderSelectionTest.Candidate()),
+            [Input(node, remote)], progress: watchdog.Progress);
+        Assert.NotNull(await session.ActivateAsync());
+        Assert.True(clock.Elapsed.Ticks > 30);
+        Assert.Equal(0, expired);
+    }
+
+    [Fact]
     public async Task DivergenceNeverAdoptsOrReturnsPublishers()
     {
         using var leader = await Node.Create(false);

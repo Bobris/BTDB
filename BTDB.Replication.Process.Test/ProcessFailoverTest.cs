@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -25,10 +26,13 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(5) };
         readonly TaskCompletionSource<string> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string Endpoint = "";
+        bool _suspended;
+        int _nodePid;
 
         Node(ChildProcess process)
         {
             _process = process;
+            _nodePid = process.Id;
             _output = Drain(process.StandardOutput, true);
             _error = Drain(process.StandardError, false);
         }
@@ -36,6 +40,7 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         {
             while (await reader.ReadLineAsync() is { } line)
             {
+                if (output && line.StartsWith("PID ", StringComparison.Ordinal)) _nodePid = int.Parse(line[4..]);
                 if (output && line.StartsWith("READY ", StringComparison.Ordinal)) _ready.TrySetResult(line[6..]);
                 // Keep process diagnostics bounded, including on unexpected worker termination.
                 lock (_diagnostics)
@@ -48,13 +53,26 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         }
         string Diagnostics { get { lock (_diagnostics) return _diagnostics.ToString(); } }
 
-        public static async Task<Node> Start(BlobContainerClient container)
+        public static async Task<Node> Start(BlobContainerClient container, int? progressTimeoutMilliseconds = null)
         {
-            var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+            var runtime = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
+            var start = new ProcessStartInfo(OperatingSystem.IsWindows() ? runtime : "/bin/sh")
             { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+            if (!OperatingSystem.IsWindows())
+            {
+                // Keep STOP notifications away from .NET's direct-child reaper. On macOS the runtime
+                // spins in waitid/waitpid on a stopped direct child and blocks other process waits.
+                start.ArgumentList.Add("-c");
+                start.ArgumentList.Add("\"$@\" & child=$!; echo PID $child; wait \"$child\"");
+                start.ArgumentList.Add("btdb-node");
+                start.ArgumentList.Add(runtime);
+            }
             start.ArgumentList.Add(typeof(Program).Assembly.Location);
             start.ArgumentList.Add("--node");
             start.ArgumentList.Add(container.Uri.ToString());
+            if (progressTimeoutMilliseconds is { } timeout)
+                start.Environment["BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS"] = timeout.ToString();
+            else start.Environment.Remove("BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS");
             var node = new Node(ChildProcess.Start(start)!);
             try
             {
@@ -91,15 +109,37 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
             using var reply = await _client.PostAsync(Endpoint + "/test/pause-publication", null);
             reply.EnsureSuccessStatusCode();
         }
-        public async Task ExpectDivergenceExit()
+        public async Task ExpectDivergenceExit() => await ExpectRestartExit("Follower native history diverged");
+
+        public async Task ExpectRestartExit(string reason)
         {
             await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20));
             await Task.WhenAll(_output, _error);
             Assert.Equal(0, _process.ExitCode);
-            Assert.Contains("RESTART Follower native history diverged", Diagnostics);
+            Assert.Contains("RESTART " + reason, Diagnostics);
         }
+        public async Task ExpectFatalExit()
+        {
+            await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+            await Task.WhenAll(_output, _error);
+            Assert.Equal(75, _process.ExitCode);
+            Assert.Contains("FATAL Replication publication made no forward progress.", Diagnostics);
+        }
+
+        public async Task Signal(string signal)
+        {
+            var start = new ProcessStartInfo("kill") { UseShellExecute = false };
+            start.ArgumentList.Add(signal);
+            start.ArgumentList.Add(_nodePid.ToString());
+            using var command = ChildProcess.Start(start)!;
+            await command.WaitForExitAsync();
+            Assert.Equal(0, command.ExitCode);
+            _suspended = signal == "-STOP";
+        }
+
         public async Task Kill()
         {
+            if (!_process.HasExited && _suspended) await Signal("-CONT");
             if (!_process.HasExited) _process.Kill(true);
             await _process.WaitForExitAsync();
         }
@@ -141,6 +181,26 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
     }
 
     [Fact]
+    public async Task StalledPublicationTerminatesTheLeaderAndFollowerRecoversItsOptimisticTail()
+    {
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container, progressTimeoutMilliseconds: 2000);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        await leader.Apply(1, 11);
+        await WaitPublished(container, 1);
+        await using var follower = await Node.Start(container);
+        await follower.Wait(s => s.Role == "Follower" && s.EventId == 1, "restored follower");
+        await leader.PausePublication();
+        await leader.Apply(2, 22);
+        await follower.Apply(2, 22);
+        await leader.ExpectFatalExit();
+        var promoted = await follower.Wait(s => s.Role == "Leader" && s.EventId == 2, "takeover after fatal watchdog", 35);
+        Assert.Equal(1, promoted.Applied);
+        Assert.Equal(22, promoted.Value);
+        await WaitPublished(container, 2);
+    }
+
+    [Fact]
     public async Task DivergentFollowerTerminatesItsProcessWithoutPublishingItsLocalOutcome()
     {
         var container = await fixture.ContainerAsync();
@@ -159,8 +219,15 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         Assert.Equal(1ul, await PublishedEvent(container));
     }
 
-    [Fact]
-    public async Task KilledLeaderIsReplacedAndItsUnpublishedTailSurvivesWithoutReexecution()
+    public static IEnumerable<object[]> UnavailableLeaderModes()
+    {
+        yield return new object[] { false };
+        if (!OperatingSystem.IsWindows()) yield return new object[] { true };
+    }
+
+    [Theory]
+    [MemberData(nameof(UnavailableLeaderModes))]
+    public async Task UnavailableLeaderIsReplacedAndItsUnpublishedTailSurvivesWithoutReexecution(bool suspend)
     {
         var container = await fixture.ContainerAsync();
         await using var leader = await Node.Start(container);
@@ -180,8 +247,9 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         Assert.Equal(1, compared.Applied);
         Assert.Equal(1ul, await PublishedEvent(container));
 
-        // Real process death: no graceful lease release, test lease break or simulated timer advancement.
-        await leader.Kill();
+        // No graceful release, test lease break or simulated timer advancement. STOP suspends all node threads.
+        if (suspend) await leader.Signal("-STOP");
+        else await leader.Kill();
         var promoted = await follower.Wait(s => s.Role == "Leader" && s.EventId == 2, "lease expiry and takeover", 35);
         Assert.Equal(1, promoted.Applied);
         Assert.Equal(22, promoted.Value);
@@ -191,6 +259,14 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         Assert.True(json["term"]!.GetValue<ulong>() >= 2);
         Assert.Equal(follower.Endpoint, json["peerEndpoint"]!.GetValue<string>());
 
+        if (suspend)
+        {
+            await leader.Signal("-CONT");
+            // This node created genesis rather than restoring a fixed base. Once it loses authority,
+            // ordinary follower startup requests a canonical rebuild instead of following from a zero cut.
+            await leader.ExpectRestartExit("New database initialization is published");
+        }
+
         // A third OS process has no prior local cache; verify takeover history by ordinary native restore.
         await using var replacement = await Node.Start(container);
         var cold = await replacement.Wait(s => s.Role == "Follower" && s.EventId == 2, "cold restored replacement");
@@ -198,6 +274,7 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         Assert.Equal(0, cold.Applied);
         await follower.Apply(3, 33);
         await replacement.Apply(3, 33);
+
         var continued = await replacement.Wait(s => Compared(s, 3), "comparison after takeover");
         Assert.Equal(33, continued.Value);
         Assert.Equal(1, continued.Applied);
