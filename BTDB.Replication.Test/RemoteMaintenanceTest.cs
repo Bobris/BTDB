@@ -13,8 +13,13 @@ namespace BTDB.Replication.Test;
 
 public class RemoteMaintenanceTest
 {
-    internal sealed class Storage(LeaseAuthority authority) : IRemoteMaintenanceStorage, IDisposable
+    internal sealed class Storage(LeaseAuthority authority) : IReplicationStorage, IDisposable
     {
+        public ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken cancellation) => Inner.ReadAsync(key, cancellation);
+        public ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken cancellation) =>
+            Inner.ReadRangeAsync(key, token, offset, destination, cancellation);
+        public ValueTask<TrlWriteResult> WriteAsync(TrlWrite write, CancellationToken cancellation) => Inner.WriteAsync(write, cancellation);
+
         internal readonly CheckpointPublisherTest.Storage Inner = new();
         readonly Dictionary<uint, int> _versions = new();
         public readonly List<uint> Deleted = new();

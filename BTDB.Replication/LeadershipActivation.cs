@@ -12,7 +12,7 @@ namespace BTDB.Replication;
 /// The owner retains native files from that cut until takeover or restart, and supplies only compatible databases.
 /// Genesis selects the first retained canonical link (which may follow a restored KVI).</summary>
 public sealed record ActivationDatabase(string Name, BTreeKeyValueDB Database, TransactionLogCapture Capture,
-    ICanonicalTrlStorage Storage, TrlSuccessor Genesis, TransactionLogPosition RestoredBase,
+    IReplicationStorage Storage, TrlSuccessor Genesis, TransactionLogPosition RestoredBase,
     Func<uint, string> KeyForFile);
 
 internal static class LeadershipActivation

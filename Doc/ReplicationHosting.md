@@ -51,7 +51,23 @@ storage belong to the host. Do not log Authorization headers or raw leader JSON.
 
 `RestoreAsync` must restore every required published database before returning `ActivationDatabase` entries. Discover
 selected canonical links with `CanonicalTrlInventory.DiscoverAsync`, optionally combine them with native PVL/KVI
-inventory through `AzureCheckpointStorage`, initialize `ReplicationFileSet`, and call `BTreeKeyValueDB.OpenAsync`.
+inventory through `AzureReplicationStorage.Bind(inventory)`, initialize `ReplicationFileSet`, and call `BTreeKeyValueDB.OpenAsync`.
+For Azure, use one data adapter per database:
+
+```csharp
+var storage = new AzureReplicationStorage(dataContainer, databasePrefix);
+var inventory = await CanonicalTrlInventory.DiscoverAsync(storage, selectedRoot, cancellation);
+var remote = storage.Bind(inventory); // Read-only restore; no leadership authority needed.
+var files = new ReplicationFileSet(localFiles, remote);
+await files.InitializeAsync(cancellation);
+// During CreateMaintenance, bind the same inventory with the supplied session authority:
+// IReplicationStorage maintenanceStorage = storage.Bind(inventory, authority);
+```
+
+`IReplicationStorage` combines TRL, immutable-file publication and maintenance operations. `IRemoteFileCollection`
+remains the read-only inventory contract accepted by `ReplicationFileSet`. A binding preserves its selected TRL
+versions and optional authority; create a new binding after acquisition rather than modifying the old one.
+
 The supplied `TransactionLogCapture` belongs to that opened database. `RestoredBase` is the fixed verified startup
 file/offset; it is not the follower's moving comparison acknowledgement. Preserve the actual selected root/key and
 return a fresh-session successor-key function. A zero restored base denotes an unpublished addition, never a missing
@@ -75,7 +91,7 @@ the supplied authority before writes/commit. The coordinator publishes genesis/s
 ## Maintenance and authority
 
 `CreateMaintenance` may construct `ReplicationMaintenance` with the existing file set, supplied canonical publisher,
-an authority-bound `IRemoteMaintenanceStorage` (such as `AzureCheckpointStorage`), scheduler and maintenance/deletion
+an authority-bound `IReplicationStorage` (such as `AzureReplicationStorage`), scheduler and maintenance/deletion
 intervals. These callbacks run within the coordinator's serialized leader publication lane. The publisher is borrowed:
 do not dispose it, retain it for another leadership session or start a separate publication loop. The coordinator owns
 the returned maintenance job. Local compaction has separate lifetime/cancellation from remote publication.

@@ -61,7 +61,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var container = await fixture.ContainerAsync(faults);
         var blob = container.GetBlobClient("cluster/leader.json");
         var storage = new AzureLeaderStorage(blob, TimeSpan.FromSeconds(15), Initial);
-        var canonical = new AzureCanonicalTrlStorage(container, "main");
+        var canonical = new AzureReplicationStorage(container, "main");
         var leases = new LeaseSessionController(storage, new Clock(), 0, TimeSpan.FromMilliseconds(10));
         var authority = (await leases.MaintainAsync())!;
         var selection = new LeaderSelection(storage, leases, authority,
@@ -100,7 +100,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
         using var restoredFiles = new InMemoryReplicationFileStorage();
         var inventory = await CanonicalTrlInventory.DiscoverAsync(canonical, new("term1/1", 1));
-        var checkpoints = new AzureCheckpointStorage(container, "main", inventory, nextAuthority);
+        var checkpoints = canonical.Bind(inventory, nextAuthority);
         using (var snapshot = next.CaptureKeyIndexSnapshot())
         {
             faults.LoseCommit = true;
@@ -234,6 +234,61 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
     }
 
     [Fact]
+    public async Task UnifiedStorageBindingsKeepInventoryAndAuthorityIndependent()
+    {
+        var container = await fixture.ContainerAsync();
+        var storage = new AzureReplicationStorage(container, "db");
+        using var local = new InMemoryFileCollection();
+        var trl = local.AddFile("trl");
+        var writer = new MemWriter(trl.GetAppenderWriter());
+        writer.WriteUInt8(1);
+        writer.Flush();
+        var created = await storage.WriteAsync(new(trl.Index, "trl/1", null, 0, 1, new(1), trl), default);
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(storage, new("trl/1", trl.Index));
+        var restore = storage.Bind(inventory);
+        Assert.Throws<ArgumentException>(() => new AzureReplicationStorage(container, "other").Bind(inventory));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var unused in storage.EnumerateAsync(default)) { }
+        });
+        var selected = new List<RemoteFile>();
+        await foreach (var file in restore.EnumerateAsync(default)) selected.Add(file);
+        var original = Assert.Single(selected);
+        var bytes = new byte[1];
+        Assert.Equal(1, await restore.ReadAsync(original, 0, bytes, default));
+        Assert.Equal(1, bytes[0]);
+
+        var oldAuthority = new LeaseAuthority(new Clock(), 0, TimeSpan.Zero);
+        oldAuthority.AcceptSuccess(oldAuthority.BeginRequest(), TimeSpan.FromMinutes(1));
+        var oldSession = storage.Bind(inventory, oldAuthority);
+        var source = new KeyIndexFileSource(trl.Index, KVFileType.PureValues, trl.GetSize(), 0, trl);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => restore.EnsurePureValuesAsync(2, source, default).AsTask());
+        await oldSession.EnsurePureValuesAsync(2, source, default);
+        oldAuthority.Fence();
+        var newAuthority = new LeaseAuthority(new Clock(), 0, TimeSpan.Zero);
+        newAuthority.AcceptSuccess(newAuthority.BeginRequest(), TimeSpan.FromMinutes(1));
+        IReplicationStorage newSession = storage.Bind(inventory, newAuthority);
+        await newSession.EnsurePureValuesAsync(4, source, default);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => oldSession.EnsurePureValuesAsync(6, source, default).AsTask());
+        Assert.False((await container.GetBlobClient("db/files/6.pvl").ExistsAsync()).Value);
+
+        // Advancing canonical storage never silently advances an already selected restore snapshot.
+        writer = new MemWriter(trl.GetAppenderWriter());
+        writer.WriteUInt8(2);
+        writer.Flush();
+        Assert.Equal(TrlWriteOutcome.Applied, (await newSession.WriteAsync(
+            new(trl.Index, "trl/1", created.State!.Token, 1, 2, new(1), trl), default)).Outcome);
+        await Assert.ThrowsAsync<IOException>(() => restore.ReadAsync(original, 0, bytes, default).AsTask());
+        var fresh = storage.Bind(await CanonicalTrlInventory.DiscoverAsync(storage, new("trl/1", trl.Index)));
+        selected.Clear();
+        await foreach (var file in fresh.EnumerateAsync(default)) selected.Add(file);
+        var tail = Assert.Single(selected, file => file.FileType == KVFileType.TransactionLog);
+        Assert.Equal(2ul, tail.Length);
+        Assert.Equal(1, await fresh.ReadAsync(tail, 1, bytes, default));
+        Assert.Equal(2, bytes[0]);
+    }
+
+    [Fact]
     public async Task ImmutablePureValuesReconcileSameShaAndFenceOnDifferentContent()
     {
         var faults = new Faults();
@@ -241,7 +296,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var leader = new AzureLeaderStorage(container.GetBlobClient("leader"), TimeSpan.FromSeconds(15), Initial);
         var leases = new LeaseSessionController(leader, new Clock(), 0, TimeSpan.Zero);
         var authority = (await leases.MaintainAsync())!;
-        var canonical = new AzureCanonicalTrlStorage(container, "db");
+        var canonical = new AzureReplicationStorage(container, "db");
         using var local = new InMemoryFileCollection();
         var trl = local.AddFile("trl");
         var writer = new MemWriter(trl.GetAppenderWriter());
@@ -249,7 +304,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         writer.Flush();
         await canonical.WriteAsync(new(trl.Index, "trl/1", null, 0, 1, new(1), trl), default);
         var inventory = await CanonicalTrlInventory.DiscoverAsync(canonical, new("trl/1", trl.Index));
-        var storage = new AzureCheckpointStorage(container, "db", inventory, authority);
+        var storage = canonical.Bind(inventory, authority);
         var pvl = local.AddFile("pvl");
         writer = new MemWriter(pvl.GetAppenderWriter());
         writer.WriteBlock(new byte[] { 2, 3, 4 });
@@ -296,7 +351,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
     public async Task CanonicalAppendAdoptionAndVersionBoundReadsUseAtomicAzureConditions()
     {
         var container = await fixture.ContainerAsync();
-        var storage = new AzureCanonicalTrlStorage(container, "database");
+        var storage = new AzureReplicationStorage(container, "database");
         using var local = new InMemoryFileCollection();
         var file = local.AddFile("trl");
         var bytes = Enumerable.Range(0, 5 * 1024 * 1024).Select(i => (byte)i).ToArray();

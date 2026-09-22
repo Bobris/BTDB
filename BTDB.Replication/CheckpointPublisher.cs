@@ -10,35 +10,19 @@ namespace BTDB.Replication;
 
 public sealed class RemoteFileConflictException() : IOException("Remote file SHA metadata does not match intended content.");
 
-/// <summary>
-/// Bound to one selected database/authority session. Allocations must be fresh in the remote inventory.
-/// Ensure methods return only after exact content is confirmed; ambiguous outcomes retry/reconcile the same ID.
-/// Adapters check the selected session authority before every dispatch, including individual KVI chunks.
-/// Create only if absent, with whole-file SHA metadata bound atomically to content. Matching SHA confirms a retry;
-/// missing/different SHA on an existing object throws RemoteFileConflictException. Never overwrite it.
-/// </summary>
-public interface ICheckpointStorage : IRemoteFileCollection
-{
-    ValueTask EnsurePureValuesAsync(uint remoteFileId, KeyIndexFileSource source, CancellationToken cancellation);
-    /// <summary>Publish or reconcile this exact chosen immutable KVI identity. A lost response retries the same
-    /// ID, snapshot and mapping; verify existing content instead of overwriting or allocating another ID.</summary>
-    ValueTask PublishKeyIndexAsync(uint remoteFileId, KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> pureValueFileIds,
-        CancellationToken cancellation);
-}
-
 internal enum CheckpointPublishResult { Published, Pending, AuthorityLost, Conflict }
 
 /// <summary>
 /// Publish a fixed native checkpoint using the session file set for verified local-to-remote placements.
 /// The live database keeps its local IDs; KVI publication starts only after all dependencies are confirmed.
 /// </summary>
-internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrlPublisher canonical, ICheckpointStorage? storage = null)
+internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrlPublisher canonical, IReplicationStorage? storage = null)
 {
     sealed record PendingCheckpoint(KeyIndexSnapshot Snapshot, uint FileId, IReadOnlyDictionary<uint, uint> Map);
 
     readonly SemaphoreSlim _lane = new(1);
     PendingCheckpoint? _pending;
-    readonly ICheckpointStorage _storage = storage ?? files.Remote;
+    readonly IReplicationStorage _storage = storage ?? files.PublicationStorage;
     public PublishedCheckpoint? Published { get; private set; }
 
     /// <summary>The caller retains a snapshot from the canonical publisher's database until completion, including retries.

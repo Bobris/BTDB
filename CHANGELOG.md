@@ -17,6 +17,10 @@
 
 ### Changed
 
+- Merge Azure canonical TRL and checkpoint adapters into `AzureReplicationStorage`, and their publication/cleanup
+  contracts into `IReplicationStorage`. Bind selected inventories and leadership authority in separate immutable
+  session views. Keep `IRemoteFileCollection` read-only and accept it directly for replicated restore.
+
 - Expose public replication application, restore/maintenance and storage contracts, Azure adapters, and ASP.NET
   hosting extensions. Run the subprocess host without friend-assembly access. Keep authority construction/renewal,
   election transitions and peer sessions internal; redact credentials from public leader/lease record strings.

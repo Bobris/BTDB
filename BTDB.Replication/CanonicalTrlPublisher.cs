@@ -27,23 +27,11 @@ public sealed record TrlWrite(uint FileId, string Key, string? ExpectedToken, ui
 }
 
 /// <summary>
-/// Conditional native tail append and metadata update are one atomic operation. Reads bind bytes to the supplied
-/// version token; a changed version must fail the read. Implementations stream append bytes from the retained source.
-/// Cancellation/transport failure after dispatch may still have an effect. Keys and native IDs must never be reused.
-/// </summary>
-public interface ICanonicalTrlStorage
-{
-    ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken cancellation);
-    ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken cancellation);
-    ValueTask<TrlWriteResult> WriteAsync(TrlWrite write, CancellationToken cancellation);
-}
-
-/// <summary>
 /// One database/selected term, one capture consumer. Input tail must be restored and verified against local bytes.
 /// Caller owns canonical ID/key allocation and authority acquisition. This lane never acquires authority itself.
 /// </summary>
 public sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, TransactionLogCapture capture,
-    ICanonicalTrlStorage storage, LeaseAuthority authority, ulong term, Func<uint, string> keyForFile, TrlHead? restoredTail = null) : IDisposable
+    IReplicationStorage storage, LeaseAuthority authority, ulong term, Func<uint, string> keyForFile, TrlHead? restoredTail = null) : IDisposable
 {
     sealed class Plan(TransactionLogPosition? position, TrlWrite[] writes)
     {
@@ -75,7 +63,6 @@ public sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, TransactionL
         }
         finally { _lane.Release(); }
     }
-
 
     public bool HasAuthority => authority.IsValid;
     internal void Fence() => authority.Fence();

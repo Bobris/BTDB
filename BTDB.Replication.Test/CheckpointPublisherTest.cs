@@ -95,8 +95,16 @@ public class CheckpointPublisherTest
         public void Dispose() => Flush();
     }
 
-    internal sealed class Storage : ICheckpointStorage, ICanonicalTrlStorage, IDisposable
+    internal sealed class Storage : IReplicationStorage, IDisposable
     {
+        // This fixture never runs cleanup; protection only checks that the immutable dependency still exists.
+        public ValueTask<bool> ProtectPureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) =>
+            ValueTask.FromResult(Files.GetFile(id) != null);
+        public IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation) =>
+            throw new NotSupportedException("Use the maintenance fixture to exercise cleanup races.");
+        public ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation) =>
+            throw new NotSupportedException("Use the maintenance fixture to exercise cleanup races.");
+
         public readonly InMemoryReplicationFileStorage Files = new();
         public readonly Dictionary<uint, KVFileType> Types = new();
         public readonly List<string> Events = new();

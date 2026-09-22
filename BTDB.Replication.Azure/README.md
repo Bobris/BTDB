@@ -3,9 +3,14 @@
 This project implements the Azure SDK boundary for the replication components through public provider contracts:
 
 - `AzureLeaderStorage`: finite lease acquisition/renewal and lease-plus-ETag leader JSON replacement.
-- `AzureCanonicalTrlStorage`: canonical metadata/read ranges and atomic conditional native TRL append/adoption.
-- `AzureCheckpointStorage`: numeric PVL/KVI discovery, version-bound reads, native KVI streaming, and conditional
-  immutable publication with atomically committed SHA-256 metadata.
+- `AzureReplicationStorage` / `IReplicationStorage`: canonical TRL reads and conditional append/adoption,
+  numeric PVL/KVI discovery, immutable publication with atomic SHA-256 metadata, and conditional cleanup.
+
+Construct one data adapter per database. Discover its canonical chain using `CanonicalTrlInventory.DiscoverAsync`,
+then call `storage.Bind(inventory)` for restore or `storage.Bind(inventory, authority)` for leader maintenance.
+Bindings are separate instances: their selected TRL versions and authority never change when another session binds.
+Unbound storage supports canonical operations and physical listing; remote restore enumeration requires a binding.
+`IRemoteFileCollection` remains the read-only inventory contract; selected TRL inventories no longer expose writes.
 
 Supply authenticated `BlobClient` / `BlobContainerClient` instances, the database prefix, initial leader JSON and
 configuration. Configure SDK clients with `Retry.MaxRetries = 0`; protocol components own conditional-write ambiguity

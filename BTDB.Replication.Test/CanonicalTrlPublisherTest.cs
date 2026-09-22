@@ -17,8 +17,16 @@ public class CanonicalTrlPublisherTest
     internal sealed record Blob(TrlObjectState State, byte[] Bytes);
     internal sealed record Request(TrlWrite Write, byte[] Suffix);
 
-    internal sealed class Storage : ICanonicalTrlStorage
+    internal sealed class Storage : IReplicationStorage
     {
+        public IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation) => throw new NotSupportedException("This test storage only supports canonical TRLs.");
+        public ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation) => throw new NotSupportedException("This test storage only supports canonical TRLs.");
+        public ValueTask EnsurePureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) => throw new NotSupportedException("This test storage only supports canonical TRLs.");
+        public ValueTask PublishKeyIndexAsync(uint id, KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map, CancellationToken cancellation) => throw new NotSupportedException("This test storage only supports canonical TRLs.");
+        public IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation) => throw new NotSupportedException("This test storage only supports canonical TRLs.");
+        public ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation) => throw new NotSupportedException("This test storage only supports canonical TRLs.");
+        public ValueTask<bool> ProtectPureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) => throw new NotSupportedException("This test storage only supports canonical TRLs.");
+
         public readonly Dictionary<string, Blob> Blobs = new();
         public readonly List<Request> Requests = new();
         public readonly Queue<Action> Delayed = new();

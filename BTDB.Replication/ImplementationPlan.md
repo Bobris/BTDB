@@ -259,8 +259,8 @@ The previously pending Azure storage integration, term selection and pre-activat
   version-bound Blob bytes. Tail adoption publishes no optimistic suffix. A changed/unresolved adoption retries by
   rediscovery; divergence or missing retained bytes requires ordinary restore. Earlier adoptions in a multi-database
   attempt may remain, but no publisher is returned until the whole set succeeds.
-- `AzureCanonicalTrlStorage` performs conditional block-list commits with atomic TRL metadata, bounded staging,
-  immutable random block IDs, prefix reuse and version-bound reads. `AzureCheckpointStorage` lists native numeric
+- `AzureReplicationStorage` performs conditional block-list commits with atomic TRL metadata, bounded staging,
+  immutable random block IDs, prefix reuse and version-bound reads. The same adapter lists native numeric
   PVL/KVI files, streams KVI using the existing serializer and performs conditional create/SHA reconciliation.
 - `BTDB.Replication.Azure.Test` runs the actual SDK against an isolated Azurite process, including lost acquire,
   leader-record and TRL adoption replies, stale ETags/lease IDs, a real finite-lease expiry during an outage,

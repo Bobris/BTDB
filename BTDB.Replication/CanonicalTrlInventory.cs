@@ -13,12 +13,12 @@ namespace BTDB.Replication;
 /// the database-scoped genesis identity; a missing published root is an error, not permission to initialize again.
 /// A version change or missing dependency fails this attempt; the owner may rediscover in a new attempt.
 /// </summary>
-public sealed class CanonicalTrlInventory : ICheckpointStorage
+public sealed class CanonicalTrlInventory : IRemoteFileCollection
 {
-    readonly ICanonicalTrlStorage _storage;
+    readonly IReplicationStorage _storage;
     readonly Dictionary<uint, TrlHead> _byId;
 
-    CanonicalTrlInventory(ICanonicalTrlStorage storage, Dictionary<uint, TrlHead> byId, TrlHead tail)
+    CanonicalTrlInventory(IReplicationStorage storage, Dictionary<uint, TrlHead> byId, TrlHead tail)
     {
         _storage = storage;
         _byId = byId;
@@ -27,7 +27,9 @@ public sealed class CanonicalTrlInventory : ICheckpointStorage
 
     public TrlHead Tail { get; }
 
-    public static async ValueTask<CanonicalTrlInventory> DiscoverAsync(ICanonicalTrlStorage storage,
+    internal bool IsFrom(IReplicationStorage storage) => ReferenceEquals(_storage, storage);
+
+    public static async ValueTask<CanonicalTrlInventory> DiscoverAsync(IReplicationStorage storage,
         TrlSuccessor genesis, CancellationToken cancellation = default)
     {
         var byId = new Dictionary<uint, TrlHead>();
@@ -83,8 +85,4 @@ public sealed class CanonicalTrlInventory : ICheckpointStorage
         return count;
     }
 
-    public ValueTask EnsurePureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) =>
-        throw new NotSupportedException("The selected inventory does not publish files.");
-    public ValueTask PublishKeyIndexAsync(uint remoteFileId, KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map,
-        CancellationToken cancellation) => throw new NotSupportedException("The selected inventory does not publish files.");
 }

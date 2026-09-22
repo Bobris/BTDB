@@ -11,7 +11,7 @@ namespace BTDB.Replication.ProcessTests;
 internal sealed record NodeStatus(string Role, ulong EventId, int Value, int Applied, uint CompletedFile,
     uint CompletedOffset, uint AcknowledgedFile, uint AcknowledgedOffset);
 
-internal sealed class TestNodeHost(string endpoint, ICanonicalTrlStorage canonical) : IReplicationNodeHost, IAsyncDisposable
+internal sealed class TestNodeHost(string endpoint, IReplicationStorage canonical) : IReplicationNodeHost, IAsyncDisposable
 {
     readonly InMemoryReplicationFileStorage _files = new();
     readonly TransactionLogCapture _capture = new();
@@ -120,8 +120,16 @@ internal sealed class TestNodeHost(string endpoint, ICanonicalTrlStorage canonic
         _writer.Dispose();
     }
 
-    sealed class PublicationGate(ICanonicalTrlStorage inner) : ICanonicalTrlStorage
+    sealed class PublicationGate(IReplicationStorage inner) : IReplicationStorage
     {
+        public IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation) => inner.EnumerateAsync(cancellation);
+        public ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation) => inner.ReadAsync(file, offset, buffer, cancellation);
+        public ValueTask EnsurePureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) => inner.EnsurePureValuesAsync(id, source, cancellation);
+        public ValueTask PublishKeyIndexAsync(uint id, KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map, CancellationToken cancellation) => inner.PublishKeyIndexAsync(id, snapshot, map, cancellation);
+        public IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation) => inner.EnumerateMaintenanceAsync(cancellation);
+        public ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation) => inner.DeleteAsync(file, cancellation);
+        public ValueTask<bool> ProtectPureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) => inner.ProtectPureValuesAsync(id, source, cancellation);
+
         public volatile bool Paused;
         public ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken cancellation) => inner.ReadAsync(key, cancellation);
         public ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken cancellation) =>

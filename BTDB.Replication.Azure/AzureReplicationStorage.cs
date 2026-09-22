@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Threading;
@@ -16,17 +17,151 @@ using BTDB.StreamLayer;
 
 namespace BTDB.Replication.Azure;
 
-/// <summary>Immutable numeric PVL/KVI files plus a separately selected canonical TRL inventory.
-/// Publication is conditional create with atomic SHA metadata. Restore requires no authority.</summary>
-public sealed class AzureCheckpointStorage(BlobContainerClient container, string prefix,
-    IRemoteFileCollection canonical, LeaseAuthority? authority = null) : IRemoteMaintenanceStorage
+/// <summary>Database-scoped canonical TRLs and immutable PVL/KVI storage. Bind a selected inventory and
+/// optional leadership authority for restore and maintenance; each binding retains its own immutable session.</summary>
+public sealed class AzureReplicationStorage : IReplicationStorage
 {
+    readonly BlobContainerClient container;
+    readonly string prefix;
+    readonly CanonicalTrlInventory? canonical;
+    readonly LeaseAuthority? authority;
+
+    public AzureReplicationStorage(BlobContainerClient container, string prefix)
+    {
+        this.container = container ?? throw new ArgumentNullException(nameof(container));
+        this.prefix = prefix ?? throw new ArgumentNullException(nameof(prefix));
+    }
+
+    AzureReplicationStorage(AzureReplicationStorage storage, CanonicalTrlInventory inventory, LeaseAuthority? authority)
+        : this(storage.container, storage.prefix)
+    {
+        canonical = inventory;
+        this.authority = authority;
+    }
+
+    /// <summary>Create a distinct session view. Omitting authority permits restore only, not maintenance.</summary>
+    public AzureReplicationStorage Bind(CanonicalTrlInventory inventory, LeaseAuthority? authority = null)
+    {
+        ArgumentNullException.ThrowIfNull(inventory);
+        if (!inventory.IsFrom(this)) throw new ArgumentException("Inventory belongs to another storage instance.", nameof(inventory));
+        return new(this, inventory, authority);
+    }
+
+    CanonicalTrlInventory Inventory => canonical ??
+        throw new InvalidOperationException("Bind a selected canonical inventory before restoring files.");
+
+    // Reuse committed prefix blocks; replace only a partial last block and append. Unique staged IDs keep
+    // stale requests from changing a winning intent. The final CAS installs bytes and metadata atomically.
+    const int BlockSize = 4 * 1024 * 1024;
+    BlockBlobClient Blob(string key)
+    {
+        TrlMetadata.Validate(new(key, 1));
+        return container.GetBlockBlobClient(string.IsNullOrEmpty(prefix) ? key : prefix.TrimEnd('/') + "/" + key);
+    }
+
+    public async ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken cancellation)
+    {
+        try
+        {
+            var result = await Blob(key).GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false);
+            return new(result.Value.ETag.ToString(), checked((uint)result.Value.ContentLength),
+                TrlMetadata.Decode(new Dictionary<string, string>(result.Value.Metadata)));
+        }
+        catch (RequestFailedException error) when (error.Status == 404) { return null; }
+        catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+        { throw new IOException("Azure canonical TRL metadata read failed.", error); }
+    }
+
+    public async ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination,
+        CancellationToken cancellation)
+    {
+        if (destination.IsEmpty) return;
+        try
+        {
+            var result = await Blob(key).DownloadStreamingAsync(new BlobDownloadOptions
+            {
+                Range = new HttpRange(offset, destination.Length),
+                Conditions = new BlobRequestConditions { IfMatch = new ETag(token) }
+            }, cancellation).ConfigureAwait(false);
+            using var stream = result.Value.Content;
+            await stream.ReadExactlyAsync(destination, cancellation).ConfigureAwait(false);
+        }
+        catch (RequestFailedException error) when (error.Status is 404 or 412 or 416)
+        { throw new IOException("Selected canonical TRL version is no longer available.", error); }
+        catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+        { throw new IOException("Azure canonical TRL range read failed.", error); }
+    }
+
+    public async ValueTask<TrlWriteResult> WriteAsync(TrlWrite write, CancellationToken cancellation)
+    {
+        var blob = Blob(write.Key);
+        var conditions = new BlobRequestConditions();
+        var ids = new List<string>();
+        ulong offset = 0;
+        var commitDispatched = false;
+        try
+        {
+            if (write.ExpectedToken is { } token)
+            {
+                conditions.IfMatch = new ETag(token);
+                var blocks = await blob.GetBlockListAsync(BlockListTypes.Committed, cancellationToken: cancellation)
+                    .ConfigureAwait(false);
+                if (blocks.GetRawResponse().Headers.ETag?.ToString().Trim('"') != token.Trim('"')) return new(TrlWriteOutcome.Rejected);
+                if (blocks.Value.CommittedBlocks.Sum(b => b.SizeLong) != write.ExpectedLength)
+                    return new(TrlWriteOutcome.Rejected);
+                foreach (var block in blocks.Value.CommittedBlocks)
+                {
+                    // Retain a partial block too for metadata-only adoption. Appends replace it using the
+                    // caller's verified native prefix, avoiding unbounded numbers of tiny committed blocks.
+                    if (block.SizeLong != BlockSize && write.Length != write.ExpectedLength) break;
+                    ids.Add(block.Name);
+                    offset += (ulong)block.SizeLong;
+                }
+            }
+            else
+            {
+                if (write.ExpectedLength != 0) throw new ArgumentException("A new TRL cannot have a previous length.");
+                conditions.IfNoneMatch = ETag.All;
+            }
+            if (write.Length < write.ExpectedLength) throw new ArgumentException("Canonical TRLs cannot shrink.");
+            var buffer = ArrayPool<byte>.Shared.Rent(BlockSize);
+            try
+            {
+                while (offset < write.Length)
+                {
+                    var count = (int)Math.Min((ulong)BlockSize, write.Length - offset);
+                    write.Source.RandomRead(buffer.AsSpan(0, count), offset, false);
+                    var id = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
+                    using var stream = new MemoryStream(buffer, 0, count, false);
+                    await blob.StageBlockAsync(id, stream, cancellationToken: cancellation).ConfigureAwait(false);
+                    ids.Add(id);
+                    offset += (uint)count;
+                }
+            }
+            finally { ArrayPool<byte>.Shared.Return(buffer); }
+            commitDispatched = true;
+            var result = await blob.CommitBlockListAsync(ids, new CommitBlockListOptions
+            {
+                Conditions = conditions,
+                Metadata = new Dictionary<string, string>(write.Metadata.Encode()) { ["btdb_file_id"] = write.FileId.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+            }, cancellation).ConfigureAwait(false);
+            return new(TrlWriteOutcome.Applied,
+                new(result.Value.ETag.ToString(), write.Length, write.Metadata));
+        }
+        catch (RequestFailedException error) when (error.Status is 404 or 409 or 412)
+        { return new(TrlWriteOutcome.Rejected); }
+        catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+        {
+            if (commitDispatched) return new(TrlWriteOutcome.Ambiguous);
+            throw new IOException("Azure canonical TRL staging failed.", error);
+        }
+    }
     string Directory => string.IsNullOrEmpty(prefix) ? "files/" : prefix.TrimEnd('/') + "/files/";
     BlockBlobClient Blob(uint id, string extension) => container.GetBlockBlobClient(Directory + id.ToString(CultureInfo.InvariantCulture) + extension);
 
     public async IAsyncEnumerable<RemoteFile> EnumerateAsync([EnumeratorCancellation] CancellationToken cancellation)
     {
-        await foreach (var file in canonical.EnumerateAsync(cancellation).ConfigureAwait(false)) yield return file;
+        await foreach (var file in Inventory.EnumerateAsync(cancellation).ConfigureAwait(false)) yield return file;
         await foreach (var blob in container.GetBlobsAsync(BlobTraits.Metadata, BlobStates.None, prefix: Directory,
                            cancellationToken: cancellation).ConfigureAwait(false))
         {
@@ -109,7 +244,7 @@ public sealed class AzureCheckpointStorage(BlobContainerClient container, string
     public async ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation)
     {
         if (file.FileType == KVFileType.TransactionLog)
-            return await canonical.ReadAsync(file, offset, buffer, cancellation).ConfigureAwait(false);
+            return await Inventory.ReadAsync(file, offset, buffer, cancellation).ConfigureAwait(false);
         if (offset > file.Length) throw new ArgumentOutOfRangeException(nameof(offset));
         var count = (int)Math.Min((ulong)buffer.Length, file.Length - offset);
         cancellation.ThrowIfCancellationRequested();

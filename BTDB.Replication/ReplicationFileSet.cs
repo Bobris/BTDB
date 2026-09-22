@@ -14,7 +14,7 @@ namespace BTDB.Replication;
 /// Local IDs must not be reused during this session. Receipts retain no bytes, file handles or roots.
 /// Serialize publication/receipt changes externally; restore finishes before publication starts.
 /// Remote cleanup must protect receipt destinations while this session may reuse them.</summary>
-public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage local, ICheckpointStorage remote, int maxConcurrentDownloads = 4,
+public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage local, IRemoteFileCollection remote, int maxConcurrentDownloads = 4,
     IKeyValueDBLogger? logger = null)
 {
     sealed class Placement(ulong length, uint remoteId, bool confirmed)
@@ -78,7 +78,7 @@ public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage lo
     /// Use the same logger instance as KeyValueDBOptions.Logger; initialization runs before database opening.
     public IKeyValueDBLogger? Logger { get; set; } = logger;
     public InMemoryReplicationFileStorage Local { get; } = local;
-    public ICheckpointStorage Remote { get; } = remote;
+    public IRemoteFileCollection Remote { get; } = remote;
 
     void AddPlacement(uint localId, Placement placement)
     {
@@ -214,11 +214,14 @@ public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage lo
             throw new IOException("The local file does not match the remote whole-file checksum.");
     }
 
+    internal IReplicationStorage PublicationStorage => Remote as IReplicationStorage ??
+        throw new InvalidOperationException("This inventory is read-only; supply session-bound replication storage for publication.");
+
     uint _lastRemoteEvenId;
 
     // Called under the publication lane. Refresh only remote discovery: refreshing local mappings here would
     // invalidate confirmed PVL receipts during the same checkpoint. No remote reservation object is created.
-    internal async ValueTask<uint> AllocateRemoteFileIdAsync(CancellationToken cancellation = default, ICheckpointStorage? storage = null)
+    internal async ValueTask<uint> AllocateRemoteFileIdAsync(CancellationToken cancellation = default, IReplicationStorage? storage = null)
     {
         await foreach (var file in (storage ?? Remote).EnumerateAsync(cancellation).ConfigureAwait(false))
             if ((file.FileId & 1) == 0) _lastRemoteEvenId = Math.Max(_lastRemoteEvenId, file.FileId);
@@ -229,9 +232,9 @@ public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage lo
     }
 
     public ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default) =>
-        PublishPureValuesAsync(source, Remote, cancellation);
+        PublishPureValuesAsync(source, PublicationStorage, cancellation);
 
-    internal async ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, ICheckpointStorage storage, CancellationToken cancellation)
+    internal async ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, IReplicationStorage storage, CancellationToken cancellation)
     {
         if (source.FileType != KVFileType.PureValues ||
             !OwnsSource(source) || source.Length != source.File.GetSize())
@@ -253,8 +256,7 @@ public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage lo
                 RememberMapping(placement.RemoteId, source.FileId);
                 placement.Confirmed = true;
             }
-            if (storage is IRemoteMaintenanceStorage maintenance &&
-                !await maintenance.ProtectPureValuesAsync(placement.RemoteId, source, cancellation).ConfigureAwait(false))
+            if (!await storage.ProtectPureValuesAsync(placement.RemoteId, source, cancellation).ConfigureAwait(false))
             {
                 _placements.Remove(source.FileId);
                 _placedRemoteIds.Remove(placement.RemoteId);

@@ -117,7 +117,7 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
 
     static async Task<ulong> PublishedEvent(BlobContainerClient container)
     {
-        var storage = new AzureCanonicalTrlStorage(container, "main");
+        var storage = new AzureReplicationStorage(container, "main");
         var inventory = await CanonicalTrlInventory.DiscoverAsync(storage, TestNodeHost.Genesis);
         using var files = new InMemoryReplicationFileStorage();
         await using var collection = new ReplicationFileSet(files, inventory);

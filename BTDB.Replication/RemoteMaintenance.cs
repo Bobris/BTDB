@@ -12,21 +12,11 @@ namespace BTDB.Replication;
 public sealed record RemoteMaintenanceFile(string Key, uint FileId, KVFileType FileType, string Version,
     bool RetainForDiscovery = false);
 
-/// <summary>Physical database-scoped inventory. Deletion and protection check live authority at dispatch.
-/// Protection changes the object's version conditionally, so an earlier in-flight delete cannot erase a reused PVL.</summary>
-public interface IRemoteMaintenanceStorage : ICheckpointStorage
-{
-    IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation);
-    ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation);
-    // False means absent: the caller must allocate a fresh identity, never recreate a retired key.
-    ValueTask<bool> ProtectPureValuesAsync(uint fileId, KeyIndexFileSource source, CancellationToken cancellation);
-}
-
 internal sealed record PublishedCheckpoint(uint FileId, uint ReplayFromFileId, IReadOnlySet<uint> Dependencies);
 
 /// <summary>One leader session, serialized with its checkpoint/export lane. Restart forgets candidates and restarts
 /// the delay. Only a positively confirmed checkpoint authorizes deletion; no persisted GC manifest or follower pins.</summary>
-internal sealed class RemoteGarbageCollector(IRemoteMaintenanceStorage storage, LeaseAuthority authority,
+internal sealed class RemoteGarbageCollector(IReplicationStorage storage, LeaseAuthority authority,
     IReplicationScheduler clock, TimeSpan deletionDelay)
 {
     readonly Dictionary<string, (string Version, TimeSpan Since)> _obsolete = new(StringComparer.Ordinal);
@@ -67,7 +57,7 @@ internal sealed class RemoteGarbageCollector(IRemoteMaintenanceStorage storage, 
 /// <summary>One database/leader session. Local compaction is scheduled separately and never receives this lane's
 /// cancellation. Retains exactly one native export snapshot across unresolved publication; releases it on shutdown.</summary>
 public sealed class ReplicationMaintenance(BTreeKeyValueDB database, ReplicationFileSet files,
-    CanonicalTrlPublisher canonical, IRemoteMaintenanceStorage storage, LeaseAuthority authority,
+    CanonicalTrlPublisher canonical, IReplicationStorage storage, LeaseAuthority authority,
     IReplicationScheduler clock, TimeSpan interval, TimeSpan deletionDelay,
     IObjectDB? objects = null, Func<LeakRemovalCandidates, CancellationToken, ValueTask>? publishLeakEvent = null) : IDisposable
 {

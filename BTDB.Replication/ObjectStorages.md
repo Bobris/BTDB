@@ -32,7 +32,7 @@ canonical histories or an accepted prefix ending inside a transaction.
 `IRemoteFileCollection` exposes asynchronous inventory enumeration and version-bound range reads. `RemoteFile` describes the numeric ID, native type, length, opaque version, sealed state and optional
 whole-file SHA-256. The adapter must reject a read if the selected version changed or disappeared; partial range
 success must never silently combine versions. Allocation uses refreshed remote inventory, never a local maximum; conditional creation and SHA metadata reconcile retries.
-`ICheckpointStorage` extends that boundary with confirmed PVL/TRL prerequisites and native KVI publication.
+`IReplicationStorage` extends that boundary with confirmed PVL/TRL prerequisites and native KVI publication.
 
 `ReplicationFileSet` implements `IFileReplicatedCollection` exposed to BTDB. `GetCount`, `GetFile`, and `Enumerate`
 operate only on physical local cache/storage; `GetRemoteCount`, `GetRemoteFile`, and `RemoteEnumerate` expose the

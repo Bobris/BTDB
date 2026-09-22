@@ -95,8 +95,16 @@ public class ReplicationNodeCoordinatorTest
             }
         }
 
-        public sealed class Store(Cluster cluster) : IReplicationLeaseStorage, IReplicationLeaseTransferStorage, ILeaderRecordStorage, ICanonicalTrlStorage
+        public sealed class Store(Cluster cluster) : IReplicationLeaseStorage, IReplicationLeaseTransferStorage, ILeaderRecordStorage, IReplicationStorage
         {
+            public IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation) => cluster.Trls.EnumerateAsync(cancellation);
+            public ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation) => cluster.Trls.ReadAsync(file, offset, buffer, cancellation);
+            public ValueTask EnsurePureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) => cluster.Trls.EnsurePureValuesAsync(id, source, cancellation);
+            public ValueTask PublishKeyIndexAsync(uint id, KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map, CancellationToken cancellation) => cluster.Trls.PublishKeyIndexAsync(id, snapshot, map, cancellation);
+            public IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation) => cluster.Trls.EnumerateMaintenanceAsync(cancellation);
+            public ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation) => cluster.Trls.DeleteAsync(file, cancellation);
+            public ValueTask<bool> ProtectPureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) => cluster.Trls.ProtectPureValuesAsync(id, source, cancellation);
+
             public bool Unavailable;
             public TaskCompletionSource? HoldWrites;
             public int Acquires, Transfers;
