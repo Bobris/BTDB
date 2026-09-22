@@ -8,7 +8,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.Replication;
 
-internal sealed class RemoteFileConflictException() : IOException("Remote file SHA metadata does not match intended content.");
+public sealed class RemoteFileConflictException() : IOException("Remote file SHA metadata does not match intended content.");
 
 /// <summary>
 /// Bound to one selected database/authority session. Allocations must be fresh in the remote inventory.
@@ -17,7 +17,7 @@ internal sealed class RemoteFileConflictException() : IOException("Remote file S
 /// Create only if absent, with whole-file SHA metadata bound atomically to content. Matching SHA confirms a retry;
 /// missing/different SHA on an existing object throws RemoteFileConflictException. Never overwrite it.
 /// </summary>
-internal interface ICheckpointStorage : IRemoteFileCollection
+public interface ICheckpointStorage : IRemoteFileCollection
 {
     ValueTask EnsurePureValuesAsync(uint remoteFileId, KeyIndexFileSource source, CancellationToken cancellation);
     /// <summary>Publish or reconcile this exact chosen immutable KVI identity. A lost response retries the same

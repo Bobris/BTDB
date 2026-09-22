@@ -334,3 +334,13 @@ restore cursors. They do not qualify process suspension, live Azure, production 
 The first process scenario exposed a restore append mismatch. `AsyncOpenTest` now reproduces the exact committed
 physical EOF case and checks native positions/bytes after the next event, plus non-appendable partial, corrupt and
 explicitly sealed tails. The fix is replication-only; standalone recovery retains its existing end-marker rule.
+
+## Public application/provider boundary
+
+The subprocess assembly no longer has `InternalsVisibleTo` access to core replication, HTTP or Azure adapters. It
+registers the public hosting extensions, implements the public application/storage/scheduler ports and reports role
+through `IReplicationNodeHost.ReportStatus`, without accessing the coordinator. Its real crash/divergence scenarios
+therefore exercise the external-consumer path. API boundary tests prevent accidentally restoring friend access,
+exposing authority construction/renewal or transition machinery, and leaking credentials through public record strings.
+See [hosting and ownership contracts](../Doc/ReplicationHosting.md). Public availability is independent of packaging
+and production qualification.

@@ -8,14 +8,14 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.Replication;
 
-internal sealed record TrlObjectState(string Token, uint Length, TrlMetadata Metadata);
-internal sealed record TrlHead(uint FileId, string Key, TrlObjectState State);
-internal enum TrlWriteOutcome { Applied, Rejected, Ambiguous }
-internal sealed record TrlWriteResult(TrlWriteOutcome Outcome, TrlObjectState? State = null);
-internal enum TrlPublishResult { Idle, Adopted, Published, Pending, AuthorityLost, Conflict }
+public sealed record TrlObjectState(string Token, uint Length, TrlMetadata Metadata);
+public sealed record TrlHead(uint FileId, string Key, TrlObjectState State);
+public enum TrlWriteOutcome { Applied, Rejected, Ambiguous }
+public sealed record TrlWriteResult(TrlWriteOutcome Outcome, TrlObjectState? State = null);
+public enum TrlPublishResult { Idle, Adopted, Published, Pending, AuthorityLost, Conflict }
 
 /// <summary>A fixed native prefix retained by the acknowledgement position, not a copied TRL buffer. A null token means create-if-absent.</summary>
-internal sealed record TrlWrite(uint FileId, string Key, string? ExpectedToken, uint ExpectedLength, uint Length,
+public sealed record TrlWrite(uint FileId, string Key, string? ExpectedToken, uint ExpectedLength, uint Length,
     TrlMetadata Metadata, IFileCollectionFile Source)
 {
     public uint AppendLength => Length - ExpectedLength;
@@ -31,7 +31,7 @@ internal sealed record TrlWrite(uint FileId, string Key, string? ExpectedToken, 
 /// version token; a changed version must fail the read. Implementations stream append bytes from the retained source.
 /// Cancellation/transport failure after dispatch may still have an effect. Keys and native IDs must never be reused.
 /// </summary>
-internal interface ICanonicalTrlStorage
+public interface ICanonicalTrlStorage
 {
     ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken cancellation);
     ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken cancellation);
@@ -42,7 +42,7 @@ internal interface ICanonicalTrlStorage
 /// One database/selected term, one capture consumer. Input tail must be restored and verified against local bytes.
 /// Caller owns canonical ID/key allocation and authority acquisition. This lane never acquires authority itself.
 /// </summary>
-internal sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, TransactionLogCapture capture,
+public sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, TransactionLogCapture capture,
     ICanonicalTrlStorage storage, LeaseAuthority authority, ulong term, Func<uint, string> keyForFile, TrlHead? restoredTail = null) : IDisposable
 {
     sealed class Plan(TransactionLogPosition? position, TrlWrite[] writes)

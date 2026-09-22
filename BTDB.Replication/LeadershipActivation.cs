@@ -11,7 +11,7 @@ namespace BTDB.Replication;
 /// <summary>RestoredBase is the fixed verified startup cut, never the follower's advancing acknowledgement.
 /// The owner retains native files from that cut until takeover or restart, and supplies only compatible databases.
 /// Genesis selects the first retained canonical link (which may follow a restored KVI).</summary>
-internal sealed record ActivationDatabase(string Name, BTreeKeyValueDB Database, TransactionLogCapture Capture,
+public sealed record ActivationDatabase(string Name, BTreeKeyValueDB Database, TransactionLogCapture Capture,
     ICanonicalTrlStorage Storage, TrlSuccessor Genesis, TransactionLogPosition RestoredBase,
     Func<uint, string> KeyForFile);
 

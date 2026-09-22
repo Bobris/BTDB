@@ -18,7 +18,7 @@ namespace BTDB.Replication.Azure;
 
 /// <summary>Immutable numeric PVL/KVI files plus a separately selected canonical TRL inventory.
 /// Publication is conditional create with atomic SHA metadata. Restore requires no authority.</summary>
-internal sealed class AzureCheckpointStorage(BlobContainerClient container, string prefix,
+public sealed class AzureCheckpointStorage(BlobContainerClient container, string prefix,
     IRemoteFileCollection canonical, LeaseAuthority? authority = null) : IRemoteMaintenanceStorage
 {
     string Directory => string.IsNullOrEmpty(prefix) ? "files/" : prefix.TrimEnd('/') + "/files/";

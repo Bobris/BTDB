@@ -10,9 +10,9 @@ using Microsoft.Extensions.Hosting;
 
 namespace BTDB.Replication.Http;
 
-/// <summary>Internal composition while the application/storage contracts are still internal. The host registers
-/// IReplicationNodeHost, ILeaderRecordStorage, IReplicationLeaseStorage and a qualified IReplicationScheduler.</summary>
-internal static class ReplicationHosting
+/// <summary>Registers one hosted replication node. The application registers IReplicationNodeHost,
+/// ILeaderRecordStorage, IReplicationLeaseStorage and a qualified IReplicationScheduler as singleton services.</summary>
+public static class ReplicationHosting
 {
     public static IServiceCollection AddBTDBReplication(this IServiceCollection services, ReplicationNodeOptions options,
         int maximumClockDriftPpm, TimeSpan safetyMargin, int maximumConcurrentPeerRequests = 32)

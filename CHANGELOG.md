@@ -17,6 +17,11 @@
 
 ### Changed
 
+- Expose public replication application, restore/maintenance and storage contracts, Azure adapters, and ASP.NET
+  hosting extensions. Run the subprocess host without friend-assembly access. Keep authority construction/renewal,
+  election transitions and peer sessions internal; redact credentials from public leader/lease record strings.
+  Document host ownership and provider/clock requirements. Replication projects remain non-packable pending qualification.
+
 - Add real subprocess replication qualification against Azurite: leader process death and lease-expiry takeover,
   publication of a matching optimistic tail without handler reexecution, cold restore and continued HTTP comparison,
   plus process termination for a divergent follower.

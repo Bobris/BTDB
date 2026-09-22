@@ -9,6 +9,5 @@
         <FrameworkReference Include="Microsoft.AspNetCore.App"/>
         <ProjectReference Include="../BTDB.Replication/BTDB.Replication.csproj"/>
         <InternalsVisibleTo Include="BTDB.Replication.Http.Test"/>
-        <InternalsVisibleTo Include="BTDB.Replication.Process.Test"/>
     </ItemGroup>
 </Project>

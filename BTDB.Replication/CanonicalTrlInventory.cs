@@ -13,7 +13,7 @@ namespace BTDB.Replication;
 /// the database-scoped genesis identity; a missing published root is an error, not permission to initialize again.
 /// A version change or missing dependency fails this attempt; the owner may rediscover in a new attempt.
 /// </summary>
-internal sealed class CanonicalTrlInventory : ICheckpointStorage
+public sealed class CanonicalTrlInventory : ICheckpointStorage
 {
     readonly ICanonicalTrlStorage _storage;
     readonly Dictionary<uint, TrlHead> _byId;

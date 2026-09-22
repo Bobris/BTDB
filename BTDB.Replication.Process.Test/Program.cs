@@ -48,7 +48,7 @@ internal static class Program
         await using var app = builder.Build();
         app.MapBTDBReplication();
         // Test-only controls exist only in this non-packable executable, bound to loopback.
-        app.MapGet("/test/state", () => node.Status(app.Services.GetRequiredService<ReplicationNodeCoordinator>().Role));
+        app.MapGet("/test/state", () => node.Status());
         app.MapPost("/test/apply/{id:long}/{value:int}", async (long id, int value) =>
         {
             await node.ApplyAsync(checked((ulong)id), checked((byte)value));

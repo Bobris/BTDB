@@ -1,6 +1,6 @@
 # BTDB.Replication implementation plan
 
-Date: 2026-09-22. Status: core capture, native restore/checkpoint publication, Azure storage adapters and M4 node coordination are implemented internally. Prepared handoff, leader-only genesis/startup schema and live schema detachment are implemented. Remaining lifecycle APIs, Azure TRL pruning, public API promotion and production qualification remain.
+Date: 2026-09-22. Status: core capture, native restore/checkpoint publication, Azure storage adapters and M4 node coordination are implemented internally. Prepared handoff, leader-only genesis/startup schema and live schema detachment are implemented. Remaining lifecycle APIs, Azure TRL pruning, operational APIs and production qualification remain.
 See [Testing.md](Testing.md) for current evidence and limitations. An in-process multi-node coordinator now exercises the actual components together.
 
 ## Scope and source of truth
@@ -402,7 +402,7 @@ interface to ASP.NET Core/Kestrel and HTTP requests. Every request authenticates
 post-await revalidation rejects replaced leader sessions. Bounded control/range messages, immediate overload rejection,
 no redirects, cancellation through body reads and explicit missing-file results preserve the existing core behavior.
 Real loopback tests cover these boundaries and compare native BTDB histories across rotation/rollback/batching.
-Internal `AddBTDBReplication`/`MapBTDBReplication` extensions now compose the coordinator, leases and transport.
+Public `AddBTDBReplication`/`MapBTDBReplication` extensions now compose the coordinator, leases and transport.
 Startup waits for Kestrel, missing routes fail before contention, shutdown fences synchronously before joining cleanup,
 and restart/fatal worker exits stop the host. The host supplies the qualified clock, storage and application interfaces.
 Real hosted tests exercise these transitions, including a provider that ignores cancellation during renewal.
@@ -410,14 +410,18 @@ Real hosted tests exercise these transitions, including a provider that ignores 
 lease-expiry takeover, optimistic-tail publication without handler reexecution, cold restore and subsequent comparison.
 A divergent follower exits through the hosted restart path. This exposed and fixed replication restore rotating an
 exact committed EOF instead of appending in the leader's existing native file.
-Public contract promotion, readiness/metrics, broader multi-process fault schedules and production acceptance remain.
+The host, restore/maintenance and provider contracts are now public; Azure adapters expose these ports directly.
+The subprocess application has no friend-assembly access and compiles/runs exclusively against this public surface.
+Authority construction/renewal and coordinator/election/peer-session machinery remain internal. Credential-bearing
+public records redact `ToString` output, and the public hosting guide documents ownership and clock/storage contracts.
+Readiness/metrics, broader multi-process fault schedules, release packaging and production acceptance remain.
 
 1. Implement the Azure adapter against the qualified M1 semantics, with conditional immutable create/SHA reconciliation,
    opaque tokens, explicit ambiguity and no
    hidden conditional-write retries. Isolate authority traffic from data transfers. Run reusable storage suites
    against real Azure, including response loss and stale in-flight operations.
-2. Promote the internal ASP.NET Core/Kestrel hosting and application contracts to a reviewed public API.
-   `AddBTDBReplication`, `MapBTDBReplication` and hosted startup/shutdown are implemented internally.
+2. Public ASP.NET Core/Kestrel hosting, application/restore/maintenance contracts and storage adapters are implemented
+   and exercised by the subprocess consumer without internal access. Keep release packaging gated on qualification.
    Extend the implemented subprocess crash/divergence tests to network partitions, process suspension, rolling-upgrade
    handoff and production deployment scenarios.
 3. Add bounded/redacted diagnostics, readiness, progress and recovery metrics, configuration validation and examples
@@ -443,7 +447,7 @@ remaining limitations are explicit. Only then update the README from architectur
 - Protocol safety and measured performance are separate exit criteria. Benchmark disabled replication as well as
   enabled paths, and do not infer production latency or GC improvements from allocation measurements alone.
 
-The next work is public API promotion and broader multi-process/production qualification (M7), plus Azure retained-root discovery before pruning canonical TRL links. The internal HTTP adapter, DI/host lifecycle and real socket/host component tests and subprocess crash/divergence scenarios are implemented; public contracts and operational acceptance remain. The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
+The next work is readiness/progress observability and broader multi-process/production qualification (M7), plus Azure retained-root discovery before pruning canonical TRL links. The HTTP adapter, public DI/host/provider contracts, real socket/host component tests and subprocess crash/divergence scenarios are implemented; operational acceptance and release packaging remain. The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
 [M1Evidence.md](M1Evidence.md) records the tested mechanisms and their integration preconditions. KVI publication
 and restore follow the existing M3 ordering; there is no separate KVI ancestry/selection prerequisite for M2. Do not begin with
 HTTP controllers or reuse unconditional Azure uploads as canonical publication.

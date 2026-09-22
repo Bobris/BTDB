@@ -1,7 +1,7 @@
 # Replication subprocess qualification
 
 This non-packable test assembly doubles as a loopback-only node executable. The tests launch independent .NET
-processes and exercise the actual coordinator, ASP.NET hosted integration, HTTP peer transport, native BTDB and
+processes using only the public application/hosting/provider contracts (no friend-assembly access), and exercise the actual coordinator, ASP.NET hosted integration, HTTP peer transport, native BTDB and
 Azure lease/TRL adapters against an isolated Azurite instance. Test controls and the injected publication gate exist
 only in this project; they are not production endpoints or protocol fields.
 
@@ -29,3 +29,6 @@ Limits: these tests use local Azurite and loopback sockets, not live Azure or pr
 in-memory and process-isolated; killing a process discards its entire cache. The test scheduler uses Stopwatch and
 serialized timers for this non-suspended workload; it is not a production clock qualification. Broader partitions,
 process suspension, rolling-upgrade handoff and workload/restore performance remain separate acceptance work.
+
+`PublicHostingApiTest` guards that external-consumer boundary, internal authority acquisition/renewal and transition
+types, and credential redaction in public record strings. See the [public hosting guide](../Doc/ReplicationHosting.md).

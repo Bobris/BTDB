@@ -5,7 +5,11 @@ using System.Threading.Tasks;
 
 namespace BTDB.Replication;
 
-internal sealed record LeaseGrant(string Handle, TimeSpan GuaranteedDuration);
+/// <summary>Provider-confirmed lease. Handle is a credential and is deliberately excluded from ToString.</summary>
+public sealed record LeaseGrant(string Handle, TimeSpan GuaranteedDuration)
+{
+    public override string ToString() => $"LeaseGrant {{ GuaranteedDuration = {GuaranteedDuration} }}";
+}
 
 /// <summary>
 /// Provider lease operations. Null means ownership was not confirmed (including an ambiguous response).
@@ -13,13 +17,13 @@ internal sealed record LeaseGrant(string Handle, TimeSpan GuaranteedDuration);
 /// or release the new lease. A possibly landed acquire is reconciled by the adapter before returning a grant.
 /// Renewal is bound to exactly the supplied handle. Durations are conservative bounds measured from dispatch.
 /// </summary>
-internal interface IReplicationLeaseStorage
+public interface IReplicationLeaseStorage
 {
     ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation);
     ValueTask<TimeSpan?> RenewAsync(string handle, CancellationToken cancellation);
 }
 
-internal interface IReplicationLeaseTransferStorage
+public interface IReplicationLeaseTransferStorage
 {
     ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation);
 }

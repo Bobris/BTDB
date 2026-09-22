@@ -11,12 +11,14 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.Replication;
 
-internal enum ReplicationNodeRole { Restoring, Follower, Activating, Leader, RestartRequired, Stopped }
+public enum ReplicationNodeRole { Restoring, Follower, Activating, Leader, RestartRequired, Stopped }
 
-internal sealed record ReplicationNodeOptions(string ClusterId, string Endpoint, TimeSpan PollInterval,
+public sealed record ReplicationNodeOptions(string ClusterId, string Endpoint, TimeSpan PollInterval,
     TimeSpan LeaseRetryInterval, TimeSpan RequestTimeout, TimeSpan ConfirmationDuration, ulong ApplicationGeneration, TimeSpan? CompactionInterval = null);
 
-internal interface IReplicationNodeHost
+/// <summary>Application-owned restore, event progress and lifecycle integration. Databases and input processing
+/// remain owned by the host. Callbacks may run concurrently with local application work; publish progress atomically.</summary>
+public interface IReplicationNodeHost
 {
     // Reuse ordinary initialization/open; dispose a failed attempt before allowing a restore retry.
     ValueTask<IReadOnlyList<ActivationDatabase>> RestoreAsync(CancellationToken cancellation);
@@ -29,6 +31,7 @@ internal interface IReplicationNodeHost
     // The database remains owned by the application; only cluster coordination stops.
     void DatabaseRemoved(string database);
     // Construct a leader-session adapter with this authority; reuse the database's existing file set and export path.
+    // The publisher is borrowed and owned by the coordinator. Do not dispose it or run a separate publication loop.
     ReplicationMaintenance? CreateMaintenance(ActivationDatabase database, CanonicalTrlPublisher publisher,
         LeaseAuthority authority) => null;
     void SchemaDetached(string database) { }

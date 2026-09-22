@@ -15,7 +15,7 @@ namespace BTDB.Replication.Azure;
 /// <summary>Database-scoped canonical TRLs. Committed prefix blocks are reused; only the partial final block
 /// and appended bytes are staged. Unique block IDs keep concurrent/stale staging from changing a winning intent.
 /// One conditional block-list commit atomically installs bytes and authority metadata.</summary>
-internal sealed class AzureCanonicalTrlStorage(BlobContainerClient container, string prefix) : ICanonicalTrlStorage
+public sealed class AzureCanonicalTrlStorage(BlobContainerClient container, string prefix) : ICanonicalTrlStorage
 {
     const int BlockSize = 4 * 1024 * 1024;
     BlockBlobClient Blob(string key)

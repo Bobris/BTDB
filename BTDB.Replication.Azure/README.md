@@ -1,6 +1,6 @@
 # Azure replication adapters
 
-This project implements the Azure SDK boundary for the existing internal replication components:
+This project implements the Azure SDK boundary for the replication components through public provider contracts:
 
 - `AzureLeaderStorage`: finite lease acquisition/renewal and lease-plus-ETag leader JSON replacement.
 - `AzureCanonicalTrlStorage`: canonical metadata/read ranges and atomic conditional native TRL append/adoption.
@@ -10,8 +10,8 @@ This project implements the Azure SDK boundary for the existing internal replica
 Supply authenticated `BlobClient` / `BlobContainerClient` instances, the database prefix, initial leader JSON and
 configuration. Configure SDK clients with `Retry.MaxRetries = 0`; protocol components own conditional-write ambiguity
 and retries. Use separate authority/data clients so large transfers do not occupy the authority connection pool.
-Authentication and container provisioning are supplied by the host. The project remains internal and non-packable,
-matching the current replication API; it does not add another local file collection or a new database-open algorithm.
+Authentication and container provisioning are supplied by the host. The adapters and their provider contracts are public; the project remains non-packable
+while production qualification continues. See the [public hosting guide](../Doc/ReplicationHosting.md); it does not add another local file collection or a new database-open algorithm.
 
 The initial leader JSON has `format: 1`, the expected `clusterId`, `term: 0`, `revision: 0`,
 `applicationGeneration: 0` and `databaseNames: []`. Pass a fresh leadership session ID and API key on every acquisition.

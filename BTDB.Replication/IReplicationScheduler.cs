@@ -3,7 +3,7 @@ using System;
 namespace BTDB.Replication;
 
 /// <summary>Node-scoped monotonic scheduling. Callbacks must be serialized by the implementation.</summary>
-internal interface IReplicationScheduler
+public interface IReplicationScheduler
 {
     TimeSpan Elapsed { get; }
 

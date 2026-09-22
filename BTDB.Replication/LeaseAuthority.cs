@@ -5,8 +5,9 @@ namespace BTDB.Replication;
 /// <summary>
 /// Conservative local lease deadline. The supplied monotonic clock must include process/OS pauses and remain
 /// within the configured rate bound. This is not a lease client or proof that the leader record was selected.
+/// Instances are supplied by the coordinator; callers may inspect or fence them, never create or renew them.
 /// </summary>
-internal sealed class LeaseAuthority
+public sealed class LeaseAuthority
 {
     readonly object _lock = new();
     const long Scale = 1_000_000;
@@ -20,7 +21,7 @@ internal sealed class LeaseAuthority
     bool _held;
     bool _fenced;
 
-    public LeaseAuthority(IReplicationScheduler clock, int maximumClockDriftPpm, TimeSpan safetyMargin)
+    internal LeaseAuthority(IReplicationScheduler clock, int maximumClockDriftPpm, TimeSpan safetyMargin)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maximumClockDriftPpm);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(maximumClockDriftPpm, Scale);
@@ -47,7 +48,7 @@ internal sealed class LeaseAuthority
     public TimeSpan Deadline { get { lock (_lock) return TimeSpan.FromTicks(_deadline); } }
 
     /// <summary>Call immediately before dispatch, not when the acquire/renew response arrives.</summary>
-    public long BeginRequest()
+    internal long BeginRequest()
     {
         lock (_lock)
         {
@@ -58,7 +59,7 @@ internal sealed class LeaseAuthority
         }
     }
 
-    public bool AcceptSuccess(long request, TimeSpan guaranteedLeaseDuration)
+    internal bool AcceptSuccess(long request, TimeSpan guaranteedLeaseDuration)
     {
         lock (_lock)
         {
@@ -97,14 +98,14 @@ internal sealed class LeaseAuthority
     /// Upper bound, in this clock's ticks, on a peer window measured by another clock with the same rate bound.
     /// Used both to fit a grant inside authority and to wait out grants before an early lease transfer.
     /// </summary>
-    public TimeSpan BoundPeerWindow(TimeSpan peerDuration)
+    internal TimeSpan BoundPeerWindow(TimeSpan peerDuration)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(peerDuration.Ticks);
         var numerator = (Int128)peerDuration.Ticks * _fastRate;
         return TimeSpan.FromTicks(checked((long)((numerator + _slowRate - 1) / _slowRate)));
     }
 
-    public bool CanGrant(TimeSpan peerDuration)
+    internal bool CanGrant(TimeSpan peerDuration)
     {
         lock (_lock) return IsValid &&
             (Int128)_clock.Elapsed.Ticks + BoundPeerWindow(peerDuration).Ticks < _deadline;

@@ -12,7 +12,7 @@ using BTDB.StreamLayer;
 namespace BTDB.Replication;
 
 // Local storage operations never implicitly fetch remote files. Remote discovery and prefetch are explicit.
-internal sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsyncDisposable
+public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsyncDisposable
 {
     volatile ConcurrentDictionary<uint, RemoteInventoryFile> _remoteFiles = new();
     readonly SemaphoreSlim _initialization = new(1);

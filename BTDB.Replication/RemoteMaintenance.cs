@@ -9,12 +9,12 @@ using BTDB.ODBLayer;
 
 namespace BTDB.Replication;
 
-internal sealed record RemoteMaintenanceFile(string Key, uint FileId, KVFileType FileType, string Version,
+public sealed record RemoteMaintenanceFile(string Key, uint FileId, KVFileType FileType, string Version,
     bool RetainForDiscovery = false);
 
 /// <summary>Physical database-scoped inventory. Deletion and protection check live authority at dispatch.
 /// Protection changes the object's version conditionally, so an earlier in-flight delete cannot erase a reused PVL.</summary>
-internal interface IRemoteMaintenanceStorage : ICheckpointStorage
+public interface IRemoteMaintenanceStorage : ICheckpointStorage
 {
     IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation);
     ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation);
@@ -66,7 +66,7 @@ internal sealed class RemoteGarbageCollector(IRemoteMaintenanceStorage storage, 
 
 /// <summary>One database/leader session. Local compaction is scheduled separately and never receives this lane's
 /// cancellation. Retains exactly one native export snapshot across unresolved publication; releases it on shutdown.</summary>
-internal sealed class ReplicationMaintenance(BTreeKeyValueDB database, ReplicationFileSet files,
+public sealed class ReplicationMaintenance(BTreeKeyValueDB database, ReplicationFileSet files,
     CanonicalTrlPublisher canonical, IRemoteMaintenanceStorage storage, LeaseAuthority authority,
     IReplicationScheduler clock, TimeSpan interval, TimeSpan deletionDelay,
     IObjectDB? objects = null, Func<LeakRemovalCandidates, CancellationToken, ValueTask>? publishLeakEvent = null) : IDisposable

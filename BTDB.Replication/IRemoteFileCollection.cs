@@ -10,12 +10,12 @@ namespace BTDB.Replication;
 /// FileId and FileType come from the numeric filename and its extension, without reading the native header.
 /// Higher IDs order TRLs and KVIs within their respective sequences. Replication does not use native generation.
 /// Sha256, when present, is the whole-file hexadecimal checksum of a sealed object.</summary>
-internal sealed record RemoteFile(uint FileId, KVFileType FileType, ulong Length, string Version,
+public sealed record RemoteFile(uint FileId, KVFileType FileType, ulong Length, string Version,
     bool IsSealed, string? Sha256);
 
 /// <summary>A remote inventory, distinct from the local cache even when numeric IDs coincide.
 /// The adapter owns authority, conditional I/O and conditional creation and SHA-metadata reconciliation.</summary>
-internal interface IRemoteFileCollection
+public interface IRemoteFileCollection
 {
     IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation);
 

@@ -58,7 +58,8 @@ internal sealed class TestNodeHost(string endpoint, ICanonicalTrlStorage canonic
     }
     public LeaderTrlProgress? GetProgress(string database) { lock (_progressLock) return _progress; }
     public void RequestRestart(string reason) => Console.Error.WriteLine("RESTART " + reason);
-    public void ReportStatus(ReplicationNodeRole role) { }
+    public ReplicationNodeRole Role { get; private set; } = ReplicationNodeRole.Restoring;
+    public void ReportStatus(ReplicationNodeRole role) => Role = role;
     public void DatabaseRemoved(string database) { }
     public ValueTask<ulong> CaptureInitializationCursorAsync(string database, CancellationToken cancellation) => ValueTask.FromResult(0ul);
     public ValueTask PrepareSchemaAsync(ActivationDatabase database, LeaseAuthority authority, CancellationToken cancellation)
@@ -95,10 +96,10 @@ internal sealed class TestNodeHost(string endpoint, ICanonicalTrlStorage canonic
         lock (_progressLock) _progress = new(read.GetCommitUlong(), end.FileId, end.Offset);
     }
 
-    public NodeStatus Status(ReplicationNodeRole role)
+    public NodeStatus Status()
     {
         var db = _database;
-        if (db == null) return new(role.ToString(), 0, -1, _applied, 0, 0, 0, 0);
+        if (db == null) return new(Role.ToString(), 0, -1, _applied, 0, 0, 0, 0);
         using var read = db.StartReadOnlyTransaction();
         var id = read.GetCommitUlong();
         using var cursor = read.CreateCursor();
@@ -106,7 +107,7 @@ internal sealed class TestNodeHost(string endpoint, ICanonicalTrlStorage canonic
         var value = id != 0 && cursor.FindExactKey([checked((byte)id)]) ? cursor.GetValueSpan(ref buffer)[0] : -1;
         var completed = _capture.Completed;
         var acknowledged = _capture.Acknowledged;
-        return new(role.ToString(), id, value, _applied, completed.FileId, completed.Offset,
+        return new(Role.ToString(), id, value, _applied, completed.FileId, completed.Offset,
             acknowledged.FileId, acknowledged.Offset);
     }
     public void PausePublication() => _storage.Paused = true;

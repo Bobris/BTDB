@@ -8,9 +8,9 @@ namespace BTDB.Replication;
 /// M1 candidate metadata, committed atomically with unchanged native TRL bytes. Database/stream identity is scoped
 /// by the namespace. A successor key is never reused; its file ID is the native identity used when restoring it.
 /// </summary>
-internal sealed record TrlSuccessor(string Key, uint FileId);
+public sealed record TrlSuccessor(string Key, uint FileId);
 
-internal sealed record TrlMetadata(ulong Term, TrlSuccessor? Next = null)
+public sealed record TrlMetadata(ulong Term, TrlSuccessor? Next = null)
 {
     public IReadOnlyDictionary<string, string> Encode()
     {

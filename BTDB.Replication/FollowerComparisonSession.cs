@@ -5,7 +5,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.Replication;
 
-internal readonly record struct LeaderTrlProgress(ulong EventId, uint TrlFileId, uint TrlPosition)
+public readonly record struct LeaderTrlProgress(ulong EventId, uint TrlFileId, uint TrlPosition)
 {
     public TransactionLogPosition Position => new(TrlFileId, TrlPosition);
 }

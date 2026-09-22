@@ -1,6 +1,6 @@
 # HTTP replication peer adapter
 
-This internal, non-packable adapter connects `IReplicationPeerTransport` to ASP.NET Core/Kestrel and `HttpClient`.
+This non-packable adapter connects `IReplicationPeerTransport` to ASP.NET Core/Kestrel and `HttpClient`.
 The provider-neutral coordinator continues to own leader authentication, grants, comparison, schema detachment and
 handoff. It adds no application execution, Blob fallback, background retries or canonical state.
 
@@ -8,8 +8,9 @@ handoff. It adds no application execution, Blob fallback, background retries or 
 
 Register the host-owned `IReplicationNodeHost`, `ILeaderRecordStorage`, `IReplicationLeaseStorage` and
 `IReplicationScheduler` as singletons, then call `services.AddBTDBReplication(nodeOptions, maximumClockDriftPpm,
-safetyMargin)`. Call `app.MapBTDBReplication()` before starting the ASP.NET host. These extension methods remain
-internal alongside the underlying application/storage contracts. They register one HTTP transport, lease controller,
+safetyMargin)`. Call `app.MapBTDBReplication()` before starting the ASP.NET host. These extension methods are
+public alongside the underlying application/storage contracts; see the
+[public hosting guide](../Doc/ReplicationHosting.md). They register one HTTP transport, lease controller,
 coordinator and hosted service per host; duplicate node/route registration and invalid options fail early. A missing
 route prevents hosted-service startup and lease acquisition.
 
@@ -22,11 +23,11 @@ A coordinator-requested rebuild or unexpected worker failure requests host shutd
 the background task even when the host uses the `Ignore` background-failure policy.
 
 The host must still provide a qualified monotonic scheduler (including the specified pause/drift behavior), storage,
-application execution and process restart policy. No wall-clock fallback is installed by DI. Public contract promotion,
-release packaging, readiness/progress metrics and bounded process termination policy remain future work.
+application execution and process restart policy. No wall-clock fallback is installed by DI. Release packaging, readiness/progress metrics and bounded process termination policy remain future work.
 
-Manual construction remains available: map `transport.Map(app)`, start Kestrel, then run the coordinator with that
-transport. Stop and await coordination before disposing the host or transport.
+The coordinator, transport and wire DTOs remain internal implementation details. External applications compose the
+node through the public extensions and host/provider interfaces. The subprocess application has no friend-assembly
+access and exercises this public path.
 
 The advertised endpoint is an absolute HTTPS origin without credentials, query, fragment or path. HTTP is accepted
 only for loopback tests. Requests go to `POST /_btdb/replication`. Configure certificates and external routing on the
@@ -68,6 +69,6 @@ renewal, restart-required shutdown, fatal worker failure, missing routes and inv
 The HTTP suite consists of socket-level component tests in one process. The separate
 [subprocess suite](../BTDB.Replication.Process.Test/README.md) now covers leader death, lease-expiry takeover,
 optimistic-tail publication, cold restore and divergence against Azurite. Broader fault schedules, TLS/proxy deployment,
-public contract promotion, operational metrics, large-cluster load and live-Azure recovery/throughput qualification
+operational metrics, large-cluster load and live-Azure recovery/throughput qualification
 remain required before production release. This adapter does not change the remaining exact-skip, backup-reset or
 Azure retained-root/TRL pruning work (canonical TRL pruning remains disabled in the Azure adapter).

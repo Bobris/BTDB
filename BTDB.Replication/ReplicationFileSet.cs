@@ -14,7 +14,7 @@ namespace BTDB.Replication;
 /// Local IDs must not be reused during this session. Receipts retain no bytes, file handles or roots.
 /// Serialize publication/receipt changes externally; restore finishes before publication starts.
 /// Remote cleanup must protect receipt destinations while this session may reuse them.</summary>
-internal sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage local, ICheckpointStorage remote, int maxConcurrentDownloads = 4,
+public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage local, ICheckpointStorage remote, int maxConcurrentDownloads = 4,
     IKeyValueDBLogger? logger = null)
 {
     sealed class Placement(ulong length, uint remoteId, bool confirmed)
