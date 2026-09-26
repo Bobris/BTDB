@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,7 +11,8 @@ namespace BTDB.Replication;
 
 /// <summary>
 /// Selected remote TRL inventory adapter. Follow selected links, never an object listing or its maximum ID. The caller supplies
-/// the database-scoped genesis identity; a missing published root is an error, not permission to initialize again.
+/// the database-scoped genesis identity; storage may resolve a retained root from a published checkpoint. A missing
+/// published root is an error, not permission to initialize again.
 /// A version change or missing dependency fails this attempt; the owner may rediscover in a new attempt.
 /// </summary>
 public sealed class CanonicalTrlInventory : IRemoteFileCollection
@@ -27,6 +29,11 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
 
     public TrlHead Tail { get; }
 
+    internal TrlSuccessor Root => new(_byId.Values.First().Key, _byId.Values.First().FileId);
+
+    internal TrlHead GetHead(uint fileId) => _byId.TryGetValue(fileId, out var head) ? head :
+        throw new FileNotFoundException("TRL is outside the selected canonical inventory.");
+
     internal bool IsFrom(IReplicationStorage storage) => ReferenceEquals(_storage, storage);
 
     public static ValueTask<CanonicalTrlInventory> DiscoverAsync(IReplicationStorage storage,
@@ -38,7 +45,7 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
         var byId = new Dictionary<uint, TrlHead>();
         TrlHead tail;
         var keys = new HashSet<string>(StringComparer.Ordinal);
-        var current = genesis;
+        var current = await storage.ResolveRecoveryRootAsync(genesis, cancellation).ConfigureAwait(false);
         ulong previousTerm = 0;
         uint previousId = 0;
         while (true)

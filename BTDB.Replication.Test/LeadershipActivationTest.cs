@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -40,8 +41,8 @@ public class LeadershipActivationTest
         candidate.Capture.Acknowledge(candidate.Capture.Completed); // Direct peer comparison is ahead of Blob.
         var reads = 0;
         remote.BeforeRangeRead = _ => reads++;
-        var publishers = await LeadershipActivation.ActivateAsync(new(Lease(clock, "new"), 2, "new-session", ["main"]),
-            [Input(candidate, remote)]);
+        var publishers = (await LeadershipActivation.ActivateAsync(new(Lease(clock, "new"), 2, "new-session", ["main"]),
+            [Input(candidate, remote)]))!;
         using var activated = Assert.Single(publishers);
         Assert.True(reads > 0);
         Assert.Equal(published, activated.PublishedPosition);
@@ -50,6 +51,74 @@ public class LeadershipActivationTest
         Assert.Equal(candidate.Capture.Completed, activated.PublishedPosition);
         Assert.All(remote.Requests.Where(r => r.Write.ExpectedToken == null && r.Write.Metadata.Term == 2),
             r => Assert.StartsWith("term2/", r.Write.Key));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LaggingCandidateWaitsForLocalExecutionAndResumesValidation(bool tiny)
+    {
+        using var leader = await Node.Create(tiny);
+        using var candidate = await Node.Create(tiny);
+        var remote = new Storage();
+        var clock = new DeterministicScheduler(704);
+        using var original = new CanonicalTrlPublisher(leader.Db, leader.Capture, remote, Lease(clock, "old"), 1, Key);
+        for (ulong id = 1; id <= 6; id++) await leader.Write(id, (byte)id);
+        for (ulong id = 1; id <= 3; id++) await candidate.Write(id, (byte)id);
+        Assert.Equal(TrlPublishResult.Published, await original.PublishNextAsync());
+        var selected = new SelectedLeadership(Lease(clock, "new"), 2, "new-session", ["main"]);
+        var validated = new Dictionary<string, TransactionLogPosition>(StringComparer.Ordinal);
+        var writes = remote.Requests.Count;
+        // A matching but shorter local prefix is not divergence: no restore, no adoption and no publisher yet.
+        Assert.Null(await LeadershipActivation.ActivateAsync(selected, [Input(candidate, remote)], validated: validated));
+        Assert.Equal(writes, remote.Requests.Count);
+        var checkpoint = validated["main"];
+        Assert.Equal(candidate.Capture.Completed, checkpoint);
+        for (ulong id = 4; id <= 6; id++) await candidate.Write(id, (byte)id);
+        var firstRead = uint.MaxValue;
+        remote.BeforeRangeRead = offset => firstRead = Math.Min(firstRead, offset);
+        using var activated = Assert.Single((await LeadershipActivation.ActivateAsync(selected, [Input(candidate, remote)],
+            validated: validated))!);
+        Assert.Equal(original.PublishedPosition, activated.PublishedPosition);
+        Assert.Equal(2ul, activated.Tail!.State.Metadata.Term);
+        if (checkpoint.FileId == original.PublishedPosition.FileId) Assert.Equal(checkpoint.Offset, firstRead);
+    }
+
+    [Fact]
+    public async Task LaggingCandidateWithDivergentPrefixStillRequiresRestore()
+    {
+        using var leader = await Node.Create(false);
+        using var candidate = await Node.Create(false);
+        var remote = new Storage();
+        var clock = new DeterministicScheduler(705);
+        using var original = new CanonicalTrlPublisher(leader.Db, leader.Capture, remote, Lease(clock, "old"), 1, Key);
+        for (ulong id = 1; id <= 4; id++) await leader.Write(id, (byte)id);
+        await candidate.Write(1, 1);
+        await candidate.Write(2, 9);
+        Assert.Equal(TrlPublishResult.Published, await original.PublishNextAsync());
+        await Assert.ThrowsAsync<InvalidDataException>(() => LeadershipActivation.ActivateAsync(
+            new(Lease(clock, "new"), 2, "session", ["main"]), [Input(candidate, remote)]).AsTask());
+    }
+
+    [Fact]
+    public async Task ValidationFollowsSelectedLinksAcrossReservedOddIds()
+    {
+        using var leader = await Node.Create(reservedOdd: true);
+        using var candidate = await Node.Create(reservedOdd: true);
+        var remote = new Storage();
+        var clock = new DeterministicScheduler(703);
+        using var original = new CanonicalTrlPublisher(leader.Db, leader.Capture, remote, Lease(clock, "old"), 1, Key);
+        for (ulong id = 1; id <= 3; id++)
+        {
+            await leader.Write(id, (byte)id);
+            await candidate.Write(id, (byte)id);
+        }
+        Assert.Equal(TrlPublishResult.Published, await original.PublishNextAsync());
+        Assert.True(original.PublishedPosition.FileId >= 5); // The chain continues 1 -> 5, skipping reserved 3.
+        var publishers = (await LeadershipActivation.ActivateAsync(new(Lease(clock, "new"), 2, "new-session", ["main"]),
+            [Input(candidate, remote)]))!;
+        using var activated = Assert.Single(publishers);
+        Assert.Equal(original.PublishedPosition, activated.PublishedPosition);
     }
 
     [Fact]
@@ -117,8 +186,8 @@ public class LeadershipActivationTest
             [Input(first, firstRemote), Input(second, secondRemote) with { Name = "other" }]).AsTask());
         Assert.Equal(firstCut.Offset, firstRemote.Blobs[firstOld.Tail!.Key].State.Length);
         secondRemote.BeforeRangeRead = null;
-        var publishers = await LeadershipActivation.ActivateAsync(selected,
-            [Input(first, firstRemote), Input(second, secondRemote) with { Name = "other" }]);
+        var publishers = (await LeadershipActivation.ActivateAsync(selected,
+            [Input(first, firstRemote), Input(second, secondRemote) with { Name = "other" }]))!;
         try
         {
             Assert.Equal(2, publishers.Count);
@@ -153,7 +222,7 @@ public class LeadershipActivationTest
         var selected = new SelectedLeadership(Lease(clock, "new"), 2, "session", ["main"]);
         await Assert.ThrowsAsync<IOException>(() => LeadershipActivation.ActivateAsync(selected, [Input(candidate, remote)]).AsTask());
         Assert.True(raced);
-        var publishers = await LeadershipActivation.ActivateAsync(selected, [Input(candidate, remote)]);
+        var publishers = (await LeadershipActivation.ActivateAsync(selected, [Input(candidate, remote)]))!;
         using var activated = Assert.Single(publishers);
         Assert.NotEqual(tail.State.Length, activated.Tail!.State.Length);
         Assert.Equal(candidate.Capture.Completed, activated.PublishedPosition);

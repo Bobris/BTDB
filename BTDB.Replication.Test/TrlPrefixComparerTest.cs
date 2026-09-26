@@ -22,7 +22,8 @@ public class TrlPrefixComparerTest
         public readonly InMemoryReplicationFileStorage Files = new();
         public readonly TransactionLogCapture Capture = new();
         public BTreeKeyValueDB Db = null!;
-        public static async Task<Node> Create(bool tiny = true, bool legacyEven = false)
+        // reservedOdd leaves an existing non-TRL file at ID 3, so the next odd TRL allocation skips it.
+        public static async Task<Node> Create(bool tiny = true, bool legacyEven = false, bool reservedOdd = false)
         {
             var node = new Node();
             NodeFixture.SeedNativeHeader(node.Files, new Guid("5d076258-e492-4931-a5b8-a19dc9fe6c76"));
@@ -34,6 +35,12 @@ public class TrlPrefixComparerTest
                 original.Remove();
                 var writer = new MemWriter(node.Files.ImportFile(2, "trl").GetAppenderWriter());
                 writer.WriteBlock(bytes);
+                writer.Flush();
+            }
+            if (reservedOdd)
+            {
+                var writer = new MemWriter(node.Files.ImportFile(3, "pvl").GetAppenderWriter());
+                writer.WriteBlock([1, 2, 3]);
                 writer.Flush();
             }
             node.Db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
@@ -68,6 +75,7 @@ public class TrlPrefixComparerTest
             cancellation.ThrowIfCancellationRequested();
             if (MissingFile == fileId) throw new FileNotFoundException("Leader no longer retains this TRL.");
             var file = files.GetFile(fileId) ?? throw new FileNotFoundException();
+            if (files.GetFileType(fileId) != KVFileType.TransactionLog) throw new FileNotFoundException("Not a leader TRL.");
             if (TruncateRead) return 0;
             if (offset > file.GetSize()) throw new IOException("Range is beyond leader EOF.");
             var count = (int)Math.Min((ulong)Math.Min(destination.Length, ReadChunkSize), file.GetSize() - offset);
@@ -115,6 +123,25 @@ public class TrlPrefixComparerTest
         using var reader = leader.Reader();
         Assert.Equal(TrlCompareResult.Matched,
             await new TrlPrefixComparer(follower.Files, follower.Capture).CompareAsync(reader, leader.Capture.Completed));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReservedOddIdIsSkippedByNativeLineageInsteadOfParity(bool legacyEven)
+    {
+        using var leader = await Node.Create(legacyEven: legacyEven, reservedOdd: true);
+        using var follower = await Node.Create(legacyEven: legacyEven, reservedOdd: true);
+        var start = follower.Capture.Acknowledged;
+        for (ulong id = 1; id <= 3; id++)
+        {
+            await leader.Write(id, (byte)id);
+            await follower.Write(id, (byte)id);
+        }
+        Assert.True(leader.Capture.Completed.FileId >= 5);
+        using var reader = leader.Reader();
+        var comparer = new TrlPrefixComparer(follower.Files, follower.Capture, start);
+        Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(reader, leader.Capture.Completed));
     }
 
     [Fact]

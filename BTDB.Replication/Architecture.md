@@ -497,10 +497,10 @@ sequence counter, native TRL position, event hash or checkpoint manifest is requ
 Add such fields only when a concrete counterexample satisfies the admission rule. Local allocation parity is already
 implemented; durable remote key non-reuse after deletion, restart and competing terms remains coordinator work.
 
-Leader-record revision/ETag is observation and CAS metadata, not part of authority identity. A same-term skip-list
+Leader-record revision/ETag is observation and CAS metadata, not part of authority identity. A same-term application-data
 update must not invalidate database adoption, existing frames, or resume ancestry. Observers reconcile newer control
 metadata within the same authority; they still validate lease freshness under B1. A revision change neither renews
-authority nor permits an older observation to overwrite newer skip decisions.
+authority nor permits an older observation to overwrite newer application data.
 
 Positions are ordered only within the same database/stream and proven native ancestry. Input cursor equality alone
 cannot compare branches or distinguish schema commits. Confirmation, remote durability and local execution are
@@ -636,8 +636,8 @@ rollback paths so required comparison bytes are not lost while the committed BTr
 
 Earlier committed transactions in a virtual memory batch survive rollback of a later transaction. ObjectDB/application
 state restoration remains part of the integration proof. For failures such as out-of-memory, the application chooses
-fail-fast and whether to request an exact-input skip marker; replication does not infer that policy. Marker persistence
-is optional application-directed control work and cannot delay required termination indefinitely or bypass lease fencing.
+its failure/termination policy. Any application metadata persistence is independent control work through the generic
+leader-data API; replication does not infer event outcomes or arbitrate a handler timeout against commit.
 
 ### Per-event TRL boundaries and independent batching
 
@@ -1163,13 +1163,7 @@ The election object is one small block blob, for example `cluster/leader.json`:
   "sessionId": "random-node-session-id",
   "applicationGeneration": 12,
   "databaseNames": ["main", "users", "jobs"],
-  "eventsToSkip": [
-    {
-      "databaseName": "jobs",
-      "eventId": "18446744073709551000",
-      "recordedAtUtc": "2026-09-07T12:00:00Z"
-    }
-  ],
+  "applicationData": {},
   "peerEndpoint": "http://10.42.1.17:8080/_btdb/replication",
   "apiKey": "base64url-random-256-bit-value"
 }
@@ -1187,12 +1181,11 @@ when it
 both holds the current lease ID and the JSON names its term and session. `revision` changes on record replacement;
 ordinary lease renewals do not rewrite the JSON or change its ETag.
 
-`eventsToSkip` holds rare event-consumption timeout decisions, keyed by database name and exact event ID in the one cluster-wide
-event stream. No per-entry stream identity is needed; the list belongs to the current cluster incarnation. IDs are encoded losslessly (strings in this JSON example). Empty clusters normally use an empty array.
-The current lease owner merges additions and cleanup through the serialized leader-record CAS lane, preserving all
-unrelated entries and authority fields. Takeover and handoff preserve the list. Updating it changes revision/ETag, not
-term or session; ordinary lease renewals still do not rewrite JSON. It is recovery control metadata, not database progress.
-See [Consumption timeout and restart](#consumption-timeout-and-restart) for interpretation and retention.
+`applicationData` is optional opaque JSON owned entirely by the application. Its contents have no replication
+semantics. The generic application-data API reads a version-bound snapshot and conditionally replaces only this field
+under the active leader's lease. Takeover and handoff preserve it. A write changes revision/ETag, not term/session;
+ordinary lease renewals still do not rewrite JSON. See [Consumption timeout and restart](#consumption-timeout-and-restart)
+for the application/replication responsibility boundary.
 
 `apiKey` is a randomly generated per-term secret used to authorize failover peer requests. Every trusted node can read
 it from Azure, so it authenticates participation in this storage trust domain rather than giving per-node identity. The
@@ -1507,12 +1500,12 @@ transaction is excluded or completed before capture; committed transactions in a
 individually eligible after validation. The memory publication boundary does not replace the TRL commit boundary.
 
 1. Determine `C`, the last consumed event in the currently selected canonical database boundary, after reconciling
-   pending publication. Load `eventsToSkip`. Verify the candidate's database/stream identity, canonical base lineage,
+   pending publication. Verify the candidate's database/stream identity, canonical base lineage,
    contiguous event coverage, checksums, committed transaction status, and structural agreement with every overlapping
    canonical event. Cached evidence must bind the actual adopted history; any mismatch rejects the candidate's tail.
 2. Exclude all optimistic events at or before `C`. Select the contiguous complete event groups strictly after `C`, up
-   to the captured committed head. If a pending skip entry conflicts with a locally applied event, use input recovery
-   from that event rather than copying it or dependent later effects. Missing/invalid groups likewise require recovery.
+   to the captured committed head. Missing/invalid groups require input recovery. Opaque application metadata does not
+   change this selection; application-owned event policies must supply eligible ordinary transaction history.
 3. Append only the selected complete event transactions after the adopted end in the new term's lineage. For example,
    canonical history through 102 plus locally committed events 101-105 copies only 103-105. Their boundaries already
    exist in TRL even if the memory batch spans 101-105; no batching-driven reframing or delta rebasing is needed.
@@ -2176,12 +2169,19 @@ required-work deadlines before relying on automatic recovery (B6).
 A conservative failover budget includes detection, remaining lease lifetime, backoff, authority/adoption, and required
 restore/replay. Measure warm and cold recovery separately; overlapping work may reduce the observed time. One failed
 active database gates cluster leadership. Per-database reads can remain available under their own read policy.
-Decision recorded 2026-09-14: use separate progress watchdogs for activation, application-reported transaction work,
-and Blob publication. Expire a configured no-progress deadline only when work is pending; an idle input is healthy,
+Decision updated 2026-09-22: replication uses separate progress watchdogs for activation and Blob publication.
+Application transaction execution and timeouts remain entirely application-owned. Expire a configured no-progress
+deadline only when work is pending; an idle input is healthy,
 and a restore that is advancing is not a stalled activation. An unhealthy leader fences canonical work and relinquishes
-authority through bounded host recovery. Startup restore happens as a follower, before lease contention. Failed
-activation uses increasing retry backoff to avoid repeatedly monopolizing authority. Application failure classification
-and optional skip decisions remain application-owned; a storage/activation stall is never itself a skip request.
+authority through bounded host recovery. Startup restore happens as a follower, before lease contention. A watchdog timeout
+immediately fences authority, renewal and readiness, then schedules fatal host recovery after a fixed configured
+`RestartDelay`, independently of blocked workers. This gives healthy followers time to acquire the expired lease
+before this process restarts. Once selected, the delayed restart survives worker completion and graceful shutdown;
+the coordinator cannot return early and trigger an earlier hosted-service restart. No persistent attempt counter or
+backoff file is needed. Startup still restores every required database before contention, but restore duration is not
+a guaranteed delay. Crashes outside watchdog recovery use the supervisor's restart policy.
+See [hosting configuration](../Doc/ReplicationHosting.md#pending-work-deadlines-and-fatal-recovery). Application failure classification
+and event timeout/skip mechanisms remain application-owned; a storage/activation stall never creates an event decision.
 
 Deployment policy must retain enough nodes eligible for the selected generation; the monotonic floor intentionally
 prevents old binaries from rescuing a failed new generation. Storage-account regional recovery is a separate B6 scope,
@@ -2194,66 +2194,32 @@ permissions. Numeric SLOs and thresholds are Q4.
 
 ### Consumption timeout and restart
 
-Source study on 2026-09-07: inspirecloud's Skymamba `DeadlockedEventConsumeHealthIssueAnalyzer` detects an event handler
-running for more than five minutes. It calls `IgnoreEvent.IgnoreEventAsync` before requesting restart through
-`EventConsumeTooLongException`, whose preferred action is `FastNonGracefulRestart`. `IgnoreEvent` writes empty marker
-blobs under `ignored-events-{SubCluster}`, named by event ID and, where applicable, company ID plus event type. Startup
-loads them and `ContinentEventChannel.ApplyEvent` bypasses matching handlers. Persistence errors are logged and swallowed,
-so the existing restart is still attempted if writing a marker fails. This class contains no time-based expiry; deployed
-storage lifecycle configuration was not established by this source study. Disaster recovery explicitly clears markers.
+Decision recorded 2026-09-22: application event timeouts, skips, execution/commit arbitration and restart policy are
+entirely application-owned. They are not replication mechanisms or pending replication work. BTDB neither watches
+application execution tokens nor requests/interprets skip markers, expires them, or suppresses a handler. The
+application remains responsible for identical ordinary transaction/rollback history and its recovery policy.
+Activation, Blob-publication and optional checkpoint-maintenance watchdogs observe replication work only.
+Maintenance measures forward completed steps within one cycle: the canonical cut, each PVL placement/protection,
+KVI allocation/publication, cleanup inventory and cleanup operations. Repeated earlier steps do not extend the
+budget. Cleanup retries retain the completed checkpoint, rather than restart a new cycle. The timer is off between
+cycles and before invoking the application-owned leak-event submission callback. A single whole-file upload or
+serialization is one step; configure the budget for the largest such operation. No byte-transfer progress is inferred.
 
-Application-selected recovery integration: the application may request an exact-input skip marker and process restart,
-using the leader JSON instead of separate marker blobs. The following is an optional mechanism, not automatic exception
-classification by BTDB. The application decides whether a handler timeout, out-of-memory or another failure calls for
-rollback, fail-fast, and possibly a skip marker. There is no mandatory five-minute handler timeout in replication.
-When this integration is enabled, a watchdog observes application-reported per-database execution tokens independently
-of the handler: attempt identity,
-current event identity, start time, and batch range. It measures the reported attempt with an injected monotonic clock; idle
-input, storage waits, and transaction commit stalls must not be mistaken for one poisonous application event.
+`ReplicationApplicationData` provides generic access to the opaque `applicationData` field in `leader.json`.
+Every node may read a version-bound snapshot; only the active local leader may conditionally replace its value.
+The write uses the snapshot ETag and the current lease, preserves every other field, and increments `revision`
+without changing term/session or database adoption. Reconciliation compares the exact intended document after an
+ambiguous/rejected reply. An unchanged reread cannot prove an outstanding write failed. Concurrent updates require
+an explicit reread/reconciliation by the application; the library never blindly rebases a pending write.
 
-When the application requests fatal leader recovery with an exact-input skip marker:
+The API exposes neither peer credentials nor raw leader-document editing. JSON contents, schema, interpretation and
+retention belong to the application. A JSON update is not atomic with a database transaction or external side effect,
+and does not alter canonical history, input cursors or speculative-tail selection. Published TRL remains authoritative.
+Takeover preserves application data without interpreting it. Existing unknown leader-document fields are preserved.
 
-1. Atomically fence that execution attempt and the session against later canonical commits/publication. A handler that
-   returns after timeout cannot commit. Completion racing the timeout must have one winner; do not record a skip for an
-   attempt whose successful transaction already won. Keep only the bounded authority/control work needed below.
-2. Persist the exact current event identity in `eventsToSkip` using the owned lease and leader-record ETag. Reconcile an
-   ambiguous response by rereading the exact conditional intent/list; do not treat a cancelled request as rejected. If authority
-   is lost, do not write as the old owner. No other events in its batch are marked as skipped.
-3. Request a bounded non-graceful process restart through the injected host port. Do not wait for the stuck handler to
-   cooperate or try to reuse its private BTree/TRL state. Stop renewal and fail over even if marker persistence fails;
-   report that failure, because another timeout/restart may be required. The host must prevent this session resuming.
-4. A successor reads the skip list before consuming recovery events. It restores the selected durable boundary and
-   processes outstanding events as ordinary individual log transactions; virtual memory batching may remain enabled.
-   For the named event it does not call the handler: it publishes the ordinary singleton metadata-only cursor commit
-   with `outcome=skipped`. The timed-out transaction has no partial canonical effect; earlier committed virtual-batch transactions remain committed. Followers replay that TRL.
-
-The timeout marker affects future application execution only; it never rewrites a transaction already in published
-canonical history. Canonical bytes remain authoritative even if a marker names an event already covered by them.
-A follower can avoid a listed handler speculatively and can report its own timeout to the leader, but cannot edit the
-leased JSON or decide canonical history. Its watchdog may restart that follower independently. A leader receiving a
-follower report must reconcile it with its own canonical progress; a follower timeout alone is not permission to undo
-an accepted leader outcome. Removed databases remain outside this mechanism's cluster coordination.
-
-Proposed automatic cleanup: retain a marker for at least one day from `recordedAtUtc`, and remove it only after the
-published database cursor has passed or includes that event (under the stream's ordering convention). The published
-history then contains the outcome and ordinary recovery does not execute the event again. Do not ignore an entry merely
-because its timestamp is old while the database is still behind it. Removed-database entries may be removed after the
-same age because names are never reused. Current-leader cleanup can be piggybacked on record writes, with a low-frequency
-sweep if needed; no per-renewal JSON write is required.
-
-Backup restore is an explicit new cluster incarnation: the operator deletes `leader.json` before starting the restored
-cluster and creates a new event stream. The old `eventsToSkip` list is intentionally discarded; event IDs in the new
-stream must not inherit old skip decisions. This is an offline restore procedure after stopping the previous cluster,
-not ordinary failover or a live leader-record deletion. The restored database contents provide the starting data; old
-stream cursors and authority are not interpreted as progress in the new stream. Initialization must bind the restored
-base to the new stream's starting cursor. Detailed backup import belongs to the recovery integration contract.
-Normal restart and election retain the existing stream and preserve `leader.json` skip entries.
-
-This defines the optional application-requested marker path, not a library-selected response to every failed transaction. Exact integration
-of watchdog/commit arbitration with authority fencing belongs to B1/B3. B6 still covers activation failure, storage or
-publication stalls without a handler identity, host restart guarantees, and failover/region budgets. Test timeout versus
-successful commit races, timeout in a batch, marker write failure/ambiguity, takeover preservation, follower reports,
-restart before skip publication, outages exceeding one day, and cleanup racing leader-record replacement.
+Backup restore is an operator procedure: scale the cluster to zero, copy the backup into the primary Blob storage,
+then scale up. Ordinary startup validates/restores the copied database files before contention. No dedicated backup
+import API, forced new application stream or separate leader-record-reset protocol is required.
 
 ## Testing strategy implied by the design
 
@@ -2283,7 +2249,7 @@ on B1, B3, B5, and B6 remain acceptance requirements until those mechanisms are 
 | Structural comparison/restart | Leader events 1-3 versus locally committed 1-5; virtual batching preserves transaction payloads; file identity checked separately; real mutations and skip outcomes mismatch; no pinned historical roots; restart rejects divergent files and reuses independently verified canonical files | I3, I4, I9 |
 | Optimistic tail adoption | Canonical 102 versus local 101-105 copies complete 103-105 transactions unchanged despite memory batch boundaries; overlap mismatch rejects; retry/crash never duplicates events | I2, I3, I5, I8 |
 | Invalid comparison cache | Missing/corrupt bytes reject confirmation and trigger restart/rebuild when unrecoverable | I3, I8, I9 |
-| Failed consumption | Identical rollback attempts/content/outcomes versus mismatch; no implicit skip or consumed-cursor advancement; application-directed fail-fast with/without marker; prior batch commits survive; verify ObjectDB caches/counters | I2, I3, I5, I8 |
+| Failed consumption | Identical rollback attempts/content/outcomes versus mismatch; no implicit skip or consumed-cursor advancement; application-owned failure policy; prior batch commits survive; verify ObjectDB caches/counters | I2, I3, I5, I8 |
 | Skip replay | Leader skip versus follower success and reverse; same-outcome exact match; crash before/after skip commit and publication; durable skip never invokes handler; unpublished skip may be re-decided after takeover | I2, I3, I5, I8 |
 | Follower acceptance | Exact match does no BTree work/copy; live input lag coalesces progress until local coverage; bootstrap replays selected canonical history; duplicate/gap/conflict; logical mismatch; equivalent transactions on different valid physical layouts | I2, I3 |
 | Restart recovery | Structural mismatch first/middle/last; fence racing a commit; host termination; canonical rebuild ignores divergent cache; fresh ObjectDB counters/caches; restart-loop diagnostics | I3, I4, I9 |
@@ -2300,8 +2266,8 @@ on B1, B3, B5, and B6 remain acceptance requirements until those mechanisms are 
 | Non-application publication | Follower waits before writer lock/TRL output; genesis predecessor CommitUlong; immediate complete-transaction publication including every required TRL range after any required prior tail; dependent local writes may proceed before CAS; immediate flush bypasses lazy batching without blocking Commit; delayed/ambiguous CAS and lost authority; cancellation and duplicate migration after wakeup | I1, I2, I5, I6 |
 | Detached liveness | No candidacy/lease acquisition/handoff after detachment even if DB set changes; leader absent for 15 monotonic minutes triggers graceful restart; valid leader resets timer, stale messages do not; long transaction delays graceful exit; detached work never promoted; incompatible restart remains ineligible | I1, I7, I11 |
 | Schema upgrade | Index add/remove in ordinary TRL; schema sequence advances with unchanged cursor; live follower detaches even when speculative ahead/behind; no later canonical frames or tail promotion; compatible startup replay/checkpoint works; old binary cannot reverse schema; crash before/after publication | I2, I7, I8, I11 |
-| Same-term control revision | Skip insertion/cleanup changes leader revision without readopting databases or invalidating frame/resume ancestry; delayed observations cannot undo newer skip decisions or renew authority | I1, I6 |
-| Liveness | No lease attempt until all required Blob databases restore; unpublished genesis exception; activation stall; publication stall with healthy renewal; progressing restore and idle input remain healthy; activation backoff; warm/cold takeover and generation-floor loss | I1, I4, I7 |
+| Same-term control revision | Opaque application-data replacement changes leader revision without readopting databases or invalidating frame/resume ancestry; delayed observations cannot overwrite newer application data or renew authority | I1, I6 |
+| Liveness | No lease attempt until all required Blob databases restore; unpublished genesis exception; activation stall; publication stall with healthy renewal; progressing restore and idle input remain healthy; fencing followed by delayed restart; warm/cold takeover and generation-floor loss | I1, I4, I7 |
 
 Canonical logical equality must be checked against an independent logical-state oracle, not only a matching native TRL boundary
 hash. Compare restored values as well as positions. Assert physical file resolution for every retained reader. Intercept
@@ -2339,7 +2305,7 @@ changing policy. The documented state transitions specify intended behavior, not
 | B1 Authority freshness | Short-lived confirmation grants are selected. Specify their exact clock/pause bounds, renewal margins, challenge invalidation and drain bounds, plus in-flight commit fencing. Confirmation is optional consistency evidence; local takeover rejects predecessor live messages. A GET does not establish a fresh lease lifetime. | Old-term acceptance excluded under pauses, delayed grant responses/frames and takeover races; disconnected-grant drain; takeover without direct confirmation; real-provider conformance. |
 | B3 Replication integration and transaction rollback | Virtual batching preserves ordinary per-transaction TRL and needs no different-batch normalization/reframing. Implement cross-file transaction capture/publication and opt-in odd TRL allocation, including immediate closure of legacy even append targets; specify ordinary rollback TRL retention/comparison without cursor advancement, application transaction integration, file/header identity, ObjectDB state and idempotent tail adoption. | Core byte-equality test covers payloads, not complete distributed operation. Real divergence restarts; rollback preserves prior commits; fenced append/retry does not duplicate events. |
 | B5 Publication/deletion ordering | Qualify direct TRL CAS, rotation/genesis discovery and predecessor fencing without a second state commit; implement publish-before-delete, staging protection, and version-bound deletion. Superseded files may be deleted after KVI publication; remote-space savings need not be aggressive and follower restores do not pin them. | Selected KVI and tail remain complete; delayed old deletes cannot remove newly selected data; a follower losing old restore files restarts onto the latest KVI. |
-| B6 Progress and recovery | Separate pending-work watchdogs and follower-first full restore before contention are selected. Define no-progress deadlines, bounded host termination, abdication and activation backoff. The application owns failure classification and optional skip requests; document the application input-retention/replay assumptions without adding a separate durability protocol. | Warm/cold failover budgets; idle streams stay healthy; failed workers cannot hold authority indefinitely; missing unpublished BTDB work is regenerated from retained input. |
+| B6 Progress and recovery | Separate pending-work watchdogs and follower-first full restore before contention are selected. Define no-progress deadlines, bounded host termination, abdication and delayed watchdog restart. The application exclusively owns event timeouts, skips and failure classification; document the application input-retention/replay assumptions without adding a separate durability protocol. | Warm/cold failover budgets; idle streams stay healthy; failed workers cannot hold authority indefinitely; missing unpublished BTDB work is regenerated from retained input. |
 
 The selected checkpoint rules (durable ancestry and equal-position physical replacement) and idempotent activation cases
 are now normative. They require tests but are no longer alternative algorithms to choose between.
@@ -2348,13 +2314,13 @@ are now normative. They require tests but are no longer alternative algorithms t
 
 | ID | Work remaining within the selected design |
 | --- | --- |
-| Q1 Input integration | Application-owned identical transactions and rollbacks are selected; Kafka is illustrative only. Remaining work: injected transaction/progress/replay and current-input-end interfaces, application-requested skip integration, eventId admission with automatic CommitUlong, stream/cursor encoding and ordinary rollback TRL capture; no separate attempt protocol. |
+| Q1 Input integration | Application-owned identical transactions and rollbacks are selected; Kafka is illustrative only. Remaining work: injected transaction/progress/replay and current-input-end interfaces, eventId admission with automatic CommitUlong, stream/cursor encoding and ordinary rollback TRL capture; no separate attempt protocol. |
 | Q2 Core API and codecs | Opt-in capture/pin/replay/export APIs; native positions separate from reused BTDB TransactionId; existing native transaction encoding and bounded byte comparison; redacted diagnostics; only compatibility distinctions justified by actual consumers; no separate checkpoint-object format. |
 | Q3 Application/read semantics | Local commit success and local snapshot reads are selected; failure policy and external effects belong entirely to the application. Remaining work: native schema lifecycle and compatible startup replay, ordinary local snapshot visibility and application-owned input recovery. Stronger read/durability APIs are not prerequisites for this design. |
 | Q4 Operational budgets | Independent per-replica virtual memory-batch count/bytes/time and independent remote publication-batch bytes/time; checkpoint cadence; local hard-flush policies; root/history and event-retention budgets; warm/cold RTO; handoff lag/grace and long-transaction limits; watchdog thresholds and metric alert levels. |
 | Q5 Transport | Three-field progress notification and bounded TRL range pull; native decoding, coalescing and unchanged-eventId schema notification; authority-bound requests, reconnect and range retention; byte piggyback optimization deferred; authorization beyond the shared key. |
 | Q6 Maintenance | Bounded local compaction chunks and separate local/canonical allocation; separate local/remote compaction inventories; no local KVI; remote PVL destination allocation and KVI reference/cursor remapping; leak detector compatibility, trust/reachability validation, exact-key budgets, batching, and deduplication. |
-| Q7 Recovery and storage | TRL continuation and initial/checkpoint discovery without losing ancestry; latest-checkpoint restore and complete event coverage; offline backup restore with new stream/cursor binding and leader-record reset; runtime local-integrity cadence; restart on removed restore files without remote pins; reuse of transfer code without legacy unconditional writes. |
+| Q7 Recovery and storage | TRL continuation and initial/checkpoint discovery without losing ancestry; latest-checkpoint restore and complete event coverage; operator backup restore by scale-to-zero/copy/scale-up; runtime local-integrity cadence; restart on removed restore files without remote pins; reuse of transfer code without legacy unconditional writes. |
 | Q8 Deployment and lifecycle | Database-name/instance syntax; generation allocation/conflict checks; eligible rollout redundancy; current-input-end capture and retention during genesis publication; abandoned namespace retention/administration; ordinary cache validation and fatal disk-exhaustion restart and explicit local commit result. |
 
 Provider mechanics and future S3 alternatives stay in ObjectStorages.md. Version-one append selection, validated optimistic tail reuse with input-recovery fallback, ordinary per-event commits independent of virtual memory batching, bootstrap-only KVI transfer, and node-local deletion decisions
@@ -2617,3 +2583,24 @@ ordinary inventory/cache reconciliation. TRLs retain their deterministic native 
 Azure Blob and Amazon S3 conditional writes, native Azure leases, throughput concerns, and the concrete Azure
 realization of conditional tail append are maintained in [ObjectStorages.md](ObjectStorages.md). The failover and replay
 protocols depend on the semantic append contract, not its physical block layout.
+
+### Delayed cleanup (2026-09-22)
+
+Obsolete TRL, PVL and KVI objects share `btdb_delete_after` metadata, set with an ETag condition only after a
+replacement checkpoint is confirmed. The configured delay can be 24 hours. Deadlines survive leader changes;
+retries preserve the original UTC deadline. The leader's maintenance lane performs physical deletion only after
+rereading the due mark and matching version. No follower acknowledgement, cleanup manifest or restore pin is added.
+
+Remote compaction revalidates remembered PVLs even after follower promotion. Before publishing a KVI it clears
+PVL deletion eligibility and changes the metadata version; absent PVLs are uploaded under fresh IDs. It also
+version-protects retained sealed TRL links. Thus a previous leader's delayed mark/delete cannot invalidate the newly
+protected version. Marked files remain readable until deletion; concurrent version changes or missing restore files
+cause ordinary rediscovery/open. UTC clock quality affects retention timing, not lease authority.
+
+Deleting genesis links makes the original discovery root unusable. A native restore regression demonstrates this
+failure. To preserve discovery without another manifest, the immutable KVI commit atomically includes
+`btdb_recovery_key` (base64 UTF-8 key) and `btdb_recovery_id`, identifying the oldest canonical TRL needed by its
+snapshot. Discovery selects this hint from the latest published KVI, then follows ordinary canonical links.
+Cleanup preserves the entire chain from this oldest dependency through the tail, plus all PVLs and allocation
+anchors. Reconciliation verifies both content SHA and the root hint. Native KVI parsing/replay remains unchanged.
+Legacy KVIs without hints require the original genesis; missing legacy roots fail closed, never authorize genesis.

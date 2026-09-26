@@ -15,6 +15,14 @@ namespace BTDB.Replication;
 /// Inventory reads require a selected canonical snapshot; restore needs no leadership authority.</summary>
 public interface IReplicationStorage : IRemoteFileCollection
 {
+    /// <summary>Resolve a published checkpoint's retained TRL root, or the supplied genesis before the first checkpoint.</summary>
+    ValueTask<TrlSuccessor> ResolveRecoveryRootAsync(TrlSuccessor genesis, CancellationToken cancellation) => ValueTask.FromResult(genesis);
+    /// <summary>Persist deletion eligibility without extending an existing deadline; return its current version.</summary>
+    ValueTask<RemoteMaintenanceFile> ScheduleDeletionAsync(RemoteMaintenanceFile file, TimeSpan delay, CancellationToken cancellation) =>
+        throw new NotSupportedException("Persistent delayed cleanup is not implemented by this adapter.");
+    ValueTask CancelDeletionAsync(RemoteMaintenanceFile file, CancellationToken cancellation) =>
+        throw new NotSupportedException("Persistent delayed cleanup is not implemented by this adapter.");
+
     ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken cancellation);
     ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken cancellation);
     /// <summary>The canonical publisher checks live authority before dispatch. The adapter enforces the expected
@@ -28,7 +36,8 @@ public interface IReplicationStorage : IRemoteFileCollection
         CancellationToken cancellation);
 
     IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation);
+    /// <summary>Delete only if the persisted deadline has elapsed and the version still matches; unmarked files are protected.</summary>
     ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation);
-    // False means absent: the caller must allocate a fresh identity, never recreate a retired key.
+    // Clear any deletion mark and change the version before KVI publication. False means absent: the caller must allocate a fresh identity, never recreate a retired key.
     ValueTask<bool> ProtectPureValuesAsync(uint fileId, KeyIndexFileSource source, CancellationToken cancellation);
 }

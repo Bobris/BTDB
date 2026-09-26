@@ -47,6 +47,17 @@ wall-clock scheduler fallback. The HTTP endpoint must be an HTTPS origin without
 loopback. The adapter maps `POST /_btdb/replication`. TLS certificates, routing and external authentication to Blob
 storage belong to the host. Do not log Authorization headers or raw leader JSON.
 
+`RequestTimeout` bounds each leader discovery and follower control/comparison step. Leader activation, TRL
+publication and checkpoint maintenance transfer bulk data and are not cut off by it; lease loss cancels them, and
+`ProgressTimeouts` bounds stalled work. Checkpoint maintenance runs beside publication, so a long PVL/KVI upload
+never holds back canonical TRL publication. Azure adapters report throttling and other transient provider failures
+as retryable `IOException`s.
+
+A node can win the lease while its local execution is still behind already published history. Activation then
+keeps the lease and waits: the host must continue executing ordered inputs while the role is `Activating`, and each
+retry validates only newly completed local bytes. Only mismatching bytes or an incompatible local continuation require
+a restart and canonical restore. Enable the activation progress deadline to bound a candidate that stops catching up.
+
 ## Restore and application ownership
 
 `RestoreAsync` must restore every required published database before returning `ActivationDatabase` entries. Discover
@@ -114,7 +125,7 @@ Coordinator transitions, lease selection/activation, peer sessions, comparers, s
 internal. The public surface provides application and provider integration, not independent election control.
 
 Still pending: production clock qualification, full readiness/metrics, broader network/process-pause/upgrade scenarios,
-exact-skip and backup-reset integration, Azure retained-root discovery for TRL pruning, live-Azure/performance
+broader lifecycle qualification, live-Azure/performance
 qualification and release packaging. Public accessibility does not mark replication production-ready.
 
 ## Readiness and progress
@@ -151,9 +162,11 @@ normal .NET metrics pipeline. No diagnostic HTTP endpoint is automatically expos
 ## Pending-work deadlines and fatal recovery
 
 Set `ReplicationNodeOptions.ProgressTimeouts` to a `ReplicationProgressTimeouts` with deployment-qualified activation
-and publication no-progress budgets. Both values must be positive. The default is disabled; replication does not
+and publication no-progress budgets plus a fixed `RestartDelay`. All three values must be positive. The default is disabled; replication does not
 infer an application handler timeout. When enabled, the registered `IReplicationNodeHost` must also implement
-`IReplicationFatalRecovery`. Missing support fails before restore or lease acquisition.
+`IReplicationFatalRecovery`. Missing support fails before restore or lease acquisition. For example,
+`new ReplicationProgressTimeouts(Activation: TimeSpan.FromMinutes(2), Publication: TimeSpan.FromMinutes(1),
+RestartDelay: TimeSpan.FromSeconds(90))`; qualify these values for the deployment.
 
 Activation starts its deadline after acquisition, before candidate preparation. Forward selection, canonical inventory
 links, validated byte ranges, adoption and initialization/schema preparation/publication advance a local watermark.
@@ -163,14 +176,77 @@ extends that budget; reaching the local cut clears it. Staged upload bytes and a
 publication. Choose a budget that accommodates the largest whole transaction's transfer and reconciliation.
 
 On expiry, the coordinator permanently fences lease acquisition/renewal and publication and clears readiness before
-calling `RequestFatalRestart`. This runs independently of the stalled worker and does not wait for its cancellation
-callbacks. The host must immediately initiate bounded non-graceful termination/restart, must not wait for handlers or
+scheduling `RequestFatalRestart` after `RestartDelay`. The delay runs on the injected scheduler, independently of
+the stalled worker and its cancellation callbacks. Renewal stays disabled throughout the wait; other nodes can
+acquire the lease after its provider-side expiry. Choose the delay to cover the provider lease lifetime and an
+opportunity for healthy followers to acquire it. The host must immediately initiate bounded non-graceful termination/restart, must not wait for handlers or
 coordinator disposal, and must never reuse the failed session. A bounded best-effort diagnostic flush may precede
 termination. Merely calling `StopApplication` is insufficient when providers or handlers ignore cancellation.
 The subprocess test host demonstrates an immediate process exit; production logging/termination policy belongs to
-the application. Late provider replies cannot restore authority. Graceful shutdown cancels outstanding watchdogs.
+the application. Late provider replies cannot restore authority. Graceful shutdown cancels outstanding watchdogs. Once a watchdog has chosen fatal recovery, shutdown or a late
+worker response cannot cancel its restart timer or make the coordinator return before the delay elapses.
 
 These deadlines monitor activation and already-observed pending canonical publication. They do not classify application
-failures, generate skip markers, watch idle input, or time follower restore. Application execution/commit arbitration,
-checkpoint-maintenance stalls, input retention and restart backoff remain separate integration work. The injected
+failures, generate skip markers, watch idle input, or time follower restore. Application execution/commit arbitration
+and all event timeouts/skips are application-owned, outside replication scope.
+Set optional `ReplicationProgressTimeouts.Maintenance` to a positive no-progress budget for each remote maintenance
+lane. It covers snapshot capture, checkpoint prerequisites, PVL placement/protection, KVI publication and cleanup.
+Only forward completed steps extend the deadline; retries retain their watermark and completed-checkpoint cleanup
+state. Idle intervals and the application-owned leak-event submission callback are excluded. Progress is measured
+at whole-file/operation boundaries, so allow enough time for the largest PVL/KVI transfer or serialization. Expiry
+uses the same immediate fencing and delayed fatal restart. Input retention remains application-owned. The injected
 scheduler must continue servicing deadlines while a worker is blocked, and callbacks must be serialized as usual.
+
+After restart, all required databases must restore before lease contention. Restore can be fast with small databases
+or reusable cache, so it is not a guaranteed substitute for the delay. There is no persistent attempt counter,
+backoff state file or activation-state storage registration. Crashes outside watchdog recovery are throttled by the
+host supervisor's restart policy. Replication does not delay or skip application events.
+
+## Application data in leader.json
+
+`AddBTDBReplication` registers `ReplicationApplicationData`. Any node may read; only an active local leader may write.
+The service exposes only the opaque `applicationData` field, not peer credentials or editing of protocol fields:
+
+```csharp
+var applicationData = app.Services.GetRequiredService<ReplicationApplicationData>();
+var snapshot = await applicationData.ReadAsync(cancellation);
+var value = snapshot.Value?.AsObject() ?? new System.Text.Json.Nodes.JsonObject();
+value["mySetting"] = "myValue";
+var outcome = await applicationData.TryWriteAsync(snapshot, value, cancellation);
+```
+
+Pass `null` to clear the value. A snapshot belongs to the service that read it. Each write uses its exact ETag plus the
+current lease; a successful update increments leader-record revision and preserves term/session, database names and
+all other fields. Concurrent writers cannot silently overwrite one another. New leaders preserve the application data.
+Applications may read it during startup before restoring/processing input. Initialization/activating nodes, followers,
+draining leaders and stopped/fenced sessions cannot use the write API.
+
+`Applied` confirms the storage effect, not continued leadership. `Rejected` means this attempt was rejected (stale
+version/session or no active local leadership). `Ambiguous` means the effect is unresolved: the original write might
+still land. Retrying the same snapshot/value keeps the original CAS condition and can reconcile an exact already-landed
+intent. Cancellation or an exception after dispatch can also leave an applied write. Do not blindly reread and reapply
+an unresolved operation over newer state; the application must resolve its intended semantics. A later `Rejected`
+result never proves that an earlier ambiguous attempt had no effect.
+
+JSON updates are independent of database transactions. BTDB does not interpret the payload, enforce its schema,
+expire it, observe application handlers, arbitrate event timeouts/commits, or skip events because of it. These policies
+belong entirely to the application. The existing activation/publication watchdogs monitor replication work only.
+
+## Operational backup recovery
+
+Scale the cluster to zero, copy the backup into primary Blob storage, then scale up. Startup restores and validates
+all required databases before election. This procedure needs no additional backup-import API or forced stream reset.
+
+## Delayed remote cleanup
+
+Pass the desired retention interval (for example `TimeSpan.FromHours(24)`) as `ReplicationMaintenance.deletionDelay`.
+The leader marks obsolete TRL/PVL/KVI in Blob metadata and later deletes only the unchanged marked version after
+its deadline. The deadline survives process/leader replacement. The adapter's optional `TimeProvider` supplies UTC;
+no Azure lifecycle policy is installed automatically. A new leader rechecks reused PVLs, clears their deletion mark,
+and recopies missing files at fresh IDs. Old delayed deletes cannot remove a newly protected version.
+
+Use `CanonicalTrlInventory.DiscoverAsync` on the Azure storage and bind the result with `storage.Bind(inventory)`
+for restore, exposing both native KVI/PVL and selected TRLs. Discovery resolves the retained root recorded on the
+latest KVI. Do not treat a missing original genesis alone as a new database: first call `ResolveRecoveryRootAsync`.
+If a checkpoint selected another root, missing files mean failed restore, not permission to initialize. The subprocess
+host demonstrates this startup path. Old KVI formats without root hints still require the original genesis.

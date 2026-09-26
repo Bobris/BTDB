@@ -3,19 +3,23 @@ using System;
 namespace BTDB.Replication;
 
 /// <summary>Opt-in no-progress budgets. The application selects measured deployment values; no default timeout
-/// is inferred from event execution time. Restore and idle databases are not watched.</summary>
-public sealed record ReplicationProgressTimeouts(TimeSpan Activation, TimeSpan Publication)
+/// is inferred from event execution time. Restore and idle databases are not watched. RestartDelay is the fixed
+/// wait between immediate fencing on expiry and the fatal host callback; it must be positive. Optional Maintenance
+/// watches completed checkpoint/cleanup steps, excluding idle intervals and application leak-event submission.</summary>
+public sealed record ReplicationProgressTimeouts(TimeSpan Activation, TimeSpan Publication, TimeSpan RestartDelay, TimeSpan? Maintenance = null)
 {
     internal void Validate()
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(Activation.Ticks);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(Publication.Ticks);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(RestartDelay.Ticks);
+        if (Maintenance is { } maintenance) ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maintenance.Ticks);
     }
 }
 
 /// <summary>Required on the application host when progress deadlines are enabled. Called independently of the
-/// stuck worker after lease fencing. Initiate bounded non-graceful process termination/restart without waiting
-/// for handlers, storage calls or coordinator cleanup. Never reuse this node session. This callback must not block.</summary>
+/// stuck worker after immediate lease fencing and the configured RestartDelay. Initiate bounded non-graceful
+/// process termination/restart without waiting for handlers, storage calls or coordinator cleanup. Never reuse this node session. This callback must not block.</summary>
 public interface IReplicationFatalRecovery
 {
     void RequestFatalRestart(string reason);
@@ -67,6 +71,44 @@ internal sealed class ReplicationProgressWatchdog(IReplicationScheduler schedule
             _closed = true;
             _timer?.Dispose();
             _timer = null;
+        }
+    }
+}
+
+/// <summary>One maintenance lane. Retries of earlier stages cannot extend the deadline; idle lanes have no timer.</summary>
+internal sealed class ReplicationMaintenanceWatchdog(IReplicationScheduler scheduler, TimeSpan timeout, Action expired) : IDisposable
+{
+    readonly object _lock = new();
+    ReplicationProgressWatchdog? _watchdog;
+    (int Phase, int Step, int Item) _progress = (-1, -1, -1);
+    bool _closed;
+
+    public void Observe((int Phase, int Step, int Item)? progress)
+    {
+        lock (_lock)
+        {
+            if (_closed) return;
+            if (progress == null)
+            {
+                _watchdog?.Dispose();
+                _watchdog = null;
+                _progress = (-1, -1, -1);
+                return;
+            }
+            if (progress.Value.CompareTo(_progress) <= 0) return;
+            _progress = progress.Value;
+            _watchdog ??= new(scheduler, timeout, expired, "replication maintenance watchdog");
+            _watchdog.Progress();
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            _closed = true;
+            _watchdog?.Dispose();
+            _watchdog = null;
         }
     }
 }

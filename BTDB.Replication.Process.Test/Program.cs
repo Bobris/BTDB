@@ -44,7 +44,7 @@ internal static class Program
         builder.Services.AddSingleton<ILeaderRecordStorage>(storage);
         var progressMilliseconds = Environment.GetEnvironmentVariable("BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS");
         var progressTimeouts = progressMilliseconds == null ? null : new ReplicationProgressTimeouts(
-            TimeSpan.FromSeconds(20), TimeSpan.FromMilliseconds(int.Parse(progressMilliseconds)));
+            TimeSpan.FromSeconds(20), TimeSpan.FromMilliseconds(int.Parse(progressMilliseconds)), TimeSpan.FromSeconds(1));
         builder.Services.AddBTDBReplication(new("cluster", endpoint, TimeSpan.FromMilliseconds(50),
             TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1), 1, ProgressTimeouts: progressTimeouts),
             0, TimeSpan.FromMilliseconds(100));

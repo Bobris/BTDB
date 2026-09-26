@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
+using BTDB.Replication.Azure;
 using BTDB.Replication.Test;
 
 namespace BTDB.Replication.ProcessTests;
@@ -11,7 +12,7 @@ namespace BTDB.Replication.ProcessTests;
 internal sealed record NodeStatus(string Role, ulong EventId, int Value, int Applied, uint CompletedFile,
     uint CompletedOffset, uint AcknowledgedFile, uint AcknowledgedOffset);
 
-internal sealed class TestNodeHost(string endpoint, IReplicationStorage canonical) : IReplicationNodeHost, IAsyncDisposable, IReplicationFatalRecovery
+internal sealed class TestNodeHost(string endpoint, AzureReplicationStorage canonical) : IReplicationNodeHost, IAsyncDisposable, IReplicationFatalRecovery
 {
     readonly InMemoryReplicationFileStorage _files = new();
     readonly TransactionLogCapture _capture = new();
@@ -33,12 +34,13 @@ internal sealed class TestNodeHost(string endpoint, IReplicationStorage canonica
         if (_collection != null) { await _collection.DisposeAsync(); _collection = null; }
         TransactionLogPosition restored = default;
         IFileCollection files;
-        if (await _storage.ReadAsync(Genesis.Key, cancellation) == null)
+        if (await _storage.ResolveRecoveryRootAsync(Genesis, cancellation) == Genesis &&
+            await _storage.ReadAsync(Genesis.Key, cancellation) == null)
             files = new LocalReplicatedCollection(_files);
         else
         {
-            var inventory = await CanonicalTrlInventory.DiscoverAsync(_storage, Genesis, cancellation);
-            _collection = new(_files, inventory);
+            var inventory = await CanonicalTrlInventory.DiscoverAsync(canonical, Genesis, cancellation);
+            _collection = new(_files, canonical.Bind(inventory));
             await _collection.InitializeAsync(cancellation);
             files = _collection;
             restored = new(inventory.Tail.FileId, inventory.Tail.State.Length);
@@ -127,6 +129,9 @@ internal sealed class TestNodeHost(string endpoint, IReplicationStorage canonica
 
     sealed class PublicationGate(IReplicationStorage inner) : IReplicationStorage
     {
+        public ValueTask<TrlSuccessor> ResolveRecoveryRootAsync(TrlSuccessor genesis, CancellationToken cancellation) => inner.ResolveRecoveryRootAsync(genesis, cancellation);
+        public ValueTask<RemoteMaintenanceFile> ScheduleDeletionAsync(RemoteMaintenanceFile file, TimeSpan delay, CancellationToken cancellation) => inner.ScheduleDeletionAsync(file, delay, cancellation);
+        public ValueTask CancelDeletionAsync(RemoteMaintenanceFile file, CancellationToken cancellation) => inner.CancelDeletionAsync(file, cancellation);
         public IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation) => inner.EnumerateAsync(cancellation);
         public ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation) => inner.ReadAsync(file, offset, buffer, cancellation);
         public ValueTask EnsurePureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) => inner.EnsurePureValuesAsync(id, source, cancellation);

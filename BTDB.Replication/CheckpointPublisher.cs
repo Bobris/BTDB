@@ -29,7 +29,7 @@ internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrl
     /// Pending leaves the canonical intent intact and starts no KVI upload. Storage adapters must also check authority
     /// before individual upload requests and reconcile ambiguous PVL/KVI outcomes at the same chosen identity.</summary>
     public async ValueTask<CheckpointPublishResult> PublishAsync(KeyIndexSnapshot snapshot, CancellationToken remoteCancellation = default,
-        bool retryPending = false)
+        bool retryPending = false, Action<int, int>? progress = null)
     {
         var cancellation = remoteCancellation; // Deliberately independent of the local compactor token.
         await _lane.WaitAsync(cancellation).ConfigureAwait(false);
@@ -49,12 +49,14 @@ internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrl
                 case TrlPublishResult.Published: break;
                 default: throw new InvalidOperationException("Canonical checkpoint cut was not established.");
             }
+            progress?.Invoke(0, 0);
             // A pending upload already has its fixed mapping and validated destinations.
             var map = _pending == null ? new Dictionary<uint, uint>() : null;
             var destinations = _pending == null ? new HashSet<uint>() : null;
             if (destinations != null)
                 foreach (var source in snapshot.Sources)
                     if (source.FileType == KVFileType.TransactionLog) destinations.Add(source.FileId);
+            var sourceIndex = 0;
             foreach (var source in snapshot.Sources)
             {
                 cancellation.ThrowIfCancellationRequested();
@@ -73,6 +75,7 @@ internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrl
                     if (!destinations!.Add(remoteId)) throw new InvalidOperationException("Remote file IDs collide.");
                     map!.Add(source.FileId, remoteId);
                 }
+                progress?.Invoke(1, ++sourceIndex);
             }
             cancellation.ThrowIfCancellationRequested();
             if (!canonical.HasAuthority) return CheckpointPublishResult.AuthorityLost;
@@ -85,10 +88,12 @@ internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrl
             }
             cancellation.ThrowIfCancellationRequested();
             if (!canonical.HasAuthority) return CheckpointPublishResult.AuthorityLost;
+            progress?.Invoke(2, 0);
             // Retain the exact identity and mapping across exceptions, including a lost successful response.
             // The adapter must reconcile the same immutable object before returning success.
             await _storage.PublishKeyIndexAsync(_pending.FileId, snapshot, _pending.Map, cancellation)
                 .ConfigureAwait(false);
+            progress?.Invoke(3, 0);
             var dependencies = new HashSet<uint>(_pending.Map.Values);
             foreach (var source in snapshot.Sources)
                 if (source.FileType == KVFileType.TransactionLog) dependencies.Add(source.FileId);

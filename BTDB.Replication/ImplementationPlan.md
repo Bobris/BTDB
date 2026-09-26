@@ -1,6 +1,6 @@
 # BTDB.Replication implementation plan
 
-Date: 2026-09-22. Status: core capture, native restore/checkpoint publication, Azure storage adapters and M4 node coordination are implemented internally. Prepared handoff, leader-only genesis/startup schema and live schema detachment are implemented. Remaining lifecycle APIs, Azure TRL pruning, operational APIs and production qualification remain.
+Date: 2026-09-22. Status: core capture, native restore/checkpoint publication, Azure storage adapters and M4 node coordination are implemented internally. Prepared handoff, leader-only genesis/startup schema and live schema detachment are implemented. Unified delayed-deletion metadata, PVL revalidation/protection and checkpoint-root discovery are implemented. Operational diagnostics and production qualification remain.
 See [Testing.md](Testing.md) for current evidence and limitations. An in-process multi-node coordinator now exercises the actual components together.
 
 ## Scope and source of truth
@@ -252,7 +252,7 @@ The previously pending Azure storage integration, term selection and pre-activat
 
 - `AzureLeaderStorage` creates the initial leader blob conditionally, acquires/renews finite leases, reconciles lost
   acquire responses using the proposed lease ID, and writes leader JSON under both lease ID and ETag.
-- `LeaderSelection` preserves skip entries and unknown JSON fields, enforces the generation floor, selects one next
+- `LeaderSelection` preserves opaque application data and unknown JSON fields, enforces the generation floor, selects one next
   term/session, and reconciles ambiguous writes against its exact retained JSON intent.
 - `LeadershipSession` exposes publishers only after `LeadershipActivation` has checked every selected database.
   Validation starts at the fixed verified restore cut, independently of peer acknowledgement, and compares selected
@@ -292,8 +292,7 @@ unchanged retries do not advance the deadline, validated canonical ranges do, an
 arm publication deadlines. Cancellation-resistant providers cannot delay the callback. Native deterministic tests
 cover these boundaries, and a subprocess test verifies fatal leader exit followed by optimistic-tail takeover.
 
-Remaining M4 acceptance work includes application execution/commit watchdog arbitration, failed-activation restart
-backoff, checkpoint-maintenance stalls and broader schedule exploration. Public sampled position/status APIs are
+Checkpoint/remote-maintenance progress deadlines are implemented with fixed-step progress, retry-stable deadlines and delayed fatal recovery. Remaining M4 acceptance work includes broader schedule exploration. Public sampled position/status APIs are
 implemented; reader-visible progress and input lag remain application-owned. The original milestone requirements below also include lifecycle work shared with M5:
 
 1. Implement follower-first restoration of every required database, then the shared transition engine for selection,
@@ -307,8 +306,8 @@ implemented; reader-visible progress and input lag remain application-owned. The
    positions separately.
 4. On becoming leader, validate candidate history against selected Blob history before adoption/publication; never
    treat follower comparison acknowledgement as Blob durability. Implement optimistic-tail adoption after the actual
-   adopted boundary. Validate overlap, skip decisions and file
-   lineage; reuse complete eligible transactions, then reopen/replay canonical files before fresh handlers.
+   adopted boundary. Validate overlap and file lineage; reuse complete eligible transactions, then reopen/replay
+   canonical files before fresh handlers.
 5. Add isolated lease renewal and pending-work watchdogs. Distinguish idle input and progressing restore from stalled
    activation/publication. Model fatal host termination separately from graceful restart requests.
 
@@ -344,8 +343,11 @@ by the coordinator and native scanner:
   permanently disables election, stops only that database's following, and leaves ordinary local work intact. Reconnection
   cannot clear it. Fifteen minutes without current leader evidence requests graceful host restart.
 
-The remaining M5 scope is application-requested exact skips and backup-stream-reset integration, application-execution
-watchdog/commit arbitration and broader multi-database/physical-failure qualification. Activation/publication stalls now
+Application event timeout/skip mechanisms and execution/commit arbitration belong exclusively to the application;
+they are not remaining replication work. `ReplicationApplicationData` now supplies generic snapshot reads and
+lease/ETag-conditional replacement of opaque `applicationData` in `leader.json`, preserving authority and other fields.
+Tests cover competing updates, lost replies, cancellation after effect, takeover, follower/fenced rejection and the
+actual Azure SDK against Azurite. Backup restore is an operator procedure: scale to zero, copy the backup into the primary Blob namespace, then scale up. No backup-import API or forced new-stream/leader-record-reset mechanism is required. Remaining M5 scope is broader multi-database/physical-failure qualification. Activation/publication stalls now
 use an explicit fatal host callback, exercised with bounded subprocess termination. The internal HTTP hosted service now coordinates startup,
 immediate lease fencing on host shutdown and cleanup; the application still owns database disposal and process restart. These are distinct from the three implemented
 lifecycle features; the original milestone requirements below remain the acceptance checklist.
@@ -359,9 +361,9 @@ lifecycle features; the original milestone requirements below remain the accepta
 4. Wire removed-database local continuation, graceful leader drain and lease transfer. Reuse the existing grant
    drain deadline; no per-follower revoke/ack protocol. Stop remote work independently of ordinary local execution;
    only host shutdown needs to cancel local maintenance.
-5. Add the detached-session 15-minute monotonic no-valid-leader graceful restart rule, input/progress ports and
-   application-requested exact skips. Preserve skip history across ordinary failover; test the separate backup
-   restore procedure with a new stream and leader-record reset.
+5. Add the detached-session 15-minute monotonic no-valid-leader graceful restart rule and input/progress ports.
+   Provide generic application-data read/conditional-write access to the leader record, preserving it across failover.
+   Application timeouts/skips remain outside replication. Document operational backup restore by scaling to zero, copying the backup into primary Blob storage and scaling up; no separate restore protocol is planned.
 
 Exit: partial multi-database activation, add/remove upgrades, schema changes, delayed callbacks and handoff failures
 all recover through the same engine. Detached local work cannot be published or promoted; reconnection cannot clear detachment.
@@ -375,16 +377,20 @@ Implemented internally: the coordinator schedules native local compaction on eve
 authority-bound storage adapter. It retains the native snapshot through unresolved KVI publication, then collects
 obsolete files only against the confirmed checkpoint closure. PVL reuse conditionally changes metadata version
 before publication, defeating stale in-flight deletes; missing PVLs receive fresh IDs. Cleanup preserves the highest
-even ID as the allocation anchor and restarts its configured age delay after session replacement.
+even ID as the allocation anchor. Deletion deadlines persist in object metadata across session replacement.
 
 `CollectLeakRemovalCandidates` exposes the existing bounded detector encoding. The maintenance callback submits
 those exact bytes to the application's ordered event stream; consumers call `ApplyTo` in their ordinary event
 transaction. Replicated compaction never runs independent leak erasure, even when automatic Erase mode is configured.
 
-Azure cleanup currently retains canonical TRL links because its inventory follows a caller-supplied root; removing
-those links would break restart discovery. Obsolete PVL/KVI cleanup is enabled, while adapters with independently
-resolvable retained roots may also prune obsolete TRLs. Changing Azure root discovery and live-Azure qualification
-remain explicit follow-up work; there is no change to native KVI open/replay.
+Azure cleanup now marks obsolete TRL/PVL/KVI objects with `btdb_delete_after` and deletes only after the persisted
+UTC deadline, under the exact marked ETag. Retries do not extend the deadline. Reused PVLs clear the mark and change
+the version before KVI publication; absent remembered PVLs are copied to fresh identities. Retained sealed TRLs are
+also version-protected before KVI publication. The KVI commit atomically includes its oldest required canonical
+TRL key/ID so discovery can resume after obsolete genesis links disappear. Keep the complete chain from that root,
+not just individual value dependencies. Legacy KVIs without this hint still require their original genesis.
+Azurite tests cover lost marking/protection replies, all three file types, adapter replacement, deadline expiry,
+stale delete/mark rejection, and native database restore after genesis pruning. Live-Azure qualification remains.
 
 1. Schedule the existing replication `Compact` path on all nodes. Reuse its native reader/tree/capture/export
    lifetimes and allocator; add no pin registry, compaction transaction or peer compaction protocol.
@@ -461,7 +467,7 @@ remaining limitations are explicit. Only then update the README from architectur
 - Protocol safety and measured performance are separate exit criteria. Benchmark disabled replication as well as
   enabled paths, and do not infer production latency or GC improvements from allocation measurements alone.
 
-The next work is application execution/commit arbitration and exact-input skip/backup-reset integration (M5), activation restart backoff and checkpoint-maintenance progress (M4/M6), broader multi-process/production qualification and measured recovery/throughput (M7), plus Azure retained-root discovery before pruning canonical TRL links. Activation and observed pending-publication deadlines with explicit fatal host recovery are implemented. Sampled readiness/progress and bounded operational metrics are implemented; application-owned reader visibility/input lag and detailed recovery metrics remain separate. The HTTP adapter, public DI/host/provider contracts, real socket/host component tests and subprocess crash/divergence scenarios are implemented; operational acceptance and release packaging remain. The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
+The next work is broader lifecycle qualification (M5), multi-process/production qualification and measured recovery/throughput (M7). M6 delayed-deletion metadata, PVL protection/reupload and Azure retained-root discovery are implemented. Backup restore is the operator scale-to-zero/copy/scale-up procedure, not a missing library feature. Checkpoint maintenance now has an optional no-progress budget alongside activation and canonical publication. Activation and observed pending-publication deadlines with explicit fatal host recovery are implemented. Watchdog recovery immediately fences authority and waits a configured fixed delay before fatal host restart, independently of workers; no persistent backoff state is required. Sampled readiness/progress and bounded operational metrics are implemented; application-owned reader visibility/input lag and detailed recovery metrics remain separate. The HTTP adapter, public DI/host/provider contracts, real socket/host component tests and subprocess crash/divergence scenarios are implemented; operational acceptance and release packaging remain. The internal coordinator now connects restore, peer comparison, lease selection, takeover and publication. Core capture, ordinary restart, local compaction and streamed checkpoint export are implemented baselines.
 [M1Evidence.md](M1Evidence.md) records the tested mechanisms and their integration preconditions. KVI publication
 and restore follow the existing M3 ordering; there is no separate KVI ancestry/selection prerequisite for M2. Do not begin with
 HTTP controllers or reuse unconditional Azure uploads as canonical publication.

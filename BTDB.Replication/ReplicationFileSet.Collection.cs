@@ -1,5 +1,4 @@
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -391,29 +390,12 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         }
 
         public ulong GetSize() => Selected.Length;
-        public IMemReader GetExclusiveReader() => new FileCollectionFileReader(this);
+        // Metadata-only handle: the database reads bytes from the local cache after explicit prefetch.
+        // Never block a caller on a synchronous network read here.
+        public IMemReader GetExclusiveReader() => throw new NotSupportedException("Prefetch remote files before reading them.");
         public void AdvisePrefetch() { }
-
-        public void RandomRead(Span<byte> data, ulong position, bool doNotCache)
-        {
-            if (position > Selected.Length || (ulong)data.Length > Selected.Length - position)
-                throw new EndOfStreamException();
-            var buffer = ArrayPool<byte>.Shared.Rent(Math.Min(data.Length, 64 * 1024));
-            try
-            {
-                while (!data.IsEmpty)
-                {
-                    var count = Math.Min(data.Length, buffer.Length);
-                    var read = _owner.Remote.ReadAsync(Selected, position, buffer.AsMemory(0, count),
-                        _owner._lifetime.Token).AsTask().GetAwaiter().GetResult();
-                    if (read <= 0 || read > count) throw new IOException("Truncated remote file.");
-                    buffer.AsSpan(0, read).CopyTo(data);
-                    data = data[read..];
-                    position += (uint)read;
-                }
-            }
-            finally { ArrayPool<byte>.Shared.Return(buffer); }
-        }
+        public void RandomRead(Span<byte> data, ulong position, bool doNotCache) =>
+            throw new NotSupportedException("Prefetch remote files before reading them.");
 
         public IMemWriter GetAppenderWriter() => throw new NotSupportedException("Remote inventory handles are read-only.");
         public IMemWriter GetExclusiveAppenderWriter() => throw new NotSupportedException("Remote inventory handles are read-only.");

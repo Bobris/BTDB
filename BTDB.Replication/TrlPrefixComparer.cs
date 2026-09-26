@@ -85,9 +85,9 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
                 cancellation.ThrowIfCancellationRequested();
                 if (extra < 0 || extra > 1) throw new IOException("Invalid leader TRL read length.");
                 if (extra != 0) return Diverged();
-                var next = (ulong)fileId + ((fileId & 1) == 0 ? 1ul : 2ul);
-                if (next > end.FileId) throw new IOException("Leader cut is outside the native TRL sequence.");
-                fileId = (uint)next;
+                // The local prefix covers the end file; its headers give the continuation without guessing IDs.
+                fileId = await TrlLineage.NextAsync(fileId, end.FileId,
+                    id => ValueTask.FromResult(TrlLineage.LocalPrevious(getFile, id))).ConfigureAwait(false);
             }
             cancellation.ThrowIfCancellationRequested();
             // A new leader can disagree with bytes acknowledged by its predecessor. Recheck from the

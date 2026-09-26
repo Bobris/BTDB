@@ -390,9 +390,11 @@ public class ReplicationFileSetTest
         Assert.Equal(0, reads); // Neither inventory access nor local lookup downloads anything.
 
         var bytes = new byte[3];
-        selected.RandomRead(bytes, 0, false);
-        Assert.Equal(new byte[] { 1, 2, 3 }, bytes);
-        Assert.Null(files.GetFile(2)); // Remote reads do not replace the cache.
+        // Remote handles carry metadata only: no hidden synchronous download or cache population.
+        Assert.Throws<NotSupportedException>(() => selected.RandomRead(bytes, 0, false));
+        Assert.Throws<NotSupportedException>(() => selected.GetExclusiveReader());
+        Assert.Equal(0, reads);
+        Assert.Null(files.GetFile(2));
         Assert.Throws<NotSupportedException>(() => selected.GetAppenderWriter());
         Assert.Throws<NotSupportedException>(() => selected.Remove());
 

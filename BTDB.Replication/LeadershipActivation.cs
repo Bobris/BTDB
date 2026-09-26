@@ -18,17 +18,21 @@ public sealed record ActivationDatabase(string Name, BTreeKeyValueDB Database, T
 internal static class LeadershipActivation
 {
     /// <summary>Returns publishers only after every required database is validated and adopted. I/O/version races
-    /// retry through fresh discovery; divergence requires ordinary restore. The caller must not publish from any
-    /// database until this method succeeds. Lease maintenance continues independently during activation.</summary>
-    public static async ValueTask<IReadOnlyList<CanonicalTrlPublisher>> ActivateAsync(SelectedLeadership selected,
+    /// retry through fresh discovery; divergence requires ordinary restore. Returns null while a candidate's complete
+    /// local prefix matches canonical history but has not reached its end yet: the host keeps executing inputs and the
+    /// caller retries under the same lease. <paramref name="validated"/> keeps verified prefixes across those retries.
+    /// The caller must not publish from any database until this method succeeds. Lease maintenance continues
+    /// independently during activation.</summary>
+    public static async ValueTask<IReadOnlyList<CanonicalTrlPublisher>?> ActivateAsync(SelectedLeadership selected,
         IReadOnlyList<ActivationDatabase> databases, CancellationToken cancellation = default,
-        Action<int, int, uint, ulong>? progress = null)
+        Action<int, int, uint, ulong>? progress = null, IDictionary<string, TransactionLogPosition>? validated = null)
     {
         var required = new HashSet<string>(selected.DatabaseNames, StringComparer.Ordinal);
         if (required.Count != databases.Count) throw new ArgumentException("Activation must include every selected database exactly once.");
         foreach (var database in databases)
             if (!required.Remove(database.Name)) throw new ArgumentException("Activation database set differs from the selected leader record.");
         var publishers = new List<CanonicalTrlPublisher>();
+        var completed = false;
         try
         {
             for (var index = 0; index < databases.Count; index++)
@@ -37,7 +41,8 @@ internal static class LeadershipActivation
                 RequireAuthority(selected);
                 if (database.RestoredBase.FileId == 0)
                 {
-                    if (await database.Storage.ReadAsync(database.Genesis.Key, cancellation).ConfigureAwait(false) != null)
+                    if (await database.Storage.ResolveRecoveryRootAsync(database.Genesis, cancellation).ConfigureAwait(false) != database.Genesis ||
+                        await database.Storage.ReadAsync(database.Genesis.Key, cancellation).ConfigureAwait(false) != null)
                         throw new InvalidDataException("Initialization was published; restore its fixed history before activation.");
                     publishers.Add(new(database.Database, database.Capture, database.Storage, selected.Authority,
                         selected.Term, id => id == database.Genesis.FileId ? database.Genesis.Key : database.KeyForFile(id)));
@@ -52,8 +57,10 @@ internal static class LeadershipActivation
                     selected.Authority.Fence();
                     throw new InvalidDataException("Canonical history has a newer authority term.");
                 }
-                await ValidateAsync(database, inventory, selected, cancellation,
-                    progress == null ? null : (id, offset) => progress(index, 1, id, offset)).ConfigureAwait(false);
+                // Adoption needs the local tail bytes, so a lagging candidate stops before fencing this database.
+                if (!await ValidateAsync(database, inventory, selected, validated, cancellation,
+                        progress == null ? null : (id, offset) => progress(index, 1, id, offset)).ConfigureAwait(false))
+                    return null;
                 var publisher = new CanonicalTrlPublisher(database.Database, database.Capture, database.Storage,
                     selected.Authority, selected.Term, database.KeyForFile, inventory.Tail);
                 publishers.Add(publisher);
@@ -64,23 +71,30 @@ internal static class LeadershipActivation
             }
             cancellation.ThrowIfCancellationRequested();
             RequireAuthority(selected);
+            completed = true;
             return publishers;
         }
-        catch
+        finally
         {
-            foreach (var publisher in publishers) publisher.Dispose();
-            throw;
+            if (!completed)
+                foreach (var publisher in publishers) publisher.Dispose();
         }
     }
 
-    static async ValueTask ValidateAsync(ActivationDatabase database, CanonicalTrlInventory inventory,
-        SelectedLeadership selected, CancellationToken cancellation, Action<uint, ulong>? progress)
+    /// <summary>Compare the complete local prefix with canonical history. False means every compared byte matches,
+    /// but local execution has not produced the canonical end yet; mismatching or impossible local history throws.</summary>
+    static async ValueTask<bool> ValidateAsync(ActivationDatabase database, CanonicalTrlInventory inventory,
+        SelectedLeadership selected, IDictionary<string, TransactionLogPosition>? validated, CancellationToken cancellation,
+        Action<uint, ulong>? progress)
     {
         var baseline = database.RestoredBase;
         if (baseline.FileId == 0) throw new ArgumentException("Activation requires a verified restored base.");
+        // Canonical TRLs only grow, so a prefix verified by an earlier attempt of this lease stays verified.
+        var resume = validated != null && validated.TryGetValue(database.Name, out var verified) ? verified : baseline;
         var localBuffer = ArrayPool<byte>.Shared.Rent(256 * 1024);
         var remoteBuffer = ArrayPool<byte>.Shared.Rent(256 * 1024);
         var expectedId = baseline.FileId;
+        uint previousId = 0;
         var found = false;
         try
         {
@@ -90,15 +104,30 @@ internal static class LeadershipActivation
                 RequireAuthority(selected);
                 if (file.FileId != expectedId) throw new InvalidDataException("Canonical history omits the retained base or continuation.");
                 found = true;
+                // Only complete local transactions count; the physical file may hold an unfinished one. Capture reports
+                // nothing before the first local commit, when the verified restored base is the complete local end.
+                var local = database.Capture.Completed;
+                if (Order(local) < Order(baseline)) local = baseline;
+                if (file.FileId > local.FileId)
+                {
+                    // Local execution has not rotated into this continuation yet. A different local continuation diverged.
+                    if (local.FileId != previousId)
+                        throw new InvalidDataException("Candidate continues canonical history in another TRL; restore is required.");
+                    return false;
+                }
                 var source = database.Database.FileCollection.GetFile(file.FileId)
                     ?? throw new InvalidDataException("Candidate lacks canonical TRL bytes; restore is required.");
+                var localEnd = file.FileId == local.FileId ? local.Offset : source.GetSize();
                 var offset = file.FileId == baseline.FileId ? (ulong)baseline.Offset : 0;
-                if (offset > file.Length || source.GetSize() < file.Length ||
-                    (file.IsSealed && source.GetSize() != file.Length))
-                    throw new InvalidDataException("Candidate does not cover the selected canonical prefix; restore is required.");
-                while (offset < file.Length)
+                if (offset > file.Length || (file.FileId < local.FileId && source.GetSize() < file.Length) ||
+                    (file.IsSealed && (file.FileId < local.FileId ? source.GetSize() != file.Length : localEnd > file.Length)))
+                    throw new InvalidDataException("Candidate does not match the selected canonical prefix; restore is required.");
+                if (file.FileId < resume.FileId) offset = file.Length;
+                else if (file.FileId == resume.FileId) offset = Math.Max(offset, resume.Offset);
+                var compareEnd = Math.Min(file.Length, localEnd);
+                while (offset < compareEnd)
                 {
-                    var count = (int)Math.Min(256 * 1024ul, file.Length - offset);
+                    var count = (int)Math.Min(256 * 1024ul, compareEnd - offset);
                     source.RandomRead(localBuffer.AsSpan(0, count), offset, false);
                     var read = await inventory.ReadAsync(file, offset, remoteBuffer.AsMemory(0, count), cancellation)
                         .ConfigureAwait(false);
@@ -107,11 +136,16 @@ internal static class LeadershipActivation
                     if (read != count || !localBuffer.AsSpan(0, count).SequenceEqual(remoteBuffer.AsSpan(0, count)))
                         throw new InvalidDataException("Candidate diverges from canonical Blob history; restore is required.");
                     offset += (uint)count;
+                    if (validated != null) validated[database.Name] = new(file.FileId, checked((uint)offset));
                     progress?.Invoke(file.FileId, offset);
                 }
-                if (file.IsSealed) expectedId = checked(file.FileId + ((file.FileId & 1) == 0 ? 1u : 2u));
+                if (compareEnd < file.Length) return false;
+                previousId = file.FileId;
+                // Follow the selected link: native allocation may skip IDs reserved by legacy files.
+                if (file.IsSealed) expectedId = inventory.GetHead(file.FileId).State.Metadata.Next!.FileId;
             }
             if (!found) throw new InvalidDataException("Canonical history does not contain the restored base.");
+            return true;
         }
         finally
         {
@@ -119,6 +153,8 @@ internal static class LeadershipActivation
             ArrayPool<byte>.Shared.Return(remoteBuffer);
         }
     }
+
+    static ulong Order(TransactionLogPosition position) => ((ulong)position.FileId << 32) | position.Offset;
 
     static void RequireAuthority(SelectedLeadership selected)
     {

@@ -13,7 +13,7 @@ namespace BTDB.Replication.Test;
 
 public class RemoteMaintenanceTest
 {
-    internal sealed class Storage(LeaseAuthority authority) : IReplicationStorage, IDisposable
+    internal sealed class Storage(LeaseAuthority authority, IReplicationScheduler? clock = null) : IReplicationStorage, IDisposable
     {
         public ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken cancellation) => Inner.ReadAsync(key, cancellation);
         public ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken cancellation) =>
@@ -21,20 +21,39 @@ public class RemoteMaintenanceTest
         public ValueTask<TrlWriteResult> WriteAsync(TrlWrite write, CancellationToken cancellation) => Inner.WriteAsync(write, cancellation);
 
         internal readonly CheckpointPublisherTest.Storage Inner = new();
+        readonly Dictionary<uint, DateTimeOffset> _deadlines = new();
+        DateTimeOffset Now => DateTimeOffset.UnixEpoch + (clock?.Elapsed ?? TimeSpan.Zero);
         readonly Dictionary<uint, int> _versions = new();
         public readonly List<uint> Deleted = new();
         public Action? DelayedDelete;
         public bool DelayDelete;
+        public bool FailInventory;
+        public TaskCompletionSource? HoldKvi;
         string Version(uint id) => Inner.Describe(id).Version + ":" + _versions.GetValueOrDefault(id);
         public async IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync([EnumeratorCancellation] CancellationToken cancellation)
         {
+            if (FailInventory) throw new IOException("Inventory unavailable.");
             await foreach (var file in Inner.EnumerateAsync(cancellation))
-                yield return new(file.FileId.ToString(), file.FileId, file.FileType, Version(file.FileId));
+                yield return new(file.FileId.ToString(), file.FileId, file.FileType, Version(file.FileId), false, _deadlines.TryGetValue(file.FileId, out var deadline) ? deadline : null);
+        }
+        public ValueTask<RemoteMaintenanceFile> ScheduleDeletionAsync(RemoteMaintenanceFile file, TimeSpan delay, CancellationToken cancellation)
+        {
+            if (Version(file.FileId) != file.Version) return ValueTask.FromResult(file);
+            if (!_deadlines.TryGetValue(file.FileId, out var deadline)) _deadlines[file.FileId] = deadline = Now + delay;
+            return ValueTask.FromResult(file with { DeleteAfter = deadline });
+        }
+        public ValueTask CancelDeletionAsync(RemoteMaintenanceFile file, CancellationToken cancellation)
+        {
+            if (Version(file.FileId) != file.Version) throw new IOException("Protection conflict.");
+            _deadlines.Remove(file.FileId);
+            _versions[file.FileId] = _versions.GetValueOrDefault(file.FileId) + 1;
+            return ValueTask.CompletedTask;
         }
         public ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation)
         {
             cancellation.ThrowIfCancellationRequested();
             if (!authority.IsValid) throw new InvalidOperationException();
+            if (!_deadlines.TryGetValue(file.FileId, out var due) || Now < due) return ValueTask.CompletedTask;
             void Apply()
             {
                 if (Inner.Files.GetFile(file.FileId) == null || Version(file.FileId) != file.Version) return;
@@ -50,13 +69,18 @@ public class RemoteMaintenanceTest
             cancellation.ThrowIfCancellationRequested();
             if (!authority.IsValid) throw new InvalidOperationException();
             if (Inner.Files.GetFile(id) == null) return ValueTask.FromResult(false);
+            _deadlines.Remove(id);
             _versions[id] = _versions.GetValueOrDefault(id) + 1;
             return ValueTask.FromResult(true);
         }
         public IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation) => Inner.EnumerateAsync(cancellation);
         public ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation) => Inner.ReadAsync(file, offset, buffer, cancellation);
         public ValueTask EnsurePureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) => Inner.EnsurePureValuesAsync(id, source, cancellation);
-        public ValueTask PublishKeyIndexAsync(uint id, KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map, CancellationToken cancellation) => Inner.PublishKeyIndexAsync(id, snapshot, map, cancellation);
+        public async ValueTask PublishKeyIndexAsync(uint id, KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map, CancellationToken cancellation)
+        {
+            if (HoldKvi != null) await HoldKvi.Task; // Deliberately ignore cancellation.
+            await Inner.PublishKeyIndexAsync(id, snapshot, map, cancellation);
+        }
         public void Dispose() => Inner.Dispose();
         public void Add(uint id, KVFileType type)
         {
@@ -72,22 +96,112 @@ public class RemoteMaintenanceTest
         return authority;
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RepeatedCheckpointOrCleanupFailuresDoNotRenewDeadline(bool cleanup)
+    {
+        var clock = new DeterministicScheduler(905);
+        var authority = Lease(clock);
+        using var local = new InMemoryReplicationFileStorage();
+        var capture = new TransactionLogCapture();
+        using var db = await CheckpointPublisherTest.OpenForPublication(local, capture);
+        await CheckpointPublisherTest.Populate(db);
+        using var storage = new Storage(authority, clock.CreateScope("storage"));
+        await using var files = new ReplicationFileSet(local, storage);
+        using var canonical = CheckpointPublisherTest.CreateCanonical(db, capture, storage.Inner, authority);
+        using var maintenance = new ReplicationMaintenance(db, files, canonical, storage, authority,
+            clock.CreateScope("maintenance"), TimeSpan.FromTicks(1000), TimeSpan.Zero);
+        var expired = 0;
+        maintenance.Watchdog = new(clock.CreateScope("watchdog"), TimeSpan.FromTicks(10), () => expired++);
+        storage.Inner.FailKvi = !cleanup;
+        storage.FailInventory = cleanup;
+        await Assert.ThrowsAsync<IOException>(() => maintenance.RunDueAsync(default).AsTask());
+        var attempts = storage.Inner.KviAttempts.Count;
+        clock.AdvanceBy(TimeSpan.FromTicks(6));
+        await Assert.ThrowsAsync<IOException>(() => maintenance.RunDueAsync(default).AsTask());
+        if (cleanup) Assert.Equal(attempts, storage.Inner.KviAttempts.Count);
+        clock.AdvanceBy(TimeSpan.FromTicks(4));
+        Assert.Equal(1, expired);
+    }
+
+    [Fact]
+    public async Task BlockedCheckpointCannotPreventDeadlineAndSuccessfulCycleLeavesNoIdleTimer()
+    {
+        var clock = new DeterministicScheduler(907);
+        var authority = Lease(clock);
+        using var local = new InMemoryReplicationFileStorage();
+        var capture = new TransactionLogCapture();
+        using var db = await CheckpointPublisherTest.OpenForPublication(local, capture);
+        await CheckpointPublisherTest.Populate(db);
+        using var storage = new Storage(authority, clock.CreateScope("storage"));
+        await using var files = new ReplicationFileSet(local, storage);
+        using var canonical = CheckpointPublisherTest.CreateCanonical(db, capture, storage.Inner, authority);
+        using var maintenance = new ReplicationMaintenance(db, files, canonical, storage, authority,
+            clock.CreateScope("maintenance"), TimeSpan.FromTicks(1000), TimeSpan.Zero);
+        var expired = 0;
+        maintenance.Watchdog = new(clock.CreateScope("watchdog"), TimeSpan.FromTicks(10), () => expired++);
+        await maintenance.RunDueAsync(default);
+        clock.AdvanceBy(TimeSpan.FromTicks(999));
+        await maintenance.RunDueAsync(default);
+        Assert.Equal(0, expired);
+        clock.AdvanceBy(TimeSpan.FromTicks(1));
+        storage.HoldKvi = new();
+        var running = maintenance.RunDueAsync(default).AsTask();
+        try
+        {
+            clock.AdvanceBy(TimeSpan.FromTicks(10));
+            Assert.False(running.IsCompleted);
+            Assert.Equal(1, expired);
+        }
+        finally
+        {
+            storage.HoldKvi.SetResult();
+            await running;
+        }
+    }
+
+    [Fact]
+    public void ForwardMaintenanceProgressExtendsDeadlineButIdleAndDisposedLanesAreNotWatched()
+    {
+        var clock = new DeterministicScheduler(906);
+        var expired = 0;
+        using var watchdog = new ReplicationMaintenanceWatchdog(clock.CreateScope("watchdog"), TimeSpan.FromTicks(10), () => expired++);
+        clock.AdvanceBy(TimeSpan.FromTicks(100));
+        watchdog.Observe((0, 0, 0));
+        clock.AdvanceBy(TimeSpan.FromTicks(9));
+        watchdog.Observe((1, 1, 1));
+        clock.AdvanceBy(TimeSpan.FromTicks(9));
+        watchdog.Observe((1, 1, 2));
+        clock.AdvanceBy(TimeSpan.FromTicks(9));
+        Assert.Equal(0, expired);
+        watchdog.Observe(null);
+        clock.AdvanceBy(TimeSpan.FromTicks(100));
+        Assert.Equal(0, expired);
+        watchdog.Observe((0, 0, 0));
+        watchdog.Dispose();
+        watchdog.Observe((1, 1, 1));
+        clock.AdvanceBy(TimeSpan.FromTicks(100));
+        Assert.Equal(0, expired);
+    }
+
     [Fact]
     public async Task ConfirmedCheckpointCleanupDelaysDeletionPreservesClosureAndNeverReusesHighestId()
     {
         var clock = new DeterministicScheduler(901);
         var authority = Lease(clock);
-        using var storage = new Storage(authority);
+        using var storage = new Storage(authority, clock.CreateScope("storage"));
         storage.Add(2, KVFileType.PureValues);
         storage.Add(4, KVFileType.PureValues);
         storage.Add(6, KVFileType.KeyIndex);
         storage.Add(8, KVFileType.KeyIndex);
         storage.Add(10, KVFileType.PureValues); // Highest allocated orphan anchors allocation.
-        var gc = new RemoteGarbageCollector(storage, authority, clock.CreateScope("gc"), TimeSpan.FromTicks(10));
+        var gc = new RemoteGarbageCollector(storage, authority, TimeSpan.FromTicks(10));
         var checkpoint = new PublishedCheckpoint(8, 7, new HashSet<uint> { 4 });
         await gc.CollectAsync(checkpoint, default);
         Assert.Empty(storage.Deleted);
         clock.AdvanceBy(TimeSpan.FromTicks(10));
+        gc = new RemoteGarbageCollector(storage, authority, TimeSpan.FromTicks(10));
         await gc.CollectAsync(checkpoint, default);
         Assert.Equal(new uint[] { 2, 6 }, storage.Deleted.Order().ToArray());
         Assert.NotNull(storage.Inner.Files.GetFile(4));
@@ -103,10 +217,10 @@ public class RemoteMaintenanceTest
     {
         var clock = new DeterministicScheduler(902);
         var authority = Lease(clock);
-        using var storage = new Storage(authority);
+        using var storage = new Storage(authority, clock.CreateScope("storage"));
         storage.Add(2, KVFileType.PureValues);
         storage.Add(4, KVFileType.KeyIndex);
-        var gc = new RemoteGarbageCollector(storage, authority, clock.CreateScope("gc"), TimeSpan.Zero);
+        var gc = new RemoteGarbageCollector(storage, authority, TimeSpan.Zero);
         storage.DelayDelete = true;
         await gc.CollectAsync(new(4, 3, new HashSet<uint>()), default);
         Assert.NotNull(storage.DelayedDelete);
@@ -133,7 +247,7 @@ public class RemoteMaintenanceTest
         var capture = new TransactionLogCapture();
         using var db = await CheckpointPublisherTest.OpenForPublication(local, capture);
         await CheckpointPublisherTest.Populate(db);
-        using var storage = new Storage(authority);
+        using var storage = new Storage(authority, clock.CreateScope("storage"));
         await using var files = new ReplicationFileSet(local, storage);
         using var canonical = CheckpointPublisherTest.CreateCanonical(db, capture, storage.Inner, authority);
         using var maintenance = new ReplicationMaintenance(db, files, canonical, storage, authority,

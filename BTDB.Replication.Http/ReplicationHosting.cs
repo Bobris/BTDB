@@ -45,6 +45,9 @@ public static class ReplicationHosting
             sp.GetRequiredService<ILeaderRecordStorage>(), sp.GetRequiredService<LeaseSessionController>(),
             sp.GetRequiredService<HttpReplicationPeerTransport>(), sp.GetRequiredService<IReplicationScheduler>(),
             sp.GetRequiredService<ReplicationStatus>()));
+        services.AddSingleton(sp => new ReplicationApplicationData(sp.GetRequiredService<ILeaderRecordStorage>(),
+            options.ClusterId, sp.GetRequiredService<LeaseSessionController>(),
+            () => sp.GetRequiredService<ReplicationNodeCoordinator>().ApplicationDataLeadership()));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, ReplicationHostedService>());
         return services;
     }

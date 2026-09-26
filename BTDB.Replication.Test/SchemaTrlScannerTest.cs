@@ -21,6 +21,22 @@ public class SchemaTrlScannerTest
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReservedOddIdIsSkippedByLeaderLineage(bool legacyEven)
+    {
+        using var node = await Node.Create(legacyEven: legacyEven, reservedOdd: true);
+        // Start at the restored tail header, before the rotation that skips reserved ID 3.
+        var scanner = new SchemaTrlScanner(new(legacyEven ? 2u : 1u, 0), node.Db.FileCollection.Guid);
+        using var reader = node.Reader();
+        for (ulong id = 1; id <= 3; id++) await node.Write(id, (byte)id);
+        Assert.True(node.Capture.Completed.FileId >= 5);
+        Assert.False(await scanner.ContainsSchemaAsync(reader, node.Capture.Completed, default));
+        await node.Write(3, 4);
+        Assert.True(await scanner.ContainsSchemaAsync(reader, node.Capture.Completed, default));
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]

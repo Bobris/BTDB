@@ -13,6 +13,7 @@ internal sealed class SchemaTrlScanner(TransactionLogPosition start, Guid? datab
 {
     TransactionLogPosition _position = start;
     byte[]? _buffer;
+    byte[]? _header;
 
     public async ValueTask<bool> ContainsSchemaAsync(ILeaderTrlReader leader, TransactionLogPosition end, CancellationToken cancellation)
     {
@@ -136,10 +137,29 @@ internal sealed class SchemaTrlScanner(TransactionLogPosition start, Guid? datab
                 return false;
             }
             previousId = fileId;
-            fileId = checked(fileId + ((fileId & 1) == 0 ? 1u : 2u));
-            if (fileId > end.FileId) throw new InvalidDataException("Invalid native TRL sequence.");
+            fileId = await TrlLineage.NextAsync(fileId, end.FileId,
+                id => LeaderPreviousAsync(leader, id, cancellation)).ConfigureAwait(false);
             offset = 0;
         }
+    }
+
+    // Native allocation may skip IDs, so walk the leader's headers back from the advertised end file.
+    async ValueTask<uint> LeaderPreviousAsync(ILeaderTrlReader leader, uint fileId, CancellationToken cancellation)
+    {
+        var header = _header ??= GC.AllocateUninitializedArray<byte>(64, pinned: true);
+        var available = 0;
+        while (available < header.Length)
+        {
+            var read = await leader.ReadAsync(fileId, (ulong)available, header.AsMemory(available), cancellation).ConfigureAwait(false);
+            cancellation.ThrowIfCancellationRequested();
+            if (read < 0 || read > header.Length - available) throw new IOException("Invalid native range length.");
+            if (read == 0) break;
+            available += read;
+        }
+        var reader = MemReader.CreateFromPinnedArray(header, 0, available);
+        if (FileCollectionWithFileInfos.ReadFileInfo(ref reader, true) is not IFileTransactionLog log || log.Guid != databaseIdentity)
+            throw new InvalidDataException("Peer TRL lineage differs from the restored database.");
+        return log.PreviousFileId;
     }
 
     static ulong Order(TransactionLogPosition position) => ((ulong)position.FileId << 32) | position.Offset;

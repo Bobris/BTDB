@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -183,6 +184,11 @@ public class ReplicationHostingTest
         Assert.True(host.Status.Current.Ready);
         Assert.Equal(ReplicationNodeRole.Leader, host.Status.Current.Role);
         Assert.Equal(HealthStatus.Healthy, (await host.Health()).Status);
+        var data = host.App.Services.GetRequiredService<ReplicationApplicationData>();
+        var snapshot = await data.ReadAsync();
+        Assert.Equal(LeaderWriteOutcome.Applied, await data.TryWriteAsync(snapshot, new JsonObject { ["custom"] = 42 }));
+        Assert.Equal(42, (await data.ReadAsync()).Value!["custom"]!.GetValue<int>());
+        // Existing peer term/session remains valid after a same-term application-data update.
         using var client = new HttpClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
         var request = new HttpReplicationPeerTransport.Request("cluster", 1, "session", Options.Endpoint,
@@ -195,6 +201,7 @@ public class ReplicationHostingTest
         Assert.Equal(1, host.Storage.Acquires);
         host.Lifetime.StopApplication();
         Assert.Null(host.Leases.Current);
+        Assert.Equal(LeaderWriteOutcome.Rejected, await data.TryWriteAsync(await data.ReadAsync(), null));
         await host.Worker.ExecuteTask!.WaitAsync(Timeout);
         Assert.Equal(ReplicationNodeRole.Stopped, host.Coordinator.Role);
         Assert.Equal(0, host.Clock.Pending);
@@ -265,7 +272,7 @@ public class ReplicationHostingTest
     [Fact]
     public async Task ProgressDeadlinesRequireAnExplicitFatalRecoveryHostBeforeRestoringOrAcquiring()
     {
-        await using var host = new RunningHost(progressTimeouts: new(TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30)));
+        await using var host = new RunningHost(progressTimeouts: new(TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10)));
         await host.App.StartAsync();
         await Assert.ThrowsAsync<ArgumentException>(() => host.Worker.ExecuteTask!.WaitAsync(Timeout));
         Assert.True(host.Lifetime.ApplicationStopping.IsCancellationRequested);
@@ -349,9 +356,13 @@ public class ReplicationHostingTest
         Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(Options, 0, TimeSpan.FromTicks(-1)));
         Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(Options, 0, TimeSpan.Zero, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(
-            Options with { ProgressTimeouts = new(TimeSpan.Zero, TimeSpan.FromSeconds(1)) }, 0, TimeSpan.Zero));
+            Options with { ProgressTimeouts = new(TimeSpan.Zero, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)) }, 0, TimeSpan.Zero));
         Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(
-            Options with { ProgressTimeouts = new(TimeSpan.FromSeconds(1), TimeSpan.FromTicks(-1)) }, 0, TimeSpan.Zero));
+            Options with { ProgressTimeouts = new(TimeSpan.FromSeconds(1), TimeSpan.FromTicks(-1), TimeSpan.FromSeconds(1)) }, 0, TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(
+            Options with { ProgressTimeouts = new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), TimeSpan.Zero) }, 0, TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => services.AddBTDBReplication(
+            Options with { ProgressTimeouts = new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), TimeSpan.Zero) }, 0, TimeSpan.Zero));
         services.AddBTDBReplication(Options, 0, TimeSpan.Zero);
         Assert.Throws<InvalidOperationException>(() => services.AddBTDBReplication(Options, 0, TimeSpan.Zero));
     }

@@ -458,7 +458,7 @@ are last-writer-wins.
 - Conditions apply to one Blob operation. They do not create a transaction across the leader record, a TRL, a KVI, and its prerequisite data objects.
 
 The shared leader object should be a small block blob replaced with `If-Match` when leadership changes or the current
-owner updates timeout skip entries. Its finite native lease renews independently without changing the ETag.
+owner updates opaque application data. Its finite native lease renews independently without changing the ETag.
 Canonical TRL publications use `If-Match` directly; their success establishes transaction durability.
 Checkpoint selection remains a separate metadata operation, not a per-append acknowledgement. Bulk objects are immutable or term-qualified, so a stale
 session cannot place its later bytes into a current-term accepted recovery graph.
@@ -734,3 +734,20 @@ A provider capability probe is qualification tooling, not a mandatory startup tr
 needs lease/conditional-I/O errors handled normally, and actual provider fault tests remain required. Likewise, GC can
 start from native dependency closure and current pending publications without a separate persistent ledger; this does
 not waive authority, version-bound deletion, or protection of dependencies needed by an unresolved publication.
+
+## Persistent delayed cleanup (2026-09-22)
+
+Azure marks obsolete TRL/PVL/KVI with `btdb_delete_after`, an invariant round-trip UTC timestamp, preserving all
+other metadata under `If-Match`. `ScheduleDeletionAsync` returns the resulting version and never postpones an
+existing deadline. `DeleteAsync` rereads and requires both an elapsed persisted deadline and that same ETag.
+Lost replies retry through metadata discovery. `CancelDeletionAsync` and PVL protection clear the mark while
+changing the version, invalidating both stale marks and deletes. Missing PVLs are uploaded at fresh IDs.
+
+The adapter accepts an injected `TimeProvider` (default system UTC). Use clocks suitable for the configured
+operational retention interval; lease authority still uses its independent conservative monotonic scheduler.
+No provider lifecycle rule is automatically installed: leader maintenance performs the version-bound due deletions.
+
+KVI commits atomically bind SHA metadata plus `btdb_recovery_key` (base64 UTF-8 key) and `btdb_recovery_id`, the oldest
+required canonical TRL. Discovery reads the latest immutable KVI's hint then follows canonical links, so obsolete
+TRL prefixes can disappear. Cleanup preserves the full chain from the oldest dependency, including intervening
+links. Legacy KVIs need the original root. Tests restore native BTDB after actual genesis-prefix deletion in Azurite.

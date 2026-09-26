@@ -4,6 +4,27 @@
 
 ### Fixed
 
+- Stop remote inventory handles in `ReplicationFileSet` from blocking a thread on synchronous network reads.
+  They are metadata-only; `RandomRead` and `GetExclusiveReader` now throw `NotSupportedException`, because the
+  database reads remote files only from the local cache after explicit prefetch.
+
+- Let a lease winner whose local execution lags published canonical history catch up under the same lease instead
+  of restarting for a full restore. Activation validates the matching complete local prefix, returns "not yet" and
+  resumes from the verified position; only divergent bytes or another local continuation still require restore.
+
+- Stop replication leader work from livelocking behind `RequestTimeout`. Canonical validation, publication backlogs
+  and checkpoint uploads longer than one request timeout were cancelled and restarted from scratch forever; they are
+  now bounded by lease authority and the optional progress deadlines. Checkpoint maintenance runs beside canonical
+  TRL publication instead of blocking it, and fatal recovery also cancels outstanding leader requests.
+
+- Report Azure throttling and other transient failures from blob listings, checkpoint file reads, immutable-file
+  staging and commit reconciliation as retryable `IOException`s. Previously they escaped as `RequestFailedException`
+  and stopped the replication host.
+
+- Follow native TRL continuation instead of numeric parity during leadership validation, follower comparison and
+  schema scanning. Odd-ID allocation skips IDs reserved by legacy or abandoned files, so a legacy tail such as TRL 10
+  with KVI 11 continues in TRL 13; the successor is now taken from selected links or PreviousFileId headers.
+
 - Continue replicated writes in a restored TRL whose physical EOF is the exact complete committed boundary.
   Previously, restoring a published tail without a local shutdown marker rotated the follower's TRL and made its
   next identical event diverge from the live leader. Preserve existing handling of incomplete/corrupt/sealed tails
@@ -16,6 +37,25 @@
   storage, including after importing an exact file ID.
 
 ### Changed
+
+- Persist unified TRL/PVL/KVI deletion deadlines in Azure metadata, preserving deadlines across retries and leader
+  replacement. Require elapsed marks and matching ETags for deletion; clear marks/version-protect reused PVLs and
+  retained TRLs, and reupload missing remembered PVLs at fresh identities. Bind a retained TRL root to immutable KVI
+  publication so native restore survives obsolete genesis pruning. Update startup to distinguish retained roots
+  from unpublished genesis; cover metadata ambiguity, stale operations and native restore against Azurite.
+
+- Add optional checkpoint/remote-maintenance no-progress deadlines, with retry-stable forward-step tracking,
+  cleanup retry continuity and idle/application-event exclusions. Fence authority immediately and use the existing
+  delayed fatal restart. Document operator backup recovery and the planned unified deletion-metadata/PVL reuse policy.
+
+- Fence replication authority and readiness immediately on watchdog expiry, then wait a configured fixed delay
+  before invoking fatal host recovery. Keep the timer independent of blocked workers and prevent cleanup/shutdown
+  from bypassing it. Replace persistent activation-backoff counters and their file/storage API with this delay.
+
+- Expose `ReplicationApplicationData` for version-bound reads and active-leader lease/ETag-conditional writes to
+  opaque `applicationData` in `leader.json`. Preserve authority and unrelated fields, reconcile exact lost-response
+  intents, and keep concurrent writes from overwriting newer versions. Application event timeouts, skip mechanisms
+  and execution/commit arbitration are explicitly outside replication scope; update the architecture and plan.
 
 - Add opt-in replication activation and per-database publication progress deadlines. Repeated retries do not
   extend deadlines; idle input and follower restore are excluded. Fence leases and readiness before invoking

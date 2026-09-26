@@ -670,6 +670,41 @@ public class CheckpointPublisherTest
         Assert.Equal(uploaded, storage.PvlAttempts.Count);
     }
 
+    [Fact]
+    public async Task PromotedFollowerReuploadsMissingRememberedPvlAtFreshIdentity()
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        var capture = new TransactionLogCapture();
+        using var db = await OpenForPublication(local, capture);
+        await Populate(db);
+        using var snapshot = db.CaptureKeyIndexSnapshot();
+        var downloaded = snapshot.Sources.First(s => s.FileType == KVFileType.PureValues);
+        using var storage = new Storage(snapshot, downloaded.FileId);
+        await using var files = new ReplicationFileSet(local, storage);
+        files.RememberVerifiedPureValues(downloaded, storage.Describe(downloaded.FileId));
+        storage.Files.GetFile(downloaded.FileId)!.Remove();
+        storage.Types.Remove(downloaded.FileId);
+        using var canonical = CreateCanonical(db, capture, storage);
+        var publisher = new CheckpointPublisher(files, canonical);
+        Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(snapshot, retryPending: true));
+        var replacement = storage.LastMap![downloaded.FileId];
+        Assert.NotEqual(downloaded.FileId, replacement);
+        Assert.Contains(replacement, storage.PvlAttempts);
+        Assert.Equal(downloaded.Length, storage.Files.GetFile(replacement)!.GetSize());
+        using var cache = new InMemoryReplicationFileStorage();
+        await using var restoredFiles = new ReplicationFileSet(cache, storage);
+        await restoredFiles.InitializeAsync();
+        using var restored = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        { FileCollection = restoredFiles, CompactorScheduler = null, Compression = new NoCompressionStrategy() });
+        using var expected = db.StartReadOnlyTransaction();
+        using var actual = restored.StartReadOnlyTransaction();
+        using var expectedCursor = expected.CreateCursor();
+        using var actualCursor = actual.CreateCursor();
+        Assert.Equal(expectedCursor.GetKeyValueCount([]), actualCursor.GetKeyValueCount([]));
+        Assert.True(actualCursor.FindExactKey([200]));
+        Assert.Equal(new byte[2000], Value(actualCursor));
+    }
+
     [Theory]
     [InlineData("pvl")]
     [InlineData("trl")]

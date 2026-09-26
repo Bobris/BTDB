@@ -232,7 +232,7 @@ the coordinator now performs this through LeadershipSession. Ordinary bootstrap/
 
 ## Azure selection and activation coverage
 
-`LeaderSelectionTest` covers exact JSON reconciliation, retained skip entries and generation fencing.
+`LeaderSelectionTest` covers exact JSON reconciliation, retained opaque application data and generation fencing.
 `LeadershipActivationTest` covers peer acknowledgement ahead of Blob, binary divergence, adoption/append races,
 partial multi-database failure and retry without premature optimistic publication.
 `BTDB.Replication.Azure.Test` uses Azure.Storage.Blobs 12.29.2 against its own loopback Azurite process. It covers
@@ -344,3 +344,17 @@ therefore exercise the external-consumer path. API boundary tests prevent accide
 exposing authority construction/renewal or transition machinery, and leaking credentials through public record strings.
 See [hosting and ownership contracts](../Doc/ReplicationHosting.md). Public availability is independent of packaging
 and production qualification.
+
+Delayed watchdog recovery tests verify immediate authority/readiness fencing, no subsequent renewal/acquisition,
+and healthy-follower takeover before the failed node restarts. Cooperative and uncooperative storage, late worker
+completion and concurrent graceful shutdown cannot bypass the delay or cancel/double-dispatch fatal recovery.
+
+Checkpoint maintenance tests cover stuck cancellation-resistant KVI uploads, unchanged checkpoint retries,
+cleanup retries without republishing KVI, forward-step deadline extension, and no timers during idle intervals.
+A coordinator regression verifies renewal remains healthy until maintenance expiry fences authority and starts the
+configured delayed fatal restart. Shutdown/disposal prevents rearming an old maintenance lane.
+
+Persistent cleanup qualification covers marking each of TRL/PVL/KVI, lost successful metadata responses, deadline
+preservation across adapter/GC reconstruction, PVL unmarking, stale mark/delete rejection, and a remembered PVL
+removed before promotion being reuploaded at a fresh ID. An Azurite native-database test deletes obsolete genesis
+TRLs and restores all keys through the checkpoint's retained-root hint. Live Azure remains separately unqualified.

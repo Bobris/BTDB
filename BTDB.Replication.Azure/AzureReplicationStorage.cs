@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure;
@@ -25,15 +26,20 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     readonly string prefix;
     readonly CanonicalTrlInventory? canonical;
     readonly LeaseAuthority? authority;
+    readonly TimeProvider timeProvider;
+    const string DeleteAfterKey = "btdb_delete_after";
+    const string RecoveryKey = "btdb_recovery_key";
+    const string RecoveryId = "btdb_recovery_id";
 
-    public AzureReplicationStorage(BlobContainerClient container, string prefix)
+    public AzureReplicationStorage(BlobContainerClient container, string prefix, TimeProvider? timeProvider = null)
     {
         this.container = container ?? throw new ArgumentNullException(nameof(container));
         this.prefix = prefix ?? throw new ArgumentNullException(nameof(prefix));
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     AzureReplicationStorage(AzureReplicationStorage storage, CanonicalTrlInventory inventory, LeaseAuthority? authority)
-        : this(storage.container, storage.prefix)
+        : this(storage.container, storage.prefix, storage.timeProvider)
     {
         canonical = inventory;
         this.authority = authority;
@@ -162,8 +168,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     public async IAsyncEnumerable<RemoteFile> EnumerateAsync([EnumeratorCancellation] CancellationToken cancellation)
     {
         await foreach (var file in Inventory.EnumerateAsync(cancellation).ConfigureAwait(false)) yield return file;
-        await foreach (var blob in container.GetBlobsAsync(BlobTraits.Metadata, BlobStates.None, prefix: Directory,
-                           cancellationToken: cancellation).ConfigureAwait(false))
+        await foreach (var blob in ListAsync(Directory, cancellation).ConfigureAwait(false))
         {
             var name = blob.Name[Directory.Length..];
             var dot = name.LastIndexOf('.');
@@ -178,6 +183,22 @@ public sealed class AzureReplicationStorage : IReplicationStorage
 
     string Root => string.IsNullOrEmpty(prefix) ? "" : prefix.TrimEnd('/') + "/";
 
+    // Listing pages are remote requests too: transient failures must stay retryable I/O, never fatal SDK exceptions.
+    async IAsyncEnumerable<BlobItem> ListAsync(string listPrefix, [EnumeratorCancellation] CancellationToken cancellation)
+    {
+        await using var blobs = container.GetBlobsAsync(BlobTraits.Metadata, BlobStates.None, prefix: listPrefix,
+            cancellationToken: cancellation).GetAsyncEnumerator(cancellation);
+        while (true)
+        {
+            bool next;
+            try { next = await blobs.MoveNextAsync().ConfigureAwait(false); }
+            catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+            { throw new IOException("Azure blob listing failed.", error); }
+            if (!next) yield break;
+            yield return blobs.Current;
+        }
+    }
+
     void RequireAuthority(CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
@@ -186,8 +207,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
 
     public async IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync([EnumeratorCancellation] CancellationToken cancellation)
     {
-        await foreach (var blob in container.GetBlobsAsync(BlobTraits.Metadata, BlobStates.None, prefix: Root,
-                           cancellationToken: cancellation).ConfigureAwait(false))
+        await foreach (var blob in ListAsync(Root, cancellation).ConfigureAwait(false))
         {
             var key = blob.Name[Root.Length..];
             if (key.StartsWith("files/", StringComparison.Ordinal))
@@ -196,27 +216,108 @@ public sealed class AzureReplicationStorage : IReplicationStorage
                 var dot = name.LastIndexOf('.');
                 if (dot <= 0 || !uint.TryParse(name.AsSpan(0, dot), NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id == 0) continue;
                 var type = name[dot..] switch { ".pvl" => KVFileType.PureValues, ".kvi" => KVFileType.KeyIndex, _ => KVFileType.Unknown };
-                if (type != KVFileType.Unknown) yield return new(key, id, type, blob.Properties.ETag!.Value.ToString());
+                if (type != KVFileType.Unknown) yield return new(key, id, type, blob.Properties.ETag!.Value.ToString(), false, DeletionTime(blob.Metadata));
             }
             else if (blob.Metadata.ContainsKey("btdb_term") && blob.Metadata.TryGetValue("btdb_file_id", out var value) &&
                      uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id != 0)
-                // This adapter discovers canonical history from a supplied root. Keep its links traversable.
-                yield return new(key, id, KVFileType.TransactionLog, blob.Properties.ETag!.Value.ToString(), true);
+                yield return new(key, id, KVFileType.TransactionLog, blob.Properties.ETag!.Value.ToString(), false, DeletionTime(blob.Metadata));
         }
+    }
+
+    static DateTimeOffset? DeletionTime(IDictionary<string, string> metadata)
+    {
+        if (!metadata.TryGetValue(DeleteAfterKey, out var value)) return null;
+        if (!DateTimeOffset.TryParseExact(value, "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time))
+            throw new InvalidDataException("Invalid deletion deadline metadata.");
+        return time;
+    }
+
+    public async ValueTask<RemoteMaintenanceFile> ScheduleDeletionAsync(RemoteMaintenanceFile file, TimeSpan delay, CancellationToken cancellation)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(delay.Ticks);
+        TrlMetadata.Validate(new(file.Key, file.FileId));
+        RequireAuthority(cancellation);
+        var blob = container.GetBlobClient(Root + file.Key);
+        try
+        {
+            var properties = (await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false)).Value;
+            if (properties.ETag.ToString().Trim('"') != file.Version.Trim('"')) return file;
+            if (DeletionTime(properties.Metadata) is { } existing) return file with { DeleteAfter = existing };
+            var deadline = timeProvider.GetUtcNow() + delay;
+            var metadata = new Dictionary<string, string>(properties.Metadata) { [DeleteAfterKey] = deadline.ToString("O", CultureInfo.InvariantCulture) };
+            RequireAuthority(cancellation);
+            var result = await blob.SetMetadataAsync(metadata, new BlobRequestConditions { IfMatch = properties.ETag }, cancellation).ConfigureAwait(false);
+            return file with { Version = result.Value.ETag.ToString(), DeleteAfter = deadline };
+        }
+        catch (RequestFailedException error) when (error.Status is 404 or 412) { return file; }
+        catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+        { throw new IOException("Deletion marking is unresolved; reread before retry.", error); }
+    }
+
+    public async ValueTask CancelDeletionAsync(RemoteMaintenanceFile file, CancellationToken cancellation)
+    {
+        RequireAuthority(cancellation);
+        var blob = Blob(file.Key);
+        try
+        {
+            var properties = (await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false)).Value;
+            if (properties.ETag.ToString().Trim('"') != file.Version.Trim('"')) throw new IOException("Retained file changed during protection.");
+            var metadata = new Dictionary<string, string>(properties.Metadata);
+            metadata.Remove(DeleteAfterKey);
+            RequireAuthority(cancellation);
+            await blob.SetMetadataAsync(metadata, new BlobRequestConditions { IfMatch = properties.ETag }, cancellation).ConfigureAwait(false);
+        }
+        catch (RequestFailedException error) when (error.Status is 404 or 412)
+        { throw new IOException("Retained file disappeared or changed during protection.", error); }
+        catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+        { throw new IOException("Deletion cancellation is unresolved.", error); }
     }
 
     public async ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation)
     {
         TrlMetadata.Validate(new(file.Key, file.FileId));
         RequireAuthority(cancellation);
+        if (file.DeleteAfter is not { } due || timeProvider.GetUtcNow() < due) return;
+        var blob = container.GetBlobClient(Root + file.Key);
         try
         {
-            await container.GetBlobClient(Root + file.Key).DeleteIfExistsAsync(DeleteSnapshotsOption.IncludeSnapshots,
-                new BlobRequestConditions { IfMatch = new ETag(file.Version) }, cancellation).ConfigureAwait(false);
+            var properties = (await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false)).Value;
+            if (properties.ETag.ToString().Trim('"') != file.Version.Trim('"') || DeletionTime(properties.Metadata) is not { } deadline ||
+                timeProvider.GetUtcNow() < deadline) return;
+            RequireAuthority(cancellation);
+            await blob.DeleteIfExistsAsync(DeleteSnapshotsOption.IncludeSnapshots,
+                new BlobRequestConditions { IfMatch = properties.ETag }, cancellation).ConfigureAwait(false);
         }
         catch (RequestFailedException error) when (error.Status is 404 or 412) { }
         catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
         { throw new IOException("Remote cleanup result is unresolved.", error); }
+    }
+
+    public async ValueTask<TrlSuccessor> ResolveRecoveryRootAsync(TrlSuccessor genesis, CancellationToken cancellation)
+    {
+        // Only an atomically published immutable KVI can select a new retained root. Never pick a maximum TRL ID.
+        uint latest = 0;
+        TrlSuccessor? root = null;
+        await foreach (var blob in ListAsync(Directory, cancellation).ConfigureAwait(false))
+        {
+            var name = blob.Name[Directory.Length..];
+            if (!name.EndsWith(".kvi", StringComparison.Ordinal) ||
+                !uint.TryParse(name.AsSpan(0, name.Length - 4), out var id) || id <= latest) continue;
+            latest = id;
+            root = null;
+            if (blob.Metadata.TryGetValue(RecoveryKey, out var key) && blob.Metadata.TryGetValue(RecoveryId, out var value) &&
+                uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var rootId) && rootId != 0 &&
+                blob.Metadata.ContainsKey("btdb_sha256"))
+            {
+                try { root = new(Encoding.UTF8.GetString(Convert.FromBase64String(key)), rootId); }
+                catch (FormatException error) { throw new InvalidDataException("Invalid checkpoint recovery root.", error); }
+                TrlMetadata.Validate(root);
+            }
+        }
+        // Legacy KVI lacks a retained-root hint: preserve the original discovery contract.
+        if (latest != 0 && root == null && await ReadAsync(genesis.Key, cancellation).ConfigureAwait(false) == null)
+            throw new IOException("A checkpoint exists but its legacy discovery root is missing.");
+        return root ?? genesis;
     }
 
     public async ValueTask<bool> ProtectPureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation)
@@ -230,7 +331,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
                 throw new RemoteFileConflictException();
             // Contents were verified on upload/download. Metadata-only CAS invalidates any old delete token.
             RequireAuthority(cancellation);
-            await blob.SetMetadataAsync(properties.Metadata, new BlobRequestConditions { IfMatch = properties.ETag }, cancellation)
+            await blob.SetMetadataAsync(properties.Metadata.Where(p => p.Key != DeleteAfterKey).ToDictionary(), new BlobRequestConditions { IfMatch = properties.ETag }, cancellation)
                 .ConfigureAwait(false);
             return true;
         }
@@ -263,6 +364,8 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         }
         catch (RequestFailedException error) when (error.Status is 404 or 412 or 416)
         { throw new IOException("Selected checkpoint file is no longer available.", error); }
+        catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+        { throw new IOException("Azure checkpoint file read failed.", error); }
     }
 
     public async ValueTask EnsurePureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation)
@@ -286,14 +389,28 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     public async ValueTask PublishKeyIndexAsync(uint id, KeyIndexSnapshot snapshot, IReadOnlyDictionary<uint, uint> map,
         CancellationToken cancellation)
     {
-        using var upload = new Upload(Blob(id, ".kvi"), authority, cancellation);
+        var first = snapshot.Sources.Where(s => s.FileType == KVFileType.TransactionLog).Select(s => s.FileId)
+            .Append(snapshot.TransactionLogFileId).Min();
+        var selected = await CanonicalTrlInventory.DiscoverAsync(this, Inventory.Root, cancellation).ConfigureAwait(false);
+        var root = selected.GetHead(first);
+        // A promoted follower may reference older sealed TRLs too. Protect the entire retained chain before
+        // publishing a KVI that depends on it; changing metadata versions defeats old in-flight GC marks/deletes.
+        await foreach (var file in selected.EnumerateAsync(cancellation).ConfigureAwait(false))
+            if (file.FileId >= first && file.IsSealed)
+            {
+                var head = selected.GetHead(file.FileId);
+                await CancelDeletionAsync(new(head.Key, file.FileId, KVFileType.TransactionLog, head.State.Token), cancellation).ConfigureAwait(false);
+            }
+        using var upload = new Upload(Blob(id, ".kvi"), authority, cancellation,
+            new Dictionary<string, string> { [RecoveryKey] = Convert.ToBase64String(Encoding.UTF8.GetBytes(root.Key)), [RecoveryId] = first.ToString(CultureInfo.InvariantCulture) });
         // Native serialization is synchronous. Its bounded stream stages blocks on this publication lane,
         // without a local staging file, a second serializer or an application-commit dependency.
         using (var writer = new PositionLessStreamWriter(upload, () => { })) snapshot.WriteTo(writer, 0, map, cancellation);
         await upload.CommitAsync().ConfigureAwait(false);
     }
 
-    sealed class Upload(BlockBlobClient blob, LeaseAuthority? authority, CancellationToken cancellation) : IPositionLessStream
+    sealed class Upload(BlockBlobClient blob, LeaseAuthority? authority, CancellationToken cancellation,
+        Dictionary<string, string>? extraMetadata = null) : IPositionLessStream
     {
         const int BlockSize = 4 * 1024 * 1024;
         readonly byte[] _buffer = ArrayPool<byte>.Shared.Rent(BlockSize);
@@ -330,7 +447,9 @@ public sealed class AzureReplicationStorage : IReplicationStorage
             RequireAuthority();
             var id = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
             using var stream = new MemoryStream(_buffer, 0, _filled, false);
-            blob.StageBlock(id, stream, cancellationToken: cancellation);
+            try { blob.StageBlock(id, stream, cancellationToken: cancellation); }
+            catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+            { throw new IOException("Azure immutable file staging failed.", error); }
             _blocks.Add(id);
             _filled = 0;
         }
@@ -345,18 +464,24 @@ public sealed class AzureReplicationStorage : IReplicationStorage
                 await blob.CommitBlockListAsync(_blocks, new CommitBlockListOptions
                 {
                     Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All },
-                    Metadata = new Dictionary<string, string> { ["btdb_sha256"] = sha }
+                    Metadata = new Dictionary<string, string>(extraMetadata ?? new()) { ["btdb_sha256"] = sha }
                 }, cancellation).ConfigureAwait(false);
                 return;
             }
             catch (RequestFailedException error) when (error.Status is 409 or 412) { }
             catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation)) { }
             // A lost reply or conditional rejection can both mean our intended immutable file already exists.
-            var observed = await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false);
+            Response<BlobProperties> observed;
+            try { observed = await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false); }
+            catch (RequestFailedException error) when (error.Status == 404)
+            { throw new IOException("Immutable file commit is unresolved; retry the same identity.", error); }
+            catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
+            { throw new IOException("Immutable file commit is unresolved; retry the same identity.", error); }
             if (observed.Value.ContentLength != checked((long)_length) ||
-                !observed.Value.Metadata.TryGetValue("btdb_sha256", out var actual) || !sha.Equals(actual, StringComparison.OrdinalIgnoreCase))
+                !observed.Value.Metadata.TryGetValue("btdb_sha256", out var actual) || !sha.Equals(actual, StringComparison.OrdinalIgnoreCase) ||
+                (extraMetadata != null && extraMetadata.Any(p => !observed.Value.Metadata.TryGetValue(p.Key, out var value) || value != p.Value)))
             {
-                authority!.Fence();
+                authority?.Fence();
                 throw new RemoteFileConflictException();
             }
         }

@@ -33,7 +33,7 @@ public sealed record LeaderCandidate(string ClusterId, string NodeId, string Ses
 internal sealed record SelectedLeadership(LeaseAuthority Authority, ulong Term, string SessionId, IReadOnlyList<string> DatabaseNames);
 
 /// <summary>One selection attempt under a confirmed lease. Retains the exact JSON across uncertain responses.
-/// The supplied session identity and API key must be fresh for this attempt. Unknown fields and skip entries survive
+/// The supplied session identity and API key must be fresh for this attempt. Unknown fields and opaque application data survive
 /// selection; no additional operation document or durable receipt is created.</summary>
 internal sealed class LeaderSelection(ILeaderRecordStorage storage, LeaseSessionController leases,
     LeaseAuthority authority, LeaderCandidate candidate)

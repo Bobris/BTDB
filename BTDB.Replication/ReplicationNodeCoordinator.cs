@@ -13,12 +13,16 @@ namespace BTDB.Replication;
 
 public enum ReplicationNodeRole { Restoring, Follower, Activating, Leader, RestartRequired, Stopped }
 
+/// <summary>RequestTimeout bounds each discovery and follower control/comparison step. Leader activation, publication
+/// and checkpoint maintenance transfer bulk data, so they are bounded by lease authority and optional ProgressTimeouts.</summary>
 public sealed record ReplicationNodeOptions(string ClusterId, string Endpoint, TimeSpan PollInterval,
     TimeSpan LeaseRetryInterval, TimeSpan RequestTimeout, TimeSpan ConfirmationDuration, ulong ApplicationGeneration, TimeSpan? CompactionInterval = null,
     ReplicationProgressTimeouts? ProgressTimeouts = null);
 
 /// <summary>Application-owned restore, event progress and lifecycle integration. Databases and input processing
-/// remain owned by the host. Callbacks may run concurrently with local application work; publish progress atomically.</summary>
+/// remain owned by the host. Callbacks may run concurrently with local application work; publish progress atomically.
+/// Keep executing ordered inputs while Activating: a lagging lease winner waits for local execution to reach
+/// published history before adopting it.</summary>
 public interface IReplicationNodeHost
 {
     // Reuse ordinary initialization/open; dispose a failed attempt before allowing a restore retry.
@@ -64,6 +68,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     readonly object _remoteLock = new();
     CancellationTokenSource? _remoteWork;
     readonly List<ReplicationMaintenance> _remoteMaintenance = new();
+    Task? _maintenanceRun;
+    Task _maintenanceDrain = Task.CompletedTask;
     ReplicationProgressWatchdog? _activationWatchdog;
     readonly List<(ReplicationProgressWatchdog? Watchdog, TransactionLogPosition Position)> _publicationWatchdogs = new();
     int _recoveryState; // 0 running, 1 fatal recovery won, 2 graceful shutdown/restart won.
@@ -72,9 +78,23 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     LeaderCandidate? _candidate;
     LeadershipSession? _leadership;
     ServingLeader? _serving;
+    readonly List<ReplicationMaintenanceWatchdog> _maintenanceWatchdogs = new();
+    readonly TaskCompletionSource _fatalRestart = new(TaskCreationOptions.RunContinuationsAsynchronously);
     volatile bool _restart;
 
     public ReplicationNodeRole Role { get; private set; } = ReplicationNodeRole.Restoring;
+
+    internal SelectedLeadership? ApplicationDataLeadership()
+    {
+        lock (_remoteLock)
+        {
+            var serving = Volatile.Read(ref _serving);
+            if (_restart || serving == null || serving.Handoff != null ||
+                _sessionAuthority is not { IsValid: true } authority ||
+                !ReferenceEquals(leases.Current, authority)) return null;
+            return _leadership?.Selected;
+        }
+    }
 
     public async Task RunAsync(CancellationToken cancellation)
     {
@@ -123,7 +143,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 if (localMaintenance.IsCompleted) await localMaintenance.ConfigureAwait(false);
                 using var request = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
                 using var timeout = scheduler.Schedule(options.RequestTimeout, () => request.Cancel(), "replication request timeout");
-                try { await StepAsync(databases, request.Token).ConfigureAwait(false); }
+                try { await StepAsync(databases, request.Token, cancellation).ConfigureAwait(false); }
                 catch (InvalidDataException) { Restart("Local history or database configuration requires canonical restore."); }
                 catch (FileNotFoundException) { Restart("Required TRL bytes are no longer retained; canonical restore is required."); }
                 catch (IOException) { Disconnect(); }
@@ -137,11 +157,13 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         finally
         {
             StopWatchdogs();
+            if (Volatile.Read(ref _recoveryState) == 1) await _fatalRestart.Task.ConfigureAwait(false);
             status?.Stop();
             lifetime.Cancel();
             leases.Close();
             Disconnect();
             DropLeadership();
+            await _maintenanceDrain.ConfigureAwait(false);
             listener?.Dispose();
             if (maintenance != null)
             {
@@ -158,8 +180,11 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         }
     }
 
-    async ValueTask StepAsync(IReadOnlyList<ActivationDatabase> databases, CancellationToken cancellation)
+    // requestCancellation carries the per-step RequestTimeout; nodeCancellation only stops the node.
+    async ValueTask StepAsync(IReadOnlyList<ActivationDatabase> databases, CancellationToken requestCancellation,
+        CancellationToken nodeCancellation)
     {
+        var cancellation = requestCancellation;
         if (leases.Current is { } authority)
         {
             Disconnect();
@@ -187,7 +212,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                         PrepareDatabaseAsync, _activationWatchdog == null ? null : _activationWatchdog.Progress);
                 }
             }
-            using var remoteRequest = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _remoteWork!.Token);
+            // Validation, publication backlogs and uploads may legitimately outlast one request timeout. A timeout
+            // would discard their progress and retry from scratch forever; lease loss still cancels _remoteWork.
+            using var remoteRequest = CancellationTokenSource.CreateLinkedTokenSource(nodeCancellation, _remoteWork!.Token);
             cancellation = remoteRequest.Token;
             Role = _serving == null ? ReplicationNodeRole.Activating : ReplicationNodeRole.Leader;
             if (_serving?.Handoff is { } handoff)
@@ -204,11 +231,6 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             cancellation.ThrowIfCancellationRequested();
             if (publishers == null) return;
             _publishers = publishers;
-            lock (_remoteLock)
-            {
-                _activationWatchdog?.Dispose();
-                _activationWatchdog = null;
-            }
             if (!authority.IsValid) { DropLeadership(); return; }
             if (_serving == null)
             {
@@ -217,15 +239,38 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 try
                 {
                     for (var i = 0; i < databases.Count; i++)
-                        if (host.CreateMaintenance(databases[i], publishers[i], authority) is { } job) _remoteMaintenance.Add(job);
+                        if (host.CreateMaintenance(databases[i], publishers[i], authority) is { } job)
+                        {
+                            _remoteMaintenance.Add(job);
+                            if (options.ProgressTimeouts?.Maintenance is { } budget)
+                                lock (_remoteLock)
+                                {
+                                    if (Volatile.Read(ref _recoveryState) != 0) continue;
+                                    var watchdog = new ReplicationMaintenanceWatchdog(scheduler, budget,
+                                        () => FatalRecovery(authority, "Replication checkpoint maintenance made no forward progress."));
+                                    _maintenanceWatchdogs.Add(watchdog);
+                                    job.Watchdog = watchdog;
+                                }
+                        }
                 }
                 catch
                 {
                     foreach (var job in _remoteMaintenance) job.Dispose();
                     _remoteMaintenance.Clear();
+                    lock (_remoteLock)
+                    {
+                        foreach (var watchdog in _maintenanceWatchdogs) watchdog.Dispose();
+                        _maintenanceWatchdogs.Clear();
+                    }
                     throw;
                 }
+                if (!authority.IsValid) { DropLeadership(); return; }
                 Volatile.Write(ref _serving, new(identity, authority, databases, host, scheduler, options.ApplicationGeneration));
+            }
+            lock (_remoteLock)
+            {
+                _activationWatchdog?.Dispose();
+                _activationWatchdog = null;
             }
             ObservePublication(databases, publishers, authority);
             for (var i = 0; i < publishers.Count; i++)
@@ -240,11 +285,14 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                     return;
                 }
             }
-            foreach (var job in _remoteMaintenance)
+            // Checkpoint uploads can span many publication rounds; they must never hold back canonical TRL publication.
+            if (_maintenanceRun is { IsCompleted: true } finished)
             {
-                if (!authority.IsValid || _serving?.Handoff != null) break;
-                await job.RunDueAsync(cancellation).ConfigureAwait(false);
+                _maintenanceRun = null;
+                await finished.ConfigureAwait(false); // Failures use the ordinary step error handling.
             }
+            if (_maintenanceRun == null && _remoteMaintenance.Count != 0 && authority.IsValid && _serving?.Handoff == null)
+                _maintenanceRun = RunMaintenanceAsync(_remoteMaintenance.ToArray(), authority, _remoteWork!.Token);
             Role = authority.IsValid ? ReplicationNodeRole.Leader : ReplicationNodeRole.Follower;
             return;
         }
@@ -323,6 +371,16 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         {
             leases.ProposeTransfer(offer.TransferId);
             await _peer.OfferHandoffAsync(offer, cancellation).ConfigureAwait(false);
+        }
+    }
+
+    // Starts inline and continues independently of the transition lane after its first incomplete remote operation.
+    async Task RunMaintenanceAsync(ReplicationMaintenance[] jobs, LeaseAuthority authority, CancellationToken cancellation)
+    {
+        foreach (var job in jobs)
+        {
+            if (!authority.IsValid || Volatile.Read(ref _serving)?.Handoff != null) return;
+            await job.RunDueAsync(cancellation).ConfigureAwait(false);
         }
     }
 
@@ -475,6 +533,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
 
     void FatalRecovery(LeaseAuthority authority, string reason)
     {
+        CancellationTokenSource? remoteWork;
         lock (_remoteLock)
         {
             if (!ReferenceEquals(_sessionAuthority, authority) ||
@@ -483,8 +542,18 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             status?.Stop();
             leases.Close(); // Fence before entering the host, without waiting for cancellation callbacks.
             DisposeWatchdogs();
+            remoteWork = _remoteWork;
         }
-        ((IReplicationFatalRecovery)host).RequestFatalRestart(reason);
+        // Leader work has no request timeout; abort its outstanding remote operations too.
+        try { remoteWork?.Cancel(); }
+        catch (ObjectDisposedException) { }
+        // Independent of worker cleanup/cancellation. Once fatal recovery wins, shutdown cannot bypass
+        // this delay by returning from RunAsync and letting the hosted service stop the process early.
+        scheduler.Schedule(options.ProgressTimeouts!.RestartDelay, () =>
+        {
+            try { ((IReplicationFatalRecovery)host).RequestFatalRestart(reason); }
+            finally { _fatalRestart.TrySetResult(); }
+        }, "replication fatal restart delay");
     }
 
     void StopWatchdogs()
@@ -500,6 +569,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         _activationWatchdog = null;
         foreach (var (watchdog, _) in _publicationWatchdogs) watchdog?.Dispose();
         _publicationWatchdogs.Clear();
+        foreach (var watchdog in _maintenanceWatchdogs) watchdog.Dispose();
+        _maintenanceWatchdogs.Clear();
     }
 
     void DropLeadership()
@@ -511,19 +582,44 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         }
         var serving = Interlocked.Exchange(ref _serving, null);
         serving?.Close();
-        foreach (var job in _remoteMaintenance) job.Dispose();
-        _remoteMaintenance.Clear();
-        _leadership?.Dispose();
+        CancellationTokenSource? remoteWork;
         lock (_remoteLock)
         {
-            _remoteWork?.Cancel();
-            _remoteWork?.Dispose();
+            remoteWork = _remoteWork;
             _remoteWork = null;
             _sessionAuthority = null;
+        }
+        remoteWork?.Cancel();
+        var jobs = _remoteMaintenance.ToArray();
+        _remoteMaintenance.Clear();
+        var leadership = _leadership;
+        var run = _maintenanceRun;
+        _maintenanceRun = null;
+        // A cancelled maintenance run may still be inside its snapshot or publisher; release them only after it ends.
+        if (run is null or { IsCompleted: true })
+        {
+            _ = run?.Exception;
+            ReleaseSession(jobs, leadership, remoteWork);
+        }
+        else
+        {
+            var released = run.ContinueWith(completed =>
+            {
+                _ = completed.Exception;
+                ReleaseSession(jobs, leadership, remoteWork);
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            _maintenanceDrain = Task.WhenAll(_maintenanceDrain, released);
         }
         _publishers = null;
         _leadership = null;
         _candidate = null;
+    }
+
+    static void ReleaseSession(ReplicationMaintenance[] jobs, LeadershipSession? leadership, CancellationTokenSource? remoteWork)
+    {
+        foreach (var job in jobs) job.Dispose();
+        leadership?.Dispose();
+        remoteWork?.Dispose();
     }
 
     sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAuthority authority,

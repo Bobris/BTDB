@@ -258,6 +258,7 @@ public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage lo
             }
             if (!await storage.ProtectPureValuesAsync(placement.RemoteId, source, cancellation).ConfigureAwait(false))
             {
+                _lastRemoteEvenId = Math.Max(_lastRemoteEvenId, placement.RemoteId);
                 _placements.Remove(source.FileId);
                 _placedRemoteIds.Remove(placement.RemoteId);
                 continue;

@@ -10,47 +10,52 @@ using BTDB.ODBLayer;
 namespace BTDB.Replication;
 
 public sealed record RemoteMaintenanceFile(string Key, uint FileId, KVFileType FileType, string Version,
-    bool RetainForDiscovery = false);
+    bool RetainForDiscovery = false, DateTimeOffset? DeleteAfter = null);
 
 internal sealed record PublishedCheckpoint(uint FileId, uint ReplayFromFileId, IReadOnlySet<uint> Dependencies);
 
-/// <summary>One leader session, serialized with its checkpoint/export lane. Restart forgets candidates and restarts
-/// the delay. Only a positively confirmed checkpoint authorizes deletion; no persisted GC manifest or follower pins.</summary>
+/// <summary>One leader session, serialized with its checkpoint/export lane. Deletion deadlines live on objects. Only a positively confirmed checkpoint authorizes deletion; no persisted GC manifest or follower pins.</summary>
 internal sealed class RemoteGarbageCollector(IReplicationStorage storage, LeaseAuthority authority,
-    IReplicationScheduler clock, TimeSpan deletionDelay)
+    TimeSpan deletionDelay)
 {
-    readonly Dictionary<string, (string Version, TimeSpan Since)> _obsolete = new(StringComparer.Ordinal);
 
-    public async ValueTask CollectAsync(PublishedCheckpoint checkpoint, CancellationToken cancellation)
+    public async ValueTask CollectAsync(PublishedCheckpoint checkpoint, CancellationToken cancellation, Action<int, int>? progress = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(deletionDelay.Ticks);
         var inventory = new List<RemoteMaintenanceFile>();
-        await foreach (var file in storage.EnumerateMaintenanceAsync(cancellation).ConfigureAwait(false)) inventory.Add(file);
+        await foreach (var file in storage.EnumerateMaintenanceAsync(cancellation).ConfigureAwait(false))
+        {
+            inventory.Add(file);
+            progress?.Invoke(0, inventory.Count);
+        }
         // A higher checkpoint may have landed after discovery. Do not infer its dependencies from our older snapshot.
         if (inventory.Any(f => f.FileType == KVFileType.KeyIndex && f.FileId > checkpoint.FileId))
-        { _obsolete.Clear(); return; }
+        { return; }
         if (!inventory.Any(f => f.FileType == KVFileType.KeyIndex && f.FileId == checkpoint.FileId))
             throw new IOException("Confirmed checkpoint disappeared before cleanup.");
         // Keep the highest even identity as an allocation anchor, including an orphan upload. No reservation ledger.
         var maximumEvenId = inventory.Where(f => (f.FileId & 1) == 0).Select(f => f.FileId).DefaultIfEmpty().Max();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var firstRetainedTrl = inventory.Where(f => f.FileType == KVFileType.TransactionLog &&
+                checkpoint.Dependencies.Contains(f.FileId)).Select(f => f.FileId)
+            .Append(checkpoint.ReplayFromFileId).Min();
+        var index = 0;
         foreach (var file in inventory)
         {
             cancellation.ThrowIfCancellationRequested();
+            progress?.Invoke(1, index++);
             if (!authority.IsValid) return;
-            seen.Add(file.Key);
             var keep = file.RetainForDiscovery || file.FileId == maximumEvenId || file.FileId == checkpoint.FileId ||
                        checkpoint.Dependencies.Contains(file.FileId) ||
-                       (file.FileType == KVFileType.TransactionLog && file.FileId >= checkpoint.ReplayFromFileId);
-            if (keep) { _obsolete.Remove(file.Key); continue; }
-            if (!_obsolete.TryGetValue(file.Key, out var candidate) || candidate.Version != file.Version)
-                _obsolete[file.Key] = candidate = (file.Version, clock.Elapsed);
-            if (clock.Elapsed - candidate.Since < deletionDelay) continue;
+                       (file.FileType == KVFileType.TransactionLog && file.FileId >= firstRetainedTrl);
+            if (keep)
+            {
+                if (file.DeleteAfter != null) await storage.CancelDeletionAsync(file, cancellation).ConfigureAwait(false);
+                continue;
+            }
+            var scheduled = await storage.ScheduleDeletionAsync(file, deletionDelay, cancellation).ConfigureAwait(false);
             if (!authority.IsValid) return;
-            await storage.DeleteAsync(file, cancellation).ConfigureAwait(false);
-            _obsolete.Remove(file.Key);
+            await storage.DeleteAsync(scheduled, cancellation).ConfigureAwait(false);
         }
-        foreach (var key in _obsolete.Keys.Where(k => !seen.Contains(k)).ToArray()) _obsolete.Remove(key);
     }
 }
 
@@ -62,22 +67,42 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
     IObjectDB? objects = null, Func<LeakRemovalCandidates, CancellationToken, ValueTask>? publishLeakEvent = null) : IDisposable
 {
     readonly CheckpointPublisher _checkpoints = new(files, canonical, storage);
-    readonly RemoteGarbageCollector _garbage = new(storage, authority, clock, deletionDelay);
+    readonly RemoteGarbageCollector _garbage = new(storage, authority, deletionDelay);
     KeyIndexSnapshot? _pending;
     TimeSpan _next;
+    bool _collecting;
+    internal ReplicationMaintenanceWatchdog? Watchdog { get; set; }
 
     public async ValueTask RunDueAsync(CancellationToken cancellation)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(interval.Ticks);
-        if (!authority.IsValid || (_pending == null && clock.Elapsed < _next)) return;
-        _pending ??= database.CaptureKeyIndexSnapshot(cancellation);
-        if (_pending.TransactionLogFileId == 0) { Dispose(); _next = clock.Elapsed + interval; return; }
-        var result = await _checkpoints.PublishAsync(_pending, cancellation, true).ConfigureAwait(false);
-        if (result != CheckpointPublishResult.Published) return;
-        _pending.Dispose();
-        _pending = null;
+        if (!authority.IsValid || (_pending == null && !_collecting && clock.Elapsed < _next)) return;
+        Watchdog?.Observe((0, 0, 0));
+        if (!_collecting)
+        {
+            _pending ??= database.CaptureKeyIndexSnapshot(cancellation);
+            if (_pending.TransactionLogFileId == 0)
+            {
+                _pending.Dispose();
+                _pending = null;
+                _next = clock.Elapsed + interval;
+                Watchdog?.Observe(null);
+                return;
+            }
+            var result = await _checkpoints.PublishAsync(_pending, cancellation, true,
+                Watchdog == null ? null : (step, item) => Watchdog.Observe((1, step, item))).ConfigureAwait(false);
+            if (result != CheckpointPublishResult.Published) return;
+            _pending.Dispose();
+            _pending = null;
+            _collecting = true;
+        }
+        Watchdog?.Observe((2, -1, 0));
+        await _garbage.CollectAsync(_checkpoints.Published!, cancellation,
+            Watchdog == null ? null : (step, item) => Watchdog.Observe((2, step, item))).ConfigureAwait(false);
+        _collecting = false;
         _next = clock.Elapsed + interval;
-        await _garbage.CollectAsync(_checkpoints.Published!, cancellation).ConfigureAwait(false);
+        Watchdog?.Observe(null);
+        // Submitting an application-owned leak event is outside replication's progress deadline.
         if (authority.IsValid && objects != null && publishLeakEvent != null)
         {
             var candidates = objects.CollectLeakRemovalCandidates(cancellation);
@@ -87,5 +112,5 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
         }
     }
 
-    public void Dispose() { _pending?.Dispose(); _pending = null; }
+    public void Dispose() { Watchdog?.Dispose(); _pending?.Dispose(); _pending = null; }
 }

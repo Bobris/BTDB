@@ -13,7 +13,7 @@ public class LeaderSelectionTest
     {
         public LeaderRecord Record = new("1", """
             {"format":1,"clusterId":"cluster","term":7,"revision":9,"applicationGeneration":1,
-             "databaseNames":["main"],"eventsToSkip":[{"eventId":"18446744073709551615"}],"extension":42}
+             "databaseNames":["main"],"applicationData":{"custom":"retained"},"extension":42}
             """);
         public LeaderWriteOutcome Outcome = LeaderWriteOutcome.Applied;
         public bool Land = true;
@@ -36,7 +36,7 @@ public class LeaderSelectionTest
         new("cluster", "node", "fresh-session", generation, ["main"], "in-process://node", "fresh-api-key");
 
     [Fact]
-    public async Task LostSelectionReplyReconcilesExactJsonAndPreservesSkipEntries()
+    public async Task LostSelectionReplyReconcilesExactJsonAndPreservesApplicationData()
     {
         var storage = new Storage { Outcome = LeaderWriteOutcome.Ambiguous };
         var clock = new DeterministicScheduler(710);
@@ -45,7 +45,7 @@ public class LeaderSelectionTest
         var selected = await selection.SelectAsync();
         Assert.Equal(8ul, selected!.Term);
         var json = JsonNode.Parse(storage.Record.Json)!;
-        Assert.Equal("18446744073709551615", json["eventsToSkip"]![0]!["eventId"]!.GetValue<string>());
+        Assert.Equal("retained", json["applicationData"]!["custom"]!.GetValue<string>());
         Assert.Equal(42, json["extension"]!.GetValue<int>());
         Assert.Equal(10ul, json["revision"]!.GetValue<ulong>());
         Assert.Equal(selected.Term, (await selection.SelectAsync())!.Term);

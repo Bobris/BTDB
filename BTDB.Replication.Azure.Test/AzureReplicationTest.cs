@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json.Nodes;
 using Azure;
 using Azure.Core;
 using Azure.Core.Pipeline;
@@ -26,7 +27,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         public IDisposable Schedule(TimeSpan delay, Action callback, string description) => throw new NotSupportedException();
     }
 
-    static async Task<BTreeKeyValueDB> Open(InMemoryReplicationFileStorage files, TransactionLogCapture capture)
+    static async Task<BTreeKeyValueDB> Open(InMemoryReplicationFileStorage files, TransactionLogCapture capture, uint splitSize = int.MaxValue)
     {
         var file = files.AddFile("trl", FileIdParity.Odd);
         var writer = new MemWriter(file.GetAppenderWriter());
@@ -40,7 +41,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         return await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         {
             FileCollection = new BTDB.Replication.Test.LocalReplicatedCollection(files), TransactionLogCapture = capture,
-            Compression = new NoCompressionStrategy(), CompactorScheduler = null
+            Compression = new NoCompressionStrategy(), CompactorScheduler = null, FileSplitSize = splitSize
         });
     }
 
@@ -50,6 +51,31 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         using var cursor = transaction.CreateCursor();
         cursor.CreateOrUpdateKeyValue([(byte)id], [(byte)id]);
         transaction.Commit();
+    }
+
+    [Fact]
+    public async Task ApplicationDataUsesAzureLeaseAndEtagAndReconcilesLostReply()
+    {
+        var faults = new Faults();
+        var container = await fixture.ContainerAsync(faults);
+        var blob = container.GetBlobClient("cluster/leader.json");
+        var storage = new AzureLeaderStorage(blob, TimeSpan.FromSeconds(15), Initial);
+        var leases = new LeaseSessionController(storage, new Clock(), 0, TimeSpan.FromMilliseconds(10));
+        var authority = (await leases.MaintainAsync())!;
+        var selected = (await new LeaderSelection(storage, leases, authority,
+            new("cluster", "node", "session", 1, [], "local://node", "secret")).SelectAsync())!;
+        var data = new ReplicationApplicationData(storage, "cluster", leases, () => selected);
+        var snapshot = await data.ReadAsync();
+        faults.LoseSelection = true;
+        Assert.Equal(LeaderWriteOutcome.Applied, await data.TryWriteAsync(snapshot, new JsonObject { ["counter"] = 42 }));
+        Assert.Equal(42, (await data.ReadAsync()).Value!["counter"]!.GetValue<int>());
+        Assert.Equal(LeaderWriteOutcome.Rejected, await data.TryWriteAsync(snapshot, JsonValue.Create("stale")));
+        var latest = await data.ReadAsync();
+        // The local authority still looks valid, but the actual server lease has changed.
+        await blob.GetBlobLeaseClient(leases.GetHandle(authority)).ChangeAsync(Guid.NewGuid().ToString());
+        Assert.Equal(LeaderWriteOutcome.Rejected, await data.TryWriteAsync(latest, JsonValue.Create("old lease")));
+        Assert.Equal(42, (await data.ReadAsync()).Value!["counter"]!.GetValue<int>());
+        leases.Close();
     }
 
     [Theory]
@@ -117,12 +143,109 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         Assert.Equal(2ul, read.GetCommitUlong());
     }
 
+    sealed class CleanupTime : TimeProvider
+    {
+        public DateTimeOffset Now = DateTimeOffset.Parse("2026-09-22T00:00:00Z");
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Theory]
+    [InlineData("files/2.pvl", KVFileType.PureValues)]
+    [InlineData("files/2.kvi", KVFileType.KeyIndex)]
+    [InlineData("obsolete/2", KVFileType.TransactionLog)]
+    public async Task DeletionDeadlineSurvivesNewAdapterAndDoesNotMoveOnRetry(string key, KVFileType type)
+    {
+        var faults = new Faults();
+        var container = await fixture.ContainerAsync(faults);
+        var time = new CleanupTime();
+        var raw = new AzureReplicationStorage(container, "db", time);
+        var authority = new LeaseAuthority(new Clock(), 0, TimeSpan.Zero);
+        authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromHours(1));
+        using var files = new InMemoryFileCollection();
+        var source = files.AddFile("trl");
+        var writer = new MemWriter(source.GetAppenderWriter());
+        writer.WriteUInt8(1); writer.Flush();
+        await raw.WriteAsync(new(1, "root/1", null, 0, 1, new(1), source), default);
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("root/1", 1));
+        var storage = raw.Bind(inventory, authority);
+        var blob = container.GetBlobClient("db/" + key);
+        var metadata = type == KVFileType.TransactionLog
+            ? new Dictionary<string, string>(new TrlMetadata(1).Encode()) { ["btdb_file_id"] = "2" }
+            : new Dictionary<string, string> { ["btdb_sha256"] = "unchanged" };
+        await blob.UploadAsync(BinaryData.FromBytes(new byte[] { 1 }), new BlobUploadOptions { Metadata = metadata });
+        var before = (await blob.GetPropertiesAsync()).Value;
+        faults.LoseSelection = true;
+        await Assert.ThrowsAsync<IOException>(() => storage.ScheduleDeletionAsync(new(key, 2, type, before.ETag.ToString()), TimeSpan.FromHours(24), default).AsTask());
+        var persisted = new List<RemoteMaintenanceFile>();
+        await foreach (var file in storage.EnumerateMaintenanceAsync(default)) persisted.Add(file);
+        var marked = Assert.Single(persisted, file => file.Key == key);
+        Assert.Equal(time.Now + TimeSpan.FromHours(24), marked.DeleteAfter);
+        var deadline = marked.DeleteAfter;
+        await storage.DeleteAsync(marked, default);
+        Assert.True((await blob.ExistsAsync()).Value);
+        time.Now += TimeSpan.FromHours(23);
+        var restartedRaw = new AzureReplicationStorage(container, "db", time);
+        var restarted = restartedRaw.Bind(await CanonicalTrlInventory.DiscoverAsync(restartedRaw, new("root/1", 1)), authority);
+        var retried = await restarted.ScheduleDeletionAsync(marked, TimeSpan.FromHours(24), default);
+        Assert.Equal(deadline, retried.DeleteAfter);
+        await restarted.DeleteAsync(retried, default);
+        Assert.True((await blob.ExistsAsync()).Value);
+        time.Now += TimeSpan.FromHours(1);
+        await restarted.DeleteAsync(retried, default);
+        Assert.False((await blob.ExistsAsync()).Value);
+    }
+
+    [Fact]
+    public async Task LegacyCheckpointWithMissingGenesisCannotBeMisclassifiedAsUnpublishedDatabase()
+    {
+        var container = await fixture.ContainerAsync();
+        await container.GetBlobClient("db/files/2.kvi").UploadAsync(BinaryData.FromBytes(new byte[] { 1 }));
+        var storage = new AzureReplicationStorage(container, "db");
+        await Assert.ThrowsAsync<IOException>(() => storage.ResolveRecoveryRootAsync(new("trl/1", 1), default).AsTask());
+    }
+
+    [Fact]
+    public async Task CheckpointRootRestoresNativeDatabaseAfterObsoleteGenesisTrlsAreDeleted()
+    {
+        var container = await fixture.ContainerAsync();
+        var raw = new AzureReplicationStorage(container, "db");
+        var authority = new LeaseAuthority(new Clock(), 0, TimeSpan.Zero);
+        authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromHours(1));
+        using var local = new InMemoryReplicationFileStorage();
+        var capture = new TransactionLogCapture();
+        using var db = await Open(local, capture, 1024);
+        for (ulong i = 1; i <= 400; i++) await Write(db, i);
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("trl/1", 1));
+        var storage = raw.Bind(inventory, authority);
+        using var snapshot = db.CaptureKeyIndexSnapshot();
+        Assert.True(snapshot.TransactionLogFileId > 1);
+        await storage.PublishKeyIndexAsync(10000, snapshot, new Dictionary<uint, uint>(), default);
+        var gc = new RemoteGarbageCollector(storage, authority, TimeSpan.Zero);
+        await gc.CollectAsync(new(10000, snapshot.TransactionLogFileId,
+            snapshot.Sources.Select(s => s.FileId).ToHashSet()), default);
+        Assert.Null(await raw.ReadAsync("trl/1", default));
+        var fresh = new AzureReplicationStorage(container, "db");
+        var recovered = await CanonicalTrlInventory.DiscoverAsync(fresh, new("trl/1", 1));
+        using var cache = new InMemoryReplicationFileStorage();
+        await using var collection = new ReplicationFileSet(cache, fresh.Bind(recovered));
+        await collection.InitializeAsync();
+        using var restored = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        { FileCollection = collection, CompactorScheduler = null, Compression = new NoCompressionStrategy() });
+        using var transaction = restored.StartReadOnlyTransaction();
+        Assert.Equal(400ul, transaction.GetCommitUlong());
+        using var cursor = transaction.CreateCursor();
+        Assert.Equal(256, cursor.GetKeyValueCount([]));
+    }
+
     sealed class Faults : HttpPipelineSynchronousPolicy
     {
-        public bool Outage, LoseAcquire, LoseSelection, LoseCommit, LoseTransfer;
+        public bool Outage, Throttle, LoseAcquire, LoseSelection, LoseCommit, LoseTransfer;
         public override void OnSendingRequest(HttpMessage message)
         {
             if (Outage) throw new IOException("Injected storage outage.");
+            if (Throttle) throw new RequestFailedException(503, "Injected server throttling.");
         }
         public override void OnReceivedResponse(HttpMessage message)
         {
@@ -149,6 +272,35 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
                 throw new IOException("Lost canonical commit response after Azure applied it.");
             }
         }
+    }
+
+    [Fact]
+    public async Task ServerThrottlingSurfacesAsRetryableIOExceptionFromListingsAndReads()
+    {
+        var faults = new Faults();
+        var container = await fixture.ContainerAsync(faults);
+        var raw = new AzureReplicationStorage(container, "db");
+        var authority = new LeaseAuthority(new Clock(), 0, TimeSpan.Zero);
+        authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromHours(1));
+        using var local = new InMemoryReplicationFileStorage();
+        var capture = new TransactionLogCapture();
+        using var db = await Open(local, capture, 1024);
+        await Write(db, 1);
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+        var kvi = (await container.GetBlobClient("db/files/2.kvi").UploadAsync(BinaryData.FromBytes(new byte[] { 1 }))).Value;
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("trl/1", 1));
+        var storage = raw.Bind(inventory, authority);
+        faults.Throttle = true;
+        // Transient provider failures are ordinary retryable I/O for the coordinator, not host-stopping exceptions.
+        await Assert.ThrowsAsync<IOException>(() => raw.ResolveRecoveryRootAsync(new("trl/1", 1), default).AsTask());
+        await Assert.ThrowsAsync<IOException>(async () => { await foreach (var _ in storage.EnumerateAsync(default)) { } });
+        await Assert.ThrowsAsync<IOException>(async () => { await foreach (var _ in storage.EnumerateMaintenanceAsync(default)) { } });
+        await Assert.ThrowsAsync<IOException>(() => storage.ReadAsync(
+            new RemoteFile(2, KVFileType.KeyIndex, 1, kvi.ETag.ToString(), true, null), 0, new byte[1], default).AsTask());
+        faults.Throttle = false;
+        Assert.Equal(1, await storage.ReadAsync(new RemoteFile(2, KVFileType.KeyIndex, 1, kvi.ETag.ToString(), true, null), 0,
+            new byte[1], default));
     }
 
     [Theory]
@@ -322,15 +474,21 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         Assert.Equal(new byte[] { 2, 3, 4 }, bytes);
         var physical = new List<RemoteMaintenanceFile>();
         await foreach (var item in storage.EnumerateMaintenanceAsync(default)) physical.Add(item);
-        Assert.Contains(physical, item => item.FileType == KVFileType.TransactionLog && item.RetainForDiscovery);
-        var oldVersion = Assert.Single(physical, item => item.FileId == 100);
+        Assert.Contains(physical, item => item.FileType == KVFileType.TransactionLog && !item.RetainForDiscovery);
+        var oldVersion = await storage.ScheduleDeletionAsync(Assert.Single(physical, item => item.FileId == 100), TimeSpan.Zero, default);
+        faults.LoseSelection = true;
+        await Assert.ThrowsAsync<IOException>(() => storage.ProtectPureValuesAsync(100, source, default).AsTask());
         Assert.True(await storage.ProtectPureValuesAsync(100, source, default));
+        Assert.DoesNotContain("btdb_delete_after", (await container.GetBlobClient("db/files/100.pvl").GetPropertiesAsync()).Value.Metadata.Keys);
         await storage.DeleteAsync(oldVersion, default);
+        await storage.ScheduleDeletionAsync(oldVersion, TimeSpan.Zero, default); // Late marking cannot resurrect eligibility.
+        Assert.DoesNotContain("btdb_delete_after", (await container.GetBlobClient("db/files/100.pvl").GetPropertiesAsync()).Value.Metadata.Keys);
         Assert.True((await container.GetBlobClient("db/files/100.pvl").ExistsAsync()).Value);
         physical.Clear();
         await foreach (var item in storage.EnumerateMaintenanceAsync(default)) physical.Add(item);
         var protectedVersion = Assert.Single(physical, item => item.FileId == 100);
         Assert.NotEqual(oldVersion.Version, protectedVersion.Version);
+        protectedVersion = await storage.ScheduleDeletionAsync(protectedVersion, TimeSpan.Zero, default);
         await storage.DeleteAsync(protectedVersion, default);
         Assert.False(await storage.ProtectPureValuesAsync(100, source, default));
         // Recreate only for the independent content-conflict assertion below.

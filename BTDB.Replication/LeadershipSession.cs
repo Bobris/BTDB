@@ -20,6 +20,8 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
     SelectedLeadership? _selected;
     IReadOnlyList<CanonicalTrlPublisher>? _publishers;
     readonly Dictionary<string, TransactionLogPosition> _prepared = new(StringComparer.Ordinal);
+    // Canonical prefixes verified under this lease; a lagging candidate resumes here instead of revalidating.
+    readonly Dictionary<string, TransactionLogPosition> _validated = new(StringComparer.Ordinal);
 
     internal SelectedLeadership? Selected => _selected;
 
@@ -41,6 +43,8 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
         progress?.Invoke();
     }
 
+    /// <summary>Null means selection is unresolved or local execution has not reached canonical history yet; retry
+    /// later under the same lease while the host keeps executing inputs.</summary>
     public async ValueTask<IReadOnlyList<CanonicalTrlPublisher>?> ActivateAsync(CancellationToken cancellation = default)
     {
         await _lane.WaitAsync(cancellation).ConfigureAwait(false);
@@ -51,7 +55,9 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
             ReportProgress(1, 0, 0, 0, 0);
             if (!_selected.Authority.IsValid) throw new InvalidOperationException("Leadership session expired.");
             _publishers ??= await LeadershipActivation.ActivateAsync(_selected, databases, cancellation,
-                progress == null ? null : (database, step, file, offset) => ReportProgress(2, database, step, file, offset)).ConfigureAwait(false);
+                progress == null ? null : (database, step, file, offset) => ReportProgress(2, database, step, file, offset),
+                _validated).ConfigureAwait(false);
+            if (_publishers == null) return null;
             if (prepare != null)
                 for (var i = 0; i < databases.Count; i++)
                 {

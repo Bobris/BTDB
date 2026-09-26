@@ -55,13 +55,15 @@
   commits remain local-only. Follower startup restores canonical bases without running migrations, so pending schema
   work cannot deadlock election; genesis and required activation schema writes run under selected activating authority.
 - Use one ordered event stream for the entire cluster and all replicas. Per-database cursors refer to that shared
-  stream. Backup restore creates a new stream and deletes `leader.json` before startup, intentionally clearing old
-  timeout skip entries. Ordinary failover preserves both the stream and skip list.
-- The application owns failure classification: ordinary rollback, retry, fail-fast (for example out-of-memory), and
-  optional exact-input skip requests. Never automatically convert a rollback or exception into a skip. Keep identical
-  rollback attempts/outcomes across nodes as part of transaction comparison. Only the lease owner persists requested
-  skip markers; preserve them across terms, never rewrite published history, and never delay required termination
-  indefinitely for a marker. Watchdogs distinguish pending stalled work from idle input or progressing restore.
+  stream. Backup restore creates a new stream and deletes `leader.json` before startup, clearing its application data.
+  Ordinary failover preserves both the stream and opaque application data.
+- Application event timeouts, skip decisions, execution/commit arbitration, retries, termination and any marker
+  interpretation/retention belong entirely to the application. Do not implement these mechanisms in replication or
+  list them as missing replication work. Preserve identical ordinary transaction/rollback history across nodes.
+  Provide only generic read/conditional-write access to `applicationData` in `leader.json`: any node may read, only
+  the active leader writes with lease plus ETag, and updates preserve authority fields and unrelated data. Replication
+  never interprets this JSON or changes event execution because of it. Activation/publication watchdogs monitor only
+  replication work and never synthesize application skip decisions.
 - Every node starts as a follower and verifies/restores all required published databases against Blob Storage, reusing verified local files
   into disposable temporary local storage before attempting leadership. Unpublished additions and initial empty-cluster
   bootstrap have no files to download. New genesis captures the current input end and sets CommitUlong to the predecessor
@@ -199,3 +201,12 @@
   per-transaction capture records, index files, sequences or duplicate range lists. Publisher work snapshots a fixed
   complete prefix, coalesces transactions and advances acknowledgement only after selection; compaction retains
   unacknowledged TRLs. Startup schema publication can explicitly request publishing the current completed position.
+
+- Backup recovery is operational: scale to zero, copy the backup into primary Blob storage, then scale up. Do not
+  add a backup-import API or require a new application stream/leader-record-reset procedure.
+- Remote cleanup unifies TRL/PVL/KVI using per-object delayed-deletion metadata (for example
+  24 hours), retained across restarts. ETag-conditional deletion must recheck the due mark. Remote compaction must revalidate remembered PVLs, clear deletion eligibility with version protection
+  before reuse, and upload a fresh identity if absent. Do not trust a follower's cached placement after promotion.
+
+- Preserve the full canonical TRL chain from the oldest checkpoint dependency. KVI commits bind a retained-root
+  hint atomically with content/SHA so discovery survives pruning genesis; do not select a maximum listed TRL as root.
