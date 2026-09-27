@@ -146,8 +146,9 @@ public class ReplicationNodeCoordinatorTest
                 using var registration = cancellation.Register(() => done.TrySetCanceled(cancellation));
                 await done.Task.ConfigureAwait(false);
             }
-            public IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation) => SimulateCheckpoints
-                ? _keyIndexes.Select(id => new RemoteMaintenanceFile($"files/{id}.kvi", id, KVFileType.KeyIndex, "1")).ToAsyncEnumerable()
+            public IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation) =>
+                SimulateCheckpoints ? _keyIndexes.Select(id => new RemoteMaintenanceFile($"files/{id}.kvi", id, KVFileType.KeyIndex, "1")).ToAsyncEnumerable()
+                : FailCheckpoint ? AsyncEnumerable.Empty<RemoteMaintenanceFile>() // Only ID allocation lists before the failing upload.
                 : cluster.Trls.EnumerateMaintenanceAsync(cancellation);
             public ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation) => cluster.Trls.DeleteAsync(file, cancellation);
             public ValueTask<bool> ProtectPureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) =>
@@ -568,6 +569,36 @@ public class ReplicationNodeCoordinatorTest
     }
 
     [Fact]
+    public async Task LeaderThatInitializedDatabaseFollowsAfterLosingLeaseWithoutRestart()
+    {
+        await using var cluster = new Cluster();
+        var old = cluster.Start("old");
+        cluster.Advance(30);
+        Assert.Equal(ReplicationNodeRole.Leader, old.Coordinator.Role);
+        Assert.Equal(1, old.Initializations);
+        await old.Write(43, 3);
+        cluster.Advance(20);
+        Assert.Equal(43ul, await cluster.RestoreEvent());
+        var next = cluster.Start("next");
+        cluster.Advance(20);
+        old.Storage.Unavailable = true;
+        cluster.Isolated.Add("old");
+        cluster.Advance(140);
+        Assert.Equal(ReplicationNodeRole.Leader, next.Coordinator.Role);
+        old.Storage.Unavailable = false;
+        cluster.Isolated.Clear();
+        cluster.Advance(30);
+        await next.Write(44, 4);
+        await old.Write(44, 4);
+        cluster.Advance(30);
+        Assert.Equal(0, old.Restarts);
+        Assert.Equal(ReplicationNodeRole.Follower, old.Coordinator.Role);
+        Assert.Equal(44ul, Assert.Single(old.Status.Current.Databases).Compared?.EventId);
+        Assert.Equal(old.Capture.Completed, old.Capture.Acknowledged);
+        Assert.True(old.Status.Current.Ready);
+    }
+
+    [Fact]
     public async Task UnpublishedInitializationCanBeRecreatedAtNewInputEndAfterLeaderLoss()
     {
         await using var cluster = new Cluster();
@@ -622,6 +653,8 @@ public class ReplicationNodeCoordinatorTest
         await follower.Write(2, 9);
         cluster.Isolated.Add("follower");
         cluster.Advance(30);
+        // Detached history is never compared or published again; local compaction may drop its TRLs.
+        Assert.Equal(follower.Capture.Completed, follower.Capture.Acknowledged);
         cluster.Isolated.Clear();
         cluster.Advance(30);
         Assert.Single(follower.Detached);
@@ -673,6 +706,8 @@ public class ReplicationNodeCoordinatorTest
         Assert.Equal(0, older.Peers.Reads);
         await older.Write(2, 9);
         Assert.Equal(1, older.Applied);
+        cluster.Advance(10);
+        Assert.Equal(older.Capture.Completed, older.Capture.Acknowledged); // Nothing retains removed history.
         Assert.Equal(1ul, await cluster.RestoreEvent());
         Assert.Equal(0, older.Restarts);
         Assert.False(older.Run.IsCompleted);

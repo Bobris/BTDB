@@ -324,9 +324,10 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         if (suspend)
         {
             await leader.Signal("-CONT");
-            // This node created genesis rather than restoring a fixed base. Once it loses authority,
-            // ordinary follower startup requests a canonical rebuild instead of following from a zero cut.
-            await leader.ExpectRestartExit("New database initialization is published");
+            // This node created genesis rather than restoring a base; its first publication is its canonical base.
+            // After losing authority it follows the new leader and confirms its own unpublished tail, without a restore.
+            var resumed = await leader.Wait(s => s.Role == "Follower" && Compared(s, 2), "resumed old leader follows");
+            Assert.Equal(22, resumed.Value);
         }
 
         // A third OS process has no prior local cache; verify takeover history by ordinary native restore.

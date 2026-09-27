@@ -606,6 +606,10 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         await storage.ScheduleDeletionAsync(oldVersion, TimeSpan.Zero, default); // Late marking cannot resurrect eligibility.
         Assert.DoesNotContain("btdb_delete_after", (await container.GetBlobClient("db/files/100.pvl").GetPropertiesAsync()).Value.Metadata.Keys);
         Assert.True((await container.GetBlobClient("db/files/100.pvl").ExistsAsync()).Value);
+        // Unmarked: protection keeps the version, so restores reading it by ETag are not interrupted.
+        var unmarked = (await container.GetBlobClient("db/files/100.pvl").GetPropertiesAsync()).Value.ETag;
+        Assert.True(await storage.ProtectPureValuesAsync(100, source, default));
+        Assert.Equal(unmarked, (await container.GetBlobClient("db/files/100.pvl").GetPropertiesAsync()).Value.ETag);
         physical.Clear();
         await foreach (var item in storage.EnumerateMaintenanceAsync(default)) physical.Add(item);
         var protectedVersion = Assert.Single(physical, item => item.FileId == 100);

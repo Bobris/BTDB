@@ -258,8 +258,8 @@ loopback; see [BTDB.Replication.Http](../BTDB.Replication.Http/README.md).
   acknowledgement (releasing local TRL retention), seeds the next leader's activation validation and survives
   reconnects. Comparison progress with one leader session survives reconnects; a new leader rechecks from the base.
 - **Schema detachment.** If `Schema` lies beyond the canonical base, the follower detaches that database before
-  comparing: it stops following it, keeps executing locally (`SchemaDetached`, status not ready), is permanently
-  disqualified from leadership for this session, and requests a graceful restart after 15 minutes
+  comparing: it stops following it, keeps executing locally (`SchemaDetached`, status not ready) with its whole
+  local TRL acknowledged for compaction, is permanently disqualified from leadership for this session, and requests a graceful restart after 15 minutes
   (`DetachedLeaderTimeout`) without valid leader evidence. A position covered by the base, including genesis, is a
   duplicate. An older schema commit the leader did not replay surfaces as ordinary divergence and restarts the follower.
 - **New databases.** A database the leader selected but this node has not restored is polled for progress only; once
@@ -272,11 +272,14 @@ both atomically with the term. The selected generation is a permanent election f
 compatible databases but never lead again, even when every newer node is unavailable.
 
 - **Added database.** A newer follower waits without provisional writes or reads. The leader that selects the new set
-  initializes it (genesis) and publishes it immediately; followers restore the published history. An unpublished
-  genesis may be recreated by a later leader at a newer input end; published genesis is never replaced.
+  initializes it (genesis) and publishes it immediately; followers restore the published history. Its first
+  publication is that leader's canonical base, so after losing the lease it follows the next leader without a
+  restore. An unpublished genesis may be recreated by a later leader at a newer input end; published genesis is never
+  replaced.
 - **Removed database.** A database missing from the selected set is outside coordination: no adoption, publication,
   compaction or cleanup by the new leader, and no retirement record or frozen boundary. An old node continues it
-  locally until shutdown. Delayed old writes to its namespace are harmless.
+  locally until shutdown and acknowledges its capture, as for a detached database, so local compaction keeps no TRL
+  for replication. Delayed old writes to its namespace are harmless.
 - **Schema transactions.** A newer application may write non-application transactions (for example secondary-index
   changes) with ordinary commands and an unchanged `CommitUlong`, only under leader authority: ObjectDB checks all
   relations read-only and persists new schemas and index upgrades in at most one startup writer after the host waits
@@ -293,11 +296,13 @@ back canonical TRL publication:
    the export and only collect garbage.
 2. Publish canonical TRL through the snapshot cut.
 3. For each sealed PVL, reuse a confirmed placement or upload the whole file under a fresh even remote ID (IDs come from
-   one remote listing per checkpoint); then protect it, clearing any deletion mark and changing its version. An absent
-   remote copy gets a fresh identity; retired keys are never recreated. TRL IDs, offsets and bytes are never remapped.
+   one maintenance listing per checkpoint); then protect it: a deletion mark is cleared (changing the version), an
+   unmarked object keeps its version so concurrent restores continue, and a reused copy listed unmarked needs no
+   request. An absent remote copy gets a fresh identity; retired keys
+   are never recreated. TRL IDs, offsets and bytes are never remapped.
 4. Only after every prerequisite is confirmed, stream the native KVI with remapped PVL IDs to a fresh immutable object.
    The KVI records a recovery-root hint (the oldest canonical TRL it needs) so discovery survives deletion of older
-   history. Reconciliation of an ambiguous write checks the same identity, SHA-256 and hint; a conflict fences.
+   history; one namespace listing supplies the selected links and marks, without a request per retained TRL. Reconciliation of an ambiguous write checks the same identity, SHA-256 and hint; a conflict fences.
 5. Collect garbage: list remote files and, unless a newer KVI has appeared, keep the published KVI, its dependencies,
    the TRL chain from its oldest dependency, the highest even ID (allocation anchor) and files marked for discovery.
    Mark every other file with a deletion deadline and delete it only when the deadline has passed and its version
@@ -391,7 +396,8 @@ Backlog within the selected design:
 | 2026-09-22 | Delayed deletion by per-object deadline metadata; KVI recovery-root hint. Separate activation, publication and maintenance watchdogs; application owns event timeouts. |
 | 2026-09-27 | Poll-based binary peer protocol: one request per follower step carries the grant and all databases; inline TRL bytes with polls (previously deferred as an optimization). |
 | 2026-09-27 | The leader announces its latest non-application commit in every poll; followers no longer decode leader TRL (the scanner cost about 5.8 s per 23 MB of small transactions). |
-| 2026-09-27 | Deletion delay must be positive; unchanged checkpoints are not re-exported; unmarked TRLs are never rewritten by checkpoint protection. |
+| 2026-09-27 | Deletion delay must be positive; unchanged checkpoints are not re-exported; unmarked TRLs and PVLs are never rewritten by checkpoint protection. |
+| 2026-09-27 | A steady-state checkpoint needs no request per retained file (measured 173 HEADs before). Removed and detached databases release local TRL retention; a node that initialized a database follows after losing the lease instead of restarting. |
 
 Superseded alternatives, kept only as reasons: manifest- or chunk-based checkpoint publication and whole-file TRL
 replacement (native KVI-last and conditional tail append are cheaper and portable); a per-batch `state.json` CAS

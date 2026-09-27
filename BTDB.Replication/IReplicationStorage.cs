@@ -39,6 +39,7 @@ public interface IReplicationStorage : IRemoteFileCollection
     IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation);
     /// <summary>Delete only if the persisted deadline has elapsed and the version still matches; unmarked files are protected.</summary>
     ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation);
-    // Clear any deletion mark and change the version before KVI publication. False means absent: the caller must allocate a fresh identity, never recreate a retired key.
+    // Before KVI publication: verify the object and clear a deletion mark, which changes its version; an unmarked object
+    // keeps its version. False means absent: the caller must allocate a fresh identity, never recreate a retired key.
     ValueTask<bool> ProtectPureValuesAsync(uint fileId, KeyIndexFileSource source, CancellationToken cancellation);
 }

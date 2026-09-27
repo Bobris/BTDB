@@ -192,13 +192,20 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
         throw new InvalidOperationException("This inventory is read-only; supply session-bound replication storage for publication.");
 
     uint _lastRemoteEvenId;
+    // Remote PVLs the latest scan listed without a deletion mark.
+    readonly HashSet<uint> _unmarkedPureValues = new();
 
     // Called under the publication lane. Refresh only remote discovery: refreshing local mappings here would
     // invalidate confirmed PVL receipts during the same checkpoint. No remote reservation object is created.
-    internal async ValueTask ScanRemoteIdsAsync(IRemoteFileCollection storage, CancellationToken cancellation)
+    // The maintenance listing also carries deletion marks, so reused unmarked PVLs need no protection request.
+    internal async ValueTask ScanRemoteIdsAsync(IReplicationStorage storage, CancellationToken cancellation)
     {
-        await foreach (var file in storage.EnumerateAsync(cancellation).ConfigureAwait(false))
+        _unmarkedPureValues.Clear();
+        await foreach (var file in storage.EnumerateMaintenanceAsync(cancellation).ConfigureAwait(false))
+        {
             if ((file.FileId & 1) == 0) _lastRemoteEvenId = Math.Max(_lastRemoteEvenId, file.FileId);
+            if (file.FileType == KVFileType.PureValues && file.DeleteAfter == null) _unmarkedPureValues.Add(file.FileId);
+        }
         cancellation.ThrowIfCancellationRequested();
     }
 
@@ -206,7 +213,7 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
     internal async ValueTask<uint> AllocateRemoteFileIdAsync(CancellationToken cancellation = default,
         IReplicationStorage? storage = null, bool rescan = true)
     {
-        if (rescan) await ScanRemoteIdsAsync(storage ?? Remote, cancellation).ConfigureAwait(false);
+        if (rescan) await ScanRemoteIdsAsync(storage ?? PublicationStorage, cancellation).ConfigureAwait(false);
         var next = (ulong)_lastRemoteEvenId + 2;
         if (next > uint.MaxValue) throw new InvalidOperationException("Remote PVL/KVI IDs exhausted.");
         return _lastRemoteEvenId = (uint)next;
@@ -240,6 +247,10 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
                 RememberMapping(placement.RemoteId, source.FileId);
                 lock (_placementLock) placement.Confirmed = true;
             }
+            // A reused copy this checkpoint's scan listed unmarked needs no request (measured: one HEAD per PVL per
+            // checkpoint). Deletion requires a due mark, and a stale mark placed after the scan cannot become due
+            // before cleanup clears it on this checkpoint's dependency. Keys are never recreated, so content holds.
+            else if (!rescan && _unmarkedPureValues.Contains(placement.RemoteId)) return placement.RemoteId;
             if (!await storage.ProtectPureValuesAsync(placement.RemoteId, source, cancellation).ConfigureAwait(false))
             {
                 _lastRemoteEvenId = Math.Max(_lastRemoteEvenId, placement.RemoteId);

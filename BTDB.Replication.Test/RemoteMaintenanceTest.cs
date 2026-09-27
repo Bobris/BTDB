@@ -37,6 +37,7 @@ public class RemoteMaintenanceTest
                 yield return new(file.FileId.ToString(), file.FileId, file.FileType, Version(file.FileId), false, _deadlines.TryGetValue(file.FileId, out var deadline) ? deadline : null);
         }
         public int Schedules;
+        public readonly List<uint> Protected = new();
         public ValueTask<RemoteMaintenanceFile> ScheduleDeletionAsync(RemoteMaintenanceFile file, TimeSpan delay, CancellationToken cancellation)
         {
             Schedules++;
@@ -71,8 +72,9 @@ public class RemoteMaintenanceTest
             cancellation.ThrowIfCancellationRequested();
             if (!authority.IsValid) throw new InvalidOperationException();
             if (Inner.Files.GetFile(id) == null) return ValueTask.FromResult(false);
-            _deadlines.Remove(id);
-            _versions[id] = _versions.GetValueOrDefault(id) + 1;
+            Protected.Add(id);
+            // Like the Azure adapter: only clearing a mark changes the version.
+            if (_deadlines.Remove(id)) _versions[id] = _versions.GetValueOrDefault(id) + 1;
             return ValueTask.FromResult(true);
         }
         public IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation) => Inner.EnumerateAsync(cancellation);
@@ -305,5 +307,42 @@ public class RemoteMaintenanceTest
         Assert.True(actualCursor.FindExactKey(new byte[] { 200 }));
         Span<byte> buffer = stackalloc byte[2048];
         Assert.Equal(new byte[2000], actualCursor.GetValueSpan(ref buffer).ToArray());
+    }
+
+    [Fact]
+    public async Task CheckpointProtectsOnlyNewOrMarkedPureValuesListedByItsScan()
+    {
+        var clock = new DeterministicScheduler(906);
+        var authority = Lease(clock);
+        using var local = new InMemoryReplicationFileStorage();
+        var capture = new TransactionLogCapture();
+        using var db = await CheckpointPublisherTest.OpenForPublication(local, capture);
+        await CheckpointPublisherTest.Populate(db);
+        using var storage = new Storage(authority, clock.CreateScope("storage"));
+        await using var files = new ReplicationFileSet(local, storage);
+        using var canonical = CheckpointPublisherTest.CreateCanonical(db, capture, storage.Inner, authority);
+        using var maintenance = new ReplicationMaintenance(db, files, canonical, storage, authority,
+            clock.CreateScope("maintenance"), TimeSpan.FromTicks(10), TimeSpan.FromTicks(100));
+        await maintenance.RunDueAsync(default);
+        var pvls = new List<uint>();
+        await foreach (var file in storage.EnumerateMaintenanceAsync(default))
+            if (file.FileType == KVFileType.PureValues) pvls.Add(file.FileId);
+        Assert.NotEmpty(pvls);
+        Assert.Equal(pvls.Order(), storage.Protected.Order()); // New uploads were not listed by the scan.
+        storage.Protected.Clear();
+        await Change(db, 100);
+        clock.AdvanceBy(TimeSpan.FromTicks(10));
+        await maintenance.RunDueAsync(default);
+        Assert.Empty(storage.Protected); // Listed unmarked: reused without a request.
+        RemoteMaintenanceFile? marked = null;
+        await foreach (var file in storage.EnumerateMaintenanceAsync(default))
+            if (file.FileId == pvls[0]) marked = file;
+        await storage.ScheduleDeletionAsync(marked!, TimeSpan.FromTicks(100), default); // A stale leader's late mark.
+        await Change(db, 101);
+        clock.AdvanceBy(TimeSpan.FromTicks(10));
+        await maintenance.RunDueAsync(default);
+        Assert.Equal(new[] { pvls[0] }, storage.Protected);
+        await foreach (var file in storage.EnumerateMaintenanceAsync(default))
+            if (file.FileType == KVFileType.PureValues) Assert.Null(file.DeleteAfter);
     }
 }

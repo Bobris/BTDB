@@ -17,8 +17,9 @@ Scenarios:
 - **Unavailable leader.** The leader publishes event 1, a follower restores it, publication is paused and event 2 is
   compared over HTTP only. The leader process is killed, or suspended with `SIGSTOP` (not on Windows), without
   releasing the lease. After the real 15-second lease expires the follower takes over and publishes its existing
-  event 2 without re-executing it. A suspended old leader later resumes and restarts for canonical restore. A third
-  process with no local cache restores the result and follows the new leader.
+  event 2 without re-executing it. A suspended old leader later resumes and follows the new leader, confirming its own
+  unpublished tail without a restore. A third process with no local cache restores the result and follows the new
+  leader.
 - **Crashed follower.** A follower killed without shutdown restarts from its own disk storage, restores canonical
   state instead of replaying its local tail, and continues comparing.
 - **Stalled publication.** With a publication deadline, a leader whose publication stops fences, exits through fatal

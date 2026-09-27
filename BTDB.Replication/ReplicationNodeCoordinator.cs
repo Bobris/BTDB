@@ -81,7 +81,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     readonly HashSet<string> _leaderDatabases = new(StringComparer.Ordinal);
     // Latest local cut known to be canonical: restored, published by this node, or compared with a leader that had
     // already published it. Rechecks, activation validation and local TRL retention start here, never at the
-    // startup cut, whose files local compaction may already have removed.
+    // startup cut, whose files local compaction may already have removed. A database without an entry has no
+    // canonical history on this node yet; one this node initialized gains it with its first publication.
     readonly Dictionary<string, TransactionLogPosition> _canonicalBase = new(StringComparer.Ordinal);
     // Comparison progress with one leader session survives reconnects, timeouts included; a new leader rechecks from
     // the canonical base because a predecessor's unpublished bytes may differ from its history.
@@ -174,6 +175,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 catch (IOException) { Disconnect(); }
                 catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { Disconnect(); }
                 catch (InvalidOperationException) when (_sessionAuthority is { IsValid: false }) { DropLeadership(); }
+                ReleaseUncoordinatedHistory(databases);
                 if (_detached.Count != 0 && scheduler.Elapsed - _leaderEvidenceUntil >= detachedTimeout)
                     Restart("Detached node has had no valid leader within the configured timeout.");
                 if (!_restart) await WaitAsync(cancellation).ConfigureAwait(false);
@@ -356,9 +358,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             }
             foreach (var database in databases)
             {
-                if (_removed.Contains(database.Name) || _detached.Contains(database.Name) || database.RestoredBase.FileId == 0 || !_leaderDatabases.Contains(database.Name))
+                if (_removed.Contains(database.Name) || _detached.Contains(database.Name) ||
+                    !_canonicalBase.TryGetValue(database.Name, out var canonical) || !_leaderDatabases.Contains(database.Name))
                     continue;
-                var canonical = _canonicalBase[database.Name];
                 var reader = new RetainingLeaderTrlReader(_peer.Reader(database.Name));
                 _leaderReaders.Add(database.Name, reader);
                 var name = database.Name;
@@ -396,7 +398,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             followers[index++] = (name, follower);
         }
         foreach (var database in databases)
-            if (database.RestoredBase.FileId == 0 && !_removed.Contains(database.Name) &&
+            if (!_canonicalBase.ContainsKey(database.Name) && !_removed.Contains(database.Name) &&
                 _leaderDatabases.Contains(database.Name)) polled.Add(new(database.Name));
         if (polled.Count == 0 && (_detached.Count == 0 || _leaderEvidenceUntil > scheduler.Elapsed)) return true;
         var dispatched = scheduler.Elapsed;
@@ -529,8 +531,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             for (var i = 0; i < databases.Length; i++)
             {
                 var name = _databases[i].Name;
-                initialized &= _removed.Contains(name) || _databases[i].RestoredBase.FileId != 0 ||
-                    _publishers != null && _publishers[i].PublishedPosition.FileId != 0;
+                initialized &= _removed.Contains(name) || _canonicalBase.ContainsKey(name);
                 databases[i] = new(name, host.GetProgress(name),
                     _followers.TryGetValue(name, out var follower) ? follower.Compared : null,
                     _publishers is { } publishers ? publishers[i].PublishedPosition : null,
@@ -560,12 +561,26 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     }
 
     // Canonical bytes need no recheck and no local retention for peers; release older local TRLs to compaction.
+    // The first publication of a database this node initialized establishes its base, so losing the lease later
+    // follows the next leader instead of restoring the whole node.
     void AdvanceCanonicalBase(ActivationDatabase database, TransactionLogPosition position)
     {
-        if (position.FileId == 0 || !_canonicalBase.TryGetValue(database.Name, out var current) ||
-            position <= current) return;
+        if (position.FileId == 0 || _canonicalBase.TryGetValue(database.Name, out var current) && position <= current)
+            return;
         _canonicalBase[database.Name] = position;
         if (position > database.Capture.Acknowledged) database.Capture.Acknowledge(position);
+    }
+
+    // Removed and detached databases are never compared or published again, yet keep executing locally. Nothing reads
+    // their TRL for replication, so acknowledge it all; otherwise compaction retains every later TRL until shutdown.
+    void ReleaseUncoordinatedHistory(IReadOnlyList<ActivationDatabase> databases)
+    {
+        foreach (var database in databases)
+        {
+            if (!_removed.Contains(database.Name) && !_detached.Contains(database.Name)) continue;
+            var completed = database.Capture.Completed;
+            if (completed > database.Capture.Acknowledged) database.Capture.Acknowledge(completed);
+        }
     }
 
     void Disconnect()

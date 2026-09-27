@@ -112,8 +112,10 @@ missing SHA fences the session, restored PVLs are reused without upload, and a p
 restored PVL at a fresh ID.
 
 `RemoteMaintenanceTest` covers delayed deletion that preserves the recovery closure and never reuses the highest ID,
-version protection defeating a delayed delete, failed KVI never authorizing deletes, restore of an actual compacted
-checkpoint after cleanup, and the maintenance watchdog deadline. Deletion delay must be positive; these tests use small
+version protection defeating a delayed delete, protection only of new or marked PVLs, failed KVI never authorizing
+deletes, restore of an actual compacted checkpoint after cleanup, and the maintenance watchdog deadline.
+`CheckpointRequestTest` (Azurite) bounds a steady-state checkpoint to three listings and no request per retained
+file. Deletion delay must be positive; these tests use small
 positive delays in virtual time.
 
 ## Follower comparison
@@ -161,10 +163,12 @@ coordinator never runs handlers.
 - Faults: startup outage prevents election, divergence requests restart while local writes continue, malformed leader
   records request restart, and wrong API keys or stale sessions fail authentication.
 - Upgrades and database sets: prepared highest-generation handoff before lease expiry, older generations following but
-  never contending, removed databases continuing locally, and leader-only initialization that keeps its captured
-  cursor after a lost reply or is recreated at a newer input end after leader loss.
+  never contending, removed databases continuing locally with their TRL released to compaction, and leader-only
+  initialization that keeps its captured cursor after a lost reply or is recreated at a newer input end after leader
+  loss; `LeaderThatInitializedDatabaseFollowsAfterLosingLeaseWithoutRestart` follows the next leader.
 - Schema: `CoalescedSchemaDetachesLaggingFollowerAndNeverPromotesItsLocalWork` detaches a lagging follower before
-  comparison, never reattaches it, and requests restart after 15 minutes without leader evidence;
+  comparison, never reattaches it, releases its TRL to compaction and requests restart after 15 minutes without
+  leader evidence;
   `FollowerRestoredAfterPublishedSchemaTreatsItAsDuplicate` keeps a follower restored past the schema commit following.
 - Watchdogs: publication and checkpoint deadlines fence authority despite healthy renewals and delay fatal restart
   while a healthy follower takes over; idle leaders, activation retries and shutdown do not trigger false recovery.
@@ -199,7 +203,8 @@ processes that use only the public hosting/provider API with real Azure adapters
 
 - `UnavailableLeaderIsReplacedAndItsUnpublishedTailSurvivesWithoutReexecution` kills or (except on Windows) suspends
   the leader without releasing its lease; after real lease expiry the follower publishes the compared unpublished tail
-  without rerunning the handler, and a cold third process restores it and continues comparison.
+  without rerunning the handler; a resumed suspended leader follows without a restore, and a cold third process
+  restores it and continues comparison.
 - `StalledPublicationTerminatesTheLeaderAndFollowerRecoversItsOptimisticTail`,
   `DivergentFollowerTerminatesItsProcessWithoutPublishingItsLocalOutcome` and
   `CrashedFollowerRestartsFromItsOwnDiskStorage` cover the publication watchdog, divergence exit and restart from

@@ -21,6 +21,12 @@
 
 ### Changed
 
+- A steady-state replication checkpoint no longer needs a request per retained remote file. The checkpoint's ID scan
+  uses the maintenance listing, so reused PVLs listed without a deletion mark skip `ProtectPureValuesAsync`, and the
+  Azure adapter prepares a KVI from one namespace listing (recovery-root hint, selected links and deletion marks)
+  instead of a second listing and a HEAD per canonical TRL. On Azurite with 20 PVLs and 153 retained TRLs this cut a
+  checkpoint from 4 listings and 173 HEAD requests to 3 listings and 1 HEAD.
+
 - Detect schema transactions on the leader instead of decoding leader TRL on followers. Each poll answer now carries
   the leader's latest non-application commit position (a new flag in the binary peer poll response), and a follower
   whose canonical base precedes it detaches. `SchemaTrlScanner` is removed; it ran before every comparison and
@@ -96,6 +102,18 @@
   reuse placements now come only from restore validation, downloads and confirmed uploads.
 
 ### Fixed
+
+- Release local TRL retention of removed and schema-detached databases. They keep executing locally but are never
+  compared or published again, so their capture acknowledgement stayed put and local compaction kept every later TRL
+  until shutdown; the coordinator now acknowledges their complete local history on every step.
+
+- A node that initialized a new database now records its first publication as that database's canonical base.
+  After losing the lease it previously treated the database as uninitialized and restarted for a full restore;
+  it now follows the next leader.
+
+- `AzureReplicationStorage.ProtectPureValuesAsync` no longer rewrites the metadata of an unmarked PVL. The rewrite
+  changed the version of every reused PVL on each checkpoint, which failed concurrent restores reading it by ETag;
+  a deletion mark is still cleared (changing the version) as before.
 
 - Compare database names as a set when a candidate selects leadership, as follower discovery already did. Nodes of
   one generation listing the same databases in a different order restarted instead of becoming leader.

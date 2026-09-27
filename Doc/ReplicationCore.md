@@ -186,9 +186,10 @@ PVL references into local IDs. TRL and KVI IDs remain unchanged. Local eviction 
 assignment stable for a later prefetch. There is no persisted mapping or search across local file contents.
 
 Leader checkpoint publication (the internal `CheckpointPublisher`) places each complete sealed local PVL pinned by its
-snapshot: it reuses a verified placement or uploads to a fresh remote ID, then protects the remote object; an absent
-object gets a fresh identity. Only confirmed uploads establish a mapping; uncertain outcomes retain their chosen ID for
-retry. One remote listing per new checkpoint seeds every PVL and KVI identity. Calls are serialized by the owner and
+snapshot: it reuses a verified placement or uploads to a fresh remote ID, then protects the remote object unless the
+checkpoint's maintenance listing showed the reused copy without a deletion mark; an absent object gets a fresh
+identity. Only confirmed uploads establish a mapping; uncertain outcomes retain their chosen ID for
+retry. One maintenance listing per new checkpoint seeds every PVL and KVI identity. Calls are serialized by the owner and
 use its fenced remote adapter. Follower/local compaction never publishes. Native KVI upload starts only after every PVL
 and required canonical TRL is confirmed.
 

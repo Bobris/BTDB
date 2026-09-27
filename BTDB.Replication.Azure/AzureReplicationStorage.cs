@@ -239,17 +239,19 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     public async IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync([EnumeratorCancellation] CancellationToken cancellation)
     {
         await foreach (var blob in ListAsync(root, cancellation).ConfigureAwait(false))
-        {
-            var key = blob.Name[root.Length..];
-            if (key.StartsWith("files/", StringComparison.Ordinal))
-            {
-                if (TryParseFileName(key[6..], out var id, out var type))
-                    yield return new(key, id, type, blob.Properties.ETag!.Value.ToString(), false, DeletionTime(blob.Metadata));
-            }
-            else if (blob.Metadata.ContainsKey("btdb_term") && blob.Metadata.TryGetValue("btdb_file_id", out var value) &&
-                     uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id != 0)
-                yield return new(key, id, KVFileType.TransactionLog, blob.Properties.ETag!.Value.ToString(), false, DeletionTime(blob.Metadata));
-        }
+            if (MaintenanceFile(blob) is { } file) yield return file;
+    }
+
+    RemoteMaintenanceFile? MaintenanceFile(BlobItem blob)
+    {
+        var key = blob.Name[root.Length..];
+        if (key.StartsWith("files/", StringComparison.Ordinal))
+            return TryParseFileName(key[6..], out var id, out var type)
+                ? new(key, id, type, blob.Properties.ETag!.Value.ToString(), false, DeletionTime(blob.Metadata)) : null;
+        return blob.Metadata.ContainsKey("btdb_term") && blob.Metadata.TryGetValue("btdb_file_id", out var value) &&
+               uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var trlId) && trlId != 0
+            ? new(key, trlId, KVFileType.TransactionLog, blob.Properties.ETag!.Value.ToString(), false, DeletionTime(blob.Metadata))
+            : null;
     }
 
     static DateTimeOffset? DeletionTime(IDictionary<string, string> metadata)
@@ -325,28 +327,32 @@ public sealed class AzureReplicationStorage : IReplicationStorage
 
     public async ValueTask<TrlSuccessor> ResolveRecoveryRootAsync(TrlSuccessor genesis, CancellationToken cancellation)
     {
-        // Only an atomically published immutable KVI can select a new retained root. Never pick a maximum TRL ID.
-        uint latest = 0;
-        TrlSuccessor? root = null;
-        await foreach (var blob in ListAsync(Directory, cancellation).ConfigureAwait(false))
-        {
-            if (!TryParseFileName(blob.Name[Directory.Length..], out var id, out var type) ||
-                type != KVFileType.KeyIndex || id <= latest) continue;
-            latest = id;
-            root = null;
-            if (blob.Metadata.TryGetValue(RecoveryKey, out var key) && blob.Metadata.TryGetValue(RecoveryId, out var value) &&
-                uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var rootId) && rootId != 0 &&
-                blob.Metadata.ContainsKey("btdb_sha256"))
-            {
-                try { root = new(Encoding.UTF8.GetString(Convert.FromBase64String(key)), rootId); }
-                catch (FormatException error) { throw new InvalidDataException("Invalid checkpoint recovery root.", error); }
-                TrlMetadata.Validate(root);
-            }
-        }
+        var latest = new LatestCheckpoint();
+        await foreach (var blob in ListAsync(Directory, cancellation).ConfigureAwait(false)) latest.Observe(blob.Name[Directory.Length..], blob);
         // Legacy KVI lacks a retained-root hint: preserve the original discovery contract.
-        if (latest != 0 && root == null && await ReadAsync(genesis.Key, cancellation).ConfigureAwait(false) == null)
+        if (latest.Id != 0 && latest.Root == null && await ReadAsync(genesis.Key, cancellation).ConfigureAwait(false) == null)
             throw new IOException("A checkpoint exists but its legacy discovery root is missing.");
-        return root ?? genesis;
+        return latest.Root ?? genesis;
+    }
+
+    // Only an atomically published immutable KVI can select a new retained root. Never pick a maximum TRL ID.
+    struct LatestCheckpoint
+    {
+        public uint Id;
+        public TrlSuccessor? Root;
+
+        public void Observe(string name, BlobItem blob)
+        {
+            if (!TryParseFileName(name, out var id, out var type) || type != KVFileType.KeyIndex || id <= Id) return;
+            Id = id;
+            Root = null;
+            if (!blob.Metadata.TryGetValue(RecoveryKey, out var key) || !blob.Metadata.TryGetValue(RecoveryId, out var value) ||
+                !uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var rootId) || rootId == 0 ||
+                !blob.Metadata.ContainsKey("btdb_sha256")) return;
+            try { Root = new(Encoding.UTF8.GetString(Convert.FromBase64String(key)), rootId); }
+            catch (FormatException error) { throw new InvalidDataException("Invalid checkpoint recovery root.", error); }
+            TrlMetadata.Validate(Root);
+        }
     }
 
     public async ValueTask<bool> ProtectPureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation)
@@ -358,7 +364,11 @@ public sealed class AzureReplicationStorage : IReplicationStorage
             var properties = (await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false)).Value;
             if ((ulong)properties.ContentLength != source.Length || !properties.Metadata.ContainsKey("btdb_sha256"))
                 throw new RemoteFileConflictException();
-            // Contents were verified on upload/download. Metadata-only CAS invalidates any old delete token.
+            // Contents were verified on upload/download. An unmarked file keeps its version, so restores reading it by
+            // ETag continue; an old delete requires a mark, and a late stale mark cannot become due before this
+            // leader's cleanup clears it on the retained dependency.
+            if (DeletionTime(properties.Metadata) == null) return true;
+            // Clearing a mark changes the version, so an older delete of the marked version cannot match.
             RequireAuthority(cancellation);
             await blob.SetMetadataAsync(properties.Metadata.Where(p => p.Key != DeleteAfterKey).ToDictionary(), new BlobRequestConditions { IfMatch = properties.ETag }, cancellation)
                 .ConfigureAwait(false);
@@ -420,18 +430,40 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     {
         var first = snapshot.Sources.Where(s => s.FileType == KVFileType.TransactionLog).Select(s => s.FileId)
             .Append(snapshot.TransactionLogFileId).Min();
-        var selected = await CanonicalTrlInventory.DiscoverAsync(this, Inventory.Root, cancellation).ConfigureAwait(false);
-        var recoveryRoot = selected.GetHead(first);
+        // One namespace listing supplies the latest recovery root, the selected links and deletion marks. Rediscovering
+        // the chain with a request per TRL cost 153 of 173 requests per steady-state checkpoint (Azurite, 20 PVLs,
+        // 153 retained TRLs; CheckpointRequestTest).
+        var latest = new LatestCheckpoint();
+        var trls = new Dictionary<string, (RemoteMaintenanceFile File, BlobItem Blob)>(StringComparer.Ordinal);
+        await foreach (var blob in ListAsync(root, cancellation).ConfigureAwait(false))
+        {
+            var name = blob.Name[root.Length..];
+            if (name.StartsWith("files/", StringComparison.Ordinal)) latest.Observe(name[6..], blob);
+            else if (MaintenanceFile(blob) is { } trl) trls[name] = (trl, blob);
+        }
         // A promoted follower may reference older sealed TRLs too. Clear deletion marks on the retained chain before
         // publishing a KVI that depends on it. Unmarked files keep their version, so concurrent restores reading
         // them by ETag are not invalidated; a positive deletion delay keeps any late stale mark from becoming due
         // before later cleanup of this leader clears it.
-        var marked = new Dictionary<string, RemoteMaintenanceFile>(StringComparer.Ordinal);
-        await foreach (var file in EnumerateMaintenanceAsync(cancellation).ConfigureAwait(false))
-            if (file.FileType == KVFileType.TransactionLog && file.DeleteAfter != null) marked[file.Key] = file;
-        await foreach (var file in selected.EnumerateAsync(cancellation).ConfigureAwait(false))
-            if (file.FileId >= first && file.IsSealed && marked.TryGetValue(selected.GetHead(file.FileId).Key, out var mark))
-                await CancelDeletionAsync(mark, cancellation).ConfigureAwait(false);
+        TrlSuccessor? recoveryRoot = null;
+        var marked = new List<RemoteMaintenanceFile>();
+        uint previous = 0;
+        for (var current = latest.Root ?? Inventory.Root; ;)
+        {
+            // Removing each visited link also stops a cyclic chain.
+            if (current.FileId <= previous || !trls.Remove(current.Key, out var link) || link.File.FileId != current.FileId)
+                throw new FileNotFoundException("A selected canonical TRL is missing.", current.Key);
+            if (current.FileId == first) recoveryRoot = current;
+            TrlMetadata metadata;
+            try { metadata = TrlMetadata.Decode(new Dictionary<string, string>(link.Blob.Metadata)); }
+            catch (FormatException error) { throw new InvalidDataException("Invalid canonical TRL metadata.", error); }
+            if (metadata.Next is not { } next) break;
+            if (current.FileId >= first && link.File.DeleteAfter != null) marked.Add(link.File);
+            previous = current.FileId;
+            current = next;
+        }
+        if (recoveryRoot == null) throw new FileNotFoundException("TRL is outside the selected canonical inventory.");
+        foreach (var file in marked) await CancelDeletionAsync(file, cancellation).ConfigureAwait(false);
         using var upload = new Upload(Blob(id, ".kvi"), authority, cancellation,
             new Dictionary<string, string> { [RecoveryKey] = Convert.ToBase64String(Encoding.UTF8.GetBytes(recoveryRoot.Key)), [RecoveryId] = first.ToString(CultureInfo.InvariantCulture) });
         // Native serialization is synchronous. Its bounded stream stages blocks on this publication lane,

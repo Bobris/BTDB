@@ -126,14 +126,21 @@ chooses the next even ID above every observed remote even ID and this session's 
 object, counter or ledger exists. Cleanup keeps the highest even ID as the allocation anchor. TRLs use odd native IDs.
 
 `PublishPureValuesAsync` (internal to `ReplicationFileSet`) uploads each unmapped sealed local PVL with
-`EnsurePureValuesAsync` and records the confirmed placement. Before every KVI, each reused placement, including a
-verified download, is revalidated by `ProtectPureValuesAsync`, which clears any deletion mark and changes the version
-so an older delete cannot match; an absent object gets a fresh ID, never its retired key. A follower's cached placement
-is not trusted after promotion. `CheckpointPublisher` keeps the chosen KVI ID, snapshot and mapping until confirmed;
+`EnsurePureValuesAsync` and records the confirmed placement. The checkpoint's ID scan is the maintenance listing, so
+it also reports deletion marks: a reused placement, including a verified download, that it listed unmarked needs no
+request. Every other placement is revalidated by `ProtectPureValuesAsync`. Clearing a deletion mark changes the
+version so an older delete cannot match; an unmarked object keeps its version, so restores reading it by ETag
+continue, and the positive deletion delay keeps a late stale mark from becoming due before cleanup clears it. An
+absent object gets a fresh ID, never its retired key. A follower's cached placement is not trusted after promotion:
+the first checkpoint's listing decides. `CheckpointPublisher` keeps the chosen KVI ID, snapshot and mapping until confirmed;
 PVL placements also keep their IDs across retries. Restart rediscovers remote state; no journal is persisted.
 
 KVI upload starts only after all required PVLs and the canonical TRL through the KVI cut are published, with ambiguous
-prerequisites reconciled; no KVI block is staged earlier. The KVI streams from native serialization without a local
+prerequisites reconciled; no KVI block is staged earlier. Before staging, the Azure adapter lists the database
+namespace once: the latest KVI's recovery-root hint starts an in-memory walk of the selected links in the listed TRL
+metadata, which yields the new hint and the marked chain TRLs to clear. A steady-state checkpoint therefore needs
+three listings (ID scan, KVI preparation, cleanup) and no request per retained file; with 20 PVLs and 153 retained
+TRLs it previously needed four listings and 173 HEAD requests (`CheckpointRequestTest`, Azurite). The KVI streams from native serialization without a local
 staging file.
 
 ### Whole-file checksums for cache reuse
