@@ -914,9 +914,8 @@ public abstract class KeyValueDBTestBase
             cursor.CreateKey(Key1);
         }
         tr1.Commit();
-        var completedTask = await Task.WhenAny(task, Task.Delay(1000));
-        Assert.Same(task, completedTask);
-        await task;
+        // Generous bound: it only detects a deadlock, and a loaded CI runner can delay the thread pool for seconds.
+        await task.WaitAsync(TimeSpan.FromSeconds(30));
         using var tr = db.StartTransaction();
         using var cursor2 = tr.CreateCursor();
         Assert.True(cursor2.FindExactKey(Key1));
