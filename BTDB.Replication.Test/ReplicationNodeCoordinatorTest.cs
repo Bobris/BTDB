@@ -586,6 +586,26 @@ public class ReplicationNodeCoordinatorTest
     }
 
     [Fact]
+    public async Task FollowerRestoredAfterPublishedSchemaTreatsItAsDuplicate()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader");
+        cluster.Advance(20);
+        Assert.Equal(ReplicationNodeRole.Leader, leader.Coordinator.Role);
+        await leader.Schema();
+        await leader.Write(2, 2);
+        cluster.Advance(20);
+        var follower = cluster.Start("follower");
+        cluster.Advance(20);
+        await leader.Write(3, 3);
+        await follower.Write(3, 3);
+        cluster.Advance(20);
+        Assert.Empty(follower.Detached);
+        Assert.Equal(0, follower.Restarts);
+        Assert.Equal(3ul, Assert.Single(follower.Status.Current.Databases).Compared?.EventId);
+    }
+
+    [Fact]
     public async Task CoalescedSchemaDetachesLaggingFollowerAndNeverPromotesItsLocalWork()
     {
         await using var cluster = await Cluster.Create();
@@ -760,7 +780,7 @@ public class ReplicationNodeCoordinatorTest
             cluster.Trls.Requests[n - 1].Write.ExpectedToken != null ? Fault.DelayEffect : Fault.None;
         foreach (var node in cluster.Nodes) await node.Write(2, 2);
         cluster.Advance(10);
-        Assert.True(second.Peers.Reads > 0 && third.Peers.Reads > 0);
+        Assert.True(second.Peers.InlineBytes > 0 && third.Peers.InlineBytes > 0);
         Assert.Equal(second.Capture.Completed, second.Status.Current.Databases[0].Compared!.Value.Position);
         Assert.Equal(1ul, await cluster.RestoreEvent()); // Followers matched leader-only bytes.
         // Unpublished matches are not canonical: local retention keeps them for a recheck against the next leader.

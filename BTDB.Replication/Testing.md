@@ -289,9 +289,10 @@ and restore it on replacement. A separate leader-loss case recreates an unpublis
 rejects the delayed old create. A coalesced application/schema/application range detaches a lagging follower before
 comparison; reconnection cannot reattach it, and a fifteen-minute absence of current leader evidence requests restart.
 
-`SchemaTrlScannerTest` uses real native transactions with rollback, unchanged cursor commits, large payloads,
-short range reads, file rotation and legacy even file IDs. A wrong database identity is rejected before detachment. The scanner skips payloads and reads native headers and
-terminators; it never normalizes mutations or creates a second database tree.
+`TransactionLogCaptureTest` uses real native transactions with rollback, unchanged cursor commits, virtual batches,
+large payloads and file rotation, and checks that reopening replays the same non-application commit position.
+`FollowerRestoredAfterPublishedSchemaTreatsItAsDuplicate` keeps a follower restored after a published schema commit
+following instead of detaching.
 
 Azure adapter tests cover discovery of an initially absent leader blob and native lease Change with both delivered
 and lost responses. Only successful renewal by the target establishes transferred authority. The target also uses a

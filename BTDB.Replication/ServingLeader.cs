@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using BTDB.KVDBLayer;
 
 namespace BTDB.Replication;
 
@@ -23,8 +24,9 @@ internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAutho
     readonly ConfirmationGrants _grants = new(scheduler, authority);
     readonly Dictionary<string, LeaderTrlReader> _readers = databases.ToDictionary(d => d.Name,
         d => new LeaderTrlReader(d.Database, d.Capture, authority), StringComparer.Ordinal);
-    readonly Dictionary<string, CanonicalTrlPublisher> _publishers = databases.Select((d, i) => (d.Name, publishers[i]))
-        .ToDictionary(p => p.Name, p => p.Item2, StringComparer.Ordinal);
+    readonly Dictionary<string, (CanonicalTrlPublisher Publisher, TransactionLogCapture Capture)> _databases = databases
+        .Select((d, i) => (d.Name, publishers[i], d.Capture))
+        .ToDictionary(p => p.Name, p => (p.Item2, p.Capture), StringComparer.Ordinal);
     bool _closed;
     PreparedHandoff? _handoff;
     public PreparedHandoff? Handoff { get { lock (_lock) return _handoff; } }
@@ -89,9 +91,13 @@ internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAutho
                 for (var i = 0; i < answers.Length; i++)
                 {
                     var database = databases[i].Database;
-                    if (!leader._publishers.TryGetValue(database, out var publisher)) throw new IOException("Unknown peer database.");
-                    var published = publisher.PublishedPosition;
-                    answers[i] = new(database, leader._host.GetProgress(database), published.FileId == 0 ? null : published);
+                    if (!leader._databases.TryGetValue(database, out var served)) throw new IOException("Unknown peer database.");
+                    var published = served.Publisher.PublishedPosition;
+                    var progress = leader._host.GetProgress(database);
+                    // After progress: every schema commit through the advertised cut is already recorded.
+                    var schema = served.Capture.NonApplicationCommitted;
+                    answers[i] = new(database, progress, published.FileId == 0 ? null : published,
+                        Schema: schema.FileId == 0 ? null : schema);
                 }
                 // One grant covers every database in this poll.
                 granted = leader._grants.TryIssue(duration);

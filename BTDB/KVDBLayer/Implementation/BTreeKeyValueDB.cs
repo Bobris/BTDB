@@ -996,6 +996,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             if (reader.Eof) return true;
             var afterTemporaryEnd = false;
             var finishReading = false;
+            var applicationCommit = false;
             ICursor cursor;
             ICursor cursor2;
             if (next != null)
@@ -1165,9 +1166,11 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         break;
                     case KVCommandType.CommitWithDeltaUlong:
                         if (next == null) return false;
+                        var deltaUlong = reader.ReadVUInt64();
+                        applicationCommit = deltaUlong != 0;
                         unchecked // overflow is expected in case commitUlong is decreasing but that should be rare
                         {
-                            next.CommitUlong += reader.ReadVUInt64();
+                            next.CommitUlong += deltaUlong;
                         }
 
                         goto case KVCommandType.Commit;
@@ -1175,6 +1178,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         if (next == null) return false;
                         next.TrLogFileId = fileId;
                         next.TrLogOffset = (uint)reader.GetCurrentPosition();
+                        if (!applicationCommit) _transactionLogCapture?.CommitNonApplication(fileId, next.TrLogOffset);
+                        applicationCommit = false;
                         committed.Dispose();
                         next.Commit();
                         committed = next;
@@ -1794,6 +1799,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             lock (_writeLock)
             {
                 _writingTransaction = null;
+                if (deltaUlong == 0) _transactionLogCapture?.CommitNonApplication(root.TrLogFileId, root.TrLogOffset);
                 if (batching)
                 {
                     _batchHasCommits = true;

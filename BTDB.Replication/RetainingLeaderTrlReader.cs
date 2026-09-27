@@ -7,11 +7,10 @@ using BTDB.KVDBLayer;
 namespace BTDB.Replication;
 
 /// <summary>
-/// Retains the leader TRL bytes one follower session received (inline with polls or by range), so the schema scan,
-/// the byte comparison and later steps never fetch the same bytes twice, even while local execution lags. Complete
-/// leader bytes never change within one leader session; the owner creates a new reader per peer session and releases
-/// bytes both consumers have passed. Retention is bounded; reads beyond it go to the inner reader. Not thread-safe:
-/// the owner runs the scan and the comparison sequentially.
+/// Retains the leader TRL bytes one follower session received (inline with polls or by range), so a comparison that
+/// stops at a lagging local end never fetches the same bytes again in later steps. Complete leader bytes never change
+/// within one leader session; the owner creates a new reader per peer session and releases bytes the comparison has
+/// passed. Retention is bounded; reads beyond it go to the inner reader. Not thread-safe: the owner compares serially.
 /// </summary>
 internal sealed class RetainingLeaderTrlReader(ILeaderTrlReader inner, int capacity = 4 * 1024 * 1024) : ILeaderTrlReader
 {
@@ -30,7 +29,7 @@ internal sealed class RetainingLeaderTrlReader(ILeaderTrlReader inner, int capac
         }
     }
 
-    /// <summary>Drop chunks that end at or before position; neither the scan nor the comparison reads them again.</summary>
+    /// <summary>Drop chunks that end at or before position; the comparison never reads them again.</summary>
     public void Release(TransactionLogPosition position)
     {
         _chunks.RemoveAll(chunk =>

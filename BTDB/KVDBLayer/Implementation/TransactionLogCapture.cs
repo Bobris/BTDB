@@ -26,9 +26,15 @@ public sealed class TransactionLogCapture
     readonly object _lock = new();
     TransactionLogPosition _completed;
     TransactionLogPosition _acknowledged;
+    TransactionLogPosition _nonApplicationCommitted;
 
     public TransactionLogPosition Completed { get { lock (_lock) return _completed; } }
     public TransactionLogPosition Acknowledged { get { lock (_lock) return _acknowledged; } }
+
+    /// <summary>End of the latest committed transaction that left CommitUlong unchanged, observed while replaying the
+    /// opened TRL or committing locally; default until one is observed. Rollbacks never count. It is recorded before
+    /// Completed covers the commit, so reading it after a completed cut covers every such commit through that cut.</summary>
+    public TransactionLogPosition NonApplicationCommitted { get { lock (_lock) return _nonApplicationCommitted; } }
     internal uint OldestRequiredFileId { get { lock (_lock) return _acknowledged.FileId; } }
 
     internal void Initialize(IFileCollectionWithFileInfos files)
@@ -48,6 +54,14 @@ public sealed class TransactionLogCapture
     internal void Complete(uint fileId, uint offset)
     {
         lock (_lock) _completed = new(fileId, offset);
+    }
+
+    // Replaying a virtual batch observes the same commits again; keep the latest position.
+    internal void CommitNonApplication(uint fileId, uint offset)
+    {
+        lock (_lock)
+            if (new TransactionLogPosition(fileId, offset) > _nonApplicationCommitted)
+                _nonApplicationCommitted = new(fileId, offset);
     }
 
     public void Acknowledge(TransactionLogPosition position)

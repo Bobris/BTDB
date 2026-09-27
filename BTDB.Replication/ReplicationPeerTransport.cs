@@ -12,7 +12,7 @@ internal sealed record ReplicationPeerIdentity(string ClusterId, ulong Term, str
     public override string ToString() => $"{ClusterId}/{Term}/{SessionId}";
 }
 
-/// <summary>One database of a poll. From is where the follower's schema scan or comparison resumes; the leader returns
+/// <summary>One database of a poll. From is where the follower's comparison resumes; the leader returns
 /// its complete TRL bytes from there inline. A zero FileId asks for progress only.</summary>
 internal readonly record struct ReplicationPeerPollRequest(string Database, TransactionLogPosition From = default);
 
@@ -21,9 +21,13 @@ internal sealed record ReplicationPeerTrlChunk(uint FileId, uint Offset, ReadOnl
 
 /// <summary>Published is the leader's confirmed canonical Blob cut for the database, null before its first publication.
 /// A follower treats bytes it compared up to min(compared, Published) as canonical history. Chunks continue the
-/// request's From position in native file order, never past Progress.</summary>
+/// request's From position in native file order, never past Progress. Schema is the end of the latest committed
+/// non-application transaction the leader observed (replayed at open or committed since), read after Progress; a
+/// follower whose canonical base precedes it detaches instead of comparing. An older schema commit the leader did not
+/// replay surfaces as ordinary divergence, never as confirmed history.</summary>
 internal sealed record ReplicationPeerDatabaseProgress(string Database, LeaderTrlProgress? Progress,
-    TransactionLogPosition? Published = null, IReadOnlyList<ReplicationPeerTrlChunk>? Chunks = null);
+    TransactionLogPosition? Published = null, IReadOnlyList<ReplicationPeerTrlChunk>? Chunks = null,
+    TransactionLogPosition? Schema = null);
 
 /// <summary>One poll: a single challenge/grant for the whole request and the progress of every requested database, in
 /// request order. An empty request is an authority-only heartbeat.</summary>
@@ -43,7 +47,7 @@ internal sealed record ReplicationPeerPoll(long Challenge, bool Granted, IReadOn
         {
             if (answers[i] is not { } answer || answer.Database != requested[i].Database ||
                 answer.Progress is { } progress && (progress.TrlFileId == 0 || progress.TrlPosition == 0) ||
-                answer.Published is { FileId: 0 })
+                answer.Published is { FileId: 0 } || answer.Schema is { FileId: 0 })
                 throw new IOException("Invalid peer progress.");
             if (answer.Chunks is not { Count: > 0 } chunks) continue;
             if (answer.Progress is not { } end || requested[i].From.FileId == 0)

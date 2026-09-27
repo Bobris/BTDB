@@ -135,7 +135,8 @@
   preserve authority fencing and ambiguous-write reconciliation. A detached session never resumes publication.
 
 - A committed transaction with unchanged CommitUlong is non-application; application commits change it. Genesis alone
-  is non-application while setting the predecessor cursor. Decode rollback separately. Do not add reserved Ulong slots
+  is non-application while setting the predecessor cursor. The leader's capture records the latest such commit it
+  replayed or committed and announces it with poll progress; followers never decode leader TRL to find it. Decode rollback separately. Do not add reserved Ulong slots
   or persistent kind sidecars. Preserve ordinary rollback TRL and compare it in order with subsequent commits; no
   separate attempt protocol or synthetic record for rollbacks that emit no bytes.
 - In replication mode prohibit synchronous StartTransaction; use StartReadOnlyTransaction for reads and the existing

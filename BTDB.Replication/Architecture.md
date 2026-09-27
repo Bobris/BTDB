@@ -267,17 +267,21 @@ DB is the exception: it is non-application genesis and sets the predecessor inpu
 creation context, not the ordinary unchanged-value rule. Decode the transaction terminator first: a rollback is not a
 committed non-application transaction and must never trigger schema detachment.
 
-Schema commits advance native TRL history without advancing the input cursor. Derive the
-transaction kind by decoding fetched native TRL; no separate wire kind is sent; no reserved Ulong slots, schema-kind
+Schema commits advance native TRL history without advancing the input cursor. The leader already classifies every
+commit it replays at open or commits locally, so each poll answer carries `Schema`: the end of the latest such committed
+non-application transaction, read after the advertised progress. Followers do not decode fetched TRL for it. Decision
+recorded 2026-09-27, replacing follower-side decoding: a native command scanner ran before every comparison and cost
+about 5.8 s per 23 MB of 20-byte transactions before its buffer fix. No reserved Ulong slots, schema-kind
 sidecar, or new KV command is required. This rule compares committed before/after values, not merely presence or absence
 of a metadata command. Application/schema compatibility remains the application's concern and the native ObjectDB
 schema's contract, not an additional replication discriminator.
 
-When an already running follower receives a valid schema transaction for its database, it detaches that local database
-from canonical following before applying or confirming the transaction. This includes a transaction decoded from a
-published TRL during live catch-up. The decision does not wait for local speculative event coverage to reach the
-schema boundary. Validate source authority, database/lineage and transaction identity before allowing a message to trigger
-detachment. Duplicates already covered by the installed bootstrap history are harmless duplicates, not a new boundary.
+When an already running follower receives, from its authenticated current leader session, a `Schema` position beyond
+its canonical base, it detaches that local database from canonical following before applying or confirming the
+transaction. The decision does not wait for local speculative event coverage to reach the schema boundary. A position
+covered by the canonical base (including genesis and bootstrap history) is a harmless duplicate, not a new boundary.
+The leader knows only commits it replayed or committed; an older schema commit it did not replay (before its opened
+KVI cut) reaches the follower as ordinary byte divergence and restarts it, which is safe but not the detachment path.
 
 The follower stops remote publication and continues using ordinary local files. It continues independently from its own local view, including any speculative head,
 and may keep serving application-local reads. It neither applies the schema transaction nor accepts later canonical
@@ -1641,7 +1645,7 @@ under a replacement leader. Local application commits never wait for these reque
 
 Notifications may be coalesced: the newest complete boundary subsumes earlier notifications on the same verified
 lineage. A schema commit changes the TRL position without changing eventId and must still notify/fetch; never suppress
-progress just because eventId is unchanged. It is discovered from native TRL and follows normal live-follower detachment.
+progress just because eventId is unchanged. The leader announces it as `Schema`, which triggers normal live-follower detachment.
 Rollback bytes preceding the next commit remain in the downloaded interval without a synthetic rollback message.
 A lost notification is recovered by reannouncing the latest boundary on reconnect or subsequent progress.
 
@@ -1674,7 +1678,7 @@ messages before this path can mutate confirmation; historical durable replay use
 1. Validate the source evidence, complete shared identities, ordered range bounds/hashes and continuation links, payload and transaction
    terminator. No partial transaction can advance a root. Fetch and verify prerequisites before entering writer
    serialization; file installation must preserve retained-reader generations (I9/B3). For a new schema transaction on
-   a live follower, validate its ancestry against the received canonical chain or verified published TRL chain, then
+   a live follower (an announced `Schema` position beyond the canonical base of the authenticated leader session),
    detach under the upgrade rules and stop this path. This does not require the local confirmed watermark to have
    caught up with that received chain. A schema transaction already covered by bootstrap is only a duplicate.
 2. Classify its relation to the accepted position. An exact previously accepted duplicate is a no-op. Conflicting
@@ -2318,7 +2322,7 @@ are now normative. They require tests but are no longer alternative algorithms t
 | Q2 Core API and codecs | Opt-in capture/pin/replay/export APIs; native positions separate from reused BTDB TransactionId; existing native transaction encoding and bounded byte comparison; redacted diagnostics; only compatibility distinctions justified by actual consumers; no separate checkpoint-object format. |
 | Q3 Application/read semantics | Local commit success and local snapshot reads are selected; failure policy and external effects belong entirely to the application. Remaining work: native schema lifecycle and compatible startup replay, ordinary local snapshot visibility and application-owned input recovery. Stronger read/durability APIs are not prerequisites for this design. |
 | Q4 Operational budgets | Independent per-replica virtual memory-batch count/bytes/time and independent remote publication-batch bytes/time; checkpoint cadence; local hard-flush policies; root/history and event-retention budgets; warm/cold RTO; handoff lag/grace and long-transaction limits; watchdog thresholds and metric alert levels. |
-| Q5 Transport | Three-field progress notification and bounded TRL range pull; native decoding, coalescing and unchanged-eventId schema notification; authority-bound requests, reconnect and range retention; byte piggyback optimization deferred; authorization beyond the shared key. |
+| Q5 Transport | Three-field progress notification with leader-announced schema position and bounded TRL range pull; coalescing and unchanged-eventId schema notification; authority-bound requests, reconnect and range retention; byte piggyback optimization deferred; authorization beyond the shared key. |
 | Q6 Maintenance | Bounded local compaction chunks and separate local/canonical allocation; separate local/remote compaction inventories; no local KVI; remote PVL destination allocation and KVI reference/cursor remapping; leak detector compatibility, trust/reachability validation, exact-key budgets, batching, and deduplication. |
 | Q7 Recovery and storage | TRL continuation and initial/checkpoint discovery without losing ancestry; latest-checkpoint restore and complete event coverage; operator backup restore by scale-to-zero/copy/scale-up; runtime local-integrity cadence; restart on removed restore files without remote pins; reuse of transfer code without legacy unconditional writes. |
 | Q8 Deployment and lifecycle | Database-name/instance syntax; generation allocation/conflict checks; eligible rollout redundancy; current-input-end capture and retention during genesis publication; abandoned namespace retention/administration; ordinary cache validation and fatal disk-exhaustion restart and explicit local commit result. |
@@ -2417,6 +2421,7 @@ Decisions incorporated into the normative sections:
 | 2026-09-14 | Canonical TRL CAS directly establishes durability; remove per-batch state.json publication. Rotation, discovery and adoption must preserve the direct-TRL contract. |
 | 2026-09-14 | Genesis and schema writes wait for leadership and immediately publish to Blob state; initialization CommitUlong precedes the first applied event; provisional writable additions removed |
 | 2026-09-14 | Non-application schema transactions remain canonical TRL; live followers detach into volatile local execution; compatible replacements replay schema from TRL or checkpoint |
+| 2026-09-27 | The leader announces the latest replayed or committed non-application commit end in each poll answer; followers detach when it passes their canonical base and no longer decode leader TRL. |
 | 2026-09-14 | Application-owned identical transactions including rollback; local commit/read semantics; application failure and external-effect policy; follower-first complete Blob restore; new databases start at current input end |
 | 2026-09-14 | Reuse remote-matching local files by length and whole-file checksum; parallel bounded startup transfer with ascending TRL replay; no KVI requires all canonical TRLs. Local disk is prioritized over remote space. |
 | 2026-09-12 | Historical cache policy superseded above. Implemented virtual batching preserves ordinary per-event TRL payloads; no batching normalization/reframing. Disk full is fatal: terminate readers, delete cache, restore latest Blob closure, replay Kafka input. |

@@ -60,11 +60,10 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     IReadOnlyList<ActivationDatabase> _databases = Array.Empty<ActivationDatabase>();
     IReadOnlyList<CanonicalTrlPublisher>? _publishers;
     readonly Dictionary<string, FollowerComparisonSession> _followers = new(StringComparer.Ordinal);
-    // One per follower session: the schema scan and the comparison share the leader bytes fetched in a step.
+    // One per follower session: leader bytes a lagging comparison has not consumed survive later steps.
     readonly Dictionary<string, RetainingLeaderTrlReader> _leaderReaders = new(StringComparer.Ordinal);
     readonly HashSet<string> _removed = new(StringComparer.Ordinal);
     readonly HashSet<string> _detached = new(StringComparer.Ordinal);
-    readonly Dictionary<string, SchemaTrlScanner> _scanners = new(StringComparer.Ordinal);
     // Databases selected by the connected leader. An older generation does not know databases added by an upgrade.
     readonly HashSet<string> _leaderDatabases = new(StringComparer.Ordinal);
     // Latest local cut known to be canonical: restored, published by this node, or compared with a leader that had
@@ -343,15 +342,12 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             {
                 _comparedLeader = (identity.Term, identity.SessionId);
                 _resumeComparison.Clear();
-                _scanners.Clear();
             }
             foreach (var database in databases)
             {
                 if (_removed.Contains(database.Name) || _detached.Contains(database.Name) || database.RestoredBase.FileId == 0 || !_leaderDatabases.Contains(database.Name))
                     continue;
                 var canonical = _canonicalBase[database.Name];
-                if (!_scanners.ContainsKey(database.Name))
-                    _scanners.Add(database.Name, new(canonical, database.Database.FileCollection.Guid));
                 var reader = new RetainingLeaderTrlReader(_peer.Reader(database.Name));
                 _leaderReaders.Add(database.Name, reader);
                 var name = database.Name;
@@ -376,15 +372,15 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     /// evidence. False means the step must stop (restart requested).</summary>
     async ValueTask<bool> PollLeaderAsync(IReadOnlyList<ActivationDatabase> databases, CancellationToken cancellation)
     {
-        // Followers come first in the request. From asks the leader for the TRL bytes the schema scan and the
-        // comparison still need, starting after the bytes this session already retains.
+        // Followers come first in the request. From asks the leader for the TRL bytes the comparison still needs,
+        // starting after the bytes this session already retains.
         var polled = new List<ReplicationPeerPollRequest>();
         var followers = new (string Name, FollowerComparisonSession Follower)[_followers.Count];
         var index = 0;
         foreach (var (name, follower) in _followers)
         {
             var reader = _leaderReaders[name];
-            var from = reader.Available >= InlineBudget ? reader.ContiguousEnd(Consumed(name, follower)) : default;
+            var from = reader.Available >= InlineBudget ? reader.ContiguousEnd(follower.ResumePosition!.Value) : default;
             polled.Add(new(name, from));
             followers[index++] = (name, follower);
         }
@@ -405,32 +401,29 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             var (name, follower) = followers[i];
             var status = poll.Databases[i];
             var leaderReader = _leaderReaders[name];
+            // A schema commit after the canonical base is never applied or compared; one covered by it is a duplicate.
+            if (status.Schema is { } schema && schema > _canonicalBase[name])
+            {
+                leases.Disqualify();
+                if (_detached.Count == 0 && _leaderEvidenceUntil < scheduler.Elapsed)
+                    _leaderEvidenceUntil = scheduler.Elapsed;
+                _detached.Add(name);
+                follower.Close();
+                _followers.Remove(name);
+                _leaderReaders.Remove(name);
+                host.SchemaDetached(name);
+                continue;
+            }
             try
             {
                 if (status.Chunks is { } chunks) leaderReader.Retain(chunks);
-                if (status.Progress is { } progress)
-                {
-                    if (await _scanners[name].ContainsSchemaAsync(leaderReader, progress.Position, cancellation).ConfigureAwait(false))
-                    {
-                        cancellation.ThrowIfCancellationRequested();
-                        leases.Disqualify();
-                        if (_detached.Count == 0 && _leaderEvidenceUntil < scheduler.Elapsed)
-                            _leaderEvidenceUntil = scheduler.Elapsed;
-                        _detached.Add(name);
-                        follower.Close();
-                        _followers.Remove(name);
-                        _leaderReaders.Remove(name);
-                        host.SchemaDetached(name);
-                        continue;
-                    }
-                    follower.NotifyProgress(progress);
-                }
+                if (status.Progress is { } progress) follower.NotifyProgress(progress);
                 await follower.CompareLatestAsync(cancellation).ConfigureAwait(false);
             }
             finally
             {
-                // Keep bytes a lagging comparison or an unfinished scan still needs for a later step.
-                if (_followers.ContainsKey(name)) leaderReader.Release(Consumed(name, follower));
+                // Keep bytes a lagging comparison still needs for a later step.
+                if (_followers.ContainsKey(name)) leaderReader.Release(follower.ResumePosition!.Value);
             }
             if (_restart) return false;
             if (status.Published is { } published && follower.ComparedPosition is { } compared)
@@ -440,13 +433,6 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             if (poll.Databases[i].Progress != null)
             { Restart("New database initialization is published; restore its fixed input cursor."); return false; }
         return true;
-    }
-
-    // Both consumers of the leader bytes have passed this position.
-    TransactionLogPosition Consumed(string name, FollowerComparisonSession follower)
-    {
-        var scanned = _scanners[name].Position;
-        return follower.ResumePosition is { } compared && compared < scanned ? compared : scanned;
     }
 
     // Starts inline and continues independently of the transition lane after its first incomplete remote operation.

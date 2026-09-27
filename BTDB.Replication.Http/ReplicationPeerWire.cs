@@ -25,7 +25,7 @@ internal static class ReplicationPeerWire
     const byte Version = 1;
     // Far above the handful of databases a node coordinates; bounds allocation from a hostile message.
     internal const int MaximumPolledDatabases = 256;
-    const byte HasProgress = 1, HasPublished = 2;
+    const byte HasProgress = 1, HasPublished = 2, HasSchema = 4;
 
     public static byte[] EncodeRequest(PeerRequest request)
     {
@@ -111,7 +111,8 @@ internal static class ReplicationPeerWire
         writer.WriteVUInt32((uint)poll.Databases.Count);
         foreach (var database in poll.Databases)
         {
-            writer.WriteUInt8((byte)((database.Progress != null ? HasProgress : 0) | (database.Published != null ? HasPublished : 0)));
+            writer.WriteUInt8((byte)((database.Progress != null ? HasProgress : 0) | (database.Published != null ? HasPublished : 0) |
+                (database.Schema != null ? HasSchema : 0)));
             if (database.Progress is { } progress)
             {
                 writer.WriteVUInt64(progress.EventId);
@@ -122,6 +123,11 @@ internal static class ReplicationPeerWire
             {
                 writer.WriteVUInt32(published.FileId);
                 writer.WriteVUInt32(published.Offset);
+            }
+            if (database.Schema is { } schema)
+            {
+                writer.WriteVUInt32(schema.FileId);
+                writer.WriteVUInt32(schema.Offset);
             }
             var chunks = database.Chunks ?? [];
             writer.WriteVUInt32((uint)chunks.Count);
@@ -163,10 +169,12 @@ internal static class ReplicationPeerWire
             for (var i = 0; i < databases.Length; i++)
             {
                 var flags = reader.ReadUInt8();
-                if ((flags & ~(HasProgress | HasPublished)) != 0) throw new InvalidDataException("Invalid peer progress flags.");
+                if ((flags & ~(HasProgress | HasPublished | HasSchema)) != 0) throw new InvalidDataException("Invalid peer progress flags.");
                 LeaderTrlProgress? progress = (flags & HasProgress) != 0
                     ? new LeaderTrlProgress(reader.ReadVUInt64(), reader.ReadVUInt32(), reader.ReadVUInt32()) : null;
                 TransactionLogPosition? published = (flags & HasPublished) != 0
+                    ? new TransactionLogPosition(reader.ReadVUInt32(), reader.ReadVUInt32()) : null;
+                TransactionLogPosition? schema = (flags & HasSchema) != 0
                     ? new TransactionLogPosition(reader.ReadVUInt32(), reader.ReadVUInt32()) : null;
                 var chunkCount = reader.ReadVUInt32();
                 List<ReplicationPeerTrlChunk>? chunks = null;
@@ -180,7 +188,7 @@ internal static class ReplicationPeerWire
                     reader.SkipBlock(length);
                     (chunks ??= new()).Add(new(fileId, offset, bytes.AsMemory((int)start, (int)length)));
                 }
-                databases[i] = new(requested[i].Database, progress, published, chunks);
+                databases[i] = new(requested[i].Database, progress, published, chunks, schema);
             }
             return new ReplicationPeerPoll(challenge, granted, databases);
         });

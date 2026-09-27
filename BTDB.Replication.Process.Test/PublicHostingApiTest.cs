@@ -28,7 +28,7 @@ public class PublicHostingApiTest
         Assert.DoesNotContain(publicMethods, method => method.Name is "BeginRequest" or "AcceptSuccess");
         var assembly = typeof(IReplicationNodeHost).Assembly;
         foreach (var name in new[] { "ReplicationNodeCoordinator", "LeaseSessionController", "LeaderSelection",
-                     "LeadershipActivation", "LeadershipSession", "FollowerComparisonSession", "SchemaTrlScanner" })
+                     "LeadershipActivation", "LeadershipSession", "FollowerComparisonSession" })
             Assert.False(assembly.GetType("BTDB.Replication." + name)!.IsVisible);
     }
 

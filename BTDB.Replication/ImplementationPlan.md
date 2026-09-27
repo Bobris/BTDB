@@ -338,8 +338,9 @@ by the coordinator and native scanner:
   commits ordinary native genesis, prepares schema through the host's existing ObjectDB initialization, and publishes
   the fixed completed cut before serving. Retries do not rerun completed preparation; published initialization is restored,
   while a successor may recreate unpublished initialization with a new input end. No follower migration or core writer gate.
-- `SchemaTrlScanner` inspects native command boundaries and commit terminators through authenticated range reads before
-  comparison, even while local execution is behind. Rollbacks do not detach; unchanged committed cursors do. Detachment
+- The leader's `TransactionLogCapture.NonApplicationCommitted` records the latest committed transaction with an
+  unchanged cursor, from open replay and local commits; polls announce it as `Schema`, and a follower whose canonical
+  base precedes it detaches before comparison, even while local execution is behind. Rollbacks do not count. Detachment
   permanently disables election, stops only that database's following, and leaves ordinary local work intact. Reconnection
   cannot clear it. Fifteen minutes without current leader evidence requests graceful host restart.
 

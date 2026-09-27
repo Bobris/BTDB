@@ -33,7 +33,8 @@ public class ReplicationPeerWireTest
         ReplicationPeerPollRequest[] requested = [new("a", new(3, 10)), new("b")];
         var poll = new ReplicationPeerPoll(5, true,
         [
-            new("a", new(8, 4, 20), new(3, 12), [new(3, 10, new byte[] { 1, 2, 3 }), new(4, 0, new byte[] { 4, 5 })]),
+            new("a", new(8, 4, 20), new(3, 12), [new(3, 10, new byte[] { 1, 2, 3 }), new(4, 0, new byte[] { 4, 5 })],
+                new(4, 1)),
             new("b", null)
         ]);
         var bytes = ReplicationPeerWire.EncodePoll(poll);
@@ -42,7 +43,8 @@ public class ReplicationPeerWireTest
         Assert.Equal((5L, true), (decoded.Challenge, decoded.Granted));
         Assert.Equal(poll.Databases[1], decoded.Databases[1]);
         var a = decoded.Databases[0];
-        Assert.Equal((poll.Databases[0].Progress, poll.Databases[0].Published), (a.Progress, a.Published));
+        Assert.Equal((poll.Databases[0].Progress, poll.Databases[0].Published, poll.Databases[0].Schema),
+            (a.Progress, a.Published, a.Schema));
         Assert.Equal(new byte[] { 4, 5 }, a.Chunks![1].Bytes.ToArray());
         Assert.True(System.Runtime.InteropServices.MemoryMarshal.TryGetArray(a.Chunks[0].Bytes, out var segment));
         Assert.Same(bytes, segment.Array);

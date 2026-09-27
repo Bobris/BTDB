@@ -13,10 +13,18 @@
 - Make `TransactionLogPosition` comparable (`IComparable<TransactionLogPosition>` and `<`, `>`, `<=`, `>=`),
   ordered by file ID and then offset.
 
+- Add `TransactionLogCapture.NonApplicationCommitted`, the end of the latest committed transaction that left
+  `CommitUlong` unchanged, recorded while replaying the opened TRL and on local commits (rollbacks excluded).
+
 - Add `ReplicationNodeOptions.DetachedLeaderTimeout` for the time a schema-detached node waits without leader
   evidence before requesting a restart (default 15 minutes, previously hard-coded).
 
 ### Changed
+
+- Detect schema transactions on the leader instead of decoding leader TRL on followers. Each poll answer now carries
+  the leader's latest non-application commit position (a new flag in the binary peer poll response), and a follower
+  whose canonical base precedes it detaches. `SchemaTrlScanner` is removed; it ran before every comparison and
+  scanned small transactions at about 4 MB/s because it moved its 256 KiB buffer on every native command.
 
 - Write no `TemporaryEndOfFile` or `EndOfFile` markers in replication mode: not for
   `NextCommitTemporaryCloseTransactionLog` (which still forces a writing commit), on dispose, or when rotating to a
