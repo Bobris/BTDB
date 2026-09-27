@@ -353,7 +353,6 @@ class Compactor
     void InitFileStats(long dontTouchGeneration)
     {
         _fileStats = new();
-        var oldestRequiredTrl = _keyValueDB.OldestRequiredTransactionLogFileId;
         foreach (var (key, value) in _keyValueDB.FileCollection.FileInfos)
         {
             if (value.SubDBId != 0) continue;
@@ -364,8 +363,6 @@ class Compactor
 
             _fileStats.GetOrAddValueRef(key) =
                 new FileStat((uint)_keyValueDB.FileCollection.GetSize(key));
-            if (oldestRequiredTrl != 0 && key >= oldestRequiredTrl && value.FileType == KVFileType.TransactionLog)
-                _fileStats.GetOrFakeValueRef(key).MarkForbidToDelete();
         }
     }
 

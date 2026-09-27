@@ -14,8 +14,6 @@ interface IKeyValueDBInternal : IKeyValueDB
     // Local file sizing for compaction, independent of a per-TRL strategy.
     long FileSplitSize { get; }
 
-    uint OldestRequiredTransactionLogFileId { get; }
-
     Func<CancellationToken, ValueTask>? CompactorStartAction { get; }
 
     ValueTask FlushTransactionLog();

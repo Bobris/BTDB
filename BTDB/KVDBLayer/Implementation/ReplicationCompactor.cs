@@ -142,7 +142,7 @@ sealed class ReplicationCompactor
             _keyValueDB.DereferenceRootNodeInternal(_root);
             _root = null;
             _database.GatherReplicationReaderFiles(_cancellation, usedFileIds);
-            var oldestRequiredTrl = _keyValueDB.OldestRequiredTransactionLogFileId;
+            var oldestRequiredTrl = _database.OldestRequiredTransactionLogFileId;
             var types = new Dictionary<uint, KVFileType>();
             foreach (var (id, type) in _keyValueDB.FileCollection.FileTypes) types[id] = type;
             for (var i = (int)toRemoveFileIds.Count - 1; i >= 0; i--)
@@ -279,7 +279,7 @@ sealed class ReplicationCompactor
     void InitFileStats(uint oldestRootTrl)
     {
         _fileStats = new();
-        var oldestRequiredTrl = _keyValueDB.OldestRequiredTransactionLogFileId;
+        var oldestRequiredTrl = _database.OldestRequiredTransactionLogFileId;
         foreach (var (id, type) in _keyValueDB.FileCollection.FileTypes)
         {
             // TRLs have their own chronological ID sequence. PVL IDs carry no age relative to TRLs.

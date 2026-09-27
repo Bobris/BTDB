@@ -97,7 +97,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     readonly bool _requireExplicitTransactions;
     readonly bool _lenientOpen;
     readonly TransactionLogCapture? _transactionLogCapture;
-    uint IKeyValueDBInternal.OldestRequiredTransactionLogFileId => _transactionLogCapture?.OldestRequiredFileId ?? 0;
+    // Replication only: a capture exists only for replicated collections, which always use ReplicationCompactor.
+    internal uint OldestRequiredTransactionLogFileId => _transactionLogCapture?.OldestRequiredFileId ?? 0;
     bool _disposed = false;
     uint? _missingSomeTrlFiles;
 
