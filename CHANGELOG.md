@@ -18,6 +18,12 @@
 
 ### Changed
 
+- Write no `TemporaryEndOfFile` or `EndOfFile` markers in replication mode: not for
+  `NextCommitTemporaryCloseTransactionLog` (which still forces a writing commit), on dispose, or when rotating to a
+  new TRL. Replication reopens a tail at its exact committed end and follows `PreviousFileId` and canonical links
+  across files, so the markers only added bytes to the replicated TRL stream. Standalone databases are unchanged;
+  replay still accepts both markers.
+
 - `ReplicationFileSet` initialization maps every selected remote file to its own ID and forgets earlier placements.
   A copy cached under another local ID is removed and downloaded again under the remote ID, and prefetch never
   looks for a copy under another ID.

@@ -12,7 +12,7 @@ namespace BTDB.Replication.Test;
 
 public class TrlPrefixComparerTest
 {
-    sealed class TinyLogs : ITransactionLogSizeStrategy
+    internal sealed class TinyLogs : ITransactionLogSizeStrategy
     {
         public TransactionLogSizeLimits GetLimits(uint fileId) => new(1024, 1536);
     }

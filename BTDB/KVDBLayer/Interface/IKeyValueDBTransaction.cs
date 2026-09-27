@@ -67,7 +67,8 @@ public interface IKeyValueDBTransaction : IDisposable
     void SetUlong(uint idx, ulong value);
 
     /// <summary>
-    /// This creates safe checkpoint for next open in transaction log
+    /// This creates safe checkpoint for next open in transaction log. With replication the commit is still written,
+    /// but no temporary close marker: a replicated tail is reopened at its exact committed end.
     /// </summary>
     void NextCommitTemporaryCloseTransactionLog();
 

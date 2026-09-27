@@ -1293,9 +1293,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
         if (_writerWithTransactionLog.Controller != null)
         {
-            if (_transactionLogSizeStrategy != null)
-                EnsureTransactionLogCommandFits(1);
-            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
+            // Replication reopens the exact committed end without a local shutdown marker.
+            if (!IsReplication)
+            {
+                if (_transactionLogSizeStrategy != null)
+                    EnsureTransactionLogCommandFits(1);
+                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
+            }
             _writerWithTransactionLog.Flush();
             _fileWithTransactionLog!.HardFlushTruncateSwitchToDisposedMode();
         }
@@ -1774,7 +1778,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             }
 
             UpdateTransactionLogInBTreeRoot(root);
-            if (temporaryCloseTransactionLog)
+            // Replication reopens a tail ending exactly at its last commit and keeps history in canonical storage;
+            // a temporary close marker would only add bytes to the replicated stream.
+            if (temporaryCloseTransactionLog && !IsReplication)
             {
                 if (_transactionLogSizeStrategy != null)
                     EnsureTransactionLogCommandFits(1);
@@ -2045,7 +2051,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
         if (_writerWithTransactionLog.Controller != null)
         {
-            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.EndOfFile);
+            // Replication follows the successor's PreviousFileId and the canonical link; the file ends at its last
+            // complete command, so an end marker would only add a byte to the replicated stream.
+            if (!IsReplication) _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.EndOfFile);
             _writerWithTransactionLog.Flush();
             _fileWithTransactionLog!.HardFlushTruncateSwitchToReadOnlyMode();
             _fileIdWithPreviousTransactionLog = _fileIdWithTransactionLog;

@@ -469,7 +469,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             cancellation.ThrowIfCancellationRequested();
             if (!authority.IsValid) throw new InvalidOperationException("Initialization authority expired before commit.");
             transaction.SetCommitUlong(cursor);
-            // A zero predecessor cursor is otherwise an empty no-op writer. Use the native complete-cut operation.
+            // A zero predecessor cursor is otherwise an empty no-op writer. This forces a writing commit; replication
+            // writes no temporary close marker.
             transaction.NextCommitTemporaryCloseTransactionLog();
             transaction.Commit();
         }
