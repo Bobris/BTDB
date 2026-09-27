@@ -157,8 +157,25 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
             await Kill();
             await Task.WhenAll(_output, _error);
             _process.Dispose();
-            if (_ownsDataDirectory && Directory.Exists(DataDirectory)) Directory.Delete(DataDirectory, true);
+            if (_ownsDataDirectory) await DeleteDirectory(DataDirectory);
             _client.Dispose();
+        }
+    }
+
+    // Windows may release a killed process's memory-mapped file handles (or an antivirus scan) shortly after exit.
+    static async Task DeleteDirectory(string directory)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(directory)) Directory.Delete(directory, true);
+                return;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException && attempt < 50)
+            {
+                await Task.Delay(100);
+            }
         }
     }
 
@@ -221,7 +238,7 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         }
         finally
         {
-            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+            await DeleteDirectory(directory);
         }
     }
 
