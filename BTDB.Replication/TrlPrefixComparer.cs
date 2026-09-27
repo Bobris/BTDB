@@ -52,10 +52,13 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
             if (end > capture.Completed) return TrlCompareResult.LocalBehind;
             if (start.FileId == 0) throw new InvalidOperationException("Comparison requires a retained native starting position.");
 
-            const int blockSize = 64 * 1024;
+            // Matches the HTTP transport's maximum range, so each block is one peer round trip.
+            const int blockSize = 256 * 1024;
             localBuffer = ArrayPool<byte>.Shared.Rent(blockSize);
             remoteBuffer = ArrayPool<byte>.Shared.Rent(blockSize);
             var fileId = start.FileId;
+            uint[]? successors = null;
+            var nextSuccessor = 0;
             while (true)
             {
                 cancellation.ThrowIfCancellationRequested();
@@ -92,8 +95,9 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
                 if (extra < 0 || extra > 1) throw new IOException("Invalid leader TRL read length.");
                 if (extra != 0) return Diverged();
                 // The local prefix covers the end file; its headers give the continuation without guessing IDs.
-                fileId = await TrlLineage.NextAsync(fileId, end.FileId,
+                successors ??= await TrlLineage.SuccessorsAsync(fileId, end.FileId,
                     id => ValueTask.FromResult(TrlLineage.LocalPrevious(getFile, id))).ConfigureAwait(false);
+                fileId = successors[nextSuccessor++];
             }
             cancellation.ThrowIfCancellationRequested();
             // A new leader can disagree with bytes acknowledged by its predecessor. Recheck from the

@@ -12,6 +12,8 @@ namespace BTDB.Replication;
 internal sealed class SchemaTrlScanner(TransactionLogPosition start, Guid? databaseIdentity)
 {
     TransactionLogPosition _position = start;
+    // The file whose header this scanner (bound to one leader session) already validated; resuming in it skips a read.
+    uint _validatedFileId;
     byte[]? _buffer;
     byte[]? _header;
 
@@ -23,6 +25,8 @@ internal sealed class SchemaTrlScanner(TransactionLogPosition start, Guid? datab
         var buffer = _buffer ??= GC.AllocateUninitializedArray<byte>(256 * 1024, pinned: true);
         var transaction = false;
         uint previousId = 0;
+        uint[]? successors = null;
+        var nextSuccessor = 0;
         while (true)
         {
             var available = 0;
@@ -45,14 +49,18 @@ internal sealed class SchemaTrlScanner(TransactionLogPosition start, Guid? datab
                 }
             }
             var resumeOffset = offset;
-            offset = 0;
-            await Fill(64).ConfigureAwait(false);
-            var headerReader = MemReader.CreateFromPinnedArray(buffer, 0, available);
-            if (FileCollectionWithFileInfos.ReadFileInfo(ref headerReader, true) is not IFileTransactionLog header ||
-                header.Guid != databaseIdentity || (previousId != 0 && header.PreviousFileId != previousId))
-                throw new InvalidDataException("Peer TRL lineage differs from the restored database.");
-            if (resumeOffset == 0) consumed = (int)headerReader.GetCurrentPosition();
-            else { offset = resumeOffset; available = 0; }
+            if (resumeOffset == 0 || fileId != _validatedFileId)
+            {
+                offset = 0;
+                await Fill(64).ConfigureAwait(false);
+                var headerReader = MemReader.CreateFromPinnedArray(buffer, 0, available);
+                if (FileCollectionWithFileInfos.ReadFileInfo(ref headerReader, true) is not IFileTransactionLog header ||
+                    header.Guid != databaseIdentity || (previousId != 0 && header.PreviousFileId != previousId))
+                    throw new InvalidDataException("Peer TRL lineage differs from the restored database.");
+                _validatedFileId = fileId;
+                if (resumeOffset == 0) consumed = (int)headerReader.GetCurrentPosition();
+                else { offset = resumeOffset; available = 0; }
+            }
             var ended = false;
             var afterTemporaryEnd = false;
             while (!ended && offset + (uint)consumed < limit)
@@ -140,8 +148,9 @@ internal sealed class SchemaTrlScanner(TransactionLogPosition start, Guid? datab
                 return false;
             }
             previousId = fileId;
-            fileId = await TrlLineage.NextAsync(fileId, end.FileId,
+            successors ??= await TrlLineage.SuccessorsAsync(fileId, end.FileId,
                 id => LeaderPreviousAsync(leader, id, cancellation)).ConfigureAwait(false);
+            fileId = successors[nextSuccessor++];
             offset = 0;
         }
     }

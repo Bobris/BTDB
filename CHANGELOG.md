@@ -28,6 +28,13 @@
 - List the remote inventory once per checkpoint instead of once per allocated PVL/KVI identity, and skip re-marking
   remote files whose deletion deadline is already listed during cleanup.
 
+- Transfer follower TRL bytes from the leader once per step: the schema scan and the byte comparison share fetched
+  ranges, comparison reads 256 KiB (the HTTP maximum) instead of 64 KiB, crossing TRL files walks the lineage once
+  instead of from the advertised end at every rotation, and resumed schema scans do not reread the file header.
+
+- Remove unused internal replication helpers (`TrlPublication`, `TrlSnapshot`, `IReplicationRandom`) and move the
+  in-process peer transport into the test project.
+
 ### Fixed
 
 - Let a node of a newer application generation that adds a database follow an older leader that does not select it.

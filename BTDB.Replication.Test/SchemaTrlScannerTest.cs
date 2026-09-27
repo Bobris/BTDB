@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -49,6 +50,42 @@ public class SchemaTrlScannerTest
         reader.BeforeRead = (_, _, _) => { reads++; return ValueTask.CompletedTask; };
         Assert.False(await scanner.ContainsSchemaAsync(reader, node.Capture.Completed, default));
         Assert.True(reads < fullScan / 2, $"resumed scan read {reads} of {fullScan} ranges");
+    }
+
+    [Fact]
+    public async Task ScanAcrossManyFilesReadsEachLeaderHeaderAtMostTwice()
+    {
+        using var node = await Node.Create();
+        await node.Write(1, 1);
+        var scanner = new SchemaTrlScanner(node.Capture.Completed, node.Db.FileCollection.Guid);
+        for (ulong id = 2; id <= 30; id++) await node.Write(id, (byte)id);
+        Assert.True(node.Capture.Completed.FileId >= 11);
+        using var reader = node.Reader();
+        var headerReads = new Dictionary<uint, int>();
+        reader.BeforeRead = (fileId, offset, _) =>
+        {
+            if (offset == 0) headerReads[fileId] = headerReads.GetValueOrDefault(fileId) + 1;
+            return ValueTask.CompletedTask;
+        };
+        Assert.False(await scanner.ContainsSchemaAsync(reader, node.Capture.Completed, default));
+        // One lineage walk plus the scan itself; walking back from the end at every rotation was quadratic.
+        Assert.All(headerReads.Values, count => Assert.InRange(count, 1, 2));
+    }
+
+    [Fact]
+    public async Task ResumedScanInSameFileDoesNotRereadItsHeader()
+    {
+        using var node = await Node.Create(false);
+        await node.Write(1, 1);
+        var scanner = new SchemaTrlScanner(node.Capture.Completed, node.Db.FileCollection.Guid);
+        using var reader = node.Reader();
+        await node.Write(2, 2);
+        Assert.False(await scanner.ContainsSchemaAsync(reader, node.Capture.Completed, default));
+        await node.Write(3, 3);
+        var headerReads = 0;
+        reader.BeforeRead = (_, offset, _) => { if (offset == 0) headerReads++; return ValueTask.CompletedTask; };
+        Assert.False(await scanner.ContainsSchemaAsync(reader, node.Capture.Completed, default));
+        Assert.Equal(0, headerReads);
     }
 
     [Theory]

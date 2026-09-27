@@ -3,7 +3,7 @@ using System;
 namespace BTDB.Replication.Test.Simulation;
 
 // SplitMix64: a fixed algorithm, independent of System.Random/runtime versions.
-internal sealed class SeededRandom(ulong seed) : IReplicationRandom
+internal sealed class SeededRandom(ulong seed)
 {
     ulong _state = seed;
 

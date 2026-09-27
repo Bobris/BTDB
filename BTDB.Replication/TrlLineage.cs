@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
@@ -9,18 +10,23 @@ namespace BTDB.Replication;
 /// so a successor is never inferred from numeric parity; follow PreviousFileId headers back from a known end.</summary>
 internal static class TrlLineage
 {
-    public static async ValueTask<uint> NextAsync(uint current, uint end, Func<uint, ValueTask<uint>> previousOf)
+    /// <summary>The ascending successors of current through end, found with one walk back over the headers.</summary>
+    public static async ValueTask<uint[]> SuccessorsAsync(uint current, uint end, Func<uint, ValueTask<uint>> previousOf)
     {
         if (end <= current) throw new InvalidDataException("The advertised TRL cut does not follow the current file.");
+        var successors = new List<uint> { end };
         var id = end;
         while (true)
         {
             var previous = await previousOf(id).ConfigureAwait(false);
-            if (previous == current) return id;
+            if (previous == current) break;
             if (previous <= current || previous >= id)
                 throw new InvalidDataException("TRL lineage does not connect to the advertised cut.");
+            successors.Add(previous);
             id = previous;
         }
+        successors.Reverse();
+        return successors.ToArray();
     }
 
     public static uint LocalPrevious(Func<uint, IFileCollectionFile?> getFile, uint id)

@@ -62,6 +62,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     IReadOnlyList<ActivationDatabase> _databases = Array.Empty<ActivationDatabase>();
     IReadOnlyList<CanonicalTrlPublisher>? _publishers;
     readonly Dictionary<string, FollowerComparisonSession> _followers = new(StringComparer.Ordinal);
+    // One per follower session: the schema scan and the comparison share the leader bytes fetched in a step.
+    readonly Dictionary<string, RetainingLeaderTrlReader> _leaderReaders = new(StringComparer.Ordinal);
     readonly HashSet<string> _removed = new(StringComparer.Ordinal);
     readonly HashSet<string> _detached = new(StringComparer.Ordinal);
     readonly Dictionary<string, SchemaTrlScanner> _scanners = new(StringComparer.Ordinal);
@@ -343,7 +345,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 var canonical = _canonicalBase[database.Name];
                 if (!_scanners.ContainsKey(database.Name))
                     _scanners.Add(database.Name, new(canonical, database.Database.FileCollection.Guid));
-                _followers.Add(database.Name, new(database.Database.FileCollection.GetFile, database.Capture, _peer.Reader(database.Name),
+                var reader = new RetainingLeaderTrlReader(_peer.Reader(database.Name));
+                _leaderReaders.Add(database.Name, reader);
+                _followers.Add(database.Name, new(database.Database.FileCollection.GetFile, database.Capture, reader,
                     scheduler, () => Restart("Follower native history diverged from its selected leader."),
                     _resumeComparison.GetValueOrDefault(database.Name, canonical), acknowledge: false));
             }
@@ -357,23 +361,29 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             if (status.Challenge != challenge) throw new IOException("Stale peer challenge response.");
             if (status.Granted && follower.AcceptChallenge(challenge))
                 _leaderEvidenceUntil = dispatched + options.ConfirmationDuration;
-            if (status.Progress is { } progress)
+            var leaderReader = _leaderReaders[name];
+            try
             {
-                if (await _scanners[name].ContainsSchemaAsync(_peer.Reader(name), progress.Position, cancellation).ConfigureAwait(false))
+                if (status.Progress is { } progress)
                 {
-                    cancellation.ThrowIfCancellationRequested();
-                    leases.Disqualify();
-                    if (_detached.Count == 0 && _leaderEvidenceUntil < scheduler.Elapsed)
-                        _leaderEvidenceUntil = scheduler.Elapsed;
-                    _detached.Add(name);
-                    follower.Close();
-                    _followers.Remove(name);
-                    host.SchemaDetached(name);
-                    continue;
+                    if (await _scanners[name].ContainsSchemaAsync(leaderReader, progress.Position, cancellation).ConfigureAwait(false))
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        leases.Disqualify();
+                        if (_detached.Count == 0 && _leaderEvidenceUntil < scheduler.Elapsed)
+                            _leaderEvidenceUntil = scheduler.Elapsed;
+                        _detached.Add(name);
+                        follower.Close();
+                        _followers.Remove(name);
+                        _leaderReaders.Remove(name);
+                        host.SchemaDetached(name);
+                        continue;
+                    }
+                    follower.NotifyProgress(progress);
                 }
-                follower.NotifyProgress(progress);
+                await follower.CompareLatestAsync(cancellation).ConfigureAwait(false);
             }
-            await follower.CompareLatestAsync(cancellation).ConfigureAwait(false);
+            finally { leaderReader.Clear(); }
             if (_restart) return;
             if (status.Published is { } published && follower.Compared is { } compared)
                 AdvanceCanonicalBase(databases.First(d => d.Name == name),
@@ -537,6 +547,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             if (follower.ResumePosition is { } resume) _resumeComparison[name] = resume;
         }
         _followers.Clear();
+        _leaderReaders.Clear();
         _peer?.Dispose();
         _peer = null;
     }

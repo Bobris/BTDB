@@ -58,18 +58,17 @@ public class NativePublicationTest
         }).ToArray();
         Assert.True(native.Length > 2);
         Assert.True(native[0].Bytes.AsSpan(0, initial.Length).SequenceEqual(initial));
-        var remote = new Dictionary<string, TrlSnapshot>();
+        var remote = new Dictionary<string, Blob>();
         for (var i = native.Length - 1; i > 0; i--)
         {
             var next = i + 1 < native.Length ? new TrlSuccessor($"unique/{i + 1}", native[i + 1].Index) : null;
-            remote.Add($"unique/{i}", new("prepared", native[i].Bytes, new(1, next)));
+            remote.Add($"unique/{i}", new(native[i].Bytes, new(1, next)));
         }
-        remote.Add("genesis", new("before", initial, new(1)));
+        remote.Add("genesis", new(initial, new(1)));
         // All successors already exist, but only the old committed prefix is discoverable through the root.
         VerifyRestore(remote, firstId, 1, 1);
-        var intent = TrlPublication.Append(remote["genesis"], 1, native[0].Bytes.AsSpan(initial.Length),
-            new("unique/1", native[1].Index));
-        remote["genesis"] = new("selected", intent.Content, intent.Metadata);
+        // Appending the rest of the first file and linking its successor selects the multi-file transaction.
+        remote["genesis"] = new(native[0].Bytes, new(1, new("unique/1", native[1].Index)));
         VerifyRestore(remote, firstId, rollback ? 1ul : 2ul, rollback ? 1 : 9);
     }
 
@@ -126,7 +125,9 @@ public class NativePublicationTest
         Assert.Null(missing.Value);
     }
 
-    static void VerifyRestore(Dictionary<string, TrlSnapshot> remote, uint firstId, ulong eventId, int count)
+    sealed record Blob(byte[] Content, TrlMetadata Metadata);
+
+    static void VerifyRestore(Dictionary<string, Blob> remote, uint firstId, ulong eventId, int count)
     {
         using var files = new InMemoryReplicationFileStorage();
         var key = "genesis";

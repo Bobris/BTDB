@@ -160,7 +160,7 @@ public class TrlPrefixComparerTest
         var reads = 0;
         reader.BeforeRead = (_, _, _) =>
         {
-            if (++reads == 5) cancellation.Cancel();
+            if (++reads == 3) cancellation.Cancel(); // After two matched 256 KiB blocks.
             return ValueTask.CompletedTask;
         };
         var comparer = new TrlPrefixComparer(follower.Files.GetFile, follower.Capture, start, acknowledge: false);

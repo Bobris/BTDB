@@ -109,6 +109,10 @@ Compare corresponding TRL byte ranges directly in bounded chunks. Capture alread
 transaction boundary; publication does not decode keys, values or commands a second time. File identity and
 range boundaries come from the replication session and its positions. Matching bytes advance confirmation;
 a mismatch rejects the local history. No semantic normalization or decoded-command comparison is required.
+Followers read the leader in 256 KiB ranges, the HTTP transport's maximum. In each step the schema scan and the
+comparison share the leader bytes already fetched (up to 4 MiB per database), so a caught-up follower transfers each
+byte once. Crossing TRL files walks the native lineage back from the advertised end once per scan or comparison, and
+resuming a scan inside an already validated file does not reread its header.
 Database startup and virtual-batch replay decode commands directly in their replay loop, without a command object
 or a separate decoder. Follower integration is pending.
 
