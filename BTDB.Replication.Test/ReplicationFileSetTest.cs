@@ -94,6 +94,62 @@ public class ReplicationFileSetTest
         return remote.Describe(id);
     }
 
+    static byte[] PureValuesHeader(long generation)
+    {
+        var writer = new MemWriter();
+        writer.WriteBlock("BTDB3"u8);
+        writer.WriteGuid(new Guid("5d076258-e492-4931-a5b8-a19dc9fe6c76"));
+        writer.WriteUInt8((byte)KVFileType.PureValues);
+        writer.WriteVInt64(generation);
+        return writer.GetSpan().ToArray();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VerifiedCachedHeadersNeedNoRemoteReads(bool warmCache)
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage();
+        var bytes = PureValuesHeader(42);
+        for (uint id = 2; id <= 200; id += 2)
+        {
+            AddRemote(remote, id, bytes);
+            if (warmCache) Add(local, id, bytes);
+        }
+        await using var files = new ReplicationFileSet(local, remote);
+        await files.InitializeAsync();
+        if (!warmCache)
+            for (uint id = 2; id <= 200; id += 2) await files.PrefetchAsync(id);
+        remote.BeforeRead = (_, _, _) => throw new InvalidOperationException("Verified headers must be read locally.");
+        for (uint id = 2; id <= 200; id += 2)
+        {
+            var info = await files.ReadFileInfoAsync(id);
+            Assert.Equal(KVFileType.PureValues, info.FileType);
+            Assert.Equal(42, info.Generation);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EvictedCachedHeaderNeverTrustsAnUnverifiedReplacement(bool replace)
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage();
+        var bytes = PureValuesHeader(42);
+        AddRemote(remote, 2, bytes);
+        Add(local, 2, bytes);
+        await using var files = new ReplicationFileSet(local, remote);
+        await files.InitializeAsync();
+        local.GetFile(2)!.Remove();
+        if (replace) Add(local, 2, PureValuesHeader(99));
+        var reads = 0;
+        remote.BeforeRead = (_, _, _) => { reads++; return ValueTask.CompletedTask; };
+        Assert.Equal(42, (await files.ReadFileInfoAsync(2)).Generation);
+        Assert.Equal(1, reads);
+    }
+
     sealed class CacheLogger : IKeyValueDBLogger
     {
         public readonly List<string> Messages = new();
@@ -112,6 +168,7 @@ public class ReplicationFileSetTest
         public int Reads;
         public bool ForbidReads;
         public bool ForbidSize;
+        public bool FailWrites;
         IFileCollectionFile Wrap(IFileCollectionFile file)
         {
             if (!_files.TryGetValue(file.Index, out var wrapped) || !ReferenceEquals(wrapped.Inner, file))
@@ -145,7 +202,8 @@ public class ReplicationFileSetTest
                 owner.Reads++;
                 Inner.RandomRead(bytes, offset, doNotCache);
             }
-            public IMemWriter GetAppenderWriter() => Inner.GetAppenderWriter();
+            public IMemWriter GetAppenderWriter() => owner.FailWrites
+                ? throw new IOException("Disk full") : Inner.GetAppenderWriter();
             public IMemWriter GetExclusiveAppenderWriter() => Inner.GetExclusiveAppenderWriter();
             public void HardFlush() => Inner.HardFlush();
             public void HardFlushTruncateSwitchToReadOnlyMode() => Inner.HardFlushTruncateSwitchToReadOnlyMode();
@@ -614,6 +672,41 @@ public class ReplicationFileSetTest
         existing.RandomRead(bytes, 0, false);
         Assert.Equal(new byte[] { 9, 9 }, bytes);
         Assert.Same(existing, local.GetFile(2));
+    }
+
+    [Fact]
+    public async Task FailedLocalWriteCancelsPendingReadsBeforeReportingTheError()
+    {
+        using var backing = new InMemoryReplicationFileStorage();
+        using var local = new ObservedStorage(backing) { FailWrites = true };
+        using var remote = new CheckpointPublisherTest.Storage();
+        var selected = AddRemote(remote, 2, new byte[4 * ReplicationFileSet.DownloadBlockSize]);
+        var waiting = 0;
+        var stopped = 0;
+        remote.BeforeRead = async (_, offset, ct) =>
+        {
+            if (offset == 0) return;
+            Interlocked.Increment(ref waiting);
+            try { await Task.Delay(Timeout.Infinite, ct); }
+            finally { Interlocked.Increment(ref stopped); }
+        };
+        await using var files = new ReplicationFileSet(local, remote);
+        using var cancellation = new CancellationTokenSource();
+        var download = files.DownloadAsync(selected, cancellation.Token).AsTask();
+        try
+        {
+            var error = await Assert.ThrowsAsync<IOException>(() => download.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.Equal("Disk full", error.Message);
+            Assert.Equal(3, waiting);
+            Assert.Equal(3, stopped);
+            Assert.Null(local.GetFile(2));
+        }
+        finally
+        {
+            cancellation.Cancel();
+            await ((Task)download).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing |
+                                                  ConfigureAwaitOptions.ContinueOnCapturedContext);
+        }
     }
 
     [Fact]

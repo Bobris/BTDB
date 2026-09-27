@@ -296,13 +296,15 @@ public class TrlPrefixComparerTest
         var readCount = 0;
         if (fault == "missing")
             remote.MissingFile = leader.Files.Enumerate().Select(f => f.Index).Order().Skip(1).First();
-        remote.BeforeRead = (_, _, _) =>
+        remote.BeforeRead = (fileId, _, _) =>
         {
+            // An EOF before the advertised cut in the active file remains a read failure; a shorter
+            // sealed file is a permanent mismatch, covered separately below.
+            if (fault == "truncated" && fileId == leader.Capture.Completed.FileId) remote.TruncateRead = true;
             if (++readCount == 2)
             {
                 if (fault == "cancel") cancellation.Cancel();
                 if (fault == "session") throw new IOException("Leader session changed.");
-                if (fault == "truncated") remote.TruncateRead = true;
             }
             return ValueTask.CompletedTask;
         };
@@ -313,5 +315,27 @@ public class TrlPrefixComparerTest
         Assert.Null(comparer.MatchedThrough);
         using var fresh = leader.Reader();
         Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(fresh, leader.Capture.Completed));
+    }
+
+    [Fact]
+    public async Task ShorterSealedLeaderFileDivergesEvenWhenReturnedBytesMatch()
+    {
+        using var leader = await Node.Create();
+        using var follower = await Node.Create();
+        for (ulong id = 1; id <= 6; id++)
+        {
+            await leader.Write(id, (byte)id);
+            await follower.Write(id, (byte)id);
+        }
+        using var remote = leader.Reader();
+        remote.ReadChunkSize = 17;
+        remote.BeforeRead = (_, offset, _) =>
+        {
+            remote.TruncateRead = offset >= 17;
+            return ValueTask.CompletedTask;
+        };
+        var comparer = Comparer(follower);
+        Assert.Equal(TrlCompareResult.Diverged, await comparer.CompareAsync(remote, leader.Capture.Completed));
+        Assert.Null(comparer.MatchedThrough);
     }
 }

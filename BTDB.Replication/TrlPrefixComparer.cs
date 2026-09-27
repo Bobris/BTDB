@@ -81,11 +81,17 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
                         var read = await leader.ReadAsync(fileId, offset + (uint)filled,
                             remoteBuffer.AsMemory(filled, count - filled), cancellation).ConfigureAwait(false);
                         cancellation.ThrowIfCancellationRequested();
+                        // A later advertised file proves this leader file is sealed. Its shorter end is
+                        // divergence, not a transient read failure that reconnecting could repair.
+                        if (read == 0 && fileId < end.FileId) return Diverged();
                         if (read <= 0 || read > count - filled)
                             throw new IOException("Remote TRL comparison read is truncated or invalid.");
+                        // Compare short reads immediately: a different-length value may otherwise reach
+                        // leader EOF before the whole local block is filled, hiding an existing mismatch.
+                        if (!localBuffer.AsSpan(filled, read).SequenceEqual(remoteBuffer.AsSpan(filled, read)))
+                            return Diverged();
                         filled += read;
                     }
-                    if (!localBuffer.AsSpan(0, count).SequenceEqual(remoteBuffer.AsSpan(0, count))) return Diverged();
                     offset += (uint)count;
                     _comparisonPosition = new(fileId, (uint)offset);
                 }

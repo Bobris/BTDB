@@ -124,6 +124,9 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         if (!_remoteFiles.TryGetValue(fileId, out var file))
             return FileCollectionWithFileInfos.ReadFileInfo(Local.GetFile(fileId) ??
                 throw new FileNotFoundException($"File {fileId} is not in either inventory."));
+        // Initialization verified the cached copy, or prefetch downloaded this exact selected version.
+        // Reuse its header rather than issuing another range request for every cached file.
+        if (file.GetCachedLocal() is { } local) return FileCollectionWithFileInfos.ReadFileInfo(local);
         var selected = file.Selected;
 
         // Headers are variable length (KVI Ulong metadata in particular). Grow only when parsing needs more bytes.
@@ -330,6 +333,12 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         }
 
         internal void UseValidatedLocal(IFileCollectionFile local) => _local = local;
+
+        internal IFileCollectionFile? GetCachedLocal()
+        {
+            lock (_lock)
+                return _local != null && ReferenceEquals(_owner.Local.GetFile(Index), _local) ? _local : null;
+        }
 
         internal Task<IFileCollectionFile>? Pending { get { lock (_lock) return _pending; } }
 

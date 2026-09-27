@@ -93,7 +93,10 @@ native multi-file reopen, TRL metadata validation, and that replication writes n
   `RetiredPublicationGetsAFreshIdentityInsteadOfRecreatingItsKey`. Downloads keep four 4 MiB range reads in flight and
   write blocks in order (`DownloadUsesBoundedParallelBlocksAndPreservesOrder`); sealed files with a checksum are
   verified while written (`DownloadVerifiesSealedChecksumBeforeEstablishingPlacement`), and one failed block cancels
-  the others (`FailedParallelBlockCancelsOtherReadsAndRemovesPartialFile`).
+  the others (`FailedParallelBlockCancelsOtherReadsAndRemovesPartialFile`). Local write failures also cancel and drain
+  pending reads before reporting the original disk error (`FailedLocalWriteCancelsPendingReadsBeforeReportingTheError`).
+  Reading 100 verified cached PVL headers makes zero remote reads instead of 100, both after warm initialization and
+  completed prefetch (`VerifiedCachedHeadersNeedNoRemoteReads`); eviction or replacement falls back to remote headers.
 - `AsyncOpenTest`: discovery reads only needed KVI/TRL headers and prefetches KVI references in parallel. A restored
   complete canonical tail continues the leader's native file at its exact committed EOF, while partial, corrupt or
   sealed tails rotate (`RestoredCompleteCanonicalTailContinuesTheLiveLeadersNativeFile`,
@@ -122,7 +125,9 @@ positive delays in virtual time.
 
 - `TrlPrefixComparerTest` compares independent native databases byte-for-byte over the leader's local files: matching
   history with different batching, legacy even-to-odd rotation, lag, fixed cuts, unchanged event IDs, sticky
-  divergence, bounded reads and cancellation. Only a full match advances the matched cut; the comparer never
+  divergence, bounded reads and cancellation. A shorter sealed leader file is divergence even when its returned bytes
+  match; different-length values across rotated native logs request a follower restart rather than retrying forever
+  (`DifferentLengthValuesAcrossRotatedLogsRequestRestart`). Only a full match advances the matched cut; the comparer never
   acknowledges capture itself.
 - `LeaderTrlReaderTest` and `RetainingLeaderTrlReaderTest`: leader reads stop at the complete cut, inline bytes follow
   lineage across files, retention is bounded, and an inline file switch answers the end-of-file check without a peer

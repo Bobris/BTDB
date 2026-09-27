@@ -134,6 +134,8 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
         }
         finally
         {
+            // Local writes can fail while sibling reads are still pending, just like a remote block can.
+            await transfer.CancelAsync().ConfigureAwait(false);
             // Drain every read before returning pooled buffers, including on failure.
             foreach (var read in reads)
                 if (read != null) await ((Task)read).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);

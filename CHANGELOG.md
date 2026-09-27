@@ -21,6 +21,10 @@
 
 ### Changed
 
+- Read replication file headers from verified local cache entries, including completed prefetches, instead of issuing
+  redundant remote range reads. Reading 100 cached PVL headers now needs zero remote reads instead of 100; evicted or
+  replaced local files still fall back to the selected remote version.
+
 - Simplify follower comparison to one `CompareAsync(progress, cancellation)` call per polled database. Remove the
   separate progress notification state and redundant comparison semaphore; the coordinator already serializes calls.
   Closing a session still cancels outstanding reads and prevents late comparison results from being accepted.
@@ -106,6 +110,12 @@
   reuse placements now come only from restore validation, downloads and confirmed uploads.
 
 ### Fixed
+
+- Detect follower divergence when a sealed leader TRL is shorter than the local file. Compare short reads immediately
+  so different-length values cannot hide a byte mismatch behind an endlessly retried truncated-read error.
+
+- Cancel pending parallel replication downloads after a local write failure before draining their buffers, so reporting
+  a disk error does not wait for unrelated remote reads to finish or for external cancellation.
 
 - Fence leadership and request canonical restore when initialization/schema publication conflicts. A predecessor's
   delayed genesis can win after empty-root discovery; previously activation kept retrying the permanently conflicted

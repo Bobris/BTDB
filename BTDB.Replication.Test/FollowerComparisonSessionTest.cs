@@ -11,6 +11,32 @@ public class FollowerComparisonSessionTest
     static LeaderTrlProgress Progress(Node node, ulong eventId = 1) =>
         new(eventId, node.Capture.Completed.FileId, node.Capture.Completed.Offset);
 
+    [Theory]
+    [InlineData(600, 700)]
+    [InlineData(700, 600)]
+    public async Task DifferentLengthValuesAcrossRotatedLogsRequestRestart(int leaderSize, int followerSize)
+    {
+        using var leader = await Node.Create();
+        using var follower = await Node.Create();
+        await leader.Write(1, 1, size: 600);
+        await follower.Write(1, 1, size: 600);
+        var baseline = follower.Capture.Completed;
+        for (ulong id = 2; id <= 6; id++)
+        {
+            await leader.Write(id, (byte)id, size: leaderSize);
+            await follower.Write(id, (byte)id, size: followerSize);
+        }
+        Assert.True(leader.Capture.Completed.FileId > baseline.FileId);
+        Assert.True(follower.Capture.Completed.FileId > baseline.FileId);
+        var reader = new LeaderTrlReader(leader.Db, leader.Capture, CheckpointPublisherTest.CreateAuthority());
+        var restarts = 0;
+        var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
+            () => restarts++, baseline);
+        Assert.Equal(TrlCompareResult.Diverged, await session.CompareAsync(Progress(leader, 6)));
+        Assert.Equal(1, restarts);
+        Assert.Null(session.Compared);
+    }
+
     [Fact]
     public async Task NewLeaderCannotConfirmBytesOnlyAcknowledgedByItsPredecessor()
     {
