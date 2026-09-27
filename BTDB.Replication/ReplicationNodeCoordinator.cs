@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -347,9 +348,10 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                     _scanners.Add(database.Name, new(canonical, database.Database.FileCollection.Guid));
                 var reader = new RetainingLeaderTrlReader(_peer.Reader(database.Name));
                 _leaderReaders.Add(database.Name, reader);
-                _followers.Add(database.Name, new(database.Database.FileCollection.GetFile, database.Capture, reader,
-                    scheduler, () => Restart("Follower native history diverged from its selected leader."),
-                    _resumeComparison.GetValueOrDefault(database.Name, canonical), acknowledge: false));
+                var name = database.Name;
+                _followers.Add(name, new(database.Database.FileCollection.GetFile, database.Capture, reader,
+                    () => Restart("Follower native history diverged from its selected leader."),
+                    _resumeComparison.GetValueOrDefault(name, canonical), acknowledge: false, () => host.GetProgress(name)));
             }
         }
         if (!await PollLeaderAsync(databases, cancellation).ConfigureAwait(false)) return;
@@ -360,25 +362,25 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         }
     }
 
-    /// <summary>One poll per follower step: every compared database, every new database the leader selects, and the
-    /// authority heartbeat share a single challenge and grant. A detached node without databases still polls for
-    /// evidence. False means the step must stop (restart requested).</summary>
     // Inline TRL bytes one poll may carry; the rest of a larger backlog is read by range.
     const int InlineBudget = 1024 * 1024;
 
+    /// <summary>One poll per follower step: every compared database, every new database the leader selects, and the
+    /// authority heartbeat share a single challenge and grant. A detached node without databases still polls for
+    /// evidence. False means the step must stop (restart requested).</summary>
     async ValueTask<bool> PollLeaderAsync(IReadOnlyList<ActivationDatabase> databases, CancellationToken cancellation)
     {
-        // Followers come first in the request. Each window hands out its own token; the wire challenge is node-wide.
-        // From asks the leader to return the TRL bytes this step's schema scan and comparison will need.
+        // Followers come first in the request. From asks the leader for the TRL bytes the schema scan and the
+        // comparison still need, starting after the bytes this session already retains.
         var polled = new List<ReplicationPeerPollRequest>();
-        var windows = new (string Name, FollowerComparisonSession Follower, long Challenge)[_followers.Count];
+        var followers = new (string Name, FollowerComparisonSession Follower)[_followers.Count];
         var index = 0;
         foreach (var (name, follower) in _followers)
         {
-            var scanned = _scanners[name].Position;
-            var from = follower.ResumePosition is { } compared && compared < scanned ? compared : scanned;
+            var reader = _leaderReaders[name];
+            var from = reader.Available >= InlineBudget ? reader.ContiguousEnd(Consumed(name, follower)) : default;
             polled.Add(new(name, from));
-            windows[index++] = (name, follower, follower.BeginChallenge(options.ConfirmationDuration));
+            followers[index++] = (name, follower);
         }
         foreach (var database in databases)
             if (database.RestoredBase.FileId == 0 && !_removed.Contains(database.Name) &&
@@ -391,13 +393,10 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         cancellation.ThrowIfCancellationRequested();
         poll.Validate(challenge, polled, InlineBudget);
         if (poll.Granted && scheduler.Elapsed < dispatched + options.ConfirmationDuration)
-        {
             _leaderEvidenceUntil = dispatched + options.ConfirmationDuration;
-            foreach (var window in windows) window.Follower.AcceptChallenge(window.Challenge);
-        }
-        for (var i = 0; i < windows.Length; i++)
+        for (var i = 0; i < followers.Length; i++)
         {
-            var (name, follower, _) = windows[i];
+            var (name, follower) = followers[i];
             var status = poll.Databases[i];
             var leaderReader = _leaderReaders[name];
             try
@@ -422,16 +421,26 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 }
                 await follower.CompareLatestAsync(cancellation).ConfigureAwait(false);
             }
-            finally { leaderReader.Clear(); }
+            finally
+            {
+                // Keep bytes a lagging comparison or an unfinished scan still needs for a later step.
+                if (_followers.ContainsKey(name)) leaderReader.Release(Consumed(name, follower));
+            }
             if (_restart) return false;
-            if (status.Published is { } published && follower.Compared is { } compared)
-                AdvanceCanonicalBase(databases.First(d => d.Name == name),
-                    compared.Position < published ? compared.Position : published);
+            if (status.Published is { } published && follower.ComparedPosition is { } compared)
+                AdvanceCanonicalBase(databases.First(d => d.Name == name), compared < published ? compared : published);
         }
-        for (var i = windows.Length; i < polled.Count; i++)
+        for (var i = followers.Length; i < polled.Count; i++)
             if (poll.Databases[i].Progress != null)
             { Restart("New database initialization is published; restore its fixed input cursor."); return false; }
         return true;
+    }
+
+    // Both consumers of the leader bytes have passed this position.
+    TransactionLogPosition Consumed(string name, FollowerComparisonSession follower)
+    {
+        var scanned = _scanners[name].Position;
+        return follower.ResumePosition is { } compared && compared < scanned ? compared : scanned;
     }
 
     // Starts inline and continues independently of the transition lane after its first incomplete remote operation.
@@ -693,6 +702,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         readonly object _lock = new();
         readonly IReplicationNodeHost _host = host;
         readonly ulong _generation = generation;
+        readonly byte[] _apiKey = Encoding.UTF8.GetBytes(identity.ApiKey);
         readonly ConfirmationGrants _grants = new(scheduler, authority);
         readonly Dictionary<string, LeaderTrlReader> _readers = databases.ToDictionary(d => d.Name,
             d => new LeaderTrlReader(d.Database, d.Capture, authority), StringComparer.Ordinal);
@@ -710,10 +720,24 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 RequireActive();
                 if (requested.ClusterId != identity.ClusterId || requested.Term != identity.Term ||
                     requested.SessionId != identity.SessionId || requested.Endpoint != identity.Endpoint ||
-                    !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(requested.ApiKey), Encoding.UTF8.GetBytes(identity.ApiKey)))
+                    !ApiKeyMatches(requested.ApiKey))
                     throw new IOException("Peer authentication or leader session is invalid.");
                 return new Connection(this);
             }
+        }
+
+        // Every peer request authenticates; compare without allocating for ordinary key lengths.
+        bool ApiKeyMatches(string requested)
+        {
+            var length = Encoding.UTF8.GetMaxByteCount(requested.Length);
+            var rented = length > 256 ? ArrayPool<byte>.Shared.Rent(length) : null;
+            try
+            {
+                Span<byte> buffer = rented ?? stackalloc byte[256];
+                var count = Encoding.UTF8.GetBytes(requested, buffer);
+                return CryptographicOperations.FixedTimeEquals(buffer[..count], _apiKey);
+            }
+            finally { if (rented != null) ArrayPool<byte>.Shared.Return(rented); }
         }
 
         void RequireActive()

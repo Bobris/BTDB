@@ -368,6 +368,7 @@ public class ReplicationNodeCoordinatorTest
     sealed class PeerTransport(Cluster cluster, string caller) : IReplicationPeerTransport
     {
         public int Reads, Polls;
+        public long InlineBytes;
         public TaskCompletionSource? HoldReplies;
         public IDisposable Listen(string endpoint, Func<ReplicationPeerIdentity, IReplicationPeerSession> accept) => cluster.Transport.Listen(endpoint, accept);
         void Check(string endpoint, CancellationToken cancellation)
@@ -389,6 +390,7 @@ public class ReplicationNodeCoordinatorTest
                 owner.Check(endpoint, cancellation);
                 owner.Polls++;
                 var result = await inner.PollAsync(databases, challenge, duration, inlineBudget, cancellation).ConfigureAwait(false);
+                owner.InlineBytes += result.Databases.Sum(d => d.Chunks?.Sum(c => (long)c.Bytes.Length) ?? 0);
                 if (owner.HoldReplies != null) await owner.HoldReplies.Task.WaitAsync(cancellation).ConfigureAwait(false);
                 owner.Check(endpoint, cancellation);
                 return result;
@@ -682,6 +684,31 @@ public class ReplicationNodeCoordinatorTest
         Assert.Equal(attempts, older.Storage.Acquires);
         Assert.Equal(0, older.Restarts);
         Assert.False(older.Run.IsCompleted);
+    }
+
+    [Fact]
+    public async Task LaggingFollowerUnderContinuousLoadComparesItsLocalPrefixAndReceivesEachByteOnce()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader");
+        var follower = cluster.Start("follower");
+        cluster.Advance(30);
+        Assert.Equal(ReplicationNodeRole.Leader, leader.Coordinator.Role);
+        var acknowledged = follower.Capture.Acknowledged;
+        var inline = follower.Peers.InlineBytes;
+        for (ulong id = 2; id <= 20; id++)
+        {
+            await leader.Write(id, (byte)id, size: 1000);
+            if (id > 2) await follower.Write(id - 1, (byte)(id - 1), size: 1000); // Always one event behind.
+            cluster.Advance(10);
+        }
+        // The local prefix the leader's cut covers is compared although the leader is always ahead.
+        var compared = follower.Status.Current.Databases[0].Compared!.Value;
+        Assert.Equal((19ul, follower.Capture.Completed), (compared.EventId, compared.Position));
+        Assert.True(follower.Capture.Acknowledged > acknowledged); // Canonical base and local retention advance.
+        // One TRL file holds the whole run, so its length bounds the bytes a follower may receive once.
+        Assert.Equal(follower.Capture.Completed.FileId, leader.Capture.Completed.FileId);
+        Assert.InRange(follower.Peers.InlineBytes - inline, 1, leader.Capture.Completed.Offset); // Never resent.
     }
 
     [Fact]

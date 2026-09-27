@@ -166,7 +166,8 @@ Shutdown clears readiness synchronously even if a provider ignores cancellation;
 
 Each immutable sample reports the monotonic sample time, role and per-database completed local, compared and published
 cuts plus removal/detachment flags. Null cuts are unavailable. `Compared` is historical byte equality, not an unexpired
-confirmation grant. `Published` is available only from this node's active publisher. Local completed progress comes
+confirmation grant. A follower whose local execution lags the leader still compares the complete local prefix the
+leader's cut covers; `Compared` then reports the host's local progress at that cut. `Published` is available only from this node's active publisher. Local completed progress comes
 from the host and does not claim reader visibility during virtual batching. Do not use these sampled cuts to gate
 writes, confirmed-only reads or external effects. Samples update on coordinator transitions/polls; blocked operations
 can make them stale. The application owns reader-visible progress and input lag reporting.

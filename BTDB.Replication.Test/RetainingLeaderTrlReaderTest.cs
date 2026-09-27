@@ -7,7 +7,7 @@ namespace BTDB.Replication.Test;
 public class RetainingLeaderTrlReaderTest
 {
     [Fact]
-    public async Task ComparisonReusesLeaderBytesFetchedBySchemaScanUntilCleared()
+    public async Task ComparisonReusesLeaderBytesFetchedBySchemaScanUntilReleased()
     {
         using var leader = await Node.Create(false);
         using var follower = await Node.Create(false);
@@ -28,7 +28,7 @@ public class RetainingLeaderTrlReaderTest
         var comparer = new TrlPrefixComparer(follower.Files.GetFile, follower.Capture, start, acknowledge: false);
         Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(reader, end));
         Assert.Equal(scanReads, reads); // The comparison crossed no additional peer round trips.
-        reader.Clear();
+        reader.Release(end);
         var fresh = new TrlPrefixComparer(follower.Files.GetFile, follower.Capture, start, acknowledge: false);
         Assert.Equal(TrlCompareResult.Matched, await fresh.CompareAsync(reader, end));
         Assert.True(reads > scanReads);

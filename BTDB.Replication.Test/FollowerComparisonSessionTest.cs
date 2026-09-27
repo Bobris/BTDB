@@ -22,25 +22,22 @@ public class FollowerComparisonSessionTest
         await leader.Write(1, 9);
         follower.Capture.Acknowledge(follower.Capture.Completed);
         using var reader = leader.Reader();
-        var clock = new DeterministicScheduler(305);
         var restarts = 0;
         var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
-            clock.CreateScope("follower"), () => restarts++, restoredBase);
+            () => restarts++, restoredBase);
         session.NotifyProgress(Progress(leader));
         Assert.Equal(TrlCompareResult.Diverged, await session.CompareLatestAsync());
         Assert.Equal(1, restarts);
-        Assert.Null(session.Confirmed);
     }
 
     [Fact]
-    public async Task CoalescesProgressRetriesLagAndExpiresOnlyLiveConfirmation()
+    public async Task CoalescesProgressAndRetriesLag()
     {
         using var leader = await Node.Create(false);
         using var follower = await Node.Create(false);
         using var reader = leader.Reader();
-        var clock = new DeterministicScheduler(301);
         var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
-            clock.CreateScope("follower"), () => Assert.Fail("Unexpected restart"));
+            () => Assert.Fail("Unexpected restart"));
         Assert.Null(await session.CompareLatestAsync());
         await leader.Write(1, 1);
         var first = Progress(leader);
@@ -54,12 +51,6 @@ public class FollowerComparisonSessionTest
         await follower.Write(1, 2);
         Assert.Equal(TrlCompareResult.Matched, await session.CompareLatestAsync());
         Assert.Equal(latest, session.Compared);
-        Assert.Null(session.Confirmed);
-        var challenge = session.BeginChallenge(TimeSpan.FromTicks(10));
-        Assert.True(session.AcceptChallenge(challenge));
-        Assert.Equal(latest, session.Confirmed);
-        clock.AdvanceBy(TimeSpan.FromTicks(10));
-        Assert.Null(session.Confirmed);
         Assert.Equal(latest, session.Compared);
         await follower.Write(2, 3);
         Assert.NotEqual(latest.Position, follower.Capture.Completed);
@@ -67,19 +58,17 @@ public class FollowerComparisonSessionTest
     }
 
     [Fact]
-    public async Task ProgressDuringReadKeepsTheComparedCutFixedAndExpiryCannotConfirmIt()
+    public async Task ProgressDuringReadKeepsTheComparedCutFixed()
     {
         using var leader = await Node.Create(false);
         using var follower = await Node.Create(false);
         await leader.Write(1, 1);
         await follower.Write(1, 1);
         using var reader = leader.Reader();
-        var clock = new DeterministicScheduler(304);
         var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
-            clock.CreateScope("follower"), () => Assert.Fail("Unexpected restart"));
+            () => Assert.Fail("Unexpected restart"));
         var first = Progress(leader);
         session.NotifyProgress(first);
-        Assert.True(session.AcceptChallenge(session.BeginChallenge(TimeSpan.FromTicks(10))));
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         reader.BeforeRead = async (_, _, cancellation) =>
@@ -93,18 +82,16 @@ public class FollowerComparisonSessionTest
         await follower.Write(2, 2);
         var latest = Progress(leader, 2);
         session.NotifyProgress(latest);
-        clock.AdvanceBy(TimeSpan.FromTicks(10));
         release.SetResult();
         Assert.Equal(TrlCompareResult.Matched, await pending);
         Assert.Equal(first, session.Compared);
-        Assert.Null(session.Confirmed);
         Assert.Equal(TrlCompareResult.Matched, await session.CompareLatestAsync());
         Assert.Equal(latest, session.Compared);
         session.Close();
     }
 
     [Fact]
-    public async Task CloseCancelsAnOutstandingReadAndRejectsLateGrant()
+    public async Task CloseCancelsAnOutstandingRead()
     {
         using var leader = await Node.Create(false);
         using var follower = await Node.Create(false);
@@ -117,18 +104,14 @@ public class FollowerComparisonSessionTest
             entered.SetResult();
             await Task.Delay(-1, cancellation);
         };
-        var clock = new DeterministicScheduler(302);
         var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
-            clock.CreateScope("follower"), () => Assert.Fail("Disconnect is not divergence"));
-        var challenge = session.BeginChallenge(TimeSpan.FromSeconds(1));
+            () => Assert.Fail("Disconnect is not divergence"));
         session.NotifyProgress(Progress(leader));
         var start = follower.Capture.Acknowledged;
         var pending = session.CompareLatestAsync().AsTask();
         await entered.Task;
         session.Close();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
-        Assert.False(session.AcceptChallenge(challenge));
-        Assert.Null(session.Confirmed);
         Assert.Equal(start, follower.Capture.Acknowledged);
         await follower.Write(2, 2);
     }
@@ -141,10 +124,9 @@ public class FollowerComparisonSessionTest
         await leader.Write(1, 1);
         await follower.Write(1, 2);
         using var reader = leader.Reader();
-        var clock = new DeterministicScheduler(303);
         var restarts = 0;
         var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
-            clock.CreateScope("follower"), () => restarts++);
+            () => restarts++);
         session.NotifyProgress(Progress(leader));
         reader.TruncateRead = true;
         await Assert.ThrowsAsync<IOException>(() => session.CompareLatestAsync().AsTask());
@@ -155,7 +137,6 @@ public class FollowerComparisonSessionTest
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => session.CompareLatestAsync().AsTask());
         session.Close();
         Assert.Equal(1, restarts);
-        Assert.Null(session.Confirmed);
         await follower.Write(2, 2);
     }
 }

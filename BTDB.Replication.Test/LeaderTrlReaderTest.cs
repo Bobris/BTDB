@@ -24,9 +24,9 @@ public class LeaderTrlReaderTest
         var reader = new LeaderTrlReader(leader.Db, leader.Capture, authority);
         var reader2 = new LeaderTrlReader(leader.Db, leader.Capture, authority);
         var follower1 = new FollowerComparisonSession(first.Files, first.Capture, reader,
-            clock.CreateScope("first"), () => Assert.Fail("Unexpected divergence"));
+            () => Assert.Fail("Unexpected divergence"));
         var follower2 = new FollowerComparisonSession(second.Files, second.Capture, reader2,
-            clock.CreateScope("second"), () => Assert.Fail("Unexpected divergence"));
+            () => Assert.Fail("Unexpected divergence"));
         for (ulong id = 1; id <= 8; id++)
         {
             await leader.Write(id, (byte)id);
@@ -38,19 +38,15 @@ public class LeaderTrlReaderTest
         foreach (var follower in new[] { follower1, follower2 })
         {
             follower.NotifyProgress(progress);
-            var challenge = follower.BeginChallenge(TimeSpan.FromTicks(10));
             Assert.True(grants.TryIssue(TimeSpan.FromTicks(10)));
-            Assert.True(follower.AcceptChallenge(challenge));
             Assert.Equal(TrlCompareResult.Matched, await follower.CompareLatestAsync());
-            Assert.Equal(progress, follower.Confirmed);
+            Assert.Equal(progress, follower.Compared);
         }
         grants.BeginDrain();
         Assert.False(grants.TryIssue(TimeSpan.FromTicks(10)));
         Assert.False(grants.IsDrained);
         clock.AdvanceBy(TimeSpan.FromTicks(10));
         Assert.True(grants.IsDrained);
-        Assert.Null(follower1.Confirmed);
-        Assert.Null(follower2.Confirmed);
         reader.Close();
         reader2.Close();
         await Assert.ThrowsAsync<IOException>(() => reader.ReadAsync(end.FileId, 0, new byte[1], default).AsTask());

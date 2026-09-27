@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -105,7 +106,7 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
                 switch (request.Operation)
                 {
                     case PeerOperation.Connect:
-                        CheckListener(listener, identity, cancellation);
+                        // Accept just authenticated it; only async operations need to reauthenticate.
                         context.Response.StatusCode = StatusCodes.Status204NoContent;
                         break;
                     case PeerOperation.Poll:
@@ -115,10 +116,11 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
                         var poll = await session.PollAsync(polled, request.Challenge,
                             TimeSpan.FromTicks(request.DurationTicks), request.InlineBudget, cancellation).ConfigureAwait(false);
                         CheckListener(listener, identity, cancellation);
-                        var body = ReplicationPeerWire.EncodePoll(poll);
+                        var segments = ReplicationPeerWire.EncodePollSegments(poll);
                         context.Response.ContentType = "application/octet-stream";
-                        context.Response.ContentLength = body.Length;
-                        await context.Response.Body.WriteAsync(body, cancellation).ConfigureAwait(false);
+                        context.Response.ContentLength = segments.Sum(segment => (long)segment.Length);
+                        foreach (var segment in segments)
+                            await context.Response.Body.WriteAsync(segment, cancellation).ConfigureAwait(false);
                         break;
                     case PeerOperation.Read:
                         if (string.IsNullOrEmpty(request.Database) || request.FileId == 0 ||

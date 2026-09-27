@@ -53,22 +53,6 @@ public class AuthorityTest
     }
 
     [Fact]
-    public void DelayedChallengeRepliesAndClosedConnectionsCannotConfirm()
-    {
-        var scheduler = new DeterministicScheduler(103);
-        var window = new ConfirmationWindow(scheduler.CreateScope("follower"));
-        var old = window.BeginChallenge(T(10));
-        scheduler.AdvanceBy(T(10));
-        Assert.False(window.Accept(old));
-        var current = window.BeginChallenge(T(10));
-        Assert.False(window.Accept(old));
-        Assert.True(window.Accept(current));
-        window.Close();
-        Assert.False(window.IsValid);
-        Assert.False(window.Accept(current));
-    }
-
-    [Fact]
     public void OneDrainDeadlineWaitsOutEveryGrantAndStopsNewGrants()
     {
         var scheduler = new DeterministicScheduler(104);

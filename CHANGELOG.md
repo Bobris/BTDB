@@ -39,13 +39,23 @@
 
 - Replace the JSON replication peer protocol with a compact versioned binary encoding for every operation; poll
   responses carry inline TRL bytes that the client slices without copying, and bodies with a declared length are read
-  directly into an exact buffer.
+  directly into an exact buffer. The leader reads inline bytes straight into their chunk arrays and writes them to the
+  response without assembling one buffer; peer authentication no longer allocates or repeats itself on connect.
+
+- Remove the unused per-follower confirmation windows; leader liveness is tracked by the single grant of each poll.
 
 - Remove unused internal replication helpers (`TrlPublication`, `TrlSnapshot`, `IReplicationRandom`,
   `ReplicationFileSet.RememberVerifiedPureValues`) and move the in-process peer transport into the test project. PVL
   reuse placements now come only from restore validation, downloads and confirmed uploads.
 
 ### Fixed
+
+- Compare a lagging follower's complete local prefix up to the leader's advertised cut. Under continuous load a
+  follower is almost always slightly behind, so it previously never compared anything: its canonical base, local TRL
+  retention and `Compared` status stopped advancing.
+
+- Keep leader TRL bytes on the follower until both the schema scan and the comparison have used them and poll only
+  for newer bytes; a lagging follower otherwise received the same inline bytes (up to 1 MiB) with every poll.
 
 - Let a node of a newer application generation that adds a database follow an older leader that does not select it.
   Polling the unknown database failed every step, so the node disconnected repeatedly and never offered the prepared

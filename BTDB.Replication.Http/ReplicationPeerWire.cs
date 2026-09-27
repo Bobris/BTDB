@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -98,8 +99,11 @@ internal static class ReplicationPeerWire
         }
     });
 
-    public static byte[] EncodePoll(ReplicationPeerPoll poll)
+    /// <summary>The poll response as segments: small encoded headers interleaved with each inline chunk's own bytes,
+    /// so a server writes TRL bytes to the response without copying them into one buffer.</summary>
+    public static List<ReadOnlyMemory<byte>> EncodePollSegments(ReplicationPeerPoll poll)
     {
+        var segments = new List<ReadOnlyMemory<byte>>();
         var writer = new MemWriter();
         writer.WriteUInt8(Version);
         writer.WriteVInt64(poll.Challenge);
@@ -126,10 +130,25 @@ internal static class ReplicationPeerWire
                 writer.WriteVUInt32(chunk.FileId);
                 writer.WriteVUInt32(chunk.Offset);
                 writer.WriteVUInt32((uint)chunk.Bytes.Length);
-                writer.WriteBlock(chunk.Bytes.Span);
+                segments.Add(writer.GetSpanAndReset().ToArray());
+                segments.Add(chunk.Bytes);
             }
         }
-        return writer.GetSpan().ToArray();
+        segments.Add(writer.GetSpanAndReset().ToArray());
+        return segments;
+    }
+
+    public static byte[] EncodePoll(ReplicationPeerPoll poll)
+    {
+        var segments = EncodePollSegments(poll);
+        var result = new byte[segments.Sum(segment => segment.Length)];
+        var offset = 0;
+        foreach (var segment in segments)
+        {
+            segment.Span.CopyTo(result.AsSpan(offset));
+            offset += segment.Length;
+        }
+        return result;
     }
 
     /// <summary>Names come from the request; inline chunk bytes are slices of bytes, not copies.</summary>

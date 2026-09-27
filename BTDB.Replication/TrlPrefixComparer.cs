@@ -37,6 +37,10 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
     /// comparison with the same leader may resume here, including after a cancelled comparison.</summary>
     public TransactionLogPosition? Position => _comparisonPosition;
 
+    /// <summary>The end of the latest completed comparison: a complete transaction cut, either the leader's advertised
+    /// end or, while local execution lags, the complete local prefix that end already covers.</summary>
+    public TransactionLogPosition? MatchedThrough { get; private set; }
+
     public async ValueTask<TrlCompareResult> CompareAsync(ILeaderTrlReader leader, TransactionLogPosition end,
         CancellationToken cancellation = default)
     {
@@ -49,7 +53,11 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
             if (_diverged) return TrlCompareResult.Diverged;
             var start = _comparisonPosition ?? capture.Acknowledged;
             if (end <= start) return TrlCompareResult.Matched;
-            if (end > capture.Completed) return TrlCompareResult.LocalBehind;
+            // A lagging follower still compares the complete local prefix the leader's cut already covers, so its
+            // canonical progress and local TRL retention keep advancing under continuous load.
+            var local = capture.Completed;
+            var target = end <= local ? end : local;
+            if (target <= start) return TrlCompareResult.LocalBehind;
             if (start.FileId == 0) throw new InvalidOperationException("Comparison requires a retained native starting position.");
 
             // Matches the HTTP transport's maximum range, so each block is one peer round trip.
@@ -65,7 +73,7 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
                 var source = getFile(fileId)
                     ?? throw new FileNotFoundException("Missing retained local TRL for comparison.", fileId.ToString());
                 var offset = fileId == start.FileId ? (ulong)start.Offset : 0;
-                var limit = fileId == end.FileId ? end.Offset : source.GetSize();
+                var limit = fileId == target.FileId ? target.Offset : source.GetSize();
                 if (offset > limit || source.GetSize() < limit) return Diverged();
                 while (offset < limit)
                 {
@@ -86,7 +94,7 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
                     offset += (uint)count;
                     if (_comparisonPosition.HasValue) _comparisonPosition = new(fileId, (uint)offset);
                 }
-                if (fileId == end.FileId) break;
+                if (fileId == target.FileId) break;
                 // The prior file is sealed on both nodes. A longer leader file is a different byte stream,
                 // not permission to silently skip its remaining bytes when moving to the next native ID.
                 var extra = await leader.ReadAsync(fileId, limit, remoteBuffer.AsMemory(0, 1), cancellation)
@@ -94,17 +102,18 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
                 cancellation.ThrowIfCancellationRequested();
                 if (extra < 0 || extra > 1) throw new IOException("Invalid leader TRL read length.");
                 if (extra != 0) return Diverged();
-                // The local prefix covers the end file; its headers give the continuation without guessing IDs.
-                successors ??= await TrlLineage.SuccessorsAsync(fileId, end.FileId,
+                // The local prefix covers the target file; its headers give the continuation without guessing IDs.
+                successors ??= await TrlLineage.SuccessorsAsync(fileId, target.FileId,
                     id => ValueTask.FromResult(TrlLineage.LocalPrevious(getFile, id))).ConfigureAwait(false);
                 fileId = successors[nextSuccessor++];
             }
             cancellation.ThrowIfCancellationRequested();
             // A new leader can disagree with bytes acknowledged by its predecessor. Recheck from the
             // restored base without rewinding core retention; missing retained files require restart.
-            if (acknowledge && end > capture.Acknowledged) capture.Acknowledge(end);
-            if (_comparisonPosition.HasValue) _comparisonPosition = end;
-            return TrlCompareResult.Matched;
+            if (acknowledge && target > capture.Acknowledged) capture.Acknowledge(target);
+            if (_comparisonPosition.HasValue) _comparisonPosition = target;
+            MatchedThrough = target;
+            return target == end ? TrlCompareResult.Matched : TrlCompareResult.LocalBehind;
         }
         finally
         {

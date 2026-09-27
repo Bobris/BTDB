@@ -177,6 +177,28 @@ public class TrlPrefixComparerTest
     }
 
     [Fact]
+    public async Task LaggingLocalPrefixIsComparedAndItsDivergenceDetectedBeforeCatchingUp()
+    {
+        using var leader = await Node.Create(false);
+        using var follower = await Node.Create(false);
+        using var diverged = await Node.Create(false);
+        await leader.Write(1, 1);
+        await leader.Write(2, 2);
+        await follower.Write(1, 1);
+        await diverged.Write(1, 9);
+        using var remote = leader.Reader();
+        var comparer = new TrlPrefixComparer(follower.Files, follower.Capture);
+        Assert.Equal(TrlCompareResult.LocalBehind, await comparer.CompareAsync(remote, leader.Capture.Completed));
+        Assert.Equal(follower.Capture.Completed, comparer.MatchedThrough);
+        Assert.Equal(follower.Capture.Completed, follower.Capture.Acknowledged);
+        await follower.Write(2, 2);
+        Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(remote, leader.Capture.Completed));
+        Assert.Equal(leader.Capture.Completed, comparer.MatchedThrough);
+        Assert.Equal(TrlCompareResult.Diverged,
+            await new TrlPrefixComparer(diverged.Files, diverged.Capture).CompareAsync(remote, leader.Capture.Completed));
+    }
+
+    [Fact]
     public async Task LagWaitsAndAnOlderCutExcludesLaterLocalBytes()
     {
         using var leader = await Node.Create(false);

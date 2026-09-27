@@ -1,5 +1,4 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -61,30 +60,36 @@ internal sealed class LeaderTrlReader(BTreeKeyValueDB database, TransactionLogCa
                     id => ValueTask.FromResult(PreviousOf(id))).ConfigureAwait(false)];
         }
         catch (Exception error) when (error is FileNotFoundException or InvalidDataException) { return chunks; }
-        var buffer = ArrayPool<byte>.Shared.Rent(budget);
-        try
+        foreach (var fileId in files)
         {
-            foreach (var fileId in files)
+            var offset = fileId == from.FileId ? from.Offset : 0u;
+            // Sealed files are complete to their size; the end file only to the advertised cut. A missing file ends
+            // the chunks: skipping it would leave a gap before the next file's bytes.
+            ulong limit = end.Offset;
+            if (fileId != end.FileId)
             {
-                var offset = fileId == from.FileId ? from.Offset : 0u;
-                var size = (int)Math.Min((ulong)budget, fileId == end.FileId ? end.Offset - offset : uint.MaxValue);
-                var filled = 0;
-                while (filled < size)
-                {
-                    int read;
-                    try { read = await ReadAsync(fileId, offset + (ulong)filled, buffer.AsMemory(filled, size - filled), cancellation).ConfigureAwait(false); }
-                    // Only lost authority fails the poll; a range this leader cannot serve just ends the inline bytes.
-                    catch (IOException) when (!_closed && authority.IsValid) { return chunks; }
-                    if (read == 0) break;
-                    filled += read;
-                }
-                if (filled != 0) chunks.Add(new(fileId, offset, buffer.AsSpan(0, filled).ToArray()));
-                budget -= filled;
-                if (budget == 0) break;
+                if (database.FileCollection.GetFile(fileId) is not { } source) return chunks;
+                limit = source.GetSize();
             }
-            return chunks;
+            if (limit <= offset) continue;
+            // Read straight into the chunk's own array: it is sent (or handed in-process) without another copy.
+            var bytes = new byte[(int)Math.Min((ulong)budget, limit - offset)];
+            var filled = 0;
+            while (filled < bytes.Length)
+            {
+                int read;
+                try { read = await ReadAsync(fileId, offset + (ulong)filled, bytes.AsMemory(filled), cancellation).ConfigureAwait(false); }
+                // Only lost authority fails the poll; a range this leader cannot serve just ends the inline bytes.
+                catch (IOException) when (!_closed && authority.IsValid) { return chunks; }
+                if (read == 0) break;
+                filled += read;
+            }
+            if (filled != 0) chunks.Add(new(fileId, offset, bytes.AsMemory(0, filled)));
+            if (filled < bytes.Length) break;
+            budget -= filled;
+            if (budget == 0) break;
         }
-        finally { ArrayPool<byte>.Shared.Return(buffer); }
+        return chunks;
     }
 
     uint PreviousOf(uint fileId) => database.FileCollection.FileInfoByIdx(fileId) is IFileTransactionLog log
