@@ -81,7 +81,6 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
             yield return new(head.FileId, KVFileType.TransactionLog, head.State.Length, head.State.Token,
                 head.State.Metadata.Next != null, null);
         }
-        await Task.CompletedTask;
     }
 
     public async ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation)

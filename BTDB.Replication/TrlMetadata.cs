@@ -12,16 +12,22 @@ public sealed record TrlSuccessor(string Key, uint FileId);
 
 public sealed record TrlMetadata(ulong Term, TrlSuccessor? Next = null)
 {
-    public IReadOnlyDictionary<string, string> Encode()
+    /// <summary>Throws unless this metadata can be encoded: selected authority and a valid successor identity.</summary>
+    public void Validate()
     {
         if (Term == 0) throw new InvalidOperationException("Term zero is not selected authority.");
+        if (Next is { } next) Validate(next);
+    }
+
+    public IReadOnlyDictionary<string, string> Encode()
+    {
+        Validate();
         var result = new Dictionary<string, string>
         {
             ["btdb_term"] = Term.ToString(CultureInfo.InvariantCulture)
         };
         if (Next is { } next)
         {
-            Validate(next);
             result.Add("btdb_next", next.Key);
             result.Add("btdb_next_id", next.FileId.ToString(CultureInfo.InvariantCulture));
         }

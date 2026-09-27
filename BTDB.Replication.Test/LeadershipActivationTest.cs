@@ -125,7 +125,7 @@ public class LeadershipActivationTest
     public async Task ProgressingCanonicalValidationDoesNotExpireActivationDeadline()
     {
         using var node = await Node.Create(false);
-        await node.Write(1, 1, size: 1024 * 1024);
+        await node.Write(1, 1, size: 4 * 1024 * 1024);
         var remote = new Storage();
         var clock = new DeterministicScheduler(709);
         using var original = new CanonicalTrlPublisher(node.Db, node.Capture, remote, Lease(clock, "old"), 1, Key);
@@ -137,8 +137,10 @@ public class LeadershipActivationTest
         var expired = 0;
         using var watchdog = new ReplicationProgressWatchdog(scope, TimeSpan.FromTicks(10), () => expired++, "activation");
         watchdog.Progress();
-        // Each individual read progresses, but the complete activation lasts several deadline intervals.
-        remote.BeforeRangeRead = _ => clock.AdvanceBy(TimeSpan.FromTicks(9));
+        // Each verified block progresses, but the complete activation lasts several deadline intervals. The fake
+        // storage completes synchronously, so the clock advances when a read is issued: four pipelined reads must fit
+        // inside one deadline, as overlapping real reads would.
+        remote.BeforeRangeRead = _ => clock.AdvanceBy(TimeSpan.FromTicks(2));
         using var session = new LeadershipSession(new(control, leases, authority, LeaderSelectionTest.Candidate()),
             [Input(node, remote)], progress: watchdog.Progress);
         Assert.NotNull(await session.ActivateAsync());

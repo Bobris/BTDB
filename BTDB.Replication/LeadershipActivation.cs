@@ -91,66 +91,101 @@ internal static class LeadershipActivation
         if (baseline.FileId == 0) throw new ArgumentException("Activation requires a verified restored base.");
         // Canonical TRLs only grow, so a prefix verified by an earlier attempt of this lease stays verified.
         var resume = validated != null && validated.TryGetValue(database.Name, out var verified) ? verified : baseline;
-        var localBuffer = ArrayPool<byte>.Shared.Rent(256 * 1024);
-        var remoteBuffer = ArrayPool<byte>.Shared.Rent(256 * 1024);
         var expectedId = baseline.FileId;
         uint previousId = 0;
         var found = false;
+        await foreach (var file in inventory.EnumerateAsync(cancellation).ConfigureAwait(false))
+        {
+            if (file.FileId < baseline.FileId) continue;
+            RequireAuthority(selected);
+            if (file.FileId != expectedId) throw new InvalidDataException("Canonical history omits the retained base or continuation.");
+            found = true;
+            // Only complete local transactions count; the physical file may hold an unfinished one. Capture reports
+            // nothing before the first local commit, when the verified restored base is the complete local end.
+            var local = database.Capture.Completed;
+            if (local < baseline) local = baseline;
+            if (file.FileId > local.FileId)
+            {
+                // Local execution has not rotated into this continuation yet. A different local continuation diverged.
+                if (local.FileId != previousId)
+                    throw new InvalidDataException("Candidate continues canonical history in another TRL; restore is required.");
+                return false;
+            }
+            var source = database.Database.FileCollection.GetFile(file.FileId)
+                ?? throw new InvalidDataException("Candidate lacks canonical TRL bytes; restore is required.");
+            var localEnd = file.FileId == local.FileId ? local.Offset : source.GetSize();
+            var offset = file.FileId == baseline.FileId ? (ulong)baseline.Offset : 0;
+            if (offset > file.Length || (file.FileId < local.FileId && source.GetSize() < file.Length) ||
+                (file.IsSealed && (file.FileId < local.FileId ? source.GetSize() != file.Length : localEnd > file.Length)))
+                throw new InvalidDataException("Candidate does not match the selected canonical prefix; restore is required.");
+            if (file.FileId < resume.FileId) offset = file.Length;
+            else if (file.FileId == resume.FileId) offset = Math.Max(offset, resume.Offset);
+            var compareEnd = Math.Min(file.Length, localEnd);
+            await CompareRangeAsync(inventory, file, source, offset, compareEnd, selected, end =>
+            {
+                if (validated != null) validated[database.Name] = new(file.FileId, checked((uint)end));
+                progress?.Invoke(file.FileId, end);
+            }, cancellation).ConfigureAwait(false);
+            if (compareEnd < file.Length) return false;
+            previousId = file.FileId;
+            // Follow the selected link: native allocation may skip IDs reserved by legacy files.
+            if (file.IsSealed) expectedId = inventory.GetHead(file.FileId).State.Metadata.Next!.FileId;
+        }
+        if (!found) throw new InvalidDataException("Canonical history does not contain the restored base.");
+        return true;
+    }
+
+    const int BlockSize = 256 * 1024;
+    const int ParallelReads = 4;
+
+    /// <summary>Compare local bytes [offset, end) with the selected canonical version, keeping several Blob reads in
+    /// flight; blocks are verified and reported in order, so a retry resumes after the last verified block.</summary>
+    static async ValueTask CompareRangeAsync(CanonicalTrlInventory inventory, RemoteFile file, IFileCollectionFile source,
+        ulong offset, ulong end, SelectedLeadership selected, Action<ulong> verified, CancellationToken cancellation)
+    {
+        if (offset >= end) return;
+        using var reads = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        var local = ArrayPool<byte>.Shared.Rent(BlockSize);
+        var pending = new Queue<(ulong Offset, int Count, byte[] Buffer, Task<int> Read)>();
+        var free = new Stack<byte[]>();
+        var requested = offset;
         try
         {
-            await foreach (var file in inventory.EnumerateAsync(cancellation).ConfigureAwait(false))
+            while (true)
             {
-                if (file.FileId < baseline.FileId) continue;
-                RequireAuthority(selected);
-                if (file.FileId != expectedId) throw new InvalidDataException("Canonical history omits the retained base or continuation.");
-                found = true;
-                // Only complete local transactions count; the physical file may hold an unfinished one. Capture reports
-                // nothing before the first local commit, when the verified restored base is the complete local end.
-                var local = database.Capture.Completed;
-                if (local < baseline) local = baseline;
-                if (file.FileId > local.FileId)
+                while (pending.Count < ParallelReads && requested < end)
                 {
-                    // Local execution has not rotated into this continuation yet. A different local continuation diverged.
-                    if (local.FileId != previousId)
-                        throw new InvalidDataException("Candidate continues canonical history in another TRL; restore is required.");
-                    return false;
+                    var count = (int)Math.Min(BlockSize, end - requested);
+                    var buffer = free.Count != 0 ? free.Pop() : ArrayPool<byte>.Shared.Rent(BlockSize);
+                    pending.Enqueue((requested, count, buffer,
+                        inventory.ReadAsync(file, requested, buffer.AsMemory(0, count), reads.Token).AsTask()));
+                    requested += (uint)count;
                 }
-                var source = database.Database.FileCollection.GetFile(file.FileId)
-                    ?? throw new InvalidDataException("Candidate lacks canonical TRL bytes; restore is required.");
-                var localEnd = file.FileId == local.FileId ? local.Offset : source.GetSize();
-                var offset = file.FileId == baseline.FileId ? (ulong)baseline.Offset : 0;
-                if (offset > file.Length || (file.FileId < local.FileId && source.GetSize() < file.Length) ||
-                    (file.IsSealed && (file.FileId < local.FileId ? source.GetSize() != file.Length : localEnd > file.Length)))
-                    throw new InvalidDataException("Candidate does not match the selected canonical prefix; restore is required.");
-                if (file.FileId < resume.FileId) offset = file.Length;
-                else if (file.FileId == resume.FileId) offset = Math.Max(offset, resume.Offset);
-                var compareEnd = Math.Min(file.Length, localEnd);
-                while (offset < compareEnd)
+                if (!pending.TryDequeue(out var block)) return;
+                try
                 {
-                    var count = (int)Math.Min(256 * 1024ul, compareEnd - offset);
-                    source.RandomRead(localBuffer.AsSpan(0, count), offset, false);
-                    var read = await inventory.ReadAsync(file, offset, remoteBuffer.AsMemory(0, count), cancellation)
-                        .ConfigureAwait(false);
+                    var read = await block.Read.ConfigureAwait(false);
                     cancellation.ThrowIfCancellationRequested();
                     RequireAuthority(selected);
-                    if (read != count || !localBuffer.AsSpan(0, count).SequenceEqual(remoteBuffer.AsSpan(0, count)))
+                    source.RandomRead(local.AsSpan(0, block.Count), block.Offset, false);
+                    if (read != block.Count || !local.AsSpan(0, block.Count).SequenceEqual(block.Buffer.AsSpan(0, block.Count)))
                         throw new InvalidDataException("Candidate diverges from canonical Blob history; restore is required.");
-                    offset += (uint)count;
-                    if (validated != null) validated[database.Name] = new(file.FileId, checked((uint)offset));
-                    progress?.Invoke(file.FileId, offset);
                 }
-                if (compareEnd < file.Length) return false;
-                previousId = file.FileId;
-                // Follow the selected link: native allocation may skip IDs reserved by legacy files.
-                if (file.IsSealed) expectedId = inventory.GetHead(file.FileId).State.Metadata.Next!.FileId;
+                finally { free.Push(block.Buffer); }
+                verified(block.Offset + (uint)block.Count);
             }
-            if (!found) throw new InvalidDataException("Canonical history does not contain the restored base.");
-            return true;
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(localBuffer);
-            ArrayPool<byte>.Shared.Return(remoteBuffer);
+            // Stop and drain outstanding reads before their pooled buffers are returned.
+            await reads.CancelAsync().ConfigureAwait(false);
+            foreach (var (_, _, buffer, read) in pending)
+            {
+                await ((Task)read).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+            foreach (var buffer in free) ArrayPool<byte>.Shared.Return(buffer);
+            ArrayPool<byte>.Shared.Return(local);
         }
     }
 

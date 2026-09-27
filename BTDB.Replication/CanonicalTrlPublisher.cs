@@ -297,7 +297,7 @@ public sealed class CanonicalTrlPublisher : IDisposable
             if (partEnd < (expected?.Length ?? 0)) throw new InvalidDataException("Cannot shrink canonical TRL.");
             var next = i + 1 == writes.Length ? null : new TrlSuccessor(keys[i + 1], parts[i + 1].Id);
             var metadata = new TrlMetadata(term, next);
-            _ = metadata.Encode();
+            metadata.Validate();
             writes[i] = new(partId, keys[i], expected?.Token, expected?.Length ?? 0, partEnd, metadata,
                 Source(partId));
         }

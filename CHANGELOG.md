@@ -44,6 +44,10 @@
 
 - Remove the unused per-follower confirmation windows; leader liveness is tracked by the single grant of each poll.
 
+- Publish canonical TRLs of all databases concurrently, so one database's large upload no longer delays the others,
+  and keep up to four Blob reads in flight while a new leader validates its local history against canonical Blob
+  history.
+
 - Remove unused internal replication helpers (`TrlPublication`, `TrlSnapshot`, `IReplicationRandom`,
   `ReplicationFileSet.RememberVerifiedPureValues`) and move the in-process peer transport into the test project. PVL
   reuse placements now come only from restore validation, downloads and confirmed uploads.

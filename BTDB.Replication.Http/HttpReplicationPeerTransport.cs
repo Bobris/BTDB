@@ -211,6 +211,7 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
     sealed class Session(HttpClient client, ReplicationPeerIdentity identity) : IReplicationPeerSession
     {
         readonly CancellationTokenSource _closed = new();
+        readonly Uri _target = new(ValidateEndpoint(identity.Endpoint), Path);
         PeerRequest Message(PeerOperation operation) => new(identity.ClusterId, identity.Term, identity.SessionId, identity.Endpoint, operation);
 
         public async ValueTask ConnectAsync(CancellationToken cancellation)
@@ -252,7 +253,7 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _closed.Token);
             linked.Token.ThrowIfCancellationRequested();
-            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(ValidateEndpoint(identity.Endpoint), Path));
+            using var request = new HttpRequestMessage(HttpMethod.Post, _target);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", identity.ApiKey);
             request.Content = new ByteArrayContent(ReplicationPeerWire.EncodeRequest(message));
             request.Content.Headers.ContentType = new("application/octet-stream");
