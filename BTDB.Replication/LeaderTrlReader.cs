@@ -44,7 +44,7 @@ internal sealed class LeaderTrlReader(BTreeKeyValueDB database, TransactionLogCa
     }
 
     /// <summary>Complete bytes from from through end (a complete transaction cut), at most budget bytes, one chunk per
-    /// native file in lineage order. Every read rechecks closure and authority. A range this leader cannot serve (not
+    /// native file in lineage order. A later file's chunk follows only when the previous file was served to its end. Every read rechecks closure and authority. A range this leader cannot serve (not
     /// retained, or lineage it cannot follow) ends the chunks early; the follower then reads the rest by range.</summary>
     public async ValueTask<IReadOnlyList<ReplicationPeerTrlChunk>> ReadInlineAsync(TransactionLogPosition from,
         TransactionLogPosition end, int budget, CancellationToken cancellation)

@@ -111,11 +111,11 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
                 }
                 cancellation.ThrowIfCancellationRequested();
                 var current = Current;
-                // Healthy sessions renew at least halfway through their remaining conservative lifetime.
-                // Failed requests use the configured retry interval rather than spinning near expiry.
+                // Healthy sessions renew at least halfway through their remaining conservative lifetime. A failed
+                // renewal retries no later than that either, so one transient error cannot outlast the lease; halving
+                // the remaining time bounds the attempts before expiry. An unconfirmed renewal keeps the retry interval.
                 var delay = retryInterval;
-                if (!failed && current != null &&
-                    (previousDeadline == null || current.Deadline > previousDeadline.Value))
+                if (current != null && (failed || previousDeadline == null || current.Deadline > previousDeadline.Value))
                     delay = TimeSpan.FromTicks(Math.Min(delay.Ticks,
                         Math.Max(1, (current.Deadline - clock.Elapsed).Ticks / 2)));
                 var ready = new TaskCompletionSource();

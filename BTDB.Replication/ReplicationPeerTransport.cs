@@ -16,7 +16,8 @@ internal sealed record ReplicationPeerIdentity(string ClusterId, ulong Term, str
 /// its complete TRL bytes from there inline. A zero FileId asks for progress only.</summary>
 internal readonly record struct ReplicationPeerPollRequest(string Database, TransactionLogPosition From = default);
 
-/// <summary>Complete leader TRL bytes of one file returned inline with a poll.</summary>
+/// <summary>Complete leader TRL bytes of one file returned inline with a poll. A chunk of a later file follows only a
+/// chunk that ended its file, so the switch also tells the follower where that file ends.</summary>
 internal sealed record ReplicationPeerTrlChunk(uint FileId, uint Offset, ReadOnlyMemory<byte> Bytes);
 
 /// <summary>Published is the leader's confirmed canonical Blob cut for the database, null before its first publication.

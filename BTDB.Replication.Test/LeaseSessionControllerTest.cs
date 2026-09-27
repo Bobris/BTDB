@@ -93,6 +93,33 @@ public class LeaseSessionControllerTest
     }
 
     [Fact]
+    public async Task FailedRenewalRetriesBeforeTheLeaseExpiresEvenWithALongRetryInterval()
+    {
+        var clock = new DeterministicScheduler(506);
+        var storage = new Storage();
+        var controller = new LeaseSessionController(storage, clock.CreateScope("node"), 0, TimeSpan.Zero);
+        using var stop = new CancellationTokenSource();
+        var failures = 1;
+        storage.BeforeRenew = () => failures-- > 0 ? throw new System.IO.IOException("transient") : Task.CompletedTask;
+        LeaseAuthority? first = null;
+        // Without xUnit's context, continuations run inline inside the deterministic pump.
+        var context = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        Task run;
+        try
+        {
+            run = controller.RunAsync(TimeSpan.FromTicks(1000), current => first ??= current, stop.Token);
+            clock.AdvanceBy(TimeSpan.FromTicks(90));
+            Assert.Equal(2, storage.Renews); // The first renewal failed; the retry did not wait 1000 ticks.
+            Assert.Same(first, controller.Current);
+            Assert.Equal(1, storage.Acquires);
+            stop.Cancel();
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(context); }
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+    }
+
+    [Fact]
     public async Task LateRequestTimeoutAfterCompletedMaintenanceIsHarmless()
     {
         var clock = new LateCallbackScheduler();

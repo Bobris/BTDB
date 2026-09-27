@@ -10,10 +10,7 @@ namespace BTDBTest;
 // Local backing for tests which explicitly exercise replication semantics.
 sealed class LocalReplicatedCollection(IReplicationFileStorage inner) : IFileReplicatedCollection
 {
-    public ValueTask RefreshRemoteInventoryAsync(CancellationToken cancellation = default) => InitializeAsync(cancellation);
     public uint GetLocalFileId(uint remoteId) => remoteId;
-    public ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default) =>
-        throw new NotSupportedException("This test collection does not publish remote files.");
     public ValueTask InitializeAsync(CancellationToken cancellation = default)
     {
         cancellation.ThrowIfCancellationRequested();
@@ -31,7 +28,6 @@ sealed class LocalReplicatedCollection(IReplicationFileStorage inner) : IFileRep
         file.AdvisePrefetch();
         return ValueTask.CompletedTask;
     }
-    public uint GetRemoteCount() => inner.GetCount();
     public IFileCollectionFile? GetRemoteFile(uint id) => inner.GetFile(id);
     public IEnumerable<IFileCollectionFile> RemoteEnumerate() => inner.Enumerate();
     public IFileCollectionFile AddFile(string hint) => inner.AddFile(hint);

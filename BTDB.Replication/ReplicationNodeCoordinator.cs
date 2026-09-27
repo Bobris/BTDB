@@ -17,7 +17,20 @@ public enum ReplicationNodeRole { Restoring, Follower, Activating, Leader, Resta
 /// requesting a restart.</summary>
 public sealed record ReplicationNodeOptions(string ClusterId, string Endpoint, TimeSpan PollInterval,
     TimeSpan LeaseRetryInterval, TimeSpan RequestTimeout, TimeSpan ConfirmationDuration, ulong ApplicationGeneration, TimeSpan? CompactionInterval = null,
-    ReplicationProgressTimeouts? ProgressTimeouts = null, TimeSpan? DetachedLeaderTimeout = null);
+    ReplicationProgressTimeouts? ProgressTimeouts = null, TimeSpan? DetachedLeaderTimeout = null)
+{
+    internal TimeSpan EffectiveCompactionInterval => CompactionInterval ?? TimeSpan.FromMinutes(5);
+    internal TimeSpan EffectiveDetachedLeaderTimeout => DetachedLeaderTimeout ?? TimeSpan.FromMinutes(15);
+
+    internal void Validate()
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ClusterId);
+        foreach (var duration in new[] { PollInterval, LeaseRetryInterval, RequestTimeout, ConfirmationDuration,
+                     EffectiveCompactionInterval, EffectiveDetachedLeaderTimeout })
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(duration.Ticks);
+        ProgressTimeouts?.Validate();
+    }
+}
 
 /// <summary>Application-owned restore, event progress and lifecycle integration. Databases and input processing
 /// remain owned by the host. Callbacks may run concurrently with local application work; publish progress atomically.
@@ -109,11 +122,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
 
     public async Task RunAsync(CancellationToken cancellation)
     {
-        var detachedTimeout = options.DetachedLeaderTimeout ?? TimeSpan.FromMinutes(15);
-        foreach (var duration in new[] { options.PollInterval, options.LeaseRetryInterval, options.RequestTimeout,
-                     options.ConfirmationDuration, options.CompactionInterval ?? TimeSpan.MaxValue, detachedTimeout })
-            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(duration.Ticks);
-        options.ProgressTimeouts?.Validate();
+        options.Validate();
+        var detachedTimeout = options.EffectiveDetachedLeaderTimeout;
         if (options.ProgressTimeouts != null && host is not IReplicationFatalRecovery)
             throw new ArgumentException("Progress deadlines require a host implementing IReplicationFatalRecovery.");
         using var shutdown = cancellation.Register(StopWatchdogs);
@@ -296,6 +306,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             for (var i = 0; i < publishers.Count; i++)
                 publications[i] = publishers[i].PublishNextAsync(true, cancellation).AsTask();
             await ((Task)Task.WhenAll(publications)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            // Observe every failure; only the first one propagates below.
+            foreach (var publication in publications) _ = publication.Exception;
             var lost = false;
             for (var i = 0; i < publishers.Count; i++)
             {
@@ -306,7 +318,6 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             }
             if (lost)
             {
-                foreach (var publication in publications) _ = publication.Exception;
                 authority.Fence();
                 DropLeadership();
                 return;
@@ -353,7 +364,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 var name = database.Name;
                 _followers.Add(name, new(database.Database.FileCollection.GetFile, database.Capture, reader,
                     () => Restart("Follower native history diverged from its selected leader."),
-                    _resumeComparison.GetValueOrDefault(name, canonical), acknowledge: false, () => host.GetProgress(name)));
+                    _resumeComparison.GetValueOrDefault(name, canonical), () => host.GetProgress(name)));
             }
         }
         if (!await PollLeaderAsync(databases, cancellation).ConfigureAwait(false)) return;
@@ -380,7 +391,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         foreach (var (name, follower) in _followers)
         {
             var reader = _leaderReaders[name];
-            var from = reader.Available >= InlineBudget ? reader.ContiguousEnd(follower.ResumePosition!.Value) : default;
+            var from = reader.Available >= InlineBudget ? reader.ContiguousEnd(follower.ResumePosition) : default;
             polled.Add(new(name, from));
             followers[index++] = (name, follower);
         }
@@ -416,14 +427,14 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             }
             try
             {
-                if (status.Chunks is { } chunks) leaderReader.Retain(chunks);
+                if (status.Chunks is { } chunks) leaderReader.Retain(polled[i].From, chunks);
                 if (status.Progress is { } progress) follower.NotifyProgress(progress);
                 await follower.CompareLatestAsync(cancellation).ConfigureAwait(false);
             }
             finally
             {
                 // Keep bytes a lagging comparison still needs for a later step.
-                if (_followers.ContainsKey(name)) leaderReader.Release(follower.ResumePosition!.Value);
+                if (_followers.ContainsKey(name)) leaderReader.Release(follower.ResumePosition);
             }
             if (_restart) return false;
             if (status.Published is { } published && follower.ComparedPosition is { } compared)
@@ -485,7 +496,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
 
     async Task RunLocalMaintenanceAsync(IReadOnlyList<ActivationDatabase> databases, CancellationToken cancellation)
     {
-        var interval = options.CompactionInterval ?? TimeSpan.FromMinutes(5);
+        var interval = options.EffectiveCompactionInterval;
         while (true)
         {
             var ready = new TaskCompletionSource();
@@ -562,7 +573,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         foreach (var (name, follower) in _followers)
         {
             follower.Close();
-            if (follower.ResumePosition is { } resume) _resumeComparison[name] = resume;
+            _resumeComparison[name] = follower.ResumePosition;
         }
         _followers.Clear();
         _leaderReaders.Clear();

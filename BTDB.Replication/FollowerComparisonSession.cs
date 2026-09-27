@@ -19,17 +19,13 @@ public readonly record struct LeaderTrlProgress(ulong EventId, uint TrlFileId, u
 /// </summary>
 internal sealed class FollowerComparisonSession(
     Func<uint, IFileCollectionFile?> getFile, TransactionLogCapture capture, ILeaderTrlReader leader,
-    Action requestRestart, TransactionLogPosition? compareFrom = null, bool acknowledge = true,
-    Func<LeaderTrlProgress?>? localProgress = null)
+    Action requestRestart, TransactionLogPosition compareFrom, Func<LeaderTrlProgress?>? localProgress = null)
 {
-    public FollowerComparisonSession(IFileCollection local, TransactionLogCapture capture, ILeaderTrlReader leader,
-        Action requestRestart, TransactionLogPosition? compareFrom = null)
-        : this(local.GetFile, capture, leader, requestRestart, compareFrom) { }
-
     readonly object _lock = new();
+    // Serializes comparisons; the comparer itself is not thread-safe.
     readonly SemaphoreSlim _lane = new(1);
     readonly CancellationTokenSource _closedCancellation = new();
-    readonly TrlPrefixComparer _comparer = new(getFile, capture, compareFrom, acknowledge);
+    readonly TrlPrefixComparer _comparer = new(getFile, capture, compareFrom);
     LeaderTrlProgress? _latest, _compared;
     TransactionLogPosition? _comparedPosition;
     bool _closed;
@@ -41,7 +37,7 @@ internal sealed class FollowerComparisonSession(
     public TransactionLogPosition? ComparedPosition { get { lock (_lock) return _comparedPosition; } }
 
     // Owner reads this after Close to resume comparison with the same leader session; the lane has stopped by then.
-    internal TransactionLogPosition? ResumePosition => _comparer.Position;
+    internal TransactionLogPosition ResumePosition => _comparer.Position;
 
     public void NotifyProgress(LeaderTrlProgress progress)
     {

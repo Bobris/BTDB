@@ -24,6 +24,8 @@ public sealed class AzureReplicationStorage : IReplicationStorage
 {
     readonly BlobContainerClient container;
     readonly string prefix;
+    // "{prefix}/": maintenance lists this whole namespace, so it must never be shared with another database.
+    readonly string root;
     readonly CanonicalTrlInventory? canonical;
     readonly LeaseAuthority? authority;
     readonly TimeProvider timeProvider;
@@ -35,6 +37,9 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     {
         this.container = container ?? throw new ArgumentNullException(nameof(container));
         this.prefix = prefix ?? throw new ArgumentNullException(nameof(prefix));
+        if (prefix.TrimEnd('/').Length == 0)
+            throw new ArgumentException("A database needs its own nonempty prefix; cleanup lists everything below it.", nameof(prefix));
+        root = prefix.TrimEnd('/') + "/";
         this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -62,10 +67,16 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     // metadata atomically.
     const int BlockSize = 4 * 1024 * 1024;
     const int MaxTrailingBlocks = 64;
+
+    // The committed block list of this adapter's latest canonical TRL commit. The publisher's next append expects
+    // exactly that version, so it skips re-reading the list; a stale entry only fails that append's CAS.
+    sealed record CommittedBlocks(string Key, string Token, (string Name, long Size)[] Blocks);
+    volatile CommittedBlocks? _lastCommit;
+
     BlockBlobClient Blob(string key)
     {
         TrlMetadata.Validate(new(key, 1));
-        return container.GetBlockBlobClient(string.IsNullOrEmpty(prefix) ? key : prefix.TrimEnd('/') + "/" + key);
+        return container.GetBlockBlobClient(root + key);
     }
 
     public async ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken cancellation)
@@ -105,7 +116,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     {
         var blob = Blob(write.Key);
         var conditions = new BlobRequestConditions();
-        var ids = new List<string>();
+        var blocks = new List<(string Name, long Size)>();
         ulong offset = 0;
         var commitDispatched = false;
         try
@@ -113,24 +124,28 @@ public sealed class AzureReplicationStorage : IReplicationStorage
             if (write.ExpectedToken is { } token)
             {
                 conditions.IfMatch = new ETag(token);
-                var blocks = await blob.GetBlockListAsync(BlockListTypes.Committed, cancellationToken: cancellation)
-                    .ConfigureAwait(false);
-                if (blocks.GetRawResponse().Headers.ETag?.ToString().Trim('"') != token.Trim('"')) return new(TrlWriteOutcome.Rejected);
-                if (blocks.Value.CommittedBlocks.Sum(b => b.SizeLong) != write.ExpectedLength)
-                    return new(TrlWriteOutcome.Rejected);
-                var committed = blocks.Value.CommittedBlocks.ToList();
+                (string Name, long Size)[] committed;
+                if (_lastCommit is { } cached && cached.Key == write.Key && cached.Token == token) committed = cached.Blocks;
+                else
+                {
+                    var list = await blob.GetBlockListAsync(BlockListTypes.Committed, cancellationToken: cancellation)
+                        .ConfigureAwait(false);
+                    if (list.GetRawResponse().Headers.ETag?.ToString().Trim('"') != token.Trim('"')) return new(TrlWriteOutcome.Rejected);
+                    committed = list.Value.CommittedBlocks.Select(b => (b.Name, b.SizeLong)).ToArray();
+                }
+                if (committed.Sum(b => b.Size) != (long)write.ExpectedLength) return new(TrlWriteOutcome.Rejected);
                 var fullBlocks = 0;
-                while (fullBlocks < committed.Count && committed[fullBlocks].SizeLong == BlockSize) fullBlocks++;
-                var trailingBytes = committed.Skip(fullBlocks).Sum(b => b.SizeLong);
+                while (fullBlocks < committed.Length && committed[fullBlocks].Size == BlockSize) fullBlocks++;
+                var trailingBytes = committed.Skip(fullBlocks).Sum(b => b.Size);
                 // Metadata-only adoption keeps every block. A merge restages the trailing bytes from the caller's
                 // verified native prefix.
                 var kept = write.Length == write.ExpectedLength ||
-                           (committed.Count - fullBlocks < MaxTrailingBlocks && (ulong)trailingBytes + write.AppendLength < BlockSize)
-                    ? committed.Count : fullBlocks;
+                           (committed.Length - fullBlocks < MaxTrailingBlocks && (ulong)trailingBytes + write.AppendLength < BlockSize)
+                    ? committed.Length : fullBlocks;
                 for (var i = 0; i < kept; i++)
                 {
-                    ids.Add(committed[i].Name);
-                    offset += (ulong)committed[i].SizeLong;
+                    blocks.Add(committed[i]);
+                    offset += (ulong)committed[i].Size;
                 }
             }
             else
@@ -149,19 +164,20 @@ public sealed class AzureReplicationStorage : IReplicationStorage
                     var id = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
                     using var stream = new MemoryStream(buffer, 0, count, false);
                     await blob.StageBlockAsync(id, stream, cancellationToken: cancellation).ConfigureAwait(false);
-                    ids.Add(id);
+                    blocks.Add((id, count));
                     offset += (uint)count;
                 }
             }
             finally { ArrayPool<byte>.Shared.Return(buffer); }
             commitDispatched = true;
-            var result = await blob.CommitBlockListAsync(ids, new CommitBlockListOptions
+            var result = await blob.CommitBlockListAsync(blocks.Select(b => b.Name), new CommitBlockListOptions
             {
                 Conditions = conditions,
                 Metadata = new Dictionary<string, string>(write.Metadata.Encode()) { ["btdb_file_id"] = write.FileId.ToString(System.Globalization.CultureInfo.InvariantCulture) }
             }, cancellation).ConfigureAwait(false);
-            return new(TrlWriteOutcome.Applied,
-                new(result.Value.ETag.ToString(), write.Length, write.Metadata));
+            var applied = result.Value.ETag.ToString();
+            _lastCommit = new(write.Key, applied, blocks.ToArray());
+            return new(TrlWriteOutcome.Applied, new(applied, write.Length, write.Metadata));
         }
         catch (RequestFailedException error) when (error.Status is 404 or 409 or 412)
         { return new(TrlWriteOutcome.Rejected); }
@@ -171,7 +187,20 @@ public sealed class AzureReplicationStorage : IReplicationStorage
             throw new IOException("Azure canonical TRL staging failed.", error);
         }
     }
-    string Directory => string.IsNullOrEmpty(prefix) ? "files/" : prefix.TrimEnd('/') + "/files/";
+    string Directory => root + "files/";
+
+    // Immutable files are "{id}.pvl" or "{id}.kvi" with a nonzero decimal ID; anything else is ignored.
+    static bool TryParseFileName(string name, out uint id, out KVFileType type)
+    {
+        var dot = name.LastIndexOf('.');
+        type = dot <= 0 ? KVFileType.Unknown : name[dot..] switch
+        {
+            ".pvl" => KVFileType.PureValues, ".kvi" => KVFileType.KeyIndex, _ => KVFileType.Unknown
+        };
+        id = 0;
+        return type != KVFileType.Unknown &&
+               uint.TryParse(name.AsSpan(0, dot), NumberStyles.None, CultureInfo.InvariantCulture, out id) && id != 0;
+    }
     BlockBlobClient Blob(uint id, string extension) => container.GetBlockBlobClient(Directory + id.ToString(CultureInfo.InvariantCulture) + extension);
 
     public async IAsyncEnumerable<RemoteFile> EnumerateAsync([EnumeratorCancellation] CancellationToken cancellation)
@@ -179,18 +208,11 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         await foreach (var file in Inventory.EnumerateAsync(cancellation).ConfigureAwait(false)) yield return file;
         await foreach (var blob in ListAsync(Directory, cancellation).ConfigureAwait(false))
         {
-            var name = blob.Name[Directory.Length..];
-            var dot = name.LastIndexOf('.');
-            if (dot <= 0 || !uint.TryParse(name.AsSpan(0, dot), NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id == 0)
-                continue;
-            var type = name[dot..] switch { ".pvl" => KVFileType.PureValues, ".kvi" => KVFileType.KeyIndex, _ => KVFileType.Unknown };
-            if (type == KVFileType.Unknown) continue;
+            if (!TryParseFileName(blob.Name[Directory.Length..], out var id, out var type)) continue;
             yield return new(id, type, checked((ulong)blob.Properties.ContentLength!.Value),
                 blob.Properties.ETag!.Value.ToString(), true, blob.Metadata.TryGetValue("btdb_sha256", out var sha) ? sha : null);
         }
     }
-
-    string Root => string.IsNullOrEmpty(prefix) ? "" : prefix.TrimEnd('/') + "/";
 
     // Listing pages are remote requests too: transient failures must stay retryable I/O, never fatal SDK exceptions.
     async IAsyncEnumerable<BlobItem> ListAsync(string listPrefix, [EnumeratorCancellation] CancellationToken cancellation)
@@ -216,16 +238,13 @@ public sealed class AzureReplicationStorage : IReplicationStorage
 
     public async IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync([EnumeratorCancellation] CancellationToken cancellation)
     {
-        await foreach (var blob in ListAsync(Root, cancellation).ConfigureAwait(false))
+        await foreach (var blob in ListAsync(root, cancellation).ConfigureAwait(false))
         {
-            var key = blob.Name[Root.Length..];
+            var key = blob.Name[root.Length..];
             if (key.StartsWith("files/", StringComparison.Ordinal))
             {
-                var name = key[6..];
-                var dot = name.LastIndexOf('.');
-                if (dot <= 0 || !uint.TryParse(name.AsSpan(0, dot), NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id == 0) continue;
-                var type = name[dot..] switch { ".pvl" => KVFileType.PureValues, ".kvi" => KVFileType.KeyIndex, _ => KVFileType.Unknown };
-                if (type != KVFileType.Unknown) yield return new(key, id, type, blob.Properties.ETag!.Value.ToString(), false, DeletionTime(blob.Metadata));
+                if (TryParseFileName(key[6..], out var id, out var type))
+                    yield return new(key, id, type, blob.Properties.ETag!.Value.ToString(), false, DeletionTime(blob.Metadata));
             }
             else if (blob.Metadata.ContainsKey("btdb_term") && blob.Metadata.TryGetValue("btdb_file_id", out var value) &&
                      uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id != 0)
@@ -246,7 +265,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         ArgumentOutOfRangeException.ThrowIfNegative(delay.Ticks);
         TrlMetadata.Validate(new(file.Key, file.FileId));
         RequireAuthority(cancellation);
-        var blob = container.GetBlobClient(Root + file.Key);
+        var blob = container.GetBlobClient(root + file.Key);
         try
         {
             var properties = (await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false)).Value;
@@ -271,6 +290,8 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         {
             var properties = (await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false)).Value;
             if (properties.ETag.ToString().Trim('"') != file.Version.Trim('"')) throw new IOException("Retained file changed during protection.");
+            // Rewriting unmarked metadata would only change the version that restores and validations read by.
+            if (DeletionTime(properties.Metadata) == null) return;
             var metadata = new Dictionary<string, string>(properties.Metadata);
             metadata.Remove(DeleteAfterKey);
             RequireAuthority(cancellation);
@@ -287,7 +308,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         TrlMetadata.Validate(new(file.Key, file.FileId));
         RequireAuthority(cancellation);
         if (file.DeleteAfter is not { } due || timeProvider.GetUtcNow() < due) return;
-        var blob = container.GetBlobClient(Root + file.Key);
+        var blob = container.GetBlobClient(root + file.Key);
         try
         {
             var properties = (await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false)).Value;
@@ -309,10 +330,8 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         TrlSuccessor? root = null;
         await foreach (var blob in ListAsync(Directory, cancellation).ConfigureAwait(false))
         {
-            var name = blob.Name[Directory.Length..];
-            if (!name.EndsWith(".kvi", StringComparison.Ordinal) ||
-                !uint.TryParse(name.AsSpan(0, name.Length - 4), NumberStyles.None, CultureInfo.InvariantCulture, out var id) ||
-                id <= latest) continue;
+            if (!TryParseFileName(blob.Name[Directory.Length..], out var id, out var type) ||
+                type != KVFileType.KeyIndex || id <= latest) continue;
             latest = id;
             root = null;
             if (blob.Metadata.TryGetValue(RecoveryKey, out var key) && blob.Metadata.TryGetValue(RecoveryId, out var value) &&
@@ -402,17 +421,19 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         var first = snapshot.Sources.Where(s => s.FileType == KVFileType.TransactionLog).Select(s => s.FileId)
             .Append(snapshot.TransactionLogFileId).Min();
         var selected = await CanonicalTrlInventory.DiscoverAsync(this, Inventory.Root, cancellation).ConfigureAwait(false);
-        var root = selected.GetHead(first);
-        // A promoted follower may reference older sealed TRLs too. Protect the entire retained chain before
-        // publishing a KVI that depends on it; changing metadata versions defeats old in-flight GC marks/deletes.
+        var recoveryRoot = selected.GetHead(first);
+        // A promoted follower may reference older sealed TRLs too. Clear deletion marks on the retained chain before
+        // publishing a KVI that depends on it. Unmarked files keep their version, so concurrent restores reading
+        // them by ETag are not invalidated; a positive deletion delay keeps any late stale mark from becoming due
+        // before later cleanup of this leader clears it.
+        var marked = new Dictionary<string, RemoteMaintenanceFile>(StringComparer.Ordinal);
+        await foreach (var file in EnumerateMaintenanceAsync(cancellation).ConfigureAwait(false))
+            if (file.FileType == KVFileType.TransactionLog && file.DeleteAfter != null) marked[file.Key] = file;
         await foreach (var file in selected.EnumerateAsync(cancellation).ConfigureAwait(false))
-            if (file.FileId >= first && file.IsSealed)
-            {
-                var head = selected.GetHead(file.FileId);
-                await CancelDeletionAsync(new(head.Key, file.FileId, KVFileType.TransactionLog, head.State.Token), cancellation).ConfigureAwait(false);
-            }
+            if (file.FileId >= first && file.IsSealed && marked.TryGetValue(selected.GetHead(file.FileId).Key, out var mark))
+                await CancelDeletionAsync(mark, cancellation).ConfigureAwait(false);
         using var upload = new Upload(Blob(id, ".kvi"), authority, cancellation,
-            new Dictionary<string, string> { [RecoveryKey] = Convert.ToBase64String(Encoding.UTF8.GetBytes(root.Key)), [RecoveryId] = first.ToString(CultureInfo.InvariantCulture) });
+            new Dictionary<string, string> { [RecoveryKey] = Convert.ToBase64String(Encoding.UTF8.GetBytes(recoveryRoot.Key)), [RecoveryId] = first.ToString(CultureInfo.InvariantCulture) });
         // Native serialization is synchronous. Its bounded stream stages blocks on this publication lane,
         // without a local staging file, a second serializer or an application-commit dependency.
         using (var writer = new PositionLessStreamWriter(upload, () => { })) snapshot.WriteTo(writer, 0, map, cancellation);
@@ -423,8 +444,11 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         Dictionary<string, string>? extraMetadata = null) : IPositionLessStream
     {
         const int BlockSize = 4 * 1024 * 1024;
-        readonly byte[] _buffer = ArrayPool<byte>.Shared.Rent(BlockSize);
+        // Blocks staged concurrently; each staged block keeps its own pooled buffer until its request completes.
+        const int ParallelStages = 4;
+        byte[] _buffer = ArrayPool<byte>.Shared.Rent(BlockSize);
         readonly List<string> _blocks = new();
+        readonly Queue<(Task Stage, byte[] Buffer)> _staging = new();
         readonly IncrementalHash _hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         int _filled;
         ulong _length;
@@ -451,22 +475,37 @@ public sealed class AzureReplicationStorage : IReplicationStorage
             }
         }
 
+        // Callers write synchronously (native KVI serialization); only a full staging window waits.
         public void Flush()
         {
             if (_filled == 0) return;
             RequireAuthority();
+            if (_staging.Count == ParallelStages) Complete(_staging.Dequeue()).GetAwaiter().GetResult();
             var id = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
-            using var stream = new MemoryStream(_buffer, 0, _filled, false);
-            try { blob.StageBlock(id, stream, cancellationToken: cancellation); }
+            _staging.Enqueue((StageAsync(id, _buffer, _filled), _buffer));
+            _blocks.Add(id);
+            _buffer = ArrayPool<byte>.Shared.Rent(BlockSize);
+            _filled = 0;
+        }
+
+        async Task StageAsync(string id, byte[] buffer, int count)
+        {
+            using var stream = new MemoryStream(buffer, 0, count, false);
+            try { await blob.StageBlockAsync(id, stream, cancellationToken: cancellation).ConfigureAwait(false); }
             catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
             { throw new IOException("Azure immutable file staging failed.", error); }
-            _blocks.Add(id);
-            _filled = 0;
+        }
+
+        static async Task Complete((Task Stage, byte[] Buffer) staged)
+        {
+            try { await staged.Stage.ConfigureAwait(false); }
+            finally { ArrayPool<byte>.Shared.Return(staged.Buffer); }
         }
 
         public async ValueTask CommitAsync()
         {
             Flush();
+            while (_staging.TryDequeue(out var staged)) await Complete(staged).ConfigureAwait(false);
             RequireAuthority();
             var sha = Convert.ToHexString(_hash.GetHashAndReset());
             try
@@ -500,6 +539,16 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         public void SetSize(ulong size) { if (size != 0 || _length != 0) throw new NotSupportedException(); }
         public ulong GetSize() => _length;
         public void HardFlush() => Flush();
-        public void Dispose() { _hash.Dispose(); ArrayPool<byte>.Shared.Return(_buffer); }
+        public void Dispose()
+        {
+            // A failed upload still drains its outstanding requests before their buffers return to the pool.
+            while (_staging.TryDequeue(out var staged))
+            {
+                ((Task)staged.Stage).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
+                ArrayPool<byte>.Shared.Return(staged.Buffer);
+            }
+            _hash.Dispose();
+            ArrayPool<byte>.Shared.Return(_buffer);
+        }
     }
 }

@@ -35,11 +35,13 @@ success must never silently combine versions. Allocation uses refreshed remote i
 `IReplicationStorage` extends that boundary with confirmed PVL/TRL prerequisites and native KVI publication.
 
 `ReplicationFileSet` implements `IFileReplicatedCollection` exposed to BTDB. `GetCount`, `GetFile`, and `Enumerate`
-operate only on physical local cache/storage; `GetRemoteCount`, `GetRemoteFile`, and `RemoteEnumerate` expose the
+operate only on physical local cache/storage; `GetRemoteFile` and `RemoteEnumerate` expose the
 selected remote inventory after initialization. Remote handles are read-only and version-bound. Neither inventory
 lookup nor local lookup downloads a body. Local additions/deletions leave the remote inventory unchanged. After a complete successful listing, initialization removes local files without a selected remote mapping and retains
 only mapped files whose extension, then length, then locally calculated SHA-256 match remote metadata. Invalid or unverifiable
 cache files are removed without downloading replacements; prefetch reuses validated files without hashing again.
+Cached files are hashed in parallel within the download concurrency bound (1 GB from disk: 2.7 s serially, 1.1 s with
+four), and the inventory becomes visible only after the whole attempt succeeds.
 The collection uses `IKeyValueDBLogger` (the same instance may be passed to `KeyValueDBOptions.Logger`) to report
 why each local file is removed, including local/remote IDs and mismatched metadata. Downloads retain canonical native
 filename extensions so a verified cached file can pass subsequent startup validation. `GetLocalFileId` exposes memory-only session assignments; a fresh session loses
@@ -726,8 +728,8 @@ request cannot remove a replacement object at the same key. Production provider 
 
 ### Integration scope after simplification
 
-Fresh remote enumeration for an upload ID is distinct from `RefreshRemoteInventoryAsync`: the latter reconciles local
-mappings and clears receipt confirmations. Do not refresh local cache state before every upload. Session receipts and
+Fresh remote enumeration for an upload ID never refreshes local cache state; a confirmed PVL receipt is revalidated
+by protecting its object, and an absent object gets a fresh identity. Do not refresh local cache state before every upload. Session receipts and
 pending KVI arguments need no persisted journal; restart already revalidates cache and reconstructs remote state.
 
 A provider capability probe is qualification tooling, not a mandatory startup transaction sequence. Production still

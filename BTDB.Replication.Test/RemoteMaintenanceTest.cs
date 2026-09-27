@@ -91,6 +91,14 @@ public class RemoteMaintenanceTest
         }
     }
 
+    static async Task Change(BTreeKeyValueDB db, ulong eventId)
+    {
+        using var tr = await db.StartWritingTransaction(eventId);
+        using var cursor = tr.CreateCursor();
+        cursor.CreateOrUpdateKeyValue([201], [(byte)eventId]);
+        tr.Commit();
+    }
+
     static LeaseAuthority Lease(DeterministicScheduler clock)
     {
         var authority = new LeaseAuthority(clock.CreateScope("leader"), 0, TimeSpan.Zero);
@@ -113,7 +121,7 @@ public class RemoteMaintenanceTest
         await using var files = new ReplicationFileSet(local, storage);
         using var canonical = CheckpointPublisherTest.CreateCanonical(db, capture, storage.Inner, authority);
         using var maintenance = new ReplicationMaintenance(db, files, canonical, storage, authority,
-            clock.CreateScope("maintenance"), TimeSpan.FromTicks(1000), TimeSpan.Zero);
+            clock.CreateScope("maintenance"), TimeSpan.FromTicks(1000), TimeSpan.FromTicks(1));
         var expired = 0;
         maintenance.Watchdog = new(clock.CreateScope("watchdog"), TimeSpan.FromTicks(10), () => expired++);
         storage.Inner.FailKvi = !cleanup;
@@ -140,7 +148,7 @@ public class RemoteMaintenanceTest
         await using var files = new ReplicationFileSet(local, storage);
         using var canonical = CheckpointPublisherTest.CreateCanonical(db, capture, storage.Inner, authority);
         using var maintenance = new ReplicationMaintenance(db, files, canonical, storage, authority,
-            clock.CreateScope("maintenance"), TimeSpan.FromTicks(1000), TimeSpan.Zero);
+            clock.CreateScope("maintenance"), TimeSpan.FromTicks(1000), TimeSpan.FromTicks(1));
         var expired = 0;
         maintenance.Watchdog = new(clock.CreateScope("watchdog"), TimeSpan.FromTicks(10), () => expired++);
         await maintenance.RunDueAsync(default);
@@ -148,6 +156,7 @@ public class RemoteMaintenanceTest
         await maintenance.RunDueAsync(default);
         Assert.Equal(0, expired);
         clock.AdvanceBy(TimeSpan.FromTicks(1));
+        await Change(db, 100); // An unchanged database would skip the KVI export entirely.
         storage.HoldKvi = new();
         var running = maintenance.RunDueAsync(default).AsTask();
         try
@@ -224,8 +233,12 @@ public class RemoteMaintenanceTest
         using var storage = new Storage(authority, clock.CreateScope("storage"));
         storage.Add(2, KVFileType.PureValues);
         storage.Add(4, KVFileType.KeyIndex);
-        var gc = new RemoteGarbageCollector(storage, authority, TimeSpan.Zero);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RemoteGarbageCollector(storage, authority, TimeSpan.Zero));
+        var gc = new RemoteGarbageCollector(storage, authority, TimeSpan.FromTicks(1));
         storage.DelayDelete = true;
+        await gc.CollectAsync(new(4, 3, new HashSet<uint>()), default);
+        Assert.Null(storage.DelayedDelete); // Marked, not yet due.
+        clock.AdvanceBy(TimeSpan.FromTicks(1));
         await gc.CollectAsync(new(4, 3, new HashSet<uint>()), default);
         Assert.NotNull(storage.DelayedDelete);
         using var local = new InMemoryReplicationFileStorage();
@@ -255,7 +268,7 @@ public class RemoteMaintenanceTest
         await using var files = new ReplicationFileSet(local, storage);
         using var canonical = CheckpointPublisherTest.CreateCanonical(db, capture, storage.Inner, authority);
         using var maintenance = new ReplicationMaintenance(db, files, canonical, storage, authority,
-            clock.CreateScope("maintenance"), TimeSpan.FromTicks(10), TimeSpan.Zero);
+            clock.CreateScope("maintenance"), TimeSpan.FromTicks(10), TimeSpan.FromTicks(1));
         storage.Inner.FailKvi = true;
         await Assert.ThrowsAsync<IOException>(() => maintenance.RunDueAsync(default).AsTask());
         Assert.Empty(storage.Deleted);
@@ -265,8 +278,19 @@ public class RemoteMaintenanceTest
         Assert.All(storage.Inner.KviAttempts, id => Assert.Equal(intendedId, id));
         Assert.DoesNotContain(local.Enumerate(), f => local.GetFileType(f.Index) == KVFileType.KeyIndex);
         clock.AdvanceBy(TimeSpan.FromTicks(10));
+        var attempts = storage.Inner.KviAttempts.Count;
         await maintenance.RunDueAsync(default);
-        Assert.Contains(intendedId, storage.Deleted);
+        Assert.Equal(attempts, storage.Inner.KviAttempts.Count); // Unchanged: no second identical KVI.
+        Assert.DoesNotContain(intendedId, storage.Deleted);
+        await Change(db, 100);
+        clock.AdvanceBy(TimeSpan.FromTicks(10));
+        await maintenance.RunDueAsync(default);
+        Assert.DoesNotContain(intendedId, storage.Deleted); // Superseded and marked, but not yet due.
+        clock.AdvanceBy(TimeSpan.FromTicks(10));
+        attempts = storage.Inner.KviAttempts.Count;
+        await maintenance.RunDueAsync(default);
+        Assert.Equal(attempts, storage.Inner.KviAttempts.Count);
+        Assert.Contains(intendedId, storage.Deleted); // An unchanged database still collects due deletions.
         using var cache = new InMemoryReplicationFileStorage();
         await using var restoredFiles = new ReplicationFileSet(cache, storage);
         await restoredFiles.InitializeAsync();

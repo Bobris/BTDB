@@ -10,9 +10,6 @@ namespace BTDB.KVDBLayer;
 /// Collections requiring discovery must throw InvalidOperationException on premature access, never appear empty.
 public interface IFileReplicatedCollection : IFileCollection
 {
-    /// Number of files in the remote inventory discovered by InitializeAsync, independent of local cache contents.
-    uint GetRemoteCount();
-
     /// Read-only remote file handle, or null when absent. Lookup does not populate the local cache.
     IFileCollectionFile? GetRemoteFile(uint index);
 
@@ -22,12 +19,6 @@ public interface IFileReplicatedCollection : IFileCollection
     /// Translate a remote inventory ID to its session-local ID, including files not downloaded yet.
     /// The assignment remains stable for this session; implementations may use identity mappings.
     uint GetLocalFileId(uint remoteFileId);
-
-    /// Leader-only publication of a complete sealed local PVL pinned by the caller's snapshot.
-    /// Return its confirmed remote ID, reusing an existing verified publication or allocating/uploading a new one.
-    /// Remember the session mapping only after upload confirmation; retry an uncertain upload with the same reserved ID.
-    /// The owner supplies a fenced remote adapter and serializes publication calls. Local compaction itself never calls this.
-    ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default);
 
     /// Allocate a fresh identity from an independent sequence for the requested parity, without creating intermediate files.
     /// Any allocates above both sequences.
@@ -39,13 +30,6 @@ public interface IFileReplicatedCollection : IFileCollection
     /// Repeated initialization must preserve files created in the initialized session.
     /// OpenAsync and PrefetchAsync never invoke initialization. Already-ready collections must implement initialization explicitly.
     ValueTask InitializeAsync(CancellationToken cancellation = default);
-
-    /// Refresh remote membership and versions before admitting writes after a leader transition.
-    /// Requires initialization. The owner must quiesce file operations and discard old remote handles first.
-    /// Publish the complete listing atomically; failed/canceled discovery leaves the previous listing visible.
-    /// Preserve session mappings and local files, including unpublished compaction output. No startup cleanup.
-    /// This refresh does not recover database state or establish leadership; the owner must do both separately.
-    ValueTask RefreshRemoteInventoryAsync(CancellationToken cancellation = default);
 
     /// Validate/download the selected remote file into local storage before GetFile is used.
     /// An unselected local file must never substitute for a missing remote file.

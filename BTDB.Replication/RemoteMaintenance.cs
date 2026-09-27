@@ -18,7 +18,9 @@ internal sealed record PublishedCheckpoint(uint FileId, uint ReplayFromFileId, I
 internal sealed class RemoteGarbageCollector(IReplicationStorage storage, LeaseAuthority authority,
     TimeSpan deletionDelay)
 {
-    readonly TimeSpan _deletionDelay = deletionDelay >= TimeSpan.Zero ? deletionDelay
+    // Positive (production assumes at least a day), so a fenced predecessor's in-flight mark cannot become due
+    // before this leader protects the file; unmarked files are then never rewritten merely to change their version.
+    readonly TimeSpan _deletionDelay = deletionDelay > TimeSpan.Zero ? deletionDelay
         : throw new ArgumentOutOfRangeException(nameof(deletionDelay));
 
     public async ValueTask CollectAsync(PublishedCheckpoint checkpoint, CancellationToken cancellation, Action<int, int>? progress = null)
@@ -72,6 +74,8 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
     readonly CheckpointPublisher _checkpoints = new(files, canonical, storage);
     readonly RemoteGarbageCollector _garbage = new(storage, authority, deletionDelay);
     KeyIndexSnapshot? _pending;
+    // Cut and source files of the last published checkpoint. An unchanged database would export the same KVI again.
+    (uint FileId, ulong Length)[]? _publishedSources;
     readonly TimeSpan _interval = interval > TimeSpan.Zero ? interval
         : throw new ArgumentOutOfRangeException(nameof(interval));
     TimeSpan _next;
@@ -94,9 +98,15 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
                 Watchdog?.Observe(null);
                 return;
             }
-            var result = await _checkpoints.PublishAsync(_pending, cancellation, true,
-                Watchdog == null ? null : (step, item) => Watchdog.Observe((1, step, item))).ConfigureAwait(false);
-            if (result != CheckpointPublishResult.Published) return;
+            var sources = Sources(_pending);
+            // Unchanged since the published checkpoint: skip the export, but still collect so due deletions happen.
+            if (_publishedSources == null || !sources.AsSpan().SequenceEqual(_publishedSources))
+            {
+                var result = await _checkpoints.PublishAsync(_pending, cancellation, true,
+                    Watchdog == null ? null : (step, item) => Watchdog.Observe((1, step, item))).ConfigureAwait(false);
+                if (result != CheckpointPublishResult.Published) return;
+                _publishedSources = sources;
+            }
             _pending.Dispose();
             _pending = null;
             _collecting = true;
@@ -116,6 +126,9 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
                 await publishLeakEvent(candidates, cancellation).ConfigureAwait(false);
         }
     }
+
+    static (uint FileId, ulong Length)[] Sources(KeyIndexSnapshot snapshot) =>
+        [(snapshot.TransactionLogFileId, snapshot.TransactionLogOffset), .. snapshot.Sources.Select(s => (s.FileId, s.Length))];
 
     public void Dispose() { Watchdog?.Dispose(); _pending?.Dispose(); _pending = null; }
 }

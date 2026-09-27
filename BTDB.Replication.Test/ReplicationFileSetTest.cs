@@ -13,40 +13,7 @@ namespace BTDB.Replication.Test;
 public class ReplicationFileSetTest
 {
     [Fact]
-    public async Task RefreshReplacesInventoryAndVersionsWithoutDeletingLocalFiles()
-    {
-        using var local = new InMemoryReplicationFileStorage();
-        using var remote = new CheckpointPublisherTest.Storage();
-        AddRemote(remote, 2, [1]);
-        AddRemote(remote, 4, [2]);
-        await using var files = new ReplicationFileSet(local, remote);
-        await files.InitializeAsync();
-        await files.PrefetchAsync(2);
-        await files.PrefetchAsync(4);
-        var removedLocal = local.GetFile(files.GetLocalFileId(4));
-        var unpublished = Add(local, 6, [9]);
-        remote.Files.GetFile(2).Remove();
-        remote.Types.Remove(2);
-        AddRemote(remote, 2, [3, 4]);
-        remote.Files.GetFile(4).Remove();
-        AddRemote(remote, 6, [5]);
-        await files.RefreshRemoteInventoryAsync();
-        Assert.Equal(2u, files.GetRemoteCount());
-        Assert.Null(files.GetRemoteFile(4));
-        Assert.Equal(2ul, files.GetRemoteFile(2)!.GetSize());
-        Assert.Same(removedLocal, local.GetFile(4));
-        Assert.Same(unpublished, local.GetFile(6));
-        Assert.NotEqual(6u, files.GetLocalFileId(6));
-        await files.PrefetchAsync(2);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => files.PrefetchAsync(6).AsTask());
-        var bytes = new byte[2];
-        local.GetFile(2).RandomRead(bytes, 0, false);
-        Assert.Equal(new byte[] { 3, 4 }, bytes);
-        Assert.Same(unpublished, local.GetFile(6));
-    }
-
-    [Fact]
-    public async Task RefreshDropsRetiredPublicationInsteadOfRecreatingItsKey()
+    public async Task RetiredPublicationGetsAFreshIdentityInsteadOfRecreatingItsKey()
     {
         using var local = new InMemoryReplicationFileStorage();
         using var remote = new CheckpointPublisherTest.Storage();
@@ -59,31 +26,53 @@ public class ReplicationFileSetTest
         var first = await files.PublishPureValuesAsync(Source(pvl));
         remote.Files.GetFile(first)!.Remove();
         remote.Types.Remove(first);
-        await files.RefreshRemoteInventoryAsync();
         var second = await files.PublishPureValuesAsync(Source(pvl));
         Assert.NotEqual(first, second);
         Assert.Equal(new[] { first, second }, remote.PvlAttempts);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task FailedRefreshKeepsPreviousInventory(bool canceled)
+    sealed class FailingReadStorage : InMemoryReplicationFileStorage
     {
-        using var local = new InMemoryReplicationFileStorage();
+        public uint? FailReads;
+        public override IFileCollectionFile GetFile(uint index) =>
+            index == FailReads && base.GetFile(index) is { } file ? new FailingFile(file) : base.GetFile(index);
+    }
+
+    sealed class FailingFile(IFileCollectionFile inner) : IFileCollectionFile
+    {
+        public uint Index => inner.Index;
+        public IMemReader GetExclusiveReader() => inner.GetExclusiveReader();
+        public void AdvisePrefetch() => inner.AdvisePrefetch();
+        public void RandomRead(Span<byte> data, ulong position, bool doNotCache) =>
+            throw new InvalidOperationException("Local read failed.");
+        public IMemWriter GetAppenderWriter() => inner.GetAppenderWriter();
+        public IMemWriter GetExclusiveAppenderWriter() => inner.GetExclusiveAppenderWriter();
+        public void HardFlush() => inner.HardFlush();
+        public void HardFlushTruncateSwitchToReadOnlyMode() => inner.HardFlushTruncateSwitchToReadOnlyMode();
+        public void HardFlushTruncateSwitchToDisposedMode() => inner.HardFlushTruncateSwitchToDisposedMode();
+        public ulong GetSize() => inner.GetSize();
+        public void Remove() => inner.Remove();
+    }
+
+    [Fact]
+    public async Task FailedInitializationPublishesNoPartialInventory()
+    {
+        using var local = new FailingReadStorage();
         using var remote = new CheckpointPublisherTest.Storage();
         AddRemote(remote, 2, [1]);
-        await using var files = new ReplicationFileSet(local, remote);
-        await files.InitializeAsync();
-        var previous = files.GetRemoteFile(2);
-        remote.BeforeEnumerate = _ => throw (canceled ? new OperationCanceledException() : new IOException());
-        await Assert.ThrowsAnyAsync<Exception>(() => files.RefreshRemoteInventoryAsync().AsTask());
-        Assert.Same(previous, files.GetRemoteFile(2));
-        Assert.Equal(1u, files.GetRemoteCount());
-        remote.BeforeEnumerate = null;
         AddRemote(remote, 4, [2]);
-        await files.RefreshRemoteInventoryAsync();
-        Assert.Equal(2u, files.GetRemoteCount());
+        Add(local, 2, [1]);
+        Add(local, 4, [2]);
+        await using var files = new ReplicationFileSet(local, remote);
+        local.FailReads = 4;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => files.InitializeAsync().AsTask());
+        remote.Files.GetFile(2).Remove();
+        remote.Types.Remove(2);
+        local.FailReads = null;
+        await files.InitializeAsync();
+        Assert.Null(files.GetRemoteFile(2)); // Removed remotely between the attempts.
+        Assert.NotNull(files.GetRemoteFile(4));
+        Assert.Single(files.RemoteEnumerate());
     }
 
     static IFileCollectionFile Add(InMemoryReplicationFileStorage files, uint id, byte[] bytes, string hint = "pvl")
@@ -241,7 +230,7 @@ public class ReplicationFileSetTest
     }
 
     [Fact]
-    public async Task LeaderPublicationThroughCollectionRetriesSameRemoteIdAndRemembersMapping()
+    public async Task LeaderPublicationRetriesSameRemoteIdAndRemembersMapping()
     {
         using var local = new InMemoryReplicationFileStorage();
         using var remote = new CheckpointPublisherTest.Storage { FailPvl = true };
@@ -250,12 +239,12 @@ public class ReplicationFileSetTest
         await files.InitializeAsync();
         var source = Source(files.AddFile("pvl", FileIdParity.Even));
         IFileReplicatedCollection collection = files;
-        await Assert.ThrowsAsync<IOException>(() => collection.PublishPureValuesAsync(source).AsTask());
+        await Assert.ThrowsAsync<IOException>(() => files.PublishPureValuesAsync(source).AsTask());
         Assert.Throws<FileNotFoundException>(() => collection.GetLocalFileId(4));
         remote.FailPvl = false;
-        Assert.Equal(4u, await collection.PublishPureValuesAsync(source));
+        Assert.Equal(4u, await files.PublishPureValuesAsync(source));
         Assert.Equal(source.FileId, collection.GetLocalFileId(4));
-        Assert.Equal(4u, await collection.PublishPureValuesAsync(source));
+        Assert.Equal(4u, await files.PublishPureValuesAsync(source));
         Assert.Equal(new uint[] { 4, 4 }, remote.PvlAttempts); // Retry, but no third upload for the confirmed mapping.
     }
 
@@ -301,7 +290,7 @@ public class ReplicationFileSetTest
         Assert.Same(localFile, files.GetFile(100));
         Assert.Equal(1u, files.GetCount());
         Assert.Single(files.Enumerate());
-        Assert.Throws<InvalidOperationException>(() => files.GetRemoteCount());
+        Assert.Throws<InvalidOperationException>(() => files.RemoteEnumerate());
         Assert.Throws<InvalidOperationException>(() => files.GetRemoteFile(2));
         Assert.Throws<InvalidOperationException>(() => files.RemoteEnumerate());
         Assert.Throws<InvalidOperationException>(() => files.GetFileType(2));
@@ -318,7 +307,7 @@ public class ReplicationFileSetTest
 
         await files.InitializeAsync();
         Assert.Contains("local cache file 100: no corresponding file in the remote inventory", Assert.Single(logger.Messages));
-        Assert.Equal(emptyRemote ? 0u : 1u, files.GetRemoteCount());
+        Assert.Equal(emptyRemote ? 0u : 1u, (uint)files.RemoteEnumerate().Count());
         using var db = await BTreeKeyValueDB.OpenAsync(options);
         Assert.Same(logger, db.Logger);
         Assert.Equal(1, discoveries);
@@ -363,7 +352,7 @@ public class ReplicationFileSetTest
         using var cancellation = new CancellationTokenSource();
         var initialization = files.InitializeAsync(cancellation.Token).AsTask();
         await entered.Task;
-        Assert.Throws<InvalidOperationException>(() => files.GetRemoteCount());
+        Assert.Throws<InvalidOperationException>(() => files.RemoteEnumerate());
         await Assert.ThrowsAsync<InvalidOperationException>(() => files.PrefetchAsync(2).AsTask());
         await Assert.ThrowsAsync<InvalidOperationException>(() => BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         {
@@ -376,7 +365,7 @@ public class ReplicationFileSetTest
         Assert.Throws<InvalidOperationException>(() => files.RemoteEnumerate());
         remote.BeforeEnumerate = null;
         await files.InitializeAsync();
-        Assert.Equal(1u, files.GetRemoteCount());
+        Assert.Equal(1u, (uint)files.RemoteEnumerate().Count());
         Assert.Null(files.GetFile(100));
         await files.PrefetchAsync(2);
         Assert.Equal(1ul, files.GetFile(2).GetSize());
@@ -397,7 +386,7 @@ public class ReplicationFileSetTest
         remote.BeforeRead = (_, _, _) => { reads++; return ValueTask.CompletedTask; };
 
         Assert.Equal(0u, files.GetCount());
-        Assert.Equal(2u, files.GetRemoteCount());
+        Assert.Equal(2u, (uint)files.RemoteEnumerate().Count());
         Assert.Empty(files.Enumerate());
         Assert.Equal(new uint[] { 2, 4 }, files.RemoteEnumerate().Select(f => f.Index).Order());
         Assert.Null(files.GetFile(2));
@@ -426,7 +415,7 @@ public class ReplicationFileSetTest
         files.GetFile(2).Remove();
         Assert.Null(files.GetFile(2));
         Assert.Same(selected, files.GetRemoteFile(2));
-        Assert.Equal(2u, files.GetRemoteCount());
+        Assert.Equal(2u, (uint)files.RemoteEnumerate().Count());
         await files.PrefetchAsync(2); // Eviction must not invalidate the remote handle or its download state.
         Assert.Equal(3ul, files.GetFile(2).GetSize());
 
@@ -436,7 +425,7 @@ public class ReplicationFileSetTest
         await files.InitializeAsync(); // Repeated initialization must not delete files created in this session.
         Assert.Same(created, files.GetFile(created.Index));
         Assert.Equal(2u, files.GetCount());
-        Assert.Equal(2u, files.GetRemoteCount());
+        Assert.Equal(2u, (uint)files.RemoteEnumerate().Count());
         Assert.Equal(new uint[] { 2, 4 }, files.RemoteEnumerate().Select(f => f.Index).Order());
     }
 
@@ -535,9 +524,9 @@ public class ReplicationFileSetTest
     [Fact]
     public async Task DownloadUsesBoundedParallelBlocksAndPreservesOrder()
     {
-        const int blockSize = 256 * 1024;
+        const int blockSize = ReplicationFileSet.DownloadBlockSize;
         using var local = new InMemoryReplicationFileStorage();
-        using var remote = new CheckpointPublisherTest.Storage { ReadChunkSize = 8192 };
+        using var remote = new CheckpointPublisherTest.Storage { ReadChunkSize = 256 * 1024 };
         var bytes = Enumerable.Range(0, blockSize * 5 + 17).Select(i => (byte)(i / blockSize + i % 251)).ToArray();
         var selected = AddRemote(remote, 2, bytes);
         var entered = Enumerable.Range(0, 4).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
@@ -589,7 +578,7 @@ public class ReplicationFileSetTest
     {
         using var local = new InMemoryReplicationFileStorage();
         using var remote = new CheckpointPublisherTest.Storage();
-        var selected = AddRemote(remote, 2, new byte[4 * 256 * 1024]);
+        var selected = AddRemote(remote, 2, new byte[4 * ReplicationFileSet.DownloadBlockSize]);
         var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         remote.BeforeRead = async (_, offset, ct) =>

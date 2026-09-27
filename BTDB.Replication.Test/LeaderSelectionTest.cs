@@ -53,6 +53,21 @@ public class LeaderSelectionTest
         Assert.Equal(1, storage.Writes);
     }
 
+    [Fact]
+    public async Task SameGenerationComparesDatabaseNamesAsASet()
+    {
+        var storage = new Storage();
+        storage.Record = new("1", """{"format":1,"clusterId":"cluster","term":7,"applicationGeneration":1,"databaseNames":["b","a"]}""");
+        var clock = new DeterministicScheduler(711);
+        var leases = new LeaseSessionController(storage, clock.CreateScope("node"), 0, TimeSpan.Zero);
+        var candidate = Candidate() with { DatabaseNames = ["a", "b"] };
+        var selected = await new LeaderSelection(storage, leases, (await leases.MaintainAsync())!, candidate).SelectAsync();
+        Assert.Equal(new[] { "a", "b" }, selected!.DatabaseNames);
+        storage.Record = new("9", """{"format":1,"clusterId":"cluster","term":8,"applicationGeneration":1,"databaseNames":["a","c"]}""");
+        var other = new LeaderSelection(storage, leases, leases.Current!, candidate with { SessionId = "another" });
+        await Assert.ThrowsAsync<InvalidDataException>(() => other.SelectAsync().AsTask());
+    }
+
     [Theory]
     [InlineData("""{"format":"1","clusterId":"cluster"}""")]
     [InlineData("""{"format":1,"clusterId":"cluster","term":"seven"}""")]

@@ -23,10 +23,10 @@ public class LeaderTrlReaderTest
         var grants = new ConfirmationGrants(scope, authority);
         var reader = new LeaderTrlReader(leader.Db, leader.Capture, authority);
         var reader2 = new LeaderTrlReader(leader.Db, leader.Capture, authority);
-        var follower1 = new FollowerComparisonSession(first.Files, first.Capture, reader,
-            () => Assert.Fail("Unexpected divergence"));
-        var follower2 = new FollowerComparisonSession(second.Files, second.Capture, reader2,
-            () => Assert.Fail("Unexpected divergence"));
+        var follower1 = new FollowerComparisonSession(first.Files.GetFile, first.Capture, reader,
+            () => Assert.Fail("Unexpected divergence"), first.Capture.Acknowledged);
+        var follower2 = new FollowerComparisonSession(second.Files.GetFile, second.Capture, reader2,
+            () => Assert.Fail("Unexpected divergence"), second.Capture.Acknowledged);
         for (ulong id = 1; id <= 8; id++)
         {
             await leader.Write(id, (byte)id);

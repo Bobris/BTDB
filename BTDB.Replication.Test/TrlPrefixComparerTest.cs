@@ -62,6 +62,9 @@ public class TrlPrefixComparerTest
         public void Dispose() { Db.Dispose(); Files.Dispose(); }
     }
 
+    static TrlPrefixComparer Comparer(Node follower) =>
+        new(follower.Files.GetFile, follower.Capture, follower.Capture.Acknowledged);
+
     internal sealed class LeaderReader(InMemoryReplicationFileStorage files) : ILeaderTrlReader, IDisposable
     {
         public int ReadChunkSize = int.MaxValue;
@@ -87,7 +90,7 @@ public class TrlPrefixComparerTest
     }
 
     [Fact]
-    public async Task MatchingNativeTransactionsAcrossFilesAndDifferentBatchesAdvanceOnlyAcknowledgement()
+    public async Task MatchingNativeTransactionsAcrossFilesAndDifferentBatchesLeaveTheDatabaseUnchanged()
     {
         using var leader = await Node.Create();
         using var follower = await Node.Create();
@@ -102,9 +105,9 @@ public class TrlPrefixComparerTest
         remote.ReadChunkSize = 17;
         using var before = follower.Db.StartReadOnlyTransaction();
         var visible = before.GetCommitUlong();
-        var comparer = new TrlPrefixComparer(follower.Files, follower.Capture);
+        var comparer = Comparer(follower);
         Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(remote, leader.Capture.Completed));
-        Assert.Equal(leader.Capture.Completed, follower.Capture.Acknowledged);
+        Assert.Equal(leader.Capture.Completed, comparer.MatchedThrough);
         using var after = follower.Db.StartReadOnlyTransaction();
         Assert.Equal(visible, after.GetCommitUlong());
         remote.BeforeRead = (_, _, _) => throw new InvalidOperationException("Duplicate progress must not read again.");
@@ -122,7 +125,7 @@ public class TrlPrefixComparerTest
         Assert.Equal(3u, leader.Capture.Completed.FileId);
         using var reader = leader.Reader();
         Assert.Equal(TrlCompareResult.Matched,
-            await new TrlPrefixComparer(follower.Files, follower.Capture).CompareAsync(reader, leader.Capture.Completed));
+            await Comparer(follower).CompareAsync(reader, leader.Capture.Completed));
     }
 
     [Theory]
@@ -140,7 +143,7 @@ public class TrlPrefixComparerTest
         }
         Assert.True(leader.Capture.Completed.FileId >= 5);
         using var reader = leader.Reader();
-        var comparer = new TrlPrefixComparer(follower.Files, follower.Capture, start);
+        var comparer = new TrlPrefixComparer(follower.Files.GetFile, follower.Capture, start);
         Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(reader, leader.Capture.Completed));
     }
 
@@ -163,14 +166,14 @@ public class TrlPrefixComparerTest
             if (++reads == 3) cancellation.Cancel(); // After two matched 256 KiB blocks.
             return ValueTask.CompletedTask;
         };
-        var comparer = new TrlPrefixComparer(follower.Files.GetFile, follower.Capture, start, acknowledge: false);
+        var comparer = new TrlPrefixComparer(follower.Files.GetFile, follower.Capture, start);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             comparer.CompareAsync(reader, leader.Capture.Completed, cancellation.Token).AsTask());
-        var resume = comparer.Position!.Value;
+        var resume = comparer.Position;
         Assert.True(resume.Offset > start.Offset);
         ulong firstOffset = ulong.MaxValue;
         reader.BeforeRead = (_, offset, _) => { firstOffset = Math.Min(firstOffset, offset); return ValueTask.CompletedTask; };
-        var resumed = new TrlPrefixComparer(follower.Files.GetFile, follower.Capture, resume, acknowledge: false);
+        var resumed = new TrlPrefixComparer(follower.Files.GetFile, follower.Capture, resume);
         Assert.Equal(TrlCompareResult.Matched, await resumed.CompareAsync(reader, leader.Capture.Completed));
         Assert.Equal(resume.Offset, firstOffset);
         Assert.Equal(start, follower.Capture.Acknowledged); // The owner decides which matched bytes are canonical.
@@ -187,15 +190,14 @@ public class TrlPrefixComparerTest
         await follower.Write(1, 1);
         await diverged.Write(1, 9);
         using var remote = leader.Reader();
-        var comparer = new TrlPrefixComparer(follower.Files, follower.Capture);
+        var comparer = Comparer(follower);
         Assert.Equal(TrlCompareResult.LocalBehind, await comparer.CompareAsync(remote, leader.Capture.Completed));
         Assert.Equal(follower.Capture.Completed, comparer.MatchedThrough);
-        Assert.Equal(follower.Capture.Completed, follower.Capture.Acknowledged);
         await follower.Write(2, 2);
         Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(remote, leader.Capture.Completed));
         Assert.Equal(leader.Capture.Completed, comparer.MatchedThrough);
         Assert.Equal(TrlCompareResult.Diverged,
-            await new TrlPrefixComparer(diverged.Files, diverged.Capture).CompareAsync(remote, leader.Capture.Completed));
+            await Comparer(diverged).CompareAsync(remote, leader.Capture.Completed));
     }
 
     [Fact]
@@ -205,13 +207,13 @@ public class TrlPrefixComparerTest
         using var follower = await Node.Create(false);
         await leader.Write(1, 1);
         using var remote = leader.Reader();
-        var comparer = new TrlPrefixComparer(follower.Files, follower.Capture);
+        var comparer = Comparer(follower);
         Assert.Equal(TrlCompareResult.LocalBehind, await comparer.CompareAsync(remote, leader.Capture.Completed));
         await follower.Write(1, 1);
         await follower.Write(2, 2);
         Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(remote, leader.Capture.Completed));
-        Assert.Equal(leader.Capture.Completed, follower.Capture.Acknowledged);
-        Assert.NotEqual(follower.Capture.Completed, follower.Capture.Acknowledged);
+        Assert.Equal(leader.Capture.Completed, comparer.MatchedThrough);
+        Assert.NotEqual(follower.Capture.Completed, comparer.MatchedThrough);
     }
 
     [Fact]
@@ -222,10 +224,9 @@ public class TrlPrefixComparerTest
         await leader.Write(1, 1);
         await follower.Write(1, 2);
         using var remote = leader.Reader();
-        var start = follower.Capture.Acknowledged;
-        var comparer = new TrlPrefixComparer(follower.Files, follower.Capture);
+        var comparer = Comparer(follower);
         Assert.Equal(TrlCompareResult.Diverged, await comparer.CompareAsync(remote, leader.Capture.Completed));
-        Assert.Equal(start, follower.Capture.Acknowledged);
+        Assert.Null(comparer.MatchedThrough);
         remote.BeforeRead = (_, _, _) => throw new InvalidOperationException("A divergent session cannot resume comparison.");
         Assert.Equal(TrlCompareResult.Diverged, await comparer.CompareAsync(remote, leader.Capture.Completed));
     }
@@ -237,43 +238,42 @@ public class TrlPrefixComparerTest
         using var follower = await Node.Create(false);
         await leader.Write(1, 1);
         await follower.Write(1, 1);
-        var comparer = new TrlPrefixComparer(follower.Files, follower.Capture);
+        var comparer = Comparer(follower);
         using (var first = leader.Reader())
             Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(first, leader.Capture.Completed));
-        var old = follower.Capture.Acknowledged;
+        var old = comparer.MatchedThrough;
         await leader.Write(1, 2);
         await follower.Write(1, 2);
         using var next = leader.Reader();
         Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(next, leader.Capture.Completed));
-        Assert.NotEqual(old, follower.Capture.Acknowledged);
+        Assert.NotEqual(old, comparer.MatchedThrough);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task LargePrefixUsesBoundedReadsAndDoesNotAcknowledgeBeforeTheLastBlock(bool corruptLast)
+    public async Task LargePrefixUsesBoundedReadsAndDoesNotMatchBeforeTheLastBlock(bool corruptLast)
     {
         using var leader = await Node.Create(false);
         using var follower = await Node.Create(false);
         await leader.Write(1, 7, size: 200000);
         await follower.Write(1, 7, size: 200000);
         using var remote = leader.Reader();
-        var start = follower.Capture.Acknowledged;
+        var comparer = Comparer(follower);
         var reads = 0;
         remote.BeforeRead = (_, offset, _) =>
         {
             reads++;
-            Assert.Equal(start, follower.Capture.Acknowledged);
+            Assert.Null(comparer.MatchedThrough);
             if (corruptLast && offset >= 128 * 1024) remote.CorruptRead = true;
             return ValueTask.CompletedTask;
         };
         // The adapter limits each actual read, exercising the comparison's short-read loop too.
         remote.ReadChunkSize = 32000;
-        var comparer = new TrlPrefixComparer(follower.Files, follower.Capture);
         Assert.Equal(corruptLast ? TrlCompareResult.Diverged : TrlCompareResult.Matched,
             await comparer.CompareAsync(remote, leader.Capture.Completed));
         Assert.True(reads > 4);
-        Assert.Equal(corruptLast ? start : leader.Capture.Completed, follower.Capture.Acknowledged);
+        Assert.Equal(corruptLast ? null : leader.Capture.Completed, comparer.MatchedThrough);
     }
 
     [Theory]
@@ -281,7 +281,7 @@ public class TrlPrefixComparerTest
     [InlineData("session")]
     [InlineData("truncated")]
     [InlineData("missing")]
-    public async Task InterruptedComparisonNeverAcknowledgesPartialPrefixAndCanRetry(string fault)
+    public async Task InterruptedComparisonNeverMatchesPartialPrefixAndCanRetry(string fault)
     {
         using var leader = await Node.Create();
         using var follower = await Node.Create();
@@ -291,8 +291,7 @@ public class TrlPrefixComparerTest
             await follower.Write(id, (byte)id);
         }
         using var remote = leader.Reader();
-        var start = follower.Capture.Acknowledged;
-        var comparer = new TrlPrefixComparer(follower.Files, follower.Capture);
+        var comparer = Comparer(follower);
         using var cancellation = new CancellationTokenSource();
         var readCount = 0;
         if (fault == "missing")
@@ -311,7 +310,7 @@ public class TrlPrefixComparerTest
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
                 comparer.CompareAsync(remote, leader.Capture.Completed, cancellation.Token).AsTask());
         else await Assert.ThrowsAnyAsync<IOException>(() => comparer.CompareAsync(remote, leader.Capture.Completed).AsTask());
-        Assert.Equal(start, follower.Capture.Acknowledged);
+        Assert.Null(comparer.MatchedThrough);
         using var fresh = leader.Reader();
         Assert.Equal(TrlCompareResult.Matched, await comparer.CompareAsync(fresh, leader.Capture.Completed));
     }

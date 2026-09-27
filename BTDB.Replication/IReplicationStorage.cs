@@ -26,7 +26,8 @@ public interface IReplicationStorage : IRemoteFileCollection
     ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken cancellation);
     ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken cancellation);
     /// <summary>The canonical publisher checks live authority before dispatch. The adapter enforces the expected
-    /// token and atomically installs bytes and term metadata; unbound adapters support bootstrap/adoption.</summary>
+    /// token and atomically installs bytes and term metadata; unbound adapters support bootstrap/adoption. An applied
+    /// write keeps the expected version's first ExpectedLength bytes, so reconciliation compares only the append.</summary>
     ValueTask<TrlWriteResult> WriteAsync(TrlWrite write, CancellationToken cancellation);
 
     ValueTask EnsurePureValuesAsync(uint remoteFileId, KeyIndexFileSource source, CancellationToken cancellation);

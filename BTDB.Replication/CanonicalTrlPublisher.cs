@@ -245,10 +245,11 @@ public sealed class CanonicalTrlPublisher : IDisposable
         if (observed == null || observed.Token == write.ExpectedToken) return (TrlPublishResult.Pending, null);
         if (observed.Length != write.Length || observed.Metadata != write.Metadata)
             return (TrlPublishResult.Conflict, null);
-        // Ambiguity is exceptional: compare the exact intended native prefix in bounded chunks, with no wire hashes.
+        // Ambiguity is exceptional: compare the intended appended bytes in bounded chunks, with no wire hashes. A CAS
+        // from the expected version preserves its first ExpectedLength bytes, so only the append can differ.
         var localBuffer = _localBuffer ??= new byte[64 * 1024];
         var remoteBuffer = _remoteBuffer ??= new byte[64 * 1024];
-        for (uint offset = 0; offset < write.Length;)
+        for (var offset = write.ExpectedLength; offset < write.Length;)
         {
             var size = (int)Math.Min((uint)localBuffer.Length, write.Length - offset);
             write.Source.RandomRead(localBuffer.AsSpan(0, size), offset, false);

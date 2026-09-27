@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,17 +18,19 @@ namespace BTDB.Replication;
 public sealed class CanonicalTrlInventory : IRemoteFileCollection
 {
     readonly IReplicationStorage _storage;
+    // Selected links in chain order, which is also ascending native ID order.
+    readonly List<TrlHead> _chain;
     readonly Dictionary<uint, TrlHead> _byId;
 
-    CanonicalTrlInventory(IReplicationStorage storage, Dictionary<uint, TrlHead> byId, TrlSuccessor root, TrlHead tail)
+    CanonicalTrlInventory(IReplicationStorage storage, List<TrlHead> chain, TrlSuccessor root)
     {
         _storage = storage;
-        _byId = byId;
+        _chain = chain;
+        _byId = chain.ToDictionary(head => head.FileId);
         Root = root;
-        Tail = tail;
     }
 
-    public TrlHead Tail { get; }
+    public TrlHead Tail => _chain[^1];
 
     internal TrlSuccessor Root { get; }
 
@@ -42,8 +45,7 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
     internal static async ValueTask<CanonicalTrlInventory> DiscoverAsync(IReplicationStorage storage,
         TrlSuccessor genesis, CancellationToken cancellation, Action<uint>? progress)
     {
-        var byId = new Dictionary<uint, TrlHead>();
-        TrlHead tail;
+        var chain = new List<TrlHead>();
         var keys = new HashSet<string>(StringComparer.Ordinal);
         var root = await storage.ResolveRecoveryRootAsync(genesis, cancellation).ConfigureAwait(false);
         var current = root;
@@ -61,20 +63,19 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
             if (state.Length == 0 || string.IsNullOrEmpty(state.Token) || state.Metadata.Term == 0 ||
                 state.Metadata.Term < previousTerm)
                 throw new InvalidDataException("Invalid canonical TRL state or decreasing authority term.");
-            tail = new(current.FileId, current.Key, state);
-            byId.Add(current.FileId, tail);
+            chain.Add(new(current.FileId, current.Key, state));
             progress?.Invoke(current.FileId);
             if (state.Metadata.Next is not { } next) break;
             previousId = current.FileId;
             previousTerm = state.Metadata.Term;
             current = next;
         }
-        return new(storage, byId, root, tail);
+        return new(storage, chain, root);
     }
 
     public async IAsyncEnumerable<RemoteFile> EnumerateAsync([EnumeratorCancellation] CancellationToken cancellation)
     {
-        foreach (var head in _byId.Values)
+        foreach (var head in _chain)
         {
             cancellation.ThrowIfCancellationRequested();
             // No trustworthy checksum was supplied by the TRL storage seam: do not reuse local cache bytes.

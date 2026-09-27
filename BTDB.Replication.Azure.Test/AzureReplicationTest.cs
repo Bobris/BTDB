@@ -208,7 +208,8 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
     public async Task CheckpointRootRestoresNativeDatabaseAfterObsoleteGenesisTrlsAreDeleted()
     {
         var container = await fixture.ContainerAsync();
-        var raw = new AzureReplicationStorage(container, "db");
+        var time = new CleanupTime();
+        var raw = new AzureReplicationStorage(container, "db", time);
         var authority = new LeaseAuthority(new Clock(), 0, TimeSpan.Zero);
         authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromHours(1));
         using var local = new InMemoryReplicationFileStorage();
@@ -222,9 +223,13 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         using var snapshot = db.CaptureKeyIndexSnapshot();
         Assert.True(snapshot.TransactionLogFileId > 1);
         await storage.PublishKeyIndexAsync(10000, snapshot, new Dictionary<uint, uint>(), default);
-        var gc = new RemoteGarbageCollector(storage, authority, TimeSpan.Zero);
-        await gc.CollectAsync(new(10000, snapshot.TransactionLogFileId,
-            snapshot.Sources.Select(s => s.FileId).ToHashSet()), default);
+        var gc = new RemoteGarbageCollector(storage, authority, TimeSpan.FromDays(1));
+        var checkpoint = new PublishedCheckpoint(10000, snapshot.TransactionLogFileId,
+            snapshot.Sources.Select(s => s.FileId).ToHashSet());
+        await gc.CollectAsync(checkpoint, default);
+        Assert.NotNull(await raw.ReadAsync("trl/1", default)); // Marked, not yet due.
+        time.Now += TimeSpan.FromDays(1);
+        await gc.CollectAsync(checkpoint, default);
         Assert.Null(await raw.ReadAsync("trl/1", default));
         var fresh = new AzureReplicationStorage(container, "db");
         var recovered = await CanonicalTrlInventory.DiscoverAsync(fresh, new("trl/1", 1));
@@ -243,9 +248,12 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
     {
         public bool Outage, Throttle, LoseAcquire, LoseSelection, LoseCommit, LoseTransfer;
         public long StagedBytes;
+        public int BlockListReads;
         public override void OnSendingRequest(HttpMessage message)
         {
             var query = message.Request.Uri.ToUri().Query;
+            if (message.Request.Method == RequestMethod.Get && query.Contains("comp=blocklist", StringComparison.Ordinal))
+                BlockListReads++;
             if (message.Request.Method == RequestMethod.Put && query.Contains("comp=block", StringComparison.Ordinal) &&
                 !query.Contains("comp=blocklist", StringComparison.Ordinal) && message.Request.Content != null &&
                 message.Request.Content.TryComputeLength(out var length))
@@ -307,6 +315,76 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         faults.Throttle = false;
         Assert.Equal(1, await storage.ReadAsync(new RemoteFile(2, KVFileType.KeyIndex, 1, kvi.ETag.ToString(), true, null), 0,
             new byte[1], default));
+    }
+
+    [Fact]
+    public async Task EmptyPrefixIsRejectedBecauseCleanupListsTheWholeNamespace()
+    {
+        var container = await fixture.ContainerAsync();
+        Assert.Throws<ArgumentException>(() => new AzureReplicationStorage(container, ""));
+        Assert.Throws<ArgumentException>(() => new AzureReplicationStorage(container, "/"));
+    }
+
+    [Fact]
+    public async Task RepeatedAppendsReuseTheirOwnCommittedBlockList()
+    {
+        var faults = new Faults();
+        var container = await fixture.ContainerAsync(faults);
+        var raw = new AzureReplicationStorage(container, "db");
+        var authority = new LeaseAuthority(new Clock(), 0, TimeSpan.Zero);
+        authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromHours(1));
+        using var local = new InMemoryReplicationFileStorage();
+        var capture = new TransactionLogCapture();
+        using var db = await Open(local, capture);
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        for (ulong id = 1; id <= 5; id++)
+        {
+            await Write(db, id);
+            Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+        }
+        Assert.Equal(0, faults.BlockListReads); // Each append expects this adapter's own last commit.
+        var remote = (await container.GetBlockBlobClient("db/trl/1").DownloadContentAsync()).Value.Content.ToArray();
+        var expected = new byte[publisher.PublishedPosition.Offset];
+        local.GetFile(publisher.PublishedPosition.FileId)!.RandomRead(expected, 0, false);
+        Assert.Equal(expected, remote);
+    }
+
+    [Fact]
+    public async Task CheckpointClearsDeletionMarksWithoutChangingUnmarkedTrlVersions()
+    {
+        var container = await fixture.ContainerAsync();
+        var raw = new AzureReplicationStorage(container, "db");
+        var authority = new LeaseAuthority(new Clock(), 0, TimeSpan.Zero);
+        authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromHours(1));
+        using var local = new InMemoryReplicationFileStorage();
+        var capture = new TransactionLogCapture();
+        using var db = await Open(local, capture, 1024);
+        // Values above the inline limit keep every TRL referenced, so the whole sealed chain is a dependency.
+        for (ulong i = 1; i <= 40; i++)
+        {
+            using var transaction = await db.StartWritingTransaction(i);
+            using var cursor = transaction.CreateCursor();
+            cursor.CreateOrUpdateKeyValue([(byte)i], new byte[100]);
+            transaction.Commit();
+        }
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("trl/1", 1));
+        var storage = raw.Bind(inventory, authority);
+        var trls = new List<RemoteMaintenanceFile>();
+        await foreach (var file in storage.EnumerateMaintenanceAsync(default))
+            if (file.FileType == KVFileType.TransactionLog) trls.Add(file);
+        Assert.True(trls.Count > 3, $"{trls.Count} TRLs");
+        var marked = await storage.ScheduleDeletionAsync(trls[1], TimeSpan.FromDays(1), default);
+        using var snapshot = db.CaptureKeyIndexSnapshot();
+        await storage.PublishKeyIndexAsync(10000, snapshot, new Dictionary<uint, uint>(), default);
+        await foreach (var file in storage.EnumerateMaintenanceAsync(default))
+        {
+            if (file.FileType != KVFileType.TransactionLog) continue;
+            Assert.Null(file.DeleteAfter);
+            if (file.Key == marked.Key) Assert.NotEqual(marked.Version, file.Version);
+            else Assert.Equal(trls.Single(t => t.Key == file.Key).Version, file.Version);
+        }
     }
 
     [Fact]

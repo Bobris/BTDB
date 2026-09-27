@@ -19,9 +19,11 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
     readonly SemaphoreSlim _lane = new(1);
     SelectedLeadership? _selected;
     IReadOnlyList<CanonicalTrlPublisher>? _publishers;
-    readonly Dictionary<string, TransactionLogPosition> _prepared = new(StringComparer.Ordinal);
+    readonly Dictionary<string, TransactionLogPosition> _preparedCuts = new(StringComparer.Ordinal);
     // Canonical prefixes verified under this lease; a lagging candidate resumes here instead of revalidating.
     readonly Dictionary<string, TransactionLogPosition> _validated = new(StringComparer.Ordinal);
+    // Every database's preparation is published; later steps return the publishers directly.
+    bool _prepared;
 
     internal SelectedLeadership? Selected => _selected;
 
@@ -58,16 +60,16 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
                 progress == null ? null : (database, step, file, offset) => ReportProgress(2, database, step, file, offset),
                 _validated).ConfigureAwait(false);
             if (_publishers == null) return null;
-            if (prepare != null)
+            if (prepare != null && !_prepared)
                 for (var i = 0; i < databases.Count; i++)
                 {
                     var database = databases[i];
-                    if (!_prepared.TryGetValue(database.Name, out var cut))
+                    if (!_preparedCuts.TryGetValue(database.Name, out var cut))
                     {
                         if (!_selected.Authority.IsValid) throw new InvalidOperationException("Preparation requires live authority.");
                         await prepare(database, _selected.Authority, cancellation).ConfigureAwait(false);
                         cut = database.Capture.Completed;
-                        _prepared.Add(database.Name, cut);
+                        _preparedCuts.Add(database.Name, cut);
                         ReportProgress(3, i, 0, 0, 0);
                     }
                     if (cut.FileId == 0) continue;
@@ -76,6 +78,7 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
                         throw new IOException("Initialization/schema publication is not yet confirmed.");
                     ReportProgress(3, i, 1, cut.FileId, cut.Offset);
                 }
+            _prepared = true;
             return _publishers;
         }
         finally { _lane.Release(); }

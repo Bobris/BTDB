@@ -61,8 +61,10 @@ internal sealed class LeaderSelection(ILeaderRecordStorage storage, LeaseSession
                 throw new InvalidDataException("Leader record belongs to a different cluster or format.");
             var generation = LeaderJson.OptionalUInt64(current, "applicationGeneration");
             if (generation > candidate.ApplicationGeneration) return Conflict();
-            if (generation == candidate.ApplicationGeneration && current["databaseNames"] is { } names &&
-                !JsonNode.DeepEquals(names, DatabaseNames()))
+            // A set, as in follower discovery: nodes of one generation may list the same names in another order.
+            if (generation == candidate.ApplicationGeneration &&
+                LeaderJson.OptionalNames(current, "databaseNames") is { } names &&
+                !names.ToHashSet(StringComparer.Ordinal).SetEquals(DatabaseNames().Select(n => n!.GetValue<string>())))
                 throw new InvalidDataException("The same application generation must select the same database set.");
             if (LeaderJson.OptionalString(current, "sessionId") == candidate.SessionId)
                 throw new InvalidDataException("A fresh lease requires a fresh leadership session identity.");

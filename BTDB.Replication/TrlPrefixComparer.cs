@@ -18,24 +18,20 @@ internal interface ILeaderTrlReader
 }
 
 /// <summary>
-/// One follower database/session and capture consumer. Compare only against the current leader's advertised complete
-/// cut. A byte match is not a confirmation grant or Blob durability acknowledgement. Blob validation belongs to
-/// becoming leader (and bootstrap/recovery), not routine follower comparison. No native headers/commands are decoded.
+/// One follower database/session, compared serially by its owner. Compare only against the current leader's advertised
+/// complete cut, starting at a retained local position. A byte match is not a confirmation grant, Blob durability or
+/// canonical history: the owner derives acknowledgement and retention itself. Blob validation belongs to becoming
+/// leader (and bootstrap/recovery), not routine follower comparison. No native headers/commands are decoded.
 /// </summary>
-/// With acknowledge false the owner derives retention itself; a byte match against one leader is not canonical history.
 internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile, TransactionLogCapture capture,
-    TransactionLogPosition? compareFrom = null, bool acknowledge = true)
+    TransactionLogPosition compareFrom)
 {
-    public TrlPrefixComparer(IFileCollection local, TransactionLogCapture capture, TransactionLogPosition? compareFrom = null)
-        : this(local.GetFile, capture, compareFrom) { }
-
-    readonly SemaphoreSlim _lane = new(1);
     bool _diverged;
-    TransactionLogPosition? _comparisonPosition = compareFrom;
+    TransactionLogPosition _comparisonPosition = compareFrom;
 
     /// <summary>Byte position already matched with this leader; not necessarily a transaction boundary. A new
     /// comparison with the same leader may resume here, including after a cancelled comparison.</summary>
-    public TransactionLogPosition? Position => _comparisonPosition;
+    public TransactionLogPosition Position => _comparisonPosition;
 
     /// <summary>The end of the latest completed comparison: a complete transaction cut, either the leader's advertised
     /// end or, while local execution lags, the complete local prefix that end already covers.</summary>
@@ -45,13 +41,12 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
         CancellationToken cancellation = default)
     {
         if (end.FileId == 0 || end.Offset == 0) throw new ArgumentOutOfRangeException(nameof(end));
-        await _lane.WaitAsync(cancellation).ConfigureAwait(false);
         byte[]? localBuffer = null;
         byte[]? remoteBuffer = null;
         try
         {
             if (_diverged) return TrlCompareResult.Diverged;
-            var start = _comparisonPosition ?? capture.Acknowledged;
+            var start = _comparisonPosition;
             if (end <= start) return TrlCompareResult.Matched;
             // A lagging follower still compares the complete local prefix the leader's cut already covers, so its
             // canonical progress and local TRL retention keep advancing under continuous load.
@@ -92,7 +87,7 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
                     }
                     if (!localBuffer.AsSpan(0, count).SequenceEqual(remoteBuffer.AsSpan(0, count))) return Diverged();
                     offset += (uint)count;
-                    if (_comparisonPosition.HasValue) _comparisonPosition = new(fileId, (uint)offset);
+                    _comparisonPosition = new(fileId, (uint)offset);
                 }
                 if (fileId == target.FileId) break;
                 // The prior file is sealed on both nodes. A longer leader file is a different byte stream,
@@ -108,10 +103,7 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
                 fileId = successors[nextSuccessor++];
             }
             cancellation.ThrowIfCancellationRequested();
-            // A new leader can disagree with bytes acknowledged by its predecessor. Recheck from the
-            // restored base without rewinding core retention; missing retained files require restart.
-            if (acknowledge && target > capture.Acknowledged) capture.Acknowledge(target);
-            if (_comparisonPosition.HasValue) _comparisonPosition = target;
+            _comparisonPosition = target;
             MatchedThrough = target;
             return target == end ? TrlCompareResult.Matched : TrlCompareResult.LocalBehind;
         }
@@ -119,7 +111,6 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
         {
             if (localBuffer != null) ArrayPool<byte>.Shared.Return(localBuffer);
             if (remoteBuffer != null) ArrayPool<byte>.Shared.Return(remoteBuffer);
-            _lane.Release();
         }
     }
 

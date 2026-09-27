@@ -13,10 +13,7 @@ public class AsyncOpenFailureTest
 {
     sealed class FailingFinalPrefetch(IFileCollection inner, Action failure) : IFileReplicatedCollection
     {
-        public ValueTask RefreshRemoteInventoryAsync(CancellationToken cancellation = default) => throw new InvalidOperationException("Unexpected refresh.");
         public uint GetLocalFileId(uint remoteId) => remoteId;
-        public ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default) =>
-            throw new NotSupportedException("This test collection does not publish remote files.");
         public ValueTask InitializeAsync(CancellationToken cancellation = default)
         {
             cancellation.ThrowIfCancellationRequested();
@@ -35,7 +32,6 @@ public class AsyncOpenFailureTest
             if (!_requested.Add(id)) failure(); // TRL replay fetched it; its next request is the final prefetch.
             return ValueTask.CompletedTask;
         }
-        public uint GetRemoteCount() => inner.GetCount();
         public IFileCollectionFile? GetRemoteFile(uint id) => inner.GetFile(id);
         public IEnumerable<IFileCollectionFile> RemoteEnumerate() => inner.Enumerate();
         public IFileCollectionFile AddFile(string hint) => inner.AddFile(hint);
@@ -48,15 +44,12 @@ public class AsyncOpenFailureTest
 
     sealed class UnopenedCollection : IFileReplicatedCollection
     {
-        public ValueTask RefreshRemoteInventoryAsync(CancellationToken cancellation = default) => throw new InvalidOperationException("Unexpected refresh.");
         public uint GetLocalFileId(uint remoteId) => throw new InvalidOperationException("Unexpected mapping access.");
-        public ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default) => throw new InvalidOperationException("Unexpected publication.");
         public ValueTask PrefetchAsync(uint id, CancellationToken cancellation = default) => throw new InvalidOperationException("Unexpected prefetch.");
         public ValueTask<IFileInfo> ReadFileInfoAsync(uint id, CancellationToken cancellation = default) => throw new InvalidOperationException("Unexpected metadata access.");
         public KVFileType? GetFileType(uint id) => throw new InvalidOperationException("Unexpected type access.");
         public IFileCollectionFile AddFile(string hint, FileIdParity parity) => throw new InvalidOperationException("Unexpected allocation.");
 
-        public uint GetRemoteCount() => throw new InvalidOperationException("Unexpected remote inventory access.");
         public IFileCollectionFile? GetRemoteFile(uint id) => throw new InvalidOperationException("Unexpected remote file access.");
         public IEnumerable<IFileCollectionFile> RemoteEnumerate() => throw new InvalidOperationException("Unexpected remote enumeration.");
         public ValueTask InitializeAsync(CancellationToken cancellation = default) => throw new InvalidOperationException("Unexpected initialization.");

@@ -166,7 +166,7 @@ The inventory adapter does not open the database or validate native headers sepa
 add a separate guarantee that malformed transaction bytes will be rejected rather than recovered by the existing decoder.
 Version-change and interruption tests fail the attempt, then rediscover/restore without any remote mutation. Caller
 cancellation may leave a completed shared download; disposal drains transfer work and the next initialization validates
-cache again. Downloads remain bounded to 256 KiB reads. These tests cover the in-memory storage seam, not Azure or
+cache again. Downloads remain bounded to 4 MiB reads. These tests cover the in-memory storage seam, not Azure or
 power-loss recovery of a disk cache. Ordinary KVI restart is tested separately below; cleanup-race retry remains pending.
 
 
@@ -215,8 +215,9 @@ These tests exercise native checkpoint publication against the in-memory storage
 `DownloadUsesBoundedParallelBlocksAndPreservesOrderWithoutChecksumValidation` holds the first block while three later
 blocks complete, exercises short reads and a partial final block, and accepts deliberately invalid checksum metadata.
 `FailedParallelBlockCancelsOtherReadsAndRemovesPartialFile` verifies cancellation/draining before cleanup. Downloads
-use four 256 KiB buffers per file; existing file-level concurrency still bounds simultaneous files. This verifies
-concurrency and byte order, not a measured Azure throughput improvement. Existing cache checksum tests remain.
+use four 4 MiB buffers per file; existing file-level concurrency still bounds simultaneous files. Against Azurite,
+four 128 MB files took 1.40 s with 256 KiB ranges and 1.00 s with 4 MiB ranges; real Blob latency is not measured.
+`FailedInitializationPublishesNoPartialInventory` keeps a failed cache validation from leaving a stale listing. Existing cache checksum tests remain.
 
 
 ### Native prefix comparison

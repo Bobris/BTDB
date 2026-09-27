@@ -1090,7 +1090,7 @@ Before exporting the remote KVI:
 
 Remote IDs must be allocated from the Blob inventory, not the local maximum: remote objects can outlive local files.
 The implemented `ReplicationFileSet` exposes `IFileReplicatedCollection` to BTDB. The inherited count, lookup and
-enumeration methods access local cache/storage only; `GetRemoteCount`, `GetRemoteFile`, and `RemoteEnumerate`
+enumeration methods access local cache/storage only; `GetRemoteFile` and `RemoteEnumerate`
 expose the selected remote inventory separately. A numeric ID alone never proves that their contents match. Exact-ID imports
 are an internal cache-population operation, not a caller-driven restore workflow. The session's verified cache/download
 and successful upload receipts supply the publisher's local-to-remote map. These mappings live only in the current
@@ -1880,7 +1880,11 @@ No automatic old-KVI fallback retention is required. Keeping an old KVI identity
 its files or promise recoverability. Backups remain a separate administrative facility. A file missing from the still
 current published closure is a publication/storage fault, not an expected GC race; keep the node unavailable and report
 it instead of serving partial state or asserting a newer checkpoint exists. Repeated restore restarts are observable.
-The operational deletion delay reduces these races; restore must still handle missing superseded files.
+The operational deletion delay reduces these races; restore must still handle missing superseded files. It must be
+positive (production assumes at least a day): a fenced predecessor's late deletion mark then cannot become due before
+this leader's next cleanup clears it, so checkpoint protection rewrites only marked files and never changes the
+version of an unmarked TRL that a concurrent restore reads. An unchanged database (same TRL cut and source files)
+skips exporting an identical KVI, but still runs cleanup so earlier marks can reach their deadline.
 
 B5 covers direct TRL publication/continuation/fencing as well as publish-before-delete ordering, staging protection
 and version-bound deletion. Old-term in-flight deletes must remain harmless to the current closure; follower restore tracking is absent.

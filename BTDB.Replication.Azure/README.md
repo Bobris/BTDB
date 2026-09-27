@@ -60,7 +60,13 @@ responses, lease expiry, native publication, activation and checkpoint restore. 
 The adapter reuses committed 4 MiB prefix blocks and replaces the partial last block when appending, preventing
 small commits from exhausting Azure's block-count limit. Staged block IDs are unique, so losing requests cannot
 replace bytes referenced by a winning commit. Get Block List's response ETag is checked before its blocks are reused;
-the final commit still carries `If-Match`. Sealed PVL/KVI files use `If-None-Match: *` and SHA metadata in that same commit.
+the final commit still carries `If-Match`. An append that expects this adapter's own previous commit reuses that
+commit's block list instead of reading it again. Sealed PVL/KVI files use `If-None-Match: *` and SHA metadata in that
+same commit; their blocks are staged up to four at a time (128 MB PVL on Azurite: 595 ms serially, 330 ms).
+
+Each database needs its own nonempty prefix: cleanup lists everything below it. Checkpoint publication clears
+deletion marks on its retained TRL chain but never rewrites an unmarked TRL, so restores reading by ETag stay valid.
+Remote cleanup therefore requires a positive deletion delay.
 
 Provider semantics were checked against Microsoft's [Lease Blob](https://learn.microsoft.com/rest/api/storageservices/lease-blob),
 [Get Block List](https://learn.microsoft.com/rest/api/storageservices/get-block-list) and

@@ -33,6 +33,7 @@ public class CanonicalTrlPublisherTest
         public Func<int, Fault>? Inject;
         public Action<TrlWrite>? BeforeEffect;
         public Action<uint>? BeforeRangeRead;
+        public long RangeBytes;
         int _version;
         public int Applied;
         public int MaximumRangeRead;
@@ -50,6 +51,7 @@ public class CanonicalTrlPublisherTest
             var blob = Blobs[key];
             if (token != blob.State.Token) throw new IOException("Selected TRL version changed.");
             MaximumRangeRead = Math.Max(MaximumRangeRead, destination.Length);
+            RangeBytes += destination.Length;
             blob.Bytes.AsMemory((int)offset, destination.Length).CopyTo(destination);
             return ValueTask.CompletedTask;
         }
@@ -413,6 +415,21 @@ public class CanonicalTrlPublisherTest
     }
 
     [Fact]
+    public async Task AmbiguousAppendReconcilesOnlyTheAppendedBytes()
+    {
+        using var f = await Fixture.CreateAsync(false);
+        await Write(f, 1);
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
+        var before = f.Publisher.PublishedPosition.Offset;
+        await Write(f, 2);
+        f.Remote.Inject = _ => Fault.LostResponse;
+        f.Remote.RangeBytes = 0;
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
+        Assert.Equal(f.Publisher.PublishedPosition.Offset - before, f.Remote.RangeBytes);
+        Assert.Equal((2ul, 2L), await Restore(f.Remote, false));
+    }
+
+    [Fact]
     public async Task StoppingPublicationLeavesLocalWritesRollbackAndCompactionRunning()
     {
         using var f = await Fixture.CreateAsync(false);
@@ -690,16 +707,18 @@ public class CanonicalTrlPublisherTest
     public async Task InterruptedRestoreRetriesWithoutUsingPartialCache(bool cancel)
     {
         using var f = await Fixture.CreateAsync(false);
-        await Write(f, 1, 800);
+        await Write(f, 1, 7000); // Several TRL files; each is one download block.
         await f.Publisher.PublishNextAsync();
+        var published = f.Remote.Requests.Count;
         var selected = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
         using var local = new InMemoryReplicationFileStorage();
         using var cancellation = new CancellationTokenSource();
-        f.Remote.BeforeRangeRead = offset =>
+        var reads = 0;
+        f.Remote.BeforeRangeRead = _ =>
         {
-            if (offset < 256 * 1024) return;
+            if (++reads == 1) return;
             if (cancel) cancellation.Cancel();
-            else throw new IOException("Transfer interrupted in a later block.");
+            else throw new IOException("Transfer interrupted in a later file.");
         };
         await using (var files = new ReplicationFileSet(local, selected))
         {
@@ -715,7 +734,8 @@ public class CanonicalTrlPublisherTest
         }
         // A canceled waiter does not cancel a shared transfer. It may have completed synchronously;
         // disposal drains it, and a later initialization still revalidates/redownloads the active tail.
-        if (local.GetFile(1) is { } completed) Assert.Equal((ulong)selected.Tail.State.Length, completed.GetSize());
+        foreach (var completed in local.Enumerate())
+            Assert.Equal((ulong)selected.GetHead(completed.Index).State.Length, completed.GetSize());
         f.Remote.BeforeRangeRead = null;
         selected = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
         await using var retryFiles = new ReplicationFileSet(local, selected);
@@ -728,8 +748,8 @@ public class CanonicalTrlPublisherTest
         using var read = db.StartReadOnlyTransaction();
         Assert.Equal(1ul, read.GetCommitUlong());
         Assert.Equal(256L, read.GetKeyValueCount());
-        Assert.Single(f.Remote.Requests); // Restore never publishes anything.
-        Assert.InRange(f.Remote.MaximumRangeRead, 1, 256 * 1024);
+        Assert.Equal(published, f.Remote.Requests.Count); // Restore never publishes anything.
+        Assert.InRange(f.Remote.MaximumRangeRead, 1, ReplicationFileSet.DownloadBlockSize);
     }
 
 }

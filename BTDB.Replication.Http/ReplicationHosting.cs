@@ -20,12 +20,8 @@ public static class ReplicationHosting
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
-        options.ProgressTimeouts?.Validate();
-        ArgumentException.ThrowIfNullOrWhiteSpace(options.ClusterId);
+        options.Validate();
         HttpReplicationPeerTransport.ValidateEndpoint(options.Endpoint);
-        foreach (var duration in new[] { options.PollInterval, options.LeaseRetryInterval, options.RequestTimeout,
-                     options.ConfirmationDuration, options.CompactionInterval ?? TimeSpan.FromMinutes(5) })
-            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(duration.Ticks);
         ArgumentOutOfRangeException.ThrowIfNegative(maximumClockDriftPpm);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(maximumClockDriftPpm, 1_000_000);
         ArgumentOutOfRangeException.ThrowIfNegative(safetyMargin.Ticks);

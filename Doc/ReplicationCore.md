@@ -111,10 +111,13 @@ range boundaries come from the replication session and its positions. Matching b
 a mismatch rejects the local history. No semantic normalization or decoded-command comparison is required.
 The leader returns the TRL bytes a follower needs with its poll; followers read any remaining backlog in 256 KiB
 ranges, the HTTP transport's maximum. A follower session retains received leader bytes (up to 4 MiB per database)
-until both the schema scan and the comparison have passed them, and asks only for bytes after what it retains, so
-each byte crosses the network once even while local execution lags. A lagging comparison checks the complete local
-prefix the leader's cut already covers instead of waiting until local execution catches up. Crossing TRL files walks the native lineage back from the advertised end once per scan or comparison, and
-resuming a scan inside an already validated file does not reread its header.
+until the comparison has passed them, and asks only for bytes after what it retains, so each byte crosses the
+network once even while local execution lags. Inline bytes switch to a later file only after serving the previous
+one to its end, so the follower also learns that end: crossing a TRL rotation needs no extra end-of-file request,
+and the next poll continues in the successor. A lagging comparison checks the complete local prefix the leader's cut
+already covers instead of waiting until local execution catches up. Crossing TRL files walks the native lineage back
+from the advertised end once per comparison. Schema transactions are announced by the leader with poll progress,
+not decoded by followers.
 Database startup and virtual-batch replay decode commands directly in their replay loop, without a command object
 or a separate decoder. Follower integration is pending.
 

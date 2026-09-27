@@ -731,24 +731,25 @@ public class ReplicationNodeCoordinatorTest
         Assert.InRange(follower.Peers.InlineBytes - inline, 1, leader.Capture.Completed.Offset); // Never resent.
     }
 
-    [Fact]
-    public async Task CaughtUpFollowerComparesInlinePollBytesWithoutRangeReads()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CaughtUpFollowerComparesInlinePollBytesWithoutRangeReads(bool smallLogs)
     {
         await using var cluster = await Cluster.Create();
-        var leader = cluster.Start("leader");
-        var follower = cluster.Start("follower");
+        var leader = cluster.Start("leader", smallLogs: smallLogs);
+        var follower = cluster.Start("follower", smallLogs: smallLogs);
         cluster.Advance(30);
         Assert.Equal(ReplicationNodeRole.Leader, leader.Coordinator.Role);
-        foreach (var node in cluster.Nodes) await node.Write(2, 2);
-        cluster.Advance(10); // The first scan in a file validates its header once per leader session.
-        var reads = follower.Peers.Reads;
-        for (ulong id = 3; id <= 5; id++)
+        var files = follower.Capture.Completed.FileId;
+        for (ulong id = 2; id <= 5; id++)
         {
-            foreach (var node in cluster.Nodes) await node.Write(id, (byte)id, size: 2000);
+            foreach (var node in cluster.Nodes) await node.Write(id, (byte)id, size: smallLogs ? 500 : 2000);
             cluster.Advance(10);
             Assert.Equal(follower.Capture.Completed, follower.Status.Current.Databases[0].Compared!.Value.Position);
         }
-        Assert.Equal(reads, follower.Peers.Reads);
+        if (smallLogs) Assert.True(follower.Capture.Completed.FileId > files); // Rotations were crossed inline.
+        Assert.Equal(0, follower.Peers.Reads); // Inline file switches also answer each end-of-file check.
     }
 
     [Fact]

@@ -352,11 +352,10 @@ public class HttpReplicationPeerTransportTest
         server.Backend.NativeReader = new LeaderTrlReader(leader, leaderCapture, authority);
         using var session = await server.Client.ConnectAsync(server.Identity, default);
         Assert.True(leaderFiles.GetCount() > 1);
-        var acknowledged = followerCapture.Acknowledged;
-        var comparer = new TrlPrefixComparer(followerFiles, followerCapture);
+        var comparer = new TrlPrefixComparer(followerFiles.GetFile, followerCapture, followerCapture.Acknowledged);
         Assert.Equal(diverge ? TrlCompareResult.Diverged : TrlCompareResult.Matched,
             await comparer.CompareAsync(session.Reader("main"), leaderCapture.Completed));
-        Assert.Equal(diverge ? acknowledged : leaderCapture.Completed, followerCapture.Acknowledged);
+        Assert.Equal(diverge ? null : leaderCapture.Completed, comparer.MatchedThrough);
         authority.Fence();
         await Assert.ThrowsAsync<IOException>(() => session.Reader("main").ReadAsync(1, 0, new byte[1], default).AsTask());
 

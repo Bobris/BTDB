@@ -62,11 +62,56 @@
   and keep up to four Blob reads in flight while a new leader validates its local history against canonical Blob
   history.
 
+- **Breaking:** remove `RefreshRemoteInventoryAsync`, `PublishPureValuesAsync` and `GetRemoteCount` from
+  `IFileReplicatedCollection`; BTDB never called them. Refreshing a leader's inventory could also fail on a TRL it had
+  created and published itself. PVL receipts are still revalidated when a checkpoint protects them.
+
+- **Breaking:** `ReplicationMaintenance` requires a positive deletion delay (production assumes at least a day), and
+  `AzureReplicationStorage` requires a nonempty prefix per database, because cleanup lists everything below it.
+
+- Skip re-exporting an identical checkpoint when the TRL cut and source files are unchanged since the last published
+  one; cleanup still runs so earlier deletion marks become due. An idle database previously uploaded a new KVI and
+  rewrote every PVL's metadata at each maintenance interval.
+
+- Hash cached files in parallel during `ReplicationFileSet` initialization (1 GB from disk: 2.7 s serially, 1.1 s with
+  four validations), download restore ranges of 4 MiB instead of 256 KiB (Azurite, four 128 MB files: 1.40 s to 1.00 s),
+  and stage Azure PVL/KVI blocks up to four at a time (128 MB PVL on Azurite: 595 ms to 330 ms).
+
+- Azure canonical appends reuse the block list of the adapter's own previous commit instead of reading it again, so
+  a publication needs one request fewer.
+
+- Followers learn a TRL file's end from inline poll bytes that continue in its successor, so crossing a rotation needs
+  no end-of-file range read and the next poll no longer resends bytes of the next file that are already retained.
+
+- Reconcile an ambiguous canonical TRL write by comparing only its appended bytes; the expected version's prefix is
+  unchanged by a successful CAS.
+
+- Simplify follower comparison: its start position is mandatory, the comparer no longer acknowledges capture or takes
+  its own lane, and test-only constructors are gone. `CanonicalTrlInventory` keeps its chain in explicit order,
+  leadership activation stops republishing completed preparation cuts every step, one `ReplicationNodeOptions`
+  validation serves both the coordinator and hosting, and the Azure adapter parses file names in one place.
+
 - Remove unused internal replication helpers (`TrlPublication`, `TrlSnapshot`, `IReplicationRandom`,
   `ReplicationFileSet.RememberVerifiedPureValues`) and move the in-process peer transport into the test project. PVL
   reuse placements now come only from restore validation, downloads and confirmed uploads.
 
 ### Fixed
+
+- Compare database names as a set when a candidate selects leadership, as follower discovery already did. Nodes of
+  one generation listing the same databases in a different order restarted instead of becoming leader.
+
+- Checkpoint publication on Azure no longer rewrites the metadata (and so the ETag) of every sealed TRL in the retained
+  chain. Concurrent restores and activation validation read those TRLs by ETag and failed, redownloading every TRL;
+  a checkpoint interval shorter than restore could keep a restore from ever finishing.
+
+- A failed renewal retries within half the remaining lease instead of waiting the whole `LeaseRetryInterval`, so one
+  transient error cannot outlast the lease.
+
+- A failed or cancelled `ReplicationFileSet` initialization no longer leaves a partial inventory that a retry would
+  keep, including files removed remotely in between.
+
+- Observe every failed database publication in a leader step, not only the first, so the others are not reported as
+  unobserved task exceptions.
 
 - Compare a lagging follower's complete local prefix up to the leader's advertised cut. Under continuous load a
   follower is almost always slightly behind, so it previously never compared anything: its canonical base, local TRL

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
@@ -15,13 +16,22 @@ namespace BTDB.Replication;
 internal sealed class RetainingLeaderTrlReader(ILeaderTrlReader inner, int capacity = 4 * 1024 * 1024) : ILeaderTrlReader
 {
     readonly List<(uint FileId, ulong Offset, ReadOnlyMemory<byte> Bytes)> _chunks = new();
+    // Inline chunks continue a later file only after serving the previous one to its end, so a file switch proves
+    // that file's end and successor. The comparison's end-of-file probe and the next poll's start then need no
+    // peer round trip.
+    readonly Dictionary<uint, (ulong End, uint Next)> _ends = new();
     int _retained;
 
     public int Available => capacity - _retained;
 
-    /// <summary>Retain bytes the leader already returned with a poll, within the same capacity.</summary>
-    public void Retain(IReadOnlyList<ReplicationPeerTrlChunk> chunks)
+    /// <summary>Retain bytes the leader returned with a poll requested from <paramref name="from"/>, within the same capacity.</summary>
+    public void Retain(TransactionLogPosition from, IReadOnlyList<ReplicationPeerTrlChunk> chunks)
     {
+        // A first chunk in a later file means the requested file already ended at the requested offset.
+        if (chunks.Count != 0 && chunks[0].FileId != from.FileId) _ends[from.FileId] = (from.Offset, chunks[0].FileId);
+        for (var i = 0; i + 1 < chunks.Count; i++)
+            if (chunks[i + 1].FileId != chunks[i].FileId)
+                _ends[chunks[i].FileId] = ((ulong)chunks[i].Offset + (uint)chunks[i].Bytes.Length, chunks[i + 1].FileId);
         foreach (var chunk in chunks)
         {
             if (chunk.Bytes.Length > Available) return;
@@ -39,24 +49,31 @@ internal sealed class RetainingLeaderTrlReader(ILeaderTrlReader inner, int capac
             if (release) _retained -= chunk.Bytes.Length;
             return release;
         });
+        foreach (var fileId in _ends.Keys.Where(id => id < position.FileId).ToArray()) _ends.Remove(fileId);
     }
 
-    /// <summary>The first position at or after from, within the same file, not already retained.</summary>
+    /// <summary>The first position at or after from not already retained, continuing into a file's known successor.</summary>
     public TransactionLogPosition ContiguousEnd(TransactionLogPosition from)
     {
+        var fileId = from.FileId;
         var offset = (ulong)from.Offset;
-        for (var extended = true; extended;)
+        while (true)
         {
-            extended = false;
-            foreach (var (fileId, chunkOffset, bytes) in _chunks)
+            for (var extended = true; extended;)
             {
-                var end = chunkOffset + (ulong)bytes.Length;
-                if (fileId != from.FileId || chunkOffset > offset || end <= offset) continue;
-                offset = end;
-                extended = true;
+                extended = false;
+                foreach (var (chunkFileId, chunkOffset, bytes) in _chunks)
+                {
+                    var end = chunkOffset + (ulong)bytes.Length;
+                    if (chunkFileId != fileId || chunkOffset > offset || end <= offset) continue;
+                    offset = end;
+                    extended = true;
+                }
             }
+            if (!_ends.TryGetValue(fileId, out var known) || known.End != offset) return new(fileId, (uint)offset);
+            fileId = known.Next;
+            offset = 0;
         }
-        return new(from.FileId, (uint)offset);
     }
 
     public async ValueTask<int> ReadAsync(uint fileId, ulong offset, Memory<byte> destination, CancellationToken cancellation)
@@ -70,6 +87,7 @@ internal sealed class RetainingLeaderTrlReader(ILeaderTrlReader inner, int capac
             bytes.Span.Slice(start, count).CopyTo(destination.Span);
             return count;
         }
+        if (_ends.TryGetValue(fileId, out var known) && known.End == offset) return 0;
         var read = await inner.ReadAsync(fileId, offset, destination, cancellation).ConfigureAwait(false);
         if (read > 0 && read <= destination.Length && read <= Available)
             Add(fileId, offset, destination[..read].ToArray());

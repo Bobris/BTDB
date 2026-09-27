@@ -23,7 +23,7 @@ public class FollowerComparisonSessionTest
         follower.Capture.Acknowledge(follower.Capture.Completed);
         using var reader = leader.Reader();
         var restarts = 0;
-        var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
+        var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
             () => restarts++, restoredBase);
         session.NotifyProgress(Progress(leader));
         Assert.Equal(TrlCompareResult.Diverged, await session.CompareLatestAsync());
@@ -36,8 +36,8 @@ public class FollowerComparisonSessionTest
         using var leader = await Node.Create(false);
         using var follower = await Node.Create(false);
         using var reader = leader.Reader();
-        var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
-            () => Assert.Fail("Unexpected restart"));
+        var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
+            () => Assert.Fail("Unexpected restart"), follower.Capture.Acknowledged);
         Assert.Null(await session.CompareLatestAsync());
         await leader.Write(1, 1);
         var first = Progress(leader);
@@ -65,8 +65,8 @@ public class FollowerComparisonSessionTest
         await leader.Write(1, 1);
         await follower.Write(1, 1);
         using var reader = leader.Reader();
-        var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
-            () => Assert.Fail("Unexpected restart"));
+        var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
+            () => Assert.Fail("Unexpected restart"), follower.Capture.Acknowledged);
         var first = Progress(leader);
         session.NotifyProgress(first);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -104,8 +104,8 @@ public class FollowerComparisonSessionTest
             entered.SetResult();
             await Task.Delay(-1, cancellation);
         };
-        var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
-            () => Assert.Fail("Disconnect is not divergence"));
+        var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
+            () => Assert.Fail("Disconnect is not divergence"), follower.Capture.Acknowledged);
         session.NotifyProgress(Progress(leader));
         var start = follower.Capture.Acknowledged;
         var pending = session.CompareLatestAsync().AsTask();
@@ -125,8 +125,8 @@ public class FollowerComparisonSessionTest
         await follower.Write(1, 2);
         using var reader = leader.Reader();
         var restarts = 0;
-        var session = new FollowerComparisonSession(follower.Files, follower.Capture, reader,
-            () => restarts++);
+        var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
+            () => restarts++, follower.Capture.Acknowledged);
         session.NotifyProgress(Progress(leader));
         reader.TruncateRead = true;
         await Assert.ThrowsAsync<IOException>(() => session.CompareLatestAsync().AsTask());

@@ -31,7 +31,6 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
     readonly Dictionary<uint, Placement> _placements = new();
     readonly HashSet<uint> _placedRemoteIds = new();
     readonly Dictionary<uint, uint> _remoteToLocal = new();
-    readonly HashSet<uint> _mappedLocalIds = new();
 
     // Session-only identity assignments. They survive eviction, but carry no claim that bytes are cached or verified.
     void RememberMapping(uint remoteId, uint localId)
@@ -41,7 +40,6 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
             if (_remoteToLocal.TryGetValue(remoteId, out var previousLocal) && previousLocal != localId)
                 throw new InvalidOperationException("The file already has a different session mapping.");
             _remoteToLocal[remoteId] = localId;
-            _mappedLocalIds.Add(localId);
         }
     }
 
@@ -53,29 +51,6 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
         }
         EnsureInitialized();
         throw new FileNotFoundException($"Remote file {remoteFileId} has no session mapping.");
-    }
-
-    // Refresh only: a newly listed remote ID that collides with a session-local file gets a separate local identity.
-    // Such a file is never cached this session; restore downloads remote files, always under their remote IDs.
-    uint GetOrAssignLocalFileId(uint remoteFileId, KVFileType fileType)
-    {
-        lock (_placementLock)
-        {
-            if (_remoteToLocal.TryGetValue(remoteFileId, out var localId)) return localId;
-            localId = remoteFileId;
-            if (_mappedLocalIds.Contains(localId) || Local.GetFile(localId) != null)
-            {
-                if (fileType != KVFileType.PureValues)
-                    throw new InvalidOperationException("A remembered PVL mapping conflicts with a canonical TRL or KVI ID.");
-                // A remembered mapping already occupies this numeric ID. Allocate a separate local PVL identity.
-                var next = (ulong)_lastEvenId + 2;
-                if (next > uint.MaxValue) throw new InvalidOperationException("Local PVL file IDs exhausted.");
-                localId = (uint)next;
-                ObserveId(localId);
-            }
-            RememberMapping(remoteFileId, localId);
-            return localId;
-        }
     }
 
     /// Use the same logger instance as KeyValueDBOptions.Logger; initialization runs before database opening.
@@ -101,6 +76,10 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
         }
     }
 
+    // Matches the Azure block size: per-request latency dominates smaller ranges (Azurite, 4 x 128 MB: 1.40 s at
+    // 256 KiB, 1.00 s at 4 MiB; far fewer round trips on real Blob latency). Peak memory is 16 MiB per download.
+    internal const int DownloadBlockSize = 4 * 1024 * 1024;
+
     /// <summary>Restore under the exact remote file ID before publication starts.
     /// A collision fails without touching the existing local file. Sealed files with a checksum are verified while
     /// they are written. Partial/invalid downloads are removed and never establish a placement.</summary>
@@ -108,7 +87,7 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
     {
         cancellation.ThrowIfCancellationRequested();
         var target = Local.ImportFile(file.FileId, FileExtension(file.FileType));
-        const int blockSize = 256 * 1024;
+        const int blockSize = DownloadBlockSize;
         const int parallelBlocks = 4;
         var buffers = new byte[parallelBlocks][];
         var reads = new Task<int>?[parallelBlocks];
@@ -233,7 +212,7 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
         return _lastRemoteEvenId = (uint)next;
     }
 
-    public ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default) =>
+    internal ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default) =>
         PublishPureValuesAsync(source, PublicationStorage, cancellation);
 
     internal async ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, IReplicationStorage storage,

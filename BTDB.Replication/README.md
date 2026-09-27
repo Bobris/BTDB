@@ -196,7 +196,8 @@ The coordinator runs ordinary native `Compact` on every node (five-minute defaul
 `CompactionInterval`). Its cancellation belongs to host lifetime, independent of remote authority and upload failure.
 Implement `IReplicationNodeHost.CreateMaintenance` to return a session-scoped `ReplicationMaintenance` for each
 published database, using its original file set, selected canonical publisher, authority-bound maintenance storage,
-and configured checkpoint interval/deletion delay. The coordinator disposes the job on leadership replacement.
+and configured checkpoint interval/positive deletion delay (at least a day in production). The coordinator disposes
+the job on leadership replacement. An unchanged database skips re-exporting an identical KVI but still runs cleanup.
 The default host hook disables remote maintenance; application database wrappers and storage clients remain host-owned.
 
 Checkpoint publication retains one native snapshot across retries. Only confirmed publication permits cleanup,

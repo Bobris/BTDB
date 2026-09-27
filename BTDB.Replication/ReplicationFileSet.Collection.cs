@@ -1,9 +1,9 @@
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,7 +15,8 @@ namespace BTDB.Replication;
 // Local storage operations never implicitly fetch remote files. Remote discovery and prefetch are explicit.
 public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsyncDisposable
 {
-    volatile ConcurrentDictionary<uint, RemoteInventoryFile> _remoteFiles = new();
+    // Replaced once, complete, by initialization and read-only afterwards.
+    volatile Dictionary<uint, RemoteInventoryFile> _remoteFiles = new();
     readonly SemaphoreSlim _initialization = new(1);
     readonly CancellationTokenSource _lifetime = new();
     uint _lastOddId, _lastEvenId;
@@ -45,7 +46,6 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
             lock (_placementLock)
             {
                 _remoteToLocal.Clear();
-                _mappedLocalIds.Clear();
                 _placements.Clear();
                 _placedRemoteIds.Clear();
                 foreach (var id in inventory.Keys)
@@ -61,65 +61,27 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
                 if (!inventory.ContainsKey(localFile.Index))
                     DiscardCachedFile(localFile, "no corresponding file in the remote inventory");
             }
-            foreach (var (id, file) in inventory)
+            // Whole-file hashing dominates a warm start: hash cached files in parallel within the download bound, then
+            // apply the results in order. A single candidate is validated inline on the calling thread.
+            var cached = inventory.Values.Select(file => (File: file, Candidate: Local.GetFile(file.Index)))
+                .Where(pair => pair.Candidate != null).ToArray();
+            var reasons = new string?[cached.Length];
+            try
             {
-                if (Local.GetFile(id) is { } candidate)
+                Parallel.For(0, cached.Length, new ParallelOptions
                 {
-                    if (ValidateCachedFile(candidate, file.Selected, linked.Token, out var reason))
-                        file.UseValidatedLocal(candidate);
-                    else
-                        DiscardCachedFile(candidate, reason!, id);
-                }
-                _remoteFiles[id] = file;
+                    MaxDegreeOfParallelism = maxConcurrentDownloads, CancellationToken = linked.Token
+                }, i => ValidateCachedFile(cached[i].Candidate!, cached[i].File.Selected, linked.Token, out reasons[i]));
             }
-            _initialized = true;
-        }
-        finally { _initialization.Release(); }
-    }
-
-    public async ValueTask RefreshRemoteInventoryAsync(CancellationToken cancellation = default)
-    {
-        cancellation.ThrowIfCancellationRequested();
-        EnsureInitialized();
-        await _initialization.WaitAsync(cancellation).ConfigureAwait(false);
-        try
-        {
-            EnsureInitialized();
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _lifetime.Token);
-            var inventory = new ConcurrentDictionary<uint, RemoteInventoryFile>();
-            foreach (var file in _remoteFiles.Values)
-                if (file.Pending is { IsCompleted: false })
-                    throw new InvalidOperationException("Wait for prefetch operations before refreshing remote inventory.");
-            await foreach (var file in Remote.EnumerateAsync(linked.Token).ConfigureAwait(false))
+            catch (AggregateException error) { ExceptionDispatchInfo.Throw(error.InnerExceptions[0]); }
+            for (var i = 0; i < cached.Length; i++)
             {
-                var handle = _remoteFiles.TryGetValue(file.FileId, out var previous) && previous.Selected == file
-                    ? previous : new RemoteInventoryFile(this, file);
-                if (file.FileId == 0 || !inventory.TryAdd(file.FileId, handle))
-                    throw new IOException("The remote inventory contains an invalid or duplicate file ID.");
+                if (reasons[i] == null) cached[i].File.UseValidatedLocal(cached[i].Candidate!);
+                else DiscardCachedFile(cached[i].Candidate!, reasons[i]!, cached[i].File.Index);
             }
-            linked.Token.ThrowIfCancellationRequested();
-            lock (_placementLock)
-            {
-                // Reserve above every observed local/remote ID before assigning new mappings.
-                foreach (var file in Local.Enumerate()) ObserveId(file.Index);
-                foreach (var id in inventory.Keys) ObserveId(id);
-                foreach (var (id, file) in inventory)
-                    ObserveId(GetOrAssignLocalFileId(id, file.Selected.FileType));
-                // Reconfirm publications with the current authority before reusing an old session receipt. A confirmed
-                // object missing from the listing was retired; its key must never be recreated, so drop the receipt and
-                // let publication allocate a fresh identity. Unconfirmed uploads keep their ID for an exact retry.
-                foreach (var (localId, placement) in _placements.ToArray())
-                {
-                    if (placement.Confirmed && !inventory.ContainsKey(placement.RemoteId))
-                    {
-                        _placements.Remove(localId);
-                        _placedRemoteIds.Remove(placement.RemoteId);
-                        _lastRemoteEvenId = Math.Max(_lastRemoteEvenId, placement.RemoteId);
-                    }
-                    else placement.Confirmed = false;
-                }
-            }
+            // Publish the inventory only once complete: a failed attempt must not leave a partial or stale listing.
             _remoteFiles = inventory;
+            _initialized = true;
         }
         finally { _initialization.Release(); }
     }
@@ -195,12 +157,6 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
     {
         EnsureInitialized();
         return _remoteFiles.GetValueOrDefault(index);
-    }
-
-    public uint GetRemoteCount()
-    {
-        EnsureInitialized();
-        return (uint)_remoteFiles.Count;
     }
 
     public IEnumerable<IFileCollectionFile> RemoteEnumerate()
