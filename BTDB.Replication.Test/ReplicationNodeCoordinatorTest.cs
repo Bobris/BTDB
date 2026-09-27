@@ -371,7 +371,8 @@ public class ReplicationNodeCoordinatorTest
         public int Reads, Polls;
         public long InlineBytes;
         public TaskCompletionSource? HoldReplies;
-        public IDisposable Listen(string endpoint, Func<ReplicationPeerIdentity, IReplicationPeerSession> accept) => cluster.Transport.Listen(endpoint, accept);
+        public IDisposable Listen(string endpoint, Func<string, bool> authenticate,
+            Func<ReplicationPeerIdentity, IReplicationPeerSession> accept) => cluster.Transport.Listen(endpoint, authenticate, accept);
         void Check(string endpoint, CancellationToken cancellation)
         {
             cancellation.ThrowIfCancellationRequested();
@@ -614,6 +615,47 @@ public class ReplicationNodeCoordinatorTest
         Assert.Equal(99ul, await cluster.RestoreEvent());
         cluster.Trls.CompleteDelayed();
         Assert.Equal(99ul, await cluster.RestoreEvent());
+    }
+
+    [Fact]
+    public async Task DelayedPredecessorGenesisConflictsWithActivationAndRestartsWithoutAWatchdog()
+    {
+        await using var cluster = new Cluster();
+        cluster.Trls.Inject = _ => Fault.DelayEffect;
+        var old = cluster.Start("old", inputEnd: 42);
+        Assert.NotEmpty(cluster.Trls.Delayed);
+        old.Storage.Unavailable = true;
+        var next = cluster.Start("next", inputEnd: 99);
+        cluster.Trls.Inject = null;
+        LeaseAuthority? conflicted = null;
+        cluster.Trls.BeforeEffect = write =>
+        {
+            // The old genesis arrives after the new leader verified an empty root, immediately before its CAS.
+            cluster.Trls.BeforeEffect = null;
+            conflicted = next.Leases.Current;
+            cluster.Trls.CompleteDelayed();
+        };
+        cluster.Advance(140);
+        Assert.NotNull(conflicted);
+        Assert.True(conflicted.IsFenced);
+        Assert.Null(next.Leases.Current);
+        Assert.Equal(ReplicationNodeRole.RestartRequired, next.Coordinator.Role);
+        Assert.Equal(1, next.Restarts);
+        Assert.Equal(0, next.FatalRestarts); // No progress watchdog is configured.
+        Assert.False(next.Status.Current.Ready);
+        Assert.True(next.Run.IsCompletedSuccessfully);
+        Assert.Equal(42ul, await cluster.RestoreEvent());
+        var attempts = cluster.Trls.Requests.Count;
+        var renewals = next.Storage.Renews;
+        cluster.Advance(200);
+        Assert.Equal(attempts, cluster.Trls.Requests.Count);
+        Assert.Equal(renewals, next.Storage.Renews);
+        var restored = cluster.Start("restored");
+        cluster.Advance(20);
+        Assert.Equal(ReplicationNodeRole.Leader, restored.Coordinator.Role);
+        Assert.Equal(0, restored.Initializations);
+        using var read = restored.Db!.StartReadOnlyTransaction();
+        Assert.Equal(42ul, read.GetCommitUlong());
     }
 
     [Fact]

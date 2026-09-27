@@ -32,6 +32,11 @@ internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAutho
     public PreparedHandoff? Handoff { get { lock (_lock) return _handoff; } }
     public bool IsDrained { get { lock (_lock) return _grants.IsDrained; } }
 
+    public bool Authenticate(string apiKey)
+    {
+        lock (_lock) return !_closed && authority.IsValid && ApiKeyMatches(apiKey);
+    }
+
     public IReplicationPeerSession Connect(ReplicationPeerIdentity requested)
     {
         lock (_lock)

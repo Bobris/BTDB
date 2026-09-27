@@ -37,9 +37,8 @@ public class LeaderTrlReaderTest
         var progress = new LeaderTrlProgress(8, end.FileId, end.Offset);
         foreach (var follower in new[] { follower1, follower2 })
         {
-            follower.NotifyProgress(progress);
             Assert.True(grants.TryIssue(TimeSpan.FromTicks(10)));
-            Assert.Equal(TrlCompareResult.Matched, await follower.CompareLatestAsync());
+            Assert.Equal(TrlCompareResult.Matched, await follower.CompareAsync(progress));
             Assert.Equal(progress, follower.Compared);
         }
         grants.BeginDrain();

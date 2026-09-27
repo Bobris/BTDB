@@ -74,6 +74,13 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
                     }
                     if (cut.FileId == 0) continue;
                     var result = await _publishers[i].PublishThroughAsync(cut, true, cancellation).ConfigureAwait(false);
+                    if (result == TrlPublishResult.Conflict)
+                    {
+                        // An old genesis may land after empty-root discovery. This publisher cannot retry a
+                        // conflict; stop renewing authority and restore the history that won instead.
+                        _selected.Authority.Fence();
+                        throw new InvalidDataException("Initialization/schema publication conflicts with canonical history; restore is required.");
+                    }
                     if (result is not (TrlPublishResult.Idle or TrlPublishResult.Published or TrlPublishResult.Adopted))
                         throw new IOException("Initialization/schema publication is not yet confirmed.");
                     ReportProgress(3, i, 1, cut.FileId, cut.Offset);

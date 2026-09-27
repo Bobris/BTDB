@@ -12,10 +12,16 @@ internal sealed class InProcessReplicationPeerTransport : IReplicationPeerTransp
 {
     readonly ConcurrentDictionary<string, Func<ReplicationPeerIdentity, IReplicationPeerSession>> _listeners = new();
 
-    public IDisposable Listen(string endpoint, Func<ReplicationPeerIdentity, IReplicationPeerSession> accept)
+    public IDisposable Listen(string endpoint, Func<string, bool> authenticate,
+        Func<ReplicationPeerIdentity, IReplicationPeerSession> accept)
     {
-        if (!_listeners.TryAdd(endpoint, accept)) throw new InvalidOperationException("Peer endpoint already registered.");
-        return new Registration(() => _listeners.TryRemove(new(endpoint, accept)));
+        Func<ReplicationPeerIdentity, IReplicationPeerSession> authenticated = identity =>
+        {
+            if (!authenticate(identity.ApiKey)) throw new IOException("Peer authentication failed.");
+            return accept(identity);
+        };
+        if (!_listeners.TryAdd(endpoint, authenticated)) throw new InvalidOperationException("Peer endpoint already registered.");
+        return new Registration(() => _listeners.TryRemove(new(endpoint, authenticated)));
     }
 
     public ValueTask<IReplicationPeerSession> ConnectAsync(ReplicationPeerIdentity identity, CancellationToken cancellation)

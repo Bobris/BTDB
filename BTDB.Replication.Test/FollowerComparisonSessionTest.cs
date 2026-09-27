@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using BTDB.Replication.Test.Simulation;
 using Xunit;
 using Node = BTDB.Replication.Test.TrlPrefixComparerTest.Node;
 
@@ -25,40 +24,36 @@ public class FollowerComparisonSessionTest
         var restarts = 0;
         var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
             () => restarts++, restoredBase);
-        session.NotifyProgress(Progress(leader));
-        Assert.Equal(TrlCompareResult.Diverged, await session.CompareLatestAsync());
+        Assert.Equal(TrlCompareResult.Diverged, await session.CompareAsync(Progress(leader)));
         Assert.Equal(1, restarts);
     }
 
     [Fact]
-    public async Task CoalescesProgressAndRetriesLag()
+    public async Task EachPollSuppliesItsCutAndRetriesLocalLag()
     {
         using var leader = await Node.Create(false);
         using var follower = await Node.Create(false);
         using var reader = leader.Reader();
         var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
             () => Assert.Fail("Unexpected restart"), follower.Capture.Acknowledged);
-        Assert.Null(await session.CompareLatestAsync());
         await leader.Write(1, 1);
         var first = Progress(leader);
-        session.NotifyProgress(first);
+        Assert.Equal(TrlCompareResult.LocalBehind, await session.CompareAsync(first));
         await leader.Write(1, 2); // A changed cut with unchanged event ID must not be discarded.
         var latest = Progress(leader);
-        session.NotifyProgress(latest);
-        session.NotifyProgress(first);
-        Assert.Equal(TrlCompareResult.LocalBehind, await session.CompareLatestAsync());
+        Assert.Equal(TrlCompareResult.LocalBehind, await session.CompareAsync(latest));
         await follower.Write(1, 1);
         await follower.Write(1, 2);
-        Assert.Equal(TrlCompareResult.Matched, await session.CompareLatestAsync());
+        Assert.Equal(TrlCompareResult.Matched, await session.CompareAsync(latest));
         Assert.Equal(latest, session.Compared);
-        Assert.Equal(latest, session.Compared);
+        Assert.Equal(latest.Position, session.ComparedPosition);
         await follower.Write(2, 3);
         Assert.NotEqual(latest.Position, follower.Capture.Completed);
         session.Close();
     }
 
     [Fact]
-    public async Task ProgressDuringReadKeepsTheComparedCutFixed()
+    public async Task LocalCommitsDuringReadKeepTheRequestedCutFixed()
     {
         using var leader = await Node.Create(false);
         using var follower = await Node.Create(false);
@@ -68,7 +63,6 @@ public class FollowerComparisonSessionTest
         var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
             () => Assert.Fail("Unexpected restart"), follower.Capture.Acknowledged);
         var first = Progress(leader);
-        session.NotifyProgress(first);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         reader.BeforeRead = async (_, _, cancellation) =>
@@ -76,16 +70,15 @@ public class FollowerComparisonSessionTest
             entered.TrySetResult();
             await release.Task.WaitAsync(cancellation);
         };
-        var pending = session.CompareLatestAsync().AsTask();
+        var pending = session.CompareAsync(first).AsTask();
         await entered.Task;
         await leader.Write(2, 2);
         await follower.Write(2, 2);
         var latest = Progress(leader, 2);
-        session.NotifyProgress(latest);
         release.SetResult();
         Assert.Equal(TrlCompareResult.Matched, await pending);
         Assert.Equal(first, session.Compared);
-        Assert.Equal(TrlCompareResult.Matched, await session.CompareLatestAsync());
+        Assert.Equal(TrlCompareResult.Matched, await session.CompareAsync(latest));
         Assert.Equal(latest, session.Compared);
         session.Close();
     }
@@ -106,9 +99,8 @@ public class FollowerComparisonSessionTest
         };
         var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
             () => Assert.Fail("Disconnect is not divergence"), follower.Capture.Acknowledged);
-        session.NotifyProgress(Progress(leader));
         var start = follower.Capture.Acknowledged;
-        var pending = session.CompareLatestAsync().AsTask();
+        var pending = session.CompareAsync(Progress(leader)).AsTask();
         await entered.Task;
         session.Close();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
@@ -127,14 +119,14 @@ public class FollowerComparisonSessionTest
         var restarts = 0;
         var session = new FollowerComparisonSession(follower.Files.GetFile, follower.Capture, reader,
             () => restarts++, follower.Capture.Acknowledged);
-        session.NotifyProgress(Progress(leader));
+        var progress = Progress(leader);
         reader.TruncateRead = true;
-        await Assert.ThrowsAsync<IOException>(() => session.CompareLatestAsync().AsTask());
+        await Assert.ThrowsAsync<IOException>(() => session.CompareAsync(progress).AsTask());
         Assert.Equal(0, restarts);
         reader.TruncateRead = false;
-        Assert.Equal(TrlCompareResult.Diverged, await session.CompareLatestAsync());
+        Assert.Equal(TrlCompareResult.Diverged, await session.CompareAsync(progress));
         Assert.Equal(1, restarts);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => session.CompareLatestAsync().AsTask());
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => session.CompareAsync(progress).AsTask());
         session.Close();
         Assert.Equal(1, restarts);
         await follower.Write(2, 2);

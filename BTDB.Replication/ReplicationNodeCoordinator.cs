@@ -145,7 +145,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             foreach (var database in databases)
                 if (database.RestoredBase.FileId != 0) _canonicalBase[database.Name] = database.RestoredBase;
             localMaintenance = RunLocalMaintenanceAsync(databases, lifetime.Token);
-            listener = transport.Listen(options.Endpoint, Accept);
+            listener = transport.Listen(options.Endpoint, Authenticate, Accept);
             // Observe the durable generation floor before the first lease request.
             while (true)
             {
@@ -430,8 +430,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             try
             {
                 if (status.Chunks is { } chunks) leaderReader.Retain(polled[i].From, chunks);
-                if (status.Progress is { } progress) follower.NotifyProgress(progress);
-                await follower.CompareLatestAsync(cancellation).ConfigureAwait(false);
+                if (status.Progress is { } progress)
+                    await follower.CompareAsync(progress, cancellation).ConfigureAwait(false);
             }
             finally
             {
@@ -543,6 +543,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         }
         host.ReportStatus(Role);
     }
+
+    bool Authenticate(string apiKey) => Volatile.Read(ref _serving)?.Authenticate(apiKey) == true;
 
     IReplicationPeerSession Accept(ReplicationPeerIdentity identity)
     {

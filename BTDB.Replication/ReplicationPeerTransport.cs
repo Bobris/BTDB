@@ -87,6 +87,8 @@ internal interface IReplicationPeerSession : IDisposable
 
 internal interface IReplicationPeerTransport
 {
-    IDisposable Listen(string endpoint, Func<ReplicationPeerIdentity, IReplicationPeerSession> accept);
+    // Authenticate the key before reading a wire body; accept rechecks the complete decoded session identity.
+    IDisposable Listen(string endpoint, Func<string, bool> authenticate,
+        Func<ReplicationPeerIdentity, IReplicationPeerSession> accept);
     ValueTask<IReplicationPeerSession> ConnectAsync(ReplicationPeerIdentity identity, CancellationToken cancellation);
 }

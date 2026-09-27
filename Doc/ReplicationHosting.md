@@ -47,6 +47,9 @@ wall-clock scheduler fallback. The HTTP endpoint must be an HTTPS origin without
 loopback. The adapter maps `POST /_btdb/replication`. TLS certificates, routing and external authentication to Blob
 storage belong to the host. Do not log Authorization headers or raw leader JSON.
 
+The Bearer API key is authenticated against the active leader before reading or decoding the request body. The full
+term/session identity is checked after decoding and again after awaited operations, including key rotation or fencing.
+
 Each follower step sends the leader one poll: the progress, published cut and latest schema-commit position of every
 compared database and of every new database the leader selects, plus a single confirmation grant. For each compared
 database the follower also sends the position its comparison resumes from, and the leader returns its complete TRL

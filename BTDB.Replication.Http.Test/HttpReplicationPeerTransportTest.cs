@@ -32,6 +32,7 @@ public class HttpReplicationPeerTransportTest
         public ReplicationPeerIdentity Identity = null!;
         public IDisposable Registration = null!;
         public Func<HttpContext, Task>? Override;
+        public Action<HttpContext>? BeforeRequest;
         WebApplication _app = null!;
 
         public static async Task<Server> Start()
@@ -41,13 +42,17 @@ public class HttpReplicationPeerTransportTest
             builder.Logging.ClearProviders();
             builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
             server._app = builder.Build();
-            server._app.Use((context, next) => server.Override is { } handler ? handler(context) : next(context));
+            server._app.Use((context, next) =>
+            {
+                server.BeforeRequest?.Invoke(context);
+                return server.Override is { } handler ? handler(context) : next(context);
+            });
             server.Transport.Map(server._app);
             await server._app.StartAsync();
             var endpoint = server._app.Services.GetRequiredService<IServer>().Features
                 .Get<IServerAddressesFeature>()!.Addresses.Single();
             server.Identity = new("cluster", 7, "session", endpoint, "secret");
-            server.Registration = server.Transport.Listen(endpoint, identity =>
+            server.Registration = server.Transport.Listen(endpoint, key => key == server.Identity.ApiKey, identity =>
             {
                 if (identity != server.Identity) throw new IOException("Rejected.");
                 return new Connection(server.Backend);
@@ -241,6 +246,53 @@ public class HttpReplicationPeerTransportTest
         using var content = new StringContent(new string('x', HttpReplicationPeerTransport.MaximumControlBytes + 1));
         using var oversized = await client.PostAsync(server.Identity.Endpoint + HttpReplicationPeerTransport.Path, content);
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
+    }
+
+    sealed class ObservedBody(byte[] bytes, Action? beforeRead = null) : MemoryStream(bytes)
+    {
+        public int Reads;
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref Reads);
+            beforeRead?.Invoke();
+            return base.ReadAsync(buffer, cancellationToken);
+        }
+    }
+
+    [Theory]
+    [InlineData(null, HttpStatusCode.Unauthorized, 0)]
+    [InlineData("wrong", HttpStatusCode.Unauthorized, 0)]
+    [InlineData("secret", HttpStatusCode.Unauthorized, 0)]
+    [InlineData("rotated", HttpStatusCode.BadRequest, 1)]
+    public async Task BearerKeyIsAuthenticatedBeforeReadingOrDecodingTheBody(string? key, HttpStatusCode status, int reads)
+    {
+        await using var server = await Server.Start();
+        server.Identity = server.Identity with { ApiKey = "rotated" };
+        using var body = new ObservedBody([255]); // Unknown protocol version, reached only with the current key.
+        server.BeforeRequest = context => context.Request.Body = body;
+        using var client = new HttpClient();
+        if (key != null) client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        using var content = new ByteArrayContent([255]);
+        using var response = await client.PostAsync(server.Identity.Endpoint + HttpReplicationPeerTransport.Path, content);
+        Assert.Equal(status, response.StatusCode);
+        Assert.Equal(reads, body.Reads);
+    }
+
+    [Fact]
+    public async Task KeyRotatedWhileReadingTheBodyCannotOpenTheOldSession()
+    {
+        await using var server = await Server.Start();
+        var identity = server.Identity;
+        var bytes = ReplicationPeerWire.EncodeRequest(new(identity.ClusterId, identity.Term, identity.SessionId,
+            identity.Endpoint, PeerOperation.Connect));
+        using var body = new ObservedBody(bytes, () => server.Identity = identity with { ApiKey = "rotated" });
+        server.BeforeRequest = context => context.Request.Body = body;
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", identity.ApiKey);
+        using var content = new ByteArrayContent(bytes);
+        using var response = await client.PostAsync(identity.Endpoint + HttpReplicationPeerTransport.Path, content);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(1, body.Reads);
     }
 
     [Fact]

@@ -26,7 +26,8 @@ host. Do not log the Authorization header; the adapter never logs identities, cr
 ## Wire boundary
 
 Each request carries the selected cluster ID, term, session ID and endpoint plus one operation: `connect`, `poll`,
-`read` or `handoff`, in a compact versioned binary encoding. The API key travels only as a Bearer header. Every request
+`read` or `handoff`, in a compact versioned binary encoding. The API key travels only as a Bearer header and is
+authenticated against the active leader before the request body is read or decoded. Every request
 reopens the exact selected leader session, so there is no server session registry or resume token; identity is
 revalidated after awaited work and a replaced listener rejects old requests.
 

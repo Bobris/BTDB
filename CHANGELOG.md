@@ -21,6 +21,10 @@
 
 ### Changed
 
+- Simplify follower comparison to one `CompareAsync(progress, cancellation)` call per polled database. Remove the
+  separate progress notification state and redundant comparison semaphore; the coordinator already serializes calls.
+  Closing a session still cancels outstanding reads and prevents late comparison results from being accepted.
+
 - A steady-state replication checkpoint no longer needs a request per retained remote file. The checkpoint's ID scan
   uses the maintenance listing, so reused PVLs listed without a deletion mark skip `ProtectPureValuesAsync`, and the
   Azure adapter prepares a KVI from one namespace listing (recovery-root hint, selected links and deletion marks)
@@ -60,7 +64,7 @@
 - Replace the JSON replication peer protocol with a compact versioned binary encoding for every operation; poll
   responses carry inline TRL bytes that the client slices without copying, and bodies with a declared length are read
   directly into an exact buffer. The leader reads inline bytes straight into their chunk arrays and writes them to the
-  response without assembling one buffer; peer authentication no longer allocates or repeats itself on connect.
+  response without assembling one buffer; peer key comparison uses a stack buffer for ordinary key lengths.
 
 - Remove the unused per-follower confirmation windows; leader liveness is tracked by the single grant of each poll.
 
@@ -102,6 +106,14 @@
   reuse placements now come only from restore validation, downloads and confirmed uploads.
 
 ### Fixed
+
+- Fence leadership and request canonical restore when initialization/schema publication conflicts. A predecessor's
+  delayed genesis can win after empty-root discovery; previously activation kept retrying the permanently conflicted
+  publisher while renewing its lease indefinitely unless a progress watchdog was configured.
+
+- Authenticate replication HTTP Bearer keys against the active leader before reading or decoding request bodies.
+  Previously only the header format was checked before decoding; full session authentication and revalidation
+  after awaited work remain in place.
 
 - Release local TRL retention of removed and schema-detached databases. They keep executing locally but are never
   compared or published again, so their capture acknowledgement stayed put and local compaction kept every later TRL

@@ -44,10 +44,11 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
         return mapping;
     }
 
-    public IDisposable Listen(string endpoint, Func<ReplicationPeerIdentity, IReplicationPeerSession> accept)
+    public IDisposable Listen(string endpoint, Func<string, bool> authenticate,
+        Func<ReplicationPeerIdentity, IReplicationPeerSession> accept)
     {
         ValidateEndpoint(endpoint);
-        var registration = new Registration(this, endpoint, accept);
+        var registration = new Registration(this, endpoint, authenticate, accept);
         if (Interlocked.CompareExchange(ref _listener, registration, null) != null)
             throw new InvalidOperationException("A peer listener is already registered.");
         return registration;
@@ -86,6 +87,9 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
             var authorization = context.Request.Headers.Authorization.ToString();
             if (!authorization.StartsWith("Bearer ", StringComparison.Ordinal) || authorization.Length <= 7)
             { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
+            var apiKey = authorization[7..];
+            if (!listener.Authenticate(apiKey))
+            { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
             if (context.Request.ContentLength > MaximumControlBytes)
             { context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge; return; }
             var bytes = await ReadBoundedAsync(context.Request.Body, context.Request.ContentLength, MaximumControlBytes, context.RequestAborted).ConfigureAwait(false);
@@ -96,7 +100,7 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
                 string.IsNullOrEmpty(request.SessionId) || request.Term == 0)
             { context.Response.StatusCode = StatusCodes.Status400BadRequest; return; }
             var identity = new ReplicationPeerIdentity(request.ClusterId, request.Term, request.SessionId,
-                request.Endpoint, authorization[7..]);
+                request.Endpoint, apiKey);
             IReplicationPeerSession session;
             try { session = listener.Accept(identity); }
             catch (IOException) { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
@@ -201,9 +205,11 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
 
 
     sealed class Registration(HttpReplicationPeerTransport owner, string endpoint,
+        Func<string, bool> authenticate,
         Func<ReplicationPeerIdentity, IReplicationPeerSession> accept) : IDisposable
     {
         public string Endpoint => endpoint;
+        public bool Authenticate(string apiKey) => authenticate(apiKey);
         public IReplicationPeerSession Accept(ReplicationPeerIdentity identity) => accept(identity);
         public void Dispose() => Interlocked.CompareExchange(ref owner._listener, null, this);
     }

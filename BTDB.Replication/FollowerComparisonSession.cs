@@ -11,8 +11,9 @@ public readonly record struct LeaderTrlProgress(ulong EventId, uint TrlFileId, u
 }
 
 /// <summary>
-/// One authenticated leader/database connection. The owner validates term and database before delivering messages,
-/// calls CompareLatestAsync after progress or local completion, and closes this object before replacing the session.
+/// One authenticated leader/database connection. The owner validates term and database, calls CompareAsync serially
+/// with each poll's fixed progress cut, and closes this object before replacing the session. Close may cancel a read
+/// in progress; comparisons and their resume position remain owned by the coordinator's single transition lane.
 /// There is no application execution, Blob access or background retry loop here. A byte match is historical equality,
 /// not a live confirmation grant; leader liveness is tracked by the owner's poll grants.
 /// LocalProgress (the host's completed local cut) names a lagging partial match that stops at the local end.
@@ -22,11 +23,9 @@ internal sealed class FollowerComparisonSession(
     Action requestRestart, TransactionLogPosition compareFrom, Func<LeaderTrlProgress?>? localProgress = null)
 {
     readonly object _lock = new();
-    // Serializes comparisons; the comparer itself is not thread-safe.
-    readonly SemaphoreSlim _lane = new(1);
     readonly CancellationTokenSource _closedCancellation = new();
     readonly TrlPrefixComparer _comparer = new(getFile, capture, compareFrom);
-    LeaderTrlProgress? _latest, _compared;
+    LeaderTrlProgress? _compared;
     TransactionLogPosition? _comparedPosition;
     bool _closed;
 
@@ -39,74 +38,47 @@ internal sealed class FollowerComparisonSession(
     // Owner reads this after Close to resume comparison with the same leader session; the lane has stopped by then.
     internal TransactionLogPosition ResumePosition => _comparer.Position;
 
-    public void NotifyProgress(LeaderTrlProgress progress)
+    public async ValueTask<TrlCompareResult> CompareAsync(LeaderTrlProgress progress, CancellationToken cancellation = default)
     {
         if (progress.TrlFileId == 0 || progress.TrlPosition == 0)
             throw new ArgumentOutOfRangeException(nameof(progress));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _closedCancellation.Token);
         lock (_lock)
         {
-            if (_closed) return;
-            if (_latest is { } latest)
-            {
-                var order = progress.Position.CompareTo(latest.Position);
-                if (order < 0) return; // Delayed notification on this same connection.
-                if (order == 0 && progress.EventId != latest.EventId)
-                    throw new ArgumentException("The same native cut cannot have different event IDs.", nameof(progress));
-            }
-            _latest = progress;
+            if (_closed) throw new OperationCanceledException("Leader session is closed.", linked.Token);
+            linked.Token.ThrowIfCancellationRequested();
         }
-    }
-
-    public async ValueTask<TrlCompareResult?> CompareLatestAsync(CancellationToken cancellation = default)
-    {
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _closedCancellation.Token);
-        await _lane.WaitAsync(linked.Token).ConfigureAwait(false);
+        var result = await _comparer.CompareAsync(leader, progress.Position, linked.Token).ConfigureAwait(false);
+        // Host callback outside the lock: it only names a partial match that ends exactly at the local cut.
+        var local = result == TrlCompareResult.LocalBehind ? localProgress?.Invoke() : null;
         var restart = false;
-        try
+        lock (_lock)
         {
-            LeaderTrlProgress progress;
-            lock (_lock)
+            if (_closed) throw new OperationCanceledException("Leader session is closed.", linked.Token);
+            linked.Token.ThrowIfCancellationRequested();
+            if (result == TrlCompareResult.Matched)
             {
-                if (_closed) throw new OperationCanceledException("Leader session is closed.", linked.Token);
-                linked.Token.ThrowIfCancellationRequested();
-                if (_latest is not { } latest) return null;
-                progress = latest;
+                _compared = progress;
+                if (_comparedPosition is not { } previous || progress.Position > previous) _comparedPosition = progress.Position;
             }
-            var result = await _comparer.CompareAsync(leader, progress.Position, linked.Token).ConfigureAwait(false);
-            // Host callback outside the lock: it only names a partial match that ends exactly at the local cut.
-            var local = result == TrlCompareResult.LocalBehind ? localProgress?.Invoke() : null;
-            lock (_lock)
+            else if (result == TrlCompareResult.LocalBehind && _comparer.MatchedThrough is { } matched &&
+                     (_comparedPosition is not { } previous || matched > previous))
             {
-                if (_closed) throw new OperationCanceledException("Leader session is closed.", linked.Token);
-                linked.Token.ThrowIfCancellationRequested();
-                if (result == TrlCompareResult.Matched)
-                {
-                    _compared = progress;
-                    if (_comparedPosition is not { } previous || progress.Position > previous) _comparedPosition = progress.Position;
-                }
-                else if (result == TrlCompareResult.LocalBehind && _comparer.MatchedThrough is { } matched &&
-                         (_comparedPosition is not { } previous || matched > previous))
-                {
-                    _comparedPosition = matched;
-                    if (local is { } cut && cut.Position == matched) _compared = cut;
-                }
-                if (result == TrlCompareResult.Diverged)
-                {
-                    _closed = true;
-                    restart = true;
-                }
+                _comparedPosition = matched;
+                if (local is { } cut && cut.Position == matched) _compared = cut;
             }
-            return result;
-        }
-        finally
-        {
-            _lane.Release();
-            if (restart)
+            if (result == TrlCompareResult.Diverged)
             {
-                try { _closedCancellation.Cancel(); }
-                finally { requestRestart(); }
+                _closed = true;
+                restart = true;
             }
         }
+        if (restart)
+        {
+            try { _closedCancellation.Cancel(); }
+            finally { requestRestart(); }
+        }
+        return result;
     }
 
     public void Close()

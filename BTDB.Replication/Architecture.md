@@ -188,6 +188,9 @@ steps while the host keeps executing input:
 
 Preparation runs once per lease; later steps only publish. Losing authority at any point drops the leadership session;
 its selection, verified prefixes and publishers are never reused under another lease.
+An initialization/schema publication conflict fences authority and requests canonical restore immediately. For example,
+a predecessor's delayed genesis may win after empty-root discovery. A conflicting publisher cannot make progress by
+retrying, whereas an unresolved write still reconciles the same intent on later steps.
 
 ### Planned upgrade handoff
 
@@ -248,8 +251,9 @@ session, endpoint and API key; the leader reauthenticates after every await, and
 served. The HTTP adapter is stateless per request, maps into the host's Kestrel pipeline and requires HTTPS except on
 loopback; see [BTDB.Replication.Http](../BTDB.Replication.Http/README.md).
 
-- **Comparison.** `FollowerComparisonSession` compares the leader bytes with local TRL bytes from its resume position,
-  following native lineage across rotations. A lagging follower compares the complete local prefix the leader's cut
+- **Comparison.** The coordinator calls `FollowerComparisonSession.CompareAsync` serially with each poll's progress
+  cut; there is no separate progress notification queue or comparison semaphore. It compares leader bytes with local
+  TRL bytes from its resume position, following native lineage across rotations. A lagging follower compares the complete local prefix the leader's cut
   already covers. A match advances the compared position; a mismatch requests restart.
 - **Retention.** `RetainingLeaderTrlReader` keeps up to 4 MiB of received leader bytes per database across steps, so a
   lagging comparison never fetches them twice. An inline chunk that continues in a later file shows where the

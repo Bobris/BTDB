@@ -127,7 +127,8 @@ positive delays in virtual time.
 - `LeaderTrlReaderTest` and `RetainingLeaderTrlReaderTest`: leader reads stop at the complete cut, inline bytes follow
   lineage across files, retention is bounded, and an inline file switch answers the end-of-file check without a peer
   read (`InlineFileSwitchAnswersEndOfFileAndContinuesIntoTheSuccessor`).
-- `FollowerComparisonSessionTest`: coalesced progress, fixed cuts during reads, restart requested once on divergence,
+- `FollowerComparisonSessionTest`: explicit per-poll cuts and lag retries, fixed cuts during reads, cancellation on
+  close, restart requested once on divergence,
   and a new leader compared from the verified restore cut
   (`NewLeaderCannotConfirmBytesOnlyAcknowledgedByItsPredecessor`).
 - `ReplicationPeerPollTest` validates poll answers and inline byte budgets. `TransactionLogCaptureTest` (replication
@@ -162,6 +163,9 @@ coordinator never runs handlers.
   `CaughtUpFollowerComparesInlinePollBytesWithoutRangeReads` (with and without small logs) needs no range reads.
 - Faults: startup outage prevents election, divergence requests restart while local writes continue, malformed leader
   records request restart, and wrong API keys or stale sessions fail authentication.
+- Activation conflict: `DelayedPredecessorGenesisConflictsWithActivationAndRestartsWithoutAWatchdog` lands the old
+  genesis between empty-root discovery and the new leader's CAS. The new leader fences and restarts without renewing
+  the lease or requiring a watchdog; a fresh node restores the winning initialization cursor and can lead.
 - Upgrades and database sets: prepared highest-generation handoff before lease expiry, older generations following but
   never contending, removed databases continuing locally with their TRL released to compaction, and leader-only
   initialization that keeps its captured cursor after a lost reply or is recreated at a newer input end after leader
@@ -177,6 +181,7 @@ coordinator never runs handlers.
 
 `BTDB.Replication.Http.Test` uses real loopback Kestrel listeners. `HttpReplicationPeerTransportTest` covers
 per-request authentication of the exact leader identity (including key rotation and replaced sessions), cancellation,
+rejection of missing, wrong and rotated-out Bearer keys without reading the body, key rotation during body reads,
 missing retained bytes, bounded and oversized requests, immediate overload rejection, redirect rejection, invalid range
 responses and native comparison across rotated TRLs over the socket. `ReplicationPeerWireTest` round-trips the wire
 codec. `ReplicationHostingTest` runs the coordinator inside an ASP.NET host: start only after Kestrel, restore retry
