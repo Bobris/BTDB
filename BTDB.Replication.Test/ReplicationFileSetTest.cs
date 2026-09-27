@@ -223,11 +223,10 @@ public class ReplicationFileSetTest
     {
         using var local = new InMemoryReplicationFileStorage();
         using var remote = new CheckpointPublisherTest.Storage();
-        var cached = Add(local, 100, [1]);
-        var first = AddRemote(remote, 2, [1]);
+        Add(local, 100, [1]); // A copy of remote 2 cached under another ID.
+        AddRemote(remote, 2, [1]);
         AddRemote(remote, 100, [9]);
         await using var files = new ReplicationFileSet(local, remote);
-        files.RememberVerifiedPureValues(Source(cached), first);
         await files.InitializeAsync();
         Assert.Equal(2u, files.GetLocalFileId(2));
         Assert.Equal(100u, files.GetLocalFileId(100));
@@ -448,9 +447,8 @@ public class ReplicationFileSetTest
         using var remote = new CheckpointPublisherTest.Storage();
         var source = Source(Add(local, 2, [1, 2, 3]));
         Add(local, 10000, [9]);
-        var other = AddRemote(remote, 2, [4, 5, 6]);
+        AddRemote(remote, 2, [4, 5, 6]);
         var files = new ReplicationFileSet(local, remote);
-        Assert.Throws<IOException>(() => files.RememberVerifiedPureValues(source, other));
         Assert.Equal(4u, await files.PublishPureValuesAsync(source, CancellationToken.None));
         Assert.Equal(2u, files.GetLocalFileId(4));
         Assert.Equal(new uint[] { 4 }, remote.PvlAttempts);

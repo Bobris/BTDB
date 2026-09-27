@@ -47,6 +47,16 @@ wall-clock scheduler fallback. The HTTP endpoint must be an HTTPS origin without
 loopback. The adapter maps `POST /_btdb/replication`. TLS certificates, routing and external authentication to Blob
 storage belong to the host. Do not log Authorization headers or raw leader JSON.
 
+Each follower step sends the leader one poll: the progress and published cut of every compared database and of every
+new database the leader selects, plus a single confirmation grant. For each compared database the follower also sends
+the position its schema scan or comparison resumes from, and the leader returns its complete TRL bytes from there
+inline (up to 1 MiB per poll), so a caught-up follower needs no separate range reads. The same request, with no
+databases, is the authority heartbeat of a schema-detached node.
+
+Peer messages use a compact versioned binary encoding (`application/octet-stream`), not JSON. Requests are limited to
+16 KiB; a poll response may add the requested inline budget. Inline chunk bytes are sliced from the response without
+copying.
+
 Optional `DetachedLeaderTimeout` (default 15 minutes) is how long a schema-detached node may go without leader
 evidence before it requests a restart.
 

@@ -97,4 +97,53 @@ public class LeaderTrlReaderTest
         await Assert.ThrowsAsync<IOException>(() => reader.ReadAsync(end.FileId, 0, new byte[1], default).AsTask());
         await leader.Write(2, 2);
     }
+
+    static LeaderTrlReader Reader(Node node)
+    {
+        var clock = new DeterministicScheduler(402);
+        var authority = new LeaseAuthority(clock.CreateScope("leader"), 0, TimeSpan.Zero);
+        Assert.True(authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromTicks(100)));
+        return new(node.Db, node.Capture, authority);
+    }
+
+    [Fact]
+    public async Task InlineBytesFollowLineageAcrossFilesAndMatchRangeReads()
+    {
+        using var leader = await Node.Create();
+        await leader.Write(1, 1);
+        var from = leader.Capture.Completed;
+        for (ulong id = 2; id <= 12; id++) await leader.Write(id, (byte)id);
+        var end = leader.Capture.Completed;
+        Assert.True(end.FileId > from.FileId + 2);
+        var reader = Reader(leader);
+        var chunks = await reader.ReadInlineAsync(from, end, ReplicationPeerPoll.MaximumInlineBytes, default);
+        Assert.Equal((from.FileId, from.Offset), (chunks[0].FileId, chunks[0].Offset));
+        Assert.Equal(end, new(chunks[^1].FileId, chunks[^1].Offset + (uint)chunks[^1].Bytes.Length));
+        new ReplicationPeerPoll(1, true, [new("main", new(12, end.FileId, end.Offset), null, chunks)])
+            .Validate(1, [new("main", from)], ReplicationPeerPoll.MaximumInlineBytes);
+        foreach (var chunk in chunks)
+        {
+            var expected = new byte[chunk.Bytes.Length];
+            Assert.Equal(expected.Length, await reader.ReadAsync(chunk.FileId, chunk.Offset, expected, default));
+            Assert.Equal(expected, chunk.Bytes.ToArray());
+        }
+    }
+
+    [Fact]
+    public async Task InlineBytesRespectBudgetAndStopAtUnservableRanges()
+    {
+        using var leader = await Node.Create(false);
+        await leader.Write(1, 1);
+        var from = leader.Capture.Completed;
+        await leader.Write(2, 2, size: 10_000);
+        var end = leader.Capture.Completed;
+        var reader = Reader(leader);
+        var limited = Assert.Single(await reader.ReadInlineAsync(from, end, 100, default));
+        Assert.Equal(100, limited.Bytes.Length);
+        Assert.Empty(await reader.ReadInlineAsync(from, end, 0, default));
+        Assert.Empty(await reader.ReadInlineAsync(end, end, 100, default));
+        Assert.Empty(await reader.ReadInlineAsync(new(end.FileId + 2, 0), new(end.FileId + 2, 10), 100, default));
+        reader.Close();
+        await Assert.ThrowsAsync<IOException>(() => reader.ReadInlineAsync(from, end, 100, default).AsTask());
+    }
 }

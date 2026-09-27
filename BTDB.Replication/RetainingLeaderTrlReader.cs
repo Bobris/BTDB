@@ -14,8 +14,19 @@ namespace BTDB.Replication;
 /// </summary>
 internal sealed class RetainingLeaderTrlReader(ILeaderTrlReader inner, int capacity = 4 * 1024 * 1024) : ILeaderTrlReader
 {
-    readonly List<(uint FileId, ulong Offset, byte[] Bytes)> _chunks = new();
+    readonly List<(uint FileId, ulong Offset, ReadOnlyMemory<byte> Bytes)> _chunks = new();
     int _retained;
+
+    /// <summary>Retain bytes the leader already returned with a poll, within the same capacity.</summary>
+    public void Retain(IReadOnlyList<ReplicationPeerTrlChunk> chunks)
+    {
+        foreach (var chunk in chunks)
+        {
+            if (_retained + chunk.Bytes.Length > capacity) return;
+            _chunks.Add((chunk.FileId, chunk.Offset, chunk.Bytes));
+            _retained += chunk.Bytes.Length;
+        }
+    }
 
     public void Clear()
     {
@@ -31,7 +42,7 @@ internal sealed class RetainingLeaderTrlReader(ILeaderTrlReader inner, int capac
             if (chunkFileId != fileId || offset < chunkOffset || offset - chunkOffset >= (ulong)bytes.Length) continue;
             var start = (int)(offset - chunkOffset);
             var count = Math.Min(destination.Length, bytes.Length - start);
-            bytes.AsSpan(start, count).CopyTo(destination.Span);
+            bytes.Span.Slice(start, count).CopyTo(destination.Span);
             return count;
         }
         var read = await inner.ReadAsync(fileId, offset, destination, cancellation).ConfigureAwait(false);

@@ -32,8 +32,18 @@
   ranges, comparison reads 256 KiB (the HTTP maximum) instead of 64 KiB, crossing TRL files walks the lineage once
   instead of from the advertised end at every rotation, and resumed schema scans do not reread the file header.
 
-- Remove unused internal replication helpers (`TrlPublication`, `TrlSnapshot`, `IReplicationRandom`) and move the
-  in-process peer transport into the test project.
+- Batch follower polls: one request per step carries every compared and newly added database with a single
+  challenge and grant, and also serves as the detached-node heartbeat, instead of one request per database plus a
+  separate heartbeat. The leader returns the TRL bytes each follower's schema scan and comparison need inline with the
+  poll (up to 1 MiB), so a caught-up follower makes no range reads.
+
+- Replace the JSON replication peer protocol with a compact versioned binary encoding for every operation; poll
+  responses carry inline TRL bytes that the client slices without copying, and bodies with a declared length are read
+  directly into an exact buffer.
+
+- Remove unused internal replication helpers (`TrlPublication`, `TrlSnapshot`, `IReplicationRandom`,
+  `ReplicationFileSet.RememberVerifiedPureValues`) and move the in-process peer transport into the test project. PVL
+  reuse placements now come only from restore validation, downloads and confirmed uploads.
 
 ### Fixed
 

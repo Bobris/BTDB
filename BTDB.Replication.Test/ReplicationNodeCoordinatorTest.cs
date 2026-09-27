@@ -367,7 +367,7 @@ public class ReplicationNodeCoordinatorTest
 
     sealed class PeerTransport(Cluster cluster, string caller) : IReplicationPeerTransport
     {
-        public int Reads;
+        public int Reads, Polls;
         public TaskCompletionSource? HoldReplies;
         public IDisposable Listen(string endpoint, Func<ReplicationPeerIdentity, IReplicationPeerSession> accept) => cluster.Transport.Listen(endpoint, accept);
         void Check(string endpoint, CancellationToken cancellation)
@@ -383,10 +383,12 @@ public class ReplicationNodeCoordinatorTest
         sealed class Session(PeerTransport owner, string endpoint, IReplicationPeerSession inner) : IReplicationPeerSession
         {
             public void Dispose() => inner.Dispose();
-            public async ValueTask<ReplicationPeerProgress> PollAsync(string? database, long challenge, TimeSpan duration, CancellationToken cancellation)
+            public async ValueTask<ReplicationPeerPoll> PollAsync(IReadOnlyList<ReplicationPeerPollRequest> databases, long challenge,
+                TimeSpan duration, int inlineBudget, CancellationToken cancellation)
             {
                 owner.Check(endpoint, cancellation);
-                var result = await inner.PollAsync(database, challenge, duration, cancellation).ConfigureAwait(false);
+                owner.Polls++;
+                var result = await inner.PollAsync(databases, challenge, duration, inlineBudget, cancellation).ConfigureAwait(false);
                 if (owner.HoldReplies != null) await owner.HoldReplies.Task.WaitAsync(cancellation).ConfigureAwait(false);
                 owner.Check(endpoint, cancellation);
                 return result;
@@ -680,6 +682,41 @@ public class ReplicationNodeCoordinatorTest
         Assert.Equal(attempts, older.Storage.Acquires);
         Assert.Equal(0, older.Restarts);
         Assert.False(older.Run.IsCompleted);
+    }
+
+    [Fact]
+    public async Task CaughtUpFollowerComparesInlinePollBytesWithoutRangeReads()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader");
+        var follower = cluster.Start("follower");
+        cluster.Advance(30);
+        Assert.Equal(ReplicationNodeRole.Leader, leader.Coordinator.Role);
+        foreach (var node in cluster.Nodes) await node.Write(2, 2);
+        cluster.Advance(10); // The first scan in a file validates its header once per leader session.
+        var reads = follower.Peers.Reads;
+        for (ulong id = 3; id <= 5; id++)
+        {
+            foreach (var node in cluster.Nodes) await node.Write(id, (byte)id, size: 2000);
+            cluster.Advance(10);
+            Assert.Equal(follower.Capture.Completed, follower.Status.Current.Databases[0].Compared!.Value.Position);
+        }
+        Assert.Equal(reads, follower.Peers.Reads);
+    }
+
+    [Fact]
+    public async Task FollowerSendsOnePollPerStepForProgressAndGrant()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader");
+        var follower = cluster.Start("follower");
+        cluster.Advance(30);
+        Assert.Equal(ReplicationNodeRole.Leader, leader.Coordinator.Role);
+        Assert.Equal(ReplicationNodeRole.Follower, follower.Coordinator.Role);
+        var polls = follower.Peers.Polls;
+        cluster.Advance(100); // Ten poll intervals.
+        Assert.InRange(follower.Peers.Polls - polls, 9, 11);
+        Assert.True(follower.Status.Current.Ready);
     }
 
     [Fact]
@@ -1005,7 +1042,7 @@ public class ReplicationNodeCoordinatorTest
         await Assert.ThrowsAsync<IOException>(() => cluster.Transport.ConnectAsync(identity with { ApiKey = "wrong" }, default).AsTask());
         await Assert.ThrowsAsync<IOException>(() => cluster.Transport.ConnectAsync(identity with { SessionId = "previous" }, default).AsTask());
         using var accepted = await cluster.Transport.ConnectAsync(identity, default);
-        Assert.True((await accepted.PollAsync("main", 1, TimeSpan.FromTicks(10), default)).Granted);
+        Assert.True((await accepted.PollAsync([new("main")], 1, TimeSpan.FromTicks(10), 0, default)).Granted);
         Assert.DoesNotContain(identity.ApiKey, identity.ToString());
     }
 

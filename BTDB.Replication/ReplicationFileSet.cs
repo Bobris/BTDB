@@ -101,18 +101,6 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
         }
     }
 
-    /// <summary>Verify a complete sealed local PVL against selected remote metadata before reusing it.
-    /// A matching ID or length alone does not establish a local-to-remote placement.</summary>
-    internal void RememberVerifiedPureValues(KeyIndexFileSource source, RemoteFile file)
-    {
-        if (source.FileType != KVFileType.PureValues || file.FileType != KVFileType.PureValues ||
-            !file.IsSealed || file.Sha256 is null || file.FileId == 0 || source.Length != file.Length ||
-            source.Length != source.File.GetSize() || !OwnsSource(source))
-            throw new ArgumentException("A complete local PVL and a sealed remote PVL with a checksum are required.");
-        VerifyLocalChecksum(source.File, file, CancellationToken.None);
-        AddPlacement(source.FileId, new(source.Length, file.FileId, true));
-    }
-
     /// <summary>Restore under the exact remote file ID before publication starts.
     /// A collision fails without touching the existing local file. Sealed files with a checksum are verified while
     /// they are written. Partial/invalid downloads are removed and never establish a placement.</summary>

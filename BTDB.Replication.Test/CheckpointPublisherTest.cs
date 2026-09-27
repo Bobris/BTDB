@@ -647,46 +647,100 @@ public class CheckpointPublisherTest
         }
     }
 
-    [Fact]
-    public async Task DownloadedPvlKeepsIdAndSuccessfulUploadsAreReusedAcrossSnapshots()
+    /// A follower restored from a published checkpoint and promoted to publish from the remote canonical tail.
+    sealed class PromotedFollower : IAsyncDisposable
     {
+        public readonly InMemoryReplicationFileStorage Cache = new();
+        public readonly TransactionLogCapture Capture = new();
+        public ReplicationFileSet Files = null!;
+        public BTreeKeyValueDB Db = null!;
+        public CanonicalTrlPublisher Canonical = null!;
+
+        public static async Task<PromotedFollower> Restore(Storage storage)
+        {
+            var follower = new PromotedFollower();
+            follower.Files = new(follower.Cache, storage);
+            await follower.Files.InitializeAsync();
+            follower.Db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+            {
+                FileCollection = follower.Files, TransactionLogCapture = follower.Capture,
+                Compression = new NoCompressionStrategy(), CompactorScheduler = null, FileSplitSize = 8096
+            });
+            var tailId = follower.Files.RemoteEnumerate()
+                .Where(f => follower.Files.GetFileType(f.Index) == KVFileType.TransactionLog).Max(f => f.Index);
+            var key = $"trl/{tailId}";
+            var state = (await storage.ReadAsync(key, CancellationToken.None))!;
+            follower.Canonical = new(follower.Db, follower.Capture, storage, CreateAuthority(), 2, id => $"trl/{id}",
+                new(tailId, key, state));
+            Assert.Equal(TrlPublishResult.Adopted, await follower.Canonical.PublishNextAsync());
+            return follower;
+        }
+
+        public async Task Write(ulong eventId, byte key)
+        {
+            using var tr = await Db.StartWritingTransaction(eventId);
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue([key], [key]);
+            tr.Commit();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            Canonical.Dispose();
+            Db.Dispose();
+            await Files.DisposeAsync();
+            Cache.Dispose();
+        }
+    }
+
+    static async Task<Storage> PublishFirstCheckpoint()
+    {
+        var storage = new Storage();
         using var local = new InMemoryReplicationFileStorage();
         var capture = new TransactionLogCapture();
         using var db = await OpenForPublication(local, capture);
         await Populate(db);
         using var snapshot = db.CaptureKeyIndexSnapshot();
-        var downloaded = snapshot.Sources.First(s => s.FileType == KVFileType.PureValues);
-        using var storage = new Storage(snapshot, downloaded.FileId);
-        var files = new ReplicationFileSet(local, storage);
         using var canonical = CreateCanonical(db, capture, storage);
-        var publisher = new CheckpointPublisher(files, canonical);
-        files.RememberVerifiedPureValues(downloaded, storage.Describe(downloaded.FileId));
-        Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(snapshot, retryPending: true));
-        Assert.Equal(downloaded.FileId, storage.LastMap![downloaded.FileId]);
+        await using var files = new ReplicationFileSet(local, storage);
+        Assert.Equal(CheckpointPublishResult.Published, await new CheckpointPublisher(files, canonical).PublishAsync(snapshot));
+        return storage;
+    }
+
+    [Fact]
+    public async Task RestoredPvlKeepsIdAndIsReusedWithoutUploadAcrossSnapshots()
+    {
+        using var storage = await PublishFirstCheckpoint();
+        await using var follower = await PromotedFollower.Restore(storage);
         var uploaded = storage.PvlAttempts.Count;
-        await db.Compact(CancellationToken.None);
-        using var next = db.CaptureKeyIndexSnapshot();
-        Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(next));
+        var publisher = new CheckpointPublisher(follower.Files, follower.Canonical);
+        await follower.Write(63, 210);
+        using (var snapshot = follower.Db.CaptureKeyIndexSnapshot())
+        {
+            var restored = snapshot.Sources.Where(s => s.FileType == KVFileType.PureValues).ToArray();
+            Assert.NotEmpty(restored);
+            Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(snapshot));
+            Assert.All(restored, source => Assert.Equal(source.FileId, storage.LastMap![source.FileId]));
+        }
+        Assert.Equal(uploaded, storage.PvlAttempts.Count);
+        await follower.Write(64, 211);
+        using (var next = follower.Db.CaptureKeyIndexSnapshot())
+            Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(next));
         Assert.Equal(uploaded, storage.PvlAttempts.Count);
     }
 
     [Fact]
-    public async Task PromotedFollowerReuploadsMissingRememberedPvlAtFreshIdentity()
+    public async Task PromotedFollowerReuploadsMissingRestoredPvlAtFreshIdentity()
     {
-        using var local = new InMemoryReplicationFileStorage();
-        var capture = new TransactionLogCapture();
-        using var db = await OpenForPublication(local, capture);
-        await Populate(db);
-        using var snapshot = db.CaptureKeyIndexSnapshot();
+        using var storage = await PublishFirstCheckpoint();
+        await using var follower = await PromotedFollower.Restore(storage);
+        await follower.Write(63, 210);
+        using var snapshot = follower.Db.CaptureKeyIndexSnapshot();
         var downloaded = snapshot.Sources.First(s => s.FileType == KVFileType.PureValues);
-        using var storage = new Storage(snapshot, downloaded.FileId);
-        await using var files = new ReplicationFileSet(local, storage);
-        files.RememberVerifiedPureValues(downloaded, storage.Describe(downloaded.FileId));
         storage.Files.GetFile(downloaded.FileId)!.Remove();
         storage.Types.Remove(downloaded.FileId);
-        using var canonical = CreateCanonical(db, capture, storage);
-        var publisher = new CheckpointPublisher(files, canonical);
-        Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(snapshot, retryPending: true));
+        var publisher = new CheckpointPublisher(follower.Files, follower.Canonical);
+        Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(snapshot));
         var replacement = storage.LastMap![downloaded.FileId];
         Assert.NotEqual(downloaded.FileId, replacement);
         Assert.Contains(replacement, storage.PvlAttempts);
@@ -696,13 +750,14 @@ public class CheckpointPublisherTest
         await restoredFiles.InitializeAsync();
         using var restored = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         { FileCollection = restoredFiles, CompactorScheduler = null, Compression = new NoCompressionStrategy() });
-        using var expected = db.StartReadOnlyTransaction();
+        using var expected = follower.Db.StartReadOnlyTransaction();
         using var actual = restored.StartReadOnlyTransaction();
         using var expectedCursor = expected.CreateCursor();
         using var actualCursor = actual.CreateCursor();
         Assert.Equal(expectedCursor.GetKeyValueCount([]), actualCursor.GetKeyValueCount([]));
         Assert.True(actualCursor.FindExactKey([200]));
         Assert.Equal(new byte[2000], Value(actualCursor));
+        Assert.True(actualCursor.FindExactKey([210]));
     }
 
     [Theory]

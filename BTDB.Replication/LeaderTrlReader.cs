@@ -1,4 +1,6 @@
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -41,6 +43,52 @@ internal sealed class LeaderTrlReader(BTreeKeyValueDB database, TransactionLogCa
         RequireAuthority();
         return ValueTask.FromResult(count);
     }
+
+    /// <summary>Complete bytes from from through end (a complete transaction cut), at most budget bytes, one chunk per
+    /// native file in lineage order. Every read rechecks closure and authority. A range this leader cannot serve (not
+    /// retained, or lineage it cannot follow) ends the chunks early; the follower then reads the rest by range.</summary>
+    public async ValueTask<IReadOnlyList<ReplicationPeerTrlChunk>> ReadInlineAsync(TransactionLogPosition from,
+        TransactionLogPosition end, int budget, CancellationToken cancellation)
+    {
+        var chunks = new List<ReplicationPeerTrlChunk>();
+        budget = Math.Min(budget, ReplicationPeerPoll.MaximumInlineBytes);
+        if (budget <= 0 || from.FileId == 0 || from >= end) return chunks;
+        uint[] files;
+        try
+        {
+            files = from.FileId == end.FileId ? [from.FileId]
+                : [from.FileId, .. await TrlLineage.SuccessorsAsync(from.FileId, end.FileId,
+                    id => ValueTask.FromResult(PreviousOf(id))).ConfigureAwait(false)];
+        }
+        catch (Exception error) when (error is FileNotFoundException or InvalidDataException) { return chunks; }
+        var buffer = ArrayPool<byte>.Shared.Rent(budget);
+        try
+        {
+            foreach (var fileId in files)
+            {
+                var offset = fileId == from.FileId ? from.Offset : 0u;
+                var size = (int)Math.Min((ulong)budget, fileId == end.FileId ? end.Offset - offset : uint.MaxValue);
+                var filled = 0;
+                while (filled < size)
+                {
+                    int read;
+                    try { read = await ReadAsync(fileId, offset + (ulong)filled, buffer.AsMemory(filled, size - filled), cancellation).ConfigureAwait(false); }
+                    // Only lost authority fails the poll; a range this leader cannot serve just ends the inline bytes.
+                    catch (IOException) when (!_closed && authority.IsValid) { return chunks; }
+                    if (read == 0) break;
+                    filled += read;
+                }
+                if (filled != 0) chunks.Add(new(fileId, offset, buffer.AsSpan(0, filled).ToArray()));
+                budget -= filled;
+                if (budget == 0) break;
+            }
+            return chunks;
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
+    }
+
+    uint PreviousOf(uint fileId) => database.FileCollection.FileInfoByIdx(fileId) is IFileTransactionLog log
+        ? log.PreviousFileId : throw new FileNotFoundException("The leader does not retain the requested TRL.");
 
     void RequireAuthority()
     {

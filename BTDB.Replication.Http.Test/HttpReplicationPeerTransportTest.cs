@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -79,16 +80,22 @@ public class HttpReplicationPeerTransportTest
     sealed class Connection(Backend backend) : IReplicationPeerSession, ILeaderTrlReader
     {
         public void Dispose() { }
-        public async ValueTask<ReplicationPeerProgress> PollAsync(string? database, long challenge, TimeSpan duration, CancellationToken cancellation)
+        public async ValueTask<ReplicationPeerPoll> PollAsync(IReadOnlyList<ReplicationPeerPollRequest> databases, long challenge,
+            TimeSpan duration, int inlineBudget, CancellationToken cancellation)
         {
-            if (database != null && database != "main") throw new IOException("Unknown database.");
+            foreach (var database in databases)
+                if (database.Database != "main") throw new IOException("Unknown database.");
             if (backend.Block)
             {
                 backend.Entered.TrySetResult();
                 try { await backend.Release.Task.WaitAsync(backend.IgnoreCancellation ? CancellationToken.None : cancellation); }
                 catch (OperationCanceledException) { backend.Cancelled.TrySetResult(); throw; }
             }
-            return new(challenge, true, database == null ? null : new(123, 3, 456), database == null ? null : new(3, 400));
+            // Inline bytes of file 3 from the requested position, through the advertised progress (456).
+            return new(challenge, true, databases.Select(d => new ReplicationPeerDatabaseProgress(d.Database, new(123, 3, 456), new(3, 400),
+                d.From.FileId == 3 && d.From.Offset < 456 && inlineBudget > 0
+                    ? [new(3, d.From.Offset, backend.Bytes.AsMemory((int)d.From.Offset, Math.Min(inlineBudget, 456 - (int)d.From.Offset)))]
+                    : null)).ToArray());
         }
         public ILeaderTrlReader Reader(string database)
         {
@@ -113,9 +120,18 @@ public class HttpReplicationPeerTransportTest
     {
         await using var server = await Server.Start();
         using var session = await server.Client.ConnectAsync(server.Identity, default);
-        Assert.Equal(new ReplicationPeerProgress(11, true, new(123, 3, 456), new(3, 400)),
-            await session.PollAsync("main", 11, TimeSpan.FromSeconds(1), default));
-        Assert.Null((await session.PollAsync(null, 12, TimeSpan.FromSeconds(1), default)).Progress);
+        var poll = await session.PollAsync([new("main")], 11, TimeSpan.FromSeconds(1), 0, default);
+        Assert.Equal(11, poll.Challenge);
+        Assert.True(poll.Granted);
+        Assert.Equal(new ReplicationPeerDatabaseProgress("main", new(123, 3, 456), new(3, 400)), Assert.Single(poll.Databases));
+        var inline = Assert.Single((await session.PollAsync([new("main", new(3, 100))], 13, TimeSpan.FromSeconds(1), 1000, default))
+            .Databases);
+        var chunk = Assert.Single(inline.Chunks!);
+        Assert.Equal((3u, 100u), (chunk.FileId, chunk.Offset));
+        Assert.Equal(server.Backend.Bytes.AsSpan(100, 356).ToArray(), chunk.Bytes.ToArray());
+        Assert.Null(Assert.Single((await session.PollAsync([new("main", new(3, 100))], 14, TimeSpan.FromSeconds(1), 0, default))
+            .Databases).Chunks); // A zero budget asks for progress only.
+        Assert.Empty((await session.PollAsync([], 12, TimeSpan.FromSeconds(1), 0, default)).Databases);
         var bytes = new byte[server.Backend.Bytes.Length];
         var reader = session.Reader("main");
         var first = await reader.ReadAsync(3, 0, bytes, default);
@@ -143,10 +159,10 @@ public class HttpReplicationPeerTransportTest
         }
         using var old = await server.Client.ConnectAsync(server.Identity, default);
         server.Identity = server.Identity with { Term = 8, SessionId = "replacement", ApiKey = "rotated" };
-        await Assert.ThrowsAsync<IOException>(() => old.PollAsync("main", 1, TimeSpan.FromSeconds(1), default).AsTask());
+        await Assert.ThrowsAsync<IOException>(() => old.PollAsync([new("main")], 1, TimeSpan.FromSeconds(1), 0, default).AsTask());
         await Assert.ThrowsAsync<IOException>(() => old.Reader("main").ReadAsync(3, 0, new byte[1], default).AsTask());
         using var current = await server.Client.ConnectAsync(server.Identity, default);
-        Assert.True((await current.PollAsync("main", 1, TimeSpan.FromSeconds(1), default)).Granted);
+        Assert.True((await current.PollAsync([new("main")], 1, TimeSpan.FromSeconds(1), 0, default)).Granted);
     }
 
     [Fact]
@@ -157,7 +173,7 @@ public class HttpReplicationPeerTransportTest
         await Assert.ThrowsAsync<FileNotFoundException>(() => session.Reader("main").ReadAsync(1, 0, new byte[5], default).AsTask());
         await Assert.ThrowsAsync<IOException>(() => session.Reader("unknown").ReadAsync(3, 0, new byte[5], default).AsTask());
         server.Registration.Dispose();
-        await Assert.ThrowsAsync<IOException>(() => session.PollAsync(null, 1, TimeSpan.FromSeconds(1), default).AsTask());
+        await Assert.ThrowsAsync<IOException>(() => session.PollAsync([], 1, TimeSpan.FromSeconds(1), 0, default).AsTask());
     }
 
     [Theory]
@@ -169,7 +185,7 @@ public class HttpReplicationPeerTransportTest
         using var session = await server.Client.ConnectAsync(server.Identity, default);
         using var cancellation = new CancellationTokenSource();
         server.Backend.Block = true;
-        var poll = session.PollAsync("main", 1, TimeSpan.FromSeconds(1), cancellation.Token).AsTask();
+        var poll = session.PollAsync([new("main")], 1, TimeSpan.FromSeconds(1), 0, cancellation.Token).AsTask();
         await server.Backend.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         if (close) session.Dispose(); else cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => poll.WaitAsync(TimeSpan.FromSeconds(10)));
@@ -182,7 +198,7 @@ public class HttpReplicationPeerTransportTest
         await using var server = await Server.Start();
         using var session = await server.Client.ConnectAsync(server.Identity, default);
         server.Backend.Block = server.Backend.IgnoreCancellation = true;
-        var poll = session.PollAsync("main", 1, TimeSpan.FromSeconds(1), default).AsTask();
+        var poll = session.PollAsync([new("main")], 1, TimeSpan.FromSeconds(1), 0, default).AsTask();
         await server.Backend.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         server.Identity = server.Identity with { Term = 8 };
         server.Backend.Release.SetResult();
@@ -195,9 +211,9 @@ public class HttpReplicationPeerTransportTest
         await using var server = await Server.Start();
         using var session = await server.Client.ConnectAsync(server.Identity, default);
         server.Backend.Block = true;
-        var poll = session.PollAsync("main", 1, TimeSpan.FromSeconds(1), default).AsTask();
+        var poll = session.PollAsync([new("main")], 1, TimeSpan.FromSeconds(1), 0, default).AsTask();
         await server.Backend.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        var error = await Assert.ThrowsAsync<IOException>(() => session.PollAsync(null, 2, TimeSpan.FromSeconds(1), default).AsTask());
+        var error = await Assert.ThrowsAsync<IOException>(() => session.PollAsync([], 2, TimeSpan.FromSeconds(1), 0, default).AsTask());
         Assert.Contains("429", error.Message);
         server.Backend.Release.SetResult();
         await poll;
@@ -209,11 +225,18 @@ public class HttpReplicationPeerTransportTest
         await using var server = await Server.Start();
         using var client = new HttpClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", server.Identity.ApiKey);
-        var request = new HttpReplicationPeerTransport.Request("cluster", 7, "session", server.Identity.Endpoint,
-            "read", "main", FileId: 3, Count: HttpReplicationPeerTransport.MaximumRange + 1);
-        using var response = await client.PostAsJsonAsync(server.Identity.Endpoint + HttpReplicationPeerTransport.Path,
-            request, new System.Text.Json.JsonSerializerOptions());
+        var request = new PeerRequest("cluster", 7, "session", server.Identity.Endpoint,
+            PeerOperation.Read, "main", FileId: 3, Count: HttpReplicationPeerTransport.MaximumRange + 1);
+        using var response = await client.PostAsync(server.Identity.Endpoint + HttpReplicationPeerTransport.Path,
+            new ByteArrayContent(ReplicationPeerWire.EncodeRequest(request)));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var encoded = ReplicationPeerWire.EncodeRequest(request with { Count = 5 });
+        foreach (var malformed in new[] { encoded[..^1], [.. encoded, 0], [2, .. encoded[1..]] })
+        {
+            using var rejected = await client.PostAsync(server.Identity.Endpoint + HttpReplicationPeerTransport.Path,
+                new ByteArrayContent(malformed)); // Truncated, trailing bytes, unknown protocol version.
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
         Assert.Equal(0, server.Backend.Reads);
         using var content = new StringContent(new string('x', HttpReplicationPeerTransport.MaximumControlBytes + 1));
         using var oversized = await client.PostAsync(server.Identity.Endpoint + HttpReplicationPeerTransport.Path, content);
@@ -240,17 +263,22 @@ public class HttpReplicationPeerTransportTest
     [InlineData("oversized")]
     [InlineData("malformed")]
     [InlineData("stale")]
+    [InlineData("incomplete")]
+    [InlineData("unrequested")]
     public async Task InvalidProgressResponsesAreTransportFailures(string kind)
     {
         await using var server = await Server.Start();
         using var session = await server.Client.ConnectAsync(server.Identity, default);
-        server.Override = context => context.Response.WriteAsync(kind switch
+        var body = kind switch
         {
-            "oversized" => new string(' ', HttpReplicationPeerTransport.MaximumControlBytes + 1),
-            "stale" => "{\"Challenge\":99,\"Granted\":true}",
-            _ => "not json"
-        });
-        await Assert.ThrowsAsync<IOException>(() => session.PollAsync("main", 1, TimeSpan.FromSeconds(1), default).AsTask());
+            "oversized" => new byte[HttpReplicationPeerTransport.MaximumControlBytes + 1],
+            "stale" => ReplicationPeerWire.EncodePoll(new(99, true, [new("main", null)])),
+            "incomplete" => ReplicationPeerWire.EncodePoll(new(1, true, [])),
+            "unrequested" => ReplicationPeerWire.EncodePoll(new(1, true, [new("main", new(1, 3, 456), null, [new(3, 0, new byte[10])])])),
+            _ => "not binary"u8.ToArray()
+        };
+        server.Override = context => context.Response.Body.WriteAsync(body).AsTask();
+        await Assert.ThrowsAsync<IOException>(() => session.PollAsync([new("main")], 1, TimeSpan.FromSeconds(1), 0, default).AsTask());
     }
 
     [Theory]

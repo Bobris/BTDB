@@ -1,11 +1,10 @@
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -88,9 +87,11 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
             { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
             if (context.Request.ContentLength > MaximumControlBytes)
             { context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge; return; }
-            var bytes = await ReadBoundedAsync(context.Request.Body, MaximumControlBytes, context.RequestAborted).ConfigureAwait(false);
-            var request = JsonSerializer.Deserialize<Request>(bytes);
-            if (request == null || request.Endpoint != listener.Endpoint || string.IsNullOrEmpty(request.ClusterId) ||
+            var bytes = await ReadBoundedAsync(context.Request.Body, context.Request.ContentLength, MaximumControlBytes, context.RequestAborted).ConfigureAwait(false);
+            PeerRequest request;
+            try { request = ReplicationPeerWire.DecodeRequest(bytes); }
+            catch (InvalidDataException) { context.Response.StatusCode = StatusCodes.Status400BadRequest; return; }
+            if (request.Endpoint != listener.Endpoint || string.IsNullOrEmpty(request.ClusterId) ||
                 string.IsNullOrEmpty(request.SessionId) || request.Term == 0)
             { context.Response.StatusCode = StatusCodes.Status400BadRequest; return; }
             var identity = new ReplicationPeerIdentity(request.ClusterId, request.Term, request.SessionId,
@@ -103,18 +104,23 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
                 var cancellation = context.RequestAborted;
                 switch (request.Operation)
                 {
-                    case "connect":
+                    case PeerOperation.Connect:
                         CheckListener(listener, identity, cancellation);
                         context.Response.StatusCode = StatusCodes.Status204NoContent;
                         break;
-                    case "poll":
+                    case PeerOperation.Poll:
                         if (request.DurationTicks <= 0) throw new ArgumentException("Invalid grant duration.");
-                        var progress = await session.PollAsync(request.Database, request.Challenge,
-                            TimeSpan.FromTicks(request.DurationTicks), cancellation).ConfigureAwait(false);
+                        if (request.Databases is not { } polled || Array.Exists(polled, d => string.IsNullOrEmpty(d.Database)))
+                            throw new ArgumentException("Invalid polled databases.");
+                        var poll = await session.PollAsync(polled, request.Challenge,
+                            TimeSpan.FromTicks(request.DurationTicks), request.InlineBudget, cancellation).ConfigureAwait(false);
                         CheckListener(listener, identity, cancellation);
-                        await context.Response.WriteAsJsonAsync(progress, options: WireJson, cancellationToken: cancellation).ConfigureAwait(false);
+                        var body = ReplicationPeerWire.EncodePoll(poll);
+                        context.Response.ContentType = "application/octet-stream";
+                        context.Response.ContentLength = body.Length;
+                        await context.Response.Body.WriteAsync(body, cancellation).ConfigureAwait(false);
                         break;
-                    case "read":
+                    case PeerOperation.Read:
                         if (string.IsNullOrEmpty(request.Database) || request.FileId == 0 ||
                             request.Count is <= 0 or > MaximumRange)
                             throw new ArgumentException("Invalid TRL range.");
@@ -131,7 +137,7 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
                         }
                         finally { ArrayPool<byte>.Shared.Return(buffer); }
                         break;
-                    case "handoff":
+                    case PeerOperation.Handoff:
                         if (request.Handoff == null || !Guid.TryParse(request.Handoff.TransferId, out _))
                             throw new ArgumentException("Invalid prepared handoff.");
                         await session.OfferHandoffAsync(request.Handoff, cancellation).ConfigureAwait(false);
@@ -146,7 +152,6 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
         }
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { context.Abort(); }
         catch (FileNotFoundException) { Fail(StatusCodes.Status410Gone); }
-        catch (JsonException) { Fail(StatusCodes.Status400BadRequest); }
         catch (ArgumentException) { Fail(StatusCodes.Status400BadRequest); }
         catch (IOException) { Fail(StatusCodes.Status503ServiceUnavailable); }
         finally { _requests.Release(); }
@@ -166,11 +171,16 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
         using var current = listener.Accept(identity);
     }
 
-    // Computed native helpers (notably LeaderTrlProgress.Position) are not wire fields.
-    static readonly JsonSerializerOptions WireJson = new() { IgnoreReadOnlyProperties = true };
-
-    static async Task<byte[]> ReadBoundedAsync(Stream stream, int maximum, CancellationToken cancellation)
+    // A declared length is read straight into an exact array; otherwise the body is buffered up to the limit.
+    static async Task<byte[]> ReadBoundedAsync(Stream stream, long? length, int maximum, CancellationToken cancellation)
     {
+        if (length is { } declared)
+        {
+            if (declared < 0 || declared > maximum) throw new IOException("Peer message exceeds its size limit.");
+            var exact = new byte[declared];
+            await stream.ReadExactlyAsync(exact, cancellation).ConfigureAwait(false);
+            return exact;
+        }
         using var result = new MemoryStream();
         var buffer = ArrayPool<byte>.Shared.Rent(Math.Min(maximum + 1, 4096));
         try
@@ -187,9 +197,6 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
         finally { ArrayPool<byte>.Shared.Return(buffer); }
     }
 
-    internal sealed record Request(string ClusterId, ulong Term, string SessionId, string Endpoint, string Operation,
-        string? Database = null, long Challenge = 0, long DurationTicks = 0, uint FileId = 0, ulong Offset = 0,
-        int Count = 0, PreparedHandoff? Handoff = null);
 
     sealed class Registration(HttpReplicationPeerTransport owner, string endpoint,
         Func<ReplicationPeerIdentity, IReplicationPeerSession> accept) : IDisposable
@@ -202,50 +209,51 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
     sealed class Session(HttpClient client, ReplicationPeerIdentity identity) : IReplicationPeerSession
     {
         readonly CancellationTokenSource _closed = new();
-        Request Message(string operation) => new(identity.ClusterId, identity.Term, identity.SessionId, identity.Endpoint, operation);
+        PeerRequest Message(PeerOperation operation) => new(identity.ClusterId, identity.Term, identity.SessionId, identity.Endpoint, operation);
 
         public async ValueTask ConnectAsync(CancellationToken cancellation)
         {
-            using var response = await SendAsync(Message("connect"), cancellation).ConfigureAwait(false);
+            using var response = await SendAsync(Message(PeerOperation.Connect), cancellation).ConfigureAwait(false);
             RequireStatus(response, HttpStatusCode.NoContent);
         }
 
-        public async ValueTask<ReplicationPeerProgress> PollAsync(string? database, long challenge, TimeSpan duration,
-            CancellationToken cancellation)
+        public async ValueTask<ReplicationPeerPoll> PollAsync(IReadOnlyList<ReplicationPeerPollRequest> databases,
+            long challenge, TimeSpan duration, int inlineBudget, CancellationToken cancellation)
         {
+            inlineBudget = Math.Clamp(inlineBudget, 0, ReplicationPeerPoll.MaximumInlineBytes);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _closed.Token);
-            using var response = await SendAsync(Message("poll") with
-            { Database = database, Challenge = challenge, DurationTicks = duration.Ticks }, linked.Token).ConfigureAwait(false);
-            RequireStatus(response, HttpStatusCode.OK);
-            try
+            using var response = await SendAsync(Message(PeerOperation.Poll) with
             {
-                var bytes = await ReadBoundedAsync(await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false),
-                    MaximumControlBytes, linked.Token).ConfigureAwait(false);
-                linked.Token.ThrowIfCancellationRequested();
-                var result = JsonSerializer.Deserialize<ReplicationPeerProgress>(bytes) ?? throw new IOException("Missing peer progress.");
-                if (result.Challenge != challenge || result.Progress is { } progress && (progress.TrlFileId == 0 || progress.TrlPosition == 0) ||
-                    result.Published is { FileId: 0 })
-                    throw new IOException("Invalid peer progress.");
-                return result;
-            }
-            catch (JsonException error) { throw new IOException("Invalid peer progress.", error); }
+                Databases = [.. databases], Challenge = challenge, DurationTicks = duration.Ticks, InlineBudget = inlineBudget
+            }, linked.Token).ConfigureAwait(false);
+            RequireStatus(response, HttpStatusCode.OK);
+            // Progress stays within the control limit; inline TRL bytes add at most the requested budget.
+            var bytes = await ReadBoundedAsync(await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false),
+                response.Content.Headers.ContentLength, MaximumControlBytes + inlineBudget, linked.Token).ConfigureAwait(false);
+            linked.Token.ThrowIfCancellationRequested();
+            ReplicationPeerPoll result;
+            try { result = ReplicationPeerWire.DecodePoll(bytes, databases); }
+            catch (InvalidDataException error) { throw new IOException("Invalid peer progress.", error); }
+            result.Validate(challenge, databases, inlineBudget);
+            return result;
         }
 
         public ILeaderTrlReader Reader(string database) => new ReaderProxy(this, database);
 
         public async ValueTask OfferHandoffAsync(PreparedHandoff offer, CancellationToken cancellation)
         {
-            using var response = await SendAsync(Message("handoff") with { Handoff = offer }, cancellation).ConfigureAwait(false);
+            using var response = await SendAsync(Message(PeerOperation.Handoff) with { Handoff = offer }, cancellation).ConfigureAwait(false);
             RequireStatus(response, HttpStatusCode.NoContent);
         }
 
-        async ValueTask<HttpResponseMessage> SendAsync(Request message, CancellationToken cancellation)
+        async ValueTask<HttpResponseMessage> SendAsync(PeerRequest message, CancellationToken cancellation)
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _closed.Token);
             linked.Token.ThrowIfCancellationRequested();
             using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(ValidateEndpoint(identity.Endpoint), Path));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", identity.ApiKey);
-            request.Content = JsonContent.Create(message, options: WireJson);
+            request.Content = new ByteArrayContent(ReplicationPeerWire.EncodeRequest(message));
+            request.Content.Headers.ContentType = new("application/octet-stream");
             HttpResponseMessage? response = null;
             try
             {
@@ -275,7 +283,7 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
                 linked.Token.ThrowIfCancellationRequested();
                 if (destination.IsEmpty) return 0;
                 var count = Math.Min(destination.Length, MaximumRange);
-                using var response = await session.SendAsync(session.Message("read") with
+                using var response = await session.SendAsync(session.Message(PeerOperation.Read) with
                 { Database = database, FileId = fileId, Offset = offset, Count = count }, linked.Token).ConfigureAwait(false);
                 RequireStatus(response, HttpStatusCode.OK);
                 var length = response.Content.Headers.ContentLength;

@@ -352,18 +352,57 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                     _resumeComparison.GetValueOrDefault(database.Name, canonical), acknowledge: false));
             }
         }
-        foreach (var (name, follower) in _followers.ToArray())
+        if (!await PollLeaderAsync(databases, cancellation).ConfigureAwait(false)) return;
+        if (_detached.Count == 0 && host.PreparedUpgrade is { } offer && offer.ApplicationGeneration == options.ApplicationGeneration)
         {
-            var dispatched = scheduler.Elapsed;
-            var challenge = follower.BeginChallenge(options.ConfirmationDuration);
-            var status = await _peer.PollAsync(name, challenge, options.ConfirmationDuration, cancellation).ConfigureAwait(false);
-            cancellation.ThrowIfCancellationRequested();
-            if (status.Challenge != challenge) throw new IOException("Stale peer challenge response.");
-            if (status.Granted && follower.AcceptChallenge(challenge))
-                _leaderEvidenceUntil = dispatched + options.ConfirmationDuration;
+            leases.ProposeTransfer(offer.TransferId);
+            await _peer.OfferHandoffAsync(offer, cancellation).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>One poll per follower step: every compared database, every new database the leader selects, and the
+    /// authority heartbeat share a single challenge and grant. A detached node without databases still polls for
+    /// evidence. False means the step must stop (restart requested).</summary>
+    // Inline TRL bytes one poll may carry; the rest of a larger backlog is read by range.
+    const int InlineBudget = 1024 * 1024;
+
+    async ValueTask<bool> PollLeaderAsync(IReadOnlyList<ActivationDatabase> databases, CancellationToken cancellation)
+    {
+        // Followers come first in the request. Each window hands out its own token; the wire challenge is node-wide.
+        // From asks the leader to return the TRL bytes this step's schema scan and comparison will need.
+        var polled = new List<ReplicationPeerPollRequest>();
+        var windows = new (string Name, FollowerComparisonSession Follower, long Challenge)[_followers.Count];
+        var index = 0;
+        foreach (var (name, follower) in _followers)
+        {
+            var scanned = _scanners[name].Position;
+            var from = follower.ResumePosition is { } compared && compared < scanned ? compared : scanned;
+            polled.Add(new(name, from));
+            windows[index++] = (name, follower, follower.BeginChallenge(options.ConfirmationDuration));
+        }
+        foreach (var database in databases)
+            if (database.RestoredBase.FileId == 0 && !_removed.Contains(database.Name) &&
+                _leaderDatabases.Contains(database.Name)) polled.Add(new(database.Name));
+        if (polled.Count == 0 && (_detached.Count == 0 || _leaderEvidenceUntil > scheduler.Elapsed)) return true;
+        var dispatched = scheduler.Elapsed;
+        var challenge = checked(++_monitorChallenge);
+        var poll = await _peer!.PollAsync(polled, challenge, options.ConfirmationDuration, InlineBudget, cancellation)
+            .ConfigureAwait(false);
+        cancellation.ThrowIfCancellationRequested();
+        poll.Validate(challenge, polled, InlineBudget);
+        if (poll.Granted && scheduler.Elapsed < dispatched + options.ConfirmationDuration)
+        {
+            _leaderEvidenceUntil = dispatched + options.ConfirmationDuration;
+            foreach (var window in windows) window.Follower.AcceptChallenge(window.Challenge);
+        }
+        for (var i = 0; i < windows.Length; i++)
+        {
+            var (name, follower, _) = windows[i];
+            var status = poll.Databases[i];
             var leaderReader = _leaderReaders[name];
             try
             {
+                if (status.Chunks is { } chunks) leaderReader.Retain(chunks);
                 if (status.Progress is { } progress)
                 {
                     if (await _scanners[name].ContainsSchemaAsync(leaderReader, progress.Position, cancellation).ConfigureAwait(false))
@@ -384,38 +423,15 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 await follower.CompareLatestAsync(cancellation).ConfigureAwait(false);
             }
             finally { leaderReader.Clear(); }
-            if (_restart) return;
+            if (_restart) return false;
             if (status.Published is { } published && follower.Compared is { } compared)
                 AdvanceCanonicalBase(databases.First(d => d.Name == name),
                     compared.Position < published ? compared.Position : published);
         }
-        foreach (var database in databases)
-        {
-            if (database.RestoredBase.FileId != 0 || _removed.Contains(database.Name) ||
-                !_leaderDatabases.Contains(database.Name)) continue;
-            var dispatched = scheduler.Elapsed;
-            var challenge = checked(++_monitorChallenge);
-            var status = await _peer.PollAsync(database.Name, challenge, options.ConfirmationDuration, cancellation).ConfigureAwait(false);
-            cancellation.ThrowIfCancellationRequested();
-            if (status.Challenge == challenge && status.Granted && scheduler.Elapsed < dispatched + options.ConfirmationDuration)
-                _leaderEvidenceUntil = dispatched + options.ConfirmationDuration;
-            if (status.Progress != null)
-            { Restart("New database initialization is published; restore its fixed input cursor."); return; }
-        }
-        if (_detached.Count != 0 && _leaderEvidenceUntil <= scheduler.Elapsed)
-        {
-            var dispatched = scheduler.Elapsed;
-            var challenge = checked(++_monitorChallenge);
-            var status = await _peer.PollAsync(null, challenge, options.ConfirmationDuration, cancellation).ConfigureAwait(false);
-            cancellation.ThrowIfCancellationRequested();
-            if (status.Challenge == challenge && status.Granted && scheduler.Elapsed < dispatched + options.ConfirmationDuration)
-                _leaderEvidenceUntil = dispatched + options.ConfirmationDuration;
-        }
-        if (_detached.Count == 0 && host.PreparedUpgrade is { } offer && offer.ApplicationGeneration == options.ApplicationGeneration)
-        {
-            leases.ProposeTransfer(offer.TransferId);
-            await _peer.OfferHandoffAsync(offer, cancellation).ConfigureAwait(false);
-        }
+        for (var i = windows.Length; i < polled.Count; i++)
+            if (poll.Databases[i].Progress != null)
+            { Restart("New database initialization is published; restore its fixed input cursor."); return false; }
+        return true;
     }
 
     // Starts inline and continues independently of the transition lane after its first incomplete remote operation.
@@ -720,17 +736,38 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             ServingLeader Owner => leader;
             public void Dispose() { lock (leader._lock) _closed = true; }
             void Check() { if (_closed) throw new IOException("Peer connection is closed."); leader.RequireActive(); }
-            public ValueTask<ReplicationPeerProgress> PollAsync(string? database, long challenge, TimeSpan duration, CancellationToken cancellation)
+            public async ValueTask<ReplicationPeerPoll> PollAsync(IReadOnlyList<ReplicationPeerPollRequest> databases,
+                long challenge, TimeSpan duration, int inlineBudget, CancellationToken cancellation)
             {
                 cancellation.ThrowIfCancellationRequested();
+                var answers = new ReplicationPeerDatabaseProgress[databases.Count];
+                bool granted;
                 lock (leader._lock)
                 {
                     Check();
-                    if (database != null && !leader._readers.ContainsKey(database)) throw new IOException("Unknown peer database.");
-                    var published = database == null ? default : leader._publishers[database].PublishedPosition;
-                    return ValueTask.FromResult(new ReplicationPeerProgress(challenge, leader._grants.TryIssue(duration),
-                        database == null ? null : leader._host.GetProgress(database), published.FileId == 0 ? null : published));
+                    for (var i = 0; i < answers.Length; i++)
+                    {
+                        var database = databases[i].Database;
+                        if (!leader._publishers.TryGetValue(database, out var publisher)) throw new IOException("Unknown peer database.");
+                        var published = publisher.PublishedPosition;
+                        answers[i] = new(database, leader._host.GetProgress(database), published.FileId == 0 ? null : published);
+                    }
+                    // One grant covers every database in this poll.
+                    granted = leader._grants.TryIssue(duration);
                 }
+                // Inline bytes are read outside the session lock, like range reads; each read rechecks authority.
+                var budget = Math.Min(inlineBudget, ReplicationPeerPoll.MaximumInlineBytes);
+                for (var i = 0; i < answers.Length && budget > 0; i++)
+                {
+                    if (answers[i].Progress is not { } progress) continue;
+                    var chunks = await leader._readers[answers[i].Database].ReadInlineAsync(databases[i].From,
+                        progress.Position, budget, cancellation).ConfigureAwait(false);
+                    if (chunks.Count == 0) continue;
+                    foreach (var chunk in chunks) budget -= chunk.Bytes.Length;
+                    answers[i] = answers[i] with { Chunks = chunks };
+                }
+                lock (leader._lock) Check();
+                return new(challenge, granted, answers);
             }
             public ValueTask OfferHandoffAsync(PreparedHandoff offer, CancellationToken cancellation)
             {

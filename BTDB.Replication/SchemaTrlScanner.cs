@@ -17,6 +17,9 @@ internal sealed class SchemaTrlScanner(TransactionLogPosition start, Guid? datab
     byte[]? _buffer;
     byte[]? _header;
 
+    /// <summary>Complete-transaction position the next scan resumes from.</summary>
+    internal TransactionLogPosition Position => _position;
+
     public async ValueTask<bool> ContainsSchemaAsync(ILeaderTrlReader leader, TransactionLogPosition end, CancellationToken cancellation)
     {
         if (end <= _position) return false;

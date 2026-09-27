@@ -191,13 +191,15 @@ public class ReplicationHostingTest
         // Existing peer term/session remains valid after a same-term application-data update.
         using var client = new HttpClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
-        var request = new HttpReplicationPeerTransport.Request("cluster", 1, "session", Options.Endpoint,
-            "poll", Challenge: 3, DurationTicks: TimeSpan.FromSeconds(1).Ticks);
-        using var reply = await client.PostAsJsonAsync(host.Address + HttpReplicationPeerTransport.Path, request,
-            new System.Text.Json.JsonSerializerOptions());
+        var request = new PeerRequest("cluster", 1, "session", Options.Endpoint,
+            PeerOperation.Poll, Challenge: 3, DurationTicks: TimeSpan.FromSeconds(1).Ticks, Databases: []);
+        using var reply = await client.PostAsync(host.Address + HttpReplicationPeerTransport.Path,
+            new ByteArrayContent(ReplicationPeerWire.EncodeRequest(request)));
         Assert.Equal(HttpStatusCode.OK, reply.StatusCode);
-        var progress = await reply.Content.ReadFromJsonAsync<ReplicationPeerProgress>();
-        Assert.Equal(new ReplicationPeerProgress(3, true, null), progress);
+        var progress = ReplicationPeerWire.DecodePoll(await reply.Content.ReadAsByteArrayAsync(), []);
+        Assert.Equal(3, progress.Challenge);
+        Assert.True(progress.Granted);
+        Assert.Empty(progress.Databases);
         Assert.Equal(1, host.Storage.Acquires);
         host.Lifetime.StopApplication();
         Assert.Null(host.Leases.Current);
