@@ -13,7 +13,7 @@ namespace BTDB.KVDBLayer;
 
 /// In-memory local storage for replication and native restore. Separate from standalone file collections.
 /// This storage does not itself select replication mode; the replicated collection owns remote inventory and mappings.
-public class InMemoryReplicationFileStorage : IFileCollection
+public class InMemoryReplicationFileStorage : IReplicationFileStorage
 {
     // disable invalid warning about using volatile inside Interlocked.CompareExchange
 #pragma warning disable 420

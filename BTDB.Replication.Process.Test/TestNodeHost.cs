@@ -13,9 +13,10 @@ namespace BTDB.Replication.ProcessTests;
 internal sealed record NodeStatus(string Role, ulong EventId, int Value, int Applied, uint CompletedFile,
     uint CompletedOffset, uint ComparedFile, uint ComparedOffset);
 
-internal sealed class TestNodeHost(string endpoint, AzureReplicationStorage canonical) : IReplicationNodeHost, IAsyncDisposable, IReplicationFatalRecovery
+internal sealed class TestNodeHost(string endpoint, AzureReplicationStorage canonical, string dataDirectory)
+    : IReplicationNodeHost, IAsyncDisposable, IReplicationFatalRecovery
 {
-    readonly InMemoryReplicationFileStorage _files = new();
+    readonly OnDiskReplicationFileStorage _files = new(dataDirectory);
     readonly TransactionLogCapture _capture = new();
     readonly SemaphoreSlim _writer = new(1);
     readonly object _progressLock = new();

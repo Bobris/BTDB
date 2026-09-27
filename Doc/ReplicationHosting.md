@@ -85,7 +85,11 @@ return a fresh-session successor-key function. A zero restored base denotes an u
 published file. Failed restore attempts must release their resources before retry.
 
 `ReplicationFileSet` keeps local operations local. Initialize/refresh remote inventory explicitly; local counts, lookup
-and enumeration never mean remote inventory. The current built-in backing is `InMemoryReplicationFileStorage`.
+and enumeration never mean remote inventory. Production nodes use `OnDiskReplicationFileStorage(directory)`: one
+memory-mapped `{id:D8}.{hint}` file per ID in a node-private directory, surviving process restarts. After a crash, files
+may end with zero padding; restore validates cached files against the selected remote inventory and discards the rest,
+so reuse the same directory on restart. `InMemoryReplicationFileStorage` is intended for tests. Both implement
+`IReplicationFileStorage`.
 The application owns the database and backing storage and disposes them only after coordination has stopped.
 
 The application owns the ordered event stream and handler execution. All nodes apply the same inputs in the same

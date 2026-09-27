@@ -45,7 +45,7 @@ public sealed class LeaseAuthority
     }
 
     public bool IsFenced { get { lock (_lock) return _fenced; } }
-    public TimeSpan Deadline { get { lock (_lock) return TimeSpan.FromTicks(_deadline); } }
+    internal TimeSpan Deadline { get { lock (_lock) return TimeSpan.FromTicks(_deadline); } }
 
     /// <summary>Call immediately before dispatch, not when the acquire/renew response arrives.</summary>
     internal long BeginRequest() => TryBeginRequest(out var request) ? request

@@ -73,7 +73,8 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
     bool _collecting;
     internal ReplicationMaintenanceWatchdog? Watchdog { get; set; }
 
-    public async ValueTask RunDueAsync(CancellationToken cancellation)
+    // The coordinator runs maintenance; hosts only construct it in CreateMaintenance.
+    internal async ValueTask RunDueAsync(CancellationToken cancellation)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(interval.Ticks);
         if (!authority.IsValid || (_pending == null && !_collecting && clock.Elapsed < _next)) return;

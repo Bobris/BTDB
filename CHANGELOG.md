@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Added
+
+- Add `OnDiskReplicationFileStorage`, durable node-local replication storage with one memory-mapped `{id:D8}.{hint}`
+  file per ID in a directory, and the `IReplicationFileStorage` contract it shares with
+  `InMemoryReplicationFileStorage`. `ReplicationFileSet` now accepts any `IReplicationFileStorage`. Readers copy under
+  the file lock, so growth can remap safely while peers read; files are truncated to their logical length when sealed
+  or disposed, and restore discards crash padding through remote cache validation.
+
 ### Fixed
 
 - Ignore a replication request timeout that fires after its request already completed. Scheduler disposal does
@@ -65,6 +73,11 @@
   storage, including after importing an exact file ID.
 
 ### Changed
+
+- Narrow the replication hosting API before production: `CanonicalTrlPublisher` construction and publication,
+  `TrlPublishResult`, `ReplicationMaintenance.RunDueAsync`, `ReplicationFileSet.RememberVerifiedPureValues` and
+  `LeaseAuthority.Deadline` are internal. Hosts only pass the coordinator-owned publisher to `ReplicationMaintenance`.
+  Storage provider contracts stay public.
 
 - Persist unified TRL/PVL/KVI deletion deadlines in Azure metadata, preserving deadlines across retries and leader
   replacement. Require elapsed marks and matching ETags for deletion; clear marks/version-protect reused PVLs and

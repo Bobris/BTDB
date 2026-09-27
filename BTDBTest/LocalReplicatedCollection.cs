@@ -8,7 +8,7 @@ using BTDB.KVDBLayer;
 namespace BTDBTest;
 
 // Local backing for tests which explicitly exercise replication semantics.
-sealed class LocalReplicatedCollection(InMemoryReplicationFileStorage inner) : IFileReplicatedCollection
+sealed class LocalReplicatedCollection(IReplicationFileStorage inner) : IFileReplicatedCollection
 {
     public ValueTask RefreshRemoteInventoryAsync(CancellationToken cancellation = default) => InitializeAsync(cancellation);
     public uint GetLocalFileId(uint remoteId) => remoteId;

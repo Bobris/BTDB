@@ -33,7 +33,9 @@ internal static class Program
         var authorityContainer = new BlobContainerClient(containerUri, credential, options);
         const string initial = """{"format":1,"clusterId":"cluster","term":0,"revision":0,"applicationGeneration":0,"databaseNames":[]} """;
         var storage = new AzureLeaderStorage(authorityContainer.GetBlobClient("leader.json"), TimeSpan.FromSeconds(15), initial);
-        await using var node = new TestNodeHost(endpoint, new AzureReplicationStorage(container, "main"));
+        var dataDirectory = Environment.GetEnvironmentVariable("BTDB_TEST_DATA_DIRECTORY") ??
+            throw new ArgumentException("BTDB_TEST_DATA_DIRECTORY must name the node's local storage directory.");
+        await using var node = new TestNodeHost(endpoint, new AzureReplicationStorage(container, "main"), dataDirectory);
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole().SetMinimumLevel(LogLevel.Warning);

@@ -28,10 +28,15 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         public string Endpoint = "";
         bool _suspended;
         int _nodePid;
+        // Durable node-local files survive process death; the harness deletes them after the node exits.
+        public readonly string DataDirectory;
+        readonly bool _ownsDataDirectory;
 
-        Node(ChildProcess process)
+        Node(ChildProcess process, string dataDirectory, bool ownsDataDirectory)
         {
             _process = process;
+            DataDirectory = dataDirectory;
+            _ownsDataDirectory = ownsDataDirectory;
             _nodePid = process.Id;
             _output = Drain(process.StandardOutput, true);
             _error = Drain(process.StandardError, false);
@@ -53,8 +58,11 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
         }
         string Diagnostics { get { lock (_diagnostics) return _diagnostics.ToString(); } }
 
-        public static async Task<Node> Start(BlobContainerClient container, int? progressTimeoutMilliseconds = null)
+        public static async Task<Node> Start(BlobContainerClient container, int? progressTimeoutMilliseconds = null,
+            string? dataDirectory = null)
         {
+            var ownsDataDirectory = dataDirectory == null;
+            dataDirectory ??= Path.Combine(Path.GetTempPath(), "btdb-process-node-" + Guid.NewGuid().ToString("N"));
             var runtime = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
             var start = new ProcessStartInfo(OperatingSystem.IsWindows() ? runtime : "/bin/sh")
             { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -73,7 +81,8 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
             if (progressTimeoutMilliseconds is { } timeout)
                 start.Environment["BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS"] = timeout.ToString();
             else start.Environment.Remove("BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS");
-            var node = new Node(ChildProcess.Start(start)!);
+            start.Environment["BTDB_TEST_DATA_DIRECTORY"] = dataDirectory;
+            var node = new Node(ChildProcess.Start(start)!, dataDirectory, ownsDataDirectory);
             try
             {
                 node.Endpoint = await node._ready.Task.WaitAsync(TimeSpan.FromSeconds(20));
@@ -148,6 +157,7 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
             await Kill();
             await Task.WhenAll(_output, _error);
             _process.Dispose();
+            if (_ownsDataDirectory && Directory.Exists(DataDirectory)) Directory.Delete(DataDirectory, true);
             _client.Dispose();
         }
     }
@@ -178,6 +188,41 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
             await Task.Delay(50);
         }
         throw new TimeoutException($"Canonical restore did not reach event {id}.");
+    }
+
+    [Fact]
+    public async Task CrashedFollowerRestartsFromItsOwnDiskStorage()
+    {
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        await leader.Apply(1, 11);
+        await WaitPublished(container, 1);
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-process-node-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await using (var follower = await Node.Start(container, dataDirectory: directory))
+            {
+                await follower.Wait(s => s.Role == "Follower" && s.EventId == 1, "restored follower");
+                await leader.Apply(2, 22);
+                await follower.Apply(2, 22);
+                await follower.Wait(s => Compared(s, 2), "comparison before the crash");
+                await follower.Kill(); // No graceful shutdown: mapped files keep their preallocated length.
+            }
+            Assert.NotEmpty(Directory.EnumerateFiles(directory));
+            await using var restarted = await Node.Start(container, dataDirectory: directory);
+            var restored = await restarted.Wait(s => s.Role == "Follower" && s.EventId == 2, "restart from existing local files");
+            Assert.Equal(22, restored.Value);
+            Assert.Equal(0, restored.Applied); // Canonical restore, not replay of the crashed local tail.
+            await leader.Apply(3, 33);
+            await restarted.Apply(3, 33);
+            var continued = await restarted.Wait(s => Compared(s, 3), "comparison after restart");
+            Assert.Equal(33, continued.Value);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
     }
 
     [Fact]

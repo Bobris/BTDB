@@ -33,10 +33,11 @@ Replication mode (`IFileReplicatedCollection`) automatically assigns fresh odd I
 allocation sequences: allocating a PVL or KVI does not advance the next TRL ID, and vice versa. `FileIdParity.Any` allocates above both maxima and advances the sequence matching the allocated ID. The policy is enforced by the replicated
 database file collection; standalone collections keep unconstrained allocation. Replication does not support sub-databases. A valid
 legacy even tail is closed before the first new transaction bytes and linked to a fresh odd TRL. Existing file IDs and
-value references are preserved; size-based rotation may still happen inside transactions. `InMemoryReplicationFileStorage` is a dedicated clone for replication cache/restore and implements
-`AddFile(hint, FileIdParity)`. Existing in-memory and disk collections keep their standalone API and allocation. This is not a distributed file allocator.
+value references are preserved; size-based rotation may still happen inside transactions. `IReplicationFileStorage`
+is the dedicated replication cache/restore backing, implemented by `OnDiskReplicationFileStorage` (memory-mapped files
+in a directory) and `InMemoryReplicationFileStorage` (tests), with `AddFile(hint, FileIdParity)`. Existing in-memory and disk collections keep their standalone API and allocation. This is not a distributed file allocator.
 
-`InMemoryReplicationFileStorage.ImportFile(fileId, hint)` creates an empty file under the exact nonzero ID. Use it for native-file
+`IReplicationFileStorage.ImportFile(fileId, hint)` creates an empty file under the exact nonzero ID. Use it for native-file
 restore rather than approximating an identity through the allocation sequence. Imports can complete in any order,
 including below existing maxima, and advance only the matching parity's maximum when necessary. Existing IDs are
 rejected without opening or overwriting the file, even with a different hint. Import and allocation are serialized
@@ -180,7 +181,7 @@ to a fresh remote ID. Only confirmed uploads establish a mapping; uncertain outc
 retry. Calls are serialized by the owner and use its fenced remote adapter. Follower/local compaction never invokes
 publication. Native KVI upload still starts only after every PVL and required canonical TRL is confirmed.
 
-The prototype uses dedicated `InMemoryReplicationFileStorage` for exact-ID cache population, parity allocation,
+Replication uses a dedicated `IReplicationFileStorage` for exact-ID cache population, parity allocation,
 and filename type hints. Existing standalone collections are not replication storage backends. `ImportFile` is not a logical replication operation.
 `OpenAsync` on an ordinary collection retains standalone semantics, including historical opening and retention.
 
@@ -275,7 +276,7 @@ mistake another pass's newly created, unreferenced PVL for garbage. `CreateKvi` 
 remote publication uses snapshot export. Native generation handling and HID/HPV remain unchanged for standalone use.
 
 The database-aware `IFileCollectionWithFileInfos.AddFile(hint)` derives parity from the file type and database mode.
-The underlying `IFileReplicatedCollection` and dedicated `InMemoryReplicationFileStorage` accept explicit parity.
+The underlying `IFileReplicatedCollection` and dedicated `IReplicationFileStorage` accept explicit parity.
 
 `TransactionLogCaptureTest.CompactionRetainsUnacknowledgedHistory` overwrites the only
 value repeatedly and runs the actual compactor. With capture disabled the obsolete first TRL is deleted; with capture

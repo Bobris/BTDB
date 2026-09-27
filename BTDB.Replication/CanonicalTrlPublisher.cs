@@ -12,7 +12,7 @@ public sealed record TrlObjectState(string Token, uint Length, TrlMetadata Metad
 public sealed record TrlHead(uint FileId, string Key, TrlObjectState State);
 public enum TrlWriteOutcome { Applied, Rejected, Ambiguous }
 public sealed record TrlWriteResult(TrlWriteOutcome Outcome, TrlObjectState? State = null);
-public enum TrlPublishResult { Idle, Adopted, Published, Pending, AuthorityLost, Conflict }
+internal enum TrlPublishResult { Idle, Adopted, Published, Pending, AuthorityLost, Conflict }
 
 /// <summary>A fixed native prefix retained by the acknowledgement position, not a copied TRL buffer. A null token means create-if-absent.</summary>
 public sealed record TrlWrite(uint FileId, string Key, string? ExpectedToken, uint ExpectedLength, uint Length,
@@ -29,10 +29,29 @@ public sealed record TrlWrite(uint FileId, string Key, string? ExpectedToken, ui
 /// <summary>
 /// One database/selected term, one capture consumer. Input tail must be restored and verified against local bytes.
 /// Caller owns canonical ID/key allocation and authority acquisition. This lane never acquires authority itself.
+/// Hosts only receive a coordinator-owned instance to pass to ReplicationMaintenance; they never publish or dispose it.
 /// </summary>
-public sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, TransactionLogCapture capture,
-    IReplicationStorage storage, LeaseAuthority authority, ulong term, Func<uint, string> keyForFile, TrlHead? restoredTail = null) : IDisposable
+public sealed class CanonicalTrlPublisher : IDisposable
 {
+    readonly BTreeKeyValueDB database;
+    readonly TransactionLogCapture capture;
+    readonly IReplicationStorage storage;
+    readonly LeaseAuthority authority;
+    readonly ulong term;
+    readonly Func<uint, string> keyForFile;
+
+    internal CanonicalTrlPublisher(BTreeKeyValueDB database, TransactionLogCapture capture, IReplicationStorage storage,
+        LeaseAuthority authority, ulong term, Func<uint, string> keyForFile, TrlHead? restoredTail = null)
+    {
+        this.database = database;
+        this.capture = capture;
+        this.storage = storage;
+        this.authority = authority;
+        this.term = term;
+        this.keyForFile = keyForFile;
+        _tail = restoredTail;
+    }
+
     sealed class Plan(TransactionLogPosition? position, TrlWrite[] writes)
     {
         public readonly TransactionLogPosition? Position = position;
@@ -45,7 +64,7 @@ public sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, TransactionL
     readonly SemaphoreSlim _lane = new(1);
     byte[]? _localBuffer;
     byte[]? _remoteBuffer;
-    TrlHead? _tail = restoredTail;
+    TrlHead? _tail;
     Plan? _plan;
     bool _conflict;
     bool _disposed;
@@ -64,10 +83,10 @@ public sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, TransactionL
         finally { _lane.Release(); }
     }
 
-    public bool HasAuthority => authority.IsValid;
+    internal bool HasAuthority => authority.IsValid;
     internal void Fence() => authority.Fence();
-    public TrlHead? Tail => _tail;
-    public TransactionLogPosition PublishedPosition => _tail is { } tail ? new(tail.FileId, tail.State.Length) : default;
+    internal TrlHead? Tail => _tail;
+    internal TransactionLogPosition PublishedPosition => _tail is { } tail ? new(tail.FileId, tail.State.Length) : default;
 
     /// <summary>Fence the verified predecessor without publishing any optimistic local suffix.</summary>
     internal async ValueTask<TrlPublishResult> AdoptAsync(CancellationToken cancellation = default)
@@ -91,7 +110,7 @@ public sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, TransactionL
     /// After authority loss this method may reconcile reads but never dispatch another write. The remote token must
     /// be independent of local compaction/execution cancellation.
     /// </summary>
-    public async ValueTask<TrlPublishResult> PublishNextAsync(bool retryPending = false,
+    internal async ValueTask<TrlPublishResult> PublishNextAsync(bool retryPending = false,
         CancellationToken remoteCancellation = default)
     {
         await _lane.WaitAsync(remoteCancellation).ConfigureAwait(false);
@@ -108,7 +127,7 @@ public sealed class CanonicalTrlPublisher(BTreeKeyValueDB database, TransactionL
     /// Later local commits are excluded from a new plan. An already dispatched plan must finish unchanged, even if
     /// it extends past the requested cut. Pending, authority loss and conflict never establish the barrier.
     /// </summary>
-    public async ValueTask<TrlPublishResult> PublishThroughAsync(TransactionLogPosition position,
+    internal async ValueTask<TrlPublishResult> PublishThroughAsync(TransactionLogPosition position,
         bool retryPending = false, CancellationToken remoteCancellation = default)
     {
         await _lane.WaitAsync(remoteCancellation).ConfigureAwait(false);

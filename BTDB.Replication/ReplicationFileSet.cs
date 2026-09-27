@@ -14,7 +14,7 @@ namespace BTDB.Replication;
 /// Local IDs must not be reused during this session. Receipts retain no bytes, file handles or roots.
 /// Serialize publication/receipt changes externally; restore finishes before publication starts.
 /// Remote cleanup must protect receipt destinations while this session may reuse them.</summary>
-public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage local, IRemoteFileCollection remote, int maxConcurrentDownloads = 4,
+public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IRemoteFileCollection remote, int maxConcurrentDownloads = 4,
     IKeyValueDBLogger? logger = null)
 {
     sealed class Placement(ulong length, uint remoteId, bool confirmed)
@@ -77,7 +77,7 @@ public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage lo
 
     /// Use the same logger instance as KeyValueDBOptions.Logger; initialization runs before database opening.
     public IKeyValueDBLogger? Logger { get; set; } = logger;
-    public InMemoryReplicationFileStorage Local { get; } = local;
+    public IReplicationFileStorage Local { get; } = local;
     public IRemoteFileCollection Remote { get; } = remote;
 
     void AddPlacement(uint localId, Placement placement)
@@ -100,7 +100,7 @@ public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage lo
 
     /// <summary>Verify a complete sealed local PVL against selected remote metadata before reusing it.
     /// A matching ID or length alone does not establish a local-to-remote placement.</summary>
-    public void RememberVerifiedPureValues(KeyIndexFileSource source, RemoteFile file)
+    internal void RememberVerifiedPureValues(KeyIndexFileSource source, RemoteFile file)
     {
         if (source.FileType != KVFileType.PureValues || file.FileType != KVFileType.PureValues ||
             !file.IsSealed || file.Sha256 is null || file.FileId == 0 || source.Length != file.Length ||
