@@ -47,11 +47,11 @@ wall-clock scheduler fallback. The HTTP endpoint must be an HTTPS origin without
 loopback. The adapter maps `POST /_btdb/replication`. TLS certificates, routing and external authentication to Blob
 storage belong to the host. Do not log Authorization headers or raw leader JSON.
 
-Each follower step sends the leader one poll: the progress and published cut of every compared database and of every
-new database the leader selects, plus a single confirmation grant. For each compared database the follower also sends
-the position its schema scan or comparison resumes from, and the leader returns its complete TRL bytes from there
-inline (up to 1 MiB per poll), so a caught-up follower needs no separate range reads. The same request, with no
-databases, is the authority heartbeat of a schema-detached node.
+Each follower step sends the leader one poll: the progress, published cut and latest schema-commit position of every
+compared database and of every new database the leader selects, plus a single confirmation grant. For each compared
+database the follower also sends the position its comparison resumes from, and the leader returns its complete TRL
+bytes from there inline (up to 1 MiB per poll), so a caught-up follower needs no separate range reads, even across TRL
+rotations. The same request, with no databases, is the authority heartbeat of a schema-detached node.
 
 Peer messages use a compact versioned binary encoding (`application/octet-stream`), not JSON. Requests are limited to
 16 KiB; a poll response may add the requested inline budget. Inline chunk bytes are sliced from the response without
@@ -97,7 +97,7 @@ file/offset; it is not the follower's moving comparison acknowledgement. Preserv
 return a fresh-session successor-key function. A zero restored base denotes an unpublished addition, never a missing
 published file. Failed restore attempts must release their resources before retry.
 
-`ReplicationFileSet` keeps local operations local. Initialize/refresh remote inventory explicitly; local counts, lookup
+`ReplicationFileSet` keeps local operations local. Initialize the remote inventory explicitly; local counts, lookup
 and enumeration never mean remote inventory. Production nodes use `OnDiskReplicationFileStorage(directory)`: one
 memory-mapped `{id:D8}.{hint}` file per ID in a node-private directory, surviving process restarts. After a crash, files
 may end with zero padding; restore validates cached files against the selected remote inventory and discards the rest,
@@ -113,14 +113,36 @@ virtual batching. `ReportStatus` reports the node role, not a comprehensive read
 
 `CreateCandidate` must return fresh session and API-key values for each acquisition, with the configured cluster,
 endpoint, generation and complete selected database set. `CaptureInitializationCursorAsync` supplies the predecessor
-cursor for a genuinely new database. `PrepareSchemaAsync` uses ordinary ObjectDB startup initialization and rechecks
-the supplied authority before writes/commit. The coordinator publishes genesis/schema before serving as leader.
+cursor for a genuinely new database; keep application input for that database stopped until it is initialized.
+`PrepareSchemaAsync` uses ordinary ObjectDB startup initialization, must be idempotent across interrupted attempts,
+rechecks the supplied authority before writes/commit and updates `GetProgress` with the completed cut, including
+genesis or schema-only work. The coordinator publishes genesis/schema before serving as leader.
+
+## Upgrades, schema detachment and leak events
+
+Set `PreparedUpgrade` only after the host has validated compatibility, bounded lag with retained replay input, and
+every added/removed database requirement. Use a fresh transfer UUID per prepared target and keep it across retries.
+Only an offer of a higher generation than the leader's starts a handoff; among equal offers the first observed wins.
+The leader drains grants and transfers through `IReplicationLeaseTransferStorage` (Azure native lease Change); the
+target proves ownership by renewal and then activates normally.
+
+`SchemaDetached` is called when the leader announces a schema commit beyond the follower's canonical base, before
+comparison. Report that database as local-only and keep serving its ordinary reads/writes; the node can no longer
+become leader in this session. `DatabaseRemoved` means the selected database set no longer contains the database;
+it stays application-owned and continues locally.
+
+Pass the ObjectDB and a `publishLeakEvent` callback to `ReplicationMaintenance` to submit bounded
+`LeakRemovalCandidates` as an application event. Transport its `EncodedKeys` and `KeyCount`, and apply it on every
+replica with `ApplyTo(transaction)` inside that event's ordinary transaction and commit. The application owns ordering
+and retries; do not use candidates after restoring a different database history. Replicated compaction disables
+automatic leak erasure; standalone ObjectDB behavior is unchanged.
 
 ## Maintenance and authority
 
 `CreateMaintenance` may construct `ReplicationMaintenance` with the existing file set, supplied canonical publisher,
-an authority-bound `IReplicationStorage` (such as `AzureReplicationStorage`), scheduler and maintenance/deletion
-intervals. These callbacks run within the coordinator's serialized leader publication lane. The publisher is borrowed:
+an authority-bound `IReplicationStorage` (such as `AzureReplicationStorage`), scheduler, checkpoint interval and a
+positive deletion delay. The coordinator separately runs ordinary local `Compact` on every node every
+`CompactionInterval` (default five minutes). These callbacks run within the coordinator's serialized leader publication lane. The publisher is borrowed:
 do not dispose it, retain it for another leadership session or start a separate publication loop. The coordinator owns
 the returned maintenance job. Local compaction has separate lifetime/cancellation from remote publication.
 
@@ -138,7 +160,7 @@ ignoring cancellation cannot renew the old authority, but may still consume the 
 writers/readers and database disposal remain host-owned. Rebuild requests and fatal worker exits stop the host, even
 when its background-failure policy is `Ignore`; the supervisor must implement process restart/termination policy.
 
-Coordinator transitions, lease selection/activation, peer sessions, comparers, scanners and HTTP wire DTOs remain
+Coordinator transitions, lease selection/activation, peer sessions, comparers and HTTP wire DTOs remain
 internal. The public surface provides application and provider integration, not independent election control.
 
 Still pending: production clock qualification, full readiness/metrics, broader network/process-pause/upgrade scenarios,
@@ -257,9 +279,10 @@ all required databases before election. This procedure needs no additional backu
 
 ## Delayed remote cleanup
 
-Pass the desired retention interval (for example `TimeSpan.FromHours(24)`) as `ReplicationMaintenance.deletionDelay`.
-The leader marks obsolete TRL/PVL/KVI in Blob metadata and later deletes only the unchanged marked version after
-its deadline. The deadline survives process/leader replacement. The adapter's optional `TimeProvider` supplies UTC;
+Pass a positive retention interval (production assumes at least `TimeSpan.FromDays(1)`) as
+`ReplicationMaintenance.deletionDelay`. The leader marks obsolete TRL/PVL/KVI in Blob metadata and later deletes only
+the unchanged marked version after its deadline. A database whose TRL cut and files are unchanged is not exported again,
+but cleanup still runs so marked files reach their deadline. Each database needs its own nonempty Azure prefix. The deadline survives process/leader replacement. The adapter's optional `TimeProvider` supplies UTC;
 no Azure lifecycle policy is installed automatically. A new leader rechecks reused PVLs, clears their deletion mark,
 and recopies missing files at fresh IDs. Old delayed deletes cannot remove a newly protected version.
 

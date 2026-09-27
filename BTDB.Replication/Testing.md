@@ -1,362 +1,234 @@
-# Replication test foundation
+# BTDB.Replication testing
 
-M0 and the bounded M1 authority/TRL model are implemented in `BTDB.Replication.Test`.
-See [M1Evidence.md](M1Evidence.md) for mechanism necessity, clock assumptions and the integration preconditions.
-M2 now adds core capture/cancellation tests in `BTDBTest`: [capture](../BTDBTest/TransactionLogCaptureTest.cs),
-[writer cancellation](../BTDBTest/WriterCancellationTest.cs), and ObjectDB metadata
-retry coverage in ReplicationPreparationTest. The M3 checkpoint slice adds
-[CheckpointPublisherTest](../BTDB.Replication.Test/CheckpointPublisherTest.cs) and
-[KeyIndexSnapshotTest](../BTDBTest/KeyIndexSnapshotTest.cs): actual native KVI restore with whole-PVL ID substitutions,
-unchanged TRL, plain/Brotli chunked output with no local staging file, prerequisite failure, uncertain PVL retry,
-receipt reuse across compactions, independent cancellation, and source pins. [CanonicalTrlPublisherTest](../BTDB.Replication.Test/CanonicalTrlPublisherTest.cs) adds capture-backed native publication:
-same-file/cross-file commit and rollback, genesis selection, interruption before every cross-file effect, lost/cancelled
-replies, exact retry, unchanged-event schema commits, large-prefix bounded reads, and both tail-adoption race orders.
-These hooks are not a distributed replication runtime.
-No B1/B3/B5/B6 proof blocker is closed by these tests. The normative scenario requirements remain in
-[Architecture.md](Architecture.md#testing-strategy-implied-by-the-design).
+This file describes how replication is tested, what the important test groups prove and what is not covered yet.
+Protocol rules and open proof items live in [Architecture.md](Architecture.md); core BTDB contracts are in
+[ReplicationCore.md](../Doc/ReplicationCore.md), and the clock/lease model behind the authority tests is in
+[M1Evidence.md](M1Evidence.md). Tests are evidence for the named scenarios; they do not by themselves close any proof
+blocker tracked in Architecture.md.
 
-## Running and reproducing a scenario
+## Running the suites
 
 ```sh
-dotnet test BTDB.SourceGenerator.Test/BTDB.SourceGenerator.Tests.csproj
 dotnet test BTDB.Replication.Test/BTDB.Replication.Test.csproj
-dotnet test BTDBTest/BTDBTest.csproj --filter 'FullyQualifiedName~ReplicationPreparationTest|FullyQualifiedName~TransactionLogSizeStrategyTest|FullyQualifiedName~TransactionBatchingTest'
+dotnet test BTDB.Replication.Http.Test/BTDB.Replication.Http.Test.csproj
+dotnet test BTDB.Replication.Azure.Test/BTDB.Replication.Azure.Test.csproj    # needs Azurite
+dotnet test BTDB.Replication.Process.Test/BTDB.Replication.Process.Test.csproj  # needs Azurite
+dotnet test BTDBTest/BTDBTest.csproj --filter 'FullyQualifiedName~ReplicationPreparationTest|FullyQualifiedName~TransactionLogCaptureTest|FullyQualifiedName~TransactionBatchingTest|FullyQualifiedName~ReplicationCompactorTest|FullyQualifiedName~KeyIndexSnapshotTest'
 ```
 
-`ClusterFixture(seed)` constructs separate native BTDB databases, memory file collections, allocators, application
-input histories, identities and scheduler scopes for each node. A seeded existing empty native TRL header supplies
-the database GUID, avoiding native random identity generation; same-seed tests compare native file hashes as well as
-schedules. Background compaction is disabled. The application
-fixture supplies input and drives transactions; the replication assembly does not run handlers. Node disposal cancels
-its callbacks and releases its native resources, but cannot undo a request already dispatched to the storage scope.
-This simulates a lost process/session; it is not yet a torn-write or power-loss model of a disk file collection.
-
-All callbacks are explicitly queued. `RunNext` executes one callback; `AdvanceBy` advances monotonic time and executes
-due callbacks; `RunUntilIdle` drains runnable work with a step budget. Paused scopes remain pending and do not make the
-drain wait forever. Equal-deadline callbacks use insertion order. A fixed SplitMix64 implementation supplies seeded
-IDs and backoff. Tests vary delays to explore interleavings; this is not yet an exhaustive model checker.
-
-On a callback or invariant failure, the exception includes the seed and execution trace. By default the same trace is
-written under `simulation-failures` beside the test assembly, inside the repository's ignored `artifacts` tree.
-Filenames use a trace hash. Expected-failure tests inject a sink instead. Re-run the named test with its recorded seed
-and scenario inputs; the trace records scheduling, execution, virtual timestamps, pauses, cancellation and remote effects.
-The trace is diagnostic evidence, not a serialized program that can replay arbitrary callbacks by itself.
-
-## Observation without changing the tested state
-
-After every scheduled callback and explicit time advance, the cluster checks the observable storage journal and each
-node's published native root. Local expected values come from independent dictionary replay of application inputs.
-The observer briefly references the root and resolves actual values, including file-backed values, then releases it.
-It retains no root between steps. Ordinary readers also leave pending virtual batches unpublished, as covered by
-`TransactionBatchingTest.ReadersDoNotPublishPendingBatch`. The application fixture models the existing rollback behavior that publishes the committed batch prefix.
-
-`SimulatedBlobStore` separates dispatch, remote effect and response. CAS uses opaque model versions which are never
-reused. Delay, response loss and a timeout before the effect are independent controls. An old read after timeout does
-not cancel the request. Request/read buffers and journal observations are copied at the boundary. Conditional create,
-replace, append and delete include atomic metadata. `SimulatedLeases` separately models finite per-object leases;
-its supported subset and real-provider limits are documented in M1Evidence.md.
-
-`HistoryOracle` independently reconstructs selected authority, append-only transaction history, sequence/cursors and
-reachable hashed ranges from the observed dispatch/effect journal. Negative tests demonstrate that it detects invalid
-observations. It accepts the possibility of an old-authority request landing after a new leader is selected; selection
-alone does not fence data blobs. Separate `PublicationTest`, `AuthorityTest` and `LeaseServiceTest` now exercise
-per-TRL adoption and finite lease/grant bounds. They are not yet integrated into the cluster oracle.
-
-`ModelAuthority`, `ModelHistory` and their JSON bytes are synthetic oracle fixtures only. They are not native TRL,
-production leader metadata, a checkpoint manifest, a persistent transaction-kind sidecar or a proposed second state
-commit. M1/M2 must connect the oracle to independently decoded real protocol/native storage evidence. Today a model
-history test does not prove native recovery, structural comparison or distributed publication safety.
-
-`SimulatedPeerLink` exercises opaque-byte queue pressure, delay, partitions and connection replacement. It deliberately
-is not a production `PeerTransport` adapter. M1/M4 must add the shared wire codec, authentication, resume and validation
-before either this path or HTTP can claim transport conformance.
-
-## Invariant coverage
-
-Status describes partial evidence for the listed aspect, never completion of the entire invariant.
-
-| Invariant | Current evidence | Remaining implementation |
-| --- | --- | --- |
-| I1 Authority | Model oracle, lease/grant deadline inequalities, pause/delayed-response tests and bounded grant drain. | Production clock qualification and serialized role/commit fencing: M1/M4. |
-| I2 Ordered history | Model sequence/cursor checks; real BTDB values, cursors and rollback prefix checked per step. | Completed/acknowledged native positions implemented; distributed byte comparison remains M4. |
-| I3 Confirmation | Challenge expiry, stale response and closed-session rejection helpers. | Structural comparator, confirmation and mismatch restart: M4. |
-| I4 Local execution | Real node transactions run independently with no storage work; non-perturbing batch observation. | Completed positions, compactor retention and writer cancellation tested; canonical publisher tested; coordinator/comparator integration remains M4. |
-| I5 Durable closure | Model rejects missing/corrupt ranges, partial transactions and prefix changes. | Native publication, KVI restart and TRL-only restore tested; concurrent recovery races and adapters remain M3/M7. |
-| I6 Publication fence | Append/adoption races, lost success reconciliation and competing genesis. | Serialized canonical lane tested; coordinator and production adapter integration remain M3/M4/M7. |
-| I7 Database set | Independent local databases only. | Generation, activation and upgrades: M5. |
-| I8 Recovery | Real native multifile commit/rollback replay through selected links; incomplete local KVI-copy fixture. | Native restore/cache validation tested; concurrent recovery races and optimistic adoption remain M3/M4. |
-| I9 Reader lifetime | Real old reader survives batch commit/rollback; observer releases roots per step. | Capture boundary protects TRLs during compaction; NativeFileRestoreTest covers unchanged physical IDs; compaction integration remains M6. |
-| I10 Maintenance | ReplicationCompactorTest, KeyIndexSnapshotTest and CheckpointPublisherTest cover no-local-KVI compaction, pins, remapped export, receipts and cancellation. | Maintenance scheduling, remote GC and leak-event integration: M6. |
-| I11 Volatile execution | Publisher cancellation with continued local execution. | Distributed detachment and drain remain M5. |
-| I12 Isolation | Three native nodes, separate scopes/files/allocators, reproducible schedules and bounded queues. | Complete runtime/codec isolation and adapter conformance: M4/M7. |
-
-## Scenario-family register
-
-Every architecture family is mapped below. Existing test class names are linked to source; other group names are
-planned and do not imply files exist. No scenario currently has production-adapter qualification.
-
-| Architecture family | Test group | Status / next milestone |
-| --- | --- | --- |
-| Authority | [AuthorityTest](../BTDB.Replication.Test/AuthorityTest.cs), [LeaseServiceTest](../BTDB.Replication.Test/LeaseServiceTest.cs) | Bounded M1 model; production clock/role integration M4. |
-| Publisher | [PublicationTest](../BTDB.Replication.Test/PublicationTest.cs), [NativePublicationTest](../BTDB.Replication.Test/NativePublicationTest.cs) | TRL CAS races and native chain replay; CanonicalTrlPublisherTest covers the actual lane. Coordinator/adapters remain M3/M4/M7. |
-| Durable boundaries | HistoryOracleTest, [TransactionLogCaptureTest](../BTDBTest/TransactionLogCaptureTest.cs) | Completed/acknowledged positions, retention and native publication tested; coordinator integration remains. |
-| Legacy TRL parity | [ReplicationPreparationTest](../BTDBTest/ReplicationPreparationTest.cs), LegacyRestoreTest | Existing native parity tests; distributed interruption cases M3. |
-| Checkpoints | [CheckpointPublisherTest](../BTDB.Replication.Test/CheckpointPublisherTest.cs), CanonicalTrlPublisherTest | Real canonical fixed-cut barrier before PVL/KVI publication; pending/cancelled/rejected CAS, authority loss and empty-cache native restore covered. Production KVI ambiguity reconciliation and restore retry remain M3/M7. |
-| Transition recovery | TransitionRecoveryTest | Unimplemented, M4. |
-| Upgrade | GenerationUpgradeTest | Unimplemented, M5. |
-| Retirement | RetirementTest | Unimplemented, M5. |
-| Graceful drain | GracefulDrainTest | Unimplemented, M5. |
-| Stopped publication | CanonicalTrlPublisherTest | Ordinary local writes, rollback and compaction continue without further Blob changes. |
-| Application batches | [ClusterIsolationTest](../BTDB.Replication.Test/ClusterIsolationTest.cs), [TransactionBatchingTest](../BTDBTest/TransactionBatchingTest.cs) | Native local batching/rollback evidence; distributed comparison/coordinator integration M4. |
-| Structural comparison/restart | [TrlPrefixComparerTest](../BTDB.Replication.Test/TrlPrefixComparerTest.cs) | Native bounded byte comparison, lag, sticky divergence and retry tested; peer/grant/role and restart orchestration remain M4. |
-| Optimistic tail adoption | OptimisticAdoptionTest | Unimplemented, M4. |
-| Invalid comparison cache | ComparisonCacheTest | Unimplemented, M4. |
-| Failed consumption | ClusterIsolationTest, ApplicationFailureTest | Native rollback prefix only; distributed outcomes M4/M5. |
-| Skip replay | SkipReplayTest | Unimplemented, M5. |
-| Follower acceptance | FollowerAcceptanceTest | Unimplemented, M4: coalesced three-field progress, native TRL pull, unchanged-eventId schema notification and stale-session rejection. |
-| Restart recovery | [RestartRecoveryTest](../BTDB.Replication.Test/RestartRecoveryTest.cs) | Native checkpoint restart after obsolete history removal, empty/corrupt cache, new-term publication and second restart pass; production adapters and concurrent recovery races remain. |
-| Speculation resources | SpeculationResourceTest | Unimplemented, M4/M7. |
-| Leak events | LeakEventTest | Core bounded detector and idempotent erase exist; candidate-access seam and ordered application-event integration remain M6. |
-| Physical compaction | CheckpointPublisherTest, KeyIndexSnapshotTest | Native remapped KVI restore and independent local/remote tokens covered; ReplicationCompactorTest covers no-local-KVI mode; scheduling and production/GC integration remain M6. |
-| KVI and local cleanup | [ReplicationCompactorTest](../BTDBTest/ReplicationCompactorTest.cs), [KeyIndexSnapshotTest](../BTDBTest/KeyIndexSnapshotTest.cs), CheckpointPublisherTest | No local KVI, source pins, whole-PVL mapping and KVI-last publication tested; remote GC remains M6. |
-| Reader/file lifetime | ClusterIsolationTest, ReaderLifetimeTest | Native old-reader, capture and snapshot retention tested; comparison integration and remote GC remain M4/M6. |
-| Startup pipeline | [AsyncOpenTest](../BTDB.Replication.Test/AsyncOpenTest.cs), [ReplicationFileSetTest](../BTDB.Replication.Test/ReplicationFileSetTest.cs) | Lazy discovery, prefetch and bounded shared downloads tested; coordinator retry and throughput qualification remain M3/M7. |
-| Cache loss | ReplicationFileSetTest, RestartRecoveryTest | Missing/corrupt cache and interrupted downloads tested; disk/process and concurrent remote-change qualification remain M3/M7. |
-| Remote GC | HistoryOracleTest, RemoteGcTest | Model rejects deletion of reachable ranges; actual GC unimplemented, M6. |
-| Transport | StorageFaultTest, TransportConformanceTest | Opaque-byte fault fixture only; progress/control codec, authority-bound TRL pull and auth/resume M4/M7; piggyback deferred. |
-| Input/read contract | ClusterIsolationTest, InputReadContractTest | Native input cursor and snapshot evidence; replay/retention M3/M5. |
-| Startup secondary-index reconciliation | ReplicationPreparationTest, [ObjectDbInitializeRelationsTest](../BTDBTest/ObjectDbInitializeRelationsTest.cs) | Read-only full schema check, empty schema/index upgrades, at most one writer and rollback tested. Coordinator authority/publication timing remains pending. |
-| Detached liveness | DetachedLivenessTest | Unimplemented, M5. |
-| Schema upgrade | SchemaUpgradeTest | Unimplemented, M5. |
-| Same-term control revision | ControlRevisionTest | Unimplemented, M4/M5. |
-| Liveness | [SchedulerTest](../BTDB.Replication.Test/SchedulerTest.cs), LivenessTest | Virtual-time/step-budget fixture only; watchdogs M4. |
-
-The tables above describe the original milestone coverage; the integration sections below record subsequent implementation. Ordinary KVI-based restart is covered by RestartRecoveryTest. The current next steps are lifecycle/schema orchestration, remote GC and network/production qualification.
-The [live Azure capability probe](../BTDB.Replication.Test/Integration/azure_probe.py) is an explicit opt-in script,
-not an automatically run cloud test or a production adapter. Its recorded run and cleanup are linked from ObjectStorages.md.
-
-
-### Canonical TRL lane necessity and limits
-
-`CanonicalTrlPublisher` retains one unresolved conditional intent because the delayed-effect test demonstrates that an
-old read cannot prove failure. Exact retries keep the same token and native source cut, so a late original request
-cannot append twice. Successor writes run in reverse dependency order because native restore must never observe a
-reachable partial transaction. Each boundary is interrupted in tests; previously selected transactions remain readable.
-Metadata-only adoption and append compete on the predecessor token; tests cover either winner without losing history.
-
-The lane consumes the completed-position API. Append payloads reference retained local files;
-only exceptional reconciliation allocates two 64KB buffers and compares the exact versioned native prefix. No full TRL
-copy, wire hash, transaction envelope or second state CAS is added. Remote cancellation never cancels local execution.
-The fixed target position is acknowledged only after selection is confirmed; prepared successors do not advance it.
-
-The storage seam still needs a production conditional Azure adapter. Tests use an independent in-memory conditional
-store with delayed effects and native BTDB reopen, not a live Azure publisher. ID/key allocation and verified restored
-input are coordinator preconditions. The lane reports conflict instead of inventing a new continuation after another
-term wins. Production discovery, abandoned staging cleanup and cross-component coordinator integration remain pending.
-
-
-### Genesis/TRL discovery and restore
-
-`CanonicalTrlPublisherTest` now restores its publication/race fixtures through `CanonicalTrlInventory`, file-set initialization and
-ordinary native `OpenAsync`. `DiscoveredRestoreResumesPublicationInANewTerm` covers native cross-file commit/rollback
-recovery followed by adoption and a fresh application commit. Unselected prepared objects never enter the inventory.
-`InventoryRejectsBrokenSelectedLinks` covers missing successors, key cycles and decreasing IDs/terms. A missing published genesis fails instead of returning an empty database.
-
-The inventory adapter does not open the database or validate native headers separately. Version-bound reads do not
-add a separate guarantee that malformed transaction bytes will be rejected rather than recovered by the existing decoder.
-Version-change and interruption tests fail the attempt, then rediscover/restore without any remote mutation. Caller
-cancellation may leave a completed shared download; disposal drains transfer work and the next initialization validates
-cache again. Downloads remain bounded to 4 MiB reads. These tests cover the in-memory storage seam, not Azure or
-power-loss recovery of a disk cache. Ordinary KVI restart is tested separately below; cleanup-race retry remains pending.
-
-
-### Checkpoint restart without previous process state
-
-`RestartRecoveryTest.RestartFromCheckpointAfterHistoryCleanupResumesPublication` tests the existing collection
-initialization and native `OpenAsync` path. Four cases combine plain/Brotli KVI with an empty or corrupt local cache.
-The fixture publishes a compacted checkpoint, deletes unneeded TRLs including genesis, publishes a subsequent commit
-and rollback, and leaves an unpublished local suffix. It disposes the old database, publisher, captures and local
-storage. Only remote object bodies and metadata are copied to a new storage fixture; no authority, receipts, tail
-objects, pending requests or callbacks are carried forward.
-
-Restart checks all values and cursors, removes an unselected local file and redownloads same-size corrupted cache
-files. The test reads the restored tail's metadata through the existing storage interface, adopts a fresh term,
-publishes a new transaction and KVI, then verifies them through a second fresh restart. No production change was
-required. This is ordinary restart evidence at the in-memory storage boundary, not qualification of concurrent remote
-publication/deletion races, remote orphan selection, Azure or physical process/disk failure.
-
-
-### Remote changes during native open
-
-`RestartRecoveryTest.CleanupAfterDiscoveryRetriesAgainstNewCheckpoint` schedules replacement checkpoint publication
-and deletion after the old inventory has been initialized. Plain/Brotli cases delete either the selected KVI or one
-of its required PVLs. The stale attempt fails; disposing it and repeating ordinary initialization/open selects the new
-checkpoint, preserves a verified sealed TRL without downloading it again, removes obsolete cache files and restores
-all values/cursors without remote writes.
-
-`TailPublicationAfterDiscoveryRetriesWithoutMixingVersions` appends to the selected active TRL after discovery.
-Version-bound reads reject the stale attempt; rediscovery/open recovers the new committed event without mixing object
-versions. Both tests exercise existing production file-set/native-open code through the in-memory storage seam.
-They do not implement automatic coordinator retry or qualify Azure, physical disk/process failure, GC scheduling or
-all publication/deletion interleavings. No additional recovery algorithm or core option was needed.
-
-
-### Inventory allocation and uncertain publication
-
-`RemoteAllocationRefreshesInventoryWithoutReservationObjects` verifies fresh remote discovery, even IDs, session-local
-choices and restart without reservation objects. Existing lost-response tests retry the same PVL/KVI identity.
-`ConflictingOrMissingShaFencesCheckpointSession` covers mismatching and absent SHA metadata for both file types;
-matching SHA confirms the intended content. KVI retries retain the snapshot and mapping and block later snapshots.
-These tests exercise native checkpoint publication against the in-memory storage adapter, not a production provider.
-
-
-### Parallel block download
-
-`DownloadUsesBoundedParallelBlocksAndPreservesOrderWithoutChecksumValidation` holds the first block while three later
-blocks complete, exercises short reads and a partial final block, and accepts deliberately invalid checksum metadata.
-`FailedParallelBlockCancelsOtherReadsAndRemovesPartialFile` verifies cancellation/draining before cleanup. Downloads
-use four 4 MiB buffers per file; existing file-level concurrency still bounds simultaneous files. Against Azurite,
-four 128 MB files took 1.40 s with 256 KiB ranges and 1.00 s with 4 MiB ranges; real Blob latency is not measured.
-`FailedInitializationPublishesNoPartialInventory` keeps a failed cache validation from leaving a stale listing. Existing cache checksum tests remain.
-
-
-### Native prefix comparison
-
-`TrlPrefixComparerTest` executes independent native databases with the same bootstrap identity and reads directly from
-the leader's local files through `ILeaderTrlReader`; no Blob fixture or upload is involved. It covers cross-file
-commits/rollbacks with different batching, legacy even-to-odd rotation, lag, fixed cuts before later local work,
-unchanged event IDs, divergence, bounded/short reads, cancellation, missing leader files and stale-session errors.
-Only a full match advances capture acknowledgement; reader-visible state is unchanged. No listing or native-header
-validation is performed by the comparer. The coordinator now connects authenticated in-process transport, grants and the host restart callback.
-Blob history validation is required when becoming leader before adoption/publication, not for routine follower checks;
-the coordinator now performs this through LeadershipSession. Ordinary bootstrap/recovery still uses the existing Blob path.
-
-## Azure selection and activation coverage
-
-`LeaderSelectionTest` covers exact JSON reconciliation, retained opaque application data and generation fencing.
-`LeadershipActivationTest` covers peer acknowledgement ahead of Blob, binary divergence, adoption/append races,
-partial multi-database failure and retry without premature optimistic publication.
-`BTDB.Replication.Azure.Test` uses Azure.Storage.Blobs 12.29.2 against its own loopback Azurite process. It covers
-finite lease expiry and reacquisition, lost response reconciliation, stale lease/ETag rejection, bounded block
-append/adoption, native KVI streaming and immutable SHA conflict fencing. Its end-to-end test acquires a lease,
-selects a term, validates/adopts native history, publishes the optimistic suffix, publishes a KVI and restores event 2
-through ordinary `InitializeAsync` / `BTreeKeyValueDB.OpenAsync`.
-
-Install Azurite 3.35.0 (`npm install --global azurite@3.35.0`) before running that project or the full solution.
-The test fixture uses temporary local storage and fresh development credentials; it neither reads cloud credentials
-nor creates Azure resources. The CI workflow installs the same version. Real Azure latency, throttling, failover and
-throughput qualification have not been performed by these tests.
-
-
-## Automatic node coordination
-
-`ReplicationNodeCoordinatorTest` uses three independent real BTDB instances restored from one canonical store,
-the actual lease/selection/activation/publisher components and an isolated in-process peer transport. Applications
-execute transactions directly; the coordinator never invokes their handlers.
-
-- Automatic takeover after peer/storage partition publishes an optimistic event once. Competing candidates select
-  one replacement; a delayed predecessor CAS from the old term cannot overwrite adopted history. Healing converges.
-- Startup storage failure prevents lease acquisition until ordinary restore succeeds. Divergence requests restart
-  once and stops replication while ordinary local writes remain available.
-- Blocking publication beyond a lease lifetime does not block renewal. Timed-out peer replies cannot acknowledge
-  history; resuming traffic converges without changing term or rerunning handlers.
-- Wrong API keys and stale session identities fail authentication. API keys are omitted from identity diagnostics.
-
-`FollowerComparisonSessionTest.NewLeaderCannotConfirmBytesOnlyAcknowledgedByItsPredecessor` verifies that a new
-leader is compared from the verified restore cut even when capture was already acknowledged by its predecessor.
-Missing retained bytes require ordinary restart; the coordinator does not introduce extra roots or file pins.
-
-These tests use deterministic time and injected faults. They do not qualify HTTP encoding/hosting, physical process
-pauses, schema transitions, remote GC or live Azure service behavior. Those remain separate acceptance work.
-
-
-### Generation changes and removed databases
-
-`ReplicationNodeCoordinatorTest` covers older binaries starting after a newer leader, a running former leader
-rediscovering an upgrade, continued comparison of shared history, and no renewed contention after the newer leader
-becomes unreachable. A newer leader selecting an empty database set leaves the older node's database locally writable
-without peer range reads or remote publication. Removal is reported to the host once.
-`LeaseSessionControllerTest.DisqualificationRejectsLateAcquireOrRenewalAndAllFutureAttempts` checks both delayed
-acquisition and renewal success: neither can revive a permanently disqualified node. No storage counter, retirement
-record, core writer gate or local database disposal is introduced.
-
-
-### Prepared handoff, genesis and live schema detachment
-
-`ReplicationNodeCoordinatorTest` now covers highest-generation prepared handoff before ordinary lease expiry, grant
-drain before transfer, startup schema publication and continued old-node local work. New-database cases hold genesis
-publication, verify followers perform no initialization writes, preserve the first captured cursor (including zero) after a lost reply,
-and restore it on replacement. A separate leader-loss case recreates an unpublished genesis at a newer input end and
-rejects the delayed old create. A coalesced application/schema/application range detaches a lagging follower before
-comparison; reconnection cannot reattach it, and a fifteen-minute absence of current leader evidence requests restart.
-
-`TransactionLogCaptureTest` uses real native transactions with rollback, unchanged cursor commits, virtual batches,
-large payloads and file rotation, and checks that reopening replays the same non-application commit position.
-`FollowerRestoredAfterPublishedSchemaTreatsItAsDuplicate` keeps a follower restored after a published schema commit
-following instead of detaching.
-
-Azure adapter tests cover discovery of an initially absent leader blob and native lease Change with both delivered
-and lost responses. Only successful renewal by the target establishes transferred authority. The target also uses a
-different configured lease duration: unknown transferred handles use Azure's conservative fifteen-second minimum.
-These tests use Azurite, not live-Azure production qualification.
-
-`RemoteMaintenanceTest` covers native compaction/export/restore after cleanup, failed KVI retries without deletion,
-closure retention, delayed deletion, allocation anchors and stale-delete protection. Coordinator tests keep local
-compaction running on leaders and followers during blocked publication, without local KVI creation. ObjectDB
-regressions apply identical leak candidates in two databases, including rollback and duplicate delivery, and ensure
-replicated compaction cannot erase leaks independently. Azurite tests verify metadata protection changes the ETag,
-old-token deletion leaves the PVL intact, current-token deletion succeeds, and fenced authority cannot dispatch it.
-
-## HTTP peer boundary
-
-`BTDB.Replication.Http.Test` runs real loopback Kestrel listeners, with no mocked HTTP handler. It covers selected
-cluster/term/session/key validation on every request, credential rotation, replaced in-flight sessions, peer cancellation,
-missing retained files, bounded requests/responses, immediate overload rejection, redirect rejection and malformed or
-truncated replies. Native BTDB comparison crosses the socket boundary through `LeaderTrlReader`, including multiple
-TRL files, rollback and differing virtual batching; divergence cannot advance acknowledgement.
-These tests qualify the adapter components, not multi-process coordinator failover or production TLS/proxy deployment.
-See the [adapter instructions and limits](../BTDB.Replication.Http/README.md).
-
-`ReplicationHostingTest` additionally runs the actual coordinator and lease controller inside a real ASP.NET host.
-Restore probes the bound endpoint, proving it starts only after Kestrel. Tests cover retry-before-contention,
-authenticated leader heartbeat, cancellation during restore, immediate shutdown fencing while renewal ignores
-cancellation, late renewal rejection, restart-required host shutdown, fatal worker exceptions under the host's `Ignore`
-policy, and startup rejection for missing routes or invalid/duplicate configuration. The injected manual scheduler
-controls lease callbacks without relying on real lease expiry. These remain single-process lifecycle integration tests.
-
-## Independent process failover
-
-[`BTDB.Replication.Process.Test`](../BTDB.Replication.Process.Test/README.md) launches independent .NET/Kestrel nodes
-with real Azure SDK adapters against isolated Azurite. It kills the leader without lease release/break, waits for actual
-lease expiry, verifies takeover publishes matching unpublished native history without rerunning the handler, restores
-a fresh process and compares subsequent work. A second scenario verifies a divergent follower exits without publishing
-its local outcome. These tests assert values, invocation counts, comparison cuts, leader identity/term and canonical
-restore cursors. They do not qualify process suspension, live Azure, production TLS or performance.
-
-The first process scenario exposed a restore append mismatch. `AsyncOpenTest` now reproduces the exact committed
-physical EOF case and checks native positions/bytes after the next event, plus non-appendable partial, corrupt and
-explicitly sealed tails. The fix is replication-only; standalone recovery retains its existing end-marker rule.
-
-## Public application/provider boundary
-
-The subprocess assembly no longer has `InternalsVisibleTo` access to core replication, HTTP or Azure adapters. It
-registers the public hosting extensions, implements the public application/storage/scheduler ports and reports role
-through `IReplicationNodeHost.ReportStatus`, without accessing the coordinator. Its real crash/divergence scenarios
-therefore exercise the external-consumer path. API boundary tests prevent accidentally restoring friend access,
-exposing authority construction/renewal or transition machinery, and leaking credentials through public record strings.
-See [hosting and ownership contracts](../Doc/ReplicationHosting.md). Public availability is independent of packaging
-and production qualification.
-
-Delayed watchdog recovery tests verify immediate authority/readiness fencing, no subsequent renewal/acquisition,
-and healthy-follower takeover before the failed node restarts. Cooperative and uncooperative storage, late worker
-completion and concurrent graceful shutdown cannot bypass the delay or cancel/double-dispatch fatal recovery.
-
-Checkpoint maintenance tests cover stuck cancellation-resistant KVI uploads, unchanged checkpoint retries,
-cleanup retries without republishing KVI, forward-step deadline extension, and no timers during idle intervals.
-A coordinator regression verifies renewal remains healthy until maintenance expiry fences authority and starts the
-configured delayed fatal restart. Shutdown/disposal prevents rearming an old maintenance lane.
-
-Persistent cleanup qualification covers marking each of TRL/PVL/KVI, lost successful metadata responses, deadline
-preservation across adapter/GC reconstruction, PVL unmarking, stale mark/delete rejection, and a remembered PVL
-removed before promotion being reuploaded at a fresh ID. An Azurite native-database test deletes obsolete genesis
-TRLs and restores all keys through the checkpoint's retained-root hint. Live Azure remains separately unqualified.
+Install Azurite 3.35.0 (`npm install --global azurite@3.35.0`, the version CI installs) so `azurite-blob` is on
+`PATH`, or set `BTDB_AZURITE_EXECUTABLE`. The fixtures start their own loopback instance with temporary storage and
+development credentials; they never read cloud credentials or create Azure resources.
+
+## Deterministic simulation harness
+
+`BTDB.Replication.Test/Simulation` provides the deterministic primitives used by the in-process tests:
+
+- `DeterministicScheduler` queues every callback explicitly. `RunNext` runs one callback, `AdvanceBy` advances virtual
+  monotonic time and runs due callbacks, and `RunUntilIdle` drains runnable work within a step budget. Equal deadlines
+  run in insertion order; paused scopes stay pending; stopped scopes cancel their callbacks. `SeededRandom` is a fixed
+  SplitMix64, so the same seed gives the same IDs, backoff and schedule (`SchedulerTest`).
+- A callback or invariant failure reports the seed and execution trace and, by default, writes it under
+  `simulation-failures` beside the test assembly (inside the ignored `artifacts` tree). Re-run the named test with the
+  recorded seed and inputs; the trace is diagnostic, not a replayable program.
+- `ClusterFixture(seed)` gives each node separate native BTDB databases, in-memory file collections, allocators,
+  application input and scheduler scopes, with background compaction disabled. A seeded native TRL header avoids random
+  database identities, so same-seed runs also match native file hashes. After every step it compares each node's
+  published root with an independent dictionary replay of application inputs, without opening a reader or retaining a
+  root (`ClusterIsolationTest`).
+- `SimulatedBlobStore` separates dispatch, remote effect and response, so delay, lost responses and timeouts before
+  the effect are independent faults; CAS versions are never reused and buffers are copied at the boundary
+  (`StorageFaultTest`). `SimulatedLeases` models finite per-object leases (`LeaseServiceTest`), and `SimulatedPeerLink`
+  models opaque-byte queues, delay, partitions and connection replacement.
+- `HistoryOracle` reconstructs selected authority, append-only history, cursors and reachable ranges from the observed
+  storage journal. `HistoryOracleTest` shows it rejects rewritten history, deletion of reachable files and unselected
+  publishers, and that selection alone does not fence an already dispatched predecessor write. Its `ModelAuthority` /
+  `ModelHistory` inputs are synthetic fixtures, not native TRL or production leader metadata.
+
+The component and coordinator tests below reuse `DeterministicScheduler` with native BTDB databases, in-memory
+conditional storage fakes and `InProcessReplicationPeerTransport`. They do not run through `HistoryOracle`.
+
+## Core BTDB support (`BTDBTest`)
+
+- `TransactionLogCaptureTest`: completed positions advance only at complete commit/rollback, capture preserves native
+  bytes across rotations, async open initializes capture from existing TRLs, and compaction keeps unacknowledged TRLs.
+- `WriterCancellationTest`: cancelling a queued writer does not leak its reservation.
+- `ReplicationPreparationTest`: the event cursor follows writer commit/rollback, a legacy even tail rotates to odd TRLs,
+  file-ID parity allocation, startup metadata before application writes and rollback actions.
+- `TransactionBatchingTest`: virtual batches keep ordinary per-event commits, and readers do not publish a pending batch
+  (`ReadersDoNotPublishPendingBatch`).
+- `ReplicationCompactorTest` and `KeyIndexSnapshotTest`: replicated compaction creates no local KVI, keeps files needed
+  by readers and export snapshots, and cancelling a remote export leaves local compaction running.
+- `NativeFileRestoreTest`: restored native file IDs stay physical IDs through KVI and TRL.
+- `ObjectDbInitializeRelationsTest`: relation schemas are checked read-only and persisted in at most one startup writer,
+  including empty relations, index upgrades and rollback on failure.
+- `ObjectDbCompactorLeakCleanupTest`: leak candidates apply identically and idempotently in two databases, including
+  rollback, and replicated compaction never erases leaks on its own
+  (`ReplicatedCompactorDoesNotIndependentlyEraseDetectedLeaks`).
+
+## Canonical TRL lane necessity and limits
+
+`CanonicalTrlPublisherTest` publishes real native commits and rollbacks through the in-memory conditional store and
+restores them with ordinary `OpenAsync`. It covers same-file and cross-file transactions, multi-file genesis selecting
+its root only after successors, interruption before every cross-file effect, coalescing several transactions, schema
+commits with an unchanged event cursor, adoption racing an old-term append in both orders, authority loss with prepared
+successors, and stopped publication leaving local writes, rollback and compaction running.
+
+The lane keeps one unresolved conditional intent because a delayed-effect test shows an old read cannot prove failure.
+Exact retries reuse the same token and source cut, so a late original request cannot append twice
+(`ExactRetryCannotDuplicateBytesWhenOriginalRequestLandsLate`). Ambiguous replies are reconciled by comparing only the
+appended bytes in bounded chunks with two 64 KiB buffers (`AmbiguousAppendReconcilesOnlyTheAppendedBytes`,
+`ReconciliationReadsLargeNativePrefixesInBoundedChunks`); any different byte is a conflict. The target position is
+acknowledged only after selection. `NativePublicationTest`, `TrlMetadataTest` and `ReplicationEndMarkerTest` add
+native multi-file reopen, TRL metadata validation, and that replication writes no temporary or rotation end markers.
+
+## Discovery, restore and local cache
+
+- `CanonicalTrlPublisherTest` restore cases: discovered history resumes publication in a new term; broken selected
+  links, a missing published genesis and changed object versions fail instead of restoring wrong or empty state; an
+  interrupted restore retries without trusting partial cache.
+- `ReplicationFileSetTest`: exact remote IDs, cache reuse only after extension, length and SHA-256 checks, separate
+  local/remote inventories, shared and bounded prefetch, collision safety, removal of partial downloads,
+  `FailedInitializationPublishesNoPartialInventory`, and
+  `RetiredPublicationGetsAFreshIdentityInsteadOfRecreatingItsKey`. Downloads keep four 4 MiB range reads in flight and
+  write blocks in order (`DownloadUsesBoundedParallelBlocksAndPreservesOrder`); sealed files with a checksum are
+  verified while written (`DownloadVerifiesSealedChecksumBeforeEstablishingPlacement`), and one failed block cancels
+  the others (`FailedParallelBlockCancelsOtherReadsAndRemovesPartialFile`).
+- `AsyncOpenTest`: discovery reads only needed KVI/TRL headers and prefetches KVI references in parallel. A restored
+  complete canonical tail continues the leader's native file at its exact committed EOF, while partial, corrupt or
+  sealed tails rotate (`RestoredCompleteCanonicalTailContinuesTheLiveLeadersNativeFile`,
+  `ReplicatedOpenDoesNotAppendBeyondAnUncleanOrSealedTail`); this defect was found by the process tests.
+- `RestartRecoveryTest`: with plain or compressed KVI and empty or corrupt cache, a fresh process state restores a
+  checkpoint after obsolete TRLs (including genesis) are deleted, adopts a new term, publishes, and restores again.
+  Replacement checkpoints or tail appends landing after discovery make the stale attempt fail; a repeated
+  initialization/open selects the new state without mixing versions.
+
+## Checkpoints and remote maintenance
+
+`CheckpointPublisherTest` streams native KVI with whole-PVL remote ID substitutions and unchanged TRL. KVI upload
+starts only after the canonical TRL cut and required PVLs are published; pending, cancelled or conflicting canonical
+state and authority loss stop it before the first KVI chunk. Lost KVI/PVL replies retain their identity, conflicting or
+missing SHA fences the session, restored PVLs are reused without upload, and a promoted follower reuploads a missing
+restored PVL at a fresh ID.
+
+`RemoteMaintenanceTest` covers delayed deletion that preserves the recovery closure and never reuses the highest ID,
+version protection defeating a delayed delete, failed KVI never authorizing deletes, restore of an actual compacted
+checkpoint after cleanup, and the maintenance watchdog deadline. Deletion delay must be positive; these tests use small
+positive delays in virtual time.
+
+## Follower comparison
+
+- `TrlPrefixComparerTest` compares independent native databases byte-for-byte over the leader's local files: matching
+  history with different batching, legacy even-to-odd rotation, lag, fixed cuts, unchanged event IDs, sticky
+  divergence, bounded reads and cancellation. Only a full match advances the matched cut; the comparer never
+  acknowledges capture itself.
+- `LeaderTrlReaderTest` and `RetainingLeaderTrlReaderTest`: leader reads stop at the complete cut, inline bytes follow
+  lineage across files, retention is bounded, and an inline file switch answers the end-of-file check without a peer
+  read (`InlineFileSwitchAnswersEndOfFileAndContinuesIntoTheSuccessor`).
+- `FollowerComparisonSessionTest`: coalesced progress, fixed cuts during reads, restart requested once on divergence,
+  and a new leader compared from the verified restore cut
+  (`NewLeaderCannotConfirmBytesOnlyAcknowledgedByItsPredecessor`).
+- `ReplicationPeerPollTest` validates poll answers and inline byte budgets. `TransactionLogCaptureTest` (replication
+  project) shows `TransactionLogCapture.NonApplicationCommitted` tracks schema commits live and after replay, which the
+  leader announces instead of followers scanning its TRL.
+
+## Authority, selection and activation
+
+- `AuthorityTest` and `LeaseServiceTest`: delayed or ambiguous lease responses and process pauses cannot extend
+  authority, and one drain deadline waits out every grant.
+- `LeaseSessionControllerTest` and `LeaseMaintenanceTest`: renewal before the deadline, late responses cannot revive a
+  session, permanent disqualification, and a failed renewal retries before expiry even with a long retry interval
+  (`FailedRenewalRetriesBeforeTheLeaseExpiresEvenWithALongRetryInterval`).
+- `LeaderSelectionTest`: exact JSON reconciliation after a lost reply, preserved application data, the generation
+  floor, malformed records, and `SameGenerationComparesDatabaseNamesAsASet`. `ReplicationApplicationDataTest` covers
+  conditional `applicationData` writes, reconciliation and follower/fenced read-only access.
+- `LeadershipActivationTest`: Blob validation despite peer acknowledgement, divergence never adopting, all databases
+  adopting before any publisher is returned, and append racing adoption. `ReplicationProgressWatchdogTest` checks that
+  stale timeouts cannot override progress.
+
+## Coordinator simulation
+
+`ReplicationNodeCoordinatorTest` runs up to three real BTDB nodes with the actual lease, selection, activation,
+publisher, comparison and maintenance components under virtual time. Applications execute transactions directly; the
+coordinator never runs handlers.
+
+- Failover: `ThreeNodesRestoreFollowAndFailOverAutomaticallyWithDelayedOldPublication` publishes the optimistic tail
+  once and a delayed old-term CAS cannot overwrite it; lagging followers catch up and can take over without restart.
+- Isolation of work: renewal is independent of blocked publication and late peer replies cannot acknowledge; slow
+  canonical writes and checkpoints do not stall publication; local compaction continues on leaders and followers.
+- Comparison traffic: one poll per step, each byte received once under load, and
+  `CaughtUpFollowerComparesInlinePollBytesWithoutRangeReads` (with and without small logs) needs no range reads.
+- Faults: startup outage prevents election, divergence requests restart while local writes continue, malformed leader
+  records request restart, and wrong API keys or stale sessions fail authentication.
+- Upgrades and database sets: prepared highest-generation handoff before lease expiry, older generations following but
+  never contending, removed databases continuing locally, and leader-only initialization that keeps its captured
+  cursor after a lost reply or is recreated at a newer input end after leader loss.
+- Schema: `CoalescedSchemaDetachesLaggingFollowerAndNeverPromotesItsLocalWork` detaches a lagging follower before
+  comparison, never reattaches it, and requests restart after 15 minutes without leader evidence;
+  `FollowerRestoredAfterPublishedSchemaTreatsItAsDuplicate` keeps a follower restored past the schema commit following.
+- Watchdogs: publication and checkpoint deadlines fence authority despite healthy renewals and delay fatal restart
+  while a healthy follower takes over; idle leaders, activation retries and shutdown do not trigger false recovery.
+
+## HTTP adapter and hosting
+
+`BTDB.Replication.Http.Test` uses real loopback Kestrel listeners. `HttpReplicationPeerTransportTest` covers
+per-request authentication of the exact leader identity (including key rotation and replaced sessions), cancellation,
+missing retained bytes, bounded and oversized requests, immediate overload rejection, redirect rejection, invalid range
+responses and native comparison across rotated TRLs over the socket. `ReplicationPeerWireTest` round-trips the wire
+codec. `ReplicationHostingTest` runs the coordinator inside an ASP.NET host: start only after Kestrel, restore retry
+without contention, cancellation during restore, shutdown fencing an uncooperative renewal, restart-required and fatal
+failures stopping the host, readiness metrics and configuration validation. See the
+[adapter instructions](../BTDB.Replication.Http/README.md).
+
+## Azure adapter (Azurite)
+
+`BTDB.Replication.Azure.Test` uses Azure.Storage.Blobs against Azurite. It covers lease acquisition with lost-response
+reconciliation, finite lease expiry, prepared lease transfer confirmed by the target's renewal, selection requiring
+lease plus ETag, atomic canonical append/adoption and version-bound reads, end-to-end acquire/select/adopt/publish/KVI
+restore, immutable PVL SHA fencing, and restore after obsolete genesis TRLs are deleted via the checkpoint root.
+Block Blob and cleanup specifics: `RepeatedAppendsReuseTheirOwnCommittedBlockList` (no block-list reads between
+own appends), `SmallTrlAppendsStageOnlyTheirSuffixAndMergeTrailingBlocksOccasionally`,
+`CheckpointClearsDeletionMarksWithoutChangingUnmarkedTrlVersions`,
+`DeletionDeadlineSurvivesNewAdapterAndDoesNotMoveOnRetry`, throttling surfacing as retryable `IOException`, and
+`EmptyPrefixIsRejectedBecauseCleanupListsTheWholeNamespace`.
+
+## Process failover
+
+[`BTDB.Replication.Process.Test`](../BTDB.Replication.Process.Test/README.md) launches independent .NET/Kestrel node
+processes that use only the public hosting/provider API with real Azure adapters against Azurite:
+
+- `UnavailableLeaderIsReplacedAndItsUnpublishedTailSurvivesWithoutReexecution` kills or (except on Windows) suspends
+  the leader without releasing its lease; after real lease expiry the follower publishes the compared unpublished tail
+  without rerunning the handler, and a cold third process restores it and continues comparison.
+- `StalledPublicationTerminatesTheLeaderAndFollowerRecoversItsOptimisticTail`,
+  `DivergentFollowerTerminatesItsProcessWithoutPublishingItsLocalOutcome` and
+  `CrashedFollowerRestartsFromItsOwnDiskStorage` cover the publication watchdog, divergence exit and restart from
+  existing local files after a kill.
+- `PublicHostingApiTest` guards the external-consumer boundary: no friend-assembly access, no public way to create or
+  renew authority, and no secrets in public record strings. See [hosting contracts](../Doc/ReplicationHosting.md).
+
+## Recorded measurements
+
+- Parallel download against Azurite: four 128 MB files took 1.40 s with 256 KiB ranges and 1.00 s with 4 MiB ranges,
+  which is why downloads use 4 MiB ranges (peak 16 MiB of buffers per file). Real Blob latency was not measured.
+- Cache validation at startup: 1 GB of cached files on local disk took 2.7 s hashed serially and 1.1 s with four
+  concurrent validations.
+- Azure PVL upload: a 128 MB PVL took 595 ms with serial block staging and about 330 ms with four concurrent stages
+  (Azurite).
+- The removed follower-side schema scanner needed about 5.8 s for 23 MB of 20-byte transactions; leader-announced
+  schema positions replaced it.
+- The opt-in [live Azure probe](../BTDB.Replication.Test/Integration/azure_probe.py) is not run automatically; its
+  recorded run is described in [ObjectStorages.md](ObjectStorages.md).
+
+## Not covered yet
+
+- Live Azure behavior: latency, throttling, failover timing and throughput are only exercised against Azurite (plus
+  the one-off probe). The 15-minute startup target for about 100 GB has not been measured.
+- Physical disk faults: no torn-write or power-loss model of a disk file collection; process tests only kill or suspend
+  processes.
+- Production clock qualification: in-process tests use virtual time and process tests a Stopwatch-based scheduler.
+- Exhaustive interleavings: schedules are seeded and hand-chosen, not model-checked, and `HistoryOracle` is not
+  attached to coordinator or adapter runs.
+- Concurrent remote publication/deletion races beyond the listed restart cases, and remote orphan selection.
+- Production TLS/proxy deployment of the HTTP adapter.
+- Multi-process partitions, rolling-upgrade handoff across processes, and workload/restore performance.

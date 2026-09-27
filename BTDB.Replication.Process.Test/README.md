@@ -1,9 +1,10 @@
 # Replication subprocess qualification
 
 This non-packable test assembly doubles as a loopback-only node executable. The tests launch independent .NET
-processes using only the public application/hosting/provider contracts (no friend-assembly access), and exercise the actual coordinator, ASP.NET hosted integration, HTTP peer transport, native BTDB and
-Azure lease/TRL adapters against an isolated Azurite instance. Test controls and the injected publication gate exist
-only in this project; they are not production endpoints or protocol fields.
+processes that use only the public application, hosting and provider contracts (no friend-assembly access). Each node
+runs the actual coordinator, ASP.NET hosting, HTTP peer transport, native BTDB with `OnDiskReplicationFileStorage` and
+the Azure adapters against an isolated Azurite instance. Test controls and the injected publication gate exist only in
+this project.
 
 Run with `azurite-blob` on PATH (or `BTDB_AZURITE_EXECUTABLE` configured):
 
@@ -11,24 +12,23 @@ Run with `azurite-blob` on PATH (or `BTDB_AZURITE_EXECUTABLE` configured):
 dotnet test BTDB.Replication.Process.Test/BTDB.Replication.Process.Test.csproj
 ```
 
-The crash scenario publishes event 1, restores a follower, pauses publication, and compares event 2 over HTTP while
-Blob still restores only event 1. It kills the leader OS process without releasing or breaking the lease, waits for
-its real 15-second lease to expire, and verifies the follower publishes its existing event 2 without handler reexecution.
-A third process with no local cache restores that result, then compares event 3 against the new leader. Native values,
-application invocation counts, selected leader identity/term and canonical restore cursors are checked.
+Scenarios:
 
-The divergence scenario applies a different event-2 value on the follower, verifies the actual follower process exits
-through the hosted restart path, and checks the leader and canonical history retain their prior state.
+- **Unavailable leader.** The leader publishes event 1, a follower restores it, publication is paused and event 2 is
+  compared over HTTP only. The leader process is killed, or suspended with `SIGSTOP` (not on Windows), without
+  releasing the lease. After the real 15-second lease expires the follower takes over and publishes its existing
+  event 2 without re-executing it. A suspended old leader later resumes and restarts for canonical restore. A third
+  process with no local cache restores the result and follows the new leader.
+- **Crashed follower.** A follower killed without shutdown restarts from its own disk storage, restores canonical
+  state instead of replaying its local tail, and continues comparing.
+- **Stalled publication.** With a publication deadline, a leader whose publication stops fences, exits through fatal
+  recovery, and a follower takes over and publishes its optimistic tail.
+- **Divergence.** A follower applying a different event value exits through the restart path; the leader and
+  canonical history keep their state.
 
-The first scenario exposed a core recovery defect: a complete published commit has no local temporary-end marker,
-so a cold follower unnecessarily rotated to TRL 3 while the live leader appended to TRL 1. Replication restore now
-continues the exact committed physical EOF. Focused tests retain rotation for incomplete, corrupt and explicitly sealed
-tails. Standalone recovery is unchanged.
+`PublicHostingApiTest` guards the external-consumer boundary: internal authority and transition types stay hidden and
+public records redact credentials.
 
-Limits: these tests use local Azurite and loopback sockets, not live Azure or production TLS/proxies. Node caches are
-in-memory and process-isolated; killing a process discards its entire cache. The test scheduler uses Stopwatch and
-serialized timers for this non-suspended workload; it is not a production clock qualification. Broader partitions,
-process suspension, rolling-upgrade handoff and workload/restore performance remain separate acceptance work.
-
-`PublicHostingApiTest` guards that external-consumer boundary, internal authority acquisition/renewal and transition
-types, and credential redaction in public record strings. See the [public hosting guide](../Doc/ReplicationHosting.md).
+Limits: local Azurite and loopback sockets, not live Azure or production TLS/proxies. The test scheduler uses
+`Stopwatch` with serialized timers; it is not a production clock qualification. Network partitions, rolling-upgrade
+handoff across processes and restore performance remain open.

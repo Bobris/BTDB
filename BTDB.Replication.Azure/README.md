@@ -1,49 +1,44 @@
 # Azure replication adapters
 
-This project implements the Azure SDK boundary for the replication components through public provider contracts:
+This project implements the Azure SDK boundary of `BTDB.Replication` through public provider contracts:
 
-- `AzureLeaderStorage`: finite lease acquisition/renewal and lease-plus-ETag leader JSON replacement.
-- `AzureReplicationStorage` / `IReplicationStorage`: canonical TRL reads and conditional append/adoption,
-  numeric PVL/KVI discovery, immutable publication with atomic SHA-256 metadata, and conditional cleanup.
+- `AzureLeaderStorage`: `leader.json` with a finite native Blob lease (15–60 whole seconds): conditional initial
+  creation, acquire/renew, lease `Change` for prepared handoff, and lease-plus-ETag record replacement. It implements
+  `ILeaderRecordStorage`, `IReplicationLeaseStorage` and `IReplicationLeaseTransferStorage`.
+- `AzureReplicationStorage` (`IReplicationStorage`): canonical TRL reads, conditional append and metadata-only
+  adoption, numeric PVL/KVI discovery, immutable publication with atomic SHA-256 metadata, recovery-root discovery and
+  delayed conditional cleanup.
 
-Construct one data adapter per database. Discover its canonical chain using `CanonicalTrlInventory.DiscoverAsync`,
-then call `storage.Bind(inventory)` for restore or `storage.Bind(inventory, authority)` for leader maintenance.
-Bindings are separate instances: their selected TRL versions and authority never change when another session binds.
-Unbound storage supports canonical operations and physical listing; remote restore enumeration requires a binding.
-`IRemoteFileCollection` remains the read-only inventory contract; selected TRL inventories no longer expose writes.
+## Usage
 
-Supply authenticated `BlobClient` / `BlobContainerClient` instances, the database prefix, initial leader JSON and
-configuration. Configure SDK clients with `Retry.MaxRetries = 0`; protocol components own conditional-write ambiguity
-and retries. Use separate authority/data clients so large transfers do not occupy the authority connection pool.
-Authentication and container provisioning are supplied by the host. The adapters and their provider contracts are public; the project remains non-packable
-while production qualification continues. See the [public hosting guide](../Doc/ReplicationHosting.md); it does not add another local file collection or a new database-open algorithm.
+Construct one data adapter per database with its own nonempty prefix; cleanup lists everything below that prefix.
+Discover the canonical chain with `CanonicalTrlInventory.DiscoverAsync`, then bind it: `storage.Bind(inventory)` for
+restore, `storage.Bind(inventory, authority)` for leader maintenance. Bindings are separate instances whose selected TRL
+versions and authority never change. The [hosting guide](../Doc/ReplicationHosting.md) shows the complete wiring.
 
-The initial leader JSON has `format: 1`, the expected `clusterId`, `term: 0`, `revision: 0`,
-`applicationGeneration: 0` and `databaseNames: []`. Pass a fresh leadership session ID and API key on every acquisition.
-Existing skip entries and unknown JSON fields are preserved during selection.
+Supply authenticated `BlobClient` / `BlobContainerClient` instances; authentication and container provisioning belong
+to the host. Configure SDK clients with `Retry.MaxRetries = 0`: replication reconciles conditional-write ambiguity
+itself. Use separate authority and data clients so large transfers cannot occupy the authority connection pool. The
+initial leader JSON has `format: 1`, the expected `clusterId`, `term: 0`, `revision: 0`, `applicationGeneration: 0`
+and `databaseNames: []`. Transient provider failures and throttling surface as retryable `IOException`s.
 
-## Activation lifecycle
+## Behavior
 
-1. Restore required databases through the existing `ReplicationFileSet.InitializeAsync` and `BTreeKeyValueDB.OpenAsync`.
-   Keep the verified startup cut separate from the advancing peer comparison acknowledgement. Retained canonical
-   links can start at the TRL required by that restored KVI; history before the verified base is not compared again.
-2. Run `LeaseSessionController.RunAsync` independently of application commits, transfer and activation work.
-   Await its task on shutdown. A new `LeaseAuthority` instance signals a new acquisition; old instances remain fenced.
-3. Construct one `LeaderSelection` and `LeadershipSession` for that acquisition. Supply every selected database by
-   name, its restored base, canonical starting link, local capture and a new-term successor-key function.
-4. Call `LeadershipSession.ActivateAsync`. A null selection result is unresolved; retry that same session while
-   authority remains valid. I/O failures retry through discovery. `InvalidDataException` means canonical restore
-   is needed; do not modify a live divergent suffix to make it pass. A generation floor rejection fences authority.
-5. Only the returned publishers may start ordinary canonical publication. Their adoption phase never publishes
-   local bytes beyond the selected Blob boundary. Matching optimistic local bytes may subsequently be published
-   through the normal capture-backed publisher, without executing the application again.
-6. Publish checkpoints using the existing `CheckpointPublisher`; it establishes TRL/PVL prerequisites before KVI
-   staging. Give local maintenance and remote publication independent cancellation tokens. Do not reuse an expired
-   authority object, leader selection, or publisher after reacquisition.
+- Canonical appends reuse committed 4 MiB blocks and restage only the suffix; trailing partial blocks are merged
+  occasionally so small commits cannot exhaust Azure's block-count limit. Staged block IDs are unique, so a lost
+  request cannot change a winning commit. The final `Put Block List` carries `If-Match` and the term/successor metadata.
+  An append that expects this adapter's own previous commit reuses that block list instead of reading it again.
+- PVL/KVI files are created with `If-None-Match: *` and SHA-256 metadata in the same commit; their blocks are staged up
+  to four at a time (128 MB PVL on Azurite: 595 ms serially, 330 ms). A KVI also records the oldest canonical TRL it
+  needs (`btdb_recovery_key`, `btdb_recovery_id`), so discovery survives deletion of older history.
+- Cleanup marks obsolete TRL/PVL/KVI objects with a deletion deadline and deletes only the unchanged marked version
+  after it passes; the deadline survives leader changes. The delay must be positive. Reusing a PVL clears its mark and
+  changes its version. Checkpoint publication clears marks on its retained TRL chain but never rewrites an unmarked
+  TRL, so restores reading by ETag stay valid.
+- Prepared handoff uses lease `Change` after the grant drain. The target renews its proposed ID to confirm ownership,
+  including after a lost `Change` response; an unknown or transferred handle uses Azure's 15-second minimum duration.
 
-A missing retained file during takeover requires ordinary restore, not a special repair path or a retained-root registry.
-The owner still handles application compatibility, new-database initialization and node lifecycle. This implementation
-is not an ASP.NET transport, a schema-upgrade coordinator or remote garbage collection.
+Metadata keys, key layout and provider research are in [ObjectStorages.md](../BTDB.Replication/ObjectStorages.md).
 
 ## Tests
 
@@ -53,35 +48,10 @@ Install `azurite@3.35.0` globally, then run:
 dotnet test BTDB.Replication.Azure.Test/BTDB.Replication.Azure.Test.csproj
 ```
 
-Tests start and stop an isolated loopback Azurite process with temporary storage. Set `BTDB_AZURITE_EXECUTABLE`
-if the executable is not on PATH. Tests exercise the actual SDK, conditional HTTP operations, deliberately lost
-responses, lease expiry, native publication, activation and checkpoint restore. No cloud account is accessed.
-
-The adapter reuses committed 4 MiB prefix blocks and replaces the partial last block when appending, preventing
-small commits from exhausting Azure's block-count limit. Staged block IDs are unique, so losing requests cannot
-replace bytes referenced by a winning commit. Get Block List's response ETag is checked before its blocks are reused;
-the final commit still carries `If-Match`. An append that expects this adapter's own previous commit reuses that
-commit's block list instead of reading it again. Sealed PVL/KVI files use `If-None-Match: *` and SHA metadata in that
-same commit; their blocks are staged up to four at a time (128 MB PVL on Azurite: 595 ms serially, 330 ms).
-
-Each database needs its own nonempty prefix: cleanup lists everything below it. Checkpoint publication clears
-deletion marks on its retained TRL chain but never rewrites an unmarked TRL, so restores reading by ETag stay valid.
-Remote cleanup therefore requires a positive deletion delay.
-
-Provider semantics were checked against Microsoft's [Lease Blob](https://learn.microsoft.com/rest/api/storageservices/lease-blob),
+Tests start an isolated loopback Azurite process with temporary storage (set `BTDB_AZURITE_EXECUTABLE` if it is not on
+PATH) and exercise the actual SDK with conditional operations, lost responses, lease expiry and transfer, native
+publication, activation, checkpoint restore and cleanup. Azurite results are not live Azure availability, throttling
+or throughput qualification. Provider semantics were checked against Microsoft's
+[Lease Blob](https://learn.microsoft.com/rest/api/storageservices/lease-blob),
 [Get Block List](https://learn.microsoft.com/rest/api/storageservices/get-block-list) and
 [Put Block List](https://learn.microsoft.com/rest/api/storageservices/put-block-list) documentation.
-Azurite results are not live Azure availability, throttling or throughput qualification.
-
-
-Prepared handoff uses native lease Change after confirmation-grant drain. The target renews its proposed UUID to
-confirm ownership, including when the source lost the Change response. Renewal of an unknown/transferred handle
-uses a conservative fifteen-second duration because Change retains the source lease's duration. Leader discovery
-conditionally creates the initial record before the first acquisition, allowing empty-cluster bootstrap.
-
-Maintenance uses a physical, database-scoped listing and ETag-bound deletion under live session authority.
-Reusing a PVL conditionally touches its metadata before KVI publication so a delayed delete from an earlier leader
-cannot erase that dependency. Canonical writes include `btdb_file_id` metadata for native identity; older objects
-without it are conservatively ignored by cleanup. Canonical TRL links are retained because this adapter discovers
-history from a supplied root. PVL/KVI cleanup is supported; TRL pruning requires independently resolvable retained
-roots and is not enabled by this adapter. Restore still uses the existing selected inventory and native open path.

@@ -1,242 +1,180 @@
-# BTDB.Replication Object Storage Research
+# BTDB.Replication Object Storage
 
-Status: Provider research plus implemented provider-neutral inventory and Azure SDK lease, leader-record,
-canonical TRL and immutable PVL/KVI adapters. See [adapter usage and validation](../BTDB.Replication.Azure/README.md).
-The SDK path is tested against Azurite; live Azure qualification remains separate.
+Status: the provider-neutral contract, `ReplicationFileSet` inventory, remote maintenance and the Azure SDK adapters
+(`AzureLeaderStorage`, `AzureReplicationStorage`) are implemented and tested against Azurite; see the
+[Azure adapter guide](../BTDB.Replication.Azure/README.md). Live Azure qualification is open beyond the small M1
+capability probe below. Amazon S3 is later provider research.
 
-The `denoland/celld` research snapshot is 2026-08-29 and is pinned to release `v0.4.0`, commit
-`a52f9905425bc41134d817694bdc2c50bcc5e856`. Azure details were rechecked on 2026-08-30. Provider behavior and limits
-must still be requalified against the selected account type, endpoint, SDK, and service version before production use.
+The `denoland/celld` snapshot is 2026-08-29, pinned to release `v0.4.0`, commit
+`a52f9905425bc41134d817694bdc2c50bcc5e856`. Azure documentation was rechecked on 2026-08-30. Requalify provider
+behavior and limits against the selected account type, endpoint, SDK and service version before production use.
 
-This document contains the object-storage abstraction, the `celld` reference study, and provider-specific details.
-The failover state machine, canonical TRL protocol, and checkpoint design remain in [Architecture.md](Architecture.md).
+This document owns the storage contract, the `celld` study and provider behavior. The failover protocol, canonical
+TRL publication rules, checkpoint selection and compaction design are owned by [Architecture.md](Architecture.md).
 
-## What BTDB.Replication needs from object storage
+## What replication needs from object storage
 
-The object store has three distinct roles:
+- **Coordination plane**: one small cluster-wide leader record (`leader.json`) selects the leader and publishes its
+  transport-defined peer endpoint and API key. Azure protects it with ETag CAS plus one finite native Blob lease.
+- **Per-database publication**: a conditional write on the canonical TRL directly publishes complete transactions;
+  there is no second state CAS. A native KVI is published after all its prerequisites, with no separate manifest or
+  checkpoint pointer.
+- **Data plane**: canonical TRLs are logically append-only; PVL/KVI files are immutable and never reuse a key.
 
-- **Coordination plane**: one small shared leader record selects the cluster-wide leader and publishes its
-  transport-defined peer endpoint and API key. Azure version one protects it with ETag CAS and one finite native Blob
-  lease.
-- **Per-database publication**: CAS on canonical TRL directly publishes complete transactions. A native KVI
-  is published after all its prerequisite files; no separate checkpoint pointer or manifest selects it.
-- **Data plane**: active TRLs are logically append-only, term-qualified remote files; native KVIs and
-  compaction artifacts are immutable or attempt-qualified. Takeover fences the writable predecessor TRL by CAS before using a new term-qualified continuation.
+The upstream application event log can deterministically replay a lost unpublished tail, so storage need not prove
+durability before a local commit completes. It must never allow two accepted canonical histories or an accepted
+prefix ending inside a transaction.
 
-The upstream event log permits loss and deterministic replay of a small unpublished application tail. Object storage
-therefore does not need to prove durability before every event is acknowledged, but it must never allow two accepted
-canonical histories or an accepted prefix ending inside a transaction.
+## Provider-neutral contract
 
-### Implemented file inventory boundary
-
-`IRemoteFileCollection` exposes asynchronous inventory enumeration and version-bound range reads. `RemoteFile` describes the numeric ID, native type, length, opaque version, sealed state and optional
-whole-file SHA-256. The adapter must reject a read if the selected version changed or disappeared; partial range
-success must never silently combine versions. Allocation uses refreshed remote inventory, never a local maximum; conditional creation and SHA metadata reconcile retries.
-`IReplicationStorage` extends that boundary with confirmed PVL/TRL prerequisites and native KVI publication.
-
-`ReplicationFileSet` implements `IFileReplicatedCollection` exposed to BTDB. `GetCount`, `GetFile`, and `Enumerate`
-operate only on physical local cache/storage; `GetRemoteFile` and `RemoteEnumerate` expose the
-selected remote inventory after initialization. Remote handles are read-only and version-bound. Neither inventory
-lookup nor local lookup downloads a body. Local additions/deletions leave the remote inventory unchanged. After a complete successful listing, initialization removes local files without a selected remote mapping and retains
-only mapped files whose extension, then length, then locally calculated SHA-256 match remote metadata. Invalid or unverifiable
-cache files are removed without downloading replacements; prefetch reuses validated files without hashing again.
-Cached files are hashed in parallel within the download concurrency bound (1 GB from disk: 2.7 s serially, 1.1 s with
-four), and the inventory becomes visible only after the whole attempt succeeds.
-The collection uses `IKeyValueDBLogger` (the same instance may be passed to `KeyValueDBOptions.Logger`) to report
-why each local file is removed, including local/remote IDs and mismatched metadata. Downloads retain canonical native
-filename extensions so a verified cached file can pass subsequent startup validation. `GetLocalFileId` exposes memory-only session assignments; a fresh session loses
-different-ID placements and may remove/redownload such cached files. KVI recovery translates PVL references to local
-IDs. `PublishPureValuesAsync` is the leader checkpoint path for unmapped sealed local PVLs; it records confirmed
-placements and retains reserved remote IDs for retries. Failed discovery does not delete local files; repeated initialization preserves new
-session-local files. The owner awaits `InitializeAsync` before calling `BTreeKeyValueDB.OpenAsync`. Open and prefetch never initialize
-implicitly; remote inventory/metadata access fails until initialization succeeds. Standalone constructors retain their original
-synchronous opening and eager metadata loading. File IDs and types are parsed from numeric filenames and extensions;
-higher fileIds identify newer TRLs and KVIs within each sequence, without using native generation. Inventory discovery reads no bodies; lazy native metadata reads use small version-bound ranges.
-`PrefetchAsync(fileId)` shares one bounded cache-population transfer between callers, verifies cache candidates and
-uses exact-ID imports internally. The checkpoint publisher uses the same verified PVL placements. Matching numbers or lengths do not imply equal bytes. Tests reproduce distinct local/remote contents
-under the same ID, remote allocation independent of a higher local maximum, out-of-order downloads, version changes,
-checksum failures, cancellation and retry. This is the concrete reason for separate inventories and exact imports.
-The checkpoint/receipt lifetime rules remain owned by [Architecture.md](Architecture.md); this interface is not an
-Azure transport or a complete startup/authority implementation.
-
-### Minimum coordination properties
-
-An endpoint is suitable only if it provides all of these properties:
+### Required provider properties
 
 1. **Conditional create**: create key `K` only when no current object exists at `K`.
-2. **Conditional replace**: replace key `K` only when its current opaque version token equals the token returned by a
-   preceding read.
-3. **Strong read-after-write consistency**: after a successful write, subsequent reads observe that write.
+2. **Conditional replace**: replace `K` only when its opaque version token equals one returned by an earlier read.
+3. **Strong read-after-write consistency** for reads and listings.
+4. **Semantic conditional tail append**: if token and length still match, atomically expose the old content followed
+   by the suffix, and never change an earlier byte. Content and object metadata change under one new token.
+5. **Service-evaluated finite lease** on the leader record for automatic takeover (see below).
 
-No part of the design may assume an atomic transaction across two object keys. The leader record grants authority but
-contains no database progress. Required files must be completed before the canonical TRL CAS exposes a complete
-transaction referencing them. The TRL operation itself establishes durability; no separate state CAS follows it.
+No operation may assume an atomic transaction across two keys. The leader lease fences only the leader blob, not TRL
+or PVL/KVI objects, local disks or peer traffic; every new term therefore CAS-fences the writable predecessor TRL
+(a metadata-only adoption write) before canonical work, and continues under fresh successor keys.
 
-### Candidate provider-neutral interface
+### Implemented interfaces
 
-This is a semantic sketch, not a proposed C# API:
+| Interface | Operations |
+| --- | --- |
+| `ILeaderRecordStorage` | `ReadAsync` -> body + token; `WriteAsync(leaseHandle, expectedToken, json)` -> `Applied`/`Rejected`/`Ambiguous`. |
+| `IReplicationLeaseStorage` | `AcquireAsync` (finite lease) and `RenewAsync(handle)`. |
+| `IReplicationLeaseTransferStorage` | `TransferAsync(current, proposed)`: planned handoff, confirmed by the target's renewal. |
+| `IRemoteFileCollection` | `EnumerateAsync` and version-bound `ReadAsync` of `RemoteFile(FileId, FileType, Length, Version, IsSealed, Sha256)`. |
+| `IReplicationStorage` | Canonical TRL `ReadAsync`/`ReadRangeAsync`/`WriteAsync`; `EnsurePureValuesAsync`, `ProtectPureValuesAsync`, `PublishKeyIndexAsync`; `ResolveRecoveryRootAsync`; `EnumerateMaintenanceAsync`, `ScheduleDeletionAsync`, `CancelDeletionAsync`, `DeleteAsync`. |
 
-```text
-Read(key)
-    -> Found(body, token, metadata) | NotFound | Failed(error)
-
-Head(key)
-    -> Found(length, token, metadata) | NotFound | Failed(error)
-
-CreateIfAbsent(key, body, operationIdentity)
-    -> Applied(newToken) | Rejected | Ambiguous(error)
-
-ReplaceIfCurrent(key, expectedToken, body, operationIdentity)
-    -> Applied(newToken) | Rejected | Ambiguous(error)
-
-PutImmutable(key, body, contentHash)
-    -> Applied(token) | AlreadyPresentAndEqual(token) | Conflict | Ambiguous(error)
-
-GetRange(key, offset, length)
-    -> Found(bytes, objectLength, token) | NotFound | Failed(error)
-
-ListPage(prefix, continuationToken, limit)
-    -> Page(objects, commonPrefixes, continuationToken) | Failed(error)
-
-DeleteMany(keys)
-    -> PerKeyOutcome[]
-
-ProbeConditionalWrites()
-    -> Conformant | Violation(reason) | Inconclusive(error)
-```
-
-The coordination core needs only `Read`, `CreateIfAbsent`, and `ReplaceIfCurrent`. `Head`, range reads, paginated
-listing, bulk deletion, and multipart upload support checkpoint transfer, restore, and garbage collection. Listings
-discover published native KVIs. Validate their native file references and canonical ancestry; listing alone does not
-prove arbitrary files belong to a committed history. No separate checkpoint manifest is required.
-
-`DeleteMany` is exposed only to the current leader's remote-garbage-collection state machine. Followers may delete
-completely unused files from their own local BTDB file collections, but never call object-store deletion. Such local
-deletion is never distributed: only the node can see all files pinned by its open read-only transactions and retained
-roots. Leader authority alone is not a deletion-safety proof because the lease on `cluster/leader.json` does not
-physically fence a previously dispatched request to another Blob. Every remote deletion candidate must therefore be
-absent from the currently published recovery closure, and its key must never be reused. Publish the replacement
-required value/log files first and the KVI last before superseded objects become deletion candidates. Plan a configurable
-operational delay of about one day from obsolescence before actual deletion, without tracking follower restores. A follower
-losing a file while opening restarts and loads the newest published KVI. Old restore attempts and diagnostic KVI references
-do not pin remote files; a delayed old-term delete must remain harmless to the current closure.
-
-The required version-one tail-append capability and provider-specific lease operations are exposed separately from
-the portable coordination operations:
-
-```text
-AppendIfCurrent(key, expectedToken, expectedLength, suffix, operationIdentity)
-    -> Applied(newToken, newLength) | Rejected | Ambiguous(error)
-
-AcquireFiniteLease(key, duration)
-RenewLease(key, leaseId)
-ChangeLease(key, currentLeaseId, proposedLeaseId)
-ReleaseLease(key, leaseId)
-BreakLease(key, breakPeriod)
-```
-
-For `AppendIfCurrent`, `Applied` guarantees that the new visible content is exactly the previously observed content
-followed by `suffix`; it may not modify any earlier byte. Azure version one uses this operation plus the lease group,
-including `ChangeLease` for fast planned transfer to a prepared follower. How Azure realizes the append is hidden below
-this semantic contract. Ordinary Amazon S3 has no efficient equivalent, so a future S3 adapter may select a different
-TRL representation.
-
-### Transaction-aligned publication above the storage interface
-
-The normative [TRL publisher](Architecture.md#trl-publisher) owns append, genesis, rotation/adoption and checkpoint
-selection. A successful conditional publication on the canonical TRL exposing a complete transaction establishes its
-durability. There is no second write to a per-database state record. Staged blocks, unlinked successors, and incomplete
-transactions do not establish additional durable progress.
-
-Application commits consume input or record an explicit application-selected skip; schema commits preserve the cursor.
-The core validates complete transaction history and rollback evidence, including ordered ranges across TRL files.
-A per-object CAS is not a multi-object transaction: complete recovery closure must be reachable before a cross-file
-commit is reported durable. Prepare successor files first, then expose their complete chain by CAS on the canonical predecessor TRL.
-The selected ordering still requires provider qualification; no second state CAS is added.
-
-Genesis and schema operations immediately request asynchronous canonical TRL publication after local commit, without
-waiting for the CAS or delaying dependent local work. The publisher still includes required predecessor history in
-order. Ordinary application publication may use lazy batching; local commit completion never implies Blob durability. There is no additional database-state acknowledgement.
-
-The adapter preserves every published prefix and treats tokens as opaque. If continuation metadata accompanies a TRL
-publication, content and that metadata must change atomically under the same token, not through an independent later
-metadata update. This is a capability to qualify for the chosen rotation codec, not an assumed multi-object transaction.
-A timeout/cancellation remains ambiguous until the actual TRL operation can be reconciled.
+A read must fail if the selected version changed or disappeared; partial success never combines versions. Tokens are
+opaque. File IDs and types come from numeric names and extensions without reading native headers; higher IDs order
+TRLs and KVIs within their sequences, and native generations are not used.
 
 ### Conditional-write outcomes
 
-The distinction between the three outcomes is safety-critical:
+- `Applied`: the provider confirmed the change and returned a new token.
+- `Rejected`: the provider definitively reported a false precondition (an ordinary lost race).
+- `Ambiguous`: the request may have committed. Timeouts, connection resets, cancellation after dispatch, most `5xx`
+  responses and a success without a usable token belong here.
 
-- `Applied` means the provider confirmed that this operation changed the object and returned the new opaque token.
-- `Rejected` means the provider definitively reported that the supplied precondition was false. This is an ordinary
-  lost-race result.
-- `Ambiguous` means the operation may have committed, but the caller cannot prove whether it did. Timeouts, connection
-  resets, cancellation, most `5xx` responses, authentication failures after dispatch, and a success response without
-  a usable new token belong here.
+Neither cancellation nor a later read of the old body fences a dispatched request; reconcile by reading the object.
+Transparent SDK retries are unsafe for CAS: a first attempt can commit and lose its response, and the retry then fails
+its precondition against its own update. Configure SDK clients with automatic retries disabled
+(`Retry.MaxRetries = 0`). The canonical publisher may resend exactly the unresolved request, but never reads a
+rejection of that resend as a lost race.
 
-Every conditional body should carry a unique operation identity, session identity, and intended revision. After an
-ambiguous result, the caller reads the object and decides whether its exact operation landed, a competitor won, or the
-answer is still inconclusive. A read of the old body does not prove an outstanding request cannot still commit.
-Cancellation also does not fence that request. It must not blindly retry the old conditional request.
+Implemented reconciliation needs no extra operation-identity field:
 
-Transparent retries are particularly dangerous for CAS. The first attempt can commit and lose its response; an
-automatic retry then uses the old token, receives a clean precondition failure against its own update, and falsely
-reports that the operation lost. CAS traffic needs a separate client or retry policy with automatic retries disabled.
+- **Canonical TRL**: an applied CAS from the expected version keeps its first `ExpectedLength` bytes, so the publisher
+  compares only the intended appended bytes (and length and term metadata) in bounded chunks, with no hashes.
+- **PVL/KVI**: a lost or rejected create is confirmed by matching length and `btdb_sha256` (and, for KVI, its recovery
+  root metadata). Anything else is a `RemoteFileConflictException` that fences the session; never overwrite it.
+- **Leader record and lease**: after any non-applied selection write, only a reread equal to the exact intended JSON
+  (which carries a fresh session ID) confirms it; a lost lease acquire or transfer is confirmed only by renewing the
+  proposed lease ID.
 
 ### Safety before automatic takeover
 
-CAS chooses one winner for a leader-record replacement, but CAS alone does not tell a successor when an unreachable
-leader has stopped using authority granted by an earlier update. Automatic takeover additionally requires one of:
-
-- a provider-enforced finite lease whose expiry is evaluated by the storage service;
-- a portable deadline protocol with qualified bounds for clock uncertainty, storage latency, and conservative
-  leader/follower self-fencing margins;
-- or a slower protocol that confirms every accepted batch against storage before exposing it.
-
-Loss of the HTTP leader session may trigger an early leader-record read and candidacy, but it cannot expire authority.
-If the deployment cannot establish a safe expiry bound, automatic takeover must remain frozen or require an explicit
-authority procedure. Availability is sacrificed rather than split-brain safety.
-
-Even a native provider lease fences only operations against the leased object. Bulk objects remain immutable and
-term-qualified, and followers still validate the leader-record-selected term and session before accepting directly
-streamed TRL frames. Because the leader lease does not fence other blobs, every new term must
-CAS-fence each writable predecessor TRL before canonical work begins. That adoption excludes prior requests carrying the
-old ETag. Removed databases need no adoption or retirement fence: names are never reused, and a delayed old write to an
-abandoned namespace is accepted. This exception does not weaken fencing for active databases.
+CAS picks one winner for a leader-record replacement, but does not tell a successor when an unreachable leader stopped
+using authority. Automatic takeover needs a provider-enforced finite lease, or a portable deadline protocol with
+qualified clock-uncertainty, latency and self-fencing bounds. Without either, takeover must freeze or require an
+explicit operator procedure. Loss of the peer session may trigger candidacy but never expires authority.
 
 ### Live capability probe
 
-Provider branding or support for the right HTTP header names is insufficient. On every provider/endpoint combination,
-run these four operations against one unique temporary key:
+Header support is not proof of enforcement. Qualify each provider/endpoint with one unique temporary key: conditional
+create succeeds, a repeated create is rejected, replace with the current token succeeds, replace with a stale token
+is rejected; then delete the key. An ambiguous response makes the probe inconclusive. The probe is qualification
+tooling, not a mandatory startup sequence; production handles lease and conditional-I/O errors normally.
 
-1. create the absent key conditionally; it must succeed;
-2. conditionally create the same key again; it must be rejected;
-3. conditionally replace it using the current token; it must succeed;
-4. conditionally replace it using the stale token; it must be rejected.
+### Implemented file inventory boundary
 
-Delete the probe object afterward. A provider that accepts conditional headers but ignores them is unsafe. An
-ambiguous response makes the probe inconclusive; it is not evidence of conformance.
+`ReplicationFileSet` implements `IFileReplicatedCollection`. `GetCount`, `GetFile` and `Enumerate` see only the local
+cache; `GetRemoteFile` and `RemoteEnumerate` expose the selected remote inventory as read-only, version-bound
+handles. No lookup downloads a body, and local additions/deletions never change the remote inventory. Remote inventory
+is not refreshed during a session.
 
-The application event log supplies input durability/replay. The Blob publication boundary below is a recovery-base
-watermark; it does not introduce a transaction acknowledgement or require application commits to await storage.
+The owner awaits `InitializeAsync` before `BTreeKeyValueDB.OpenAsync`; open and prefetch never initialize implicitly,
+and remote access fails until initialization succeeds. Initialization:
+
+1. lists the complete remote inventory first, so a failed listing deletes nothing;
+2. maps every selected remote file to its own local ID and forgets earlier placements;
+3. removes local files with no remote counterpart, including copies cached under another ID;
+4. validates cached candidates by extension, then length, then locally computed SHA-256 against remote metadata,
+   hashing in parallel within the download bound (1 GB from disk: 2.7 s serially, 1.1 s with four);
+5. publishes the inventory only after the whole attempt succeeds.
+
+Active (unsealed) files and files without SHA metadata are never reused. Removals are logged through
+`IKeyValueDBLogger` with local/remote IDs and the mismatch. `PrefetchAsync(fileId)` shares one bounded transfer per
+file between callers. Downloads use 4 MiB ranges with four in flight per file, verify a sealed file's SHA-256 while
+writing and keep native extensions so the copy passes the next startup validation; a partial or invalid download is
+removed. Native header reads use small version-bound ranges.
+
+`GetLocalFileId` exposes session-only mappings: identity after restore, and remote-to-local for PVLs this session
+uploaded. Tests reproduce distinct local/remote contents under one ID, remote allocation independent of a higher local
+maximum, out-of-order downloads, version changes, checksum failures, cancellation and retry; this is why local and
+remote inventories stay separate.
+
+### Remote PVL/KVI creation
+
+Only the leader's checkpoint lane allocates remote IDs. It lists the remote inventory once per new checkpoint and
+chooses the next even ID above every observed remote even ID and this session's earlier choices; no reservation
+object, counter or ledger exists. Cleanup keeps the highest even ID as the allocation anchor. TRLs use odd native IDs.
+
+`PublishPureValuesAsync` (internal to `ReplicationFileSet`) uploads each unmapped sealed local PVL with
+`EnsurePureValuesAsync` and records the confirmed placement. Before every KVI, each reused placement, including a
+verified download, is revalidated by `ProtectPureValuesAsync`, which clears any deletion mark and changes the version
+so an older delete cannot match; an absent object gets a fresh ID, never its retired key. A follower's cached placement
+is not trusted after promotion. `CheckpointPublisher` keeps the chosen KVI ID, snapshot and mapping until confirmed;
+PVL placements also keep their IDs across retries. Restart rediscovers remote state; no journal is persisted.
+
+KVI upload starts only after all required PVLs and the canonical TRL through the KVI cut are published, with ambiguous
+prerequisites reconciled; no KVI block is staged earlier. The KVI streams from native serialization without a local
+staging file.
+
+### Whole-file checksums for cache reuse
+
+Sealed PVL/KVI objects carry whole-file SHA-256 (`btdb_sha256`) committed atomically with their content; no sidecar
+is needed. Length or version token alone never proves equal bytes.
+
+Canonical TRL objects currently carry no checksum, so restore always downloads every TRL, including a sealed one with a
+matching local length. Publishing a final checksum after sealing, for TRL cache reuse, is open work. Never hash a
+growing TRL.
+
+### Remote cleanup and recovery roots
+
+Only the leader deletes remote files, after a positively confirmed KVI makes them unnecessary; followers delete only
+their own unpinned local files, and no deletion instruction is distributed. Cleanup:
+
+- skips the pass if a higher KVI exists than the one just confirmed;
+- keeps that KVI, its PVL/TRL dependencies, every canonical TRL from the oldest dependency onward (including
+  intervening links) and the highest even ID;
+- persistently marks other files with a deletion deadline, never extending an existing one, and deletes a file only
+  after rereading it: the same version must still carry an elapsed deadline;
+- clears the marks of files it keeps.
+
+The deletion delay must be positive (production assumes at least a day), so a fenced predecessor's in-flight mark
+cannot become due before the new leader protects the file. There are no follower acknowledgements or restore leases;
+the delay does not guarantee that an old KVI remains restorable, and a restore that loses a file restarts from the
+newest published KVI. Retired keys are never reused, so a delayed old delete stays harmless.
+
+Each KVI binds a retained-root hint to its content. `ResolveRecoveryRootAsync` reads the highest KVI's hint and
+discovery then follows canonical successor links, so an obsolete TRL prefix, including genesis, can be deleted. Never
+select a root from the maximum listed TRL. A KVI without a hint (legacy) needs the original genesis; if that is
+missing, resolution fails instead of starting a new database.
 
 ## `denoland/celld` reference study
 
-### Source map and an important naming detail
+### Source map
 
-At the pinned commit, `celld` does not define one small Rust trait that represents its object-storage contract. Its
-practical interface is the concrete, cloneable `Bucket` adapter over `Arc<dyn object_store::ObjectStore>`. It retains:
-
-- an ordinary store for reads and retryable writes;
-- a `PaginatedListStore` for bounded listings with continuation tokens;
-- a separate `cas_store` whose automatic retries are disabled;
-- a `StorageBackend` value that selects the provider's conditional-write dialect;
-- a bucket/container name and an optional key prefix applied by the adapter.
-
-`BucketOwnership` is a separate higher-level adapter that maps ownership and node-lease records onto `Bucket`. Calling
-either one “the interface” hides a useful layering boundary, so both operation inventories are recorded below.
-
-Primary sources:
+`celld` has no small storage trait. Its practical interface is the concrete, cloneable `Bucket` adapter over
+`Arc<dyn object_store::ObjectStore>`, which keeps an ordinary retrying store, a `PaginatedListStore`, a separate
+`cas_store` with automatic retries disabled, a `StorageBackend` dialect selector, and an adapter-owned key prefix.
+`BucketOwnership` maps ownership and node-lease records onto `Bucket`.
 
 - [`Bucket` and conditional-store adapter](https://github.com/denoland/celld/blob/a52f9905425bc41134d817694bdc2c50bcc5e856/crates/celld/bucket.rs)
 - [`BucketOwnership` adapter](https://github.com/denoland/celld/blob/a52f9905425bc41134d817694bdc2c50bcc5e856/crates/celld/ownership_store.rs)
@@ -252,47 +190,22 @@ Primary sources:
 | `Azure` | `az://` | ETag | `If-None-Match` / `If-Match` on `Put Blob` |
 | `Local` | `dev://` internally | Local-store ETag | Local development implementation |
 
-GCS is a genuinely different dialect: it does not apply `If-Match` to object PUT in the way needed here, so `celld`
-uses object generations. Azure shares the S3 ETag dialect but uses a separate Azure client and credential path. A
-missing or empty token is an error because the resulting version could not be fenced by a later update.
+GCS does not apply `If-Match` to object PUT as needed, so it uses generations. Azure shares the ETag dialect with a
+separate client and credential path. A missing or empty token is an error, because that version could not be fenced.
+Bucket specifications are `s3://NAME[/PREFIX]`, `gs://NAME[/PREFIX]` or `az://NAME[/PREFIX]` (container for Azure);
+callers always use unscoped keys. Each `Bucket::open` creates its own HTTP transport and connection pool.
 
-The bucket specification accepted by the cloud constructor is `s3://NAME[/PREFIX]`, `gs://NAME[/PREFIX]`, or
-`az://NAME[/PREFIX]`; for Azure, `NAME` is a container. The adapter owns prefixing so callers always use unscoped keys.
+### `Bucket` operations
 
-### `Bucket` construction and inspection operations
-
-| Operation | Visibility | Purpose |
-| --- | --- | --- |
-| `Bucket::open` | Public | Opens a cloud bucket/container from its URL, endpoint, region, credentials, and traffic label. |
-| `Bucket::open_with_sources` | Public, doc-hidden | Same construction path with explicit GCS/Azure configuration sources rather than ambient environment only. |
-| `Bucket::open_dev` | Crate-private | Opens the machine-local development store. It is deliberately not a fleet bucket. |
-| `Bucket::with_stores` | Internal-test configuration | Injects ordinary and CAS stores for contract tests. |
-| `scheme` | Public | Returns the operator-facing backend scheme. |
-| `backend` | Public, doc-hidden | Returns the conditional-write dialect selector. |
-| `gcs_replica_store*` | Public, doc-hidden helpers | Builds a separate retryable GCS transport for replica traffic. |
-| `azure_replica_store*` | Public, doc-hidden helpers | Builds a separate retryable Azure transport for replica traffic. |
-
-Each `open` creates its own HTTP transport, so a separately constructed client also creates a separate connection pool
-and traffic lane. `BucketOwnership` relies on that property for isolated lease traffic.
-
-### Core `Bucket` object operations
-
-| Operation | Result and semantics |
+| Group | Operations |
 | --- | --- |
-| `get(key)` | Returns the complete body and required CAS token, or `None` when absent. |
-| `head(key)` | Returns object size and required CAS token, or `None` when absent. |
-| `put(key, body)` | Unconditional write through the ordinary retryable store. |
-| `head_with_meta(key, name)` | Returns size and one user-metadata value, or `None`; this helper does not return a CAS token. |
-| `put_with_meta(key, body, meta)` | Unconditional write carrying user metadata. |
-| `put_cas(key, body, token)` | `token=None` means create-if-absent; `Some(token)` means replace exactly that version. |
-| `delete(key)` | Idempotent delete; an absent key counts as success. |
-| `delete_many(keys)` | Batches deletes and returns keys now gone; failed keys remain for a later pass. |
-| `list(prefix)` | Drains all pages and returns every object under the prefix. |
-| `list_any(prefix)` | Stops after enough work to answer whether any object exists. |
-| `common_prefixes_page(...)` | Returns one bounded delimiter-listing page with `start_after`, provider page token, and `max_keys`. |
-| `common_prefixes(prefix)` | Drains all pages and returns immediate child prefixes. |
+| Construction | `open`, `open_with_sources` (explicit GCS/Azure config), crate-private `open_dev`, test `with_stores`; `scheme`, `backend`; doc-hidden `gcs_replica_store*`/`azure_replica_store*` build separate retrying replica transports. |
+| Objects | `get`/`head` return body or size plus required token, or `None`; unconditional `put`/`put_with_meta`; `head_with_meta` (no token); `put_cas`; idempotent `delete`; `delete_many` returns keys now gone. |
+| Listing | `list` drains all pages; `list_any` stops at the first object; `common_prefixes_page` is bounded with `start_after`, page token and `max_keys`; `common_prefixes` drains it. |
+| Extended (R2-style) | `head_blob`, ranged/conditional `get_blob`, conditional `put_blob`, `list_page`, `begin_multipart`, with `BlobRange`, `BlobConditions`, `BlobAttributes` and result types. |
+| Validation | `validate` lists one object in the prefix; `probe_cas` runs the four-step probe; crate-private `probe_cas_steps` separates `Violation` from transient errors. |
 
-`put_cas` has this exact semantic result shape:
+`put_cas` semantics:
 
 ```text
 token = None       -> provider conditional create
@@ -303,453 +216,207 @@ Ok(None)           -> clean provider-enforced precondition rejection
 Err(error)         -> ambiguous; the write may have committed
 ```
 
-`celld` recognizes the underlying `object_store::Error::Precondition` and `AlreadyExists` variants as clean CAS
-rejections. Every other error remains ambiguous. An applied response that lacks the required ETag or generation also
-becomes an error rather than inventing a token.
-
-Azure has one listing-specific limitation in this interface: `common_prefixes_page` rejects `start_after`, because
-Azure listing has no equivalent start-after parameter. Provider continuation tokens still work. This matters for
-bounded discovery scans, including native KVI discovery; validate the selected files and canonical ancestry independently.
-
-### Extended blob operations
-
-The same adapter contains an extended API used to emulate Cloudflare R2-style blob bindings. These are available
-operations, but they are not all needed for `celld` ownership CAS or for the minimum BTDB.Replication control plane.
-
-| Operation | Result and semantics |
-| --- | --- |
-| `head_blob(key)` | Returns `BlobMeta`, including size, ETag, version, normalized CAS token, upload time, HTTP attributes, and user metadata. |
-| `get_blob(key, range, conditions)` | Returns `BlobRead::Missing`, `Unmet(meta)`, or `Hit(blob)` with a streaming body. |
-| `put_blob(key, body, attributes, conditions)` | Performs unconditional overwrite when there are no conditions; otherwise evaluates conditions against a head and executes a CAS create/update. `Some(meta)` means applied and `None` means rejected. |
-| `list_page(prefix, after, limit, delimiter)` | Returns one bounded `BlobPage` with objects, rolled-up prefixes, truncation state, and a resumable cursor. |
-| `begin_multipart(key, attributes)` | Returns the underlying multipart-upload handle; part writes, completion, and abort are operations on that handle. |
-
-Supporting public value types are:
-
-- `BlobRange`: `Whole`, `From(offset)`, `Bounded { offset, length }`, or `Suffix(length)`;
-- `BlobConditions`: `if_match`, `if_none_match`, `uploaded_before_ms`, and `uploaded_after_ms`;
-- `BlobAttributes`: content type, language, disposition, encoding, cache control, and user metadata;
-- `BlobMeta`, `Blob`, `BlobRead`, `BlobEntry`, `BlobPage`, and `CommonPrefixPage` for results.
-
-The upload-time conditions are checked by the adapter because HTTP date conditions have only second precision while
-the R2-facing contract uses milliseconds. For a conditional `put_blob`, the adapter binds its read-side decision to
-the exact CAS token in the eventual write so a racing update cannot slip between the check and overwrite.
-
-### Validation and CAS probing operations
-
-| Operation | Purpose |
-| --- | --- |
-| `validate()` | Proves the bucket is reachable and credentials are accepted by requesting one listing result within the configured prefix. |
-| `probe_cas()` | Executes the four-step live conditional-write contract and fails on any semantic violation. |
-| `probe_cas_steps()` | Crate-private form that distinguishes a permanent `Violation` from a transient or ambiguous error. |
-
-The CAS probe uses a unique random key so concurrent node probes cannot collide. It attempts cleanup on every path; a
-cleanup failure can leave one tiny object under `probe/` and is logged.
+Only `object_store::Error::Precondition` and `AlreadyExists` count as clean rejections; an applied response without an
+ETag or generation becomes an error. On Azure, `common_prefixes_page` rejects `start_after` because Azure listing has
+no equivalent; continuation tokens still work. A conditional `put_blob` binds its read-side decision to the exact token
+of the eventual write; its millisecond upload-time conditions are checked by the adapter because HTTP dates have
+second precision. The CAS probe uses a random key and cleans up on every path; a failed cleanup can leave one small
+object under `probe/`.
 
 ### Retry and transport behavior
 
-At the pinned commit, the ordinary store is configured with two automatic retries and a 30-second retry timeout. The
-CAS store is configured with zero automatic retries. Client request and connection timeouts are bounded at 15 and 3
-seconds respectively. These values are part of `celld`'s self-fencing timing argument, not merely performance tuning.
+At the pinned commit the ordinary store has two automatic retries and a 30-second retry timeout, the CAS store has
+none, and request/connection timeouts are 15/3 seconds; these values are part of `celld`'s self-fencing timing
+argument. The reusable rule is the separation: an isolated control lane with bounded request time and no hidden
+conditional retries, so bulk transfers cannot starve lease renewal or reconciliation.
 
-The separation is more important than those particular numbers. BTDB.Replication should provide an isolated control
-lane with bounded request time and no hidden conditional-write retries. Bulk upload traffic may use normal retry and
-connection-pool behavior without starving lease renewal or control reconciliation.
+### `BucketOwnership` and the fencing pattern
 
-### `BucketOwnership` operations
-
-`BucketOwnership` turns generic object operations into the following ownership and node-liveness interface:
-
-| Operation | Purpose |
-| --- | --- |
-| `new(bucket, lease_bucket, node, probe_public_key)` | Creates the adapter with a normal bucket and an isolated lease-pool bucket. |
-| `with_lease_ttl_ms(ttl)` | Configures the node-lease lifetime used by peer recency logic. |
-| `lease_ttl_ms()` | Returns that configured lifetime. |
-| `bucket_client()` | Returns a cheap clone of the normal bucket client. |
-| `live()` | Returns the live load counters published with node renewals. |
-| `storage_scheme()` | Returns the backend scheme for diagnostics. |
-| `process_generation()` | Returns the stable identity of this exact lease-writing process when configured. |
-| `read_owner(cell)` | Reads `cells/<cell>/own.json` into an optional owner, epoch, and CAS token. |
-| `read_node_lease(owner)` | Reads `nodes/<owner>.json` through the normal pool. |
-| `read_self_node_lease(owner)` | Reads the process's own authority record through the isolated lease pool. |
-| `read_capacity_peers()` | Lists recent node records, then reads and decodes them with bounded concurrency. |
-| `release_owner(cell, epoch)` | Reads the exact current record and conditionally replaces it with an unowned record only if this node still owns that epoch. |
-| `cas_owner(cell, guard, epoch)` | Conditionally creates or replaces the ownership record for this node and epoch. |
-| `cas_node_lease(guard, record, stamped)` | Conditionally creates or replaces this node's lease record through the isolated pool and returns its new token. |
-
-Crate-private supporting operations update and observe the folded node log carried by a lease renewal:
-`set_own_log`, `own_log`, and `applied_log`. Test-only operations inject or inspect load sampling.
-
-The guards and outcomes deliberately hide provider details:
-
-```text
-CasGuard = Absent | Match(token)
-CasOutcome = Applied | Rejected
-LeaseCasOutcome = Applied { token } | Rejected
-```
-
-Errors remain the ambiguous third state at the Rust `Result` level. `release_owner` first verifies both node identity
-and epoch, then uses the token from that exact read; it cannot erase a successor's claim after a race.
-
-The node lease body includes expiry, direct address, probe public key, peer protocol, process generation, load, and a
-folded log state. A separate lease client and connection pool prevent ordinary object traffic from consuming the
-authority-renewal lane.
-
-### Ownership, fencing, and replicated-data pattern
+`BucketOwnership` takes a normal bucket and an isolated lease-pool bucket. It reads and conditionally writes
+`cells/<cell>/own.json` (`read_owner`, `cas_owner`, and `release_owner`, which rechecks node and epoch and uses that
+read's token so it cannot erase a successor), and `nodes/<node>.json` (`read_node_lease`, `read_self_node_lease` via
+the lease pool, `cas_node_lease`, `read_capacity_peers`). Outcomes hide provider details: `CasGuard = Absent |
+Match(token)`, `CasOutcome = Applied | Rejected`, `LeaseCasOutcome = Applied { token } | Rejected`, with errors as the
+ambiguous third state. The node lease body carries expiry, address, probe key, peer protocol, process generation,
+load and a folded log state.
 
 `celld` separates three concepts:
 
-1. `cells/<cell>/own.json` names the one owner session and a monotonically advancing fencing epoch.
-2. `nodes/<node>.json` is a renewable process lease with an expiry. The documented default lifetime is 10 seconds,
-   renewal starts after one third of the lifetime, and the process self-fences after the published expiry or as soon
-   as another writer replaces/removes its lease record.
-3. Bulk SQLite/LTX data is written with ordinary PUT under `cells/<cell>/ltx/e<epoch>/`. The epoch in the key is the
-   data fence: a delayed old owner can write only into its superseded prefix, while restore selects the accepted
-   lineage.
+1. `own.json` names the owner session and a fencing epoch advanced on every activation.
+2. `nodes/<node>.json` is a renewable process lease (default 10 s, renewed after one third); the process self-fences
+   after its published expiry or when another writer replaces or removes the record.
+3. Bulk SQLite/LTX data uses ordinary PUT under `cells/<cell>/ltx/e<epoch>/`; the epoch in the key fences a delayed
+   old owner into a superseded prefix.
 
-Each cell activation advances the epoch, including a local wake. Small mutable authority state uses CAS; large data
-uses unique fenced keys. This is directly applicable to a BTDB leadership term and term-qualified TRL/checkpoint
-objects.
+Small mutable authority uses CAS and bulk data uses unique fenced keys, which matches BTDB's leader record and fresh
+successor keys. Differences:
 
-`celld` additionally waits for a durability proof and rechecks ownership before acknowledging a write, providing its
-documented RPO=0 contract. BTDB.Replication intentionally does not copy that acknowledgement gate because the retained
-upstream event log can recreate a discarded unpublished tail.
+- `celld` waits for a durability proof and rechecks ownership before acknowledging a write (RPO=0). BTDB does not,
+  because the upstream event log recreates a discarded unpublished tail.
+- `Bucket` has no append primitive; BTDB's conditional tail append is its own adapter capability.
+- BTDB also streams TRL bytes directly to followers, so they validate term, session and chain before accepting bytes.
+- `celld`'s lease timing is evidence for a pattern, not proof that BTDB's multi-node Azure failover timing is safe.
 
-Other important differences are:
+### Provider qualification lessons
 
-- `celld` has no append primitive in `Bucket`; it uses PUT/multipart behavior and epoch-qualified keys. BTDB's semantic
-  conditional tail append is a separate adapter capability, not a feature inherited from the `celld` abstraction.
-- A stale `celld` owner may continue writing an old epoch prefix because the current ownership record selects the
-  authoritative prefix. BTDB additionally has a direct TRL stream, so every follower must validate term, session,
-  sequence, and frame chain before accepting bytes.
-- `celld`'s clock and lease timing is evidence for a design pattern, not proof that BTDB's multi-node Azure failover
-  timing is safe. It must be independently modeled and fault-tested.
-
-### Provider qualification lessons from `celld`
-
-The pinned guarantees document names Amazon S3, Cloudflare R2, Tigris, Google Cloud Storage, and Azure Blob Storage as
-qualified stores. Its release tests use R2; the S3-compatible path shares the same client and conditional headers.
-
-It also records useful negative evidence:
-
-- Backblaze B2, Hetzner Object Storage, and DigitalOcean Spaces did not implement the required conditional writes and
-  are unsafe for `celld` ownership at that snapshot.
-- MinIO Community Edition passed the storage probe but was not production-qualified; one specifically identified 2025
-  release had a conditional-create regression.
-- Azure was qualified on 2026-08-18 with an account key, VM managed identity, and AKS workload identity, but only in a
-  single-node setup. That is not qualification of BTDB.Replication's Azure leader-election protocol.
-
-The reusable conclusion is to qualify behavior, not product names. S3-compatible endpoints in particular vary in
-whether they enforce the required conditions.
+The pinned guarantees name Amazon S3, Cloudflare R2, Tigris, Google Cloud Storage and Azure Blob Storage as qualified;
+release tests use R2, and the S3-compatible path shares its client and headers. Backblaze B2, Hetzner Object Storage
+and DigitalOcean Spaces lacked the required conditional writes. MinIO Community Edition passed the probe but was not
+production-qualified, and one identified 2025 release had a conditional-create regression. Azure was qualified on
+2026-08-18 (account key, VM managed identity, AKS workload identity) only in a single-node setup, which does not
+qualify BTDB's leader election. Qualify behavior, not product names.
 
 ## Azure Blob Storage
 
-Azure is the primary provider for the first design. It offers the portable ETag CAS primitives, conditional Block Blob
-publication for implementing atomic tail append, and service-enforced finite Blob leases.
+Azure is the version-one provider: ETag CAS, conditional Block Blob commits that implement tail append, and
+service-enforced finite Blob leases.
 
 ### Consistency and conditional writes
 
-Azure Blob Storage provides strong consistency and snapshot-isolated reads. Without a condition, concurrent writes
-are last-writer-wins.
+Azure Blob Storage is strongly consistent with snapshot-isolated reads; unconditional concurrent writes are
+last-writer-wins. `If-None-Match: *` creates only if absent; `If-Match: <etag>` applies a write only to that version;
+failures return HTTP `412`. ETags are opaque. A condition covers one blob operation, never several blobs.
 
-- `If-None-Match: *` on a supported write implements create-if-absent; an existing blob produces HTTP `412
-  Precondition Failed`.
-- A read or write returns an ETag. `If-Match: <etag>` applies the next write only if no intervening operation changed
-  the blob; a stale ETag produces HTTP `412`.
-- ETags are opaque version tokens. Their formatting and any relationship to content must not be interpreted.
-- Conditions apply to one Blob operation. They do not create a transaction across the leader record, a TRL, a KVI, and its prerequisite data objects.
-
-The shared leader object should be a small block blob replaced with `If-Match` when leadership changes or the current
-owner updates opaque application data. Its finite native lease renews independently without changing the ETag.
-Canonical TRL publications use `If-Match` directly; their success establishes transaction durability.
-Checkpoint selection remains a separate metadata operation, not a per-append acknowledgement. Bulk objects are immutable or term-qualified, so a stale
-session cannot place its later bytes into a current-term accepted recovery graph.
-
-References:
-
-- [Azure Blob Storage conditional headers](https://learn.microsoft.com/en-us/rest/api/storageservices/specifying-conditional-headers-for-blob-service-operations)
-- [Azure Blob Storage concurrency model](https://learn.microsoft.com/en-us/azure/storage/blobs/concurrency-manage)
+- [Conditional headers](https://learn.microsoft.com/en-us/rest/api/storageservices/specifying-conditional-headers-for-blob-service-operations)
+- [Concurrency model](https://learn.microsoft.com/en-us/azure/storage/blobs/concurrency-manage)
 - [`Put Blob`](https://learn.microsoft.com/en-us/rest/api/storageservices/put-blob)
+
+### Layout and metadata
+
+`AzureLeaderStorage` uses one caller-supplied leader blob. It conditionally creates the initial JSON before the first
+acquisition (empty-cluster bootstrap) and replaces it with both the lease ID and `If-Match`.
+
+`AzureReplicationStorage` is constructed per database with its own nonempty prefix, because cleanup lists everything
+below it. Canonical TRLs live at host-supplied keys below the prefix; PVL/KVI files are `files/{id}.pvl` and
+`files/{id}.kvi`. `Bind(inventory)` gives a restore view and `Bind(inventory, authority)` a maintenance view. PVL/KVI
+uploads and cleanup recheck live authority before each dispatch; the canonical publisher does so for TRL writes.
+
+| Metadata | Object | Meaning |
+| --- | --- | --- |
+| `btdb_term` | TRL | Term of the last conditional write; adoption changes it without changing bytes. |
+| `btdb_next`, `btdb_next_id` | TRL | Successor key and native ID; present only on a sealed link. |
+| `btdb_file_id` | TRL | Native ID; cleanup ignores TRL objects without it and `btdb_term`. |
+| `btdb_sha256` | PVL/KVI | Whole-file SHA-256, committed with the content. |
+| `btdb_recovery_key`, `btdb_recovery_id` | KVI | Base64 UTF-8 key and ID of the oldest canonical TRL the KVI needs. |
+| `btdb_delete_after` | any | Invariant round-trip UTC deletion deadline. |
 
 ### Conditional tail append with Block Blob
 
-The storage port requires `AppendIfCurrent`: if the opaque token and length still match, atomically expose the old file
-followed by the supplied suffix. Azure version one plans to implement that per-file semantic operation with a Block
-Blob, but the block layout is not part of the failover protocol. The transaction-aware publisher above this adapter
-invokes it for completed local transactions. On the canonical chain, success exposing a complete transaction
-establishes durable database progress directly.
+The failover core sees only the semantic append; the Block Blob layout stays in the adapter.
 
-The intended adapter keeps completed logical blocks and rebuilds only the final partial 4 MiB block together with any
-new blocks. `Put Block` stages those bytes without changing the visible blob. A final `Put Block List`, guarded by
-`If-Match` against the previously observed blob ETag, atomically publishes the new ordered file. The adapter must also
-verify the expected logical length and preserve every byte before it; a successful operation therefore appears to the
-core as an append, even though Azure committed a new block list. A transaction may span several TRL blobs; the core owns their recovery closure and publication ordering.
-Azure blocks are transport/storage chunks, distinct from TRL file boundaries.
-`Put Block List` can carry blob metadata in the same conditional operation; separate `Set Metadata` afterward must not
-be required for transaction durability. Exact continuation metadata and its size bounds remain adapter/core integration work.
+- A write expecting token `T` obtains `T`'s committed block list: from its own previous commit when `T` is that
+  commit's ETag, otherwise from Get Block List, whose response ETag must equal `T`. The committed length must equal
+  the expected length.
+- Committed 4 MiB blocks are reused. Only the appended suffix is staged, as new blocks with unique random IDs, so a
+  losing request can never replace bytes a winning commit references. Trailing partial blocks accumulate up to 64 and
+  are then merged into full blocks restaged from the verified local prefix, bounding block count and rewritten bytes.
+- `Put Block List` with `If-Match: T` (or `If-None-Match: *` for a new TRL) atomically commits the new list and the
+  complete metadata. Adoption is a metadata-only commit keeping every block.
+- A transient failure after the commit was dispatched is `Ambiguous`; the publisher reconciles it by comparing the
+  appended bytes. `404`, `409` and `412` are `Rejected`.
 
-Important Azure constraints remain inside this adapter:
+Relevant Azure constraints: `Put Block` has no normal conditional headers and staged blocks are invisible until
+commit; `Put Block List` supports `If-Match` and may mix committed and newly staged blocks; block IDs have fixed length
+per blob; a blob holds 50,000 committed and 100,000 uncommitted blocks, and uncommitted blocks expire after about a
+week; with 4 MiB blocks committed capacity is about 195 GiB, above BTDB's per-TRL limit; `Put Block List` replaces
+properties and metadata unless they are supplied again.
 
-- `Put Block` itself does not support normal conditional headers and staged blocks are invisible until commit;
-- `Put Block List` supports `If-Match` and can mix existing committed blocks with newly staged blocks;
-- block IDs are fixed-length within one blob, and uploading the same uncommitted ID again replaces its staged content,
-  so one ID must never denote different bytes across attempts;
-- a block blob supports 50,000 committed and 100,000 uncommitted blocks; uncommitted blocks expire after about a week;
-- with 4 MiB logical blocks the committed capacity is about 195 GiB, well above BTDB's current per-TRL limit;
-- `Put Block List` overwrites blob properties and metadata unless the adapter supplies the intended values again;
-- an ambiguous conditional commit is reconciled through the resulting ETag, length, committed block list, expected
-  suffix hash, and operation identity rather than blindly retried.
+`BTDB.AzureStorage` uses the same stage-and-commit family with 128 KiB blocks but commits unconditionally; it is a
+transfer reference, not the replication concurrency contract.
 
-If the canonical block-list CAS succeeds but its response is lost, its complete published transactions are durable;
-reconcile that operation before retrying. Previously staged blocks or unlinked rotated files alone are not canonical.
-The append invariant protects earlier published bytes. Takeover fences the old writable TRL version and creates a
-term-qualified continuation; it cannot discard a successfully published transaction as merely awaiting state selection.
+- [`Put Block`](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block)
+- [`Put Block List`](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list)
+- [`Get Block List`](https://learn.microsoft.com/rest/api/storageservices/get-block-list)
 
-The existing `BTDB.AzureStorage` uses the same general stage-and-commit family with deterministic 128 KiB blocks, but
-its commits are unconditional. That code remains a transfer reference, not the failover concurrency contract.
+### Immutable PVL/KVI upload and cleanup
 
-References:
+PVL/KVI uploads stage 4 MiB blocks, up to four concurrently (128 MB PVL on Azurite: 595 ms serially, 330 ms), hash
+the stream, and commit with `If-None-Match: *` plus `btdb_sha256` (and the KVI recovery root) in the same request.
+Separate `Set Metadata` is never needed for durability. Reads bind to the listed ETag with `If-Match`.
 
-- [Azure `Put Block`](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block)
-- [Azure `Put Block List`](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list)
+Before a KVI commit, the adapter clears deletion marks on the retained canonical TRL chain, because a promoted follower
+may depend on older sealed TRLs. It never rewrites an unmarked TRL, so ETags that concurrent restores read stay
+valid. Deadline marking, mark clearing and PVL protection are ETag-conditional metadata writes that preserve other
+metadata; deletion rereads properties and uses `If-Match`. Deadlines use an injected `TimeProvider` (system UTC by
+default); lease authority uses its own monotonic scheduler. No Azure lifecycle rule is installed.
+
+Azure `Content-MD5` is not a substitute for `btdb_sha256`: `Put Block List` stores a supplied whole-blob MD5 without
+validating it and clears it if omitted, and per-request or per-block checksums yield no whole-file checksum.
+[Get Blob Properties](https://learn.microsoft.com/en-us/rest/api/storageservices/get-blob-properties) returns
+metadata, length and ETag without the body.
 
 ### Native Blob leases
 
-Azure can place an exclusive write/delete lease on one blob:
+- A finite lease lasts 15-60 seconds (the adapter requires whole seconds); infinite leases also exist.
+- Leases can be acquired, renewed, changed, released or broken; the adapter uses acquire, renew and change.
+- Writes and deletes of a leased blob require the lease ID or fail with `412`; reads do not.
+- `Lease Blob` operations do not change the blob ETag.
+- A container lease protects container deletion only, not writes to its blobs.
 
-- a finite lease lasts 15 to 60 seconds; an infinite lease is also available;
-- a lease can be acquired, renewed, released, changed, or broken;
-- writes and deletes to that blob must carry the active lease ID or fail with HTTP `412`;
-- ordinary reads remain possible without the lease ID;
-- the `Lease Blob` operation, including acquire, renew, and change, does not change the blob's ETag;
-- a container lease protects container deletion, not writes to all blobs in that container.
+`Change Lease` implements planned handoff without waiting for expiry: the source supplies its lease ID and the target's
+proposed GUID, and the target renews that GUID to prove ownership, also when the source lost the response. Change keeps
+the source's duration, so renewing a transferred or unknown handle assumes a conservative 15 seconds. A lost acquire
+response is likewise confirmed by renewing the proposed ID. After a graceful-shutdown cut, the old leader dispatches no
+data-plane write but may still reconcile earlier operations and renew or change the leader lease.
 
-A native finite lease on `cluster/leader.json` provides the storage-service-evaluated cluster authority boundary while
-ETag CAS serializes leader identity changes. Azure `Change Lease` also provides the fast graceful-handoff path without
-waiting for lease expiry: the old holder supplies its current lease ID and the target's proposed GUID. The target
-immediately renews with that proposed ID to prove ownership and reset the finite lease clock; `Change Lease` changes the
-ID and cannot change the configured duration. Separate leases on every remote TRL file are unnecessary initially: the
-conditional append operation serializes each file, and every new cluster term uses new object keys. The leader lease is
-still not a physical fence on other objects, local disk writes, or direct follower traffic, so term-qualified names,
-per-database TRL adoption, and follower-side authority validation remain required.
+Reference: [`Lease Blob`](https://learn.microsoft.com/en-us/rest/api/storageservices/lease-blob).
 
-Graceful shutdown separates the Azure **data plane** from the narrow **authority lane**. After a database reaches its
-shutdown canonical cut, the old leader dispatches no `AppendIfCurrent`, immutable index/artifact upload,
-KVI publication, or deletion. It may still read and reconcile earlier operations and may renew or change
-the lease on `cluster/leader.json`; those lease calls do not publish database data and are required to keep fencing valid
-until safe handoff. A data request dispatched before the cut may already complete, so its outcome is reconciled rather
-than guessed, but no follow-up data write is issued.
+### Throughput and traffic isolation
 
-Reference: [Azure `Lease Blob`](https://learn.microsoft.com/en-us/rest/api/storageservices/lease-blob).
+Azure documents a target of up to 3,000 requests per second per block blob; hot partitions can return
+`503 Server Busy` or `500 Operation Timeout`, so retryable data operations need bounded backoff. Publication coalesces
+complete transactions instead of issuing one request per transaction, so throttling increases publication lag and
+possible event replay rather than local commit latency. The leader blob is a deliberate serialization point and gets
+no per-transaction traffic. Use separate authority and data clients so large transfers cannot occupy the authority
+connection pool. Alert before remote publication lag approaches upstream event retention.
 
-### Throughput, hot objects, and traffic isolation
+Reference: [Scalability targets](https://learn.microsoft.com/en-us/azure/storage/blobs/scalability-targets).
 
-Azure currently documents a target of up to 3,000 requests per second for one block blob. Actual throughput depends on
-request size, account type, concurrency, and name distribution. Hot partitions can produce `503 Server Busy` or `500
-Operation Timeout`; retryable data-plane operations need bounded exponential backoff.
+### Evidence
 
-The design should not perform an object-store request for every transaction. Whole canonical transactions and
-checkpoints are published in batches while a conservatively cached authority window remains valid. A batch may cross
-TRL files but may never end inside a transaction. Throttling then increases durable-boundary lag and possible event
-replay rather than normal transaction latency.
+**Azurite** (`azurite@3.35.0`, `BTDB.Replication.Azure.Test`): the actual SDK, conditional operations, deliberately lost
+responses, lease expiry and transfer, block reuse, native publication, activation, checkpoint restore, delayed
+cleanup, and restore of native BTDB after the genesis TRL prefix was deleted. Azurite results say nothing about live
+availability, throttling or throughput.
 
-The single leader blob is intentionally a serialization point and must not be overloaded with per-transaction
-updates. Lease/CAS traffic should use an isolated client and connection pool so large uploads cannot starve authority
-renewal. Alert before remote progress lag approaches upstream event retention or available local comparison-log capacity.
-There is no replication-owned historical-root rollback window.
+**M1 live Azure probe, 2026-09-14**: [azure_probe.py](../BTDB.Replication.Test/Integration/azure_probe.py) ran against
+a temporary Standard_LRS StorageV2 account (West Europe, REST `2023-11-03`, account key, no retries). All 24 requests
+in the [recorded results](../BTDB.Replication.Test/Integration/azure-2026-09-14.json) returned the expected status;
+the container, resource group and account were deleted afterwards. Observed: staged blocks did not change the
+committed body or ETag; `Put Block List` changed content and metadata together; same-byte term adoption changed the
+ETag and made an old append fail with `412`; lease acquire/change/renew left the leader ETag unchanged, blocked an
+unleased write to that blob but not to another blob; after change, renewal with the old ID returned `409` and the new
+ID succeeded. The probe used small diagnostic payloads (its `btdb_format` metadata is not part of `TrlMetadata`), and
+its ambiguity case only discarded a known successful response.
 
-Reference: [Azure Blob Storage scalability targets](https://learn.microsoft.com/en-us/azure/storage/blobs/scalability-targets).
+### Open Azure work
 
-### Azure-first preliminary choice
+- Live qualification of concurrency schedules, genuine network faults and pending effects after timeouts, real clock
+  drift/suspend, lease expiry timing, credential renewal, throttling and throughput (including the 100 GB startup
+  target).
+- Final TRL checksum after sealing, for TRL cache reuse.
 
-The current preference is:
+## Amazon S3 (later research)
 
-- one small cluster-wide leader block blob containing endpoint and API key, protected by ETag CAS and a finite native
-  Blob lease;
-- direct conditional publication on the active canonical TRL for each database, with term-qualified continuations;
-- batched conditional atomic tail append, with the Block Blob and block-list mechanics hidden inside the Azure adapter;
-- ordered continuation between TRL files, including transactions spanning files; prepared-successor publication through predecessor TRL CAS still to qualify;
-- immutable native KVI and compaction artifacts, with prerequisites uploaded before KVI and no separate checkpoint pointer;
-- a dedicated no-retry CAS/lease transport lane;
-- Azure `Change Lease` for planned handoff to a prepared follower;
-- after the old leader's graceful-shutdown cut, no further database data publication from that session; only
-  read/reconciliation and lease renew/change/release remain available for authority transfer;
-- replication-mode TRL rotation with complete-transaction recovery, and reconciliation of every ambiguous TRL publication and
-  adoption operation.
+Ordinary S3 is a possible later target. Its portable behavior:
 
-The native lease improves the Azure expiry story, while ETag CAS remains the revision serializer and term-qualified
-keys remain the bulk-data fence.
+- `If-None-Match: *` creates only if absent; `If-Match: <etag>` replaces only the current object.
+- A stale condition normally returns `412`; concurrent delete/write races may return operation-specific `409` or
+  `404`, which need reconciliation.
+- PUT and DELETE are strongly consistent with subsequent GET, HEAD and LIST; a single-key update is atomic.
+- ETags are opaque tokens, not content hashes.
+- Bucket policy can require `If-Match` or `If-None-Match`, preventing accidental unconditional writers.
+- There is no object lease comparable to Azure Blob leases.
 
-## Amazon S3
+Ordinary S3 cannot append, so an S3 canonical TRL needs another representation (immutable range objects, sealed files
+or chunks) with a qualified conditional publication step that still publishes whole transactions without adding a
+second state commit. Without a service-evaluated lease, automatic takeover depends on a qualified deadline and
+clock-uncertainty model; otherwise S3 mode freezes on ambiguous authority or requires explicit takeover.
 
-Ordinary Amazon S3 remains a possible later target for immutable checkpoints and TRL ranges plus CAS publication of a
-small future provider-specific leader/state design.
+S3 Express One Zone directory buckets offer append via `PutObject` with `WriteOffsetBytes` equal to the current length
+(at most 5 GB per append, 10,000 parts per object; `CopyObject` can reset the part count). It is single-AZ and
+non-portable, so it could only be a later optional optimization, not the failover contract.
 
-### Portable S3 behavior
-
-- `If-None-Match: *` provides create-if-absent.
-- `If-Match: <etag>` provides conditional replacement of the current object.
-- A stale condition normally produces HTTP `412 Precondition Failed`; concurrent delete/write races can also produce
-  operation-specific `409 Conflict` or `404 Not Found` results that require reconciliation.
-- S3 provides strong read-after-write consistency for PUT and DELETE and subsequent GET, HEAD, and LIST operations.
-- An update to one key is atomic: readers see the previous or new object, never partial content.
-- ETags are opaque CAS tokens and must not be treated as content hashes.
-- Bucket policy can require `If-Match` or `If-None-Match`, reducing the risk of an accidental unconditional state
-  writer.
-- S3 has no general-purpose object lease equivalent to Azure Blob leases.
-
-Ordinary S3 cannot append to an existing object. A future S3 canonical TRL representation must therefore use immutable
-range objects, sealed files, or chunks with an explicitly qualified conditional publication mechanism. It must
-publish whole transactions; future S3 research does not reintroduce a second state commit into the Azure TRL path.
-
-References:
-
-- [Amazon S3 conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)
-- [Amazon S3 consistency model](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html#ConsistencyModel)
-
-### S3 Express One Zone exception
-
-Directory buckets using S3 Express One Zone support an append-like `PutObject` mode:
-
-- `WriteOffsetBytes` must equal the object's current length;
-- one append request may contain at most 5 GB;
-- each append creates a part, and an object may have at most 10,000 parts;
-- `CopyObject` can reset the accumulated part count.
-
-This is restricted to directory buckets backed by S3 Express One Zone, a single-Availability-Zone storage class. It
-should not define the portable failover contract. It may be evaluated later as an explicitly non-portable performance
-option.
-
-Reference: [Appending data in S3 Express One Zone directory buckets](https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-objects-append.html).
-
-### S3 takeover limitation
-
-Conditional control replacement can serialize candidates, but ordinary S3 supplies no server-enforced renewable
-lease. Automatic timed takeover therefore depends on qualifying the portable deadline and clock-uncertainty model. If
-that model cannot be proven for the deployment, S3 mode must freeze on ambiguous authority or require an explicit
-takeover procedure rather than risk two leaders.
-
-## Conclusions carried into the architecture
-
-- Use one leased/CAS leader record for cluster authority; canonical TRL CAS directly publishes per-database progress.
-  Prepare prerequisites under immutable or term-qualified keys and fence predecessor TRL tokens on takeover.
-- Treat version tokens as opaque and preserve `Applied`, `Rejected`, and `Ambiguous` as distinct outcomes.
-- Disable transparent retries for conditional writes and reconcile ambiguity by reading operation identity.
-- Isolate authority traffic from checkpoint and TRL upload traffic.
-- Run a destructive-but-self-cleaning four-step CAS probe against the real endpoint before enabling leadership.
-- Discover native KVIs through file listing and validate references/ancestry. Publish KVI last; only then delete
-  obsolete files. No separate checkpoint pointer or manifest is required.
-- Expose remote deletion only to leader-owned GC and apply the configured deletion delay after publishing the complete replacement closure, without restore pins; never reuse retired keys; every node independently deletes only its own locally unpinned files, with no distributed
-  deletion instruction.
-- Treat canonical TRL CAS exposing a complete transaction as durable publication, without a second state CAS.
-  Qualify cross-file transaction publication, continuation discovery and predecessor fencing.
-- Prefer sealed files or immutable chunks as the first portable checkpoint format.
-- Use Azure finite Blob leases to strengthen the Azure implementation, without confusing one-blob lease enforcement
-  with a database-wide fence.
-- Expose only conditional atomic tail append to the failover core. Implement it in the Azure adapter with conditional
-  Block Blob block-list publication; S3 may need a different TRL representation.
-- Independently qualify the complete multi-node failover protocol even when a provider already passed `celld`'s
-  storage probe.
-
-### Whole-file checksums for cache reuse
-
-For sealed files, startup can skip payload download when the local file's recomputed whole-file SHA-256 and length match trusted metadata
-for the selected remote object version. Store the hash in blob metadata during the same publication as the data; no
-checksum sidecar or checkpoint pointer is needed. Hash sealed files once while reading/uploading. Do not compute or maintain a whole-file hash for a growing TRL.
-Always download the last active TRL again on restore, even when the local length matches or checksum metadata exists.
-After sealing, publish its final checksum for later cache reuse. Version-bound reads and ordinary transfer integrity
-checks still apply to the active tail.
-
-Get Blob Properties returns metadata, length and ETag without the payload. Bind subsequent range reads to that ETag
-with If-Match; a changed version requires reconciliation. ETag is an opaque version token, not a content hash. Azure's
-Content-MD5 is optional: Put Block List stores the supplied whole-blob MD5 without validating it and clears it if omitted.
-Neither the block-list request checksum nor individual block checksums establish an automatically available whole-file
-checksum. Legacy files without a trustworthy digest remain readable, but do not get the no-download optimization.
-
-Use bounded per-file/intra-file transfer concurrency and prioritize ascending TRL replay dependencies. Downloaded bytes
-remain unavailable to replay until their selected version, length and integrity checks pass. Concurrent transfer does
-not authorize application readiness or election before recovery finishes.
-
-Sources: [Get Blob Properties](https://learn.microsoft.com/en-us/rest/api/storageservices/get-blob-properties),
-[Put Block List](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list).
-
-KVI upload has a strict start barrier: all required PVLs and canonical TRL through the KVI's fixed file/offset must
-already be published before the first KVI upload request, including Put Block staging. Successful KVI completion last
-is insufficient if its transfer started earlier. Reconcile ambiguous prerequisite publication before dispatching KVI;
-newer tail bytes beyond the KVI cursor do not extend this barrier. Local staging of the remote KVI can run ahead of it; node-local compaction creates no KVI.
-
-### Separate remote compaction inventory
-
-Remote compaction is leader-only and plans against verified Blob objects and the selected recovery closure, not the
-node's local file listing. Local PVL IDs can differ from remote destinations; replication does not use native file generations. The native KVI export maps
-source references into the planned remote namespace before serialization; see
-[local and remote compaction](Architecture.md#independent-local-compaction-and-leader-only-remote-compaction).
-Neither compaction mode distributes results to running peers. Remote PVL/KVI output is consumed through normal Blob
-restore. Conditional publication, KVI-last ordering, source/destination pins and key non-reuse still apply; exact mapping
-and interruption semantics require B3/B5/Q6 tests.
-
-
-## M1 live Azure capability evidence — 2026-09-14
-
-Ran [azure_probe.py](../BTDB.Replication.Test/Integration/azure_probe.py) against a temporary Standard_LRS StorageV2
-account in DEV Sandbox / West Europe, using REST version `2023-11-03` and Azure CLI account-key access.
-The probe makes individual HTTP calls without retries and keeps credentials in memory.
-[Recorded results](../BTDB.Replication.Test/Integration/azure-2026-09-14.json) contain 24 requests, all with expected
-status codes. The private test container was deleted in `finally`; the temporary resource group/account was then
-deleted, and `az group exists` returned `false`.
-
-Observed directly: staged bytes did not change the committed body/ETag; Put Block List changed content and metadata
-together; same-byte term adoption changed the ETag and rejected an old append with 412. Lease acquire/change/renew
-left the leader blob ETag unchanged, blocked an unleased write to that blob, and did not block another blob. Renewal
-with the old ID after change returned 409; the new ID succeeded.
-
-These observations exercise the relevant [Put Block List](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list)
-and [Lease Blob](https://learn.microsoft.com/en-us/rest/api/storageservices/lease-blob) contracts. They do not qualify
-all concurrency schedules, network failures, real clock drift/suspend, expiry timing, credential renewal or throughput.
-The ambiguity case discards a known successful response locally; genuinely pending effects after timeout are covered
-by the deterministic simulator, not claimed as a real Azure network-fault experiment. Payloads are small diagnostic
-bytes; separate native tests establish TRL/KVI compatibility. The probe's extra `btdb_format` diagnostic metadata is
-not a required field in the candidate `TrlMetadata` codec.
-
-
-### Remote PVL/KVI creation
-
-The file set refreshes remote discovery and chooses the next even ID above the observed remote IDs and this session's
-previous choices. No reservation object, durable counter or reservation cleanup is needed. TRLs retain their native
-IDs (+2, or +1 after a legacy even TRL). Existing even legacy IDs are also excluded from new allocations.
-
-Adapters create PVL/KVI objects only if absent and bind whole-file SHA metadata atomically to the content. After a lost
-response, matching SHA metadata confirms the intended content; missing or different SHA is a conflict that fences the
-session. Do not overwrite conflicting content. `CheckpointPublisher` keeps its KVI ID/snapshot/map until confirmation;
-PVL placements likewise retain their chosen IDs across retries. Restart rediscovers and reconciles normal remote files.
-No separate allocation-state seeding or retention rule is required. Remote GC must use version-bound deletes so an old
-request cannot remove a replacement object at the same key. Production provider adapters remain pending.
-
-
-### Integration scope after simplification
-
-Fresh remote enumeration for an upload ID never refreshes local cache state; a confirmed PVL receipt is revalidated
-by protecting its object, and an absent object gets a fresh identity. Do not refresh local cache state before every upload. Session receipts and
-pending KVI arguments need no persisted journal; restart already revalidates cache and reconstructs remote state.
-
-A provider capability probe is qualification tooling, not a mandatory startup transaction sequence. Production still
-needs lease/conditional-I/O errors handled normally, and actual provider fault tests remain required. Likewise, GC can
-start from native dependency closure and current pending publications without a separate persistent ledger; this does
-not waive authority, version-bound deletion, or protection of dependencies needed by an unresolved publication.
-
-## Persistent delayed cleanup (2026-09-22)
-
-Azure marks obsolete TRL/PVL/KVI with `btdb_delete_after`, an invariant round-trip UTC timestamp, preserving all
-other metadata under `If-Match`. `ScheduleDeletionAsync` returns the resulting version and never postpones an
-existing deadline. `DeleteAsync` rereads and requires both an elapsed persisted deadline and that same ETag.
-Lost replies retry through metadata discovery. `CancelDeletionAsync` and PVL protection clear the mark while
-changing the version, invalidating both stale marks and deletes. Missing PVLs are uploaded at fresh IDs.
-
-The adapter accepts an injected `TimeProvider` (default system UTC). Use clocks suitable for the configured
-operational retention interval; lease authority still uses its independent conservative monotonic scheduler.
-No provider lifecycle rule is automatically installed: leader maintenance performs the version-bound due deletions.
-
-KVI commits atomically bind SHA metadata plus `btdb_recovery_key` (base64 UTF-8 key) and `btdb_recovery_id`, the oldest
-required canonical TRL. Discovery reads the latest immutable KVI's hint then follows canonical links, so obsolete
-TRL prefixes can disappear. Cleanup preserves the full chain from the oldest dependency, including intervening
-links. Legacy KVIs need the original root. Tests restore native BTDB after actual genesis-prefix deletion in Azurite.
+- [Conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)
+- [Consistency model](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html#ConsistencyModel)
+- [Appending data in S3 Express One Zone](https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-objects-append.html)
