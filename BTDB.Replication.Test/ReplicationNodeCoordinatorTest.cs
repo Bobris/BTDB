@@ -68,11 +68,15 @@ public class ReplicationNodeCoordinatorTest
 
         // The injected scheduler owns callbacks, not xUnit's synchronization context. All test providers finish
         // synchronously except explicitly held responses, keeping each virtual-time pump deterministic.
-        public void Advance(long ticks)
+        public void Advance(long ticks) => WithoutContext(() => Clock.AdvanceBy(TimeSpan.FromTicks(ticks)));
+
+        // Releasing held responses or cancelling from xUnit's context would queue node continuations to the
+        // thread pool, racing the deterministic pump. Without a context they run inline, before the next Advance.
+        public void WithoutContext(Action action)
         {
             var previous = SynchronizationContext.Current;
             SynchronizationContext.SetSynchronizationContext(null);
-            try { Clock.AdvanceBy(TimeSpan.FromTicks(ticks)); }
+            try { action(); }
             finally { SynchronizationContext.SetSynchronizationContext(previous); }
         }
 
@@ -836,8 +840,11 @@ public class ReplicationNodeCoordinatorTest
         var renewals = failed.Storage.Renews;
         var acquisitions = failed.Storage.Acquires;
         // Even shutdown or a late successful response must not cancel or bypass an already chosen fatal delay.
-        failed.Cancellation.Cancel();
-        failed.Storage.HoldWrites!.TrySetResult();
+        cluster.WithoutContext(() =>
+        {
+            failed.Cancellation.Cancel();
+            failed.Storage.HoldWrites!.TrySetResult();
+        });
         cluster.Advance(150);
         Assert.Equal(ReplicationNodeRole.Leader, healthy.Coordinator.Role);
         Assert.Equal(renewals, failed.Storage.Renews);
@@ -874,7 +881,7 @@ public class ReplicationNodeCoordinatorTest
         cluster.Advance(200);
         Assert.Equal(renewals, leader.Storage.Renews);
         Assert.Equal(1, leader.FatalRestarts);
-        leader.Storage.HoldWrites.SetResult();
+        cluster.WithoutContext(leader.Storage.HoldWrites.SetResult);
         leader.Storage.HoldWrites = null;
         await leader.Run;
         Assert.Equal(1ul, await cluster.RestoreEvent()); // The late write did not become canonical.
@@ -926,10 +933,10 @@ public class ReplicationNodeCoordinatorTest
         leader.Storage.IgnoreWriteCancellation = true;
         await leader.Write(3, 3);
         cluster.Advance(10);
-        leader.Cancellation.Cancel();
+        cluster.WithoutContext(leader.Cancellation.Cancel);
         cluster.Advance(200);
         Assert.Equal(0, leader.FatalRestarts);
-        leader.Storage.HoldWrites.SetResult();
+        cluster.WithoutContext(leader.Storage.HoldWrites.SetResult);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => leader.Run);
     }
 
@@ -951,10 +958,13 @@ public class ReplicationNodeCoordinatorTest
         Assert.Equal(ReplicationNodeRole.Leader, first.Coordinator.Role);
         Assert.Equal(acknowledged, second.Capture.Acknowledged);
         Assert.Equal(1ul, await cluster.RestoreEvent());
-        first.Storage.HoldWrites.SetResult();
-        first.Storage.HoldWrites = null;
-        second.Peers.HoldReplies.SetResult();
-        second.Peers.HoldReplies = null;
+        cluster.WithoutContext(() =>
+        {
+            first.Storage.HoldWrites.SetResult();
+            first.Storage.HoldWrites = null;
+            second.Peers.HoldReplies.SetResult();
+            second.Peers.HoldReplies = null;
+        });
         cluster.Advance(30);
         Assert.Equal(2ul, await cluster.RestoreEvent());
         Assert.Equal(second.Capture.Completed, second.Capture.Acknowledged);
