@@ -40,7 +40,7 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
         // Repeated discovery/validation after an I/O failure is not forward activation progress.
         if (next.CompareTo(_progress) <= 0) return;
         _progress = next;
-        progress?.Invoke();
+        progress();
     }
 
     /// <summary>Null means selection is unresolved or local execution has not reached canonical history yet; retry

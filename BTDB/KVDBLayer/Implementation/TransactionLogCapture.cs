@@ -2,7 +2,20 @@ using System;
 
 namespace BTDB.KVDBLayer;
 
-public readonly record struct TransactionLogPosition(uint FileId, uint Offset);
+/// <summary>A native TRL byte position, ordered by file ID and then offset.</summary>
+public readonly record struct TransactionLogPosition(uint FileId, uint Offset) : IComparable<TransactionLogPosition>
+{
+    public int CompareTo(TransactionLogPosition other)
+    {
+        var result = FileId.CompareTo(other.FileId);
+        return result != 0 ? result : Offset.CompareTo(other.Offset);
+    }
+
+    public static bool operator <(TransactionLogPosition left, TransactionLogPosition right) => left.CompareTo(right) < 0;
+    public static bool operator >(TransactionLogPosition left, TransactionLogPosition right) => left.CompareTo(right) > 0;
+    public static bool operator <=(TransactionLogPosition left, TransactionLogPosition right) => left.CompareTo(right) <= 0;
+    public static bool operator >=(TransactionLogPosition left, TransactionLogPosition right) => left.CompareTo(right) >= 0;
+}
 
 /// <summary>
 /// Latest complete local TRL prefix and the prefix acknowledged by its consumer. Constant memory; no index files.
@@ -41,8 +54,7 @@ public sealed class TransactionLogCapture
     {
         lock (_lock)
         {
-            static ulong Order(TransactionLogPosition p) => ((ulong)p.FileId << 32) | p.Offset;
-            if (Order(position) < Order(_acknowledged) || Order(position) > Order(_completed))
+            if (position < _acknowledged || position > _completed)
                 throw new ArgumentOutOfRangeException(nameof(position));
             _acknowledged = position;
         }

@@ -50,6 +50,9 @@ internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrl
                 default: throw new InvalidOperationException("Canonical checkpoint cut was not established.");
             }
             progress?.Invoke(0, 0);
+            // One remote listing per new checkpoint seeds every PVL and KVI allocation below; this lane is the only
+            // allocator under the current lease, so rescanning before each identity adds only listing cost.
+            if (_pending == null) await files.ScanRemoteIdsAsync(_storage, cancellation).ConfigureAwait(false);
             // A pending upload already has its fixed mapping and validated destinations.
             var map = _pending == null ? new Dictionary<uint, uint>() : null;
             var destinations = _pending == null ? new HashSet<uint>() : null;
@@ -64,7 +67,7 @@ internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrl
                 // The canonical lane selected the complete recovery prefix, including historical TRL dependencies.
                 // File existence/length alone would also accept an unselected prepared successor.
                 if (source.FileType == KVFileType.TransactionLog) continue;
-                var remoteId = await files.PublishPureValuesAsync(source, _storage, cancellation).ConfigureAwait(false);
+                var remoteId = await files.PublishPureValuesAsync(source, _storage, cancellation, rescan: false).ConfigureAwait(false);
                 if (_pending != null)
                 {
                     if (_pending.Map[source.FileId] != remoteId)
@@ -81,7 +84,7 @@ internal sealed class CheckpointPublisher(ReplicationFileSet files, CanonicalTrl
             if (!canonical.HasAuthority) return CheckpointPublishResult.AuthorityLost;
             if (_pending == null)
             {
-                var id = await files.AllocateRemoteFileIdAsync(cancellation, _storage).ConfigureAwait(false);
+                var id = await files.AllocateRemoteFileIdAsync(cancellation, _storage, rescan: false).ConfigureAwait(false);
                 if (destinations!.Contains(id))
                     throw new InvalidOperationException("Remote file IDs collide.");
                 _pending = new(snapshot, id, new ReadOnlyDictionary<uint, uint>(map!));

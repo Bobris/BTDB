@@ -169,16 +169,17 @@ for that interface. `IFileCollection` retains only its original operations. Repl
 on `IFileReplicatedCollection`. Type/header lookup uses the selected remote metadata, or local metadata for newly
 created files without a remote counterpart.
 `GetLocalFileId(remoteFileId)` exposes the session's stable remote-to-local ID assignment, even before a file is
-cached. Initialization normally assigns identical IDs; verified PVL placements can retain a different local ID.
-KVI loading translates remote PVL references into local IDs, and prefetch resolves those IDs back to the selected
-remote objects. TRL and KVI IDs remain unchanged. Local eviction removes cached bytes but keeps the assignment
-stable for a later prefetch. The mapping is memory-only: after restart a differently numbered local copy may be
-removed and downloaded again under the remote ID. There is no persisted mapping or search across local file contents.
+cached. Initialization starts the session with identical IDs for every selected remote file and forgets earlier
+placements; a copy cached under another local ID is removed and downloaded again under the remote ID. Only a
+leader's own upload placement maps a remote PVL to a differently numbered local file. KVI loading translates remote
+PVL references into local IDs. TRL and KVI IDs remain unchanged. Local eviction removes cached bytes but keeps the
+assignment stable for a later prefetch. There is no persisted mapping or search across local file contents.
 
 Leader checkpoint publication calls `PublishPureValuesAsync(source, cancellation)` for each complete sealed local
 PVL pinned by its snapshot. It returns a confirmed remote ID, reusing a verified placement or reserving and uploading
 to a fresh remote ID. Only confirmed uploads establish a mapping; uncertain outcomes retain their reserved ID for
-retry. Calls are serialized by the owner and use its fenced remote adapter. Follower/local compaction never invokes
+retry. `CheckpointPublisher` lists the remote inventory once per new checkpoint and allocates every PVL and KVI
+identity from that scan; a direct allocation still rescans. Calls are serialized by the owner and use its fenced remote adapter. Follower/local compaction never invokes
 publication. Native KVI upload still starts only after every PVL and required canonical TRL is confirmed.
 
 Replication uses a dedicated `IReplicationFileStorage` for exact-ID cache population, parity allocation,
@@ -234,8 +235,9 @@ cancels and drains remaining work. The caller still owns the physical cache and 
 on an unprefetched logical file wait for its cache population; normal reads of the prefetched recovery set stay local.
 
 A sealed cache candidate is reused only after a fresh whole-file checksum matches selected remote metadata.
-A mismatching file is replaced; an active TRL is always downloaded again. Version-bound downloads use assigned local-ID
-imports internally and remove partial files on failure. Complete version-bound downloads of sealed PVLs with checksum metadata establish reuse
+A mismatching file is replaced; an active TRL is always downloaded again. Version-bound downloads import under the
+remote ID and remove partial files on failure. A sealed download with checksum metadata is hashed while it is
+written and rejected on mismatch. Complete version-bound downloads of sealed PVLs with checksum metadata establish reuse
 receipts. `CheckpointPublisher` uses those receipts and confirmed upload placements, reserving new destinations from
 the remote inventory. An uncertain upload retries the same destination through the storage adapter's reconciliation.
 Receipts retain IDs and lengths, not file bytes or roots; their destinations must remain protected from remote cleanup.
@@ -302,7 +304,10 @@ initialization for already-ready collections. The interface provides no fallback
 Before admitting writes after a leader transition, the role owner quiesces collection operations, discards old
 remote handles, and awaits `RefreshRemoteInventoryAsync`. Refresh requires prior initialization and replaces
 remote membership/ETags only after successful discovery. It preserves local files and session mappings, including
-unpublished local PVLs; it does not rerun startup cleanup. Changed objects are revalidated on prefetch. Leadership
+unpublished local PVLs; it does not rerun startup cleanup. Changed objects are revalidated on prefetch. A newly listed
+remote ID that collides with a session-local file gets a separate local ID and is not cached in this session. A
+confirmed upload placement whose object is missing from the new listing was retired by cleanup; it is dropped so the
+next publication allocates a fresh identity instead of recreating the retired key. Leadership
 acquisition and recovery/catch-up of the database are separate prerequisites, not effects of inventory refresh.
 
 
@@ -321,9 +326,10 @@ state, then resumes publication using tail metadata read from remote storage. Th
 for that path. Durable allocation, disk-backed replication storage, production adapters and recovery-race
 qualification remain pending.
 
-Remote downloads fetch up to four 256 KiB blocks concurrently per active file and append completed batches in order.
-They do not recompute or validate SHA; checksum validation still applies to preexisting cache candidates. A failed block
-cancels and drains sibling reads before partial-file cleanup and pooled-buffer return.
+Remote downloads keep up to four 256 KiB block reads in flight per active file (a sliding window) and append
+completed blocks in order. Sealed files with checksum metadata are hashed during the download and rejected before
+they establish a placement if the checksum differs. A failed block cancels and drains sibling reads before
+partial-file cleanup and pooled-buffer return, and the block's own failure is reported rather than the cancellation.
 
-Downloaded files always retain their remote IDs. Earlier cross-ID upload placements may reuse an existing local file,
-but a redownload installs the remote ID and replaces the old placement rather than allocating another local ID.
+Downloaded files always retain their remote IDs. Prefetch never searches another local file for a copy; a remote file
+mapped to a different local ID in this session is not downloaded again.

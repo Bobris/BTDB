@@ -36,8 +36,10 @@ public class RemoteMaintenanceTest
             await foreach (var file in Inner.EnumerateAsync(cancellation))
                 yield return new(file.FileId.ToString(), file.FileId, file.FileType, Version(file.FileId), false, _deadlines.TryGetValue(file.FileId, out var deadline) ? deadline : null);
         }
+        public int Schedules;
         public ValueTask<RemoteMaintenanceFile> ScheduleDeletionAsync(RemoteMaintenanceFile file, TimeSpan delay, CancellationToken cancellation)
         {
+            Schedules++;
             if (Version(file.FileId) != file.Version) return ValueTask.FromResult(file);
             if (!_deadlines.TryGetValue(file.FileId, out var deadline)) _deadlines[file.FileId] = deadline = Now + delay;
             return ValueTask.FromResult(file with { DeleteAfter = deadline });
@@ -202,7 +204,9 @@ public class RemoteMaintenanceTest
         Assert.Empty(storage.Deleted);
         clock.AdvanceBy(TimeSpan.FromTicks(10));
         gc = new RemoteGarbageCollector(storage, authority, TimeSpan.FromTicks(10));
+        var schedules = storage.Schedules;
         await gc.CollectAsync(checkpoint, default);
+        Assert.Equal(schedules, storage.Schedules); // Listed deadlines are deleted without marking them again.
         Assert.Equal(new uint[] { 2, 6 }, storage.Deleted.Order().ToArray());
         Assert.NotNull(storage.Inner.Files.GetFile(4));
         Assert.NotNull(storage.Inner.Files.GetFile(8));

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,16 +19,17 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
     readonly IReplicationStorage _storage;
     readonly Dictionary<uint, TrlHead> _byId;
 
-    CanonicalTrlInventory(IReplicationStorage storage, Dictionary<uint, TrlHead> byId, TrlHead tail)
+    CanonicalTrlInventory(IReplicationStorage storage, Dictionary<uint, TrlHead> byId, TrlSuccessor root, TrlHead tail)
     {
         _storage = storage;
         _byId = byId;
+        Root = root;
         Tail = tail;
     }
 
     public TrlHead Tail { get; }
 
-    internal TrlSuccessor Root => new(_byId.Values.First().Key, _byId.Values.First().FileId);
+    internal TrlSuccessor Root { get; }
 
     internal TrlHead GetHead(uint fileId) => _byId.TryGetValue(fileId, out var head) ? head :
         throw new FileNotFoundException("TRL is outside the selected canonical inventory.");
@@ -45,7 +45,8 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
         var byId = new Dictionary<uint, TrlHead>();
         TrlHead tail;
         var keys = new HashSet<string>(StringComparer.Ordinal);
-        var current = await storage.ResolveRecoveryRootAsync(genesis, cancellation).ConfigureAwait(false);
+        var root = await storage.ResolveRecoveryRootAsync(genesis, cancellation).ConfigureAwait(false);
+        var current = root;
         ulong previousTerm = 0;
         uint previousId = 0;
         while (true)
@@ -68,7 +69,7 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
             previousTerm = state.Metadata.Term;
             current = next;
         }
-        return new(storage, byId, tail);
+        return new(storage, byId, root, tail);
     }
 
     public async IAsyncEnumerable<RemoteFile> EnumerateAsync([EnumeratorCancellation] CancellationToken cancellation)

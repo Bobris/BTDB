@@ -87,7 +87,7 @@ public sealed class ReplicationApplicationData
             cancellation.ThrowIfCancellationRequested();
             if (JsonNode.DeepEquals(Parse(observed), intent)) return LeaderWriteOutcome.Applied;
         }
-        catch (IOException) { return outcome; }
+        catch (IOException) { }
         return outcome;
     }
 

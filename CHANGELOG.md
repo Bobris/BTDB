@@ -10,7 +10,39 @@
   the file lock, so growth can remap safely while peers read; files are truncated to their logical length when sealed
   or disposed, and restore discards crash padding through remote cache validation.
 
+- Make `TransactionLogPosition` comparable (`IComparable<TransactionLogPosition>` and `<`, `>`, `<=`, `>=`),
+  ordered by file ID and then offset.
+
+- Add `ReplicationNodeOptions.DetachedLeaderTimeout` for the time a schema-detached node waits without leader
+  evidence before requesting a restart (default 15 minutes, previously hard-coded).
+
+### Changed
+
+- `ReplicationFileSet` initialization maps every selected remote file to its own ID and forgets earlier placements.
+  A copy cached under another local ID is removed and downloaded again under the remote ID, and prefetch never
+  looks for a copy under another ID.
+
+- Download remote files through a sliding window of four in-flight block reads instead of waiting for each batch of
+  four, and verify the whole-file SHA-256 of sealed downloads before they establish a PVL placement.
+
+- List the remote inventory once per checkpoint instead of once per allocated PVL/KVI identity, and skip re-marking
+  remote files whose deletion deadline is already listed during cleanup.
+
 ### Fixed
+
+- Let a node of a newer application generation that adds a database follow an older leader that does not select it.
+  Polling the unknown database failed every step, so the node disconnected repeatedly and never offered the prepared
+  upgrade handoff.
+
+- Drop a confirmed PVL upload placement on `RefreshRemoteInventoryAsync` when cleanup retired its remote object, so
+  the next publication allocates a fresh identity instead of recreating the retired key.
+
+- Report a replication download's failed block instead of the cancellation it caused in sibling reads.
+
+- Treat canonical publication as idle when local capture is behind a restored canonical tail, instead of failing
+  with "Cannot shrink canonical TRL" and requesting a restart.
+
+- Stop renewing a consumed lease transfer handle when the node later reacquires the replication lease.
 
 - Ignore a replication request timeout that fires after its request already completed. Scheduler disposal does
   not wait for a started callback, so the late cancel could hit a disposed `CancellationTokenSource` and throw

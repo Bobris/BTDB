@@ -125,6 +125,37 @@ public class LeaseSessionControllerTest
         }
     }
 
+    sealed class TransferStorage : IReplicationLeaseStorage
+    {
+        public readonly List<string> Renewed = new();
+        public string? Transferred = "transfer";
+        public ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation) =>
+            ValueTask.FromResult<LeaseGrant?>(new("acquired", TimeSpan.FromTicks(100)));
+        public ValueTask<TimeSpan?> RenewAsync(string handle, CancellationToken cancellation)
+        {
+            Renewed.Add(handle);
+            return ValueTask.FromResult<TimeSpan?>(handle == Transferred ? TimeSpan.FromTicks(100) : null);
+        }
+    }
+
+    [Fact]
+    public async Task TransferredHandleIsConsumedAndNotRenewedOnLaterReacquisition()
+    {
+        var clock = new DeterministicScheduler(506);
+        var storage = new TransferStorage();
+        var controller = new LeaseSessionController(storage, clock.CreateScope("node"), 0, TimeSpan.Zero);
+        controller.ProposeTransfer("transfer");
+        var transferred = await controller.MaintainAsync();
+        Assert.NotNull(transferred);
+        Assert.Equal("transfer", controller.GetHandle(transferred));
+        storage.Transferred = null;
+        clock.AdvanceBy(TimeSpan.FromTicks(100));
+        var acquired = await controller.MaintainAsync();
+        Assert.NotNull(acquired);
+        Assert.Equal("acquired", controller.GetHandle(acquired));
+        Assert.Equal(new[] { "transfer" }, storage.Renewed);
+    }
+
     [Fact]
     public async Task ShortOutageRenewsTheSameAuthorityBeforeItsDeadline()
     {

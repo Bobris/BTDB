@@ -18,10 +18,11 @@ internal sealed record PublishedCheckpoint(uint FileId, uint ReplayFromFileId, I
 internal sealed class RemoteGarbageCollector(IReplicationStorage storage, LeaseAuthority authority,
     TimeSpan deletionDelay)
 {
+    readonly TimeSpan _deletionDelay = deletionDelay >= TimeSpan.Zero ? deletionDelay
+        : throw new ArgumentOutOfRangeException(nameof(deletionDelay));
 
     public async ValueTask CollectAsync(PublishedCheckpoint checkpoint, CancellationToken cancellation, Action<int, int>? progress = null)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(deletionDelay.Ticks);
         var inventory = new List<RemoteMaintenanceFile>();
         await foreach (var file in storage.EnumerateMaintenanceAsync(cancellation).ConfigureAwait(false))
         {
@@ -52,7 +53,9 @@ internal sealed class RemoteGarbageCollector(IReplicationStorage storage, LeaseA
                 if (file.DeleteAfter != null) await storage.CancelDeletionAsync(file, cancellation).ConfigureAwait(false);
                 continue;
             }
-            var scheduled = await storage.ScheduleDeletionAsync(file, deletionDelay, cancellation).ConfigureAwait(false);
+            // A listed deadline already carries the current version; scheduling never extends it anyway.
+            var scheduled = file.DeleteAfter != null ? file
+                : await storage.ScheduleDeletionAsync(file, _deletionDelay, cancellation).ConfigureAwait(false);
             if (!authority.IsValid) return;
             await storage.DeleteAsync(scheduled, cancellation).ConfigureAwait(false);
         }
@@ -69,6 +72,8 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
     readonly CheckpointPublisher _checkpoints = new(files, canonical, storage);
     readonly RemoteGarbageCollector _garbage = new(storage, authority, deletionDelay);
     KeyIndexSnapshot? _pending;
+    readonly TimeSpan _interval = interval > TimeSpan.Zero ? interval
+        : throw new ArgumentOutOfRangeException(nameof(interval));
     TimeSpan _next;
     bool _collecting;
     internal ReplicationMaintenanceWatchdog? Watchdog { get; set; }
@@ -76,7 +81,6 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
     // The coordinator runs maintenance; hosts only construct it in CreateMaintenance.
     internal async ValueTask RunDueAsync(CancellationToken cancellation)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(interval.Ticks);
         if (!authority.IsValid || (_pending == null && !_collecting && clock.Elapsed < _next)) return;
         Watchdog?.Observe((0, 0, 0));
         if (!_collecting)
@@ -86,7 +90,7 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
             {
                 _pending.Dispose();
                 _pending = null;
-                _next = clock.Elapsed + interval;
+                _next = clock.Elapsed + _interval;
                 Watchdog?.Observe(null);
                 return;
             }
@@ -101,7 +105,7 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
         await _garbage.CollectAsync(_checkpoints.Published!, cancellation,
             Watchdog == null ? null : (step, item) => Watchdog.Observe((2, step, item))).ConfigureAwait(false);
         _collecting = false;
-        _next = clock.Elapsed + interval;
+        _next = clock.Elapsed + _interval;
         Watchdog?.Observe(null);
         // Submitting an application-owned leak event is outside replication's progress deadline.
         if (authority.IsValid && objects != null && publishLeakEvent != null)

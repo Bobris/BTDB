@@ -107,7 +107,7 @@ internal static class LeadershipActivation
                 // Only complete local transactions count; the physical file may hold an unfinished one. Capture reports
                 // nothing before the first local commit, when the verified restored base is the complete local end.
                 var local = database.Capture.Completed;
-                if (Order(local) < Order(baseline)) local = baseline;
+                if (local < baseline) local = baseline;
                 if (file.FileId > local.FileId)
                 {
                     // Local execution has not rotated into this continuation yet. A different local continuation diverged.
@@ -153,8 +153,6 @@ internal static class LeadershipActivation
             ArrayPool<byte>.Shared.Return(remoteBuffer);
         }
     }
-
-    static ulong Order(TransactionLogPosition position) => ((ulong)position.FileId << 32) | position.Offset;
 
     static void RequireAuthority(SelectedLeadership selected)
     {

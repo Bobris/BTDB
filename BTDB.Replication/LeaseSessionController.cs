@@ -168,6 +168,8 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
         lock (_stateLock)
         {
             if (_closed || _ineligible || grant == null || !candidate.AcceptSuccess(acquire, grant.GuaranteedDuration)) return null;
+            // A transferred handle is consumed; a later reacquisition must not renew it again.
+            if (grant.Handle == _proposedHandle) _proposedHandle = null;
             _handle = grant.Handle;
             _authority = candidate;
             return candidate;

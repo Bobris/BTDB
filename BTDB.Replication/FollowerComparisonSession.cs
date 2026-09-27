@@ -58,7 +58,7 @@ internal sealed class FollowerComparisonSession(
             if (_closed) return;
             if (_latest is { } latest)
             {
-                var order = Order(progress.Position).CompareTo(Order(latest.Position));
+                var order = progress.Position.CompareTo(latest.Position);
                 if (order < 0) return; // Delayed notification on this same connection.
                 if (order == 0 && progress.EventId != latest.EventId)
                     throw new ArgumentException("The same native cut cannot have different event IDs.", nameof(progress));
@@ -118,6 +118,4 @@ internal sealed class FollowerComparisonSession(
         }
         _closedCancellation.Cancel();
     }
-
-    static ulong Order(TransactionLogPosition position) => ((ulong)position.FileId << 32) | position.Offset;
 }

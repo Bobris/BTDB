@@ -45,6 +45,26 @@ public class ReplicationFileSetTest
         Assert.Same(unpublished, local.GetFile(6));
     }
 
+    [Fact]
+    public async Task RefreshDropsRetiredPublicationInsteadOfRecreatingItsKey()
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage();
+        await using var files = new ReplicationFileSet(local, remote);
+        await files.InitializeAsync();
+        var pvl = files.AddFile("pvl", FileIdParity.Even);
+        var writer = new MemWriter(pvl.GetAppenderWriter());
+        writer.WriteBlock([1, 2, 3]);
+        writer.Flush();
+        var first = await files.PublishPureValuesAsync(Source(pvl));
+        remote.Files.GetFile(first)!.Remove();
+        remote.Types.Remove(first);
+        await files.RefreshRemoteInventoryAsync();
+        var second = await files.PublishPureValuesAsync(Source(pvl));
+        Assert.NotEqual(first, second);
+        Assert.Equal(new[] { first, second }, remote.PvlAttempts);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -199,7 +219,7 @@ public class ReplicationFileSetTest
     }
 
     [Fact]
-    public async Task RememberedPvlDoesNotAliasAnotherRemoteFileWithTheSameNumericId()
+    public async Task InitializationKeepsRemoteIdsAndRedownloadsCopiesCachedUnderOtherIds()
     {
         using var local = new InMemoryReplicationFileStorage();
         using var remote = new CheckpointPublisherTest.Storage();
@@ -209,15 +229,16 @@ public class ReplicationFileSetTest
         await using var files = new ReplicationFileSet(local, remote);
         files.RememberVerifiedPureValues(Source(cached), first);
         await files.InitializeAsync();
-        Assert.Equal(100u, files.GetLocalFileId(2));
-        var secondLocalId = files.GetLocalFileId(100);
-        Assert.NotEqual(100u, secondLocalId);
+        Assert.Equal(2u, files.GetLocalFileId(2));
+        Assert.Equal(100u, files.GetLocalFileId(100));
+        Assert.Null(files.GetFile(100)); // The copy under another ID is neither reused nor mistaken for remote 100.
         await files.PrefetchAsync(2);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => files.PrefetchAsync(100).AsTask());
+        await files.PrefetchAsync(100);
         var bytes = new byte[1];
-        files.GetFile(100).RandomRead(bytes, 0, false);
+        files.GetFile(2).RandomRead(bytes, 0, false);
         Assert.Equal(1, bytes[0]);
-        Assert.Null(files.GetFile(secondLocalId)); // Never download under a substitute local ID.
+        files.GetFile(100).RandomRead(bytes, 0, false);
+        Assert.Equal(9, bytes[0]);
     }
 
     [Fact]
@@ -514,13 +535,13 @@ public class ReplicationFileSetTest
     }
 
     [Fact]
-    public async Task DownloadUsesBoundedParallelBlocksAndPreservesOrderWithoutChecksumValidation()
+    public async Task DownloadUsesBoundedParallelBlocksAndPreservesOrder()
     {
         const int blockSize = 256 * 1024;
         using var local = new InMemoryReplicationFileStorage();
         using var remote = new CheckpointPublisherTest.Storage { ReadChunkSize = 8192 };
         var bytes = Enumerable.Range(0, blockSize * 5 + 17).Select(i => (byte)(i / blockSize + i % 251)).ToArray();
-        var selected = AddRemote(remote, 2, bytes) with { Sha256 = "intentionally not a checksum" };
+        var selected = AddRemote(remote, 2, bytes);
         var entered = Enumerable.Range(0, 4).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         remote.BeforeRead = async (_, offset, ct) =>
@@ -544,6 +565,25 @@ public class ReplicationFileSetTest
         var actual = new byte[bytes.Length];
         restored.RandomRead(actual, 0, false);
         Assert.Equal(bytes, actual);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task DownloadVerifiesSealedChecksumBeforeEstablishingPlacement(bool matching)
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage();
+        var selected = AddRemote(remote, 2, Enumerable.Range(0, 600_000).Select(i => (byte)i).ToArray());
+        if (!matching) selected = selected with { Sha256 = new string('0', 64) };
+        await using var files = new ReplicationFileSet(local, remote);
+        if (matching)
+        {
+            Assert.Equal(selected.Length, (await files.DownloadAsync(selected)).GetSize());
+            return;
+        }
+        await Assert.ThrowsAsync<IOException>(() => files.DownloadAsync(selected).AsTask());
+        Assert.Null(local.GetFile(2));
     }
 
     [Fact]

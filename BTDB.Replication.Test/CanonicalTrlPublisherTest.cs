@@ -176,6 +176,20 @@ public class CanonicalTrlPublisherTest
         return (tr.GetCommitUlong(), tr.GetKeyValueCount());
     }
 
+    [Fact]
+    public async Task LocalCaptureBehindRestoredTailIsIdleInsteadOfShrinkingHistory()
+    {
+        using var f = await Fixture.CreateAsync(false);
+        await Write(f, 1, 8);
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
+        var tail = f.Publisher.Tail!;
+        var ahead = tail with { State = tail.State with { Length = tail.State.Length + 16 } };
+        using var restored = new CanonicalTrlPublisher(f.Db, f.Capture, f.Remote, f.Authority, 1, Key, ahead);
+        var requests = f.Remote.Requests.Count;
+        Assert.Equal(TrlPublishResult.Idle, await restored.PublishNextAsync());
+        Assert.Equal(requests, f.Remote.Requests.Count);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

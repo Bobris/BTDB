@@ -578,7 +578,7 @@ public class CheckpointPublisherTest
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task StreamedKviRestoresWithRemappedPvlUnchangedTrlAndStableLocalReaders(bool compressed)
+    public async Task StreamedKviRestoresRemappedPvlUnderRemoteIdsWithUnchangedTrlAndStableLocalReaders(bool compressed)
     {
         using var local = new InMemoryReplicationFileStorage();
         var capture = new TransactionLogCapture();
@@ -590,9 +590,13 @@ public class CheckpointPublisherTest
         Assert.Contains(snapshot.Sources, s => s.FileType == KVFileType.TransactionLog);
         var localFiles = local.Enumerate().Select(f => f.Index).Order().ToArray();
         using var storage = new Storage(snapshot);
+        var listings = 0;
+        storage.BeforeEnumerate = _ => { listings++; return ValueTask.CompletedTask; };
         using var canonical = CreateCanonical(db, capture, storage);
         var publisher = new CheckpointPublisher(new ReplicationFileSet(local, storage), canonical);
         Assert.Equal(CheckpointPublishResult.Published, await publisher.PublishAsync(snapshot, retryPending: true));
+        Assert.Equal(1, listings); // One remote ID scan seeds every PVL and the KVI allocation.
+        storage.BeforeEnumerate = null;
         Assert.Equal("kvi", storage.Events[^1]);
         Assert.True(storage.Chunks > 1);
         Assert.All(storage.LastMap!, p => Assert.NotEqual(p.Key, p.Value));
@@ -605,34 +609,30 @@ public class CheckpointPublisherTest
         }
         using var restoredLocal = new InMemoryReplicationFileStorage();
         await using var restoreFiles = new ReplicationFileSet(restoredLocal, storage);
-        var cachedPvls = new Dictionary<uint, uint>();
+        // Copies cached under other IDs are never reused: restore downloads each PVL under its remote ID.
         var nextLocalId = 10000u;
         foreach (var remoteId in storage.LastMap!.Values)
         {
             var source = storage.Files.GetFile(remoteId)!;
-            var cached = restoredLocal.ImportFile(nextLocalId, "pvl");
-            var remoteFile = storage.Describe(remoteId);
-            Storage.Copy(new(remoteId, KVFileType.PureValues, source.GetSize(), 0, source), cached);
-            restoreFiles.RememberVerifiedPureValues(new(nextLocalId, KVFileType.PureValues, cached.GetSize(), 0, cached), remoteFile);
-            cachedPvls.Add(remoteId, nextLocalId);
+            Storage.Copy(new(remoteId, KVFileType.PureValues, source.GetSize(), 0, source), restoredLocal.ImportFile(nextLocalId, "pvl"));
             nextLocalId += 2;
         }
         await restoreFiles.InitializeAsync();
+        Assert.All(restoredLocal.Enumerate(), file => Assert.True(file.Index < 10000));
         using var restored = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         {
             FileCollection = restoreFiles, Compression = new NoCompressionStrategy(), CompactorScheduler = null
             });
         Assert.Null(restoredLocal.GetFile(1000)); // Unreferenced remote PVL stays lazy, including its metadata.
-        Assert.All(cachedPvls, mapping =>
+        Assert.All(storage.LastMap!.Values, remoteId =>
         {
-            Assert.Equal(mapping.Value, restoreFiles.GetLocalFileId(mapping.Key));
-            Assert.NotNull(restoredLocal.GetFile(mapping.Value));
-            Assert.Null(restoredLocal.GetFile(mapping.Key));
+            Assert.Equal(remoteId, restoreFiles.GetLocalFileId(remoteId));
+            Assert.NotNull(restoredLocal.GetFile(remoteId));
         });
         using (var exported = restored.CaptureKeyIndexSnapshot())
         {
             Assert.All(exported.Sources.Where(source => source.FileType == KVFileType.PureValues),
-                source => Assert.Contains(source.FileId, cachedPvls.Values));
+                source => Assert.Contains(source.FileId, storage.LastMap!.Values));
         }
         using var reader = restored.StartReadOnlyTransaction();
         Assert.Equal(62ul, reader.GetCommitUlong());

@@ -48,8 +48,8 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
         {
             if (_diverged) return TrlCompareResult.Diverged;
             var start = _comparisonPosition ?? capture.Acknowledged;
-            if (Order(end) <= Order(start)) return TrlCompareResult.Matched;
-            if (Order(end) > Order(capture.Completed)) return TrlCompareResult.LocalBehind;
+            if (end <= start) return TrlCompareResult.Matched;
+            if (end > capture.Completed) return TrlCompareResult.LocalBehind;
             if (start.FileId == 0) throw new InvalidOperationException("Comparison requires a retained native starting position.");
 
             const int blockSize = 64 * 1024;
@@ -98,7 +98,7 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
             cancellation.ThrowIfCancellationRequested();
             // A new leader can disagree with bytes acknowledged by its predecessor. Recheck from the
             // restored base without rewinding core retention; missing retained files require restart.
-            if (acknowledge && Order(end) > Order(capture.Acknowledged)) capture.Acknowledge(end);
+            if (acknowledge && end > capture.Acknowledged) capture.Acknowledge(end);
             if (_comparisonPosition.HasValue) _comparisonPosition = end;
             return TrlCompareResult.Matched;
         }
@@ -115,6 +115,4 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
         _diverged = true;
         return TrlCompareResult.Diverged;
     }
-
-    static ulong Order(TransactionLogPosition position) => ((ulong)position.FileId << 32) | position.Offset;
 }

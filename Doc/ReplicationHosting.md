@@ -47,6 +47,9 @@ wall-clock scheduler fallback. The HTTP endpoint must be an HTTPS origin without
 loopback. The adapter maps `POST /_btdb/replication`. TLS certificates, routing and external authentication to Blob
 storage belong to the host. Do not log Authorization headers or raw leader JSON.
 
+Optional `DetachedLeaderTimeout` (default 15 minutes) is how long a schema-detached node may go without leader
+evidence before it requests a restart.
+
 `RequestTimeout` bounds each leader discovery and follower control/comparison step. Leader activation, TRL
 publication and checkpoint maintenance transfer bulk data and are not cut off by it; lease loss cancels them, and
 `ProgressTimeouts` bounds stalled work. Checkpoint maintenance runs beside publication, so a long PVL/KVI upload

@@ -1,8 +1,10 @@
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
@@ -37,32 +39,31 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
                 if (file.FileId == 0 || !inventory.TryAdd(file.FileId, new(this, file)))
                     throw new IOException("The remote inventory contains an invalid or duplicate file ID.");
             }
-            // Freeze mappings before pruning local storage. Remembered PVL placements may have different IDs.
             linked.Token.ThrowIfCancellationRequested();
-            var retainedLocalIds = new HashSet<uint>();
+            // The session starts here: every selected file keeps its remote ID locally. A cached copy under another
+            // ID is not reused; restore downloads it again under the remote ID.
             lock (_placementLock)
             {
-                foreach (var id in inventory.Keys) ObserveId(id);
-                foreach (var localId in _remoteToLocal.Values) ObserveId(localId);
-                foreach (var (remoteId, file) in inventory)
+                _remoteToLocal.Clear();
+                _mappedLocalIds.Clear();
+                _placements.Clear();
+                _placedRemoteIds.Clear();
+                foreach (var id in inventory.Keys)
                 {
-                    var localId = GetOrAssignLocalFileId(remoteId, file.Selected.FileType);
-                    if (localId != remoteId && file.Selected.FileType != KVFileType.PureValues)
-                        throw new InvalidOperationException("Only PVL files can have different local and remote IDs.");
-                    retainedLocalIds.Add(localId);
+                    ObserveId(id);
+                    RememberMapping(id, id);
                 }
             }
             // Only a complete remote listing can prove that a local file is unselected.
             foreach (var localFile in Local.Enumerate().ToArray())
             {
                 linked.Token.ThrowIfCancellationRequested();
-                if (!retainedLocalIds.Contains(localFile.Index))
+                if (!inventory.ContainsKey(localFile.Index))
                     DiscardCachedFile(localFile, "no corresponding file in the remote inventory");
             }
             foreach (var (id, file) in inventory)
             {
-                var localId = GetLocalFileId(id);
-                if (Local.GetFile(localId) is { } candidate)
+                if (Local.GetFile(id) is { } candidate)
                 {
                     if (ValidateCachedFile(candidate, file.Selected, linked.Token, out var reason))
                         file.UseValidatedLocal(candidate);
@@ -70,11 +71,6 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
                         DiscardCachedFile(candidate, reason!, id);
                 }
                 _remoteFiles[id] = file;
-                lock (_placementLock)
-                {
-                    ObserveId(id);
-                    ObserveId(GetLocalFileId(id));
-                }
             }
             _initialized = true;
         }
@@ -108,11 +104,21 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
                 foreach (var file in Local.Enumerate()) ObserveId(file.Index);
                 foreach (var id in inventory.Keys) ObserveId(id);
                 foreach (var (id, file) in inventory)
-                    ObserveId(GetOrAssignLocalFileId(id, file.Selected.FileType, preserveUnmappedLocal: true));
+                    ObserveId(GetOrAssignLocalFileId(id, file.Selected.FileType));
+                // Reconfirm publications with the current authority before reusing an old session receipt. A confirmed
+                // object missing from the listing was retired; its key must never be recreated, so drop the receipt and
+                // let publication allocate a fresh identity. Unconfirmed uploads keep their ID for an exact retry.
+                foreach (var (localId, placement) in _placements.ToArray())
+                {
+                    if (placement.Confirmed && !inventory.ContainsKey(placement.RemoteId))
+                    {
+                        _placements.Remove(localId);
+                        _placedRemoteIds.Remove(placement.RemoteId);
+                        _lastRemoteEvenId = Math.Max(_lastRemoteEvenId, placement.RemoteId);
+                    }
+                    else placement.Confirmed = false;
+                }
             }
-            // Reconfirm publications with the current authority before reusing an old session receipt.
-            lock (_placementLock)
-                foreach (var placement in _placements.Values) placement.Confirmed = false;
             _remoteFiles = inventory;
         }
         finally { _initialization.Release(); }
@@ -236,8 +242,11 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         await _downloads.WaitAsync(_lifetime.Token).ConfigureAwait(false);
         try
         {
-            var localId = GetLocalFileId(selected.FileId);
-            if (Local.GetFile(localId) is { } candidate)
+            // Cached bytes live only under the remote ID; another local file is never searched for a copy.
+            var id = selected.FileId;
+            if (GetLocalFileId(id) is var localId && localId != id)
+                throw new InvalidOperationException($"Remote file {id} is mapped to local file {localId} this session and is not downloaded again.");
+            if (Local.GetFile(id) is { } candidate)
             {
                 if (ValidateCachedFile(candidate, selected, _lifetime.Token, out var reason)) return candidate;
                 DiscardCachedFile(candidate, reason!, selected.FileId);
@@ -296,7 +305,7 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
             reason = "remote SHA-256 metadata is missing";
             return false;
         }
-        try { VerifyRemoteInventoryFile(candidate, selected, cancellation); }
+        try { VerifyLocalChecksum(candidate, selected, cancellation); }
         catch (IOException error)
         {
             reason = $"SHA-256 validation failed: {error.Message}";
@@ -315,10 +324,10 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         return true;
     }
 
-    static void VerifyRemoteInventoryFile(IFileCollectionFile file, RemoteFile selected, CancellationToken cancellation)
+    static void VerifyLocalChecksum(IFileCollectionFile file, RemoteFile selected, CancellationToken cancellation)
     {
-        using var hash = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
-        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(64 * 1024);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
         try
         {
             for (ulong offset = 0; offset < selected.Length;)
@@ -331,7 +340,7 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
             }
             VerifyChecksum(hash, selected);
         }
-        finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
     }
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();

@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -54,13 +55,15 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
         throw new FileNotFoundException($"Remote file {remoteFileId} has no session mapping.");
     }
 
-    uint GetOrAssignLocalFileId(uint remoteFileId, KVFileType fileType, bool preserveUnmappedLocal = false)
+    // Refresh only: a newly listed remote ID that collides with a session-local file gets a separate local identity.
+    // Such a file is never cached this session; restore downloads remote files, always under their remote IDs.
+    uint GetOrAssignLocalFileId(uint remoteFileId, KVFileType fileType)
     {
         lock (_placementLock)
         {
             if (_remoteToLocal.TryGetValue(remoteFileId, out var localId)) return localId;
             localId = remoteFileId;
-            if (_mappedLocalIds.Contains(localId) || (preserveUnmappedLocal && Local.GetFile(localId) != null))
+            if (_mappedLocalIds.Contains(localId) || Local.GetFile(localId) != null)
             {
                 if (fileType != KVFileType.PureValues)
                     throw new InvalidOperationException("A remembered PVL mapping conflicts with a canonical TRL or KVI ID.");
@@ -106,26 +109,13 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
             !file.IsSealed || file.Sha256 is null || file.FileId == 0 || source.Length != file.Length ||
             source.Length != source.File.GetSize() || !OwnsSource(source))
             throw new ArgumentException("A complete local PVL and a sealed remote PVL with a checksum are required.");
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-        try
-        {
-            for (ulong offset = 0; offset < source.Length;)
-            {
-                var count = (int)Math.Min((ulong)buffer.Length, source.Length - offset);
-                source.File.RandomRead(buffer.AsSpan(0, count), offset, false);
-                hash.AppendData(buffer, 0, count);
-                offset += (uint)count;
-            }
-            VerifyChecksum(hash, file);
-            AddPlacement(source.FileId, new(source.Length, file.FileId, true));
-        }
-        finally { ArrayPool<byte>.Shared.Return(buffer); }
+        VerifyLocalChecksum(source.File, file, CancellationToken.None);
+        AddPlacement(source.FileId, new(source.Length, file.FileId, true));
     }
 
     /// <summary>Restore under the exact remote file ID before publication starts.
-    /// A collision fails without touching
-    /// the existing local file. Partial/invalid downloads are removed and never establish a placement.</summary>
+    /// A collision fails without touching the existing local file. Sealed files with a checksum are verified while
+    /// they are written. Partial/invalid downloads are removed and never establish a placement.</summary>
     internal async ValueTask<IFileCollectionFile> DownloadAsync(RemoteFile file, CancellationToken cancellation = default)
     {
         cancellation.ThrowIfCancellationRequested();
@@ -133,33 +123,37 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
         const int blockSize = 256 * 1024;
         const int parallelBlocks = 4;
         var buffers = new byte[parallelBlocks][];
-        var reads = new Task<int>[parallelBlocks];
+        var reads = new Task<int>?[parallelBlocks];
+        using var hash = file.IsSealed && file.Sha256 != null ? IncrementalHash.CreateHash(HashAlgorithmName.SHA256) : null;
         using var transfer = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        ulong requested = 0;
+        var head = 0;
+        var active = 0;
         try
         {
             if (file.Length == 0)
                 await Remote.ReadAsync(file, 0, Memory<byte>.Empty, transfer.Token).ConfigureAwait(false);
-            var count = (int)Math.Min((ulong)parallelBlocks, (file.Length == 0 ? 0 : (file.Length - 1) / blockSize + 1));
-            for (var i = 0; i < count; i++) buffers[i] = ArrayPool<byte>.Shared.Rent(blockSize);
-            for (ulong offset = 0; offset < file.Length;)
+            // A sliding window keeps parallelBlocks reads in flight while completed blocks are written in order.
+            while (active < parallelBlocks && requested < file.Length) StartRead();
+            while (active != 0)
             {
-                var active = (int)Math.Min((ulong)parallelBlocks, ((file.Length - offset - 1) / blockSize + 1));
-                for (var i = 0; i < active; i++)
+                int count;
+                try { count = await reads[head]!.ConfigureAwait(false); }
+                catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
                 {
-                    var start = offset + (ulong)i * blockSize;
-                    var length = (int)Math.Min((ulong)blockSize, file.Length - start);
-                    reads[i] = ReadBlockAsync(start, buffers[i].AsMemory(0, length));
+                    // A failed sibling read cancelled the transfer; surface its failure rather than the cancellation.
+                    await Task.WhenAll(reads.OfType<Task<int>>()).ConfigureAwait(false);
+                    throw;
                 }
-                // Drain every read before writing or returning pooled buffers, including on failure.
-                await Task.WhenAll(reads.AsSpan(0, active).ToArray()).ConfigureAwait(false);
-                for (var i = 0; i < active; i++)
-                {
-                    cancellation.ThrowIfCancellationRequested();
-                    WriteBlock(target, buffers[i].AsSpan(0, reads[i].Result));
-                    offset += (uint)reads[i].Result;
-                }
+                cancellation.ThrowIfCancellationRequested();
+                WriteBlock(target, buffers[head].AsSpan(0, count));
+                hash?.AppendData(buffers[head], 0, count);
+                head = (head + 1) % parallelBlocks;
+                active--;
+                if (requested < file.Length) StartRead();
             }
             cancellation.ThrowIfCancellationRequested();
+            if (hash != null) VerifyChecksum(hash, file);
             target.HardFlush();
             RememberMapping(file.FileId, file.FileId);
             if (file.FileType == KVFileType.PureValues && file.IsSealed && file.Sha256 != null)
@@ -173,8 +167,21 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
         }
         finally
         {
+            // Drain every read before returning pooled buffers, including on failure.
+            foreach (var read in reads)
+                if (read != null) await ((Task)read).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             foreach (var buffer in buffers)
                 if (buffer != null) ArrayPool<byte>.Shared.Return(buffer);
+        }
+
+        void StartRead()
+        {
+            var slot = (head + active) % parallelBlocks;
+            var length = (int)Math.Min((ulong)blockSize, file.Length - requested);
+            buffers[slot] ??= ArrayPool<byte>.Shared.Rent(blockSize);
+            reads[slot] = ReadBlockAsync(requested, buffers[slot].AsMemory(0, length));
+            requested += (uint)length;
+            active++;
         }
 
         async Task<int> ReadBlockAsync(ulong offset, Memory<byte> destination)
@@ -221,11 +228,18 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
 
     // Called under the publication lane. Refresh only remote discovery: refreshing local mappings here would
     // invalidate confirmed PVL receipts during the same checkpoint. No remote reservation object is created.
-    internal async ValueTask<uint> AllocateRemoteFileIdAsync(CancellationToken cancellation = default, IReplicationStorage? storage = null)
+    internal async ValueTask ScanRemoteIdsAsync(IRemoteFileCollection storage, CancellationToken cancellation)
     {
-        await foreach (var file in (storage ?? Remote).EnumerateAsync(cancellation).ConfigureAwait(false))
+        await foreach (var file in storage.EnumerateAsync(cancellation).ConfigureAwait(false))
             if ((file.FileId & 1) == 0) _lastRemoteEvenId = Math.Max(_lastRemoteEvenId, file.FileId);
         cancellation.ThrowIfCancellationRequested();
+    }
+
+    /// <summary>Rescan unless the caller already scanned under the same publication lane, e.g. once per checkpoint.</summary>
+    internal async ValueTask<uint> AllocateRemoteFileIdAsync(CancellationToken cancellation = default,
+        IReplicationStorage? storage = null, bool rescan = true)
+    {
+        if (rescan) await ScanRemoteIdsAsync(storage ?? Remote, cancellation).ConfigureAwait(false);
         var next = (ulong)_lastRemoteEvenId + 2;
         if (next > uint.MaxValue) throw new InvalidOperationException("Remote PVL/KVI IDs exhausted.");
         return _lastRemoteEvenId = (uint)next;
@@ -234,7 +248,8 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
     public ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, CancellationToken cancellation = default) =>
         PublishPureValuesAsync(source, PublicationStorage, cancellation);
 
-    internal async ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, IReplicationStorage storage, CancellationToken cancellation)
+    internal async ValueTask<uint> PublishPureValuesAsync(KeyIndexFileSource source, IReplicationStorage storage,
+        CancellationToken cancellation, bool rescan = true)
     {
         if (source.FileType != KVFileType.PureValues ||
             !OwnsSource(source) || source.Length != source.File.GetSize())
@@ -246,7 +261,7 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
             lock (_placementLock) _placements.TryGetValue(source.FileId, out placement);
             if (placement == null)
             {
-                var remoteId = await AllocateRemoteFileIdAsync(cancellation, storage).ConfigureAwait(false);
+                var remoteId = await AllocateRemoteFileIdAsync(cancellation, storage, rescan).ConfigureAwait(false);
                 placement = new(source.Length, remoteId, false);
                 AddPlacement(source.FileId, placement);
             }

@@ -136,11 +136,11 @@ public sealed class CanonicalTrlPublisher : IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             // Restore supplies a verified canonical tail before this session has made any local commit.
             if (position.FileId == 0 ||
-                (Order(position) > Order(capture.Completed) && Order(position) > Order(PublishedPosition)))
+                (position > capture.Completed && position > PublishedPosition))
                 throw new ArgumentOutOfRangeException(nameof(position));
             if (_conflict) return TrlPublishResult.Conflict;
             var progressed = false;
-            while (Order(PublishedPosition) < Order(position))
+            while (PublishedPosition < position)
             {
                 var result = await PublishCoreAsync(position, retryPending, remoteCancellation).ConfigureAwait(false);
                 if (result is not (TrlPublishResult.Published or TrlPublishResult.Adopted)) return result;
@@ -150,8 +150,6 @@ public sealed class CanonicalTrlPublisher : IDisposable
         }
         finally { _lane.Release(); }
     }
-
-    static ulong Order(TransactionLogPosition position) => ((ulong)position.FileId << 32) | position.Offset;
 
     async ValueTask<TrlPublishResult> PublishCoreAsync(TransactionLogPosition? requestedEnd, bool retryPending,
         CancellationToken remoteCancellation)
@@ -173,7 +171,8 @@ public sealed class CanonicalTrlPublisher : IDisposable
             else
             {
                 var end = requestedEnd ?? capture.Completed;
-                if (end.FileId == 0 || end == PublishedPosition) return TrlPublishResult.Idle;
+                // Restore can install a canonical tail before local capture reports that far.
+                if (end.FileId == 0 || end <= PublishedPosition) return TrlPublishResult.Idle;
                 _plan = BuildPlan(end, remoteCancellation);
             }
         }

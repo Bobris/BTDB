@@ -17,7 +17,7 @@ internal sealed class SchemaTrlScanner(TransactionLogPosition start, Guid? datab
 
     public async ValueTask<bool> ContainsSchemaAsync(ILeaderTrlReader leader, TransactionLogPosition end, CancellationToken cancellation)
     {
-        if (Order(end) <= Order(_position)) return false;
+        if (end <= _position) return false;
         var fileId = _position.FileId;
         var offset = (ulong)_position.Offset;
         var buffer = _buffer ??= GC.AllocateUninitializedArray<byte>(256 * 1024, pinned: true);
@@ -164,6 +164,4 @@ internal sealed class SchemaTrlScanner(TransactionLogPosition start, Guid? datab
             throw new InvalidDataException("Peer TRL lineage differs from the restored database.");
         return log.PreviousFileId;
     }
-
-    static ulong Order(TransactionLogPosition position) => ((ulong)position.FileId << 32) | position.Offset;
 }

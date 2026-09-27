@@ -14,10 +14,12 @@ namespace BTDB.Replication;
 public enum ReplicationNodeRole { Restoring, Follower, Activating, Leader, RestartRequired, Stopped }
 
 /// <summary>RequestTimeout bounds each discovery and follower control/comparison step. Leader activation, publication
-/// and checkpoint maintenance transfer bulk data, so they are bounded by lease authority and optional ProgressTimeouts.</summary>
+/// and checkpoint maintenance transfer bulk data, so they are bounded by lease authority and optional ProgressTimeouts.
+/// DetachedLeaderTimeout (default 15 minutes) is how long a schema-detached node waits without leader evidence before
+/// requesting a restart.</summary>
 public sealed record ReplicationNodeOptions(string ClusterId, string Endpoint, TimeSpan PollInterval,
     TimeSpan LeaseRetryInterval, TimeSpan RequestTimeout, TimeSpan ConfirmationDuration, ulong ApplicationGeneration, TimeSpan? CompactionInterval = null,
-    ReplicationProgressTimeouts? ProgressTimeouts = null);
+    ReplicationProgressTimeouts? ProgressTimeouts = null, TimeSpan? DetachedLeaderTimeout = null);
 
 /// <summary>Application-owned restore, event progress and lifecycle integration. Databases and input processing
 /// remain owned by the host. Callbacks may run concurrently with local application work; publish progress atomically.
@@ -63,6 +65,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     readonly HashSet<string> _removed = new(StringComparer.Ordinal);
     readonly HashSet<string> _detached = new(StringComparer.Ordinal);
     readonly Dictionary<string, SchemaTrlScanner> _scanners = new(StringComparer.Ordinal);
+    // Databases selected by the connected leader. An older generation does not know databases added by an upgrade.
+    readonly HashSet<string> _leaderDatabases = new(StringComparer.Ordinal);
     // Latest local cut known to be canonical: restored, published by this node, or compared with a leader that had
     // already published it. Rechecks, activation validation and local TRL retention start here, never at the
     // startup cut, whose files local compaction may already have removed.
@@ -106,7 +110,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
 
     public async Task RunAsync(CancellationToken cancellation)
     {
-        foreach (var duration in new[] { options.PollInterval, options.LeaseRetryInterval, options.RequestTimeout, options.ConfirmationDuration })
+        var detachedTimeout = options.DetachedLeaderTimeout ?? TimeSpan.FromMinutes(15);
+        foreach (var duration in new[] { options.PollInterval, options.LeaseRetryInterval, options.RequestTimeout,
+                     options.ConfirmationDuration, options.CompactionInterval ?? TimeSpan.MaxValue, detachedTimeout })
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(duration.Ticks);
         options.ProgressTimeouts?.Validate();
         if (options.ProgressTimeouts != null && host is not IReplicationFatalRecovery)
@@ -159,8 +165,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 catch (IOException) { Disconnect(); }
                 catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { Disconnect(); }
                 catch (InvalidOperationException) when (_sessionAuthority is { IsValid: false }) { DropLeadership(); }
-                if (_detached.Count != 0 && scheduler.Elapsed - _leaderEvidenceUntil >= TimeSpan.FromMinutes(15))
-                    Restart("Detached node has had no valid leader for fifteen minutes.");
+                if (_detached.Count != 0 && scheduler.Elapsed - _leaderEvidenceUntil >= detachedTimeout)
+                    Restart("Detached node has had no valid leader within the configured timeout.");
                 if (!_restart) await WaitAsync(cancellation).ConfigureAwait(false);
             }
         }
@@ -320,7 +326,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             if (term == 0) return;
             var identity = new ReplicationPeerIdentity(options.ClusterId, term, LeaderJson.RequiredString(json, "sessionId"),
                 LeaderJson.RequiredString(json, "peerEndpoint"), LeaderJson.RequiredString(json, "apiKey"));
-            var leaderDatabases = LeaderJson.OptionalNames(json, "databaseNames") ?? [];
+            _leaderDatabases.Clear();
+            _leaderDatabases.UnionWith(LeaderJson.OptionalNames(json, "databaseNames") ?? []);
             _peer = await transport.ConnectAsync(identity, cancellation).ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
             if (_comparedLeader != (identity.Term, identity.SessionId))
@@ -331,7 +338,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             }
             foreach (var database in databases)
             {
-                if (_removed.Contains(database.Name) || _detached.Contains(database.Name) || database.RestoredBase.FileId == 0 || !leaderDatabases.Contains(database.Name, StringComparer.Ordinal))
+                if (_removed.Contains(database.Name) || _detached.Contains(database.Name) || database.RestoredBase.FileId == 0 || !_leaderDatabases.Contains(database.Name))
                     continue;
                 var canonical = _canonicalBase[database.Name];
                 if (!_scanners.ContainsKey(database.Name))
@@ -370,19 +377,19 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             if (_restart) return;
             if (status.Published is { } published && follower.Compared is { } compared)
                 AdvanceCanonicalBase(databases.First(d => d.Name == name),
-                    Order(compared.Position) < Order(published) ? compared.Position : published);
+                    compared.Position < published ? compared.Position : published);
         }
         foreach (var database in databases)
         {
-            if (database.RestoredBase.FileId != 0) continue;
-            if (_removed.Contains(database.Name)) continue;
+            if (database.RestoredBase.FileId != 0 || _removed.Contains(database.Name) ||
+                !_leaderDatabases.Contains(database.Name)) continue;
             var dispatched = scheduler.Elapsed;
             var challenge = checked(++_monitorChallenge);
             var status = await _peer.PollAsync(database.Name, challenge, options.ConfirmationDuration, cancellation).ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
             if (status.Challenge == challenge && status.Granted && scheduler.Elapsed < dispatched + options.ConfirmationDuration)
                 _leaderEvidenceUntil = dispatched + options.ConfirmationDuration;
-            if (database.RestoredBase.FileId == 0 && status.Progress != null)
+            if (status.Progress != null)
             { Restart("New database initialization is published; restore its fixed input cursor."); return; }
         }
         if (_detached.Count != 0 && _leaderEvidenceUntil <= scheduler.Elapsed)
@@ -451,7 +458,6 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     async Task RunLocalMaintenanceAsync(IReadOnlyList<ActivationDatabase> databases, CancellationToken cancellation)
     {
         var interval = options.CompactionInterval ?? TimeSpan.FromMinutes(5);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(interval.Ticks);
         while (true)
         {
             var ready = new TaskCompletionSource();
@@ -514,15 +520,13 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         host.RequestRestart(reason);
     }
 
-    static ulong Order(TransactionLogPosition position) => ((ulong)position.FileId << 32) | position.Offset;
-
     // Canonical bytes need no recheck and no local retention for peers; release older local TRLs to compaction.
     void AdvanceCanonicalBase(ActivationDatabase database, TransactionLogPosition position)
     {
         if (position.FileId == 0 || !_canonicalBase.TryGetValue(database.Name, out var current) ||
-            Order(position) <= Order(current)) return;
+            position <= current) return;
         _canonicalBase[database.Name] = position;
-        if (Order(position) > Order(database.Capture.Acknowledged)) database.Capture.Acknowledge(position);
+        if (position > database.Capture.Acknowledged) database.Capture.Acknowledge(position);
     }
 
     void Disconnect()
@@ -550,10 +554,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             {
                 var position = publishers[i].PublishedPosition;
                 var previous = _publicationWatchdogs[i];
-                var completed = databases[i].Capture.Completed;
-                var pending = completed.FileId > position.FileId ||
-                    completed.FileId == position.FileId && completed.Offset > position.Offset;
-                if (!pending)
+                if (databases[i].Capture.Completed <= position)
                 {
                     previous.Watchdog?.Dispose();
                     _publicationWatchdogs[i] = (null, position);
@@ -616,20 +617,15 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
 
     void DropLeadership()
     {
+        CancellationTokenSource? remoteWork;
         lock (_remoteLock)
         {
             DisposeWatchdogs();
             _sessionAuthority = null; // Already-dispatched old deadlines cannot recover a replacement session.
-        }
-        var serving = Interlocked.Exchange(ref _serving, null);
-        serving?.Close();
-        CancellationTokenSource? remoteWork;
-        lock (_remoteLock)
-        {
             remoteWork = _remoteWork;
             _remoteWork = null;
-            _sessionAuthority = null;
         }
+        Interlocked.Exchange(ref _serving, null)?.Close();
         remoteWork?.Cancel();
         var jobs = _remoteMaintenance.ToArray();
         _remoteMaintenance.Clear();

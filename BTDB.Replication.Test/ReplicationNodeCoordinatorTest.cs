@@ -276,6 +276,7 @@ public class ReplicationNodeCoordinatorTest
                     FileCollection = new LocalReplicatedCollection(Files), TransactionLogCapture = Capture,
                     Compression = new NoCompressionStrategy(), CompactorScheduler = null
                 }, cancellation);
+                if (!CoordinatesMain) return [];
                 return [new("main", Db, Capture, Storage, new(Cluster.Genesis(1), 1), default,
                     id => $"{_name}-{_session}/{id}")];
             }
@@ -512,6 +513,27 @@ public class ReplicationNodeCoordinatorTest
         await old.Write(2, 2);
         Assert.Equal(1, old.Applied);
         Assert.Equal(0, old.Restarts);
+    }
+
+    [Fact]
+    public async Task UpgradeAddingDatabaseHandsOffFromOlderLeaderThatDoesNotKnowIt()
+    {
+        await using var cluster = new Cluster();
+        cluster.Record = new("1", """
+            {"format":1,"clusterId":"cluster","term":1,"revision":1,"applicationGeneration":1,
+             "databaseNames":[],"sessionId":"seed","peerEndpoint":"seed","apiKey":"seed"}
+            """);
+        var old = cluster.Start("old", coordinatesMain: false);
+        cluster.Advance(30);
+        Assert.Equal(ReplicationNodeRole.Leader, old.Coordinator.Role);
+        var next = cluster.Start("next", generation: 2);
+        next.PreparedUpgrade = new(2, "10000000-0000-0000-0000-000000000002");
+        cluster.Advance(60);
+        Assert.Equal(1, old.Storage.Transfers);
+        Assert.Equal(ReplicationNodeRole.Leader, next.Coordinator.Role);
+        Assert.Equal(1, next.Initializations);
+        Assert.Equal(0, next.Restarts);
+        Assert.Equal(2ul, JsonNode.Parse(cluster.Record.Json)!["applicationGeneration"]!.GetValue<ulong>());
     }
 
     [Theory]
