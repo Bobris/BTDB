@@ -102,7 +102,7 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
                 var failed = false;
                 using (var request = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
                 using (var timeout = requestTimeout is { } duration
-                           ? clock.Schedule(duration, () => request.Cancel(), "lease request timeout") : null)
+                           ? clock.Schedule(duration, () => ReplicationTimeouts.Cancel(request), "lease request timeout") : null)
                 {
                     try { await MaintainAsync(request.Token).ConfigureAwait(false); }
                     catch (InvalidOperationException) when (_closed) { return; }

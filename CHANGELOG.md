@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Ignore a replication request timeout that fires after its request already completed. Scheduler disposal does
+  not wait for a started callback, so the late cancel could hit a disposed `CancellationTokenSource` and throw
+  `ObjectDisposedException` on the timer thread.
+
 - Stop a replication lease session fenced between its validity check and renewal dispatch (expiry, transfer or
   disqualification) from failing lease maintenance; acquire a fresh session instead, and never dispatch an
   acquisition after disqualification.

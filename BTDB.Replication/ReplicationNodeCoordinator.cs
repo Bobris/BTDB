@@ -134,7 +134,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             while (true)
             {
                 using var request = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-                using var timeout = scheduler.Schedule(options.RequestTimeout, () => request.Cancel(), "leader discovery timeout");
+                using var timeout = scheduler.Schedule(options.RequestTimeout, () => ReplicationTimeouts.Cancel(request), "leader discovery timeout");
                 try { await DiscoverAsync(databases, request.Token).ConfigureAwait(false); break; }
                 catch (IOException) { }
                 catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { }
@@ -152,7 +152,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 if (maintenance.IsCompleted) await maintenance.ConfigureAwait(false);
                 if (localMaintenance.IsCompleted) await localMaintenance.ConfigureAwait(false);
                 using var request = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-                using var timeout = scheduler.Schedule(options.RequestTimeout, () => request.Cancel(), "replication request timeout");
+                using var timeout = scheduler.Schedule(options.RequestTimeout, () => ReplicationTimeouts.Cancel(request), "replication request timeout");
                 try { await StepAsync(databases, request.Token, cancellation).ConfigureAwait(false); }
                 catch (InvalidDataException) { Restart("Local history or database configuration requires canonical restore."); }
                 catch (FileNotFoundException) { Restart("Required TRL bytes are no longer retained; canonical restore is required."); }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Replication.Test.Simulation;
@@ -76,6 +77,32 @@ public class LeaseSessionControllerTest
             Assert.NotNull(next);
             Assert.NotSame(first, next);
         }
+    }
+
+    // Like a real timer: disposal stops pending work, but a callback that already started still runs afterwards.
+    sealed class LateCallbackScheduler : IReplicationScheduler
+    {
+        public readonly List<(string Description, Action Callback)> Started = new();
+        public TimeSpan Elapsed => TimeSpan.Zero;
+        public IDisposable Schedule(TimeSpan delay, Action callback, string description)
+        {
+            Started.Add((description, callback));
+            return new Registration();
+        }
+        sealed class Registration : IDisposable { public void Dispose() { } }
+    }
+
+    [Fact]
+    public async Task LateRequestTimeoutAfterCompletedMaintenanceIsHarmless()
+    {
+        var clock = new LateCallbackScheduler();
+        var controller = new LeaseSessionController(new Storage(), clock, 0, TimeSpan.Zero);
+        using var stop = new CancellationTokenSource();
+        var run = controller.RunAsync(TimeSpan.FromTicks(10), _ => { }, stop.Token, TimeSpan.FromTicks(5));
+        var timeout = Assert.Single(clock.Started, w => w.Description == "lease request timeout");
+        timeout.Callback(); // The request finished and disposed its cancellation source first.
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
     }
 
     sealed class Storage : IReplicationLeaseStorage
