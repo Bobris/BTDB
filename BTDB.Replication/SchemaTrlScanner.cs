@@ -114,6 +114,9 @@ internal sealed class SchemaTrlScanner(TransactionLogPosition start, Guid? datab
                     KVCommandType.EraseOne or KVCommandType.EraseRange or KVCommandType.UpdateKeySuffix or KVCommandType.DeltaUlongs)
                     if (!transaction) throw new InvalidDataException("Native mutation outside a transaction.");
                 consumed = (int)reader.GetCurrentPosition();
+                // Keep complete-transaction progress, so a cancelled scan resumes instead of rescanning everything.
+                if (!schema && command is KVCommandType.Commit or KVCommandType.CommitWithDeltaUlong or KVCommandType.Rollback)
+                    _position = new(fileId, checked((uint)(offset + (uint)consumed)));
                 if (schema)
                 {
                     cancellation.ThrowIfCancellationRequested();

@@ -44,7 +44,7 @@ public class ReplicationNodeCoordinatorTest
             return cluster;
         }
 
-        public Host Start(string name, bool unavailable = false, ulong generation = 1, bool coordinatesMain = true, ulong inputEnd = 42, long? compactionTicks = null, long? progressTimeoutTicks = null, bool blockActivation = false, long restartDelayTicks = 1, bool failCheckpoint = false, bool maintain = false, long checkpointDelayTicks = 0)
+        public Host Start(string name, bool unavailable = false, ulong generation = 1, bool coordinatesMain = true, ulong inputEnd = 42, long? compactionTicks = null, long? progressTimeoutTicks = null, bool blockActivation = false, long restartDelayTicks = 1, bool failCheckpoint = false, bool maintain = false, long checkpointDelayTicks = 0, bool smallLogs = false)
         {
             var host = new Host(this, name);
             host.Generation = generation;
@@ -54,6 +54,7 @@ public class ReplicationNodeCoordinatorTest
             host.RestartDelayTicks = restartDelayTicks;
             host.FailCheckpoint = failCheckpoint;
             host.Maintain = maintain;
+            host.SmallLogs = smallLogs;
             host.Storage.SimulateCheckpoints = maintain;
             host.Storage.CheckpointDelayTicks = checkpointDelayTicks;
             host.Storage.FailCheckpoint = failCheckpoint;
@@ -233,7 +234,7 @@ public class ReplicationNodeCoordinatorTest
         public int Restarts, Applied, Initializations, Compactions, LocalKvis;
         public long? CompactionTicks, ProgressTimeoutTicks;
         public long RestartDelayTicks;
-        public bool FailCheckpoint, Maintain;
+        public bool FailCheckpoint, Maintain, SmallLogs;
         public int FatalRestarts;
         public string? FatalReason;
         public LeaseSessionController Leases = null!;
@@ -280,7 +281,8 @@ public class ReplicationNodeCoordinatorTest
             Db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
             {
                 FileCollection = Collection, TransactionLogCapture = Capture, Logger = this,
-                Compression = new NoCompressionStrategy(), CompactorScheduler = null
+                Compression = new NoCompressionStrategy(), CompactorScheduler = null,
+                TransactionLogSizeStrategy = SmallLogs ? new SmallTransactionLogs() : null
             }, cancellation);
             if (!CoordinatesMain) return [];
             return [new("main", Db, Capture, Storage, new(Cluster.Genesis(1), 1),
@@ -339,18 +341,23 @@ public class ReplicationNodeCoordinatorTest
             var end = Capture.Completed;
             lock (_progressLock) _progress = new(read.GetCommitUlong(), end.FileId, end.Offset);
         }
-        public async Task Write(ulong id, byte value)
+        public async Task Write(ulong id, byte value, int size = 1, byte? key = null)
         {
             using (var transaction = await Db!.StartWritingTransaction(id))
             {
                 using var cursor = transaction.CreateCursor();
-                cursor.CreateOrUpdateKeyValue([(byte)id], [value]);
+                cursor.CreateOrUpdateKeyValue([key ?? (byte)id], Enumerable.Repeat(value, size).ToArray());
                 transaction.Commit();
             }
             var end = Capture.Completed;
             lock (_progressLock) _progress = new(id, end.FileId, end.Offset);
             Applied++;
         }
+    }
+
+    sealed class SmallTransactionLogs : ITransactionLogSizeStrategy
+    {
+        public TransactionLogSizeLimits GetLimits(uint fileId) => new(1024, 1536);
     }
 
     sealed class PeerTransport(Cluster cluster, string caller) : IReplicationPeerTransport
@@ -664,8 +671,10 @@ public class ReplicationNodeCoordinatorTest
         foreach (var node in cluster.Nodes) await node.Write(2, 2);
         cluster.Advance(10);
         Assert.True(second.Peers.Reads > 0 && third.Peers.Reads > 0);
-        Assert.Equal(second.Capture.Completed, second.Capture.Acknowledged);
+        Assert.Equal(second.Capture.Completed, second.Status.Current.Databases[0].Compared!.Value.Position);
         Assert.Equal(1ul, await cluster.RestoreEvent()); // Followers matched leader-only bytes.
+        // Unpublished matches are not canonical: local retention keeps them for a recheck against the next leader.
+        Assert.NotEqual(second.Capture.Completed, second.Capture.Acknowledged);
         first.Storage.Unavailable = true;
         cluster.Isolated.Add("first");
         cluster.Advance(140);
@@ -713,6 +722,51 @@ public class ReplicationNodeCoordinatorTest
         cluster.Advance(20);
         Assert.Equal(4ul, await cluster.RestoreEvent());
         Assert.Equal(0, second.Restarts);
+    }
+
+    [Fact]
+    public async Task LocalCompactionOfStartupTrlsDoesNotBreakFailoverOrFollowerRecheck()
+    {
+        await using var cluster = await Cluster.Create();
+        var first = cluster.Start("first", compactionTicks: 7, smallLogs: true);
+        var second = cluster.Start("second", compactionTicks: 7, smallLogs: true);
+        var third = cluster.Start("third", compactionTicks: 7, smallLogs: true);
+        cluster.Advance(10);
+        Assert.Equal(ReplicationNodeRole.Leader, first.Coordinator.Role);
+        ulong id = 2;
+        for (; id < 40; id++)
+        {
+            // Overwritten values create waste, so compaction moves live data and deletes old TRLs.
+            foreach (var node in cluster.Nodes) await node.Write(id, (byte)id, 300, (byte)(id % 3));
+            cluster.Advance(3);
+        }
+        cluster.Advance(50);
+        Assert.Null(second.Files.GetFile(1)); // The restored startup TRL is gone on the followers.
+        Assert.Null(third.Files.GetFile(1));
+        first.Storage.Unavailable = true;
+        cluster.Isolated.Add("first");
+        cluster.Advance(200);
+        var leader = Assert.Single(cluster.Nodes, n => n.Coordinator.Role == ReplicationNodeRole.Leader);
+        var follower = Assert.Single(cluster.Nodes, n => n != first && n != leader);
+        Assert.Equal(ReplicationNodeRole.Follower, follower.Coordinator.Role);
+        foreach (var node in new[] { leader, follower }) await node.Write(id, 7, 300, 1);
+        cluster.Advance(30);
+        Assert.Equal(id, await cluster.RestoreEvent());
+        Assert.Equal(leader.Capture.Completed, follower.Status.Current.Databases[0].Compared!.Value.Position);
+        Assert.All(new[] { leader, follower }, n => Assert.Equal(0, n.Restarts));
+    }
+
+    [Fact]
+    public async Task MalformedLeaderRecordRequestsRestartInsteadOfCrashingTheNode()
+    {
+        await using var cluster = await Cluster.Create();
+        // A newer generation keeps this node from contending, so it must follow a leader that has no session.
+        cluster.Record = new("1", """{"format":1,"clusterId":"cluster","term":3,"applicationGeneration":2,"databaseNames":["main"]}""");
+        var follower = cluster.Start("follower");
+        cluster.Advance(30);
+        Assert.Equal(1, follower.Restarts);
+        await follower.Run.WaitAsync(TimeSpan.FromSeconds(10)); // Completes normally; a crash would rethrow here.
+        Assert.Equal(ReplicationNodeRole.RestartRequired, follower.Coordinator.Role);
     }
 
     [Fact]

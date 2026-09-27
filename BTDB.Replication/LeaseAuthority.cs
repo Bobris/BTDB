@@ -48,14 +48,23 @@ public sealed class LeaseAuthority
     public TimeSpan Deadline { get { lock (_lock) return TimeSpan.FromTicks(_deadline); } }
 
     /// <summary>Call immediately before dispatch, not when the acquire/renew response arrives.</summary>
-    internal long BeginRequest()
+    internal long BeginRequest() => TryBeginRequest(out var request) ? request
+        : throw new InvalidOperationException("A fenced session cannot renew its way back into authority.");
+
+    /// <summary>False when the session expired or was fenced, possibly just after a caller observed it valid.</summary>
+    internal bool TryBeginRequest(out long request)
     {
         lock (_lock)
         {
             _ = IsValid;
-            if (_fenced) throw new InvalidOperationException("A fenced session cannot renew its way back into authority.");
+            if (_fenced)
+            {
+                request = 0;
+                return false;
+            }
             _requestStarted = _clock.Elapsed.Ticks;
-            return checked(++_request);
+            request = checked(++_request);
+            return true;
         }
     }
 

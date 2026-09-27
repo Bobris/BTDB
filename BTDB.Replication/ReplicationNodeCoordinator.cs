@@ -63,6 +63,14 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     readonly HashSet<string> _removed = new(StringComparer.Ordinal);
     readonly HashSet<string> _detached = new(StringComparer.Ordinal);
     readonly Dictionary<string, SchemaTrlScanner> _scanners = new(StringComparer.Ordinal);
+    // Latest local cut known to be canonical: restored, published by this node, or compared with a leader that had
+    // already published it. Rechecks, activation validation and local TRL retention start here, never at the
+    // startup cut, whose files local compaction may already have removed.
+    readonly Dictionary<string, TransactionLogPosition> _canonicalBase = new(StringComparer.Ordinal);
+    // Comparison progress with one leader session survives reconnects, timeouts included; a new leader rechecks from
+    // the canonical base because a predecessor's unpublished bytes may differ from its history.
+    (ulong Term, string SessionId)? _comparedLeader;
+    readonly Dictionary<string, TransactionLogPosition> _resumeComparison = new(StringComparer.Ordinal);
     TimeSpan _leaderEvidenceUntil;
     long _monitorChallenge;
     readonly object _remoteLock = new();
@@ -118,6 +126,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 catch (IOException) { await WaitAsync(cancellation).ConfigureAwait(false); }
             }
             _databases = databases;
+            foreach (var database in databases)
+                if (database.RestoredBase.FileId != 0) _canonicalBase[database.Name] = database.RestoredBase;
             localMaintenance = RunLocalMaintenanceAsync(databases, lifetime.Token);
             listener = transport.Listen(options.Endpoint, Accept);
             // Observe the durable generation floor before the first lease request.
@@ -208,7 +218,10 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                     throw new InvalidDataException("Candidate identity differs from the configured node.");
                 lock (_remoteLock)
                 {
-                    _leadership = new(new LeaderSelection(records, leases, authority, _candidate), databases,
+                    // Validation starts at each canonical base: the local bytes before it are already canonical.
+                    var candidates = databases.Select(d => _canonicalBase.TryGetValue(d.Name, out var canonical)
+                        ? d with { RestoredBase = canonical } : d).ToArray();
+                    _leadership = new(new LeaderSelection(records, leases, authority, _candidate), candidates,
                         PrepareDatabaseAsync, _activationWatchdog == null ? null : _activationWatchdog.Progress);
                 }
             }
@@ -265,7 +278,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                     throw;
                 }
                 if (!authority.IsValid) { DropLeadership(); return; }
-                Volatile.Write(ref _serving, new(identity, authority, databases, host, scheduler, options.ApplicationGeneration));
+                Volatile.Write(ref _serving, new(identity, authority, databases, publishers, host, scheduler, options.ApplicationGeneration));
             }
             lock (_remoteLock)
             {
@@ -278,6 +291,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 var publisher = publishers[i];
                 var result = await publisher.PublishNextAsync(true, cancellation).ConfigureAwait(false);
                 ObservePublication(databases, publishers, authority, i);
+                AdvanceCanonicalBase(databases[i], publisher.PublishedPosition);
                 if (result is TrlPublishResult.Conflict or TrlPublishResult.AuthorityLost)
                 {
                     authority.Fence();
@@ -302,19 +316,29 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         if (_peer == null)
         {
             var json = await DiscoverAsync(databases, cancellation).ConfigureAwait(false);
-            if ((json["term"]?.GetValue<ulong>() ?? 0) == 0) return;
-            var identity = new ReplicationPeerIdentity(options.ClusterId, json["term"]!.GetValue<ulong>(),
-                json["sessionId"]!.GetValue<string>(), json["peerEndpoint"]!.GetValue<string>(), json["apiKey"]!.GetValue<string>());
+            var term = LeaderJson.OptionalUInt64(json, "term");
+            if (term == 0) return;
+            var identity = new ReplicationPeerIdentity(options.ClusterId, term, LeaderJson.RequiredString(json, "sessionId"),
+                LeaderJson.RequiredString(json, "peerEndpoint"), LeaderJson.RequiredString(json, "apiKey"));
+            var leaderDatabases = LeaderJson.OptionalNames(json, "databaseNames") ?? [];
             _peer = await transport.ConnectAsync(identity, cancellation).ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
+            if (_comparedLeader != (identity.Term, identity.SessionId))
+            {
+                _comparedLeader = (identity.Term, identity.SessionId);
+                _resumeComparison.Clear();
+                _scanners.Clear();
+            }
             foreach (var database in databases)
             {
-                if (_removed.Contains(database.Name) || _detached.Contains(database.Name) || database.RestoredBase.FileId == 0 || !json["databaseNames"]!.AsArray().Any(n => n!.GetValue<string>() == database.Name))
+                if (_removed.Contains(database.Name) || _detached.Contains(database.Name) || database.RestoredBase.FileId == 0 || !leaderDatabases.Contains(database.Name, StringComparer.Ordinal))
                     continue;
-                _scanners.Add(database.Name, new(database.RestoredBase, database.Database.FileCollection.Guid));
+                var canonical = _canonicalBase[database.Name];
+                if (!_scanners.ContainsKey(database.Name))
+                    _scanners.Add(database.Name, new(canonical, database.Database.FileCollection.Guid));
                 _followers.Add(database.Name, new(database.Database.FileCollection.GetFile, database.Capture, _peer.Reader(database.Name),
                     scheduler, () => Restart("Follower native history diverged from its selected leader."),
-                    database.RestoredBase));
+                    _resumeComparison.GetValueOrDefault(database.Name, canonical), acknowledge: false));
             }
         }
         foreach (var (name, follower) in _followers.ToArray())
@@ -344,6 +368,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             }
             await follower.CompareLatestAsync(cancellation).ConfigureAwait(false);
             if (_restart) return;
+            if (status.Published is { } published && follower.Compared is { } compared)
+                AdvanceCanonicalBase(databases.First(d => d.Name == name),
+                    Order(compared.Position) < Order(published) ? compared.Position : published);
         }
         foreach (var database in databases)
         {
@@ -405,14 +432,14 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     {
         var record = await records.ReadAsync(cancellation).ConfigureAwait(false);
         cancellation.ThrowIfCancellationRequested();
-        var json = JsonNode.Parse(record.Json)?.AsObject() ?? throw new InvalidDataException("Missing leader record.");
-        if (json["clusterId"]?.GetValue<string>() != options.ClusterId || json["format"]?.GetValue<int>() != 1)
+        var json = LeaderJson.Parse(record.Json);
+        if (LeaderJson.OptionalString(json, "clusterId") != options.ClusterId || LeaderJson.OptionalInt32(json, "format") != 1)
             throw new InvalidDataException("Leader discovery returned another cluster or format.");
-        var generation = json["applicationGeneration"]?.GetValue<ulong>() ?? 0;
+        var generation = LeaderJson.OptionalUInt64(json, "applicationGeneration");
         if (generation > options.ApplicationGeneration) leases.Disqualify();
-        if (generation >= options.ApplicationGeneration && json["databaseNames"] is JsonArray names)
+        if (generation >= options.ApplicationGeneration && LeaderJson.OptionalNames(json, "databaseNames") is { } names)
         {
-            var selected = names.Select(n => n!.GetValue<string>()).ToHashSet(StringComparer.Ordinal);
+            var selected = names.ToHashSet(StringComparer.Ordinal);
             if (generation == options.ApplicationGeneration && !selected.SetEquals(databases.Select(d => d.Name)))
                 throw new InvalidDataException("The same application generation must select the same database set.");
             foreach (var database in databases)
@@ -487,11 +514,25 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         host.RequestRestart(reason);
     }
 
+    static ulong Order(TransactionLogPosition position) => ((ulong)position.FileId << 32) | position.Offset;
+
+    // Canonical bytes need no recheck and no local retention for peers; release older local TRLs to compaction.
+    void AdvanceCanonicalBase(ActivationDatabase database, TransactionLogPosition position)
+    {
+        if (position.FileId == 0 || !_canonicalBase.TryGetValue(database.Name, out var current) ||
+            Order(position) <= Order(current)) return;
+        _canonicalBase[database.Name] = position;
+        if (Order(position) > Order(database.Capture.Acknowledged)) database.Capture.Acknowledge(position);
+    }
+
     void Disconnect()
     {
-        foreach (var follower in _followers.Values) follower.Close();
+        foreach (var (name, follower) in _followers)
+        {
+            follower.Close();
+            if (follower.ResumePosition is { } resume) _resumeComparison[name] = resume;
+        }
         _followers.Clear();
-        _scanners.Clear();
         _peer?.Dispose();
         _peer = null;
     }
@@ -623,7 +664,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     }
 
     sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAuthority authority,
-        IReadOnlyList<ActivationDatabase> databases,
+        IReadOnlyList<ActivationDatabase> databases, IReadOnlyList<CanonicalTrlPublisher> publishers,
         IReplicationNodeHost host, IReplicationScheduler scheduler, ulong generation)
     {
         readonly object _lock = new();
@@ -632,6 +673,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         readonly ConfirmationGrants _grants = new(scheduler, authority);
         readonly Dictionary<string, LeaderTrlReader> _readers = databases.ToDictionary(d => d.Name,
             d => new LeaderTrlReader(d.Database, d.Capture, authority), StringComparer.Ordinal);
+        readonly Dictionary<string, CanonicalTrlPublisher> _publishers = databases.Select((d, i) => (d.Name, publishers[i]))
+            .ToDictionary(p => p.Name, p => p.Item2, StringComparer.Ordinal);
         bool _closed;
         PreparedHandoff? _handoff;
         public PreparedHandoff? Handoff { get { lock (_lock) return _handoff; } }
@@ -677,8 +720,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 {
                     Check();
                     if (database != null && !leader._readers.ContainsKey(database)) throw new IOException("Unknown peer database.");
+                    var published = database == null ? default : leader._publishers[database].PublishedPosition;
                     return ValueTask.FromResult(new ReplicationPeerProgress(challenge, leader._grants.TryIssue(duration),
-                        database == null ? null : leader._host.GetProgress(database)));
+                        database == null ? null : leader._host.GetProgress(database), published.FileId == 0 ? null : published));
                 }
             }
             public ValueTask OfferHandoffAsync(PreparedHandoff offer, CancellationToken cancellation)
@@ -708,13 +752,19 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             }
             sealed class ReaderProxy(Connection connection, string database) : ILeaderTrlReader
             {
-                public ValueTask<int> ReadAsync(uint fileId, ulong offset, Memory<byte> destination, CancellationToken cancellation)
+                // Disk reads run outside the session lock so concurrent peer reads, polls and fencing never queue
+                // behind them. The reader rechecks closure and authority after reading; so does this proxy.
+                public async ValueTask<int> ReadAsync(uint fileId, ulong offset, Memory<byte> destination, CancellationToken cancellation)
                 {
+                    LeaderTrlReader reader;
                     lock (connection.Owner._lock)
                     {
                         connection.Check();
-                        return connection.Owner._readers[database].ReadAsync(fileId, offset, destination, cancellation);
+                        reader = connection.Owner._readers[database];
                     }
+                    var count = await reader.ReadAsync(fileId, offset, destination, cancellation).ConfigureAwait(false);
+                    lock (connection.Owner._lock) connection.Check();
+                    return count;
                 }
             }
         }

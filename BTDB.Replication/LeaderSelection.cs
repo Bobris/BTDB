@@ -48,7 +48,7 @@ internal sealed class LeaderSelection(ILeaderRecordStorage storage, LeaseSession
         var observed = await storage.ReadAsync(cancellation).ConfigureAwait(false);
         cancellation.ThrowIfCancellationRequested();
         RequireAuthority();
-        var current = JsonNode.Parse(observed.Json)?.AsObject() ?? throw new InvalidDataException("Missing leader JSON.");
+        var current = LeaderJson.Parse(observed.Json);
         if (_intent != null)
         {
             if (JsonNode.DeepEquals(current, _intent)) return Selected();
@@ -56,19 +56,19 @@ internal sealed class LeaderSelection(ILeaderRecordStorage storage, LeaseSession
         }
         else
         {
-            if (current["clusterId"]?.GetValue<string>() != candidate.ClusterId ||
-                current["format"]?.GetValue<int>() != 1)
+            if (LeaderJson.OptionalString(current, "clusterId") != candidate.ClusterId ||
+                LeaderJson.OptionalInt32(current, "format") != 1)
                 throw new InvalidDataException("Leader record belongs to a different cluster or format.");
-            var generation = current["applicationGeneration"]?.GetValue<ulong>() ?? 0;
+            var generation = LeaderJson.OptionalUInt64(current, "applicationGeneration");
             if (generation > candidate.ApplicationGeneration) return Conflict();
             if (generation == candidate.ApplicationGeneration && current["databaseNames"] is { } names &&
                 !JsonNode.DeepEquals(names, DatabaseNames()))
                 throw new InvalidDataException("The same application generation must select the same database set.");
-            if (current["sessionId"]?.GetValue<string>() == candidate.SessionId)
+            if (LeaderJson.OptionalString(current, "sessionId") == candidate.SessionId)
                 throw new InvalidDataException("A fresh lease requires a fresh leadership session identity.");
             _intent = current.DeepClone().AsObject();
-            _intent["term"] = checked((current["term"]?.GetValue<ulong>() ?? 0) + 1);
-            _intent["revision"] = checked((current["revision"]?.GetValue<ulong>() ?? 0) + 1);
+            _intent["term"] = checked(LeaderJson.OptionalUInt64(current, "term") + 1);
+            _intent["revision"] = checked(LeaderJson.OptionalUInt64(current, "revision") + 1);
             _intent["nodeId"] = candidate.NodeId;
             _intent["sessionId"] = candidate.SessionId;
             _intent["applicationGeneration"] = candidate.ApplicationGeneration;
@@ -87,7 +87,7 @@ internal sealed class LeaderSelection(ILeaderRecordStorage storage, LeaseSession
         observed = await storage.ReadAsync(cancellation).ConfigureAwait(false);
         cancellation.ThrowIfCancellationRequested();
         RequireAuthority();
-        if (JsonNode.DeepEquals(JsonNode.Parse(observed.Json), _intent)) return Selected();
+        if (JsonNode.DeepEquals(LeaderJson.Parse(observed.Json), _intent)) return Selected();
         if (observed.Token != _previous.Token || result == LeaderWriteOutcome.Rejected) return Conflict();
         return null;
     }

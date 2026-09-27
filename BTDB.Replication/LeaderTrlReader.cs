@@ -8,13 +8,14 @@ namespace BTDB.Replication;
 
 /// <summary>
 /// Native range endpoint for one authenticated database connection under selected leader authority.
-/// The owner serializes authority changes with requests and closes the endpoint before replacing the connection.
+/// The owner closes the endpoint before replacing the connection. Close may race with a read in progress: every
+/// read rechecks closure and authority after copying bytes, so a closed endpoint never returns them.
 /// Files are not pinned for peers: a missing retained range requires follower recovery, never a Blob fallback.
 /// </summary>
 internal sealed class LeaderTrlReader(BTreeKeyValueDB database, TransactionLogCapture capture,
     LeaseAuthority authority) : ILeaderTrlReader
 {
-    bool _closed;
+    volatile bool _closed;
 
     public void Close() => _closed = true;
 

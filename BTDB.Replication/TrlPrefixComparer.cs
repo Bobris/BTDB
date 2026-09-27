@@ -22,8 +22,9 @@ internal interface ILeaderTrlReader
 /// cut. A byte match is not a confirmation grant or Blob durability acknowledgement. Blob validation belongs to
 /// becoming leader (and bootstrap/recovery), not routine follower comparison. No native headers/commands are decoded.
 /// </summary>
+/// With acknowledge false the owner derives retention itself; a byte match against one leader is not canonical history.
 internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile, TransactionLogCapture capture,
-    TransactionLogPosition? compareFrom = null)
+    TransactionLogPosition? compareFrom = null, bool acknowledge = true)
 {
     public TrlPrefixComparer(IFileCollection local, TransactionLogCapture capture, TransactionLogPosition? compareFrom = null)
         : this(local.GetFile, capture, compareFrom) { }
@@ -31,6 +32,10 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
     readonly SemaphoreSlim _lane = new(1);
     bool _diverged;
     TransactionLogPosition? _comparisonPosition = compareFrom;
+
+    /// <summary>Byte position already matched with this leader; not necessarily a transaction boundary. A new
+    /// comparison with the same leader may resume here, including after a cancelled comparison.</summary>
+    public TransactionLogPosition? Position => _comparisonPosition;
 
     public async ValueTask<TrlCompareResult> CompareAsync(ILeaderTrlReader leader, TransactionLogPosition end,
         CancellationToken cancellation = default)
@@ -76,6 +81,7 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
                     }
                     if (!localBuffer.AsSpan(0, count).SequenceEqual(remoteBuffer.AsSpan(0, count))) return Diverged();
                     offset += (uint)count;
+                    if (_comparisonPosition.HasValue) _comparisonPosition = new(fileId, (uint)offset);
                 }
                 if (fileId == end.FileId) break;
                 // The prior file is sealed on both nodes. A longer leader file is a different byte stream,
@@ -92,7 +98,7 @@ internal sealed class TrlPrefixComparer(Func<uint, IFileCollectionFile?> getFile
             cancellation.ThrowIfCancellationRequested();
             // A new leader can disagree with bytes acknowledged by its predecessor. Recheck from the
             // restored base without rewinding core retention; missing retained files require restart.
-            if (Order(end) > Order(capture.Acknowledged)) capture.Acknowledge(end);
+            if (acknowledge && Order(end) > Order(capture.Acknowledged)) capture.Acknowledge(end);
             if (_comparisonPosition.HasValue) _comparisonPosition = end;
             return TrlCompareResult.Matched;
         }

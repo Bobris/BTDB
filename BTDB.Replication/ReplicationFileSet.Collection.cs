@@ -16,7 +16,6 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
     volatile ConcurrentDictionary<uint, RemoteInventoryFile> _remoteFiles = new();
     readonly SemaphoreSlim _initialization = new(1);
     readonly CancellationTokenSource _lifetime = new();
-    readonly object _creationLock = new();
     uint _lastOddId, _lastEvenId;
     volatile bool _initialized, _disposed;
 
@@ -71,8 +70,11 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
                         DiscardCachedFile(candidate, reason!, id);
                 }
                 _remoteFiles[id] = file;
-                ObserveId(id);
-                ObserveId(GetLocalFileId(id));
+                lock (_placementLock)
+                {
+                    ObserveId(id);
+                    ObserveId(GetLocalFileId(id));
+                }
             }
             _initialized = true;
         }
@@ -109,7 +111,8 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
                     ObserveId(GetOrAssignLocalFileId(id, file.Selected.FileType, preserveUnmappedLocal: true));
             }
             // Reconfirm publications with the current authority before reusing an old session receipt.
-            foreach (var placement in _placements.Values) placement.Confirmed = false;
+            lock (_placementLock)
+                foreach (var placement in _placements.Values) placement.Confirmed = false;
             _remoteFiles = inventory;
         }
         finally { _initialization.Release(); }
@@ -122,6 +125,7 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
             throw new InvalidOperationException("Call and await InitializeAsync before accessing the remote inventory or opening the database.");
     }
 
+    // Caller holds _placementLock: native file creation and session PVL remapping share one ID sequence.
     void ObserveId(uint id)
     {
         if ((id & 1) != 0) _lastOddId = Math.Max(_lastOddId, id);
@@ -209,7 +213,7 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
     public IFileCollectionFile AddFile(string humanHint, FileIdParity parity)
     {
         EnsureInitialized();
-        lock (_creationLock)
+        lock (_placementLock)
         {
             var previous = parity switch
             {

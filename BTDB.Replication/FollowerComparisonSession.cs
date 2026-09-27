@@ -17,7 +17,7 @@ public readonly record struct LeaderTrlProgress(ulong EventId, uint TrlFileId, u
 /// </summary>
 internal sealed class FollowerComparisonSession(
     Func<uint, IFileCollectionFile?> getFile, TransactionLogCapture capture, ILeaderTrlReader leader,
-    IReplicationScheduler clock, Action requestRestart, TransactionLogPosition? compareFrom = null)
+    IReplicationScheduler clock, Action requestRestart, TransactionLogPosition? compareFrom = null, bool acknowledge = true)
 {
     public FollowerComparisonSession(IFileCollection local, TransactionLogCapture capture, ILeaderTrlReader leader,
         IReplicationScheduler clock, Action requestRestart, TransactionLogPosition? compareFrom = null)
@@ -26,12 +26,15 @@ internal sealed class FollowerComparisonSession(
     readonly object _lock = new();
     readonly SemaphoreSlim _lane = new(1);
     readonly CancellationTokenSource _closedCancellation = new();
-    readonly TrlPrefixComparer _comparer = new(getFile, capture, compareFrom);
+    readonly TrlPrefixComparer _comparer = new(getFile, capture, compareFrom, acknowledge);
     readonly ConfirmationWindow _window = new(clock);
     LeaderTrlProgress? _latest, _compared;
     bool _closed;
 
     public LeaderTrlProgress? Compared { get { lock (_lock) return _compared; } }
+
+    // Owner reads this after Close to resume comparison with the same leader session; the lane has stopped by then.
+    internal TransactionLogPosition? ResumePosition => _comparer.Position;
 
     // This is metadata, not a retained read root. Expiry immediately removes live confirmation.
     public LeaderTrlProgress? Confirmed { get { lock (_lock) return _window.IsValid ? _compared : null; } }

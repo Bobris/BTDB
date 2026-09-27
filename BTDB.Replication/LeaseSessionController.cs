@@ -138,9 +138,9 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
         if (_closed) throw new InvalidOperationException("Lease acquisition is closed for this node session.");
         cancellation.ThrowIfCancellationRequested();
         lock (_stateLock) if (_ineligible) return null;
-        if (Current is { } current)
+        // Expiry, transfer or disqualification can fence the session between these two checks.
+        if (Current is { } current && current.TryBeginRequest(out var request))
         {
-            var request = current.BeginRequest();
             var duration = await storage.RenewAsync(_handle!, cancellation).ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
             if (duration is { } confirmed) current.AcceptSuccess(request, confirmed);
@@ -153,6 +153,8 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
             _authority?.Fence();
             _authority = null;
             _handle = null;
+            // A concurrent transfer or disqualification must not dispatch an acquisition nobody would renew.
+            if (_ineligible) return null;
         }
         var candidate = new LeaseAuthority(clock, maximumClockDriftPpm, safetyMargin);
         var acquire = candidate.BeginRequest();

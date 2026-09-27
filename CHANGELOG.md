@@ -4,6 +4,30 @@
 
 ### Fixed
 
+- Stop a replication lease session fenced between its validity check and renewal dispatch (expiry, transfer or
+  disqualification) from failing lease maintenance; acquire a fresh session instead, and never dispatch an
+  acquisition after disqualification.
+
+- Report a malformed `leader.json` (invalid JSON, wrong field types or missing leader session fields) as invalid
+  configuration (`InvalidDataException`), which requests a node restart, instead of crashing the host with
+  `InvalidOperationException` or `NullReferenceException`.
+
+- Serialize `ReplicationFileSet` file ID allocation and PVL placement updates under one lock; native file creation
+  and session PVL remapping could previously race on the same ID sequence.
+
+- Serve leader TRL ranges to peers outside the leader session lock, so polls, fencing and other peer reads no longer
+  wait for disk reads.
+
+- Stage only appended bytes for small canonical TRL appends in Azure, merging partial trailing blocks once they
+  would reach 4 MiB or 64 blocks, instead of reuploading up to 4 MiB on every publication. Parse checkpoint KVI names
+  with invariant, sign-free number parsing.
+
+- Keep failover and follower rechecks working after local compaction removes startup TRLs. Followers track a
+  per-database canonical base (bytes compared with a leader that had already published them, or published locally)
+  and use it for local TRL retention, rechecks against a new leader, schema scanning and takeover validation, instead
+  of the restored startup cut. Leader polls now report the published cut. Comparison and schema scanning with the
+  same leader resume after reconnects and cancelled requests instead of starting over.
+
 - Stop remote inventory handles in `ReplicationFileSet` from blocking a thread on synchronous network reads.
   They are metadata-only; `RandomRead` and `GetExclusiveReader` now throw `NotSupportedException`, because the
   database reads remote files only from the local cache after explicit prefetch.

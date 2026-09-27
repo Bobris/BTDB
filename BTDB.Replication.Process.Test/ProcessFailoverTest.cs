@@ -153,7 +153,7 @@ public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<Azurite
     }
 
     static bool Compared(NodeStatus state, ulong id) => state.EventId == id && state.CompletedFile != 0 &&
-        state.CompletedFile == state.AcknowledgedFile && state.CompletedOffset == state.AcknowledgedOffset;
+        state.CompletedFile == state.ComparedFile && state.CompletedOffset == state.ComparedOffset;
 
     static async Task<ulong> PublishedEvent(BlobContainerClient container)
     {

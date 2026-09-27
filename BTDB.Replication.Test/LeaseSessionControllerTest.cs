@@ -29,6 +29,55 @@ public class LeaseSessionControllerTest
         Assert.Equal(attempts, storage.Acquires + storage.Renews);
     }
 
+    // Advances time between two reads of one maintenance attempt, like a pause right after a validity check.
+    sealed class SteppingClock : IReplicationScheduler
+    {
+        public long Ticks;
+        public Action? AfterRead;
+        public TimeSpan Elapsed
+        {
+            get
+            {
+                var result = TimeSpan.FromTicks(Ticks);
+                var after = AfterRead;
+                AfterRead = null;
+                after?.Invoke();
+                return result;
+            }
+        }
+        public IDisposable Schedule(TimeSpan delay, Action callback, string description) => throw new NotSupportedException();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SessionFencedJustAfterValidityCheckIsReplacedInsteadOfFailingMaintenance(bool disqualify)
+    {
+        var clock = new SteppingClock();
+        var storage = new Storage();
+        var controller = new LeaseSessionController(storage, clock, 0, TimeSpan.Zero);
+        var first = (await controller.MaintainAsync())!;
+        clock.Ticks = 99;
+        clock.AfterRead = () =>
+        {
+            if (disqualify) controller.Disqualify();
+            else clock.Ticks = 100; // The lease deadline passes before the renewal is dispatched.
+        };
+        var next = await controller.MaintainAsync();
+        Assert.True(first.IsFenced);
+        Assert.Equal(0, storage.Renews);
+        if (disqualify)
+        {
+            Assert.Null(next);
+            Assert.Equal(1, storage.Acquires); // No acquisition that nobody would renew.
+        }
+        else
+        {
+            Assert.NotNull(next);
+            Assert.NotSame(first, next);
+        }
+    }
+
     sealed class Storage : IReplicationLeaseStorage
     {
         public bool Available = true;

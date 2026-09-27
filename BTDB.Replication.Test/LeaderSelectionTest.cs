@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,6 +51,22 @@ public class LeaderSelectionTest
         Assert.Equal(10ul, json["revision"]!.GetValue<ulong>());
         Assert.Equal(selected.Term, (await selection.SelectAsync())!.Term);
         Assert.Equal(1, storage.Writes);
+    }
+
+    [Theory]
+    [InlineData("""{"format":"1","clusterId":"cluster"}""")]
+    [InlineData("""{"format":1,"clusterId":"cluster","term":"seven"}""")]
+    [InlineData("""{"format":1,"clusterId":"cluster","applicationGeneration":-1}""")]
+    [InlineData("""{"format":1,"clusterId":"cluster" """)]
+    [InlineData("""[1]""")]
+    public async Task MalformedLeaderRecordIsInvalidConfigurationAndIsNeverRewritten(string json)
+    {
+        var storage = new Storage { Record = new("1", json) };
+        var clock = new DeterministicScheduler(711);
+        var leases = new LeaseSessionController(storage, clock.CreateScope("node"), 0, TimeSpan.Zero);
+        var selection = new LeaderSelection(storage, leases, (await leases.MaintainAsync())!, Candidate());
+        await Assert.ThrowsAsync<InvalidDataException>(() => selection.SelectAsync().AsTask());
+        Assert.Equal(0, storage.Writes);
     }
 
     [Fact]

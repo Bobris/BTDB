@@ -145,6 +145,38 @@ public class TrlPrefixComparerTest
     }
 
     [Fact]
+    public async Task CancelledComparisonResumesFromMatchedPositionWithoutAcknowledging()
+    {
+        using var leader = await Node.Create(false);
+        using var follower = await Node.Create(false);
+        var start = follower.Capture.Acknowledged;
+        for (ulong id = 1; id <= 3; id++)
+        {
+            await leader.Write(id, (byte)id, size: 300_000);
+            await follower.Write(id, (byte)id, size: 300_000);
+        }
+        using var reader = leader.Reader();
+        using var cancellation = new CancellationTokenSource();
+        var reads = 0;
+        reader.BeforeRead = (_, _, _) =>
+        {
+            if (++reads == 5) cancellation.Cancel();
+            return ValueTask.CompletedTask;
+        };
+        var comparer = new TrlPrefixComparer(follower.Files.GetFile, follower.Capture, start, acknowledge: false);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            comparer.CompareAsync(reader, leader.Capture.Completed, cancellation.Token).AsTask());
+        var resume = comparer.Position!.Value;
+        Assert.True(resume.Offset > start.Offset);
+        ulong firstOffset = ulong.MaxValue;
+        reader.BeforeRead = (_, offset, _) => { firstOffset = Math.Min(firstOffset, offset); return ValueTask.CompletedTask; };
+        var resumed = new TrlPrefixComparer(follower.Files.GetFile, follower.Capture, resume, acknowledge: false);
+        Assert.Equal(TrlCompareResult.Matched, await resumed.CompareAsync(reader, leader.Capture.Completed));
+        Assert.Equal(resume.Offset, firstOffset);
+        Assert.Equal(start, follower.Capture.Acknowledged); // The owner decides which matched bytes are canonical.
+    }
+
+    [Fact]
     public async Task LagWaitsAndAnOlderCutExcludesLaterLocalBytes()
     {
         using var leader = await Node.Create(false);

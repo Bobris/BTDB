@@ -242,8 +242,14 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
     sealed class Faults : HttpPipelineSynchronousPolicy
     {
         public bool Outage, Throttle, LoseAcquire, LoseSelection, LoseCommit, LoseTransfer;
+        public long StagedBytes;
         public override void OnSendingRequest(HttpMessage message)
         {
+            var query = message.Request.Uri.ToUri().Query;
+            if (message.Request.Method == RequestMethod.Put && query.Contains("comp=block", StringComparison.Ordinal) &&
+                !query.Contains("comp=blocklist", StringComparison.Ordinal) && message.Request.Content != null &&
+                message.Request.Content.TryComputeLength(out var length))
+                StagedBytes += length;
             if (Outage) throw new IOException("Injected storage outage.");
             if (Throttle) throw new RequestFailedException(503, "Injected server throttling.");
         }
@@ -301,6 +307,44 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         faults.Throttle = false;
         Assert.Equal(1, await storage.ReadAsync(new RemoteFile(2, KVFileType.KeyIndex, 1, kvi.ETag.ToString(), true, null), 0,
             new byte[1], default));
+    }
+
+    [Fact]
+    public async Task SmallTrlAppendsStageOnlyTheirSuffixAndMergeTrailingBlocksOccasionally()
+    {
+        var faults = new Faults();
+        var container = await fixture.ContainerAsync(faults);
+        var raw = new AzureReplicationStorage(container, "db");
+        var authority = new LeaseAuthority(new Clock(), 0, TimeSpan.Zero);
+        authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromHours(1));
+        using var local = new InMemoryReplicationFileStorage();
+        var capture = new TransactionLogCapture();
+        using var db = await Open(local, capture);
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        await Write(db, 1);
+        Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+        var blob = container.GetBlockBlobClient("db/trl/1");
+        var merges = 0;
+        for (ulong id = 2; id <= 140; id++)
+        {
+            var before = publisher.PublishedPosition.Offset;
+            await Write(db, id);
+            faults.StagedBytes = 0;
+            Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+            var appended = publisher.PublishedPosition.Offset - before;
+            if (faults.StagedBytes != appended)
+            {
+                merges++;
+                Assert.Equal(publisher.PublishedPosition.Offset, faults.StagedBytes); // One merged block restaged.
+            }
+            var blocks = (await blob.GetBlockListAsync(BlockListTypes.Committed)).Value.CommittedBlocks.Count();
+            Assert.InRange(blocks, 1, 64);
+        }
+        Assert.InRange(merges, 1, 3);
+        var remote = (await blob.DownloadContentAsync()).Value.Content.ToArray();
+        var expected = new byte[publisher.PublishedPosition.Offset];
+        local.GetFile(publisher.PublishedPosition.FileId)!.RandomRead(expected, 0, false);
+        Assert.Equal(expected, remote);
     }
 
     [Theory]
@@ -529,7 +573,9 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         Assert.Equal(bytes, buffer);
         await Assert.ThrowsAsync<IOException>(() => storage.ReadRangeAsync("trl/1", first.State.Token, 0, new byte[1], default).AsTask());
         var blocks = await container.GetBlockBlobClient("database/trl/1").GetBlockListAsync(BlockListTypes.Committed);
-        Assert.Equal(2, blocks.Value.CommittedBlocks.Count());
+        // The partial 17-byte block is kept and only the appended suffix is staged.
+        Assert.Equal(new long[] { 4 * 1024 * 1024, 17, bytes.Length - 4 * 1024 * 1024 - 17 },
+            blocks.Value.CommittedBlocks.Select(b => b.SizeLong));
         var adoption = await storage.WriteAsync(new(file.Index, "trl/1", second.State.Token, second.State.Length,
             second.State.Length, new(2), file), default);
         Assert.Equal(TrlWriteOutcome.Applied, adoption.Outcome);

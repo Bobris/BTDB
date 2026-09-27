@@ -9,8 +9,9 @@ using BTDB.Replication.Test;
 
 namespace BTDB.Replication.ProcessTests;
 
+// Compared is the last cut the follower matched with its leader (not local TRL retention).
 internal sealed record NodeStatus(string Role, ulong EventId, int Value, int Applied, uint CompletedFile,
-    uint CompletedOffset, uint AcknowledgedFile, uint AcknowledgedOffset);
+    uint CompletedOffset, uint ComparedFile, uint ComparedOffset);
 
 internal sealed class TestNodeHost(string endpoint, AzureReplicationStorage canonical) : IReplicationNodeHost, IAsyncDisposable, IReplicationFatalRecovery
 {
@@ -103,7 +104,7 @@ internal sealed class TestNodeHost(string endpoint, AzureReplicationStorage cano
         lock (_progressLock) _progress = new(read.GetCommitUlong(), end.FileId, end.Offset);
     }
 
-    public NodeStatus Status()
+    public NodeStatus Status(ReplicationStatus replication)
     {
         var db = _database;
         if (db == null) return new(Role.ToString(), 0, -1, _applied, 0, 0, 0, 0);
@@ -113,9 +114,9 @@ internal sealed class TestNodeHost(string endpoint, AzureReplicationStorage cano
         Span<byte> buffer = stackalloc byte[1];
         var value = id != 0 && cursor.FindExactKey([checked((byte)id)]) ? cursor.GetValueSpan(ref buffer)[0] : -1;
         var completed = _capture.Completed;
-        var acknowledged = _capture.Acknowledged;
+        var compared = replication.Current.Databases.Count == 0 ? null : replication.Current.Databases[0].Compared;
         return new(Role.ToString(), id, value, _applied, completed.FileId, completed.Offset,
-            acknowledged.FileId, acknowledged.Offset);
+            compared?.TrlFileId ?? 0, compared?.TrlPosition ?? 0);
     }
     public void PausePublication() => _storage.Paused = true;
 

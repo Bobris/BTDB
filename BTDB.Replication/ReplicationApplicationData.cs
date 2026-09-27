@@ -67,10 +67,10 @@ public sealed class ReplicationApplicationData
         var selected = _selected();
         if (selected == null || !ReferenceEquals(_leases.Current, selected.Authority)) return LeaderWriteOutcome.Rejected;
         var intent = Parse(expected.Record);
-        if (intent["term"]?.GetValue<ulong>() != selected.Term ||
-            intent["sessionId"]?.GetValue<string>() != selected.SessionId) return LeaderWriteOutcome.Rejected;
+        if (LeaderJson.OptionalUInt64(intent, "term") != selected.Term ||
+            LeaderJson.OptionalString(intent, "sessionId") != selected.SessionId) return LeaderWriteOutcome.Rejected;
         intent["applicationData"] = value?.DeepClone();
-        intent["revision"] = checked((intent["revision"]?.GetValue<ulong>() ?? 0) + 1);
+        intent["revision"] = checked(LeaderJson.OptionalUInt64(intent, "revision") + 1);
         var json = intent.ToJsonString();
         string handle;
         // A delayed caller cannot start a write after handoff, fencing, shutdown or session replacement.
@@ -93,8 +93,8 @@ public sealed class ReplicationApplicationData
 
     JsonObject Parse(LeaderRecord record)
     {
-        var json = JsonNode.Parse(record.Json)?.AsObject() ?? throw new InvalidDataException("Missing leader JSON.");
-        if (json["format"]?.GetValue<int>() != 1 || json["clusterId"]?.GetValue<string>() != _clusterId)
+        var json = LeaderJson.Parse(record.Json);
+        if (LeaderJson.OptionalInt32(json, "format") != 1 || LeaderJson.OptionalString(json, "clusterId") != _clusterId)
             throw new InvalidDataException("Leader record belongs to a different cluster or format.");
         return json;
     }

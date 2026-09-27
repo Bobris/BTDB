@@ -88,7 +88,7 @@ public class HttpReplicationPeerTransportTest
                 try { await backend.Release.Task.WaitAsync(backend.IgnoreCancellation ? CancellationToken.None : cancellation); }
                 catch (OperationCanceledException) { backend.Cancelled.TrySetResult(); throw; }
             }
-            return new(challenge, true, database == null ? null : new(123, 3, 456));
+            return new(challenge, true, database == null ? null : new(123, 3, 456), database == null ? null : new(3, 400));
         }
         public ILeaderTrlReader Reader(string database)
         {
@@ -113,7 +113,7 @@ public class HttpReplicationPeerTransportTest
     {
         await using var server = await Server.Start();
         using var session = await server.Client.ConnectAsync(server.Identity, default);
-        Assert.Equal(new ReplicationPeerProgress(11, true, new(123, 3, 456)),
+        Assert.Equal(new ReplicationPeerProgress(11, true, new(123, 3, 456), new(3, 400)),
             await session.PollAsync("main", 11, TimeSpan.FromSeconds(1), default));
         Assert.Null((await session.PollAsync(null, 12, TimeSpan.FromSeconds(1), default)).Progress);
         var bytes = new byte[server.Backend.Bytes.Length];

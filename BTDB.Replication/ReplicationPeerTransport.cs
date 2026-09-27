@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using BTDB.KVDBLayer;
 
 namespace BTDB.Replication;
 
@@ -11,7 +12,10 @@ internal sealed record ReplicationPeerIdentity(string ClusterId, ulong Term, str
     public override string ToString() => $"{ClusterId}/{Term}/{SessionId}";
 }
 
-internal sealed record ReplicationPeerProgress(long Challenge, bool Granted, LeaderTrlProgress? Progress);
+/// <summary>Published is the leader's confirmed canonical Blob cut for the database, null before its first publication.
+/// A follower treats bytes it compared up to min(compared, Published) as canonical history.</summary>
+internal sealed record ReplicationPeerProgress(long Challenge, bool Granted, LeaderTrlProgress? Progress,
+    TransactionLogPosition? Published = null);
 public sealed record PreparedHandoff(ulong ApplicationGeneration, string TransferId);
 
 /// <summary>One authenticated leader connection. Implementations bind every request to that connection and

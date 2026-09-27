@@ -56,9 +56,12 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     CanonicalTrlInventory Inventory => canonical ??
         throw new InvalidOperationException("Bind a selected canonical inventory before restoring files.");
 
-    // Reuse committed prefix blocks; replace only a partial last block and append. Unique staged IDs keep
-    // stale requests from changing a winning intent. The final CAS installs bytes and metadata atomically.
+    // Reuse committed blocks and stage only the appended suffix. Partial trailing blocks are merged into full blocks
+    // once they would reach BlockSize or MaxTrailingBlocks, bounding both the block count and re-uploaded bytes.
+    // Unique staged IDs keep stale requests from changing a winning intent. The final CAS installs bytes and
+    // metadata atomically.
     const int BlockSize = 4 * 1024 * 1024;
+    const int MaxTrailingBlocks = 64;
     BlockBlobClient Blob(string key)
     {
         TrlMetadata.Validate(new(key, 1));
@@ -115,13 +118,19 @@ public sealed class AzureReplicationStorage : IReplicationStorage
                 if (blocks.GetRawResponse().Headers.ETag?.ToString().Trim('"') != token.Trim('"')) return new(TrlWriteOutcome.Rejected);
                 if (blocks.Value.CommittedBlocks.Sum(b => b.SizeLong) != write.ExpectedLength)
                     return new(TrlWriteOutcome.Rejected);
-                foreach (var block in blocks.Value.CommittedBlocks)
+                var committed = blocks.Value.CommittedBlocks.ToList();
+                var fullBlocks = 0;
+                while (fullBlocks < committed.Count && committed[fullBlocks].SizeLong == BlockSize) fullBlocks++;
+                var trailingBytes = committed.Skip(fullBlocks).Sum(b => b.SizeLong);
+                // Metadata-only adoption keeps every block. A merge restages the trailing bytes from the caller's
+                // verified native prefix.
+                var kept = write.Length == write.ExpectedLength ||
+                           (committed.Count - fullBlocks < MaxTrailingBlocks && (ulong)trailingBytes + write.AppendLength < BlockSize)
+                    ? committed.Count : fullBlocks;
+                for (var i = 0; i < kept; i++)
                 {
-                    // Retain a partial block too for metadata-only adoption. Appends replace it using the
-                    // caller's verified native prefix, avoiding unbounded numbers of tiny committed blocks.
-                    if (block.SizeLong != BlockSize && write.Length != write.ExpectedLength) break;
-                    ids.Add(block.Name);
-                    offset += (ulong)block.SizeLong;
+                    ids.Add(committed[i].Name);
+                    offset += (ulong)committed[i].SizeLong;
                 }
             }
             else
@@ -302,7 +311,8 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         {
             var name = blob.Name[Directory.Length..];
             if (!name.EndsWith(".kvi", StringComparison.Ordinal) ||
-                !uint.TryParse(name.AsSpan(0, name.Length - 4), out var id) || id <= latest) continue;
+                !uint.TryParse(name.AsSpan(0, name.Length - 4), NumberStyles.None, CultureInfo.InvariantCulture, out var id) ||
+                id <= latest) continue;
             latest = id;
             root = null;
             if (blob.Metadata.TryGetValue(RecoveryKey, out var key) && blob.Metadata.TryGetValue(RecoveryId, out var value) &&

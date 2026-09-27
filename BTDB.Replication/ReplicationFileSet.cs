@@ -242,7 +242,9 @@ public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage lo
         while (true)
         {
             cancellation.ThrowIfCancellationRequested();
-            if (!_placements.TryGetValue(source.FileId, out var placement))
+            Placement? placement;
+            lock (_placementLock) _placements.TryGetValue(source.FileId, out placement);
+            if (placement == null)
             {
                 var remoteId = await AllocateRemoteFileIdAsync(cancellation, storage).ConfigureAwait(false);
                 placement = new(source.Length, remoteId, false);
@@ -254,13 +256,16 @@ public sealed partial class ReplicationFileSet(InMemoryReplicationFileStorage lo
             {
                 await storage.EnsurePureValuesAsync(placement.RemoteId, source, cancellation).ConfigureAwait(false);
                 RememberMapping(placement.RemoteId, source.FileId);
-                placement.Confirmed = true;
+                lock (_placementLock) placement.Confirmed = true;
             }
             if (!await storage.ProtectPureValuesAsync(placement.RemoteId, source, cancellation).ConfigureAwait(false))
             {
                 _lastRemoteEvenId = Math.Max(_lastRemoteEvenId, placement.RemoteId);
-                _placements.Remove(source.FileId);
-                _placedRemoteIds.Remove(placement.RemoteId);
+                lock (_placementLock)
+                {
+                    _placements.Remove(source.FileId);
+                    _placedRemoteIds.Remove(placement.RemoteId);
+                }
                 continue;
             }
             return placement.RemoteId;

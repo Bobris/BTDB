@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using Node = BTDB.Replication.Test.TrlPrefixComparerTest.Node;
@@ -18,6 +19,36 @@ public class SchemaTrlScannerTest
         using var reader = node.Reader();
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             scanner.ContainsSchemaAsync(reader, node.Capture.Completed, default).AsTask());
+    }
+
+    [Fact]
+    public async Task CancelledScanResumesAfterLastCompleteTransaction()
+    {
+        using var node = await Node.Create(false);
+        await node.Write(1, 1);
+        var start = node.Capture.Completed;
+        for (ulong id = 2; id <= 6; id++) await node.Write(id, (byte)id, size: 300_000);
+        using var reader = node.Reader();
+        reader.ReadChunkSize = 4096;
+        var reads = 0;
+        reader.BeforeRead = (_, _, _) => { reads++; return ValueTask.CompletedTask; };
+        Assert.False(await new SchemaTrlScanner(start, node.Db.FileCollection.Guid)
+            .ContainsSchemaAsync(reader, node.Capture.Completed, default));
+        var fullScan = reads;
+        using var cancellation = new CancellationTokenSource();
+        var scanner = new SchemaTrlScanner(start, node.Db.FileCollection.Guid);
+        reads = 0;
+        reader.BeforeRead = (_, _, _) =>
+        {
+            if (++reads == fullScan * 3 / 4) cancellation.Cancel();
+            return ValueTask.CompletedTask;
+        };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            scanner.ContainsSchemaAsync(reader, node.Capture.Completed, cancellation.Token).AsTask());
+        reads = 0;
+        reader.BeforeRead = (_, _, _) => { reads++; return ValueTask.CompletedTask; };
+        Assert.False(await scanner.ContainsSchemaAsync(reader, node.Capture.Completed, default));
+        Assert.True(reads < fullScan / 2, $"resumed scan read {reads} of {fullScan} ranges");
     }
 
     [Theory]

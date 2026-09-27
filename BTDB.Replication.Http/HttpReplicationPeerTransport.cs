@@ -223,7 +223,8 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
                     MaximumControlBytes, linked.Token).ConfigureAwait(false);
                 linked.Token.ThrowIfCancellationRequested();
                 var result = JsonSerializer.Deserialize<ReplicationPeerProgress>(bytes) ?? throw new IOException("Missing peer progress.");
-                if (result.Challenge != challenge || result.Progress is { } progress && (progress.TrlFileId == 0 || progress.TrlPosition == 0))
+                if (result.Challenge != challenge || result.Progress is { } progress && (progress.TrlFileId == 0 || progress.TrlPosition == 0) ||
+                    result.Published is { FileId: 0 })
                     throw new IOException("Invalid peer progress.");
                 return result;
             }
