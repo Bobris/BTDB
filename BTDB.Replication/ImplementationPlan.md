@@ -109,10 +109,12 @@ fences immediately and lets the lease expire.
 5. **Measurement.** Done on Azure ([Measurements.md](Measurements.md), `DBBenchmark replication*`): a cold restore
    of 100 GiB from Blob takes 4.4 minutes on an E8ads_v7, limited by the local disk; the findings led to lock-free
    node-local storage, sealed-TRL checksums, a 4 MiB poll budget and concurrent TRL staging. With production file
-   sizes (2 GiB PVL, 1 GiB/4 GiB TRL) 30 GiB restore cold in 83–156 s on v4–v7. Loopback HTTP peer cost (223 µs per empty poll, 2.6 ms per 4 MiB
-   inline poll on E8ads_v5) and planned handoff (about 1.2 s) are measured too, and operational defaults are documented in
-   [ReplicationHosting.md](../Doc/ReplicationHosting.md). Eight databases publish 802 MiB/s together, limited by the local disk. Remaining,
-   within the startup target: warm-restore validation reads the whole cache; TLS between VMs is unmeasured.
+   sizes (2 GiB PVL, 1 GiB/4 GiB TRL) 30 GiB restore cold in 83–156 s on v4–v7. Loopback HTTP peer cost (223 µs per
+   empty poll, 2.6 ms per 4 MiB inline poll on E8ads_v5) and planned handoff (about 1.2 s) are measured, eight
+   databases publish 802 MiB/s together (limited by the local disk), and operational defaults are documented in
+   [ReplicationHosting.md](../Doc/ReplicationHosting.md). Warm restore still hashes every cached file it uses (100 s
+   for 100 GiB), well within the startup target, so by the admission rule no trusted-cache receipt is added. TLS and
+   proxies between VMs belong to the HTTP transport backlog item.
 6. **Operations.** Done: recovery counters in `ReplicationStatus` and the `BTDB.Replication` meter (restore attempts,
    failures and duration, leader sessions started and ended, failed steps), validation of lease-dependent settings
    when the first lease is acquired, and host guidance for application-owned event execution, input retention,
