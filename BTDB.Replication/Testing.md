@@ -156,8 +156,8 @@ positive delays in virtual time.
 - `LeaderSelectionTest`: exact JSON reconciliation after a lost reply, preserved application data, the generation
   floor, malformed records, and `SameGenerationComparesDatabaseNamesAsASet`. `ReplicationApplicationDataTest` covers
   conditional `applicationData` writes, reconciliation and follower/fenced read-only access.
-- `LeadershipActivationTest`: Blob validation despite peer acknowledgement, divergence never adopting, all databases
-  adopting before any publisher is returned, and append racing adoption. `ReplicationProgressWatchdogTest` checks that
+- `LeadershipActivationTest`: Blob validation despite peer acknowledgement, divergence never adopting, a lagging
+  database adopting none, all databases adopting before any publisher is returned, and append racing adoption. `ReplicationProgressWatchdogTest` checks that
   stale timeouts cannot override progress.
 
 ## Coordinator simulation

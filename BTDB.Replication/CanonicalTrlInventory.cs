@@ -54,20 +54,21 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
         }
         chain.Sort((a, b) => a.FileId.CompareTo(b.FileId));
         if (chain.Count == 0) throw new FileNotFoundException("Published TRL history is missing.", genesis.Key);
-        if (chain.Select(h => h.FileId).Distinct().Count() != chain.Count)
-            throw new InvalidDataException("Duplicate canonical TRL identity.");
+        for (var i = 1; i < chain.Count; i++)
+            if (chain[i].FileId == chain[i - 1].FileId) throw new InvalidDataException("Duplicate canonical TRL identity.");
         // Native PreviousFileId headers and KVI references select the retained recovery closure during open.
         return new(storage, chain, new(chain[0].Key, chain[0].FileId));
     }
 
     public async IAsyncEnumerable<RemoteFile> EnumerateAsync([EnumeratorCancellation] CancellationToken cancellation)
     {
-        foreach (var head in _chain)
+        for (var i = 0; i < _chain.Count; i++)
         {
             cancellation.ThrowIfCancellationRequested();
+            var head = _chain[i];
             // No trustworthy checksum was supplied by the TRL storage seam: do not reuse local cache bytes.
             yield return new(head.FileId, KVFileType.TransactionLog, head.State.Length, head.State.Token,
-                head != Tail, null);
+                i + 1 < _chain.Count, null);
         }
     }
 

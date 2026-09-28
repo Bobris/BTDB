@@ -85,6 +85,45 @@ public class LeadershipActivationTest
     }
 
     [Fact]
+    public async Task LaggingDatabaseDoesNotAdoptTheDatabasesBeforeIt()
+    {
+        using var leaderA = await Node.Create(false);
+        using var leaderB = await Node.Create(false);
+        using var candidateA = await Node.Create(false);
+        using var candidateB = await Node.Create(false);
+        var remoteA = new Storage();
+        var remoteB = new Storage();
+        var clock = new DeterministicScheduler(706);
+        var old = Lease(clock, "old");
+        using var originalA = new CanonicalTrlPublisher(leaderA.Db, leaderA.Capture, remoteA, old, 1, Key);
+        using var originalB = new CanonicalTrlPublisher(leaderB.Db, leaderB.Capture, remoteB, old, 1, Key);
+        for (ulong id = 1; id <= 3; id++)
+        {
+            await leaderA.Write(id, (byte)id);
+            await leaderB.Write(id, (byte)id);
+            await candidateA.Write(id, (byte)id);
+        }
+        await candidateB.Write(1, 1);
+        Assert.Equal(TrlPublishResult.Published, await originalA.PublishNextAsync());
+        Assert.Equal(TrlPublishResult.Published, await originalB.PublishNextAsync());
+        var selected = new SelectedLeadership(Lease(clock, "new"), 2, "session", ["a", "b"]);
+        ActivationDatabase[] inputs =
+        [
+            Input(candidateA, remoteA) with { Name = "a" }, Input(candidateB, remoteB) with { Name = "b" }
+        ];
+        var validated = new Dictionary<string, TransactionLogPosition>(StringComparer.Ordinal);
+        var writesA = remoteA.Requests.Count;
+
+        for (var retry = 0; retry < 3; retry++)
+            Assert.Null(await LeadershipActivation.ActivateAsync(selected, inputs, validated: validated));
+        Assert.Equal(writesA, remoteA.Requests.Count);
+        for (ulong id = 2; id <= 3; id++) await candidateB.Write(id, (byte)id);
+        var publishers = (await LeadershipActivation.ActivateAsync(selected, inputs, validated: validated))!;
+        foreach (var publisher in publishers) publisher.Dispose();
+        Assert.Equal(writesA + 1, remoteA.Requests.Count);
+    }
+
+    [Fact]
     public async Task LaggingCandidateWithDivergentPrefixStillRequiresRestore()
     {
         using var leader = await Node.Create(false);

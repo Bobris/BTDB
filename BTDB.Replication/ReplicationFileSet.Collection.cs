@@ -15,7 +15,8 @@ namespace BTDB.Replication;
 // Local storage operations never implicitly fetch remote files. Remote discovery and prefetch are explicit.
 public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsyncDisposable
 {
-    // Replaced once, complete, by initialization and read-only afterwards.
+    // Replaced once, complete, by initialization. Only database open changes it afterwards (discarding an unfinished
+    // TRL or publishing the legacy transition header), before any concurrent reader exists.
     volatile Dictionary<uint, RemoteInventoryFile> _remoteFiles = new();
     readonly SemaphoreSlim _initialization = new(1);
     readonly CancellationTokenSource _lifetime = new();

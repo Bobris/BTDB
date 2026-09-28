@@ -40,6 +40,7 @@ internal sealed class LeaderSelection(ILeaderRecordStorage storage, LeaseSession
 {
     LeaderRecord? _previous;
     JsonObject? _intent;
+    string[]? _names;
     string? _json;
 
     public async ValueTask<SelectedLeadership?> SelectAsync(CancellationToken cancellation = default)
@@ -62,9 +63,10 @@ internal sealed class LeaderSelection(ILeaderRecordStorage storage, LeaseSession
             var generation = LeaderJson.OptionalUInt64(current, "applicationGeneration");
             if (generation > candidate.ApplicationGeneration) return Conflict();
             // A set, as in follower discovery: nodes of one generation may list the same names in another order.
+            var selected = DatabaseNames();
             if (generation == candidate.ApplicationGeneration &&
                 LeaderJson.OptionalNames(current, "databaseNames") is { } names &&
-                !names.ToHashSet(StringComparer.Ordinal).SetEquals(DatabaseNames().Select(n => n!.GetValue<string>())))
+                !names.ToHashSet(StringComparer.Ordinal).SetEquals(selected))
                 throw new InvalidDataException("The same application generation must select the same database set.");
             if (LeaderJson.OptionalString(current, "sessionId") == candidate.SessionId)
                 throw new InvalidDataException("A fresh lease requires a fresh leadership session identity.");
@@ -74,9 +76,10 @@ internal sealed class LeaderSelection(ILeaderRecordStorage storage, LeaseSession
             _intent["nodeId"] = candidate.NodeId;
             _intent["sessionId"] = candidate.SessionId;
             _intent["applicationGeneration"] = candidate.ApplicationGeneration;
-            _intent["databaseNames"] = DatabaseNames();
+            _intent["databaseNames"] = new JsonArray([.. selected.Select(name => JsonValue.Create(name))]);
             _intent["peerEndpoint"] = candidate.PeerEndpoint;
             _intent["apiKey"] = candidate.ApiKey;
+            _names = selected;
             _previous = observed;
             _json = _intent.ToJsonString();
         }
@@ -94,21 +97,16 @@ internal sealed class LeaderSelection(ILeaderRecordStorage storage, LeaseSession
         return null;
     }
 
-    JsonArray DatabaseNames()
+    string[] DatabaseNames()
     {
-        var result = new JsonArray();
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var name in candidate.DatabaseNames)
-        {
             if (string.IsNullOrEmpty(name) || !names.Add(name))
                 throw new ArgumentException("Database names must be nonempty and unique.");
-            result.Add(name);
-        }
-        return result;
+        return [.. candidate.DatabaseNames];
     }
 
-    SelectedLeadership Selected() => new(authority, _intent!["term"]!.GetValue<ulong>(), candidate.SessionId,
-        _intent["databaseNames"]!.AsArray().Select(n => n!.GetValue<string>()).ToArray());
+    SelectedLeadership Selected() => new(authority, _intent!["term"]!.GetValue<ulong>(), candidate.SessionId, _names!);
     SelectedLeadership? Conflict() { authority.Fence(); return null; }
     void RequireAuthority()
     {

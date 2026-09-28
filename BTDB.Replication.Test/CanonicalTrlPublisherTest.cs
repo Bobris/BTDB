@@ -352,6 +352,23 @@ public class CanonicalTrlPublisherTest
     }
 
     [Fact]
+    public async Task RotationDoesNotRewriteAFullyPublishedTail()
+    {
+        using var f = await Fixture.CreateAsync();
+        var rotations = 0;
+        for (ulong id = 1; id <= 12; id++)
+        {
+            var published = f.Publisher.PublishedPosition;
+            await Write(f, id);
+            if (published.FileId != 0 && f.Capture.Completed.FileId != published.FileId) rotations++;
+            Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
+        }
+        Assert.True(rotations > 0);
+        Assert.DoesNotContain(f.Remote.Requests, r => r.Write.ExpectedToken != null && r.Write.AppendLength == 0);
+        Assert.Equal((12ul, 12L), await Restore(f.Remote));
+    }
+
+    [Fact]
     public async Task MultiFileGenesisPublishesItsNativePrefixesInOrder()
     {
         using var f = await Fixture.CreateAsync();

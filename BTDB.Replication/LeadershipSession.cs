@@ -13,7 +13,7 @@ namespace BTDB.Replication;
 internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList<ActivationDatabase> databases,
     Func<ActivationDatabase, LeaseAuthority, CancellationToken, ValueTask>? prepare = null, Action? progress = null) : IDisposable
 {
-    // Local progress only: selection (1), discovery/validation/adoption (2), schema preparation/publication (3).
+    // Local progress only: selection (1), discovery/validation (2), adoption (3), schema preparation/publication (4).
     // Lexicographic order keeps retrying an earlier database or range from extending the deadline.
     (int Phase, int Database, int Step, uint File, ulong Offset) _progress;
     readonly SemaphoreSlim _lane = new(1);
@@ -57,7 +57,7 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
             ReportProgress(1, 0, 0, 0, 0);
             if (!_selected.Authority.IsValid) throw new InvalidOperationException("Leadership session expired.");
             _publishers ??= await LeadershipActivation.ActivateAsync(_selected, databases, cancellation,
-                progress == null ? null : (database, step, file, offset) => ReportProgress(2, database, step, file, offset),
+                progress == null ? null : (stage, database, step, file, offset) => ReportProgress(2 + stage, database, step, file, offset),
                 _validated).ConfigureAwait(false);
             if (_publishers == null) return null;
             if (prepare != null && !_prepared)
@@ -70,7 +70,7 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
                         await prepare(database, _selected.Authority, cancellation).ConfigureAwait(false);
                         cut = database.Capture.Completed;
                         _preparedCuts.Add(database.Name, cut);
-                        ReportProgress(3, i, 0, 0, 0);
+                        ReportProgress(4, i, 0, 0, 0);
                     }
                     if (cut.FileId == 0) continue;
                     var result = await _publishers[i].PublishThroughAsync(cut, true, cancellation).ConfigureAwait(false);
@@ -83,7 +83,7 @@ internal sealed class LeadershipSession(LeaderSelection selection, IReadOnlyList
                     }
                     if (result is not (TrlPublishResult.Idle or TrlPublishResult.Published or TrlPublishResult.Adopted))
                         throw new IOException("Initialization/schema publication is not yet confirmed.");
-                    ReportProgress(3, i, 1, cut.FileId, cut.Offset);
+                    ReportProgress(4, i, 1, cut.FileId, cut.Offset);
                 }
             _prepared = true;
             return _publishers;

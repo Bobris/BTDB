@@ -22,15 +22,38 @@ internal static class LeadershipActivation
     /// local prefix matches canonical history but has not reached its end yet: the host keeps executing inputs and the
     /// caller retries under the same lease. <paramref name="validated"/> keeps verified prefixes across those retries.
     /// The caller must not publish from any database until this method succeeds. Lease maintenance continues
-    /// independently during activation.</summary>
+    /// independently during activation. Progress reports (stage, database, step, file, offset): stage 0 discovers
+    /// (step 0) and validates (step 1) each database, stage 1 adopts them.</summary>
     public static async ValueTask<IReadOnlyList<CanonicalTrlPublisher>?> ActivateAsync(SelectedLeadership selected,
         IReadOnlyList<ActivationDatabase> databases, CancellationToken cancellation = default,
-        Action<int, int, uint, ulong>? progress = null, IDictionary<string, TransactionLogPosition>? validated = null)
+        Action<int, int, int, uint, ulong>? progress = null, IDictionary<string, TransactionLogPosition>? validated = null)
     {
         var required = new HashSet<string>(selected.DatabaseNames, StringComparer.Ordinal);
         if (required.Count != databases.Count) throw new ArgumentException("Activation must include every selected database exactly once.");
         foreach (var database in databases)
             if (!required.Remove(database.Name)) throw new ArgumentException("Activation database set differs from the selected leader record.");
+        // Validate every database before adopting any: adoption needs the local tail bytes, and a lagging database
+        // must not make each retry fence and adopt the databases before it again.
+        var tails = new TrlHead?[databases.Count];
+        for (var index = 0; index < databases.Count; index++)
+        {
+            var database = databases[index];
+            RequireAuthority(selected);
+            if (database.RestoredBase.FileId == 0)
+            {
+                if (await database.Storage.ResolveRecoveryRootAsync(database.Genesis, cancellation).ConfigureAwait(false) != database.Genesis ||
+                    await database.Storage.ReadAsync(database.Genesis.Key, cancellation).ConfigureAwait(false) != null)
+                    throw new InvalidDataException("Initialization was published; restore its fixed history before activation.");
+                continue;
+            }
+            var inventory = await CanonicalTrlInventory.DiscoverAsync(database.Storage, database.Genesis, cancellation,
+                progress == null ? null : id => progress(0, index, 0, id, 0))
+                .ConfigureAwait(false);
+            if (!await ValidateAsync(database, inventory, selected, validated, cancellation,
+                    progress == null ? null : (id, offset) => progress(0, index, 1, id, offset)).ConfigureAwait(false))
+                return null;
+            tails[index] = inventory.Tail;
+        }
         var publishers = new List<CanonicalTrlPublisher>();
         var completed = false;
         try
@@ -39,30 +62,20 @@ internal static class LeadershipActivation
             {
                 var database = databases[index];
                 RequireAuthority(selected);
-                if (database.RestoredBase.FileId == 0)
+                if (tails[index] is not { } tail)
                 {
-                    if (await database.Storage.ResolveRecoveryRootAsync(database.Genesis, cancellation).ConfigureAwait(false) != database.Genesis ||
-                        await database.Storage.ReadAsync(database.Genesis.Key, cancellation).ConfigureAwait(false) != null)
-                        throw new InvalidDataException("Initialization was published; restore its fixed history before activation.");
                     publishers.Add(new(database.Database, database.Capture, database.Storage, selected.Authority,
                         selected.Term, id => id == database.Genesis.FileId ? database.Genesis.Key : database.KeyForFile(id)));
-                    progress?.Invoke(index, 2, 0, 0);
+                    progress?.Invoke(1, index, 0, 0, 0);
                     continue;
                 }
-                var inventory = await CanonicalTrlInventory.DiscoverAsync(database.Storage, database.Genesis, cancellation,
-                    progress == null ? null : id => progress(index, 0, id, 0))
-                    .ConfigureAwait(false);
-                // Adoption needs the local tail bytes, so a lagging candidate stops before fencing this database.
-                if (!await ValidateAsync(database, inventory, selected, validated, cancellation,
-                        progress == null ? null : (id, offset) => progress(index, 1, id, offset)).ConfigureAwait(false))
-                    return null;
                 var publisher = new CanonicalTrlPublisher(database.Database, database.Capture, database.Storage,
-                    selected.Authority, selected.Term, database.KeyForFile, inventory.Tail);
+                    selected.Authority, selected.Term, database.KeyForFile, tail);
                 publishers.Add(publisher);
                 var result = await publisher.AdoptAsync(cancellation).ConfigureAwait(false);
                 if (result is not (TrlPublishResult.Adopted or TrlPublishResult.Idle))
                     throw new IOException("Canonical adoption changed or is unresolved; rediscover before activation.");
-                progress?.Invoke(index, 2, 0, 0);
+                progress?.Invoke(1, index, 0, 0, 0);
             }
             cancellation.ThrowIfCancellationRequested();
             RequireAuthority(selected);

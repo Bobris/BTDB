@@ -21,6 +21,11 @@
 
 ### Changed
 
+- Replication activation validates every database before adopting any canonical tail, so a candidate lagging on one
+  database no longer repeats adoption writes (and rediscovery) of the databases before it on every retry.
+  `CanonicalTrlPublisher` no longer sends a zero-length CAS of a fully published tail when publication continues into
+  its successor TRL, saving a Blob commit on every TRL rotation.
+
 - Store TRL, PVL and KVI directly under the database prefix as `{fileId}.{extension}`, without a `files/` subdirectory.
   Share fixed `{fileId}.trl` Blob keys across every term. Remove term, successor and recovery-root metadata;
   only `btdb_sha256` and `btdb_delete_after` remain. Conditional create collisions compare native bytes, reuse identical

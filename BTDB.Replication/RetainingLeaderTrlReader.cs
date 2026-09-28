@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
@@ -49,7 +48,8 @@ internal sealed class RetainingLeaderTrlReader(ILeaderTrlReader inner, int capac
             if (release) _retained -= chunk.Bytes.Length;
             return release;
         });
-        foreach (var fileId in _ends.Keys.Where(id => id < position.FileId).ToArray()) _ends.Remove(fileId);
+        foreach (var fileId in _ends.Keys)
+            if (fileId < position.FileId) _ends.Remove(fileId);
     }
 
     /// <summary>The first position at or after from not already retained, continuing into a file's known successor.</summary>

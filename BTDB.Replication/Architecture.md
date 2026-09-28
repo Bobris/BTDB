@@ -178,8 +178,9 @@ steps while the host keeps executing input:
    the complete local TRL prefix from the node's canonical base with canonical Blob bytes (several reads in flight).
    A candidate that lags behind canonical history returns "not yet" and retries; verified ranges are remembered for
    the lease. Any mismatch requires restore.
-3. Adopt the canonical tail: CAS the same bytes to obtain a fresh version token. This fences every predecessor
-   request that expected the old version.
+3. Once every database has matched, adopt each canonical tail: CAS the same bytes to obtain a fresh version token.
+   This fences every predecessor request that expected the old version. A lagging database therefore never makes
+   retries adopt the databases before it again.
 4. For a database without published history, capture the initialization input end from the host and commit genesis
    (`CommitUlong` = predecessor event ID). Then let the host prepare schema (`PrepareSchemaAsync`, for example ObjectDB
    `InitializeRelations`). Publish each resulting cut immediately.

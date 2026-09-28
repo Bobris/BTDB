@@ -296,17 +296,25 @@ public sealed class CanonicalTrlPublisher : IDisposable
             length = checked((uint)Source(id).GetSize());
         }
         parts.Reverse();
+        var continuesTail = _tail != null;
+        if (continuesTail && parts[0].End < _tail!.State.Length) throw new InvalidDataException("Cannot shrink canonical TRL.");
+        // A tail published to its local end needs no zero-length CAS before its successor: adoption already
+        // fenced the predecessor, and that request would only cost a round trip on every TRL rotation.
+        if (continuesTail && parts.Count > 1 && parts[0].End == _tail!.State.Length)
+        {
+            parts.RemoveAt(0);
+            continuesTail = false;
+        }
         var writes = new TrlWrite[parts.Count];
         var keys = parts.Select(f => keyForFile(f.Id)).ToArray();
-        if (_tail != null) keys[0] = _tail.Key;
+        if (continuesTail) keys[0] = _tail!.Key;
         if (keys.Distinct(StringComparer.Ordinal).Count() != keys.Length) throw new InvalidDataException("TRL keys collide.");
         for (var i = 0; i < writes.Length; i++)
         {
             var (partId, partEnd) = parts[i];
             if (TrlFileName.FileIdFromKey(keys[i]) != partId)
                 throw new InvalidDataException("TRL object name does not match the native file ID.");
-            var expected = i == 0 ? _tail?.State : null;
-            if (partEnd < (expected?.Length ?? 0)) throw new InvalidDataException("Cannot shrink canonical TRL.");
+            var expected = i == 0 && continuesTail ? _tail!.State : null;
             writes[i] = new(partId, keys[i], expected?.Token, expected?.Length ?? 0, partEnd,
                 Source(partId));
         }
