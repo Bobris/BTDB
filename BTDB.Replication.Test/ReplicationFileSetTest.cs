@@ -170,6 +170,7 @@ public class ReplicationFileSetTest
         public bool ForbidReads;
         public bool ForbidSize;
         public bool FailWrites;
+        public Action? BeforeRead;
         IFileCollectionFile Wrap(IFileCollectionFile file)
         {
             if (!_files.TryGetValue(file.Index, out var wrapped) || !ReferenceEquals(wrapped.Inner, file))
@@ -200,7 +201,8 @@ public class ReplicationFileSetTest
             public void RandomRead(Span<byte> bytes, ulong offset, bool doNotCache)
             {
                 Assert.False(owner.ForbidReads);
-                owner.Reads++;
+                Interlocked.Increment(ref owner.Reads);
+                owner.BeforeRead?.Invoke();
                 Inner.RandomRead(bytes, offset, doNotCache);
             }
             public IMemWriter GetAppenderWriter() => owner.FailWrites
@@ -211,6 +213,117 @@ public class ReplicationFileSetTest
             public void HardFlushTruncateSwitchToDisposedMode() => Inner.HardFlushTruncateSwitchToDisposedMode();
             public void Remove() => Inner.Remove();
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AbandonedStreamingDownloadIsDownloadedAgainAfterEviction(bool streamAgain)
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage();
+        AddRemote(remote, 2, [1, 2, 3]);
+        var reads = 0;
+        remote.BeforeRead = (_, _, _) => { reads++; return ValueTask.CompletedTask; };
+        await using var files = new ReplicationFileSet(local, remote);
+        await files.InitializeAsync();
+        using (var abandoned = files.StartStreamingRead(2, CancellationToken.None))
+            Assert.NotNull(abandoned);
+        // This in-memory remote completes synchronously, without a reader calling CompleteAsync.
+        Assert.Equal(3ul, local.GetFile(2).GetSize());
+        files.DiscardLocalFile(2);
+        Assert.Null(files.GetFile(2));
+        if (streamAgain)
+        {
+            using var streaming = files.StartStreamingRead(2, CancellationToken.None);
+            Assert.NotNull(streaming);
+            Assert.True(await streaming.CompleteAsync(CancellationToken.None));
+        }
+        else await files.PrefetchAsync(2);
+        var bytes = new byte[3];
+        Assert.NotNull(files.GetFile(2));
+        files.GetFile(2).RandomRead(bytes, 0, false);
+        Assert.Equal(new byte[] { 1, 2, 3 }, bytes);
+        Assert.Equal(2, reads);
+    }
+
+    [Fact]
+    public async Task DisposalCancelsAndDrainsAbandonedStreamingChecksum()
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage();
+        AddRemote(remote, 2, [1, 2, 3]);
+        Add(local, 2, [1, 2, 3]);
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observed = new ObservedStorage(local)
+        {
+            BeforeRead = () =>
+            {
+                entered.TrySetResult();
+                Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+            }
+        };
+        await using var files = new ReplicationFileSet(observed, remote);
+        await files.InitializeAsync();
+        using var streaming = files.StartStreamingRead(2, CancellationToken.None);
+        Assert.NotNull(streaming);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            streaming.Dispose();
+            var disposal = files.DisposeAsync().AsTask();
+            Assert.False(disposal.IsCompleted);
+            release.Set();
+            await disposal.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(1, observed.Reads);
+            Assert.Null(files.GetFile(2)); // Cancelled validation must never expose the cached copy.
+        }
+        finally { release.Set(); }
+    }
+
+    [Fact]
+    public async Task StreamingChecksumIsSharedWithPrefetchAndSurvivesOneCancelledWaiter()
+    {
+        using var local = new InMemoryReplicationFileStorage();
+        using var remote = new CheckpointPublisherTest.Storage();
+        AddRemote(remote, 2, [1, 2, 3]);
+        Add(local, 2, [1, 2, 3]);
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observed = new ObservedStorage(local)
+        {
+            BeforeRead = () =>
+            {
+                entered.TrySetResult();
+                Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+            }
+        };
+        remote.BeforeRead = (_, _, _) => throw new InvalidOperationException("Verified cache must not be downloaded.");
+        await using var files = new ReplicationFileSet(observed, remote);
+        await files.InitializeAsync();
+        using var cancellation = new CancellationTokenSource();
+        using var streaming = files.StartStreamingRead(2, cancellation.Token);
+        Assert.NotNull(streaming);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Null(files.GetFile(2));
+            Assert.Null(files.StartStreamingRead(2, CancellationToken.None));
+            var cancelledWaiter = files.PrefetchAsync(2, cancellation.Token).AsTask();
+            await cancellation.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelledWaiter);
+            var prefetch = files.PrefetchAsync(2).AsTask();
+            Assert.False(prefetch.IsCompleted);
+            release.Set();
+            await prefetch.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(await streaming.CompleteAsync(CancellationToken.None));
+            Assert.Same(observed.GetFile(2), files.GetFile(2));
+            Assert.Equal(1, observed.Reads);
+            Assert.Equal(2u, await files.PublishPureValuesAsync(Source(files.GetFile(2))));
+            Assert.Empty(remote.PvlAttempts);
+        }
+        finally { release.Set(); }
     }
 
     [Theory]

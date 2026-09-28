@@ -72,9 +72,11 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
 {
     IReadOnlyList<ActivationDatabase> _databases = Array.Empty<ActivationDatabase>();
     IReadOnlyList<CanonicalTrlPublisher>? _publishers;
-    readonly Dictionary<string, FollowerComparisonSession> _followers = new(StringComparer.Ordinal);
-    // One per follower session: leader bytes a lagging comparison has not consumed survive later steps.
-    readonly Dictionary<string, RetainingLeaderTrlReader> _leaderReaders = new(StringComparer.Ordinal);
+    // Each follower session owns the database and retained leader bytes used by its comparison.
+    sealed record FollowingDatabase(ActivationDatabase Database, FollowerComparisonSession Follower,
+        RetainingLeaderTrlReader Reader);
+
+    readonly Dictionary<string, FollowingDatabase> _followers = new(StringComparer.Ordinal);
     readonly HashSet<string> _removed = new(StringComparer.Ordinal);
     readonly HashSet<string> _detached = new(StringComparer.Ordinal);
     // Databases selected by the connected leader. An older generation does not know databases added by an upgrade.
@@ -375,11 +377,10 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                     !_canonicalBase.TryGetValue(database.Name, out var canonical) || !_leaderDatabases.Contains(database.Name))
                     continue;
                 var reader = new RetainingLeaderTrlReader(_peer.Reader(database.Name));
-                _leaderReaders.Add(database.Name, reader);
                 var name = database.Name;
-                _followers.Add(name, new(database.Database.FileCollection.GetFile, database.Capture, reader,
+                _followers.Add(name, new(database, new(database.Database.FileCollection.GetFile, database.Capture, reader,
                     () => Restart("Follower native history diverged from its selected leader."),
-                    _resumeComparison.GetValueOrDefault(name, canonical), () => host.GetProgress(name)));
+                    _resumeComparison.GetValueOrDefault(name, canonical), () => host.GetProgress(name)), reader));
             }
         }
         if (!await PollLeaderAsync(databases, cancellation).ConfigureAwait(false)) return;
@@ -402,14 +403,11 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         // Followers come first in the request. From asks the leader for the TRL bytes the comparison still needs,
         // starting after the bytes this session already retains.
         var polled = new List<ReplicationPeerPollRequest>();
-        var followers = new (string Name, FollowerComparisonSession Follower)[_followers.Count];
-        var index = 0;
-        foreach (var (name, follower) in _followers)
+        var followers = _followers.Values.ToArray();
+        foreach (var (database, follower, reader) in followers)
         {
-            var reader = _leaderReaders[name];
             var from = reader.Available >= InlineBudget ? reader.ContiguousEnd(follower.ResumePosition) : default;
-            polled.Add(new(name, from));
-            followers[index++] = (name, follower);
+            polled.Add(new(database.Name, from));
         }
         foreach (var database in databases)
             if (!_canonicalBase.ContainsKey(database.Name) && !_removed.Contains(database.Name) &&
@@ -425,9 +423,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             _leaderEvidenceUntil = dispatched + options.ConfirmationDuration;
         for (var i = 0; i < followers.Length; i++)
         {
-            var (name, follower) = followers[i];
+            var (database, follower, leaderReader) = followers[i];
+            var name = database.Name;
             var status = poll.Databases[i];
-            var leaderReader = _leaderReaders[name];
             // A schema commit after the canonical base is never applied or compared; one covered by it is a duplicate.
             if (status.Schema is { } schema && schema > _canonicalBase[name])
             {
@@ -437,7 +435,6 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 _detached.Add(name);
                 follower.Close();
                 _followers.Remove(name);
-                _leaderReaders.Remove(name);
                 host.SchemaDetached(name);
                 continue;
             }
@@ -454,7 +451,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             }
             if (_restart) return false;
             if (status.Published is { } published && follower.ComparedPosition is { } compared)
-                AdvanceCanonicalBase(databases.First(d => d.Name == name), compared < published ? compared : published);
+                AdvanceCanonicalBase(database, compared < published ? compared : published);
         }
         for (var i = followers.Length; i < polled.Count; i++)
             if (poll.Databases[i].Progress != null)
@@ -537,7 +534,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 var name = _databases[i].Name;
                 initialized &= _removed.Contains(name) || _canonicalBase.ContainsKey(name);
                 databases[i] = new(name, host.GetProgress(name),
-                    _followers.TryGetValue(name, out var follower) ? follower.Compared : null,
+                    _followers.TryGetValue(name, out var following) ? following.Follower.Compared : null,
                     _publishers is { } publishers ? publishers[i].PublishedPosition : null,
                     _removed.Contains(name), _detached.Contains(name));
             }
@@ -591,13 +588,12 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
 
     void Disconnect()
     {
-        foreach (var (name, follower) in _followers)
+        foreach (var (name, following) in _followers)
         {
-            follower.Close();
-            _resumeComparison[name] = follower.ResumePosition;
+            following.Follower.Close();
+            _resumeComparison[name] = following.Follower.ResumePosition;
         }
         _followers.Clear();
-        _leaderReaders.Clear();
         _peer?.Dispose();
         _peer = null;
     }

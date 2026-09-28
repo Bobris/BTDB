@@ -1,9 +1,7 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
@@ -173,7 +171,7 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
     // A selected remote file is visible only once prefetch verified or downloaded it: an unverified cached copy or a
     // download in progress looks missing, so no reader can see bytes that are not the selected version.
     public IFileCollectionFile GetFile(uint index) =>
-        _remoteFiles.TryGetValue(index, out var remote) && !remote.IsLocalReady ? null! : Local.GetFile(index);
+        _remoteFiles.TryGetValue(index, out var remote) ? remote.GetCachedLocal()! : Local.GetFile(index);
     public uint GetCount() => Local.GetCount();
     public IEnumerable<IFileCollectionFile> Enumerate() => Local.Enumerate();
     public void ConcurrentTemporaryTruncate(uint index, uint offset) => Local.ConcurrentTemporaryTruncate(index, offset);
@@ -259,7 +257,7 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         }
     }
 
-    async Task<IFileCollectionFile> PopulateCacheAsync(RemoteFile selected, DownloadProgress? progress = null)
+    async Task<IFileCollectionFile?> PopulateCacheAsync(RemoteFile selected, DownloadProgress? progress = null)
     {
         try
         {
@@ -354,21 +352,21 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
 
     static void VerifyLocalChecksum(IFileCollectionFile file, RemoteFile selected, CancellationToken cancellation)
     {
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+        var checksum = FileChecksum.Compute(file, selected.Length, 64 * 1024, cancellation);
+        if (!checksum.Equals(selected.Sha256, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("The local file does not match the remote whole-file checksum.");
+    }
+
+    async Task<IFileCollectionFile?> VerifyCachedAsync(IFileCollectionFile candidate, RemoteFile selected)
+    {
+        await _downloads.WaitAsync(_lifetime.Token).ConfigureAwait(false);
         try
         {
-            for (ulong offset = 0; offset < selected.Length;)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                var count = (int)Math.Min((ulong)buffer.Length, selected.Length - offset);
-                file.RandomRead(buffer.AsSpan(0, count), offset, false);
-                hash.AppendData(buffer, 0, count);
-                offset += (uint)count;
-            }
-            VerifyChecksum(hash, selected);
+            // A streaming reader may still be reading this candidate. Leave an invalid copy in place until
+            // completion or a later prefetch; neither may accept it without a successful checksum.
+            return ValidateCachedFile(candidate, selected, _lifetime.Token, out _) ? candidate : null;
         }
-        finally { ArrayPool<byte>.Shared.Return(buffer); }
+        finally { _downloads.Release(); }
     }
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -389,8 +387,9 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
     {
         readonly ReplicationFileSet _owner;
         readonly object _lock = new();
-        Task<IFileCollectionFile>? _pending;
-        IFileCollectionFile? _local;
+        // The single shared download/verification. Null result means a streamed cache candidate failed
+        // validation; a later prefetch downloads it. A completed file must still be selected locally.
+        volatile Task<IFileCollectionFile?>? _pending;
         internal readonly RemoteFile Selected;
         public uint Index { get; }
 
@@ -403,20 +402,18 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
 
         internal void UseValidatedLocal(IFileCollectionFile local)
         {
-            _local = local;
-            IsLocalReady = true;
+            lock (_lock) _pending = Task.FromResult<IFileCollectionFile?>(local);
         }
-
-        // Set once a verified or downloaded local copy exists; it stays set while that copy is in use.
-        internal volatile bool IsLocalReady;
 
         internal IFileCollectionFile? GetCachedLocal()
         {
-            lock (_lock)
-                return _local != null && ReferenceEquals(_owner.Local.GetFile(Index), _local) ? _local : null;
+            // File lookups are on the ordinary read path; one task snapshot avoids taking the population lock.
+            var pending = _pending;
+            return pending is { IsCompletedSuccessfully: true, Result: { } local } &&
+                   ReferenceEquals(_owner.Local.GetFile(Index), local) ? local : null;
         }
 
-        internal Task<IFileCollectionFile>? Pending { get { lock (_lock) return _pending; } }
+        internal Task<IFileCollectionFile?>? Pending { get { lock (_lock) return _pending; } }
 
         // Null when a verified copy or a prefetch already exists, or a cached copy is ruled out by metadata.
         internal IStreamingFileRead? StartStreamingRead(CancellationToken cancellation)
@@ -424,52 +421,39 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
             lock (_lock)
             {
                 ObjectDisposedException.ThrowIf(_owner._disposed, this);
-                if (_local != null && ReferenceEquals(_owner.Local.GetFile(Index), _local)) return null;
-                if (_pending is { IsFaulted: false, IsCanceled: false }) return null;
+                if (GetCachedLocal() != null || _pending is { IsCompleted: false }) return null;
                 if (_owner.Local.GetFile(Index) is { } candidate)
-                    return _owner.CachedFileMismatch(candidate, Selected) == null
-                        ? new CachedStreamingRead(_owner, this, candidate, cancellation) : null;
+                {
+                    if (_owner.CachedFileMismatch(candidate, Selected) != null) return null;
+                    // Use the collection lifetime, like downloads: abandoning one reader does not cancel
+                    // a concurrent prefetch, and collection disposal cancels and drains both kinds of work.
+                    _pending = Task.Run(() => _owner.VerifyCachedAsync(candidate, Selected), _owner._lifetime.Token);
+                    return new CachedStreamingRead(_owner, this, candidate, _pending);
+                }
                 var progress = new DownloadProgress();
                 _pending = _owner.PopulateCacheAsync(Selected, progress);
                 return new DownloadingStreamingRead(this, progress, cancellation);
             }
         }
 
-        // A streamed cached copy passed its checksum.
-        internal void AcceptVerified(IFileCollectionFile local)
-        {
-            lock (_lock)
-            {
-                if (!ReferenceEquals(_owner.Local.GetFile(Index), local)) return;
-                _local = local;
-                IsLocalReady = true;
-            }
-        }
-
         internal async ValueTask<IFileCollectionFile> GetLocalAsync(CancellationToken cancellation)
         {
-            Task<IFileCollectionFile> pending;
-            lock (_lock)
+            while (true)
             {
-                ObjectDisposedException.ThrowIf(_owner._disposed, this);
-                cancellation.ThrowIfCancellationRequested();
-                if (_local != null)
+                Task<IFileCollectionFile?> pending;
+                lock (_lock)
                 {
-                    if (ReferenceEquals(_owner.Local.GetFile(_local.Index), _local)) return _local;
-                    IsLocalReady = false;
-                    _local = null;
-                    _pending = null;
+                    ObjectDisposedException.ThrowIf(_owner._disposed, this);
+                    cancellation.ThrowIfCancellationRequested();
+                    if (GetCachedLocal() is { } local) return local;
+                    // Completed tasks can hold an evicted file, including an abandoned streaming download.
+                    if (_pending is null || _pending.IsCompleted)
+                        _pending = _owner.PopulateCacheAsync(Selected);
+                    pending = _pending;
                 }
-                if (_pending is null || _pending.IsFaulted || _pending.IsCanceled)
-                    _pending = _owner.PopulateCacheAsync(Selected);
-                pending = _pending;
-            }
-            var local = await pending.WaitAsync(cancellation).ConfigureAwait(false);
-            lock (_lock)
-            {
-                ObjectDisposedException.ThrowIf(_owner._disposed, this);
-                IsLocalReady = true;
-                return _local = local;
+                await pending.WaitAsync(cancellation).ConfigureAwait(false);
+                // Recheck the actual local instance before exposing the result. A rejected warm candidate
+                // or an evicted result starts an ordinary cache population on the next iteration.
             }
         }
 

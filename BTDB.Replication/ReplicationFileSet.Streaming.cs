@@ -168,17 +168,17 @@ public sealed partial class ReplicationFileSet
         readonly ReplicationFileSet _owner;
         readonly RemoteInventoryFile _file;
         readonly IFileCollectionFile _candidate;
-        readonly Task _checksum;
+        readonly Task<IFileCollectionFile?> _verification;
 
         public CachedStreamingRead(ReplicationFileSet owner, RemoteInventoryFile file, IFileCollectionFile candidate,
-            CancellationToken cancellation)
+            Task<IFileCollectionFile?> verification)
         {
             _owner = owner;
             _file = file;
             _candidate = candidate;
             Reader = new StreamingReader(file.Selected.Length,
                 (position, destination) => candidate.RandomRead(destination, position, false));
-            _checksum = Task.Run(() => VerifyLocalChecksum(candidate, file.Selected, cancellation), cancellation);
+            _verification = verification;
         }
 
         public IMemReader Reader { get; }
@@ -186,17 +186,20 @@ public sealed partial class ReplicationFileSet
 
         public async ValueTask<bool> CompleteAsync(CancellationToken cancellation)
         {
-            try { await _checksum.WaitAsync(cancellation).ConfigureAwait(false); }
-            catch (IOException error)
+            var verified = await _verification.WaitAsync(cancellation).ConfigureAwait(false);
+            ObjectDisposedException.ThrowIf(_owner._disposed, _owner);
+            if (verified != null && ReferenceEquals(_file.GetCachedLocal(), _candidate)) return true;
+            // Cache population validates and discards under the same gate; never remove a file it is hashing.
+            await _owner._downloads.WaitAsync(cancellation).ConfigureAwait(false);
+            try
             {
-                _owner.DiscardCachedFile(_candidate, $"SHA-256 validation failed: {error.Message}", _file.Index);
-                return false;
+                if (ReferenceEquals(_owner.Local.GetFile(_file.Index), _candidate))
+                    _owner.DiscardCachedFile(_candidate, "SHA-256 validation failed", _file.Index);
             }
-            _file.AcceptVerified(_candidate);
-            return true;
+            finally { _owner._downloads.Release(); }
+            return false;
         }
 
-        // An abandoned checksum still finishes; observe its outcome.
-        public void Dispose() => _ = _checksum.ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        public void Dispose() { } // The collection owns and drains the shared verification.
     }
 }

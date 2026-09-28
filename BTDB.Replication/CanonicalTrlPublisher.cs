@@ -1,9 +1,7 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
@@ -63,7 +61,6 @@ public sealed class CanonicalTrlPublisher : IDisposable
     {
         public readonly TransactionLogPosition? Position = position;
         public readonly TrlWrite[] Writes = writes;
-        public TrlObjectState? TailState;
         public int Index; // Publish native prefixes in order; replay ignores an unfinished final transaction.
         public bool Dispatched;
     }
@@ -235,11 +232,10 @@ public sealed class CanonicalTrlPublisher : IDisposable
 
     bool Accept(Plan plan, TrlObjectState state)
     {
-        plan.TailState = state;
         plan.Dispatched = false;
         if (++plan.Index < plan.Writes.Length) return false;
         var tailWrite = plan.Writes[^1];
-        _tail = new(tailWrite.FileId, tailWrite.Key, plan.TailState!);
+        _tail = new(tailWrite.FileId, tailWrite.Key, state);
         _plan = null;
         _adopted = true;
         if (plan.Position is not { } position) return false;
@@ -313,7 +309,8 @@ public sealed class CanonicalTrlPublisher : IDisposable
             parts.RemoveAt(0);
             continuesTail = false;
         }
-        var sealedTailSha = continuesTail && parts.Count > 1 ? Checksum(Source(parts[0].Id), parts[0].End, cancellation) : null;
+        var sealedTailSha = continuesTail && parts.Count > 1
+            ? FileChecksum.Compute(Source(parts[0].Id), parts[0].End, 1024 * 1024, cancellation) : null;
         var writes = new TrlWrite[parts.Count];
         var keys = parts.Select(f => keyForFile(f.Id)).ToArray();
         if (continuesTail) keys[0] = _tail!.Key;
@@ -326,28 +323,9 @@ public sealed class CanonicalTrlPublisher : IDisposable
             var expected = i == 0 && continuesTail ? _tail!.State : null;
             var source = Source(partId);
             var sha = i + 1 == writes.Length ? null
-                : i == 0 && continuesTail ? sealedTailSha : Checksum(source, partEnd, cancellation);
+                : i == 0 && continuesTail ? sealedTailSha : FileChecksum.Compute(source, partEnd, 1024 * 1024, cancellation);
             writes[i] = new(partId, keys[i], expected?.Token, expected?.Length ?? 0, partEnd, source, sha);
         }
         return new(end, writes);
-    }
-
-    static string Checksum(IFileCollectionFile file, uint length, CancellationToken cancellation)
-    {
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var buffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
-        try
-        {
-            for (uint offset = 0; offset < length;)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                var count = (int)Math.Min((uint)buffer.Length, length - offset);
-                file.RandomRead(buffer.AsSpan(0, count), offset, false);
-                hash.AppendData(buffer, 0, count);
-                offset += (uint)count;
-            }
-            return Convert.ToHexString(hash.GetHashAndReset());
-        }
-        finally { ArrayPool<byte>.Shared.Return(buffer); }
     }
 }

@@ -29,6 +29,10 @@
 
 ### Changed
 
+- Simplify replication internals: keep each follower's database, comparison and reader in one map, derive cache
+  readiness from its shared verification/download task, share file SHA-256 calculation, and remove redundant TRL
+  publication state.
+
 - Replicated `OpenAsync` loads the KVI (typically a fifth to a third of the database) while it downloads, or while a
   parallel task computes its SHA-256 for a cached copy, and accepts the load only after that verification; a cached
   copy that fails is discarded and the downloaded KVI loads instead. The TRLs it replays prefetch as soon as its header
@@ -156,6 +160,11 @@
   reuse placements now come only from restore validation, downloads and confirmed uploads.
 
 ### Fixed
+
+- Revalidate completed streaming download results against the actual local cache, so prefetch and streaming reads
+  download an evicted file again even when the original reader was abandoned before completion.
+- Track streamed cache checksums with downloads: concurrent prefetch shares the verification, abandoning or cancelling
+  one reader does not cancel other waiters, and collection disposal cancels and drains checksum work before returning.
 
 - Run leader checkpoint maintenance of all databases concurrently. Previously the jobs ran in sequence and the first
   failure ended the round, so a database whose checkpoint kept failing starved every later database of checkpoints and

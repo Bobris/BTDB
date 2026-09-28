@@ -97,6 +97,11 @@ marks. PVL/KVI metadata consists only of SHA-256 and optional deletion deadlines
   pending reads before reporting the original disk error (`FailedLocalWriteCancelsPendingReadsBeforeReportingTheError`).
   Reading 100 verified cached PVL headers makes zero remote reads instead of 100, both after warm initialization and
   completed prefetch (`VerifiedCachedHeadersNeedNoRemoteReads`); eviction or replacement falls back to remote headers.
+  `AbandonedStreamingDownloadIsDownloadedAgainAfterEviction` covers prefetch and streaming retries after the original
+  reader was abandoned and its downloaded file evicted. `DisposalCancelsAndDrainsAbandonedStreamingChecksum` holds a
+  cache read in progress and verifies that disposal waits for it and never exposes cancelled validation.
+  `StreamingChecksumIsSharedWithPrefetchAndSurvivesOneCancelledWaiter` checks a single shared checksum, cancellation
+  isolation and PVL placement reuse without uploading the verified copy again.
 - `AsyncOpenTest`: discovery reads only needed KVI/TRL headers and prefetches KVI references in parallel. A restored
   complete canonical tail continues the leader's native file at its exact committed EOF, while partial, corrupt or
   sealed tails rotate (`RestoredCompleteCanonicalTailContinuesTheLiveLeadersNativeFile`,

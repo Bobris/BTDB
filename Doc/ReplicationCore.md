@@ -261,10 +261,13 @@ downloads during open. Later writes, snapshot export, diagnostics and local comp
 to recover generations. New replication files retain the native header layout with zero in its unused generation field.
 Failed or cancelled opening releases its native roots without flushing an appender or changing the downloaded TRL.
 
-The collection shares concurrent prefetch requests for the same file and limits active cache verification/downloads
+The collection shares concurrent prefetch and streaming verification requests for the same file and limits active cache verification/downloads
 (`maxConcurrentDownloads`, default 4); requesting the entire recovery set does not allocate one transfer buffer per
-queued file. Cancellation of one waiter does not cancel another waiter's shared transfer; disposing the collection
-cancels and drains remaining work. The caller still owns the physical cache and remote adapter. Synchronous reads
+queued file. Cancellation of one waiter or disposal of a streaming reader does not cancel another waiter's shared
+transfer or checksum; disposing the collection cancels and drains both downloads and streamed cache verification.
+A completed operation establishes cache readiness only while its exact file instance remains in local storage.
+Eviction invalidates that result even if the streaming reader never called `CompleteAsync`; a later prefetch or
+streaming read populates the cache again. The caller still owns the physical cache and remote adapter. Synchronous reads
 on an unprefetched logical file wait for its cache population; normal reads of the prefetched recovery set stay local.
 
 A sealed cache candidate is reused only after a fresh whole-file checksum matches selected remote metadata.
