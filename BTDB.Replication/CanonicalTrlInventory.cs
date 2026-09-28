@@ -66,9 +66,10 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
         {
             cancellation.ThrowIfCancellationRequested();
             var head = _chain[i];
-            // No trustworthy checksum was supplied by the TRL storage seam: do not reuse local cache bytes.
+            // Only a TRL sealed with its whole-file checksum lets a restore reuse cached bytes; the tail may grow.
+            var isSealed = i + 1 < _chain.Count;
             yield return new(head.FileId, KVFileType.TransactionLog, head.State.Length, head.State.Token,
-                i + 1 < _chain.Count, null);
+                isSealed, isSealed ? head.State.Sha256 : null);
         }
     }
 

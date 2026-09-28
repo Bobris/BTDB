@@ -147,9 +147,11 @@ staging file.
 Sealed PVL/KVI objects carry whole-file SHA-256 (`btdb_sha256`) committed atomically with their content; no sidecar
 is needed. Length or version token alone never proves equal bytes.
 
-Canonical TRL objects currently carry no checksum, so restore always downloads every TRL, including a sealed one with a
-matching local length. Publishing a final checksum after sealing, for TRL cache reuse, is open work. Never hash a
-growing TRL.
+A canonical TRL gets its whole-file SHA-256 in the same atomic write that seals it: every native file except the last
+of a publication plan has a successor, so the publisher hashes the complete local file and sends it with that file's
+final append (or, for a tail already published to its end, with one unchanged-content commit). Every other TRL
+commit replaces the metadata without a checksum. Restore reuses a cached sealed TRL whose length and checksum match
+and downloads the active tail again. Never hash a growing TRL.
 
 ### Remote cleanup and recovery roots
 
@@ -313,11 +315,12 @@ The failover core sees only the semantic append; the Block Blob layout stays in 
 - A write expecting token `T` obtains `T`'s committed block list: from its own previous commit when `T` is that
   commit's ETag, otherwise from Get Block List, whose response ETag must equal `T`. The committed length must equal
   the expected length.
-- Committed 4 MiB blocks are reused. Only the appended suffix is staged, as new blocks with unique random IDs, so a
-  losing request can never replace bytes a winning commit references. Trailing partial blocks accumulate up to 64 and
+- Committed 4 MiB blocks are reused. Only the appended suffix is staged, up to four blocks at once, as new blocks
+  with unique random IDs, so a losing request can never replace bytes a winning commit references. Trailing partial blocks accumulate up to 64 and
   are then merged into full blocks restaged from the verified local prefix, bounding block count and rewritten bytes.
 - `Put Block List` with `If-Match: T` (or `If-None-Match: *` for a new TRL) atomically commits the new list and the
-  empty TRL metadata. Adoption is an unchanged-content commit keeping every block.
+  TRL metadata: `btdb_sha256` on the write that seals the file, none otherwise. Adoption is an unchanged-content
+  commit keeping every block.
 - A transient failure after the commit was dispatched is `Ambiguous`; the publisher reconciles it by comparing the
   appended bytes. `404`, `409` and `412` are `Rejected`.
 
@@ -398,9 +401,8 @@ its ambiguity case only discarded a known successful response.
 ### Open Azure work
 
 - Live qualification of concurrency schedules, genuine network faults and pending effects after timeouts, real clock
-  drift/suspend, lease expiry timing, credential renewal, throttling and throughput (including the 100 GB startup
-  target).
-- Final TRL checksum after sealing, for TRL cache reuse.
+  drift/suspend, lease expiry timing, credential renewal and throttling. Throughput and the 100 GB startup target are
+  measured in [Measurements.md](Measurements.md).
 
 ## Amazon S3 (later research)
 

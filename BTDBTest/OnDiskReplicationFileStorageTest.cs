@@ -130,6 +130,107 @@ public sealed class OnDiskReplicationFileStorageTest : IDisposable
     }
 
     [Fact]
+    public async Task ReadersNeverSeeBytesOfARecycledBlock()
+    {
+        using var files = new OnDiskReplicationFileStorage(_directory);
+        // Mapping steps release and reuse blocks several times while readers copy committed bytes.
+        var expected = Pattern(96 * 1024 * 1024 + 123, 21);
+        using var stop = new CancellationTokenSource();
+        var file = files.AddFile("trl", FileIdParity.Odd);
+        var readers = Enumerable.Range(0, 4).Select(seed => Task.Run(() =>
+        {
+            var random = new Random(seed);
+            var buffer = new byte[3 * 1024 * 1024 / 2]; // Spans the mapped prefix and blocks.
+            var checks = 0;
+            while (!stop.IsCancellationRequested)
+            {
+                var size = (long)file.GetSize();
+                var length = (int)Math.Min(buffer.Length, size);
+                if (length == 0) continue;
+                var position = random.NextInt64(size - length + 1);
+                file.RandomRead(buffer.AsSpan(0, length), (ulong)position, false);
+                Assert.True(buffer.AsSpan(0, length).SequenceEqual(expected.AsSpan((int)position, length)));
+                checks++;
+            }
+            return checks;
+        })).ToArray();
+        var writer = new MemWriter(file.GetAppenderWriter());
+        for (var offset = 0; offset < expected.Length; offset += 4000)
+        {
+            writer.WriteBlock(expected.AsSpan(offset, Math.Min(4000, expected.Length - offset)));
+            writer.Flush();
+        }
+        stop.Cancel();
+        foreach (var checks in await Task.WhenAll(readers)) Assert.True(checks > 0);
+        Assert.Equal(expected, ReadAll(file));
+    }
+
+    [Fact]
+    public void AppendingToAReopenedMultiBlockFileKeepsItsPrefixReadable()
+    {
+        var original = Pattern(3 * 1024 * 1024 + 5, 11);
+        using (var files = new OnDiskReplicationFileStorage(_directory))
+            Append(files.ImportFile(1, "trl"), original);
+        using (var files = new OnDiskReplicationFileStorage(_directory))
+        {
+            var file = files.GetFile(1);
+            Assert.Equal(original, ReadAll(file));
+            var suffix = Pattern(2 * 1024 * 1024, 12);
+            Append(file, suffix);
+            Assert.Equal(original.Concat(suffix).ToArray(), ReadAll(file));
+            file.HardFlush();
+            Assert.Equal(original.Concat(suffix).ToArray(), ReadAll(file));
+        }
+    }
+
+    [Fact]
+    public void RewindBelowTheMappedPrefixReplacesItsBytes()
+    {
+        using var files = new OnDiskReplicationFileStorage(_directory);
+        var file = files.ImportFile(1, "trl");
+        var original = Pattern(20 * 1024 * 1024, 13); // Persisted blocks move under a mapping while appending.
+        Append(file, original);
+        var writer = new MemWriter(file.GetAppenderWriter());
+        writer.SetCurrentPosition(1024 * 1024 + 17);
+        writer.Flush();
+        var suffix = Pattern(3 * 1024 * 1024, 14);
+        Append(file, suffix);
+        var expected = original.Take(1024 * 1024 + 17).Concat(suffix).ToArray();
+        Assert.Equal(expected, ReadAll(file));
+        file.HardFlushTruncateSwitchToReadOnlyMode();
+        Assert.Equal(expected, ReadAll(file));
+        Assert.Equal(expected.Length, new FileInfo(Path.Combine(_directory, "00000001.trl")).Length);
+    }
+
+    [Fact]
+    public async Task ConcurrentRemoveNeverExposesUnmappedMemoryToReaders()
+    {
+        using var files = new OnDiskReplicationFileStorage(_directory);
+        for (var round = 0; round < 20; round++)
+        {
+            var file = files.ImportFile((uint)round + 1, "pvl");
+            var expected = Pattern(2 * 1024 * 1024, round);
+            Append(file, expected);
+            file.HardFlushTruncateSwitchToReadOnlyMode();
+            var readers = Enumerable.Range(0, 4).Select(seed => Task.Run(() =>
+            {
+                var buffer = new byte[64 * 1024];
+                var random = new Random(seed);
+                while (true)
+                {
+                    var position = random.Next(expected.Length - buffer.Length);
+                    try { file.RandomRead(buffer, (ulong)position, false); }
+                    catch (FileNotFoundException) { return; }
+                    Assert.True(buffer.AsSpan().SequenceEqual(expected.AsSpan(position, buffer.Length)));
+                }
+            })).ToArray();
+            await Task.Delay(5);
+            file.Remove();
+            await Task.WhenAll(readers);
+        }
+    }
+
+    [Fact]
     public void RemovedFileIsDeletedAndReadsReportItMissing()
     {
         using var files = new OnDiskReplicationFileStorage(_directory);

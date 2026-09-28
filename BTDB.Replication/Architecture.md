@@ -257,7 +257,7 @@ selected databases and the authority heartbeat:
 | Progress `(eventId, trlFileId, trlPosition)` | Latest complete leader-local cut; coalesced and repeated, not Blob durability. |
 | Published | The leader's canonical Blob cut. |
 | Schema | End of the latest non-application commit the leader replayed or committed. |
-| Inline chunks | Leader TRL bytes from the follower's requested position, within the poll budget (1 MiB requested, 4 MiB maximum). |
+| Inline chunks | Leader TRL bytes from the follower's requested position, within the poll budget (4 MiB, the maximum a leader honours). |
 
 Remaining bytes are read by range (at most 256 KiB per HTTP request). Every request is bound to cluster, term,
 session, endpoint and API key; the leader reauthenticates after every await, and only complete captured bytes are
@@ -268,8 +268,8 @@ loopback; see [BTDB.Replication.Http](../BTDB.Replication.Http/README.md).
   cut; there is no separate progress notification queue or comparison semaphore. It compares leader bytes with local
   TRL bytes from its resume position, following native lineage across rotations. A lagging follower compares the complete local prefix the leader's cut
   already covers. A match advances the compared position; a mismatch requests restart.
-- **Retention.** `RetainingLeaderTrlReader` keeps up to 4 MiB of received leader bytes per database across steps, so a
-  lagging comparison never fetches them twice. An inline chunk that continues in a later file shows where the
+- **Retention.** `RetainingLeaderTrlReader` keeps up to 8 MiB (two poll budgets) of received leader bytes per
+  database across steps, so a lagging comparison never fetches them twice. An inline chunk that continues in a later file shows where the
   previous file ended, so rotations need no end-of-file range read.
 - **Canonical base.** Bytes compared up to `min(compared, published)` are canonical. The base advances capture
   acknowledgement (releasing local TRL retention), seeds the next leader's activation validation and survives
@@ -389,7 +389,7 @@ Backlog within the selected design:
 
 | Area | Remaining work |
 | --- | --- |
-| Restore performance | Measure the 100 GB / 15 minute target against real Azure, including verified-cache starts. |
+| Restore performance | Measured on Azure ([Measurements.md](Measurements.md)): 100 GiB cold in 4.4 minutes, warm in 100 s; 30 GiB with production file sizes cold in 83–156 s. Open: whole-cache validation on warm starts. |
 | Graceful shutdown | Same-generation lease handoff on shutdown instead of waiting for lease expiry, if the pause proves significant. |
 | Providers | S3 adapter research (ObjectStorages.md); production Kestrel/proxy qualification of the HTTP transport. |
 | Stronger reads | Confirmed-only, bounded-lag or minimum-position reads are optional future APIs, not requirements. |
@@ -417,7 +417,7 @@ Backlog within the selected design:
 | 2026-09-27 | Deletion delay must be positive; unchanged checkpoints are not re-exported; unmarked TRLs and PVLs are never rewritten by checkpoint protection. |
 | 2026-09-27 | A steady-state checkpoint needs no request per retained file (measured 173 HEADs before). Removed and detached databases release local TRL retention; a node that initialized a database follows after losing the lease instead of restarting. |
 
-| 2026-09-28 | Shared `{id}.trl` names across terms; conditional create with byte comparison on collision. Publish in native order and regenerate unfinished transactions after restart. Only SHA-256 and deletion deadlines remain Blob metadata; this supersedes successor links and KVI recovery-root hints. |
+| 2026-09-28 | Shared `{id}.trl` names across terms; conditional create with byte comparison on collision. Publish in native order and regenerate unfinished transactions after restart. Only SHA-256 and deletion deadlines remain Blob metadata; this supersedes successor links and KVI recovery-root hints. Sealed TRLs record their SHA-256 in the sealing write, so warm restores reuse them. |
 
 Superseded alternatives, kept only as reasons: manifest- or chunk-based checkpoint publication and whole-file TRL
 replacement (native KVI-last and conditional tail append are cheaper and portable); a per-batch `state.json` CAS

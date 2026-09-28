@@ -312,7 +312,7 @@ public class CheckpointPublisherTest
             var writer = new MemWriter(file.GetAppenderWriter());
             writer.WriteBlock(suffix);
             writer.Flush();
-            var state = new TrlObjectState((++_version).ToString(), write.Length);
+            var state = new TrlObjectState((++_version).ToString(), write.Length, write.Sha256);
             _trls[write.Key] = (write.FileId, state);
             AfterTrl?.Invoke(write);
             return new(TrlWriteOutcome.Applied, state);

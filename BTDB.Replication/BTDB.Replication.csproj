@@ -13,5 +13,6 @@
         <InternalsVisibleTo Include="BTDB.Replication.Azure.Test"/>
         <InternalsVisibleTo Include="BTDB.Replication.Http"/>
         <InternalsVisibleTo Include="BTDB.Replication.Http.Test"/>
+        <InternalsVisibleTo Include="DBBenchmark"/>
     </ItemGroup>
 </Project>

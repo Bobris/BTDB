@@ -30,6 +30,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     readonly LeaseAuthority? authority;
     readonly TimeProvider timeProvider;
     const string DeleteAfterKey = "btdb_delete_after";
+    const string Sha256Key = "btdb_sha256";
 
     public AzureReplicationStorage(BlobContainerClient container, string prefix, TimeProvider? timeProvider = null)
     {
@@ -83,7 +84,8 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         try
         {
             var result = await Blob(key).GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false);
-            return new(result.Value.ETag.ToString(), checked((uint)result.Value.ContentLength));
+            return new(result.Value.ETag.ToString(), checked((uint)result.Value.ContentLength),
+                result.Value.Metadata.TryGetValue(Sha256Key, out var sha) ? sha : null);
         }
         catch (RequestFailedException error) when (error.Status == 404) { return null; }
         catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
@@ -153,30 +155,42 @@ public sealed class AzureReplicationStorage : IReplicationStorage
                 conditions.IfNoneMatch = ETag.All;
             }
             if (write.Length < write.ExpectedLength) throw new ArgumentException("Canonical TRLs cannot shrink.");
-            var buffer = ArrayPool<byte>.Shared.Rent(BlockSize);
+            // Stage several blocks at once: one request at a time capped a backlog at about 110 MiB/s (measured).
+            var staging = new Queue<(Task Stage, byte[] Buffer)>();
             try
             {
                 while (offset < write.Length)
                 {
+                    if (staging.Count == ParallelStages) await CompleteStage(staging.Dequeue()).ConfigureAwait(false);
                     var count = (int)Math.Min((ulong)BlockSize, write.Length - offset);
+                    var buffer = ArrayPool<byte>.Shared.Rent(BlockSize);
                     write.Source.RandomRead(buffer.AsSpan(0, count), offset, false);
                     var id = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
-                    using var stream = new MemoryStream(buffer, 0, count, false);
-                    await blob.StageBlockAsync(id, stream, cancellationToken: cancellation).ConfigureAwait(false);
+                    staging.Enqueue((StageBlockAsync(blob, id, buffer, count, cancellation), buffer));
                     blocks.Add((id, count));
                     offset += (uint)count;
                 }
+                while (staging.TryDequeue(out var staged)) await CompleteStage(staged).ConfigureAwait(false);
             }
-            finally { ArrayPool<byte>.Shared.Return(buffer); }
+            finally
+            {
+                // A failed stage still drains its siblings before their buffers return to the pool.
+                while (staging.TryDequeue(out var staged))
+                {
+                    await staged.Stage.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                    ArrayPool<byte>.Shared.Return(staged.Buffer);
+                }
+            }
             commitDispatched = true;
+            // Every commit replaces the metadata: only the write that seals the TRL records its checksum.
             var result = await blob.CommitBlockListAsync(blocks.Select(b => b.Name), new CommitBlockListOptions
             {
                 Conditions = conditions,
-                Metadata = new Dictionary<string, string>()
+                Metadata = write.Sha256 is { } sha ? new Dictionary<string, string> { [Sha256Key] = sha } : new Dictionary<string, string>()
             }, cancellation).ConfigureAwait(false);
             var applied = result.Value.ETag.ToString();
             _lastCommit = new(write.Key, applied, blocks.ToArray());
-            return new(TrlWriteOutcome.Applied, new(applied, write.Length));
+            return new(TrlWriteOutcome.Applied, new(applied, write.Length, write.Sha256));
         }
         catch (RequestFailedException error) when (error.Status is 404 or 409 or 412)
         { return new(TrlWriteOutcome.Rejected); }
@@ -186,6 +200,20 @@ public sealed class AzureReplicationStorage : IReplicationStorage
             throw new IOException("Azure canonical TRL staging failed.", error);
         }
     }
+    const int ParallelStages = 4;
+
+    static async Task StageBlockAsync(BlockBlobClient blob, string id, byte[] buffer, int count, CancellationToken cancellation)
+    {
+        using var stream = new MemoryStream(buffer, 0, count, false);
+        await blob.StageBlockAsync(id, stream, cancellationToken: cancellation).ConfigureAwait(false);
+    }
+
+    static async Task CompleteStage((Task Stage, byte[] Buffer) staged)
+    {
+        try { await staged.Stage.ConfigureAwait(false); }
+        finally { ArrayPool<byte>.Shared.Return(staged.Buffer); }
+    }
+
     // Native files use a nonzero decimal ID and .trl, .pvl or .kvi.
     static bool TryParseFileName(string name, out uint id, out KVFileType type)
     {
@@ -207,7 +235,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         {
             if (!TryParseFileName(blob.Name[root.Length..], out var id, out var type) || type == KVFileType.TransactionLog) continue;
             yield return new(id, type, checked((ulong)blob.Properties.ContentLength!.Value),
-                blob.Properties.ETag!.Value.ToString(), true, blob.Metadata.TryGetValue("btdb_sha256", out var sha) ? sha : null);
+                blob.Properties.ETag!.Value.ToString(), true, blob.Metadata.TryGetValue(Sha256Key, out var sha) ? sha : null);
         }
     }
 
@@ -324,7 +352,8 @@ public sealed class AzureReplicationStorage : IReplicationStorage
             var key = blob.Name[root.Length..];
             if (!TryParseFileName(blob.Name[root.Length..], out var id, out var type) || type != KVFileType.TransactionLog) continue;
             if (TrlFileName.FileIdFromKey(key) != id) throw new InvalidDataException("Invalid TRL object name.");
-            yield return new(id, key, new(blob.Properties.ETag!.Value.ToString(), checked((uint)blob.Properties.ContentLength!.Value)));
+            yield return new(id, key, new(blob.Properties.ETag!.Value.ToString(), checked((uint)blob.Properties.ContentLength!.Value),
+                blob.Metadata.TryGetValue(Sha256Key, out var sha) ? sha : null));
         }
     }
 
@@ -350,7 +379,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         try
         {
             var properties = (await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false)).Value;
-            if ((ulong)properties.ContentLength != source.Length || !properties.Metadata.ContainsKey("btdb_sha256"))
+            if ((ulong)properties.ContentLength != source.Length || !properties.Metadata.ContainsKey(Sha256Key))
                 throw new RemoteFileConflictException();
             // Contents were verified on upload/download. An unmarked file keeps its version, so restores reading it by
             // ETag continue; an old delete requires a mark, and a late stale mark cannot become due before this
@@ -508,7 +537,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
                 await blob.CommitBlockListAsync(_blocks, new CommitBlockListOptions
                 {
                     Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All },
-                    Metadata = new Dictionary<string, string> { ["btdb_sha256"] = sha }
+                    Metadata = new Dictionary<string, string> { [Sha256Key] = sha }
                 }, cancellation).ConfigureAwait(false);
                 return;
             }
@@ -522,7 +551,7 @@ public sealed class AzureReplicationStorage : IReplicationStorage
             catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
             { throw new IOException("Immutable file commit is unresolved; retry the same identity.", error); }
             if (observed.Value.ContentLength != checked((long)_length) ||
-                !observed.Value.Metadata.TryGetValue("btdb_sha256", out var actual) || !sha.Equals(actual, StringComparison.OrdinalIgnoreCase))
+                !observed.Value.Metadata.TryGetValue(Sha256Key, out var actual) || !sha.Equals(actual, StringComparison.OrdinalIgnoreCase))
             {
                 authority?.Fence();
                 throw new RemoteFileConflictException();

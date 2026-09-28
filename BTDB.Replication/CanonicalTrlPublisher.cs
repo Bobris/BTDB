@@ -1,22 +1,29 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 
 namespace BTDB.Replication;
 
-public sealed record TrlObjectState(string Token, uint Length);
+/// <summary>One consistent TRL object version. Sha256 is the whole-object hexadecimal SHA-256 recorded by the write that
+/// sealed it (see <see cref="TrlWrite.Sha256"/>); null for an active or earlier-sealed TRL.</summary>
+public sealed record TrlObjectState(string Token, uint Length, string? Sha256 = null);
 public sealed record TrlHead(uint FileId, string Key, TrlObjectState State);
 public enum TrlWriteOutcome { Applied, Rejected, Ambiguous }
 public sealed record TrlWriteResult(TrlWriteOutcome Outcome, TrlObjectState? State = null);
 internal enum TrlPublishResult { Idle, Adopted, Published, Pending, AuthorityLost, Conflict }
 
-/// <summary>A fixed native prefix retained by the acknowledgement position, not a copied TRL buffer. A null token means create-if-absent.</summary>
+/// <summary>A fixed native prefix retained by the acknowledgement position, not a copied TRL buffer. A null token means
+/// create-if-absent. Sha256, when set, is the whole-object checksum after this write: the TRL has a native successor
+/// and never grows again. The adapter stores it atomically with the write and reports it back in the resulting state;
+/// a write without it must leave no checksum behind, so a restore can reuse a cached copy only of a sealed TRL.</summary>
 public sealed record TrlWrite(uint FileId, string Key, string? ExpectedToken, uint ExpectedLength, uint Length,
-    IFileCollectionFile Source)
+    IFileCollectionFile Source, string? Sha256 = null)
 {
     public uint AppendLength => Length - ExpectedLength;
     public void ReadAppend(uint offset, Span<byte> destination)
@@ -298,13 +305,15 @@ public sealed class CanonicalTrlPublisher : IDisposable
         parts.Reverse();
         var continuesTail = _tail != null;
         if (continuesTail && parts[0].End < _tail!.State.Length) throw new InvalidDataException("Cannot shrink canonical TRL.");
-        // A tail published to its local end needs no zero-length CAS before its successor: adoption already
-        // fenced the predecessor, and that request would only cost a round trip on every TRL rotation.
-        if (continuesTail && parts.Count > 1 && parts[0].End == _tail!.State.Length)
+        // Every part but the last has a native successor, so its write seals it with a whole-file checksum that lets
+        // restores reuse cached copies. A tail already published to its local end needs only that metadata; once it
+        // carries the checksum, it needs no request at all.
+        if (continuesTail && parts.Count > 1 && parts[0].End == _tail!.State.Length && _tail.State.Sha256 != null)
         {
             parts.RemoveAt(0);
             continuesTail = false;
         }
+        var sealedTailSha = continuesTail && parts.Count > 1 ? Checksum(Source(parts[0].Id), parts[0].End, cancellation) : null;
         var writes = new TrlWrite[parts.Count];
         var keys = parts.Select(f => keyForFile(f.Id)).ToArray();
         if (continuesTail) keys[0] = _tail!.Key;
@@ -315,9 +324,30 @@ public sealed class CanonicalTrlPublisher : IDisposable
             if (TrlFileName.FileIdFromKey(keys[i]) != partId)
                 throw new InvalidDataException("TRL object name does not match the native file ID.");
             var expected = i == 0 && continuesTail ? _tail!.State : null;
-            writes[i] = new(partId, keys[i], expected?.Token, expected?.Length ?? 0, partEnd,
-                Source(partId));
+            var source = Source(partId);
+            var sha = i + 1 == writes.Length ? null
+                : i == 0 && continuesTail ? sealedTailSha : Checksum(source, partEnd, cancellation);
+            writes[i] = new(partId, keys[i], expected?.Token, expected?.Length ?? 0, partEnd, source, sha);
         }
         return new(end, writes);
+    }
+
+    static string Checksum(IFileCollectionFile file, uint length, CancellationToken cancellation)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
+        try
+        {
+            for (uint offset = 0; offset < length;)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                var count = (int)Math.Min((uint)buffer.Length, length - offset);
+                file.RandomRead(buffer.AsSpan(0, count), offset, false);
+                hash.AppendData(buffer, 0, count);
+                offset += (uint)count;
+            }
+            return Convert.ToHexString(hash.GetHashAndReset());
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
     }
 }

@@ -11,7 +11,8 @@ this status: link the closing tests there first.
   records implementation status and ordering. [AGENTS.md](AGENTS.md) is the working agreement.
 - [ObjectStorages.md](ObjectStorages.md) owns storage semantics and provider evidence; [M1Evidence.md](M1Evidence.md)
   records the authority/clock model and CAS evidence.
-- [Testing.md](Testing.md) describes the test harness and coverage; [ReplicationCore.md](../Doc/ReplicationCore.md)
+- [Testing.md](Testing.md) describes the test harness and coverage; [Measurements.md](Measurements.md) records local
+  performance measurements; [ReplicationCore.md](../Doc/ReplicationCore.md)
   and [ReplicationHosting.md](../Doc/ReplicationHosting.md) document the core seams and the public hosting contract.
 
 The application owns ordered input, handler execution, retries, event timeouts/skips, failure classification and
@@ -93,12 +94,12 @@ fences immediately and lets the lease expire.
    not provider evidence.
 4. **Process scenarios.** Extend subprocess tests to network partitions, rolling-upgrade handoff schedules,
    multi-database partial activation and disk/process failures during restore.
-5. **Measurement.** Compare BTDB with replication disabled and enabled for allocations, throughput and commit
-   latency; measure comparison memory/disk growth, warm/cold recovery and handoff. Target complete startup within
-   15 minutes for about 100 GB, including cold download, validation, KVI open and TRL replay, on real Azure; tune
-   bounded download concurrency and set operational defaults from these measurements, reporting hardware and network
-   conditions. Sealed canonical TRLs currently carry no SHA-256 metadata, so restore always downloads them again;
-   add a post-seal checksum only if measurement shows the cost matters.
+5. **Measurement.** Done on Azure ([Measurements.md](Measurements.md), `DBBenchmark replication*`): a cold restore
+   of 100 GiB from Blob takes 4.4 minutes on an E8ads_v7, limited by the local disk; the findings led to lock-free
+   node-local storage, sealed-TRL checksums, a 4 MiB poll budget and concurrent TRL staging. With production file
+   sizes (2 GiB PVL, 1 GiB/4 GiB TRL) 30 GiB restore cold in 83–156 s on v4–v7. Remaining: warm-restore validation
+   reads the whole cache, and HTTP peer cost, handoff timing and multi-database publication are unmeasured; set
+   operational defaults from them.
 6. **Operations.** Detailed recovery metrics, configuration validation and examples for application-owned event
    execution; document input retention and host restart requirements. Reader-visible progress and input lag stay
    application-owned.

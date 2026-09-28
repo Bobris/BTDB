@@ -4,11 +4,19 @@
 
 ### Added
 
-- Add `OnDiskReplicationFileStorage`, durable node-local replication storage with one memory-mapped `{id:D8}.{hint}`
-  file per ID in a directory, and the `IReplicationFileStorage` contract it shares with
-  `InMemoryReplicationFileStorage`. `ReplicationFileSet` now accepts any `IReplicationFileStorage`. Readers copy under
-  the file lock, so growth can remap safely while peers read; files are truncated to their logical length when sealed
-  or disposed, and restore discards crash padding through remote cache validation.
+- Add `OnDiskReplicationFileStorage`, durable node-local replication storage with one `{id:D8}.{hint}` file per ID in a
+  directory, and the `IReplicationFileStorage` contract it shares with `InMemoryReplicationFileStorage`.
+  `ReplicationFileSet` now accepts any `IReplicationFileStorage`. A file being appended keeps its unmapped tail in
+  pinned 1 MiB blocks, reused through a small pool, and its persisted prefix in a read-only mapping that grows in
+  8–64 MiB steps; sealed and never-appended files are mapped once. Readers copy from an immutable snapshot without
+  locks: a mapping stays alive until a concurrent read that started before its replacement or `Remove` finishes, and a
+  reused block's generation makes a reader copy again. Sealing does not fsync, so TRL rotation never waits for the
+  device. On Azure E-series VMs with four concurrent readers it sustains 3–14x the commits and 2.1–4.5x the reads of
+  `OnDiskFileCollection`. Restore discards local tails lost by a crash through remote cache validation.
+
+- Seal canonical TRLs with a whole-file SHA-256: the publication write that completes a TRL with a native successor
+  records `btdb_sha256` (`TrlWrite.Sha256`, `TrlObjectState.Sha256`), `CanonicalTrlInventory` reports it for sealed
+  TRLs, and restore reuses cached sealed TRLs instead of downloading them again; only the active tail is fetched.
 
 - Make `TransactionLogPosition` comparable (`IComparable<TransactionLogPosition>` and `<`, `>`, `<=`, `>=`),
   ordered by file ID and then offset.
@@ -20,6 +28,13 @@
   evidence before requesting a restart (default 15 minutes, previously hard-coded).
 
 ### Changed
+
+- `AzureReplicationStorage` stages up to four TRL blocks at once; staging one block at a time capped canonical TRL
+  publication at about 110 MiB/s on Azure.
+
+- Followers request up to 4 MiB of inline TRL bytes per poll (the leader maximum, previously 1 MiB) and retain up to
+  8 MiB per database, so a follower trailing by less than one poll still gets the next poll's bytes inline. Measured:
+  1 MiB cost several range round trips per poll above about 20 MiB/s of TRL.
 
 - Replication activation validates every database before adopting any canonical tail, so a candidate lagging on one
   database no longer repeats adoption writes (and rediscovery) of the databases before it on every retry.

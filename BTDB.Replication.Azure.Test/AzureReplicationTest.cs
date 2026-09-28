@@ -697,4 +697,28 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         Assert.Equal(TrlWriteOutcome.Rejected, (await storage.WriteAsync(new(file.Index, "1.trl", second.State.Token,
             second.State.Length, second.State.Length, file), default)).Outcome);
     }
+
+    [Fact]
+    public async Task SealingWriteStoresTheTrlChecksumAndAnyLaterWriteClearsIt()
+    {
+        var container = await fixture.ContainerAsync();
+        var storage = new AzureReplicationStorage(container, "database");
+        using var local = new InMemoryFileCollection();
+        var file = local.AddFile("trl");
+        var bytes = Enumerable.Range(0, 1000).Select(i => (byte)i).ToArray();
+        var writer = new MemWriter(file.GetAppenderWriter());
+        writer.WriteBlock(bytes);
+        writer.Flush();
+        var sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+        var created = await storage.WriteAsync(new(file.Index, "1.trl", null, 0, 600, file), default);
+        Assert.Null(created.State!.Sha256);
+        var sealedWrite = await storage.WriteAsync(new(file.Index, "1.trl", created.State.Token, 600, 1000, file, sha), default);
+        Assert.Equal(sha, sealedWrite.State!.Sha256);
+        Assert.Equal(sha, (await storage.ReadAsync("1.trl", default))!.Sha256);
+        await foreach (var head in storage.EnumerateTrlsAsync(default)) Assert.Equal(sha, head.State.Sha256);
+        // An adoption that does not seal again leaves no checksum behind.
+        var adopted = await storage.WriteAsync(new(file.Index, "1.trl", sealedWrite.State.Token, 1000, 1000, file), default);
+        Assert.Equal(TrlWriteOutcome.Applied, adopted.Outcome);
+        Assert.Null((await storage.ReadAsync("1.trl", default))!.Sha256);
+    }
 }

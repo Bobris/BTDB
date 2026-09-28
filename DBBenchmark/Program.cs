@@ -43,6 +43,18 @@ class Program
             return;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "replication-commit", StringComparison.OrdinalIgnoreCase))
+        {
+            BenchmarkSwitcher.FromTypes([typeof(Replication.ReplicationCommitBenchmark)]).Run(args[1..]);
+            return;
+        }
+
+        if (args.Length > 0 && string.Equals(args[0], "replication", StringComparison.OrdinalIgnoreCase))
+        {
+            Replication.ReplicationMeasurements.RunAsync(args[1..]).GetAwaiter().GetResult();
+            return;
+        }
+
         new KeyValueSpeedTest().Run();
     }
 }

@@ -53,7 +53,7 @@ term/session identity is checked after decoding and again after awaited operatio
 Each follower step sends the leader one poll: the progress, published cut and latest schema-commit position of every
 compared database and of every new database the leader selects, plus a single confirmation grant. For each compared
 database the follower also sends the position its comparison resumes from, and the leader returns its complete TRL
-bytes from there inline (up to 1 MiB per poll), so a caught-up follower needs no separate range reads, even across TRL
+bytes from there inline (up to 4 MiB per poll), so a caught-up follower needs no separate range reads, even across TRL
 rotations. The same request, with no databases, is the authority heartbeat of a schema-detached node.
 
 Peer messages use a compact versioned binary encoding (`application/octet-stream`), not JSON. Requests are limited to
@@ -105,9 +105,10 @@ published file. Failed restore attempts must release their resources before retr
 
 `ReplicationFileSet` keeps local operations local. Initialize the remote inventory explicitly; local counts, lookup
 and enumeration never mean remote inventory. Production nodes use `OnDiskReplicationFileStorage(directory)`: one
-memory-mapped `{id:D8}.{hint}` file per ID in a node-private directory, surviving process restarts. After a crash, files
-may end with zero padding; restore validates cached files against the selected remote inventory and discards the rest,
-so reuse the same directory on restart. `InMemoryReplicationFileStorage` is intended for tests. Both implement
+`{id:D8}.{hint}` file per ID in a node-private directory, surviving process restarts. Files being appended keep up to
+64 MiB of their newest bytes in memory (plus the current 1 MiB block), and readers never lock. After a crash, a file
+may lack its last unflushed block; restore validates cached files against the selected remote inventory and discards
+the rest, so reuse the same directory on restart. `InMemoryReplicationFileStorage` is intended for tests. Both implement
 `IReplicationFileStorage`.
 The application owns the database and backing storage and disposes them only after coordination has stopped.
 

@@ -11,8 +11,11 @@ namespace BTDB.Replication;
 /// stops at a lagging local end never fetches the same bytes again in later steps. Complete leader bytes never change
 /// within one leader session; the owner creates a new reader per peer session and releases bytes the comparison has
 /// passed. Retention is bounded; reads beyond it go to the inner reader. Not thread-safe: the owner compares serially.
+/// The default holds two full poll budgets, so a follower whose local execution trails the leader by less than one poll
+/// still requests the next poll's bytes inline.
 /// </summary>
-internal sealed class RetainingLeaderTrlReader(ILeaderTrlReader inner, int capacity = 4 * 1024 * 1024) : ILeaderTrlReader
+internal sealed class RetainingLeaderTrlReader(ILeaderTrlReader inner, int capacity = 2 * ReplicationPeerPoll.MaximumInlineBytes)
+    : ILeaderTrlReader
 {
     readonly List<(uint FileId, ulong Offset, ReadOnlyMemory<byte> Bytes)> _chunks = new();
     // Inline chunks continue a later file only after serving the previous one to its end, so a file switch proves

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
@@ -94,7 +95,7 @@ public class CanonicalTrlPublisherTest
             var bytes = new byte[write.Length];
             previous?.Bytes.CopyTo(bytes, 0);
             suffix.CopyTo(bytes, (int)write.ExpectedLength);
-            var state = new TrlObjectState((++_version).ToString(), write.Length);
+            var state = new TrlObjectState((++_version).ToString(), write.Length, write.Sha256);
             Blobs[write.Key] = new(state, bytes);
             Applied++;
             return new(TrlWriteOutcome.Applied, state);
@@ -351,12 +352,10 @@ public class CanonicalTrlPublisherTest
         Assert.Equal((3ul, rollback ? 2L : 12L), await Restore(f.Remote));
     }
 
-    [Fact]
-    public async Task RotationDoesNotRewriteAFullyPublishedTail()
+    static async Task PublishEachOf(Fixture f, int transactions)
     {
-        using var f = await Fixture.CreateAsync();
         var rotations = 0;
-        for (ulong id = 1; id <= 12; id++)
+        for (ulong id = 1; id <= (ulong)transactions; id++)
         {
             var published = f.Publisher.PublishedPosition;
             await Write(f, id);
@@ -364,8 +363,54 @@ public class CanonicalTrlPublisherTest
             Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         }
         Assert.True(rotations > 0);
-        Assert.DoesNotContain(f.Remote.Requests, r => r.Write.ExpectedToken != null && r.Write.AppendLength == 0);
+    }
+
+    [Fact]
+    public async Task RotationSealsEveryPredecessorWithItsWholeFileChecksum()
+    {
+        using var f = await Fixture.CreateAsync();
+        await PublishEachOf(f, 12);
+        // A tail already published to its end gets one metadata-only write: the one that seals it.
+        Assert.All(f.Remote.Requests.Where(r => r.Write.ExpectedToken != null && r.Write.AppendLength == 0),
+            r => Assert.NotNull(r.Write.Sha256));
+        var sealing = f.Remote.Requests.Where(r => r.Write.Sha256 != null).Select(r => r.Write.FileId).ToList();
+        Assert.Equal(sealing.Count, sealing.Distinct().Count());
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
+        var files = new List<RemoteFile>();
+        await foreach (var file in inventory.EnumerateAsync(default)) files.Add(file);
+        Assert.True(files.Count > 1);
+        foreach (var file in files[..^1])
+            Assert.Equal(Convert.ToHexString(SHA256.HashData(f.Remote.Blobs[Key(file.FileId)].Bytes)), file.Sha256);
+        Assert.Null(files[^1].Sha256);
         Assert.Equal((12ul, 12L), await Restore(f.Remote));
+    }
+
+    [Fact]
+    public async Task WarmRestoreReusesCachedSealedTrlsAndDownloadsOnlyTheTail()
+    {
+        using var f = await Fixture.CreateAsync();
+        await PublishEachOf(f, 12);
+        using var cache = new InMemoryReplicationFileStorage();
+        for (var pass = 0; pass < 2; pass++)
+        {
+            var inventory = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
+            var before = f.Remote.RangeBytes;
+            await using (var collection = new ReplicationFileSet(cache, inventory))
+            {
+                await collection.InitializeAsync();
+                using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+                {
+                    FileCollection = collection, Compression = new NoCompressionStrategy(), CompactorScheduler = null,
+                    TransactionLogSizeStrategy = new TinyLogs()
+                });
+                using var tr = db.StartReadOnlyTransaction();
+                Assert.Equal(12ul, tr.GetCommitUlong());
+            }
+            var downloaded = f.Remote.RangeBytes - before;
+            if (pass == 0) Assert.True(downloaded > inventory.Tail.State.Length);
+            // Only the active tail is read again: its native header (at most 128 B) and then its bytes.
+            else Assert.InRange(downloaded, inventory.Tail.State.Length, inventory.Tail.State.Length + 128);
+        }
     }
 
     [Fact]

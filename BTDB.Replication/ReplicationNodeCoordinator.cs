@@ -390,8 +390,9 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         }
     }
 
-    // Inline TRL bytes one poll may carry; the rest of a larger backlog is read by range.
-    const int InlineBudget = 1024 * 1024;
+    // Inline TRL bytes one poll may carry, the most a leader honours; the rest of a larger backlog is read by range.
+    // Measured: a 1 MiB budget cost several range round trips per poll above about 20 MiB/s of TRL.
+    const int InlineBudget = ReplicationPeerPoll.MaximumInlineBytes;
 
     /// <summary>One poll per follower step: every compared database, every new database the leader selects, and the
     /// authority heartbeat share a single challenge and grant. A detached node without databases still polls for

@@ -51,8 +51,8 @@ Existing file IDs and value references remain unchanged, and legacy chains with 
 Custom collections must implement header publication to open a legacy database for writing; read-only open does not convert.
 
 Replication does not support sub-databases; size-based rotation may still happen inside transactions. `IReplicationFileStorage`
-is the dedicated replication cache/restore backing, implemented by `OnDiskReplicationFileStorage` (memory-mapped files
-in a directory) and `InMemoryReplicationFileStorage` (tests), with `AddFile(hint, FileIdParity)`. Existing in-memory and disk collections keep their standalone API and allocation. This is not a distributed file allocator.
+is the dedicated replication cache/restore backing, implemented by `OnDiskReplicationFileStorage` (files in a
+directory, read lock-free from memory blocks and read-only mappings) and `InMemoryReplicationFileStorage` (tests), with `AddFile(hint, FileIdParity)`. Existing in-memory and disk collections keep their standalone API and allocation. This is not a distributed file allocator.
 
 `IReplicationFileStorage.ImportFile(fileId, hint)` creates an empty file under the exact nonzero ID. Use it for native-file
 restore rather than approximating an identity through the allocation sequence. Imports can complete in any order,
@@ -130,8 +130,8 @@ transaction boundary; publication does not decode keys, values or commands a sec
 range boundaries come from the replication session and its positions. Matching bytes advance confirmation;
 a mismatch rejects the local history. No semantic normalization or decoded-command comparison is required.
 The leader returns the TRL bytes a follower needs with its poll; followers read any remaining backlog in 256 KiB
-ranges, the HTTP transport's maximum. A follower session retains received leader bytes (up to 4 MiB per database)
-until the comparison has passed them, and asks only for bytes after what it retains, so each byte crosses the
+ranges, the HTTP transport's maximum. A follower session retains received leader bytes (up to 8 MiB, two poll
+budgets, per database) until the comparison has passed them, and asks only for bytes after what it retains, so each byte crosses the
 network once even while local execution lags. Inline bytes switch to a later file only after serving the previous
 one to its end, so the follower also learns that end: crossing a TRL rotation needs no extra end-of-file request,
 and the next poll continues in the successor. A lagging comparison checks the complete local prefix the leader's cut
@@ -278,7 +278,9 @@ The caller disposes the snapshot after the remote attempt completes, including c
 
 TRL keys are exactly `{fileId}.trl`, using positive unpadded decimal IDs shared across all terms. The current
 `ActivationDatabase.KeyForFile` callback must return that fixed key. PVL/KVI use the same directory and their native
-extensions. Blob metadata is limited to `btdb_sha256` on PVL/KVI and `btdb_delete_after` on scheduled deletions.
+extensions. Blob metadata is limited to `btdb_sha256` on PVL/KVI and sealed TRLs and `btdb_delete_after` on scheduled
+deletions. `TrlWrite.Sha256` asks the adapter to record a TRL's whole-file checksum with the write that seals it and
+report it in `TrlObjectState.Sha256`; any other TRL write must leave no checksum.
 
 `CanonicalTrlPublisher` snapshots a complete local position and writes its native files in ascending lineage order.
 New files are created only if absent. A create collision compares the existing bytes with the local TRL in bounded

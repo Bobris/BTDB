@@ -11,8 +11,11 @@
         <ProjectReference Include="..\BTDB.SourceGenerator\BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
         <ProjectReference Include="..\BTDBTest\BTDBTest.csproj"/>
         <ProjectReference Include="..\BTDB\BTDB.csproj"/>
+        <ProjectReference Include="..\BTDB.Replication\BTDB.Replication.csproj"/>
+        <ProjectReference Include="..\BTDB.Replication.Azure\BTDB.Replication.Azure.csproj"/>
     </ItemGroup>
     <ItemGroup>
+        <PackageReference Include="Azure.Identity" Version="1.21.0"/>
         <PackageReference Include="BenchmarkDotNet" Version="0.15.8"/>
         <PackageReference Include="LightningDB" Version="0.23.0"/>
     </ItemGroup>
