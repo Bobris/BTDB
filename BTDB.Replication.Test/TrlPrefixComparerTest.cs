@@ -26,7 +26,8 @@ public class TrlPrefixComparerTest
         public static async Task<Node> Create(bool tiny = true, bool legacyEven = false, bool reservedOdd = false)
         {
             var node = new Node();
-            NodeFixture.SeedNativeHeader(node.Files, new Guid("5d076258-e492-4931-a5b8-a19dc9fe6c76"));
+            NodeFixture.SeedNativeHeader(node.Files, new Guid("5d076258-e492-4931-a5b8-a19dc9fe6c76"),
+                legacyEven || reservedOdd ? 1 : 0);
             if (legacyEven)
             {
                 var original = node.Files.GetFile(1)!;

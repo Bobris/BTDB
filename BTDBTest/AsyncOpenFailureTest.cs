@@ -26,6 +26,7 @@ public class AsyncOpenFailureTest
         }
         public KVFileType? GetFileType(uint id) => null;
         public IFileCollectionFile AddFile(string hint, FileIdParity parity) => throw new InvalidOperationException("Unexpected allocation.");
+        public IFileCollectionFile CreateTransactionLogFile(uint fileId) => throw new InvalidOperationException("Unexpected allocation.");
         readonly HashSet<uint> _requested = new();
         public ValueTask PrefetchAsync(uint id, CancellationToken cancellation = default)
         {
@@ -49,6 +50,7 @@ public class AsyncOpenFailureTest
         public ValueTask<IFileInfo> ReadFileInfoAsync(uint id, CancellationToken cancellation = default) => throw new InvalidOperationException("Unexpected metadata access.");
         public KVFileType? GetFileType(uint id) => throw new InvalidOperationException("Unexpected type access.");
         public IFileCollectionFile AddFile(string hint, FileIdParity parity) => throw new InvalidOperationException("Unexpected allocation.");
+        public IFileCollectionFile CreateTransactionLogFile(uint fileId) => throw new InvalidOperationException("Unexpected allocation.");
 
         public IFileCollectionFile? GetRemoteFile(uint id) => throw new InvalidOperationException("Unexpected remote file access.");
         public IEnumerable<IFileCollectionFile> RemoteEnumerate() => throw new InvalidOperationException("Unexpected remote enumeration.");

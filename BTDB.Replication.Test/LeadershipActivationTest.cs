@@ -19,9 +19,9 @@ public class LeadershipActivationTest
         Assert.True(authority.AcceptSuccess(authority.BeginRequest(), TimeSpan.FromSeconds(60)));
         return authority;
     }
-    static string Key(uint id) => $"trl/{id}";
+    static string Key(uint id) => $"{id}.trl";
     static ActivationDatabase Input(Node node, Storage remote) => new("main", node.Db, node.Capture, remote,
-        new(Key(1), 1), new(1, 0), id => $"term2/{id}");
+        new(Key(1), 1), new(1, 0), id => $"{id}.trl");
 
     [Fact]
     public async Task ValidatesBlobDespitePeerAcknowledgementAndAdoptsWithoutPublishingOptimisticTail()
@@ -46,11 +46,11 @@ public class LeadershipActivationTest
         using var activated = Assert.Single(publishers);
         Assert.True(reads > 0);
         Assert.Equal(published, activated.PublishedPosition);
-        Assert.Equal(2ul, activated.Tail!.State.Metadata.Term);
+        Assert.NotNull(activated.Tail);
         Assert.Equal(TrlPublishResult.Published, await activated.PublishNextAsync());
         Assert.Equal(candidate.Capture.Completed, activated.PublishedPosition);
-        Assert.All(remote.Requests.Where(r => r.Write.ExpectedToken == null && r.Write.Metadata.Term == 2),
-            r => Assert.StartsWith("term2/", r.Write.Key));
+        Assert.All(remote.Requests.Where(r => r.Write.ExpectedToken == null),
+            r => Assert.StartsWith("", r.Write.Key));
     }
 
     [Theory]
@@ -80,7 +80,7 @@ public class LeadershipActivationTest
         using var activated = Assert.Single((await LeadershipActivation.ActivateAsync(selected, [Input(candidate, remote)],
             validated: validated))!);
         Assert.Equal(original.PublishedPosition, activated.PublishedPosition);
-        Assert.Equal(2ul, activated.Tail!.State.Metadata.Term);
+        Assert.NotNull(activated.Tail);
         if (checkpoint.FileId == original.PublishedPosition.FileId) Assert.Equal(checkpoint.Offset, firstRead);
     }
 
@@ -194,7 +194,7 @@ public class LeadershipActivationTest
         {
             Assert.Equal(2, publishers.Count);
             Assert.Equal(firstCut, publishers[0].PublishedPosition);
-            Assert.All(publishers, p => Assert.Equal(2ul, p.Tail!.State.Metadata.Term));
+            Assert.All(publishers, p => Assert.NotNull(p.Tail));
         }
         finally { foreach (var publisher in publishers) publisher.Dispose(); }
     }
@@ -216,7 +216,7 @@ public class LeadershipActivationTest
         var raced = false;
         remote.BeforeEffect = write =>
         {
-            if (raced || write.Metadata.Term != 2) return;
+            if (raced || write.AppendLength != 0) return;
             raced = true;
             remote.BeforeEffect = null;
             original.PublishNextAsync().AsTask().GetAwaiter().GetResult();

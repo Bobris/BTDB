@@ -144,7 +144,7 @@ public class TransactionLogCaptureTest
             writer.WriteBlock("BTDB3"u8);
             writer.WriteGuid(new Guid("ce41a07c-fb38-4bf7-949e-c5076fc91cdb"));
             writer.WriteUInt8((byte)KVFileType.TransactionLog);
-            writer.WriteVInt64(1);
+            writer.WriteVInt64(0); // Native replication header.
             writer.WriteVInt32(0);
             writer.Flush();
             using (var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions

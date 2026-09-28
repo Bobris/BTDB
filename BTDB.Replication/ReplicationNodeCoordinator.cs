@@ -139,6 +139,11 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             {
                 cancellation.ThrowIfCancellationRequested();
                 try { databases = await host.RestoreAsync(cancellation).ConfigureAwait(false); break; }
+                catch (InvalidDataException)
+                {
+                    Restart("Conflicting canonical history was found during restore.");
+                    return;
+                }
                 catch (IOException) { await WaitAsync(cancellation).ConfigureAwait(false); }
             }
             _databases = databases;
@@ -311,12 +316,20 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             // Observe every failure; only the first one propagates below.
             foreach (var publication in publications) _ = publication.Exception;
             var lost = false;
+            var conflict = false;
             for (var i = 0; i < publishers.Count; i++)
             {
                 ObservePublication(databases, publishers, authority, i);
                 AdvanceCanonicalBase(databases[i], publishers[i].PublishedPosition);
-                lost |= publications[i].IsCompletedSuccessfully &&
-                        publications[i].Result is TrlPublishResult.Conflict or TrlPublishResult.AuthorityLost;
+                if (!publications[i].IsCompletedSuccessfully) continue;
+                conflict |= publications[i].Result == TrlPublishResult.Conflict;
+                lost |= publications[i].Result == TrlPublishResult.AuthorityLost;
+            }
+            if (conflict)
+            {
+                authority.Fence();
+                Restart("Canonical TRL conflicts with local history; restore is required.");
+                return;
             }
             if (lost)
             {

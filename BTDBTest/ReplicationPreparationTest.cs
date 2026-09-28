@@ -276,7 +276,7 @@ public class ReplicationPreparationTest
             }
             Assert.NotEqual(schemaPosition, capture.Completed);
         }
-        using (var kv = Open(files))
+        using (var kv = await OpenAsync(files, capture: null))
         using (var db = new ObjectDB())
         {
             db.Open(kv, false, new DBOptions());

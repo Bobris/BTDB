@@ -34,7 +34,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         writer.WriteBlock("BTDB3"u8);
         writer.WriteGuid(new Guid("0ea12e80-f23f-4d46-b23e-abd3f8288f60"));
         writer.WriteUInt8((byte)KVFileType.TransactionLog);
-        writer.WriteVInt64(1);
+        writer.WriteVInt64(0); // Native replication header.
         writer.WriteVInt32(0);
         writer.Flush();
         file.HardFlush();
@@ -51,6 +51,34 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         using var cursor = transaction.CreateCursor();
         cursor.CreateOrUpdateKeyValue([(byte)id], [(byte)id]);
         transaction.Commit();
+    }
+
+    [Fact]
+    public async Task SuccessorNameResolvesItsIdAcrossALegacyTransitionWithoutIdMetadata()
+    {
+        var container = await fixture.ContainerAsync(new Faults());
+        var storage = new AzureReplicationStorage(container, "metadata");
+        using var files = new InMemoryReplicationFileStorage();
+        var source = files.ImportFile(1, "trl");
+        var writer = new MemWriter(source.GetAppenderWriter());
+        writer.WriteUInt8(1);
+        writer.Flush();
+        Assert.Equal(TrlWriteOutcome.Applied,
+            (await storage.WriteAsync(new(103, "103.trl", null, 0, 1, source), default)).Outcome);
+        Assert.Equal(TrlWriteOutcome.Applied,
+            (await storage.WriteAsync(new(1, "1.trl", null, 0, 1, source), default)).Outcome);
+        var root = (await container.GetBlobClient("metadata/1.trl").GetPropertiesAsync()).Value;
+        Assert.Empty(root.Metadata);
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(storage, new("1.trl", 1));
+        Assert.Equal(103u, inventory.Tail.FileId);
+        Assert.Equal("103.trl", inventory.Tail.Key);
+        var target = (await container.GetBlobClient("metadata/103.trl").GetPropertiesAsync()).Value;
+        Assert.Empty(target.Metadata);
+        var listed = new List<RemoteMaintenanceFile>();
+        await foreach (var file in storage.EnumerateMaintenanceAsync(default)) listed.Add(file);
+        Assert.Equal(new uint[] { 1, 103 }, listed.Select(f => f.FileId).Order());
+        await Assert.ThrowsAsync<FormatException>(() =>
+            storage.WriteAsync(new(105, "103.trl", null, 0, 1, source), default).AsTask());
     }
 
     [Fact]
@@ -100,7 +128,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         using var first = await Open(firstFiles, firstCapture);
         using var next = await Open(nextFiles, nextCapture);
         using var oldPublisher = new CanonicalTrlPublisher(first, firstCapture, canonical, authority, selected.Term,
-            id => $"term1/{id}");
+            id => $"{id}.trl");
         await Write(first, 1);
         await Write(next, 1);
         Assert.Equal(TrlPublishResult.Published, await oldPublisher.PublishNextAsync());
@@ -115,17 +143,17 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var nextSelection = new LeaderSelection(storage, nextLeases, nextAuthority,
             new("cluster", "next", "session2", 1, ["main"], "local://next", "key2"));
         var session = new LeadershipSession(nextSelection,
-            [new("main", next, nextCapture, canonical, new("term1/1", 1), new(1, 0), id => $"term2/{id}")]);
+            [new("main", next, nextCapture, canonical, new("1.trl", 1), new(1, 0), id => $"{id}.trl")]);
         faults.LoseCommit = loseAdoptionReply;
         var publishers = (await session.ActivateAsync())!;
         using var publisher = Assert.Single(publishers);
         Assert.Equal(published, publisher.PublishedPosition);
-        Assert.Equal(2ul, publisher.Tail!.State.Metadata.Term);
+        Assert.NotNull(publisher.Tail);
         Assert.Same(publishers, await session.ActivateAsync());
         Assert.Equal(TrlPublishResult.AuthorityLost, await oldPublisher.PublishNextAsync());
         Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
         using var restoredFiles = new InMemoryReplicationFileStorage();
-        var inventory = await CanonicalTrlInventory.DiscoverAsync(canonical, new("term1/1", 1));
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(canonical, new("1.trl", 1));
         var checkpoints = canonical.Bind(inventory, nextAuthority);
         using (var snapshot = next.CaptureKeyIndexSnapshot())
         {
@@ -150,9 +178,9 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
     }
 
     [Theory]
-    [InlineData("files/2.pvl", KVFileType.PureValues)]
-    [InlineData("files/2.kvi", KVFileType.KeyIndex)]
-    [InlineData("obsolete/2", KVFileType.TransactionLog)]
+    [InlineData("2.pvl", KVFileType.PureValues)]
+    [InlineData("2.kvi", KVFileType.KeyIndex)]
+    [InlineData("2.trl", KVFileType.TransactionLog)]
     public async Task DeletionDeadlineSurvivesNewAdapterAndDoesNotMoveOnRetry(string key, KVFileType type)
     {
         var faults = new Faults();
@@ -165,12 +193,12 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var source = files.AddFile("trl");
         var writer = new MemWriter(source.GetAppenderWriter());
         writer.WriteUInt8(1); writer.Flush();
-        await raw.WriteAsync(new(1, "root/1", null, 0, 1, new(1), source), default);
-        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("root/1", 1));
+        await raw.WriteAsync(new(1, "1.trl", null, 0, 1, source), default);
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("1.trl", 1));
         var storage = raw.Bind(inventory, authority);
         var blob = container.GetBlobClient("db/" + key);
         var metadata = type == KVFileType.TransactionLog
-            ? new Dictionary<string, string>(new TrlMetadata(1).Encode()) { ["btdb_file_id"] = "2" }
+            ? new Dictionary<string, string>()
             : new Dictionary<string, string> { ["btdb_sha256"] = "unchanged" };
         await blob.UploadAsync(BinaryData.FromBytes(new byte[] { 1 }), new BlobUploadOptions { Metadata = metadata });
         var before = (await blob.GetPropertiesAsync()).Value;
@@ -185,7 +213,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         Assert.True((await blob.ExistsAsync()).Value);
         time.Now += TimeSpan.FromHours(23);
         var restartedRaw = new AzureReplicationStorage(container, "db", time);
-        var restarted = restartedRaw.Bind(await CanonicalTrlInventory.DiscoverAsync(restartedRaw, new("root/1", 1)), authority);
+        var restarted = restartedRaw.Bind(await CanonicalTrlInventory.DiscoverAsync(restartedRaw, new("1.trl", 1)), authority);
         var retried = await restarted.ScheduleDeletionAsync(marked, TimeSpan.FromHours(24), default);
         Assert.Equal(deadline, retried.DeleteAfter);
         await restarted.DeleteAsync(retried, default);
@@ -199,9 +227,9 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
     public async Task LegacyCheckpointWithMissingGenesisCannotBeMisclassifiedAsUnpublishedDatabase()
     {
         var container = await fixture.ContainerAsync();
-        await container.GetBlobClient("db/files/2.kvi").UploadAsync(BinaryData.FromBytes(new byte[] { 1 }));
+        await container.GetBlobClient("db/2.kvi").UploadAsync(BinaryData.FromBytes(new byte[] { 1 }));
         var storage = new AzureReplicationStorage(container, "db");
-        await Assert.ThrowsAsync<IOException>(() => storage.ResolveRecoveryRootAsync(new("trl/1", 1), default).AsTask());
+        await Assert.ThrowsAsync<IOException>(() => storage.ResolveRecoveryRootAsync(new("1.trl", 1), default).AsTask());
     }
 
     [Fact]
@@ -216,23 +244,25 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var capture = new TransactionLogCapture();
         using var db = await Open(local, capture, 1024);
         for (ulong i = 1; i <= 400; i++) await Write(db, i);
-        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"{id}.trl");
         Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
-        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("trl/1", 1));
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("1.trl", 1));
         var storage = raw.Bind(inventory, authority);
         using var snapshot = db.CaptureKeyIndexSnapshot();
         Assert.True(snapshot.TransactionLogFileId > 1);
         await storage.PublishKeyIndexAsync(10000, snapshot, new Dictionary<uint, uint>(), default);
+        var properties = (await container.GetBlobClient("db/10000.kvi").GetPropertiesAsync()).Value;
+        Assert.Equal("btdb_sha256", Assert.Single(properties.Metadata).Key);
         var gc = new RemoteGarbageCollector(storage, authority, TimeSpan.FromDays(1));
         var checkpoint = new PublishedCheckpoint(10000, snapshot.TransactionLogFileId,
             snapshot.Sources.Select(s => s.FileId).ToHashSet());
         await gc.CollectAsync(checkpoint, default);
-        Assert.NotNull(await raw.ReadAsync("trl/1", default)); // Marked, not yet due.
+        Assert.NotNull(await raw.ReadAsync("1.trl", default)); // Marked, not yet due.
         time.Now += TimeSpan.FromDays(1);
         await gc.CollectAsync(checkpoint, default);
-        Assert.Null(await raw.ReadAsync("trl/1", default));
+        Assert.Null(await raw.ReadAsync("1.trl", default));
         var fresh = new AzureReplicationStorage(container, "db");
-        var recovered = await CanonicalTrlInventory.DiscoverAsync(fresh, new("trl/1", 1));
+        var recovered = await CanonicalTrlInventory.DiscoverAsync(fresh, new("1.trl", 1));
         using var cache = new InMemoryReplicationFileStorage();
         await using var collection = new ReplicationFileSet(cache, fresh.Bind(recovered));
         await collection.InitializeAsync();
@@ -300,14 +330,14 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var capture = new TransactionLogCapture();
         using var db = await Open(local, capture, 1024);
         await Write(db, 1);
-        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"{id}.trl");
         Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
-        var kvi = (await container.GetBlobClient("db/files/2.kvi").UploadAsync(BinaryData.FromBytes(new byte[] { 1 }))).Value;
-        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("trl/1", 1));
+        var kvi = (await container.GetBlobClient("db/2.kvi").UploadAsync(BinaryData.FromBytes(new byte[] { 1 }))).Value;
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("1.trl", 1));
         var storage = raw.Bind(inventory, authority);
         faults.Throttle = true;
         // Transient provider failures are ordinary retryable I/O for the coordinator, not host-stopping exceptions.
-        await Assert.ThrowsAsync<IOException>(() => raw.ResolveRecoveryRootAsync(new("trl/1", 1), default).AsTask());
+        await Assert.ThrowsAsync<IOException>(() => raw.ResolveRecoveryRootAsync(new("1.trl", 1), default).AsTask());
         await Assert.ThrowsAsync<IOException>(async () => { await foreach (var _ in storage.EnumerateAsync(default)) { } });
         await Assert.ThrowsAsync<IOException>(async () => { await foreach (var _ in storage.EnumerateMaintenanceAsync(default)) { } });
         await Assert.ThrowsAsync<IOException>(() => storage.ReadAsync(
@@ -336,14 +366,14 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         using var local = new InMemoryReplicationFileStorage();
         var capture = new TransactionLogCapture();
         using var db = await Open(local, capture);
-        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"{id}.trl");
         for (ulong id = 1; id <= 5; id++)
         {
             await Write(db, id);
             Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
         }
         Assert.Equal(0, faults.BlockListReads); // Each append expects this adapter's own last commit.
-        var remote = (await container.GetBlockBlobClient("db/trl/1").DownloadContentAsync()).Value.Content.ToArray();
+        var remote = (await container.GetBlockBlobClient("db/1.trl").DownloadContentAsync()).Value.Content.ToArray();
         var expected = new byte[publisher.PublishedPosition.Offset];
         local.GetFile(publisher.PublishedPosition.FileId)!.RandomRead(expected, 0, false);
         Assert.Equal(expected, remote);
@@ -367,9 +397,9 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
             cursor.CreateOrUpdateKeyValue([(byte)i], new byte[100]);
             transaction.Commit();
         }
-        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"{id}.trl");
         Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
-        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("trl/1", 1));
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("1.trl", 1));
         var storage = raw.Bind(inventory, authority);
         var trls = new List<RemoteMaintenanceFile>();
         await foreach (var file in storage.EnumerateMaintenanceAsync(default))
@@ -378,6 +408,8 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var marked = await storage.ScheduleDeletionAsync(trls[1], TimeSpan.FromDays(1), default);
         using var snapshot = db.CaptureKeyIndexSnapshot();
         await storage.PublishKeyIndexAsync(10000, snapshot, new Dictionary<uint, uint>(), default);
+        var properties = (await container.GetBlobClient("db/10000.kvi").GetPropertiesAsync()).Value;
+        Assert.Equal("btdb_sha256", Assert.Single(properties.Metadata).Key);
         await foreach (var file in storage.EnumerateMaintenanceAsync(default))
         {
             if (file.FileType != KVFileType.TransactionLog) continue;
@@ -398,10 +430,10 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         using var local = new InMemoryReplicationFileStorage();
         var capture = new TransactionLogCapture();
         using var db = await Open(local, capture);
-        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"{id}.trl");
         await Write(db, 1);
         Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
-        var blob = container.GetBlockBlobClient("db/trl/1");
+        var blob = container.GetBlockBlobClient("db/1.trl");
         var merges = 0;
         for (ulong id = 2; id <= 140; id++)
         {
@@ -517,8 +549,8 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var writer = new MemWriter(trl.GetAppenderWriter());
         writer.WriteUInt8(1);
         writer.Flush();
-        var created = await storage.WriteAsync(new(trl.Index, "trl/1", null, 0, 1, new(1), trl), default);
-        var inventory = await CanonicalTrlInventory.DiscoverAsync(storage, new("trl/1", trl.Index));
+        var created = await storage.WriteAsync(new(trl.Index, "1.trl", null, 0, 1, trl), default);
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(storage, new("1.trl", trl.Index));
         var restore = storage.Bind(inventory);
         Assert.Throws<ArgumentException>(() => new AzureReplicationStorage(container, "other").Bind(inventory));
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -544,16 +576,16 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         IReplicationStorage newSession = storage.Bind(inventory, newAuthority);
         await newSession.EnsurePureValuesAsync(4, source, default);
         await Assert.ThrowsAsync<InvalidOperationException>(() => oldSession.EnsurePureValuesAsync(6, source, default).AsTask());
-        Assert.False((await container.GetBlobClient("db/files/6.pvl").ExistsAsync()).Value);
+        Assert.False((await container.GetBlobClient("db/6.pvl").ExistsAsync()).Value);
 
         // Advancing canonical storage never silently advances an already selected restore snapshot.
         writer = new MemWriter(trl.GetAppenderWriter());
         writer.WriteUInt8(2);
         writer.Flush();
         Assert.Equal(TrlWriteOutcome.Applied, (await newSession.WriteAsync(
-            new(trl.Index, "trl/1", created.State!.Token, 1, 2, new(1), trl), default)).Outcome);
+            new(trl.Index, "1.trl", created.State!.Token, 1, 2, trl), default)).Outcome);
         await Assert.ThrowsAsync<IOException>(() => restore.ReadAsync(original, 0, bytes, default).AsTask());
-        var fresh = storage.Bind(await CanonicalTrlInventory.DiscoverAsync(storage, new("trl/1", trl.Index)));
+        var fresh = storage.Bind(await CanonicalTrlInventory.DiscoverAsync(storage, new("1.trl", trl.Index)));
         selected.Clear();
         await foreach (var file in fresh.EnumerateAsync(default)) selected.Add(file);
         var tail = Assert.Single(selected, file => file.FileType == KVFileType.TransactionLog);
@@ -576,8 +608,8 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var writer = new MemWriter(trl.GetAppenderWriter());
         writer.WriteBlock(new byte[] { 1 });
         writer.Flush();
-        await canonical.WriteAsync(new(trl.Index, "trl/1", null, 0, 1, new(1), trl), default);
-        var inventory = await CanonicalTrlInventory.DiscoverAsync(canonical, new("trl/1", trl.Index));
+        await canonical.WriteAsync(new(trl.Index, "1.trl", null, 0, 1, trl), default);
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(canonical, new("1.trl", trl.Index));
         var storage = canonical.Bind(inventory, authority);
         var pvl = local.AddFile("pvl");
         writer = new MemWriter(pvl.GetAppenderWriter());
@@ -601,15 +633,15 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         faults.LoseSelection = true;
         await Assert.ThrowsAsync<IOException>(() => storage.ProtectPureValuesAsync(100, source, default).AsTask());
         Assert.True(await storage.ProtectPureValuesAsync(100, source, default));
-        Assert.DoesNotContain("btdb_delete_after", (await container.GetBlobClient("db/files/100.pvl").GetPropertiesAsync()).Value.Metadata.Keys);
+        Assert.DoesNotContain("btdb_delete_after", (await container.GetBlobClient("db/100.pvl").GetPropertiesAsync()).Value.Metadata.Keys);
         await storage.DeleteAsync(oldVersion, default);
         await storage.ScheduleDeletionAsync(oldVersion, TimeSpan.Zero, default); // Late marking cannot resurrect eligibility.
-        Assert.DoesNotContain("btdb_delete_after", (await container.GetBlobClient("db/files/100.pvl").GetPropertiesAsync()).Value.Metadata.Keys);
-        Assert.True((await container.GetBlobClient("db/files/100.pvl").ExistsAsync()).Value);
+        Assert.DoesNotContain("btdb_delete_after", (await container.GetBlobClient("db/100.pvl").GetPropertiesAsync()).Value.Metadata.Keys);
+        Assert.True((await container.GetBlobClient("db/100.pvl").ExistsAsync()).Value);
         // Unmarked: protection keeps the version, so restores reading it by ETag are not interrupted.
-        var unmarked = (await container.GetBlobClient("db/files/100.pvl").GetPropertiesAsync()).Value.ETag;
+        var unmarked = (await container.GetBlobClient("db/100.pvl").GetPropertiesAsync()).Value.ETag;
         Assert.True(await storage.ProtectPureValuesAsync(100, source, default));
-        Assert.Equal(unmarked, (await container.GetBlobClient("db/files/100.pvl").GetPropertiesAsync()).Value.ETag);
+        Assert.Equal(unmarked, (await container.GetBlobClient("db/100.pvl").GetPropertiesAsync()).Value.ETag);
         physical.Clear();
         await foreach (var item in storage.EnumerateMaintenanceAsync(default)) physical.Add(item);
         var protectedVersion = Assert.Single(physical, item => item.FileId == 100);
@@ -642,27 +674,27 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         var writer = new MemWriter(file.GetAppenderWriter());
         writer.WriteBlock(bytes);
         writer.Flush();
-        var first = await storage.WriteAsync(new(file.Index, "trl/1", null, 0, 4 * 1024 * 1024 + 17, new(1), file), default);
+        var first = await storage.WriteAsync(new(file.Index, "1.trl", null, 0, 4 * 1024 * 1024 + 17, file), default);
         Assert.Equal(TrlWriteOutcome.Applied, first.Outcome);
-        var firstBlocks = await container.GetBlockBlobClient("database/trl/1").GetBlockListAsync(BlockListTypes.Committed);
+        var firstBlocks = await container.GetBlockBlobClient("database/1.trl").GetBlockListAsync(BlockListTypes.Committed);
         Assert.Equal(first.State!.Token.Trim('"'), firstBlocks.GetRawResponse().Headers.ETag?.ToString().Trim('"'));
         Assert.Equal((long)first.State.Length, firstBlocks.Value.CommittedBlocks.Sum(b => b.SizeLong));
-        var second = await storage.WriteAsync(new(file.Index, "trl/1", first.State!.Token, first.State.Length,
-            (uint)bytes.Length, new(1), file), default);
+        var second = await storage.WriteAsync(new(file.Index, "1.trl", first.State!.Token, first.State.Length,
+            (uint)bytes.Length, file), default);
         Assert.Equal(TrlWriteOutcome.Applied, second.Outcome);
         var buffer = new byte[bytes.Length];
-        await storage.ReadRangeAsync("trl/1", second.State!.Token, 0, buffer, default);
+        await storage.ReadRangeAsync("1.trl", second.State!.Token, 0, buffer, default);
         Assert.Equal(bytes, buffer);
-        await Assert.ThrowsAsync<IOException>(() => storage.ReadRangeAsync("trl/1", first.State.Token, 0, new byte[1], default).AsTask());
-        var blocks = await container.GetBlockBlobClient("database/trl/1").GetBlockListAsync(BlockListTypes.Committed);
+        await Assert.ThrowsAsync<IOException>(() => storage.ReadRangeAsync("1.trl", first.State.Token, 0, new byte[1], default).AsTask());
+        var blocks = await container.GetBlockBlobClient("database/1.trl").GetBlockListAsync(BlockListTypes.Committed);
         // The partial 17-byte block is kept and only the appended suffix is staged.
         Assert.Equal(new long[] { 4 * 1024 * 1024, 17, bytes.Length - 4 * 1024 * 1024 - 17 },
             blocks.Value.CommittedBlocks.Select(b => b.SizeLong));
-        var adoption = await storage.WriteAsync(new(file.Index, "trl/1", second.State.Token, second.State.Length,
-            second.State.Length, new(2), file), default);
+        var adoption = await storage.WriteAsync(new(file.Index, "1.trl", second.State.Token, second.State.Length,
+            second.State.Length, file), default);
         Assert.Equal(TrlWriteOutcome.Applied, adoption.Outcome);
-        Assert.Equal(2ul, (await storage.ReadAsync("trl/1", default))!.Metadata.Term);
-        Assert.Equal(TrlWriteOutcome.Rejected, (await storage.WriteAsync(new(file.Index, "trl/1", second.State.Token,
-            second.State.Length, second.State.Length, new(1), file), default)).Outcome);
+        Assert.NotEqual(second.State.Token, (await storage.ReadAsync("1.trl", default))!.Token);
+        Assert.Equal(TrlWriteOutcome.Rejected, (await storage.WriteAsync(new(file.Index, "1.trl", second.State.Token,
+            second.State.Length, second.State.Length, file), default)).Outcome);
     }
 }

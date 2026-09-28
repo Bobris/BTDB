@@ -288,7 +288,11 @@ public class InMemoryReplicationFileStorage : IReplicationFileStorage
 
             public void SetCurrentPosition(ref MemWriter memWriter, long position)
             {
-                throw new NotSupportedException();
+                if (position < 0 || (ulong)position > _ofs) throw new ArgumentOutOfRangeException(nameof(position));
+                _ofs = (ulong)position;
+                _file._flushedSize = (long)_ofs;
+                Array.Resize(ref _file._data, Math.Min(_file._data.Length, checked((int)(_ofs / OneBufSize) + 1)));
+                Init(ref memWriter);
             }
         }
 

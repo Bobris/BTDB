@@ -5,8 +5,8 @@ This project implements the Azure SDK boundary of `BTDB.Replication` through pub
 - `AzureLeaderStorage`: `leader.json` with a finite native Blob lease (15–60 whole seconds): conditional initial
   creation, acquire/renew, lease `Change` for prepared handoff, and lease-plus-ETag record replacement. It implements
   `ILeaderRecordStorage`, `IReplicationLeaseStorage` and `IReplicationLeaseTransferStorage`.
-- `AzureReplicationStorage` (`IReplicationStorage`): canonical TRL reads, conditional append and metadata-only
-  adoption, numeric PVL/KVI discovery, immutable publication with atomic SHA-256 metadata, recovery-root discovery and
+- `AzureReplicationStorage` (`IReplicationStorage`): canonical TRL reads, conditional append and unchanged-content
+  adoption, numeric PVL/KVI discovery, immutable publication with atomic SHA-256 metadata, shared native-file discovery and
   delayed conditional cleanup.
 
 ## Usage
@@ -26,11 +26,11 @@ and `databaseNames: []`. Transient provider failures and throttling surface as r
 
 - Canonical appends reuse committed 4 MiB blocks and restage only the suffix; trailing partial blocks are merged
   occasionally so small commits cannot exhaust Azure's block-count limit. Staged block IDs are unique, so a lost
-  request cannot change a winning commit. The final `Put Block List` carries `If-Match` and the term/successor metadata.
+  request cannot change a winning commit. The final `Put Block List` carries `If-Match` and no TRL protocol metadata.
   An append that expects this adapter's own previous commit reuses that block list instead of reading it again.
 - PVL/KVI files are created with `If-None-Match: *` and SHA-256 metadata in the same commit; their blocks are staged up
-  to four at a time (128 MB PVL on Azurite: 595 ms serially, 330 ms). A KVI also records the oldest canonical TRL it
-  needs (`btdb_recovery_key`, `btdb_recovery_id`), so discovery survives deletion of older history.
+  to four at a time (128 MB PVL on Azurite: 595 ms serially, 330 ms). Native KVI references
+  define the recovery closure without additional metadata.
 - Cleanup marks obsolete TRL/PVL/KVI objects with a deletion deadline and deletes only the unchanged marked version
   after it passes; the deadline survives leader changes. The delay must be positive. Reusing a PVL clears its mark and
   changes its version. Checkpoint publication clears marks on its retained TRL chain but never rewrites an unmarked

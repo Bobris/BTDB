@@ -19,6 +19,14 @@ public class CanonicalTrlPublisherTest
 
     internal sealed class Storage : IReplicationStorage
     {
+        public async IAsyncEnumerable<TrlHead> EnumerateTrlsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellation)
+        {
+            foreach (var (key, blob) in Blobs.ToArray())
+            {
+                cancellation.ThrowIfCancellationRequested();
+                yield return new(TrlFileName.FileIdFromKey(key), key, blob.State);
+            }
+        }
         public IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation) => throw new NotSupportedException("This test storage only supports canonical TRLs.");
         public ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation) => throw new NotSupportedException("This test storage only supports canonical TRLs.");
         public ValueTask EnsurePureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation) => throw new NotSupportedException("This test storage only supports canonical TRLs.");
@@ -86,7 +94,7 @@ public class CanonicalTrlPublisherTest
             var bytes = new byte[write.Length];
             previous?.Bytes.CopyTo(bytes, 0);
             suffix.CopyTo(bytes, (int)write.ExpectedLength);
-            var state = new TrlObjectState((++_version).ToString(), write.Length, write.Metadata);
+            var state = new TrlObjectState((++_version).ToString(), write.Length);
             Blobs[write.Key] = new(state, bytes);
             Applied++;
             return new(TrlWriteOutcome.Applied, state);
@@ -131,7 +139,7 @@ public class CanonicalTrlPublisherTest
         }
     }
 
-    static string Key(uint id) => $"trl/{id}";
+    static string Key(uint id) => $"{id}.trl";
     static LeaseAuthority Lease(DeterministicScheduler clock)
     {
         var authority = new LeaseAuthority(clock.CreateScope(Guid.NewGuid().ToString()), 0, TimeSpan.FromTicks(1));
@@ -179,7 +187,7 @@ public class CanonicalTrlPublisherTest
     }
 
     [Fact]
-    public async Task LocalCaptureBehindRestoredTailIsIdleInsteadOfShrinkingHistory()
+    public async Task InconsistentRestoredTailConflictsInsteadOfShrinkingHistory()
     {
         using var f = await Fixture.CreateAsync(false);
         await Write(f, 1, 8);
@@ -188,8 +196,8 @@ public class CanonicalTrlPublisherTest
         var ahead = tail with { State = tail.State with { Length = tail.State.Length + 16 } };
         using var restored = new CanonicalTrlPublisher(f.Db, f.Capture, f.Remote, f.Authority, 1, Key, ahead);
         var requests = f.Remote.Requests.Count;
-        Assert.Equal(TrlPublishResult.Idle, await restored.PublishNextAsync());
-        Assert.Equal(requests, f.Remote.Requests.Count);
+        Assert.Equal(TrlPublishResult.Conflict, await restored.PublishNextAsync());
+        Assert.Equal(requests + 1, f.Remote.Requests.Count);
     }
 
     [Theory]
@@ -286,7 +294,7 @@ public class CanonicalTrlPublisherTest
 
         Assert.Equal(TrlPublishResult.Published, await next.PublishThroughAsync(cut));
         Assert.Equal(0u, f.Remote.Requests[1].Write.AppendLength);
-        Assert.Equal(2ul, f.Remote.Requests[1].Write.Metadata.Term);
+        Assert.NotNull(f.Remote.Requests[1].Write.ExpectedToken);
         Assert.Equal(cut, next.PublishedPosition);
         Assert.Equal((2ul, 2L), await Restore(f.Remote, false));
     }
@@ -344,17 +352,16 @@ public class CanonicalTrlPublisherTest
     }
 
     [Fact]
-    public async Task MultiFileGenesisSelectsItsRootOnlyAfterSuccessors()
+    public async Task MultiFileGenesisPublishesItsNativePrefixesInOrder()
     {
         using var f = await Fixture.CreateAsync();
         await Write(f, 1, 10);
         f.Remote.BeforeEffect = write =>
         {
-            if (write.Metadata.Next is { } next) Assert.True(f.Remote.Blobs.ContainsKey(next.Key));
-            if (write.FileId != 1) Assert.False(f.Remote.Blobs.ContainsKey(Key(1)));
+            if (write.FileId > 1) Assert.True(f.Remote.Blobs.ContainsKey(Key(write.FileId - 2)));
         };
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
-        Assert.Equal(1u, f.Remote.Requests[^1].Write.FileId);
+        Assert.Equal(1u, f.Remote.Requests[0].Write.FileId);
         Assert.Equal((1ul, 10L), await Restore(f.Remote));
     }
 
@@ -472,7 +479,7 @@ public class CanonicalTrlPublisherTest
     }
 
     [Fact]
-    public async Task AdoptionChangesOnlyMetadataAndFencesDelayedOldTermAppend()
+    public async Task AdoptionChangesOnlyVersionAndFencesDelayedOldTermAppend()
     {
         using var f = await Fixture.CreateAsync();
         await Write(f, 1);
@@ -486,7 +493,7 @@ public class CanonicalTrlPublisherTest
         using var next = new CanonicalTrlPublisher(f.Db, nextCapture, f.Remote, Lease(f.Clock), 2, Key, selected);
         Assert.Equal(TrlPublishResult.Adopted, await next.PublishNextAsync());
         Assert.Equal(original, f.Remote.Blobs[selected.Key].Bytes);
-        Assert.Equal(2ul, next.Tail!.State.Metadata.Term);
+        Assert.NotEqual(f.Publisher.Tail!.State.Token, next.Tail!.State.Token);
         f.Remote.CompleteDelayed();
         Assert.Equal(TrlPublishResult.Conflict, await f.Publisher.PublishNextAsync());
         Assert.Equal((1ul, 1L), await Restore(f.Remote));
@@ -501,7 +508,7 @@ public class CanonicalTrlPublisherTest
         await Write(f, 2, 8);
         f.Remote.BeforeEffect = _ => f.Authority.Fence();
         Assert.Equal(TrlPublishResult.AuthorityLost, await f.Publisher.PublishNextAsync());
-        Assert.Equal(2, f.Remote.Requests.Count); // Genesis plus one prepared successor, no predecessor CAS.
+        Assert.Equal(2, f.Remote.Requests.Count); // Genesis plus one in-flight native prefix.
         Assert.Equal(f.Capture.Acknowledged, f.Publisher.PublishedPosition);
         Assert.Equal((1ul, 1L), await Restore(f.Remote));
         await Write(f, 3);
@@ -524,6 +531,103 @@ public class CanonicalTrlPublisherTest
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         Assert.Equal(f.Capture.Completed, f.Publisher.PublishedPosition);
         Assert.Equal((1ul, 2L), await Restore(f.Remote));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task CreateCollisionComparesExistingNativeBytesBeforeContinuing(bool shorter, bool different)
+    {
+        using var f = await Fixture.CreateAsync(false);
+        await Write(f, 1, 100);
+        f.Remote.BeforeEffect = write =>
+        {
+            f.Remote.BeforeEffect = null;
+            Assert.Null(write.ExpectedToken);
+            var length = shorter ? write.Length / 2 : write.Length;
+            var bytes = new byte[length];
+            write.Source.RandomRead(bytes, 0, false);
+            if (different) bytes[^1] ^= 1;
+            f.Remote.Blobs[write.Key] = new(new("competing-create", length), bytes);
+        };
+        var result = await f.Publisher.PublishNextAsync();
+        Assert.Equal(different ? TrlPublishResult.Conflict : TrlPublishResult.Published, result);
+        Assert.True(f.Remote.RangeBytes > 0);
+        if (different)
+        {
+            Assert.Equal(0, f.Remote.Applied);
+            Assert.NotEqual(f.Capture.Completed, f.Capture.Acknowledged);
+            Assert.Equal("competing-create", f.Remote.Blobs[Key(1)].State.Token);
+        }
+        else
+        {
+            Assert.Equal(f.Capture.Completed, f.Capture.Acknowledged);
+            Assert.Equal(shorter ? 1 : 0, f.Remote.Applied);
+            Assert.Equal((1ul, 100L), await Restore(f.Remote, false));
+        }
+    }
+
+    [Theory]
+    [InlineData(false, 2)]
+    [InlineData(false, 4)]
+    [InlineData(true, 2)]
+    [InlineData(true, 4)]
+    public async Task RestartDuringMultiFilePublicationRegeneratesExactlyTheSameTrls(bool disk, int stopAt)
+    {
+        using var f = await Fixture.CreateAsync();
+        await Write(f, 1);
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
+        var baseline = f.Capture.Completed;
+        await Write(f, 2, 8);
+        var stopRequest = f.Remote.Requests.Count + stopAt;
+        f.Remote.Inject = n => n == stopRequest ? Fault.DelayEffect : Fault.None;
+        Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishNextAsync());
+        f.Authority.Fence();
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-partial-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using IReplicationFileStorage local = disk ? new OnDiskReplicationFileStorage(directory) : new InMemoryReplicationFileStorage();
+            await using var files = new ReplicationFileSet(local, inventory);
+            await files.InitializeAsync();
+            var capture = new TransactionLogCapture();
+            using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+            {
+                FileCollection = files, TransactionLogCapture = capture, Compression = new NoCompressionStrategy(),
+                CompactorScheduler = null, TransactionLogSizeStrategy = new TinyLogs()
+            });
+            Assert.Equal(baseline, db.ReplicationRestoredPosition);
+            using (var read = db.StartReadOnlyTransaction()) Assert.Equal(1ul, read.GetCommitUlong());
+            var selected = new SelectedLeadership(Lease(f.Clock), 2, "new", ["main"]);
+            ActivationDatabase[] databases = [new("main", db, capture, f.Remote, new(Key(1), 1), baseline, Key)];
+            Assert.Null(await LeadershipActivation.ActivateAsync(selected, databases));
+            using (var tr = await db.StartWritingTransaction(2))
+            {
+                using var cursor = tr.CreateCursor();
+                for (var i = 0; i < 8; i++) cursor.CreateOrUpdateKeyValue([2, (byte)i], Enumerable.Repeat((byte)2, 700).ToArray());
+                tr.Commit();
+            }
+            Assert.Equal(f.Capture.Completed, capture.Completed);
+            foreach (var original in f.Files.Enumerate())
+            {
+                var regenerated = local.GetFile(original.Index);
+                Assert.Equal(original.GetSize(), regenerated.GetSize());
+                var expected = new byte[original.GetSize()];
+                var actual = new byte[expected.Length];
+                original.RandomRead(expected, 0, false);
+                regenerated.RandomRead(actual, 0, false);
+                Assert.Equal(expected, actual);
+            }
+            f.Remote.Inject = null;
+            var publishers = await LeadershipActivation.ActivateAsync(selected, databases);
+            using var publisher = Assert.Single(publishers!);
+            Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+            f.Remote.CompleteDelayed(); // An old create/CAS cannot replace the adopted or newly published bytes.
+            Assert.Equal((2ul, 9L), await Restore(f.Remote));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
 
     [Fact]
@@ -620,8 +724,6 @@ public class CanonicalTrlPublisherTest
         await Write(f, 1, 8);
         await Write(f, 2, 8, rollback);
         await f.Publisher.PublishNextAsync();
-        // An unselected prepared object must never participate in recovery, regardless of its numeric ID.
-        f.Remote.Blobs[Key(999)] = new(new("orphan", 1, new(99)), [255]);
         var selected = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
         using var local = new InMemoryReplicationFileStorage();
         await using var files = new ReplicationFileSet(local, selected);
@@ -645,34 +747,40 @@ public class CanonicalTrlPublisherTest
         Assert.Equal((3ul, rollback ? 9L : 17L), await Restore(f.Remote));
     }
 
-    [Theory]
-    [InlineData("missing")]
-    [InlineData("cycle")]
-    [InlineData("decreasing-id")]
-    [InlineData("decreasing-term")]
-    public async Task InventoryRejectsBrokenSelectedLinks(string fault)
+    [Fact]
+    public async Task MissingNativePredecessorCannotOpenAsAnEmptyDatabase()
     {
         using var f = await Fixture.CreateAsync();
         await Write(f, 1, 8);
-        await f.Publisher.PublishNextAsync();
-        var root = f.Remote.Blobs[Key(1)];
-        var next = root.State.Metadata.Next!;
-        switch (fault)
-        {
-            case "missing": f.Remote.Blobs.Remove(next.Key); break;
-            case "cycle":
-                f.Remote.Blobs[Key(1)] = root with { State = root.State with { Metadata = new(1, new(Key(1), next.FileId)) } };
-                break;
-            case "decreasing-id":
-                f.Remote.Blobs[Key(1)] = root with { State = root.State with { Metadata = new(1, new(next.Key, 1)) } };
-                break;
-            case "decreasing-term":
-                f.Remote.Blobs[Key(1)] = root with { State = root.State with { Metadata = new(2, next) } };
-                break;
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
+        Assert.True(f.Remote.Blobs.Remove(Key(3)));
+        await Assert.ThrowsAsync<InvalidDataException>(() => Restore(f.Remote));
+    }
 
-        }
-        if (fault == "missing") await Assert.ThrowsAsync<FileNotFoundException>(() => Restore(f.Remote));
-        else await Assert.ThrowsAsync<InvalidDataException>(() => Restore(f.Remote));
+    [Fact]
+    public async Task EveryTermUsesTheSameNativeFileNames()
+    {
+        using var f = await Fixture.CreateAsync();
+        await Write(f, 1, 8);
+        Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
+        Assert.All(f.Remote.Requests, r => Assert.Equal(TrlFileName.Key(r.Write.FileId), r.Write.Key));
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
+        using var next = new CanonicalTrlPublisher(f.Db, f.Capture, f.Remote, f.Authority, 2, Key, inventory.Tail);
+        Assert.Equal(TrlPublishResult.Adopted, await next.AdoptAsync());
+        await Write(f, 2, 8);
+        Assert.Equal(TrlPublishResult.Published, await next.PublishNextAsync());
+        Assert.All(f.Remote.Blobs.Keys, key => Assert.DoesNotContain("/", key));
+        Assert.Equal((2ul, 16L), await Restore(f.Remote));
+    }
+
+    [Fact]
+    public async Task PublisherRejectsAnObjectNameWithAnotherNativeIdBeforeWriting()
+    {
+        using var f = await Fixture.CreateAsync();
+        await Write(f, 1);
+        using var publisher = new CanonicalTrlPublisher(f.Db, f.Capture, f.Remote, f.Authority, 1, _ => "99.trl");
+        await Assert.ThrowsAsync<InvalidDataException>(() => publisher.PublishNextAsync().AsTask());
+        Assert.Empty(f.Remote.Requests);
     }
 
     [Fact]

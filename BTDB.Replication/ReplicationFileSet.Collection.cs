@@ -175,6 +175,62 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
 
     public IFileCollectionFile AddFile(string humanHint) => AddFile(humanHint, FileIdParity.Any);
 
+    public void DiscardUncommittedTransactionLog(uint fileId)
+    {
+        EnsureInitialized();
+        if (GetFileType(fileId) != KVFileType.TransactionLog) throw new InvalidOperationException("Only unfinished TRLs may be discarded.");
+        Local.GetFile(fileId)?.Remove();
+        _remoteFiles.Remove(fileId);
+    }
+
+    public IFileCollectionFile CreateTransactionLogFile(uint fileId)
+    {
+        EnsureInitialized();
+        if ((fileId & 1) == 0) throw new ArgumentOutOfRangeException(nameof(fileId), "New TRL IDs must be odd.");
+        lock (_placementLock)
+        {
+            if (_remoteFiles.ContainsKey(fileId))
+                throw new IOException($"TRL file ID {fileId} is already selected in the remote inventory.");
+            var file = Local.ImportFile(fileId, "trl");
+            ObserveId(fileId);
+            return file;
+        }
+    }
+
+    public async ValueTask PublishTransactionLogHeaderAsync(IFileCollectionFile file, CancellationToken cancellation)
+    {
+        EnsureInitialized();
+        if (Remote is not IReplicationStorage storage)
+            throw new NotSupportedException("Legacy transition requires writable replication storage.");
+        var predecessor = ((IFileTransactionLog)FileCollectionWithFileInfos.ReadFileInfo(file)).PreviousFileId;
+        // A node may have listed the old tail before another startup published its transition and cleanup changed
+        // the retained odd IDs. Do not create a different successor from that stale inventory.
+        await foreach (var head in storage.EnumerateTrlsAsync(cancellation).ConfigureAwait(false))
+            if (head.FileId > predecessor && head.FileId != file.Index)
+                throw new IOException("Canonical history already has another successor; restore again.");
+        var length = checked((uint)file.GetSize());
+        var key = TrlFileName.Key(file.Index);
+        var result = await storage.WriteAsync(new(file.Index, key, null, 0, length, file), cancellation)
+            .ConfigureAwait(false);
+        var state = result.Outcome == TrlWriteOutcome.Applied ? result.State :
+            await storage.ReadAsync(key, cancellation).ConfigureAwait(false);
+        if (state == null) throw new IOException("Transition publication is unresolved; restore again.");
+        if (state.Length < length) throw new InvalidDataException("Canonical transition header is truncated.");
+        var actual = new byte[length];
+        await storage.ReadRangeAsync(key, state.Token, 0, actual, cancellation).ConfigureAwait(false);
+        var expected = new byte[length];
+        file.RandomRead(expected, 0, false);
+        if (!actual.AsSpan().SequenceEqual(expected))
+            throw new InvalidDataException("Canonical transition header differs; restart from remote history.");
+        if (state.Length != length)
+            throw new IOException("Canonical transition already has subsequent writes; restore again.");
+        var published = new RemoteInventoryFile(this,
+            new(file.Index, KVFileType.TransactionLog, length, state.Token, false, null));
+        published.UseValidatedLocal(file);
+        _remoteFiles.Add(file.Index, published);
+        lock (_placementLock) RememberMapping(file.Index, file.Index);
+    }
+
     public IFileCollectionFile AddFile(string humanHint, FileIdParity parity)
     {
         EnsureInitialized();

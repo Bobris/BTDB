@@ -38,7 +38,7 @@ prefix ending inside a transaction.
 
 No operation may assume an atomic transaction across two keys. The leader lease fences only the leader blob, not TRL
 or PVL/KVI objects, local disks or peer traffic; every new term therefore CAS-fences the writable predecessor TRL
-(a metadata-only adoption write) before canonical work, and continues under fresh successor keys.
+(an unchanged-content conditional write) before canonical work. Successor IDs use shared keys across all terms.
 
 ### Implemented interfaces
 
@@ -70,9 +70,8 @@ rejection of that resend as a lost race.
 Implemented reconciliation needs no extra operation-identity field:
 
 - **Canonical TRL**: an applied CAS from the expected version keeps its first `ExpectedLength` bytes, so the publisher
-  compares only the intended appended bytes (and length and term metadata) in bounded chunks, with no hashes.
-- **PVL/KVI**: a lost or rejected create is confirmed by matching length and `btdb_sha256` (and, for KVI, its recovery
-  root metadata). Anything else is a `RemoteFileConflictException` that fences the session; never overwrite it.
+  compares only the intended appended bytes (and length) in bounded chunks, with no hashes.
+- **PVL/KVI**: a lost or rejected create is confirmed by matching length and `btdb_sha256`. Anything else is a `RemoteFileConflictException` that fences the session; never overwrite it.
 - **Leader record and lease**: after any non-applied selection write, only a reread equal to the exact intended JSON
   (which carries a fresh session ID) confirms it; a lost lease acquire or transfer is confirmed only by renewing the
   proposed lease ID.
@@ -137,8 +136,8 @@ PVL placements also keep their IDs across retries. Restart rediscovers remote st
 
 KVI upload starts only after all required PVLs and the canonical TRL through the KVI cut are published, with ambiguous
 prerequisites reconciled; no KVI block is staged earlier. Before staging, the Azure adapter lists the database
-namespace once: the latest KVI's recovery-root hint starts an in-memory walk of the selected links in the listed TRL
-metadata, which yields the new hint and the marked chain TRLs to clear. A steady-state checkpoint therefore needs
+namespace once, verifies that every native TRL dependency exists, and clears deletion marks from the retained suffix.
+A steady-state checkpoint therefore needs
 three listings (ID scan, KVI preparation, cleanup) and no request per retained file; with 20 PVLs and 153 retained
 TRLs it previously needed four listings and 173 HEAD requests (`CheckpointRequestTest`, Azurite). The KVI streams from native serialization without a local
 staging file.
@@ -169,10 +168,10 @@ cannot become due before the new leader protects the file. There are no follower
 the delay does not guarantee that an old KVI remains restorable, and a restore that loses a file restarts from the
 newest published KVI. Retired keys are never reused, so a delayed old delete stays harmless.
 
-Each KVI binds a retained-root hint to its content. `ResolveRecoveryRootAsync` reads the highest KVI's hint and
-discovery then follows canonical successor links, so an obsolete TRL prefix, including genesis, can be deleted. Never
-select a root from the maximum listed TRL. A KVI without a hint (legacy) needs the original genesis; if that is
-missing, resolution fails instead of starting a new database.
+Discovery lists the shared native files and native KVI references select the required recovery closure. Old TRLs,
+including genesis, can be pruned once the new checkpoint no longer needs them. `ResolveRecoveryRootAsync` returns
+the oldest remaining TRL for bootstrap detection; a KVI without any retained TRLs fails instead of appearing empty.
+Native open rejects missing required history. No recovery-root metadata or sidecar is stored.
 
 ## `denoland/celld` reference study
 
@@ -255,8 +254,7 @@ load and a folded log state.
 3. Bulk SQLite/LTX data uses ordinary PUT under `cells/<cell>/ltx/e<epoch>/`; the epoch in the key fences a delayed
    old owner into a superseded prefix.
 
-Small mutable authority uses CAS and bulk data uses unique fenced keys, which matches BTDB's leader record and fresh
-successor keys. Differences:
+Small mutable authority uses CAS and bulk data uses unique fenced keys, which informed BTDB's leader record; BTDB now uses shared native TRL keys across terms. Differences:
 
 - `celld` waits for a durability proof and rechecks ownership before acknowledging a write (RPO=0). BTDB does not,
   because the upstream event log recreates a discarded unpublished tail.
@@ -294,18 +292,19 @@ failures return HTTP `412`. ETags are opaque. A condition covers one blob operat
 acquisition (empty-cluster bootstrap) and replaces it with both the lease ID and `If-Match`.
 
 `AzureReplicationStorage` is constructed per database with its own nonempty prefix, because cleanup lists everything
-below it. Canonical TRLs live at host-supplied keys below the prefix; PVL/KVI files are `files/{id}.pvl` and
-`files/{id}.kvi`. `Bind(inventory)` gives a restore view and `Bind(inventory, authority)` a maintenance view. PVL/KVI
-uploads and cleanup recheck live authority before each dispatch; the canonical publisher does so for TRL writes.
+below it. Native files live directly under this database prefix. Every term shares `{id}.trl`; immutable files use `{id}.pvl` and `{id}.kvi`.
+IDs are positive unpadded decimals. `Bind(inventory)` gives a restore view and `Bind(inventory, authority)` a maintenance
+view. Every publisher checks live authority before dispatch.
 
 | Metadata | Object | Meaning |
 | --- | --- | --- |
-| `btdb_term` | TRL | Term of the last conditional write; adoption changes it without changing bytes. |
-| `btdb_next`, `btdb_next_id` | TRL | Successor key and native ID; present only on a sealed link. |
-| `btdb_file_id` | TRL | Native ID; cleanup ignores TRL objects without it and `btdb_term`. |
 | `btdb_sha256` | PVL/KVI | Whole-file SHA-256, committed with the content. |
-| `btdb_recovery_key`, `btdb_recovery_id` | KVI | Base64 UTF-8 key and ID of the oldest canonical TRL the KVI needs. |
 | `btdb_delete_after` | any | Invariant round-trip UTC deletion deadline. |
+
+These are the only BTDB Blob metadata fields. TRL IDs come from filenames; lineage and checkpoint dependencies
+come from native file contents. There are no term directories, successor pointers, recovery hints or extra manifests.
+Earlier name/metadata formats are not supported. A create collision compares the existing native bytes; equal content
+can be reused and an equal shorter prefix extended with version-bound CAS. Divergence requires restart.
 
 ### Conditional tail append with Block Blob
 
@@ -318,7 +317,7 @@ The failover core sees only the semantic append; the Block Blob layout stays in 
   losing request can never replace bytes a winning commit references. Trailing partial blocks accumulate up to 64 and
   are then merged into full blocks restaged from the verified local prefix, bounding block count and rewritten bytes.
 - `Put Block List` with `If-Match: T` (or `If-None-Match: *` for a new TRL) atomically commits the new list and the
-  complete metadata. Adoption is a metadata-only commit keeping every block.
+  empty TRL metadata. Adoption is an unchanged-content commit keeping every block.
 - A transient failure after the commit was dispatched is `Ambiguous`; the publisher reconciles it by comparing the
   appended bytes. `404`, `409` and `412` are `Rejected`.
 
@@ -338,7 +337,7 @@ transfer reference, not the replication concurrency contract.
 ### Immutable PVL/KVI upload and cleanup
 
 PVL/KVI uploads stage 4 MiB blocks, up to four concurrently (128 MB PVL on Azurite: 595 ms serially, 330 ms), hash
-the stream, and commit with `If-None-Match: *` plus `btdb_sha256` (and the KVI recovery root) in the same request.
+the stream, and commit with `If-None-Match: *` plus `btdb_sha256` in the same request.
 Separate `Set Metadata` is never needed for durability. Reads bind to the listed ETag with `If-Match`.
 
 Before a KVI commit, the adapter clears deletion marks on the retained canonical TRL chain, because a promoted follower
@@ -393,7 +392,7 @@ the container, resource group and account were deleted afterwards. Observed: sta
 committed body or ETag; `Put Block List` changed content and metadata together; same-byte term adoption changed the
 ETag and made an old append fail with `412`; lease acquire/change/renew left the leader ETag unchanged, blocked an
 unleased write to that blob but not to another blob; after change, renewal with the old ID returned `409` and the new
-ID succeeded. The probe used small diagnostic payloads (its `btdb_format` metadata is not part of `TrlMetadata`), and
+ID succeeded. The probe used small diagnostic payloads (its diagnostic metadata is not part of the current production format), and
 its ambiguity case only discarded a known successful response.
 
 ### Open Azure work

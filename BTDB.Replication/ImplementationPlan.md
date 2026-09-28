@@ -1,6 +1,6 @@
 # BTDB.Replication implementation status and plan
 
-Status 2026-09-27. Milestones M0–M6 are implemented and exercised by deterministic in-process, real-BTDB, Azurite
+Status 2026-09-28. Milestones M0–M6 are implemented and exercised by deterministic in-process, real-BTDB, Azurite
 and subprocess tests. What remains is proof closure, live-provider and production qualification, measurement and
 release work (M7). No B1/B3/B5/B6 blocker in the [Architecture.md](Architecture.md) blocker register is closed by
 this status: link the closing tests there first.
@@ -38,14 +38,16 @@ and keep that evidence beside the change. Otherwise defer it. Without such evide
   blob/lease/peer simulators and an independent history oracle (`BTDB.Replication.Test/Simulation`). Evidence:
   `HistoryOracleTest`, `ClusterIsolationTest`, `SchedulerTest`, `StorageFaultTest`.
 - **M1 authority and representation.** Conservative lease deadlines and one grant drain bound (`LeaseAuthority`,
-  `ConfirmationGrants`), TRL term/successor metadata (`TrlMetadata`) and the live Azure capability probe recorded in
+  `ConfirmationGrants`), shared TRL names (`TrlFileName`) and the live Azure capability probe recorded in
   ObjectStorages.md. Evidence: [M1Evidence.md](M1Evidence.md).
 - **M2 capture and local lifetime.** `TransactionLogCapture` completed, acknowledged and non-application positions,
-  compactor retention, odd/even file IDs and TRL sizing, virtual batching, `ObjectDB.InitializeRelations` with at most
+  compactor retention, deterministic +2 TRL successors and even non-TRL IDs, automatic shared legacy-header publication during startup,
+  TRL sizing, virtual batching, `ObjectDB.InitializeRelations` with at most
   one startup writer, and local execution after publication stops. Evidence: `TransactionLogCaptureTest`,
   `ReplicationCompactorTest`, `ObjectDbInitializeRelationsTest` in `BTDBTest`.
-- **M3 publication and restore.** Serialized canonical TRL CAS lane with successor preparation, adoption and
-  ambiguity reconciliation (`CanonicalTrlPublisher`); TRL discovery (`CanonicalTrlInventory`); remote-backed cache
+- **M3 publication and restore.** Serialized canonical TRL CAS lane with ordered native-file publication, adoption and
+  ambiguity reconciliation (`CanonicalTrlPublisher`); fixed `{fileId}.trl` names across terms, no TRL protocol metadata;
+  TRL discovery (`CanonicalTrlInventory`); remote-backed cache
   with SHA-verified reuse and bounded parallel downloads (`ReplicationFileSet`); dependency-first KVI export with
   whole-PVL remapping (`CheckpointPublisher`). Evidence: `CanonicalTrlPublisherTest`, `CheckpointPublisherTest`,
   `RestartRecoveryTest`, `ReplicationFileSetTest`, `AsyncOpenTest`.
@@ -65,7 +67,7 @@ and keep that evidence beside the change. Otherwise defer it. Without such evide
   `ReplicationNodeCoordinatorTest`, `ReplicationApplicationDataTest`.
 - **M6 compaction and cleanup.** Local compaction on every node; leader-only checkpoint export, skipped when
   unchanged; deletion only after a confirmed KVI, with a configurable positive delay persisted on each object, PVL
-  protection/reupload and a retained-root hint on each KVI (`ReplicationMaintenance`, `RemoteGarbageCollector`);
+  protection/reupload and recovery from native KVI references (`ReplicationMaintenance`, `RemoteGarbageCollector`);
   leak candidates submitted as an application event (`CollectLeakRemovalCandidates`). Evidence:
   `RemoteMaintenanceTest`, `ObjectDbCompactorLeakCleanupTest`, Azurite tests.
 - **M7 adapters (partial).** Azure leases, leader record and storage

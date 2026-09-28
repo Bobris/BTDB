@@ -26,7 +26,7 @@ internal sealed class TestNodeHost(string endpoint, AzureReplicationStorage cano
     LeaderTrlProgress? _progress;
     string _session = "";
     int _applied;
-    public static TrlSuccessor Genesis => new("genesis/1", 1);
+    public static TrlSuccessor Genesis => new("1.trl", 1);
 
     public async ValueTask<IReadOnlyList<ActivationDatabase>> RestoreAsync(CancellationToken cancellation)
     {
@@ -45,14 +45,14 @@ internal sealed class TestNodeHost(string endpoint, AzureReplicationStorage cano
             _collection = new(_files, canonical.Bind(inventory));
             await _collection.InitializeAsync(cancellation);
             files = _collection;
-            restored = new(inventory.Tail.FileId, inventory.Tail.State.Length);
+            restored = new(1, 0); // Published history exists; use the recovered boundary after native replay.
         }
         _database = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         {
             FileCollection = files, TransactionLogCapture = _capture, CompactorScheduler = null,
             Compression = new NoCompressionStrategy()
         }, cancellation);
-        return [new("main", _database, _capture, _storage, Genesis, restored, id => $"{_session}/{id}")];
+        return [new("main", _database, _capture, _storage, Genesis, restored.FileId == 0 ? default : _database.ReplicationRestoredPosition, id => $"{id}.trl")];
     }
 
     public LeaderCandidate CreateCandidate()
@@ -131,6 +131,7 @@ internal sealed class TestNodeHost(string endpoint, AzureReplicationStorage cano
 
     sealed class PublicationGate(IReplicationStorage inner) : IReplicationStorage
     {
+        public IAsyncEnumerable<TrlHead> EnumerateTrlsAsync(CancellationToken cancellation) => inner.EnumerateTrlsAsync(cancellation);
         public ValueTask<TrlSuccessor> ResolveRecoveryRootAsync(TrlSuccessor genesis, CancellationToken cancellation) => inner.ResolveRecoveryRootAsync(genesis, cancellation);
         public ValueTask<RemoteMaintenanceFile> ScheduleDeletionAsync(RemoteMaintenanceFile file, TimeSpan delay, CancellationToken cancellation) => inner.ScheduleDeletionAsync(file, delay, cancellation);
         public ValueTask CancelDeletionAsync(RemoteMaintenanceFile file, CancellationToken cancellation) => inner.CancelDeletionAsync(file, cancellation);

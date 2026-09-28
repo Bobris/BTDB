@@ -34,6 +34,27 @@ public sealed class OnDiskReplicationFileStorageTest : IDisposable
 
     static byte[] Pattern(int length, int seed) => Enumerable.Range(0, length).Select(i => (byte)(i * 31 + seed)).ToArray();
 
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(false, 128 * 1024)]
+    [InlineData(false, 128 * 1024 + 17)]
+    [InlineData(true, 0)]
+    [InlineData(true, 128 * 1024)]
+    [InlineData(true, 128 * 1024 + 17)]
+    public void RewindUnfinishedPrefixAcrossBuffersPreservesEarlierBytes(bool disk, int retained)
+    {
+        using IReplicationFileStorage files = disk ? new OnDiskReplicationFileStorage(_directory) : new InMemoryReplicationFileStorage();
+        var file = files.ImportFile(1, "trl");
+        var original = Pattern(512 * 1024, 1);
+        Append(file, original);
+        var writer = new MemWriter(file.GetAppenderWriter());
+        writer.SetCurrentPosition(retained);
+        writer.Flush();
+        var suffix = Pattern(256 * 1024, 2);
+        Append(file, suffix);
+        Assert.Equal(original.Take(retained).Concat(suffix).ToArray(), ReadAll(file));
+    }
+
     [Fact]
     public void IdentitiesTypesAndContentSurviveReopenWithTruncatedLengths()
     {

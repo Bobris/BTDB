@@ -49,7 +49,7 @@ internal sealed class NodeFixture : IDisposable
     public string SessionId { get; }
     public BTreeKeyValueDB Database(string database) => _databases[database];
 
-    internal static void SeedNativeHeader(InMemoryReplicationFileStorage files, Guid identity)
+    internal static void SeedNativeHeader(InMemoryReplicationFileStorage files, Guid identity, long generation = 0)
     {
         // Existing BTDB3 empty TRL header. Seeding a known native fixture avoids the core's Guid.NewGuid()
         // fallback without introducing a production API or changing core behavior during M0.
@@ -58,7 +58,7 @@ internal sealed class NodeFixture : IDisposable
         writer.WriteBlock("BTDB3"u8);
         writer.WriteGuid(identity);
         writer.WriteUInt8((byte)KVFileType.TransactionLog);
-        writer.WriteVInt64(1); // generation
+        writer.WriteVInt64(generation); // zero identifies native replication
         writer.WriteVInt32(0); // no previous file
         writer.Flush();
         file.HardFlush();

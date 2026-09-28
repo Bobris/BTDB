@@ -22,6 +22,11 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     internal bool IsReplication => _fileCollection is LazyFileCollectionWithFileInfos;
     uint _replicationKeyIndexTrlId, _replicationKeyIndexTrlOffset;
     bool _hasReplicationKeyIndex;
+
+    /// <summary>The complete native position recovered by asynchronous replication open, before new local writes.
+    /// Includes a published legacy-transition header; an unfinished transaction is excluded and regenerated from input.</summary>
+    public TransactionLogPosition ReplicationRestoredPosition { get; private set; }
+
     IReadOnlySet<uint>? _replicationKeyIndexReferences;
 
     const int MaxValueSizeInlineInMemory = 7;
@@ -131,7 +136,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     }
 
     /// Open an already initialized IFileReplicatedCollection using lazy metadata and asynchronous prefetch.
-    /// The caller must finish collection initialization before opening; this method only waits for recovery files.
+    /// The caller must finish collection initialization before opening. Writable legacy open also publishes its transition header.
     /// Ordinary collections retain synchronous standalone opening, including historical open and history retention.
     public static async ValueTask<BTreeKeyValueDB> OpenAsync(KeyValueDBOptions options,
         CancellationToken cancellation = default)
@@ -529,32 +534,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     .ConfigureAwait(false);
 
             if (!hasKeyIndex && _missingSomeTrlFiles.HasValue)
-            {
-                if (_lenientOpen)
-                {
-                    Logger?.LogWarning("No valid Kvi and lowest Trl in chain is not first. Missing " +
-                                       _missingSomeTrlFiles.Value + ". LenientOpen is true, recovering data.");
-                    await LoadTransactionLogsAsync(firstTrLogId, firstTrLogOffset, cancellation).ConfigureAwait(false);
-                }
-                else
-                {
-                    Logger?.LogWarning("No valid Kvi and lowest Trl in chain is not first. Missing " +
-                                       _missingSomeTrlFiles.Value);
-                    if (!_readOnly)
-                    {
-                        foreach (var id in allTrlIds) files.MakeIdxUnknown(id);
-
-                        _fileCollection.DeleteAllUnknownFiles();
-                        _fileIdWithTransactionLog = 0;
-                        firstTrLogId = 0;
-                        latestTrLogFileId = 0;
-                    }
-                }
-            }
-            else
-            {
-                await LoadTransactionLogsAsync(firstTrLogId, firstTrLogOffset, cancellation).ConfigureAwait(false);
-            }
+                throw new System.IO.InvalidDataException("Published replication history is missing a required TRL or usable KVI.");
+            await LoadTransactionLogsAsync(firstTrLogId, firstTrLogOffset, cancellation).ConfigureAwait(false);
 
             if (!_readOnly)
             {
@@ -565,14 +546,28 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
                     _writerWithTransactionLog = new(_fileWithTransactionLog!.GetAppenderWriter());
                 }
-
-                _fileCollection.DeleteAllUnknownFiles();
             }
 
             // Start every requested prefetch before awaiting any of them. The collection owns transfer concurrency.
-            var prefetchIds = keyIndexReferences?.ToArray() ?? allTrlIds;
+            var prefetchIds = keyIndexReferences?.ToArray() ?? files.FileIdsOfType(KVFileType.TransactionLog).ToArray();
             await Task.WhenAll(prefetchIds.Select(id => files.PrefetchAsync(id, cancellation).AsTask()))
                 .ConfigureAwait(false);
+            if (!_readOnly)
+            {
+                var tail = _fileIdWithTransactionLog != 0 ? _fileIdWithTransactionLog : _fileIdWithPreviousTransactionLog;
+                if (tail != 0 && files.IsLegacyTransactionLog(tail))
+                {
+                    // Every node starts from the remote inventory. Publish the same header before any local work
+                    // can affect allocation; conditional creation reconciles concurrent startup attempts.
+                    WriteStartOfNewTransactionLogFile();
+                    _fileWithTransactionLog!.HardFlush();
+                    await files.PublishTransactionLogHeaderAsync(_fileWithTransactionLog, cancellation).ConfigureAwait(false);
+                    AdvanceReplicationStructuralBoundary(_lastCommitted, _fileIdWithTransactionLog,
+                        checked((uint)_writerWithTransactionLog.GetCurrentPosition()));
+                }
+                _fileCollection.DeleteAllUnknownFiles();
+            }
+            ReplicationRestoredPosition = new(_lastCommitted.TrLogFileId, _lastCommitted.TrLogOffset);
         }
         finally
         {
@@ -959,6 +954,30 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 return;
             firstTrLogId = ((IFileTransactionLog)fileInfo).NextFileId;
         }
+        // A crash may publish only the first files of a transaction. Regenerate that suffix from input at
+        // the exact last complete native position, so every node keeps the same IDs, offsets and bytes.
+        if (!_readOnly && _nextRoot != null && _lastCommitted.TrLogFileId != 0 &&
+            (_fileIdWithPreviousTransactionLog != _lastCommitted.TrLogFileId ||
+             _fileCollection.GetFile(_lastCommitted.TrLogFileId).GetSize() != _lastCommitted.TrLogOffset))
+        {
+            _nextRoot?.Dispose();
+            _nextRoot = null;
+            ((LazyFileCollectionWithFileInfos)_fileCollection).RewindUncommittedTransactionLogs(
+                _lastCommitted.TrLogFileId, _lastCommitted.TrLogOffset);
+            _fileIdWithTransactionLog = _lastCommitted.TrLogFileId;
+            _fileIdWithPreviousTransactionLog = _lastCommitted.TrLogFileId;
+        }
+    }
+
+    void AdvanceReplicationStructuralBoundary(IRootNode root, uint fileId, uint offset)
+    {
+        // A header changes position without changing data. Keep the restored KVI's value dependencies pinned
+        // across pointer-only compaction exactly as if the root had stayed at its original KVI cut.
+        if (_hasReplicationKeyIndex && root.TrLogFileId == _replicationKeyIndexTrlId &&
+            root.TrLogOffset == _replicationKeyIndexTrlOffset)
+            (_replicationKeyIndexTrlId, _replicationKeyIndexTrlOffset) = (fileId, offset);
+        root.TrLogFileId = fileId;
+        root.TrLogOffset = offset;
     }
 
     // Return true if it is suitable for continuing writing new transactions
@@ -987,6 +1006,14 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             if (logOffset == 0)
             {
                 FileTransactionLog.SkipHeader(ref reader);
+                if (IsReplication && next == null && (committed.TrLogFileId == 0 ||
+                    (_fileCollection.FileInfoByIdx(fileId) is IFileTransactionLog { Generation: 0 } current &&
+                     (fileId & 1) != 0 && current.PreviousFileId != 0 &&
+                     _fileCollection.FileInfoByIdx(current.PreviousFileId) is IFileTransactionLog previous &&
+                     ((current.PreviousFileId & 1) == 0 || previous.Generation != 0))))
+                {
+                    AdvanceReplicationStructuralBoundary(committed, fileId, (uint)reader.GetCurrentPosition());
+                }
             }
             else if (replayReader == null)
             {
@@ -1194,6 +1221,11 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         if (next == null) return false;
                         next.Dispose();
                         next = null;
+                        if (IsReplication)
+                        {
+                            committed.TrLogFileId = fileId;
+                            committed.TrLogOffset = (uint)reader.GetCurrentPosition();
+                        }
                         break;
                     case KVCommandType.EndOfFile:
                         return false;
@@ -1213,10 +1245,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
             }
 
-            // Canonical replication uploads end at a complete commit, without the local shutdown marker.
-            // Rotating that restored tail would give identical subsequent events different native file IDs.
-            // Only reuse the exact committed EOF; partial transactions, trailing garbage and sealed EOF markers
-            // still take the existing non-appendable path. Standalone crash recovery remains unchanged.
+            // Reuse a complete replication EOF without rotating its native ID. An unfinished transaction is
+            // rewound by asynchronous replication open; garbage and sealed EOF markers remain non-appendable.
+            // Standalone crash recovery remains unchanged.
             return afterTemporaryEnd || IsReplication && next == null && reader.Eof &&
                 committed.TrLogFileId == fileId && committed.TrLogOffset == reader.GetCurrentPosition();
         }
@@ -2006,7 +2037,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             }
 
             if (_writerWithTransactionLog.GetCurrentPosition() >= MaxTrLogFileSize ||
-                (IsReplication && (_fileIdWithTransactionLog & 1) == 0))
+                (_fileCollection is LazyFileCollectionWithFileInfos replicatedFiles &&
+                 replicatedFiles.IsLegacyTransactionLog(_fileIdWithTransactionLog)))
             {
                 WriteStartOfNewTransactionLogFile();
             }
@@ -2041,7 +2073,16 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         IFileCollectionFile? nextFile = null;
         TransactionLogSizeLimits nextLimits = default;
-        if (_transactionLogSizeStrategy != null)
+        if (_fileCollection is LazyFileCollectionWithFileInfos replicatedFiles)
+        {
+            var previous = _fileIdWithTransactionLog != 0
+                ? _fileIdWithTransactionLog : _fileIdWithPreviousTransactionLog;
+            var nextId = replicatedFiles.NextTransactionLogFileId(previous);
+            // Validate before allocating: a rejected size policy must not consume the deterministic successor ID.
+            if (_transactionLogSizeStrategy != null) nextLimits = GetTransactionLogLimits(nextId);
+            nextFile = replicatedFiles.CreateTransactionLogFile(nextId);
+        }
+        else if (_transactionLogSizeStrategy != null)
         {
             // Validate the new file's policy before closing the current log or writing a new header.
             nextFile = FileCollection.AddFile("trl");

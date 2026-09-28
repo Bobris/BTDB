@@ -10,15 +10,13 @@ using BTDB.KVDBLayer;
 namespace BTDB.Replication;
 
 /// <summary>
-/// Selected remote TRL inventory adapter. Follow selected links, never an object listing or its maximum ID. The caller supplies
-/// the database-scoped genesis identity; storage may resolve a retained root from a published checkpoint. A missing
-/// published root is an error, not permission to initialize again.
-/// A version change or missing dependency fails this attempt; the owner may rediscover in a new attempt.
+/// Snapshot of the shared TRL namespace. Native headers and KVI references determine recovery; no term directory,
+/// successor metadata or checkpoint sidecar participates. A missing dependency or version change fails this attempt.
 /// </summary>
 public sealed class CanonicalTrlInventory : IRemoteFileCollection
 {
     readonly IReplicationStorage _storage;
-    // Selected links in chain order, which is also ascending native ID order.
+    // Shared native IDs in ascending order.
     readonly List<TrlHead> _chain;
     readonly Dictionary<uint, TrlHead> _byId;
 
@@ -45,32 +43,21 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
     internal static async ValueTask<CanonicalTrlInventory> DiscoverAsync(IReplicationStorage storage,
         TrlSuccessor genesis, CancellationToken cancellation, Action<uint>? progress)
     {
+        TrlFileName.Validate(genesis);
         var chain = new List<TrlHead>();
-        var keys = new HashSet<string>(StringComparer.Ordinal);
-        var root = await storage.ResolveRecoveryRootAsync(genesis, cancellation).ConfigureAwait(false);
-        var current = root;
-        ulong previousTerm = 0;
-        uint previousId = 0;
-        while (true)
+        await foreach (var head in storage.EnumerateTrlsAsync(cancellation).ConfigureAwait(false))
         {
-            cancellation.ThrowIfCancellationRequested();
-            // Validate the supplied root as well as every selected link without serializing metadata.
-            TrlMetadata.Validate(current);
-            if (current.FileId <= previousId || !keys.Add(current.Key))
-                throw new InvalidDataException("Canonical TRL links repeat a key or do not advance native IDs.");
-            var state = await storage.ReadAsync(current.Key, cancellation).ConfigureAwait(false)
-                ?? throw new FileNotFoundException("A selected canonical TRL is missing.", current.Key);
-            if (state.Length == 0 || string.IsNullOrEmpty(state.Token) || state.Metadata.Term == 0 ||
-                state.Metadata.Term < previousTerm)
-                throw new InvalidDataException("Invalid canonical TRL state or decreasing authority term.");
-            chain.Add(new(current.FileId, current.Key, state));
-            progress?.Invoke(current.FileId);
-            if (state.Metadata.Next is not { } next) break;
-            previousId = current.FileId;
-            previousTerm = state.Metadata.Term;
-            current = next;
+            if (TrlFileName.FileIdFromKey(head.Key) != head.FileId || head.State.Length == 0 ||
+                string.IsNullOrEmpty(head.State.Token)) throw new InvalidDataException("Invalid canonical TRL identity or state.");
+            chain.Add(head);
+            progress?.Invoke(head.FileId);
         }
-        return new(storage, chain, root);
+        chain.Sort((a, b) => a.FileId.CompareTo(b.FileId));
+        if (chain.Count == 0) throw new FileNotFoundException("Published TRL history is missing.", genesis.Key);
+        if (chain.Select(h => h.FileId).Distinct().Count() != chain.Count)
+            throw new InvalidDataException("Duplicate canonical TRL identity.");
+        // Native PreviousFileId headers and KVI references select the retained recovery closure during open.
+        return new(storage, chain, new(chain[0].Key, chain[0].FileId));
     }
 
     public async IAsyncEnumerable<RemoteFile> EnumerateAsync([EnumeratorCancellation] CancellationToken cancellation)
@@ -80,7 +67,7 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
             cancellation.ThrowIfCancellationRequested();
             // No trustworthy checksum was supplied by the TRL storage seam: do not reuse local cache bytes.
             yield return new(head.FileId, KVFileType.TransactionLog, head.State.Length, head.State.Token,
-                head.State.Metadata.Next != null, null);
+                head != Tail, null);
         }
     }
 

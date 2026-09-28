@@ -81,15 +81,19 @@
   re-executing or duplicating events.
 - TRL sizing uses an immutable strategy whose only input is the TRL numeric ID, identical across nodes, restarts and
   versions. Soft limits rotate between transactions; hard limits below 4 GiB may split between commands.
-- New replication TRLs use odd file IDs and all other new files even IDs; valid legacy files keep their IDs. Before a
-  write would append to an even TRL, close it and start a fresh odd TRL. TRL IDs, offsets and bytes are never remapped.
+- New replication TRLs use odd file IDs and all other new files even IDs; valid legacy files keep their IDs. Writable
+  startup converts a legacy tail by conditionally publishing an odd successor containing only its native header, selected
+  from remote inventory before application work. Concurrent starts verify the same header; no opt-in flag or leader
+  lease is needed for this create-only bootstrap. All later TRLs use exactly +2. IDs, offsets and bytes are never remapped.
 
 ## Publication, following and database sets
 
 - CAS directly on canonical TRL establishes durability for complete published transactions; no second state CAS,
   per-batch `state.json` or per-transaction capture record. Track only the latest complete local position and the
-  acknowledged prefix. Transactions may span TRL files: prepare successors first, then publish the whole transaction
-  with the predecessor CAS; never accept a partial transaction. Reconcile ambiguous writes before later mutations.
+  acknowledged prefix. All terms share `{id}.trl`. Publish native files in order with conditional create/CAS;
+  compare existing bytes on create collisions and request restart on divergence. A crash may leave an unfinished
+  final transaction: replay exposes only complete transactions and regenerates the disposable local suffix at the
+  same IDs and offsets. Reconcile ambiguous writes before later mutations.
 - Followers poll the leader once per step: per database the progress `(eventId, trlFileId, trlPosition)`, the
   published cut, the latest non-application commit position and inline native TRL bytes within a budget, plus one
   grant; remaining bytes come by range. Compare native bytes directly in bounded chunks; do not decode commands or
@@ -129,7 +133,8 @@
   deadline, and version protection that clears a mark before reuse. Never rewrite an unmarked file just to change its
   version. Do not track follower acknowledgements or add restore leases; a restore that loses a file starts over from
   the newest KVI. Never reuse retired keys. Preserve the canonical TRL chain from the oldest checkpoint dependency; the
-  KVI records a retained-root hint so discovery survives pruning genesis. Never select a maximum listed TRL as root.
+  native KVI references define its recovery closure after pruning genesis. Blob metadata is limited to
+  `btdb_sha256` and `btdb_delete_after`; no term, successor or recovery-root metadata.
 - Treat every local file as a disposable, untrusted cache. Reuse only sealed files verified against the selected
   remote identity, length and a freshly calculated whole-file SHA-256; ETag and length alone do not prove equality.
   PVL/KVI carry SHA-256 metadata; canonical TRLs currently do not, so restore downloads them again (add a post-seal

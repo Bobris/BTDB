@@ -29,11 +29,28 @@ non-application work before calling the existing writer API. Commit remains sync
 root. Use `StartReadOnlyTransaction()` or the asynchronous writer APIs. ObjectDB's startup metadata and singleton-ID
 lookup now use explicitly read-only transactions. `RequireExplicitTransactions` defaults to false.
 
-Replication mode (`IFileReplicatedCollection`) automatically assigns fresh odd IDs to TRLs and fresh even IDs to KVI and PVL files, without allocating intermediate dummy files. Odd and even IDs have independent
-allocation sequences: allocating a PVL or KVI does not advance the next TRL ID, and vice versa. `FileIdParity.Any` allocates above both maxima and advances the sequence matching the allocated ID. The policy is enforced by the replicated
-database file collection; standalone collections keep unconstrained allocation. Replication does not support sub-databases. A valid
-legacy even tail is closed before the first new transaction bytes and linked to a fresh odd TRL. Existing file IDs and
-value references are preserved; size-based rotation may still happen inside transactions. `IReplicationFileStorage`
+Replication mode (`IFileReplicatedCollection`) assigns fresh odd IDs to TRLs and fresh even IDs to KVI and PVL files.
+The database creates TRL 1 for an empty database and then exactly `previousTrlId + 2` through
+`IFileReplicatedCollection.CreateTransactionLogFile(fileId)`. The requested identity must be created exactly; a local or
+remote collision fails without overwriting or skipping it. Neither retained files, compaction, allocation maxima nor
+restart may change this sequence. Size limits are validated before creating the successor, so a rejected policy cannot
+consume its ID. Generic `AddFile(hint, parity)` still has independent odd/even sequences; `Any` allocates above both
+maxima, but these counters no longer select database TRL identities. Standalone allocation is unchanged.
+
+Legacy conversion runs automatically during writable `OpenAsync`, before any application writes. Every node starts
+from the selected remote inventory; unselected local cache files never select the transition ID. If the tail is legacy
+(even ID or nonzero native generation), opening creates an odd successor above the tail and retained odd IDs and
+publishes **only its native header** through `IFileReplicatedCollection.PublishTransactionLogHeaderAsync`.
+`ReplicationFileSet` uses storage create-if-absent, compares an existing header, and never overwrites a conflicting one.
+Before creation, check for a successor omitted by the selected inventory and retry restore if one exists.
+An ambiguous create is reconciled by reading the same key; an unresolved result or an already extended successor
+requires fresh restore. This startup-only conditional creation needs no leader lease. No application commit or cursor
+change is introduced, and no configuration flag, metadata or sidecar is required. The header remains a complete
+structural recovery boundary after restart; `ReplicationRestoredPosition` includes it. All later successors use +2.
+Existing file IDs and value references remain unchanged, and legacy chains with gaps use their native predecessor links.
+Custom collections must implement header publication to open a legacy database for writing; read-only open does not convert.
+
+Replication does not support sub-databases; size-based rotation may still happen inside transactions. `IReplicationFileStorage`
 is the dedicated replication cache/restore backing, implemented by `OnDiskReplicationFileStorage` (memory-mapped files
 in a directory) and `InMemoryReplicationFileStorage` (tests), with `AddFile(hint, FileIdParity)`. Existing in-memory and disk collections keep their standalone API and allocation. This is not a distributed file allocator.
 
@@ -259,18 +276,27 @@ The caller disposes the snapshot after the remote attempt completes, including c
 
 ## Canonical capture publication lane
 
-The internal replication `CanonicalTrlPublisher` snapshots the latest complete local position and publishes the
-contiguous native prefix from its selected remote tail to that position. It follows native predecessor file metadata,
-prepares successors before selecting the predecessor, and retains a fixed plan during ambiguous outcomes. Multiple
-local transactions, including rollbacks, coalesce into one publication. Only the final successful selection advances
-`Acknowledged`; concurrent later local transactions remain pending. A restored tail must already be verified against
-local bytes. Tail adoption updates conditional metadata without changing local execution.
+TRL keys are exactly `{fileId}.trl`, using positive unpadded decimal IDs shared across all terms. The current
+`ActivationDatabase.KeyForFile` callback must return that fixed key. PVL/KVI use the same directory and their native
+extensions. Blob metadata is limited to `btdb_sha256` on PVL/KVI and `btdb_delete_after` on scheduled deletions.
 
-Publication uses a remote cancellation token and checks local lease authority before every write. `Pending` retains
-an unresolved intent; `retryPending` may resend only that same conditional write. `Adopted` reports a metadata-only
-term transition, while `Published` acknowledges the fixed completed position. `Conflict` requires coordinator rediscovery and a new
-verified lane. After authority loss, read-only reconciliation may confirm an earlier write without enabling new writes.
-The lane does not acquire leadership, allocate canonical IDs, implement Azure I/O or perform production cold restore.
+`CanonicalTrlPublisher` snapshots a complete local position and writes its native files in ascending lineage order.
+New files are created only if absent. A create collision compares the existing bytes with the local TRL in bounded
+chunks, accepts identical content, or extends an identical shorter prefix through its observed ETag. Different content
+requires restart. Existing tails use CAS; adoption performs an unchanged-content CAS to invalidate old tokens.
+A fixed plan survives ambiguous outcomes, and capture is acknowledged only when the complete plan is published.
+
+A crash between files may expose an unfinished final transaction. Asynchronous native open replays complete commits
+and rollbacks, discards only the unfinished local suffix, and resumes at the same native ID and offset. Application
+input regenerates that suffix; takeover compares it with the published bytes before proceeding. Hosts must use
+`BTreeKeyValueDB.ReplicationRestoredPosition` for `ActivationDatabase.RestoredBase`, rather than a Blob's physical end.
+`IFileReplicatedCollection.DiscardUncommittedTransactionLog` permits startup to recreate only that unfinished local
+suffix; it never deletes the remote object. Published objects are always compared before they are reused.
+
+`Pending` retains an unresolved intent; `retryPending` resends that exact conditional write. `Adopted` reports a fresh
+ETag without changing content, and `Published` acknowledges the fixed complete position. `Conflict` fences authority
+and requests canonical restore through restart. After authority loss only read-only reconciliation remains allowed.
+The lane does not acquire leadership or implement Azure transport.
 
 ### Allocation and compaction retention
 
@@ -322,7 +348,7 @@ existing behavior, with no additional expected-end option or strict replay mode 
 
 Ordinary KVI-based restart already uses collection initialization followed by `OpenAsync`.
 `RestartRecoveryTest` verifies it after deleting obsolete history, including genesis, and discarding the old process
-state, then resumes publication using tail metadata read from remote storage. The genesis-only helper is not required
+state, then resumes publication using the version and length read from remote storage. The genesis-only helper is not required
 for that path.
 
 Remote downloads keep up to four 4 MiB block reads in flight per active file (a sliding window) and append

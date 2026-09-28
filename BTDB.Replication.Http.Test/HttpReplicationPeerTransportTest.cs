@@ -367,7 +367,7 @@ public class HttpReplicationPeerTransportTest
         writer.WriteBlock("BTDB3"u8);
         writer.WriteGuid(new Guid("5d076258-e492-4931-a5b8-a19dc9fe6c76"));
         writer.WriteUInt8((byte)KVFileType.TransactionLog);
-        writer.WriteVInt64(1);
+        writer.WriteVInt64(0); // Native replication header.
         writer.WriteVInt32(0);
         writer.Flush();
     }

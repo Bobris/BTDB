@@ -59,17 +59,12 @@ public class NativePublicationTest
         Assert.True(native.Length > 2);
         Assert.True(native[0].Bytes.AsSpan(0, initial.Length).SequenceEqual(initial));
         var remote = new Dictionary<string, Blob>();
-        for (var i = native.Length - 1; i > 0; i--)
+        for (var i = 0; i < native.Length; i++)
         {
-            var next = i + 1 < native.Length ? new TrlSuccessor($"unique/{i + 1}", native[i + 1].Index) : null;
-            remote.Add($"unique/{i}", new(native[i].Bytes, new(1, next)));
+            remote.Add($"{native[i].Index}.trl", new(native[i].Bytes));
+            VerifyRestore(remote, firstId, i == native.Length - 1 && !rollback ? 2ul : 1ul,
+                i == native.Length - 1 && !rollback ? 9 : 1);
         }
-        remote.Add("genesis", new(initial, new(1)));
-        // All successors already exist, but only the old committed prefix is discoverable through the root.
-        VerifyRestore(remote, firstId, 1, 1);
-        // Appending the rest of the first file and linking its successor selects the multi-file transaction.
-        remote["genesis"] = new(native[0].Bytes, new(1, new("unique/1", native[1].Index)));
-        VerifyRestore(remote, firstId, rollback ? 1ul : 2ul, rollback ? 1 : 9);
     }
 
     [Fact]
@@ -125,26 +120,19 @@ public class NativePublicationTest
         Assert.Null(missing.Value);
     }
 
-    sealed record Blob(byte[] Content, TrlMetadata Metadata);
+    sealed record Blob(byte[] Content);
 
     static void VerifyRestore(Dictionary<string, Blob> remote, uint firstId, ulong eventId, int count)
     {
         using var files = new InMemoryReplicationFileStorage();
-        var key = "genesis";
-        var id = firstId;
-        var visited = new HashSet<string>();
-        while (true)
+        foreach (var (key, blob) in remote.OrderBy(p => TrlFileName.FileIdFromKey(p.Key)))
         {
-            Assert.True(visited.Add(key));
-            var blob = remote[key];
+            var id = TrlFileName.FileIdFromKey(key);
             var file = files.ImportFile(id, "trl");
-            Assert.Equal(id, file.Index);
             var writer = new MemWriter(file.GetAppenderWriter());
             writer.WriteBlock(blob.Content);
             writer.Flush();
             file.HardFlush();
-            if (blob.Metadata.Next is not { } next) break;
-            (key, id) = (next.Key, next.FileId);
         }
         using var restored = Open(files);
         using var transaction = restored.StartReadOnlyTransaction();

@@ -68,19 +68,19 @@ conditional storage fakes and `InProcessReplicationPeerTransport`. They do not r
 
 ## Canonical TRL lane necessity and limits
 
-`CanonicalTrlPublisherTest` publishes real native commits and rollbacks through the in-memory conditional store and
-restores them with ordinary `OpenAsync`. It covers same-file and cross-file transactions, multi-file genesis selecting
-its root only after successors, interruption before every cross-file effect, coalescing several transactions, schema
-commits with an unchanged event cursor, adoption racing an old-term append in both orders, authority loss with prepared
-successors, and stopped publication leaving local writes, rollback and compaction running.
+`CanonicalTrlPublisherTest` publishes real native commits and rollbacks through an in-memory conditional store.
+It covers ordered multi-file publication, fixed shared names across terms, ambiguous writes, unchanged-content adoption,
+authority loss, and byte-for-byte create collision checks (identical objects, identical shorter prefixes and divergence).
+`RestartDuringMultiFilePublicationRegeneratesExactlyTheSameTrls` interrupts publication at multiple file boundaries,
+restores into both memory and disk storage, waits for replay before activation, regenerates the same bytes/IDs, and
+releases delayed old requests after takeover. `DivergentCreateCollisionFencesTheLeaderAndRequestsRestart` checks that
+an actual create collision stops serving and requests restart rather than merely giving up the lease.
 
-The lane keeps one unresolved conditional intent because a delayed-effect test shows an old read cannot prove failure.
-Exact retries reuse the same token and source cut, so a late original request cannot append twice
-(`ExactRetryCannotDuplicateBytesWhenOriginalRequestLandsLate`). Ambiguous replies are reconciled by comparing only the
-appended bytes in bounded chunks with two 64 KiB buffers (`AmbiguousAppendReconcilesOnlyTheAppendedBytes`,
-`ReconciliationReadsLargeNativePrefixesInBoundedChunks`); any different byte is a conflict. The target position is
-acknowledged only after selection. `NativePublicationTest`, `TrlMetadataTest` and `ReplicationEndMarkerTest` add
-native multi-file reopen, TRL metadata validation, and that replication writes no temporary or rotation end markers.
+The lane keeps one unresolved conditional intent because an old read cannot prove a delayed request failed.
+Exact retries preserve the same token and source cut. Range comparison uses bounded 64 KiB buffers.
+`TrlFileNameTest` rejects noncanonical names and term directories. Azure tests verify empty TRL metadata, ID discovery
+from filenames (including a legacy gap), checkpoint restore after pruning genesis, CAS fencing and persistent deletion
+marks. PVL/KVI metadata consists only of SHA-256 and optional deletion deadlines.
 
 ## Discovery, restore and local cache
 
@@ -123,6 +123,12 @@ positive delays in virtual time.
 
 ## Follower comparison
 
+- `TrlAllocationTest` verifies automatic legacy conversion during open, identical header selection from a common
+  remote inventory despite different local caches, concurrent create reconciliation and lost-response recovery.
+  A stale inventory cannot select a different transition ID after a successor has already been published.
+  Header-only restart preserves the cursor and data with memory/disk storage and can activate and publish. Conflicting
+  headers and already extended successors are rejected without overwriting. Tests also cover deterministic +2
+  continuation, exact-ID collisions, invalid size policies and ID exhaustion.
 - `TrlPrefixComparerTest` compares independent native databases byte-for-byte over the leader's local files: matching
   history with different batching, legacy even-to-odd rotation, lag, fixed cuts, unchanged event IDs, sticky
   divergence, bounded reads and cancellation. A shorter sealed leader file is divergence even when its returned bytes

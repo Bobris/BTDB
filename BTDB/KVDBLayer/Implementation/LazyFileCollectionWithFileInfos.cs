@@ -176,6 +176,45 @@ internal sealed class LazyFileCollectionWithFileInfos : IFileCollectionWithFileI
 
     public long NextGeneration() => throw new NotSupportedException("Replication does not use file generations.");
 
+    internal uint NextTransactionLogFileId(uint previous)
+    {
+        ulong last = previous;
+        // Native replication headers use generation zero. Only the one-time legacy transition may skip
+        // occupied odd IDs; repeating an inventory-based allocation after restore would diverge across nodes.
+        if (previous != 0 && IsLegacyTransactionLog(previous))
+        {
+            DiscoverInventory();
+            foreach (var id in _knownFiles.Keys)
+                if ((id & 1) != 0) last = Math.Max(last, id);
+        }
+        var next = (last + 1) | 1ul;
+        if (next > uint.MaxValue) throw new InvalidOperationException("File IDs exhausted.");
+        return (uint)next;
+    }
+
+    internal ValueTask PublishTransactionLogHeaderAsync(IFileCollectionFile file, CancellationToken cancellation) =>
+        _fileCollection.PublishTransactionLogHeaderAsync(file, cancellation);
+
+    internal bool IsLegacyTransactionLog(uint fileId) => (fileId & 1) == 0 || FileInfoByIdx(fileId)!.Generation != 0;
+
+    internal void RewindUncommittedTransactionLogs(uint fileId, uint offset)
+    {
+        foreach (var id in FileIdsOfType(KVFileType.TransactionLog).Where(id => id > fileId).ToArray())
+        {
+            _fileCollection.DiscardUncommittedTransactionLog(id);
+            _fileInfos.TryRemove(id);
+            _knownFiles.TryRemove(id, out _);
+        }
+        var file = GetFile(fileId);
+        var writer = new BTDB.StreamLayer.MemWriter(file.GetAppenderWriter());
+        writer.SetCurrentPosition(offset);
+        writer.Flush();
+        file.HardFlush();
+        ((IFileTransactionLog)FileInfoByIdx(fileId)!).NextFileId = 0;
+    }
+
+    internal IFileCollectionFile CreateTransactionLogFile(uint fileId) => _fileCollection.CreateTransactionLogFile(fileId);
+
     public void SetInfo(uint idx, IFileInfo fileInfo)
     {
         _fileInfos.TryAdd(idx, fileInfo);

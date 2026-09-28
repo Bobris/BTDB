@@ -346,7 +346,15 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
                 Init(ref memWriter);
             }
 
-            public void SetCurrentPosition(ref MemWriter memWriter, long position) => throw new NotSupportedException();
+            public void SetCurrentPosition(ref MemWriter memWriter, long position)
+            {
+                lock (file._lock)
+                {
+                    if (position < 0 || position > file._length) throw new ArgumentOutOfRangeException(nameof(position));
+                    file._length = position;
+                    Init(ref memWriter);
+                }
+            }
         }
     }
 }

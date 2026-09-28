@@ -6,8 +6,8 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.Replication;
 
-/// <summary>Native TRL continuation. Odd-ID allocation may skip IDs reserved by legacy or abandoned files,
-/// so a successor is never inferred from numeric parity; follow PreviousFileId headers back from a known end.</summary>
+/// <summary>Native TRL continuation. Existing chains and the one-time legacy conversion may contain gaps,
+/// so readers follow PreviousFileId headers back from a known end even though new replication successors use +2.</summary>
 internal static class TrlLineage
 {
     /// <summary>The ascending successors of current through end, found with one walk back over the headers.</summary>

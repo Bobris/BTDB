@@ -60,12 +60,9 @@ def stage(blob, content):
     return block
 
 
-def commit(blob, blocks, token=None, term='1', next_key=None, expected=201):
-    headers = {'content-type': 'application/xml', 'x-ms-meta-btdb_format': '1', 'x-ms-meta-btdb_term': term}
+def commit(blob, blocks, token=None, expected=201):
+    headers = {'content-type': 'application/xml'}
     headers['if-match' if token else 'if-none-match'] = token or '*'
-    if next_key:
-        headers['x-ms-meta-btdb_next'] = next_key
-        headers['x-ms-meta-btdb_next_id'] = '3'
     xml = ('<BlockList>' + ''.join('<Latest>' + b + '</Latest>' for b in blocks) + '</BlockList>').encode()
     return request('PUT', blob, {'comp': 'blocklist'}, xml, headers, expected)[0].get('ETag')
 
@@ -74,25 +71,27 @@ created = False
 try:
     request('PUT', query={'restype': 'container'}, expected=201)
     created = True
-    a = stage('tail', b'native-prefix')
-    e1 = commit('tail', [a])
-    b = stage('tail', b'-suffix')
-    h, data = request('GET', 'tail')
+    a = stage('1.trl', b'native-prefix')
+    e1 = commit('1.trl', [a])
+    b = stage('1.trl', b'-suffix')
+    h, data = request('GET', '1.trl')
     assert data == b'native-prefix' and h['ETag'] == e1
-    e2 = commit('tail', [a, b], e1)  # Discard the successful write response at the protocol layer.
-    h, data = request('GET', 'tail')
-    assert data == b'native-prefix-suffix' and h['x-ms-meta-btdb_term'] == '1' and h['ETag'] != e1
-    # Same bytes + newer authority in the same CAS object fence a previously dispatched old-ETag append.
-    e3 = commit('tail', [a, b], e2, term='2')
+    e2 = commit('1.trl', [a, b], e1)  # Discard the successful write response at the protocol layer.
+    h, data = request('GET', '1.trl')
+    assert data == b'native-prefix-suffix' and h['ETag'] != e1
+    # Same-byte CAS changes the ETag and fences a previously dispatched old-ETag append.
+    e3 = commit('1.trl', [a, b], e2)
     assert e3 != e2
-    c = stage('tail', b'-stale')
-    commit('tail', [a, b, c], e2, expected=412)
-    # A staged successor is invisible until predecessor metadata selects its immutable key.
-    successor = stage('successor', b'next-native-file')
-    commit('successor', [successor], term='2')
-    commit('tail', [a, b], e3, term='2', next_key='successor')
-    h, data = request('GET', 'tail')
-    assert data == b'native-prefix-suffix' and h['x-ms-meta-btdb_next'] == 'successor'
+    c = stage('1.trl', b'-stale')
+    commit('1.trl', [a, b, c], e2, expected=412)
+    # Every term uses the same native key. A conflicting create cannot overwrite an existing object.
+    successor = stage('3.trl', b'next-native-file')
+    commit('3.trl', [successor])
+    competing = stage('3.trl', b'different')
+    commit('3.trl', [competing], expected=412)
+    h, data = request('GET', '3.trl')
+    assert data == b'next-native-file'
+    assert not any(key.lower().startswith('x-ms-meta-btdb_') for key in h)
     # Lease is per-object; it does not fence the TRL through leader.json.
     h, _ = request('PUT', 'leader.json', body=b'{}', headers={'x-ms-blob-type': 'BlockBlob'}, expected=201)
     leader_etag = h['ETag']

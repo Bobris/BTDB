@@ -10,6 +10,11 @@ namespace BTDBTest;
 // Local backing for tests which explicitly exercise replication semantics.
 sealed class LocalReplicatedCollection(IReplicationFileStorage inner) : IFileReplicatedCollection
 {
+    public ValueTask PublishTransactionLogHeaderAsync(IFileCollectionFile file, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        return ValueTask.CompletedTask; // The fixture's local storage also represents its remote base.
+    }
     public uint GetLocalFileId(uint remoteId) => remoteId;
     public ValueTask InitializeAsync(CancellationToken cancellation = default)
     {
@@ -31,6 +36,7 @@ sealed class LocalReplicatedCollection(IReplicationFileStorage inner) : IFileRep
     public IFileCollectionFile? GetRemoteFile(uint id) => inner.GetFile(id);
     public IEnumerable<IFileCollectionFile> RemoteEnumerate() => inner.Enumerate();
     public IFileCollectionFile AddFile(string hint) => inner.AddFile(hint);
+    public IFileCollectionFile CreateTransactionLogFile(uint fileId) => inner.ImportFile(fileId, "trl");
     public IFileCollectionFile AddFile(string hint, FileIdParity parity) =>
         inner.AddFile(hint, parity);
     public KVFileType? GetFileType(uint id) => inner.GetFileType(id);

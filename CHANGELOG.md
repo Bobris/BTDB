@@ -21,6 +21,23 @@
 
 ### Changed
 
+- Store TRL, PVL and KVI directly under the database prefix as `{fileId}.{extension}`, without a `files/` subdirectory.
+  Share fixed `{fileId}.trl` Blob keys across every term. Remove term, successor and recovery-root metadata;
+  only `btdb_sha256` and `btdb_delete_after` remain. Conditional create collisions compare native bytes, reuse identical
+  content or extend matching prefixes with CAS, and request restart on divergence. Tail adoption changes only ETag.
+  Publish native files in order; after a crash, replay complete transactions and regenerate an unfinished local suffix
+  with identical IDs and bytes. Hosts obtain the complete startup boundary from `ReplicationRestoredPosition`.
+  Earlier term-scoped names and protocol metadata are not supported.
+
+- Create replication TRL successors at exactly the previous TRL ID +2, independent of retained files and allocation
+  counters. Validate size policies before allocating and reject exact-ID collisions instead of skipping IDs.
+  `IFileReplicatedCollection` implementations must implement `CreateTransactionLogFile(fileId)`. Legacy conversion
+  now runs automatically during writable open: conditionally publish a header-only successor selected from remote
+  inventory, compare concurrent creates, and preserve the transition across restart without an application commit.
+  Remove `AllowLegacyReplicationTransition`; custom collections publish via `PublishTransactionLogHeaderAsync`.
+  Native generation zero preserves the +2 rule after restart.
+  Retry stale inventories that omit an already published successor instead of creating a second transition ID.
+
 - Read replication file headers from verified local cache entries, including completed prefetches, instead of issuing
   redundant remote range reads. Reading 100 cached PVL headers now needs zero remote reads instead of 100; evicted or
   replaced local files still fall back to the selected remote version.

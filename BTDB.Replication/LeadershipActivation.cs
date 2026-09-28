@@ -52,11 +52,6 @@ internal static class LeadershipActivation
                 var inventory = await CanonicalTrlInventory.DiscoverAsync(database.Storage, database.Genesis, cancellation,
                     progress == null ? null : id => progress(index, 0, id, 0))
                     .ConfigureAwait(false);
-                if (inventory.Tail.State.Metadata.Term > selected.Term)
-                {
-                    selected.Authority.Fence();
-                    throw new InvalidDataException("Canonical history has a newer authority term.");
-                }
                 // Adoption needs the local tail bytes, so a lagging candidate stops before fencing this database.
                 if (!await ValidateAsync(database, inventory, selected, validated, cancellation,
                         progress == null ? null : (id, offset) => progress(index, 1, id, offset)).ConfigureAwait(false))
@@ -91,14 +86,13 @@ internal static class LeadershipActivation
         if (baseline.FileId == 0) throw new ArgumentException("Activation requires a verified restored base.");
         // Canonical TRLs only grow, so a prefix verified by an earlier attempt of this lease stays verified.
         var resume = validated != null && validated.TryGetValue(database.Name, out var verified) ? verified : baseline;
-        var expectedId = baseline.FileId;
         uint previousId = 0;
         var found = false;
         await foreach (var file in inventory.EnumerateAsync(cancellation).ConfigureAwait(false))
         {
             if (file.FileId < baseline.FileId) continue;
             RequireAuthority(selected);
-            if (file.FileId != expectedId) throw new InvalidDataException("Canonical history omits the retained base or continuation.");
+            if (!found && file.FileId != baseline.FileId) throw new InvalidDataException("Canonical history omits the retained base.");
             found = true;
             // Only complete local transactions count; the physical file may hold an unfinished one. Capture reports
             // nothing before the first local commit, when the verified restored base is the complete local end.
@@ -128,8 +122,6 @@ internal static class LeadershipActivation
             }, cancellation).ConfigureAwait(false);
             if (compareEnd < file.Length) return false;
             previousId = file.FileId;
-            // Follow the selected link: native allocation may skip IDs reserved by legacy files.
-            if (file.IsSealed) expectedId = inventory.GetHead(file.FileId).State.Metadata.Next!.FileId;
         }
         if (!found) throw new InvalidDataException("Canonical history does not contain the restored base.");
         return true;

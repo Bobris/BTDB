@@ -124,13 +124,13 @@ public class RestartRecoveryTest
             // publisher or snapshot. The fixture's native file-to-object naming is unchanged across sessions.
             var tailId = files.RemoteEnumerate().Where(f => files.GetFileType(f.Index) == KVFileType.TransactionLog)
                 .Max(f => f.Index);
-            var key = $"trl/{tailId}";
+            var key = $"{tailId}.trl";
             var state = await remote.ReadAsync(key, CancellationToken.None);
             Assert.NotNull(state);
-            Assert.Null(state.Metadata.Next);
+
             Assert.Equal((ulong)state.Length, db.FileCollection.GetFile(tailId)!.GetSize());
             using var publisher = new CanonicalTrlPublisher(db, capture, remote, CheckpointPublisherTest.CreateAuthority(),
-                2, id => $"trl/{id}", new(tailId, key, state));
+                2, id => $"{id}.trl", new(tailId, key, state));
             Assert.Equal(TrlPublishResult.Adopted, await publisher.PublishNextAsync());
             await Write(db, 65, 251, "after restart"u8.ToArray());
             Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());

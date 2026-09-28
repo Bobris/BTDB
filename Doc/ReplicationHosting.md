@@ -77,14 +77,17 @@ a restart and canonical restore. Enable the activation progress deadline to boun
 ## Restore and application ownership
 
 `RestoreAsync` must restore every required published database before returning `ActivationDatabase` entries. Discover
-selected canonical links with `CanonicalTrlInventory.DiscoverAsync`, optionally combine them with native PVL/KVI
+shared native TRL objects with `CanonicalTrlInventory.DiscoverAsync`, combine them with the complete native PVL/KVI
 inventory through `AzureReplicationStorage.Bind(inventory)`, initialize `ReplicationFileSet`, and call `BTreeKeyValueDB.OpenAsync`.
+Writable legacy open conditionally publishes a header-only successor before returning; all nodes derive its ID from
+that common remote inventory. It needs no opt-in flag or leader lease. Use writable `IReplicationStorage` as the remote
+adapter for automatic conversion. An extended successor causes a restore retry; conflicting headers request restart.
 For Azure, use one data adapter per database:
 
 ```csharp
 var storage = new AzureReplicationStorage(dataContainer, databasePrefix);
 var inventory = await CanonicalTrlInventory.DiscoverAsync(storage, selectedRoot, cancellation);
-var remote = storage.Bind(inventory); // Read-only restore; no leadership authority needed.
+var remote = storage.Bind(inventory); // Restore and create-only legacy bootstrap need no leadership authority.
 var files = new ReplicationFileSet(localFiles, remote);
 await files.InitializeAsync(cancellation);
 // During CreateMaintenance, bind the same inventory with the supplied session authority:
@@ -96,8 +99,8 @@ remains the read-only inventory contract accepted by `ReplicationFileSet`. A bin
 versions and optional authority; create a new binding after acquisition rather than modifying the old one.
 
 The supplied `TransactionLogCapture` belongs to that opened database. `RestoredBase` is the fixed verified startup
-file/offset; it is not the follower's moving comparison acknowledgement. Preserve the actual selected root/key and
-return a fresh-session successor-key function. A zero restored base denotes an unpublished addition, never a missing
+file/offset (`BTreeKeyValueDB.ReplicationRestoredPosition`); it is not the follower's moving comparison acknowledgement
+or the physical end of an unfinished Blob transaction. Return `{id}.trl` for every term. A zero restored base denotes an unpublished addition, never a missing
 published file. Failed restore attempts must release their resources before retry.
 
 `ReplicationFileSet` keeps local operations local. Initialize the remote inventory explicitly; local counts, lookup
@@ -290,7 +293,7 @@ no Azure lifecycle policy is installed automatically. A new leader rechecks reus
 and recopies missing files at fresh IDs. Old delayed deletes cannot remove a newly protected version.
 
 Use `CanonicalTrlInventory.DiscoverAsync` on the Azure storage and bind the result with `storage.Bind(inventory)`
-for restore, exposing both native KVI/PVL and selected TRLs. Discovery resolves the retained root recorded on the
-latest KVI. Do not treat a missing original genesis alone as a new database: first call `ResolveRecoveryRootAsync`.
-If a checkpoint selected another root, missing files mean failed restore, not permission to initialize. The subprocess
-host demonstrates this startup path. Old KVI formats without root hints still require the original genesis.
+for restore, exposing native KVI/PVL and TRLs from the shared namespace. Native KVI references select the required
+closure. Do not treat a missing original genesis alone as an empty database: `ResolveRecoveryRootAsync` locates the
+oldest retained TRL and rejects a KVI with no TRL history. Native open rejects missing required history. The subprocess
+host demonstrates startup without recovery-root metadata.

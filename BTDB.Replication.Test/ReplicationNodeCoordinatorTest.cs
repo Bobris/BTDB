@@ -30,7 +30,7 @@ public class ReplicationNodeCoordinatorTest
         string? _lease;
         long _expiry;
         int _leaseNumber;
-        public static string Genesis(uint id) => $"genesis/{id}";
+        public static string Genesis(uint id) => $"{id}.trl";
 
         public static async Task<Cluster> Create()
         {
@@ -114,6 +114,7 @@ public class ReplicationNodeCoordinatorTest
 
         public sealed class Store(Cluster cluster) : IReplicationLeaseStorage, IReplicationLeaseTransferStorage, ILeaderRecordStorage, IReplicationStorage
         {
+            public IAsyncEnumerable<TrlHead> EnumerateTrlsAsync(CancellationToken cancellation) => cluster.Trls.EnumerateTrlsAsync(cancellation);
             public IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation) =>
                 FailCheckpoint || SimulateCheckpoints ? AsyncEnumerable.Empty<RemoteFile>() : cluster.Trls.EnumerateAsync(cancellation);
             public ValueTask<int> ReadAsync(RemoteFile file, ulong offset, Memory<byte> buffer, CancellationToken cancellation) => cluster.Trls.ReadAsync(file, offset, buffer, cancellation);
@@ -147,7 +148,7 @@ public class ReplicationNodeCoordinatorTest
                 await done.Task.ConfigureAwait(false);
             }
             public IAsyncEnumerable<RemoteMaintenanceFile> EnumerateMaintenanceAsync(CancellationToken cancellation) =>
-                SimulateCheckpoints ? _keyIndexes.Select(id => new RemoteMaintenanceFile($"files/{id}.kvi", id, KVFileType.KeyIndex, "1")).ToAsyncEnumerable()
+                SimulateCheckpoints ? _keyIndexes.Select(id => new RemoteMaintenanceFile($"{id}.kvi", id, KVFileType.KeyIndex, "1")).ToAsyncEnumerable()
                 : FailCheckpoint ? AsyncEnumerable.Empty<RemoteMaintenanceFile>() // Only ID allocation lists before the failing upload.
                 : cluster.Trls.EnumerateMaintenanceAsync(cancellation);
             public ValueTask DeleteAsync(RemoteMaintenanceFile file, CancellationToken cancellation) => cluster.Trls.DeleteAsync(file, cancellation);
@@ -240,6 +241,7 @@ public class ReplicationNodeCoordinatorTest
         public long? CompactionTicks, ProgressTimeoutTicks;
         public long RestartDelayTicks;
         public bool FailCheckpoint, Maintain, SmallLogs;
+        public bool ConflictingRestore;
         public int FatalRestarts;
         public string? FatalReason;
         public LeaseSessionController Leases = null!;
@@ -270,6 +272,7 @@ public class ReplicationNodeCoordinatorTest
         }
         public async ValueTask<IReadOnlyList<ActivationDatabase>> RestoreAsync(CancellationToken cancellation)
         {
+            if (ConflictingRestore) throw new InvalidDataException("Canonical transition header differs.");
             if (await Storage.ReadAsync(Cluster.Genesis(1), cancellation) == null)
             {
                 Db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
@@ -279,7 +282,7 @@ public class ReplicationNodeCoordinatorTest
                 }, cancellation);
                 if (!CoordinatesMain) return [];
                 return [new("main", Db, Capture, Storage, new(Cluster.Genesis(1), 1), default,
-                    id => $"{_name}-{_session}/{id}")];
+                    id => $"{id}.trl")];
             }
             var inventory = await CanonicalTrlInventory.DiscoverAsync(Storage, new(Cluster.Genesis(1), 1), cancellation);
             Collection = new(Files, inventory);
@@ -292,7 +295,7 @@ public class ReplicationNodeCoordinatorTest
             }, cancellation);
             if (!CoordinatesMain) return [];
             return [new("main", Db, Capture, Storage, new(Cluster.Genesis(1), 1),
-                new(inventory.Tail.FileId, inventory.Tail.State.Length), id => $"{_name}-{_session}/{id}")];
+                Db.ReplicationRestoredPosition, id => $"{id}.trl")];
         }
         public LeaderCandidate CreateCandidate() => new("cluster", _name, $"{_name}-{++_session}", Generation,
             CoordinatesMain ? ["main"] : [], _name, $"secret-{_name}-{_session}");
@@ -410,6 +413,43 @@ public class ReplicationNodeCoordinatorTest
                 return inner.ReadAsync(fileId, offset, destination, cancellation);
             }
         }
+    }
+
+    [Fact]
+    public async Task ConflictingStartupHeaderRequestsRestartBeforeLeadership()
+    {
+        await using var cluster = await Cluster.Create();
+        var node = new Host(cluster, "conflict") { ConflictingRestore = true };
+        cluster.Nodes.Add(node);
+        node.Start();
+        await node.Run;
+        Assert.Equal(1, node.Restarts);
+        Assert.Equal(ReplicationNodeRole.RestartRequired, node.Coordinator.Role);
+        Assert.False(node.Status.Current.Ready);
+        Assert.Null(node.Db);
+    }
+
+    [Fact]
+    public async Task DivergentCreateCollisionFencesTheLeaderAndRequestsRestart()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader", smallLogs: true);
+        cluster.Advance(20);
+        cluster.Trls.BeforeEffect = write =>
+        {
+            if (write.ExpectedToken != null) return;
+            var bytes = new byte[write.Length];
+            write.Source.RandomRead(bytes, 0, false);
+            bytes[^1] ^= 1;
+            cluster.Trls.Blobs[write.Key] = new(new("split-brain", write.Length), bytes);
+            cluster.Trls.BeforeEffect = null;
+        };
+        for (ulong id = 2; id < 12; id++) await leader.Write(id, (byte)id, 700);
+        cluster.Advance(20);
+        Assert.Equal(1, leader.Restarts);
+        Assert.Equal(ReplicationNodeRole.RestartRequired, leader.Coordinator.Role);
+        Assert.False(leader.Status.Current.Ready);
+        Assert.Single(cluster.Trls.Blobs.Values, blob => blob.State.Token == "split-brain");
     }
 
     [Fact]
@@ -854,8 +894,8 @@ public class ReplicationNodeCoordinatorTest
         cluster.Advance(10);
         Assert.Equal(ReplicationNodeRole.Leader, first.Coordinator.Role);
         var oldTerm = JsonNode.Parse(cluster.Record.Json)!["term"]!.GetValue<ulong>();
-        cluster.Trls.Inject = n => cluster.Trls.Requests[n - 1].Write.Metadata.Term == oldTerm &&
-            cluster.Trls.Requests[n - 1].Write.ExpectedToken != null ? Fault.DelayEffect : Fault.None;
+        var oldToken = cluster.Trls.Blobs[Cluster.Genesis(1)].State.Token;
+        cluster.Trls.Inject = n => cluster.Trls.Requests[n - 1].Write.ExpectedToken == oldToken && cluster.Trls.Requests[n - 1].Write.AppendLength != 0 ? Fault.DelayEffect : Fault.None;
         foreach (var node in cluster.Nodes) await node.Write(2, 2);
         cluster.Advance(10);
         Assert.True(second.Peers.InlineBytes > 0 && third.Peers.InlineBytes > 0);

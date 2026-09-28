@@ -8,7 +8,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.Replication;
 
-public sealed record TrlObjectState(string Token, uint Length, TrlMetadata Metadata);
+public sealed record TrlObjectState(string Token, uint Length);
 public sealed record TrlHead(uint FileId, string Key, TrlObjectState State);
 public enum TrlWriteOutcome { Applied, Rejected, Ambiguous }
 public sealed record TrlWriteResult(TrlWriteOutcome Outcome, TrlObjectState? State = null);
@@ -16,7 +16,7 @@ internal enum TrlPublishResult { Idle, Adopted, Published, Pending, AuthorityLos
 
 /// <summary>A fixed native prefix retained by the acknowledgement position, not a copied TRL buffer. A null token means create-if-absent.</summary>
 public sealed record TrlWrite(uint FileId, string Key, string? ExpectedToken, uint ExpectedLength, uint Length,
-    TrlMetadata Metadata, IFileCollectionFile Source)
+    IFileCollectionFile Source)
 {
     public uint AppendLength => Length - ExpectedLength;
     public void ReadAppend(uint offset, Span<byte> destination)
@@ -57,7 +57,7 @@ public sealed class CanonicalTrlPublisher : IDisposable
         public readonly TransactionLogPosition? Position = position;
         public readonly TrlWrite[] Writes = writes;
         public TrlObjectState? TailState;
-        public int Index = writes.Length - 1; // Prepare the final successor first; select the predecessor last.
+        public int Index; // Publish native prefixes in order; replay ignores an unfinished final transaction.
         public bool Dispatched;
     }
 
@@ -68,6 +68,7 @@ public sealed class CanonicalTrlPublisher : IDisposable
     Plan? _plan;
     bool _conflict;
     bool _disposed;
+    bool _adopted;
 
     IFileCollectionFile Source(uint id) => database.FileCollection.GetFile(id)
         ?? throw new InvalidDataException("Missing retained TRL source.");
@@ -98,7 +99,7 @@ public sealed class CanonicalTrlPublisher : IDisposable
             if (!authority.IsValid) return TrlPublishResult.AuthorityLost;
             if (_conflict) return TrlPublishResult.Conflict;
             if (_plan?.Position != null) throw new InvalidOperationException("Publication has already started.");
-            if (_plan == null && (_tail == null || _tail.State.Metadata.Term == term)) return TrlPublishResult.Idle;
+            if (_plan == null && (_tail == null || _adopted)) return TrlPublishResult.Idle;
             return await PublishCoreAsync(null, true, cancellation).ConfigureAwait(false);
         }
         finally { _lane.Release(); }
@@ -160,13 +161,11 @@ public sealed class CanonicalTrlPublisher : IDisposable
         {
             if (!authority.IsValid) return TrlPublishResult.AuthorityLost;
             if (term == 0) throw new InvalidOperationException("A selected term is required.");
-            if (_tail is { } tail && tail.State.Metadata.Term != term)
+            if (_tail is { } tail && !_adopted)
             {
-                if (tail.State.Metadata.Term > term || tail.State.Metadata.Next != null)
-                    return Conflict(); // Rediscover/follow the selected chain; never overwrite it.
                 var source = Source(tail.FileId);
                 _plan = new(null, [new(tail.FileId, tail.Key, tail.State.Token, tail.State.Length,
-                    tail.State.Length, new(term), source)]);
+                    tail.State.Length, source)]);
             }
             else
             {
@@ -189,6 +188,7 @@ public sealed class CanonicalTrlPublisher : IDisposable
                     if (Accept(plan, resolution.State)) return TrlPublishResult.Published;
                     continue;
                 }
+                if (!plan.Dispatched) continue;
                 if (!authority.IsValid) return TrlPublishResult.AuthorityLost;
                 if (!retryPending) return TrlPublishResult.Pending;
             }
@@ -200,7 +200,7 @@ public sealed class CanonicalTrlPublisher : IDisposable
             if (result.Outcome == TrlWriteOutcome.Applied)
             {
                 if (result.State == null || result.State.Token == write.ExpectedToken ||
-                    result.State.Length != write.Length || result.State.Metadata != write.Metadata)
+                    result.State.Length != write.Length)
                     throw new InvalidDataException("Invalid TRL write receipt; reconcile before continuing.");
                 if (Accept(plan, result.State)) return TrlPublishResult.Published;
                 continue;
@@ -211,6 +211,7 @@ public sealed class CanonicalTrlPublisher : IDisposable
                 if (Accept(plan, observed.State)) return TrlPublishResult.Published;
                 continue;
             }
+            if (!plan.Dispatched) continue;
             if (observed.Result == TrlPublishResult.Conflict ||
                 (result.Outcome == TrlWriteOutcome.Rejected && !hadUnresolvedRequest)) return Conflict();
             // An old read is not proof that an earlier request will never land, including after a retry rejection.
@@ -227,13 +228,13 @@ public sealed class CanonicalTrlPublisher : IDisposable
 
     bool Accept(Plan plan, TrlObjectState state)
     {
-        // Successors are confirmed backwards; only the final tail receipt survives the plan.
-        if (plan.Index == plan.Writes.Length - 1) plan.TailState = state;
+        plan.TailState = state;
         plan.Dispatched = false;
-        if (--plan.Index >= 0) return false;
+        if (++plan.Index < plan.Writes.Length) return false;
         var tailWrite = plan.Writes[^1];
         _tail = new(tailWrite.FileId, tailWrite.Key, plan.TailState!);
         _plan = null;
+        _adopted = true;
         if (plan.Position is not { } position) return false;
         capture.Acknowledge(position);
         return true;
@@ -243,21 +244,29 @@ public sealed class CanonicalTrlPublisher : IDisposable
     {
         var observed = await storage.ReadAsync(write.Key, cancellation).ConfigureAwait(false);
         if (observed == null || observed.Token == write.ExpectedToken) return (TrlPublishResult.Pending, null);
-        if (observed.Length != write.Length || observed.Metadata != write.Metadata)
+        if (observed.Length < write.ExpectedLength || observed.Length > write.Length ||
+            observed.Length < write.Length && write.ExpectedToken != null)
             return (TrlPublishResult.Conflict, null);
         // Ambiguity is exceptional: compare the intended appended bytes in bounded chunks, with no wire hashes. A CAS
         // from the expected version preserves its first ExpectedLength bytes, so only the append can differ.
         var localBuffer = _localBuffer ??= new byte[64 * 1024];
         var remoteBuffer = _remoteBuffer ??= new byte[64 * 1024];
-        for (var offset = write.ExpectedLength; offset < write.Length;)
+        for (var offset = write.AppendLength == 0 ? 0 : write.ExpectedLength; offset < observed.Length;)
         {
-            var size = (int)Math.Min((uint)localBuffer.Length, write.Length - offset);
+            var size = (int)Math.Min((uint)localBuffer.Length, observed.Length - offset);
             write.Source.RandomRead(localBuffer.AsSpan(0, size), offset, false);
             await storage.ReadRangeAsync(write.Key, observed.Token, offset, remoteBuffer.AsMemory(0, size), cancellation)
                 .ConfigureAwait(false);
             if (!localBuffer.AsSpan(0, size).SequenceEqual(remoteBuffer.AsSpan(0, size)))
                 return (TrlPublishResult.Conflict, null);
             offset += (uint)size;
+        }
+        if (observed.Length < write.Length)
+        {
+            // Another creator published the same native prefix. Extend exactly the verified version; never overwrite it.
+            _plan!.Writes[_plan.Index] = write with { ExpectedToken = observed.Token, ExpectedLength = observed.Length };
+            _plan.Dispatched = false;
+            return (TrlPublishResult.Pending, null);
         }
         return (TrlPublishResult.Published, observed);
     }
@@ -294,12 +303,11 @@ public sealed class CanonicalTrlPublisher : IDisposable
         for (var i = 0; i < writes.Length; i++)
         {
             var (partId, partEnd) = parts[i];
+            if (TrlFileName.FileIdFromKey(keys[i]) != partId)
+                throw new InvalidDataException("TRL object name does not match the native file ID.");
             var expected = i == 0 ? _tail?.State : null;
             if (partEnd < (expected?.Length ?? 0)) throw new InvalidDataException("Cannot shrink canonical TRL.");
-            var next = i + 1 == writes.Length ? null : new TrlSuccessor(keys[i + 1], parts[i + 1].Id);
-            var metadata = new TrlMetadata(term, next);
-            metadata.Validate();
-            writes[i] = new(partId, keys[i], expected?.Token, expected?.Length ?? 0, partEnd, metadata,
+            writes[i] = new(partId, keys[i], expected?.Token, expected?.Length ?? 0, partEnd,
                 Source(partId));
         }
         return new(end, writes);

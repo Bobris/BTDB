@@ -41,7 +41,7 @@ public class CheckpointPublisherTest
 
     internal static CanonicalTrlPublisher CreateCanonical(BTreeKeyValueDB db, TransactionLogCapture capture,
         Storage storage, LeaseAuthority? authority = null) => new(db, capture, storage, authority ?? CreateAuthority(),
-        1, id => $"trl/{id}");
+        1, id => $"{id}.trl");
 
     internal static async Task Populate(BTreeKeyValueDB db)
     {
@@ -130,6 +130,7 @@ public class CheckpointPublisherTest
         public int ReadChunkSize = int.MaxValue;
         public bool CorruptRead, TruncateRead;
         public bool OmitChecksum;
+        public uint? OmittedInventoryId;
         public bool IsSealed = true;
         public Func<RemoteFile, ulong, CancellationToken, ValueTask>? BeforeRead;
         public Func<CancellationToken, ValueTask>? BeforeEnumerate;
@@ -158,7 +159,7 @@ public class CheckpointPublisherTest
             foreach (var (key, (id, state)) in _trls)
             {
                 if (copy.Files.GetFile(id) == null) continue;
-                copy._trls.Add(key, (id, new(state.Token, state.Length, TrlMetadata.Decode(state.Metadata.Encode()))));
+                copy._trls.Add(key, (id, new(state.Token, state.Length)));
             }
             return copy;
         }
@@ -215,6 +216,7 @@ public class CheckpointPublisherTest
             foreach (var file in Files.Enumerate())
             {
                 ct.ThrowIfCancellationRequested();
+                if (file.Index == OmittedInventoryId) continue;
                 yield return Describe(file.Index);
             }
         }
@@ -256,6 +258,14 @@ public class CheckpointPublisherTest
             if (FailPvl) throw new IOException("Response lost after PVL upload");
             Assert.Equal(source.Length, target.GetSize());
             AfterPvl?.Invoke();
+        }
+        public async IAsyncEnumerable<TrlHead> EnumerateTrlsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellation)
+        {
+            foreach (var (key, (id, state)) in _trls)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (Files.GetFile(id) != null) yield return new(id, key, state);
+            }
         }
         public ValueTask<TrlObjectState?> ReadAsync(string key, CancellationToken ct)
         {
@@ -302,7 +312,7 @@ public class CheckpointPublisherTest
             var writer = new MemWriter(file.GetAppenderWriter());
             writer.WriteBlock(suffix);
             writer.Flush();
-            var state = new TrlObjectState((++_version).ToString(), write.Length, write.Metadata);
+            var state = new TrlObjectState((++_version).ToString(), write.Length);
             _trls[write.Key] = (write.FileId, state);
             AfterTrl?.Invoke(write);
             return new(TrlWriteOutcome.Applied, state);
@@ -404,7 +414,7 @@ public class CheckpointPublisherTest
         Assert.Equal(new[] { "trl" }, f.Remote.Events);
         Assert.Equal(0, f.Remote.Chunks);
 
-        // The pending request prepares a successor, but its presence must not permit a KVI upload.
+        // The pending request publishes only part of a transaction; it must not permit a KVI upload.
         f.Remote.Delayed.Dequeue()();
         Assert.NotEmpty(f.Remote.Files.Enumerate());
         using (var tr = await f.Db.StartWritingTransaction(63ul))
@@ -465,7 +475,7 @@ public class CheckpointPublisherTest
         Assert.Equal(default, capture.Completed);
         using var snapshot = restored.CaptureKeyIndexSnapshot();
         using var canonical = new CanonicalTrlPublisher(restored, capture, f.Remote, f.Authority, 1,
-            id => $"trl/{id}", f.Canonical.Tail);
+            id => $"{id}.trl", f.Canonical.Tail);
         var previousTrlWrites = f.Remote.Events.Count(e => e == "trl");
         var previousPvlWrites = f.Remote.PvlAttempts.Count;
         Assert.Equal(CheckpointPublishResult.Published, await new CheckpointPublisher(files, canonical).PublishAsync(snapshot));
@@ -672,9 +682,9 @@ public class CheckpointPublisherTest
             });
             var tailId = follower.Files.RemoteEnumerate()
                 .Where(f => follower.Files.GetFileType(f.Index) == KVFileType.TransactionLog).Max(f => f.Index);
-            var key = $"trl/{tailId}";
+            var key = $"{tailId}.trl";
             var state = (await storage.ReadAsync(key, CancellationToken.None))!;
-            follower.Canonical = new(follower.Db, follower.Capture, storage, CreateAuthority(), 2, id => $"trl/{id}",
+            follower.Canonical = new(follower.Db, follower.Capture, storage, CreateAuthority(), 2, id => $"{id}.trl",
                 new(tailId, key, state));
             Assert.Equal(TrlPublishResult.Adopted, await follower.Canonical.PublishNextAsync());
             return follower;

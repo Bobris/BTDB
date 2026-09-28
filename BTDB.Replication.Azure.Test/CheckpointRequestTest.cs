@@ -74,9 +74,9 @@ public class CheckpointRequestTest(AzuriteFixture fixture, ITestOutputHelper out
             transaction.Commit();
         }
         Assert.True(await db.Compact(CancellationToken.None));
-        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"trl/{id}");
+        using var publisher = new CanonicalTrlPublisher(db, capture, raw, authority, 1, id => $"{id}.trl");
         Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
-        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("trl/1", 1));
+        var inventory = await CanonicalTrlInventory.DiscoverAsync(raw, new("1.trl", 1));
         var storage = raw.Bind(inventory, authority);
         await using var files = new ReplicationFileSet(local, storage);
         using var maintenance = new ReplicationMaintenance(db, files, publisher, storage, authority, clock,
