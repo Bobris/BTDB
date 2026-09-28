@@ -5,35 +5,12 @@ using System.Threading.Tasks;
 
 namespace BTDB.Replication;
 
-/// <summary>Provider-confirmed lease. Handle is a credential and is deliberately excluded from ToString.</summary>
-public sealed record LeaseGrant(string Handle, TimeSpan GuaranteedDuration)
-{
-    public override string ToString() => $"LeaseGrant {{ GuaranteedDuration = {GuaranteedDuration} }}";
-}
-
-/// <summary>
-/// Provider lease operations. Null means ownership was not confirmed (including an ambiguous response).
-/// Acquisition must establish exclusive ownership, with a fresh handle that old requests cannot use to renew
-/// or release the new lease. A possibly landed acquire is reconciled by the adapter before returning a grant.
-/// Renewal is bound to exactly the supplied handle. Durations are conservative bounds measured from dispatch.
-/// </summary>
-public interface IReplicationLeaseStorage
-{
-    ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation);
-    ValueTask<TimeSpan?> RenewAsync(string handle, CancellationToken cancellation);
-}
-
-public interface IReplicationLeaseTransferStorage
-{
-    ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation);
-}
-
 /// <summary>
 /// Node lifetime lease acquisition/renewal. Maintenance is serialized by the owner; authority/handle snapshots
 /// are synchronized with independent activation and publication lanes. Acquiring a lease does not activate publication: each new authority
 /// still requires term selection and canonical history validation. Old authority objects stay fenced forever.
 /// </summary>
-internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, IReplicationScheduler clock,
+internal sealed class LeaseSessionController(IReplicationLeaderStorage storage, IReplicationScheduler clock,
     int maximumClockDriftPpm, TimeSpan safetyMargin)
 {
     readonly object _stateLock = new();
@@ -51,8 +28,6 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
 
     public async ValueTask TransferAsync(string proposedHandle, CancellationToken cancellation)
     {
-        if (storage is not IReplicationLeaseTransferStorage transfer)
-            throw new NotSupportedException("The lease provider does not support transfer.");
         string handle;
         lock (_stateLock)
         {
@@ -60,7 +35,7 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
             handle = _handle!;
             Disqualify(); // Stop renewal and publication even if the response is lost.
         }
-        await transfer.TransferAsync(handle, proposedHandle, cancellation).ConfigureAwait(false);
+        await storage.TransferAsync(handle, proposedHandle, cancellation).ConfigureAwait(false);
     }
 
     // Permanent for this node lifetime. A delayed acquisition/renewal cannot restore eligibility.

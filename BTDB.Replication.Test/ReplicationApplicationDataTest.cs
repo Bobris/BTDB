@@ -12,12 +12,16 @@ namespace BTDB.Replication.Test;
 
 public class ReplicationApplicationDataTest
 {
-    sealed class FaultStorage(LeaderSelectionTest.Storage inner) : ILeaderRecordStorage
+    sealed class FaultStorage(LeaderSelectionTest.Storage inner) : IReplicationLeaderStorage
     {
         public bool DelayWrite, LoseReply, FailRead;
         public Action? AfterWrite;
         public int Writes;
         public readonly Queue<Func<ValueTask<LeaderWriteOutcome>>> Delayed = new();
+        public ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation) => inner.AcquireAsync(cancellation);
+        public ValueTask<TimeSpan?> RenewAsync(string handle, CancellationToken cancellation) => inner.RenewAsync(handle, cancellation);
+        public ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation) =>
+            inner.TransferAsync(currentHandle, proposedHandle, cancellation);
         public ValueTask<LeaderRecord> ReadAsync(CancellationToken cancellation)
         {
             cancellation.ThrowIfCancellationRequested();

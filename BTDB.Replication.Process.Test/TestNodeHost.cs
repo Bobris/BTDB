@@ -17,7 +17,7 @@ internal sealed record NodeStatus(string Role, ulong EventId, int Value, int App
     uint CompletedOffset, uint ComparedFile, uint ComparedOffset, bool Detached = false);
 
 internal sealed class TestNodeHost(string endpoint, BlobContainerClient container, string dataDirectory,
-    ulong generation, string[] names, bool objects = false) : IReplicationNodeHost, IAsyncDisposable, IReplicationFatalRecovery
+    ulong generation, string[] names, bool objects = false) : IReplicationNodeHost, IAsyncDisposable
 {
     // One application database: its own local directory, capture, Blob prefix and publication gate.
     sealed class Database

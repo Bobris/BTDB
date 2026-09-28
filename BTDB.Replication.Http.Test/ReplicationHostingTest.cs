@@ -58,7 +58,7 @@ public class ReplicationHostingTest
         }
     }
 
-    sealed class Storage : ILeaderRecordStorage, IReplicationLeaseStorage
+    sealed class Storage : IReplicationLeaderStorage
     {
         readonly object _lock = new();
         LeaderRecord _record = new("0", """
@@ -83,6 +83,8 @@ public class ReplicationHostingTest
             }
             return TimeSpan.FromSeconds(30);
         }
+        public ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation) =>
+            throw new NotSupportedException();
         public ValueTask<LeaderRecord> ReadAsync(CancellationToken cancellation)
         {
             cancellation.ThrowIfCancellationRequested();
@@ -117,6 +119,7 @@ public class ReplicationHostingTest
             [], Options.Endpoint, "secret");
         public LeaderTrlProgress? GetProgress(string database) => null;
         public void RequestRestart(string reason) => Restarts++;
+        public void RequestFatalRestart(string reason) => Assert.Fail("Unexpected fatal restart.");
         public void ReportStatus(ReplicationNodeRole role)
         {
             if (role == ReplicationNodeRole.Leader) Leader.TrySetResult();
@@ -138,7 +141,7 @@ public class ReplicationHostingTest
         public ReplicationNodeCoordinator Coordinator => App.Services.GetRequiredService<ReplicationNodeCoordinator>();
         public ReplicationHostedService Worker => App.Services.GetServices<IHostedService>().OfType<ReplicationHostedService>().Single();
         public string Address => App.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
-        public RunningHost(bool map = true, ReplicationProgressTimeouts? progressTimeouts = null)
+        public RunningHost(bool map = true)
         {
             var builder = WebApplication.CreateSlimBuilder();
             builder.Logging.ClearProviders();
@@ -146,10 +149,9 @@ public class ReplicationHostingTest
             // Even Ignore must not leave a live HTTP process after losing its replication worker.
             builder.Services.Configure<HostOptions>(o => o.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
             builder.Services.AddSingleton<IReplicationScheduler>(Clock);
-            builder.Services.AddSingleton<IReplicationLeaseStorage>(Storage);
-            builder.Services.AddSingleton<ILeaderRecordStorage>(Storage);
+            builder.Services.AddSingleton<IReplicationLeaderStorage>(Storage);
             builder.Services.AddSingleton<IReplicationNodeHost>(Node);
-            builder.Services.AddBTDBReplication(Options with { ProgressTimeouts = progressTimeouts }, 0, TimeSpan.Zero);
+            builder.Services.AddBTDBReplication(Options, 0, TimeSpan.Zero);
             App = builder.Build();
             if (map) App.MapBTDBReplication();
         }
@@ -269,17 +271,6 @@ public class ReplicationHostingTest
         Assert.Equal(1, host.Node.Restarts);
         Assert.Equal(ReplicationNodeRole.RestartRequired, host.Coordinator.Role);
         Assert.Null(host.Leases.Current);
-    }
-
-    [Fact]
-    public async Task ProgressDeadlinesRequireAnExplicitFatalRecoveryHostBeforeRestoringOrAcquiring()
-    {
-        await using var host = new RunningHost(progressTimeouts: new(TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10)));
-        await host.App.StartAsync();
-        await Assert.ThrowsAsync<ArgumentException>(() => host.Worker.ExecuteTask!.WaitAsync(Timeout));
-        Assert.True(host.Lifetime.ApplicationStopping.IsCancellationRequested);
-        Assert.Equal(0, host.Node.Restores);
-        Assert.Equal(0, host.Storage.Acquires);
     }
 
     [Fact]

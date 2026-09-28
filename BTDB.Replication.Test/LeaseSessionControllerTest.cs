@@ -167,11 +167,16 @@ public class LeaseSessionControllerTest
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
     }
 
-    sealed class Storage : IReplicationLeaseStorage
+    sealed class Storage : IReplicationLeaderStorage
     {
         public bool Available = true;
         public int Acquires, Renews;
         public Func<Task>? BeforeAcquire, BeforeRenew;
+        public ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation) =>
+            throw new NotSupportedException();
+        public ValueTask<LeaderRecord> ReadAsync(CancellationToken cancellation) => throw new NotSupportedException();
+        public ValueTask<LeaderWriteOutcome> WriteAsync(string leaseHandle, string expectedToken, string json,
+            CancellationToken cancellation) => throw new NotSupportedException();
         public async ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation)
         {
             Acquires++;
@@ -187,10 +192,15 @@ public class LeaseSessionControllerTest
         }
     }
 
-    sealed class TransferStorage : IReplicationLeaseStorage
+    sealed class TransferStorage : IReplicationLeaderStorage
     {
         public readonly List<string> Renewed = new();
         public string? Transferred = "transfer";
+        public ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation) =>
+            throw new NotSupportedException();
+        public ValueTask<LeaderRecord> ReadAsync(CancellationToken cancellation) => throw new NotSupportedException();
+        public ValueTask<LeaderWriteOutcome> WriteAsync(string leaseHandle, string expectedToken, string json,
+            CancellationToken cancellation) => throw new NotSupportedException();
         public ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation) =>
             ValueTask.FromResult<LeaseGrant?>(new("acquired", TimeSpan.FromTicks(100)));
         public ValueTask<TimeSpan?> RenewAsync(string handle, CancellationToken cancellation)

@@ -4,7 +4,7 @@ This project implements the Azure SDK boundary of `BTDB.Replication` through pub
 
 - `AzureLeaderStorage`: `leader.json` with a finite native Blob lease (15–60 whole seconds): conditional initial
   creation, acquire/renew, lease `Change` for prepared handoff, and lease-plus-ETag record replacement. It implements
-  `ILeaderRecordStorage`, `IReplicationLeaseStorage` and `IReplicationLeaseTransferStorage`.
+  `IReplicationLeaderStorage`.
 - `AzureReplicationStorage` (`IReplicationStorage`): canonical TRL reads, conditional append and unchanged-content
   adoption, numeric PVL/KVI discovery, immutable publication with atomic SHA-256 metadata, shared native-file discovery and
   delayed conditional cleanup.

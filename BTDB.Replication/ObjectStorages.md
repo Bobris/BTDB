@@ -44,9 +44,7 @@ or PVL/KVI objects, local disks or peer traffic; every new term therefore CAS-fe
 
 | Interface | Operations |
 | --- | --- |
-| `ILeaderRecordStorage` | `ReadAsync` -> body + token; `WriteAsync(leaseHandle, expectedToken, json)` -> `Applied`/`Rejected`/`Ambiguous`. |
-| `IReplicationLeaseStorage` | `AcquireAsync` (finite lease) and `RenewAsync(handle)`. |
-| `IReplicationLeaseTransferStorage` | `TransferAsync(current, proposed)`: planned handoff, confirmed by the target's renewal. |
+| `IReplicationLeaderStorage` | `AcquireAsync` (finite lease), `RenewAsync(handle)`, `TransferAsync(current, proposed)` (planned handoff, confirmed by the target's renewal); `ReadAsync` -> body + token; `WriteAsync(leaseHandle, expectedToken, json)` -> `Applied`/`Rejected`/`Ambiguous`. |
 | `IRemoteFileCollection` | `EnumerateAsync` and version-bound `ReadAsync` of `RemoteFile(FileId, FileType, Length, Version, IsSealed, Sha256)`. |
 | `IReplicationStorage` | Canonical TRL `ReadAsync`/`ReadRangeAsync`/`WriteAsync`; `EnsurePureValuesAsync`, `ProtectPureValuesAsync`, `PublishKeyIndexAsync`; `ResolveRecoveryRootAsync`; `EnumerateMaintenanceAsync`, `ScheduleDeletionAsync`, `CancelDeletionAsync`, `DeleteAsync`. |
 

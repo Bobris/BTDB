@@ -10,12 +10,17 @@ namespace BTDB.Replication.Test;
 
 public class LeaseMaintenanceTest
 {
-    sealed class Storage : IReplicationLeaseStorage
+    sealed class Storage : IReplicationLeaderStorage
     {
         public bool Available = true;
         public int Acquires, Renews;
         public TaskCompletionSource<TimeSpan?>? PendingRenewal;
         public readonly TaskCompletionSource RenewalStarted = new();
+        public ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation) =>
+            throw new NotSupportedException();
+        public ValueTask<LeaderRecord> ReadAsync(CancellationToken cancellation) => throw new NotSupportedException();
+        public ValueTask<LeaderWriteOutcome> WriteAsync(string leaseHandle, string expectedToken, string json,
+            CancellationToken cancellation) => throw new NotSupportedException();
         public ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation)
         {
             Acquires++;

@@ -92,10 +92,10 @@ depends only on injected ports:
 | Port | Responsibility |
 | --- | --- |
 | `IReplicationScheduler` | Monotonic time and serialized timer callbacks. |
-| `ILeaderRecordStorage`, `IReplicationLeaseStorage`, `IReplicationLeaseTransferStorage` | `leader.json` reads and lease/ETag-conditional writes; lease acquire, renew and change. |
+| `IReplicationLeaderStorage` | `leader.json` reads and lease/ETag-conditional writes; lease acquire, renew and change. |
 | `IReplicationStorage` (`IRemoteFileCollection`) | Canonical TRL CAS and version-bound reads, immutable PVL/KVI publication, remote inventory, delayed deletion. |
 | `IReplicationPeerTransport` | Leader-centered peer sessions: poll, range read, handoff offer. |
-| `IReplicationNodeHost` | Application integration: restore, candidate identity, progress, restart, schema preparation, maintenance, genesis cursor. |
+| `IReplicationNodeHost` | Application integration: restore, candidate identity, progress, restart and fatal restart, schema preparation, maintenance, genesis cursor. |
 | `IReplicationFileStorage` | Node-local file storage (`InMemoryReplicationFileStorage`, `OnDiskReplicationFileStorage`). |
 
 The in-process peer transport and in-memory storage are test adapters with the same semantics as the HTTP and Azure
@@ -375,7 +375,7 @@ The target is complete startup of about 100 GB within 15 minutes, including cold
 | Leader unreachable | Reconnect via `leader.json`; lease expiry lets an eligible follower take over. |
 | Local disk exhaustion | Fatal node error; restart and restore; insufficient space keeps the node unavailable. |
 | Remote file missing during restore | Restart the restore onto the newest checkpoint. |
-| Activation, publication or maintenance makes no forward progress | Optional watchdogs fence authority immediately and request fatal restart after `RestartDelay` (`IReplicationFatalRecovery`). |
+| Activation, publication or maintenance makes no forward progress | Optional watchdogs fence authority immediately and request fatal restart after `RestartDelay` (`IReplicationNodeHost.RequestFatalRestart`). |
 
 Watchdogs measure only replication work that is pending; idle input and an advancing restore are healthy. Application
 event timeouts, skips, failure classification and restart policy belong to the application. `ReplicationStatus`

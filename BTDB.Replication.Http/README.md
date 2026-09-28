@@ -6,7 +6,7 @@ detachment and handoff; the adapter adds no application execution, Blob fallback
 
 ## Hosting
 
-Register the host-owned `IReplicationNodeHost`, `ILeaderRecordStorage`, `IReplicationLeaseStorage` and
+Register the host-owned `IReplicationNodeHost`, `IReplicationLeaderStorage` and
 `IReplicationScheduler` as singletons, call `services.AddBTDBReplication(nodeOptions, maximumClockDriftPpm,
 safetyMargin)` and map `app.MapBTDBReplication()` before starting the host; see the
 [hosting guide](../Doc/ReplicationHosting.md). One node, transport and hosted service are registered per host;

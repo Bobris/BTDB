@@ -112,7 +112,7 @@ public partial class ReplicationNodeCoordinatorTest
             }
         }
 
-        public sealed class Store(Cluster cluster) : IReplicationLeaseStorage, IReplicationLeaseTransferStorage, ILeaderRecordStorage, IReplicationStorage
+        public sealed class Store(Cluster cluster) : IReplicationLeaderStorage, IReplicationStorage
         {
             public IAsyncEnumerable<TrlHead> EnumerateTrlsAsync(CancellationToken cancellation) => cluster.Trls.EnumerateTrlsAsync(cancellation);
             public IAsyncEnumerable<RemoteFile> EnumerateAsync(CancellationToken cancellation) =>
@@ -219,7 +219,7 @@ public partial class ReplicationNodeCoordinatorTest
         }
     }
 
-    sealed class Host : IReplicationNodeHost, IKeyValueDBLogger, IReplicationFatalRecovery
+    sealed class Host : IReplicationNodeHost, IKeyValueDBLogger
     {
         readonly Cluster _cluster;
         readonly string _name;

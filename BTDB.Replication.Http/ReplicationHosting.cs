@@ -11,8 +11,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace BTDB.Replication.Http;
 
-/// <summary>Registers one hosted replication node. The application registers IReplicationNodeHost,
-/// ILeaderRecordStorage and IReplicationLeaseStorage as singleton services; IReplicationScheduler defaults to
+/// <summary>Registers one hosted replication node. The application registers IReplicationNodeHost and
+/// IReplicationLeaderStorage as singleton services; IReplicationScheduler defaults to
 /// <see cref="SystemReplicationScheduler"/> unless the application registers another qualified one.</summary>
 public static class ReplicationHosting
 {
@@ -37,13 +37,13 @@ public static class ReplicationHosting
         services.AddSingleton<ReplicationMetrics>();
         services.AddHealthChecks().AddCheck<ReplicationReadinessCheck>("btdb-replication", tags: new[] { "ready" });
         services.AddSingleton(_ => new HttpReplicationPeerTransport(maximumConcurrentPeerRequests));
-        services.AddSingleton(sp => new LeaseSessionController(sp.GetRequiredService<IReplicationLeaseStorage>(),
+        services.AddSingleton(sp => new LeaseSessionController(sp.GetRequiredService<IReplicationLeaderStorage>(),
             sp.GetRequiredService<IReplicationScheduler>(), maximumClockDriftPpm, safetyMargin));
         services.AddSingleton(sp => new ReplicationNodeCoordinator(options, sp.GetRequiredService<IReplicationNodeHost>(),
-            sp.GetRequiredService<ILeaderRecordStorage>(), sp.GetRequiredService<LeaseSessionController>(),
+            sp.GetRequiredService<IReplicationLeaderStorage>(), sp.GetRequiredService<LeaseSessionController>(),
             sp.GetRequiredService<HttpReplicationPeerTransport>(), sp.GetRequiredService<IReplicationScheduler>(),
             sp.GetRequiredService<ReplicationStatus>()));
-        services.AddSingleton(sp => new ReplicationApplicationData(sp.GetRequiredService<ILeaderRecordStorage>(),
+        services.AddSingleton(sp => new ReplicationApplicationData(sp.GetRequiredService<IReplicationLeaderStorage>(),
             options.ClusterId, sp.GetRequiredService<LeaseSessionController>(),
             () => sp.GetRequiredService<ReplicationNodeCoordinator>().ApplicationDataLeadership()));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, ReplicationHostedService>());

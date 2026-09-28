@@ -12,7 +12,7 @@ namespace BTDB.Replication.Azure;
 /// <summary>Finite lease and conditional JSON selection on the same leader blob. The caller supplies an
 /// authenticated BlobClient and initial cluster JSON. No container creation or credential discovery occurs here.</summary>
 public sealed class AzureLeaderStorage(BlobClient blob, TimeSpan duration, string initialJson,
-    Func<Guid>? newLeaseId = null) : IReplicationLeaseStorage, IReplicationLeaseTransferStorage, ILeaderRecordStorage
+    Func<Guid>? newLeaseId = null) : IReplicationLeaderStorage
 {
     bool _initialized;
     string? _acquiredHandle;

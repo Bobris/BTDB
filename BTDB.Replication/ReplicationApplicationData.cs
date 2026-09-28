@@ -29,12 +29,12 @@ public sealed class ReplicationApplicationDataSnapshot
 /// No event timeout, skip, cleanup or transaction policy is inferred from the content.</summary>
 public sealed class ReplicationApplicationData
 {
-    readonly ILeaderRecordStorage _storage;
+    readonly IReplicationLeaderStorage _storage;
     readonly string _clusterId;
     readonly LeaseSessionController _leases;
     readonly Func<SelectedLeadership?> _selected;
 
-    internal ReplicationApplicationData(ILeaderRecordStorage storage, string clusterId, LeaseSessionController leases,
+    internal ReplicationApplicationData(IReplicationLeaderStorage storage, string clusterId, LeaseSessionController leases,
         Func<SelectedLeadership?> selected)
     {
         _storage = storage;

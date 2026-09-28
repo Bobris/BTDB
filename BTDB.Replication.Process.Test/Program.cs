@@ -75,8 +75,7 @@ internal static class Program
         builder.WebHost.UseKestrel().UseUrls(endpoint);
         builder.Services.AddSingleton<IReplicationNodeHost>(node);
         builder.Services.AddSingleton<IReplicationScheduler>(new SystemReplicationScheduler());
-        builder.Services.AddSingleton<IReplicationLeaseStorage>(storage);
-        builder.Services.AddSingleton<ILeaderRecordStorage>(storage);
+        builder.Services.AddSingleton<IReplicationLeaderStorage>(storage);
         var progressMilliseconds = Environment.GetEnvironmentVariable("BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS");
         var activationMilliseconds = Environment.GetEnvironmentVariable("BTDB_TEST_ACTIVATION_TIMEOUT_MILLISECONDS");
         var progressTimeouts = progressMilliseconds == null && activationMilliseconds == null ? null : new ReplicationProgressTimeouts(

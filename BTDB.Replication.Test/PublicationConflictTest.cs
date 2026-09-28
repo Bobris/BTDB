@@ -28,6 +28,7 @@ public class PublicationConflictTest
             return new(transaction.GetCommitUlong(), position.FileId, position.Offset);
         }
         public void RequestRestart(string reason) { Restarts++; Restarted.TrySetResult(); }
+        public void RequestFatalRestart(string reason) => Assert.Fail("Unexpected fatal restart.");
         public void ReportStatus(ReplicationNodeRole role) { }
         public void DatabaseRemoved(string database) => Assert.Fail("Unexpected database removal.");
     }

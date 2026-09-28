@@ -59,6 +59,11 @@
 
 ### Changed
 
+- Merge the replication leader-storage contracts `ILeaderRecordStorage`, `IReplicationLeaseStorage` and
+  `IReplicationLeaseTransferStorage` into `IReplicationLeaderStorage`; lease transfer is now required instead of a
+  runtime capability. Merge `IReplicationFatalRecovery` into `IReplicationNodeHost` as the required
+  `RequestFatalRestart`. Hosts register one leader-storage service. Breaking for replication preview adapters and hosts.
+
 - Simplify replication internals: keep each follower's database, comparison and reader in one map, derive cache
   readiness from its shared verification/download task, share file SHA-256 calculation, and remove redundant TRL
   publication state.

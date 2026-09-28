@@ -17,14 +17,6 @@ public sealed record ReplicationProgressTimeouts(TimeSpan Activation, TimeSpan P
     }
 }
 
-/// <summary>Required on the application host when progress deadlines are enabled. Called independently of the
-/// stuck worker after immediate lease fencing and the configured RestartDelay. Initiate bounded non-graceful
-/// process termination/restart without waiting for handlers, storage calls or coordinator cleanup. Never reuse this node session. This callback must not block.</summary>
-public interface IReplicationFatalRecovery
-{
-    void RequestFatalRestart(string reason);
-}
-
 /// <summary>A pending-work timer. Completion/progress and an already dispatched timeout arbitrate under one lock.
 /// Retrying an unchanged operation must not call Progress. No callback runs under this object's lock.</summary>
 internal sealed class ReplicationProgressWatchdog(IReplicationScheduler scheduler, TimeSpan timeout,

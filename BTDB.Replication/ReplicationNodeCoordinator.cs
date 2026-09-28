@@ -47,6 +47,10 @@ public interface IReplicationNodeHost
     // BTreeKeyValueDB.ReplicationRestoredPosition): a leader without progress gives followers nothing to compare.
     LeaderTrlProgress? GetProgress(string database);
     void RequestRestart(string reason);
+    // Called only when progress deadlines expire, after immediate lease fencing and the configured RestartDelay,
+    // independently of the stuck worker. Initiate bounded non-graceful process termination/restart without waiting
+    // for handlers, storage calls or coordinator cleanup, and never reuse this node session. Must not block.
+    void RequestFatalRestart(string reason);
     void ReportStatus(ReplicationNodeRole role);
     // The database remains owned by the application; only cluster coordination stops.
     void DatabaseRemoved(string database);
@@ -69,7 +73,7 @@ public interface IReplicationNodeHost
 /// and restart execution. One transition lane consumes capture; lease maintenance is independent. Shutdown and
 /// divergence stop replication without disposing databases or cancelling ordinary local application work.</summary>
 internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options, IReplicationNodeHost host,
-    ILeaderRecordStorage records, LeaseSessionController leases, IReplicationPeerTransport transport,
+    IReplicationLeaderStorage records, LeaseSessionController leases, IReplicationPeerTransport transport,
     IReplicationScheduler scheduler, ReplicationStatus? status = null)
 {
     IReadOnlyList<ActivationDatabase> _databases = Array.Empty<ActivationDatabase>();
@@ -129,8 +133,6 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     {
         options.Validate();
         var detachedTimeout = options.EffectiveDetachedLeaderTimeout;
-        if (options.ProgressTimeouts != null && host is not IReplicationFatalRecovery)
-            throw new ArgumentException("Progress deadlines require a host implementing IReplicationFatalRecovery.");
         using var shutdown = cancellation.Register(StopWatchdogs);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         Task? maintenance = null;
@@ -674,7 +676,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         // this delay by returning from RunAsync and letting the hosted service stop the process early.
         scheduler.Schedule(options.ProgressTimeouts!.RestartDelay, () =>
         {
-            try { ((IReplicationFatalRecovery)host).RequestFatalRestart(reason); }
+            try { host.RequestFatalRestart(reason); }
             finally { _fatalRestart.TrySetResult(); }
         }, "replication fatal restart delay");
     }

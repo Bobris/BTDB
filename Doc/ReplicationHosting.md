@@ -12,12 +12,11 @@ Register one node per ASP.NET host. The application supplies:
 
 | Service | Responsibility |
 | --- | --- |
-| `IReplicationNodeHost` | Restore databases, supply fresh candidate identity, report completed application progress, prepare genesis/schema and handle restart/removal/detachment. |
-| `ILeaderRecordStorage` | Version-bound leader-document reads and lease-plus-version conditional replacement. |
-| `IReplicationLeaseStorage` | Confirm exclusive finite lease acquisition/renewal; return no grant when ownership is uncertain. |
+| `IReplicationNodeHost` | Restore databases, supply fresh candidate identity, report completed application progress, prepare genesis/schema and handle restart, fatal restart, removal and detachment. |
+| `IReplicationLeaderStorage` | Confirm exclusive finite lease acquisition/renewal (no grant when ownership is uncertain), transfer it for a prepared handoff, and read/replace the leader document conditionally on lease plus version. |
 | `IReplicationScheduler` | Optional: node-local monotonic elapsed time and serialized scheduled callbacks. Defaults to `SystemReplicationScheduler` (see *Clock and lease settings*). |
 
-The same Azure leader adapter implements both storage interfaces and native prepared lease transfer. Clients are
+`AzureLeaderStorage` implements it with a native Blob lease on `leader.json`. Clients are
 created and authenticated by the application. Configure SDK retries to zero because replication reconciles conditional
 write ambiguity. Keep authority clients separate from data-transfer clients. For example, inside application setup:
 
@@ -29,8 +28,7 @@ var leaderStorage = new AzureLeaderStorage(
     """{"format":1,"clusterId":"my-cluster","term":0,"revision":0,"applicationGeneration":0,"databaseNames":[]} """);
 
 builder.Services.AddSingleton<IReplicationNodeHost>(application);
-builder.Services.AddSingleton<ILeaderRecordStorage>(leaderStorage);
-builder.Services.AddSingleton<IReplicationLeaseStorage>(leaderStorage);
+builder.Services.AddSingleton<IReplicationLeaderStorage>(leaderStorage);
 builder.Services.AddBTDBReplication(
     new ReplicationNodeOptions("my-cluster", "https://node.example", pollInterval,
         leaseRetryInterval, requestTimeout, confirmationDuration, applicationGeneration),
@@ -176,7 +174,7 @@ application state idempotently, for example through an outbox that only the curr
   caught up. A restoring node resumes after the published history and re-executes everything after it: the former
   leader's unpublished tail plus everything that arrived during restore. Size retention above the worst publication lag
   plus the longest restore and restart, and alert on publication lag well before it approaches retention.
-- **Restart on request.** `RequestRestart` and `IReplicationFatalRecovery.RequestFatalRestart` expect the supervisor
+- **Restart on request.** `RequestRestart` and `RequestFatalRestart` expect the supervisor
   (for example the Kubernetes restart policy) to start a fresh process; the host stops its HTTP endpoint first. The
   new process restores every required database before it contends for the lease.
 - **Keep the node-local directory** across restarts (a `hostPath` or persistent volume, not the container's temporary
@@ -210,7 +208,7 @@ the first lease is acquired, instead of silently never holding authority or neve
 Set `PreparedUpgrade` only after the host has validated compatibility, bounded lag with retained replay input, and
 every added/removed database requirement. Use a fresh transfer UUID per prepared target and keep it across retries.
 Only an offer of a higher generation than the leader's starts a handoff; among equal offers the first observed wins.
-The leader drains grants and transfers through `IReplicationLeaseTransferStorage` (Azure native lease Change); the
+The leader drains grants and transfers through `IReplicationLeaderStorage.TransferAsync` (Azure native lease Change); the
 target proves ownership by renewal and then activates normally.
 
 An upgraded build whose relations change the persisted schema (for example a new secondary index) must not execute
@@ -318,8 +316,7 @@ normal .NET metrics pipeline. No diagnostic HTTP endpoint is automatically expos
 
 Set `ReplicationNodeOptions.ProgressTimeouts` to a `ReplicationProgressTimeouts` with deployment-qualified activation
 and publication no-progress budgets plus a fixed `RestartDelay`. All three values must be positive. The default is disabled; replication does not
-infer an application handler timeout. When enabled, the registered `IReplicationNodeHost` must also implement
-`IReplicationFatalRecovery`. Missing support fails before restore or lease acquisition. For example,
+infer an application handler timeout. When enabled, expiry calls `IReplicationNodeHost.RequestFatalRestart`. For example,
 `new ReplicationProgressTimeouts(Activation: TimeSpan.FromMinutes(2), Publication: TimeSpan.FromMinutes(1),
 RestartDelay: TimeSpan.FromSeconds(90))`; qualify these values for the deployment.
 

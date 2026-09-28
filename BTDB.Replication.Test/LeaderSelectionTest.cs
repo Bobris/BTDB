@@ -10,7 +10,7 @@ namespace BTDB.Replication.Test;
 
 public class LeaderSelectionTest
 {
-    internal sealed class Storage : IReplicationLeaseStorage, ILeaderRecordStorage
+    internal sealed class Storage : IReplicationLeaderStorage
     {
         public LeaderRecord Record = new("1", """
             {"format":1,"clusterId":"cluster","term":7,"revision":9,"applicationGeneration":1,
@@ -23,6 +23,8 @@ public class LeaderSelectionTest
             ValueTask.FromResult<LeaseGrant?>(new("lease", TimeSpan.FromSeconds(60)));
         public ValueTask<TimeSpan?> RenewAsync(string handle, CancellationToken cancellation) =>
             ValueTask.FromResult<TimeSpan?>(TimeSpan.FromSeconds(60));
+        public ValueTask TransferAsync(string currentHandle, string proposedHandle, CancellationToken cancellation) =>
+            throw new NotSupportedException();
         public ValueTask<LeaderRecord> ReadAsync(CancellationToken cancellation) => ValueTask.FromResult(Record);
         public ValueTask<LeaderWriteOutcome> WriteAsync(string leaseHandle, string token, string json, CancellationToken cancellation)
         {

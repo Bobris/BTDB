@@ -8,20 +8,6 @@ using System.Threading.Tasks;
 
 namespace BTDB.Replication;
 
-/// <summary>A version-bound leader document. Json includes peer credentials; do not log or serialize it as diagnostics.</summary>
-public sealed record LeaderRecord(string Token, string Json)
-{
-    public override string ToString() => nameof(LeaderRecord);
-}
-public enum LeaderWriteOutcome { Applied, Rejected, Ambiguous }
-
-public interface ILeaderRecordStorage
-{
-    ValueTask<LeaderRecord> ReadAsync(CancellationToken cancellation);
-    ValueTask<LeaderWriteOutcome> WriteAsync(string leaseHandle, string expectedToken, string json,
-        CancellationToken cancellation);
-}
-
 /// <summary>Host-supplied candidate for one acquisition. Create fresh SessionId and ApiKey values on every call.
 /// Do not mutate DatabaseNames after returning this record or log its credential property.</summary>
 public sealed record LeaderCandidate(string ClusterId, string NodeId, string SessionId,
@@ -35,7 +21,7 @@ internal sealed record SelectedLeadership(LeaseAuthority Authority, ulong Term, 
 /// <summary>One selection attempt under a confirmed lease. Retains the exact JSON across uncertain responses.
 /// The supplied session identity and API key must be fresh for this attempt. Unknown fields and opaque application data survive
 /// selection; no additional operation document or durable receipt is created.</summary>
-internal sealed class LeaderSelection(ILeaderRecordStorage storage, LeaseSessionController leases,
+internal sealed class LeaderSelection(IReplicationLeaderStorage storage, LeaseSessionController leases,
     LeaseAuthority authority, LeaderCandidate candidate)
 {
     LeaderRecord? _previous;
