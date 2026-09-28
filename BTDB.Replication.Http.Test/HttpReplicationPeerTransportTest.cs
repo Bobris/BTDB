@@ -19,10 +19,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace BTDB.Replication.Http.Test;
 
-public class HttpReplicationPeerTransportTest
+public partial class HttpReplicationPeerTransportTest(ITestOutputHelper output)
 {
     sealed class Server : IAsyncDisposable
     {
@@ -80,6 +81,8 @@ public class HttpReplicationPeerTransportTest
         public PreparedHandoff? Offer;
         public int Reads;
         public ILeaderTrlReader? NativeReader;
+        // When set, polls advertise progress to its end and return inline chunks of it (measurements).
+        public byte[]? Trl;
     }
 
     sealed class Connection(Backend backend) : IReplicationPeerSession, ILeaderTrlReader
@@ -96,6 +99,12 @@ public class HttpReplicationPeerTransportTest
                 try { await backend.Release.Task.WaitAsync(backend.IgnoreCancellation ? CancellationToken.None : cancellation); }
                 catch (OperationCanceledException) { backend.Cancelled.TrySetResult(); throw; }
             }
+            if (backend.Trl is { } trl)
+                return new(challenge, true, databases.Select(d => new ReplicationPeerDatabaseProgress(d.Database,
+                    new(1, 3, (uint)trl.Length), new(3, (uint)trl.Length),
+                    inlineBudget > 0 && d.From.FileId == 3 && d.From.Offset < trl.Length
+                        ? [new(3, d.From.Offset, trl.AsMemory((int)d.From.Offset, Math.Min(inlineBudget, trl.Length - (int)d.From.Offset)))]
+                        : null)).ToArray());
             // Inline bytes of file 3 from the requested position, through the advertised progress (456).
             return new(challenge, true, databases.Select(d => new ReplicationPeerDatabaseProgress(d.Database, new(123, 3, 456), new(3, 400),
                 d.From.FileId == 3 && d.From.Offset < 456 && inlineBudget > 0

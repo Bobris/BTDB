@@ -127,6 +127,14 @@ compares after every poll, once by 256 KiB range reads only (as over HTTP) and o
 
 In-process comparison runs at 7–14 GiB/s, so round trips dominate; the coordinator now requests the 4 MiB maximum.
 
+### Over HTTP
+
+`HttpReplicationPeerTransportTest.MeasurePollLatencyAndInlineThroughput` (opt-in with `BTDB_REPLICATION_MEASURE=1`,
+Release build) polls a leader endpoint over real Kestrel HTTP on loopback, with the binary peer encoding: an empty
+poll takes 85 µs and a poll carrying the full 4 MiB inline budget 1.2 ms, 3.4 GiB/s (Apple M-series laptop). The
+transport therefore adds far less than the network round trip and stays an order of magnitude above the publication
+rates measured above; between VMs, the round trip, not the HTTP stack, sets the cost of a follower step.
+
 ## Restore from Azure Blob Storage
 
 The leader writes N × 4 KiB values, overwrites half of them at random, compacts until done, publishes a checkpoint
@@ -222,7 +230,7 @@ or beat v7 there, while v7 wins where the KVI load (CPU) dominates. A larger VM 
 ## Not covered
 
 - Warm-restore validation time for very large caches after a reboot (without page cache).
-- HTTP transport cost (serialization, TLS, Kestrel) on the peer path; the in-process reader stands in for it.
+- TLS and a real network between VMs on the HTTP peer path (loopback HTTP is measured above).
 - Multi-database contention and comparison while follower execution lags. (Planned handoff took about 1.2 s across
   processes on live Azure with a 1 s confirmation duration; see the subprocess tests.)
 - Publication throughput from more than one database at once, and storage account throttling limits.
