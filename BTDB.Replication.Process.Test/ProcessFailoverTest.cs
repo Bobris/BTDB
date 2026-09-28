@@ -59,7 +59,7 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
         string Diagnostics { get { lock (_diagnostics) return _diagnostics.ToString(); } }
 
         public static async Task<Node> Start(BlobContainerClient container, int? progressTimeoutMilliseconds = null,
-            string? dataDirectory = null)
+            string? dataDirectory = null, ulong generation = 1, int readDelayMilliseconds = 0, string databases = "main")
         {
             var ownsDataDirectory = dataDirectory == null;
             dataDirectory ??= Path.Combine(Path.GetTempPath(), "btdb-process-node-" + Guid.NewGuid().ToString("N"));
@@ -82,6 +82,9 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
                 start.Environment["BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS"] = timeout.ToString();
             else start.Environment.Remove("BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS");
             start.Environment["BTDB_TEST_DATA_DIRECTORY"] = dataDirectory;
+            start.Environment["BTDB_TEST_GENERATION"] = generation.ToString();
+            start.Environment["BTDB_TEST_READ_DELAY_MILLISECONDS"] = readDelayMilliseconds.ToString();
+            start.Environment["BTDB_TEST_DATABASES"] = databases;
             var node = new Node(ChildProcess.Start(start)!, dataDirectory, ownsDataDirectory);
             try
             {
@@ -91,7 +94,8 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
             catch { await node.DisposeAsync(); throw; }
         }
 
-        public async Task<NodeStatus> Wait(Func<NodeStatus, bool> ready, string description, int seconds = 20)
+        public async Task<NodeStatus> Wait(Func<NodeStatus, bool> ready, string description, int seconds = 20,
+            string database = "main")
         {
             var deadline = Stopwatch.StartNew();
             NodeStatus? last = null;
@@ -100,7 +104,7 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
                 if (_process.HasExited) throw new IOException($"Node exited with {_process.ExitCode}: {Diagnostics}");
                 try
                 {
-                    last = await _client.GetFromJsonAsync<NodeStatus>(Endpoint + "/test/state");
+                    last = await _client.GetFromJsonAsync<NodeStatus>($"{Endpoint}/test/state?db={database}");
                     if (last != null && ready(last)) return last;
                 }
                 catch (HttpRequestException) { }
@@ -108,9 +112,19 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
             }
             throw new TimeoutException($"Waiting for {description}; last state: {last}; {Diagnostics}");
         }
-        public async Task Apply(ulong id, byte value)
+        public async Task Apply(ulong id, byte value, int kilobytes = 0, string database = "main")
         {
-            using var reply = await _client.PostAsync($"{Endpoint}/test/apply/{id}/{value}", null);
+            using var reply = await _client.PostAsync($"{Endpoint}/test/apply/{id}/{value}?kb={kilobytes}&db={database}", null);
+            reply.EnsureSuccessStatusCode();
+        }
+        public async Task Partition(string target, bool enabled)
+        {
+            using var reply = await _client.PostAsync($"{Endpoint}/test/partition/{target}/{enabled}", null);
+            reply.EnsureSuccessStatusCode();
+        }
+        public async Task PrepareUpgrade()
+        {
+            using var reply = await _client.PostAsync(Endpoint + "/test/prepare-upgrade", null);
             reply.EnsureSuccessStatusCode();
         }
         public async Task PausePublication()
@@ -182,9 +196,9 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
     static bool Compared(NodeStatus state, ulong id) => state.EventId == id && state.CompletedFile != 0 &&
         state.CompletedFile == state.ComparedFile && state.CompletedOffset == state.ComparedOffset;
 
-    static async Task<ulong> PublishedEvent(BlobContainerClient container)
+    static async Task<ulong> PublishedEvent(BlobContainerClient container, string database = "main")
     {
-        var storage = new AzureReplicationStorage(container, "main");
+        var storage = new AzureReplicationStorage(container, database);
         var inventory = await CanonicalTrlInventory.DiscoverAsync(storage, TestNodeHost.Genesis);
         using var files = new InMemoryReplicationFileStorage();
         await using var collection = new ReplicationFileSet(files, inventory);
@@ -195,16 +209,173 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
         return read.GetCommitUlong();
     }
 
-    static async Task WaitPublished(BlobContainerClient container, ulong id)
+    static async Task WaitPublished(BlobContainerClient container, ulong id, string database = "main")
     {
         var deadline = Stopwatch.StartNew();
         while (deadline.Elapsed < TimeSpan.FromSeconds(20))
         {
-            try { if (await PublishedEvent(container) == id) return; }
+            try { if (await PublishedEvent(container, database) == id) return; }
             catch (IOException) { } // A racing version change requires a fresh canonical discovery.
             await Task.Delay(50);
         }
         throw new TimeoutException($"Canonical restore did not reach event {id}.");
+    }
+
+    [Fact]
+    public async Task PreparedHigherGenerationTakesOverWithoutWaitingForLeaseExpiryAndTheOldLeaderFollows()
+    {
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        await leader.Apply(1, 11);
+        await WaitPublished(container, 1);
+        await using var upgraded = await Node.Start(container, generation: 2);
+        await upgraded.Wait(s => s.Role == "Follower" && s.EventId == 1, "restored higher generation");
+        await leader.Apply(2, 22);
+        await upgraded.Apply(2, 22);
+        await upgraded.Wait(s => Compared(s, 2), "comparison before handoff");
+        var handoff = Stopwatch.StartNew();
+        await upgraded.PrepareUpgrade();
+        var promoted = await upgraded.Wait(s => s.Role == "Leader" && s.EventId == 2, "planned handoff");
+        handoff.Stop();
+        Assert.Equal(22, promoted.Value);
+        // The drain waits out issued grants (1 s here); lease expiry would take 15 s.
+        Assert.True(handoff.Elapsed < TimeSpan.FromSeconds(10), $"Handoff took {handoff.Elapsed}.");
+        Console.WriteLine($"Planned handoff took {handoff.Elapsed.TotalMilliseconds:0} ms.");
+        var record = System.Text.Json.Nodes.JsonNode.Parse(
+            (await container.GetBlobClient("leader.json").DownloadContentAsync()).Value.Content.ToString())!;
+        Assert.Equal(2ul, record["applicationGeneration"]!.GetValue<ulong>());
+        Assert.Equal(upgraded.Endpoint, record["peerEndpoint"]!.GetValue<string>());
+        // The lower generation never contends again; it follows and confirms the new leader's history.
+        await upgraded.Apply(3, 33);
+        await leader.Apply(3, 33);
+        var follower = await leader.Wait(s => s.Role == "Follower" && Compared(s, 3), "old generation follows");
+        Assert.Equal(33, follower.Value);
+        await WaitPublished(container, 3);
+    }
+
+    [Fact]
+    public async Task IsolatedLeaderLosesLeadershipAndFollowsTheNewLeaderAfterHealing()
+    {
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        await leader.Apply(1, 11);
+        await WaitPublished(container, 1);
+        await using var follower = await Node.Start(container);
+        await follower.Wait(s => s.Role == "Follower" && s.EventId == 1, "restored follower");
+        await leader.Apply(2, 22);
+        await follower.Apply(2, 22);
+        await follower.Wait(s => Compared(s, 2), "comparison before the partition");
+        await WaitPublished(container, 2);
+        // The process keeps running: it cannot renew its lease or answer peers, but local input continues.
+        await leader.Partition("storage", true);
+        await leader.Partition("peers", true);
+        await leader.Wait(s => s.Role != "Leader", "isolated leader gives up leadership", 20);
+        var promoted = await follower.Wait(s => s.Role == "Leader", "takeover after lease expiry", 35);
+        Assert.Equal(2ul, promoted.EventId);
+        await follower.Apply(3, 33);
+        await leader.Apply(3, 33);
+        await WaitPublished(container, 3);
+        await leader.Partition("storage", false);
+        await leader.Partition("peers", false);
+        var healed = await leader.Wait(s => s.Role == "Follower" && Compared(s, 3), "healed old leader follows", 30);
+        Assert.Equal(33, healed.Value);
+    }
+
+    [Fact]
+    public async Task FollowerCutOffFromItsLeaderNeverTakesOverAndCatchesUpAfterHealing()
+    {
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        await leader.Apply(1, 11);
+        await WaitPublished(container, 1);
+        await using var follower = await Node.Start(container);
+        await follower.Wait(s => s.Role == "Follower" && s.EventId == 1, "restored follower");
+        await leader.Partition("peers", true);
+        await leader.Apply(2, 22);
+        await follower.Apply(2, 22);
+        await WaitPublished(container, 2);
+        // Longer than the 15 s lease: missing grants never let a follower contend while the leader renews.
+        await Task.Delay(TimeSpan.FromSeconds(17));
+        var cut = await follower.Wait(s => s.EventId == 2, "follower applied its input locally");
+        Assert.Equal("Follower", cut.Role);
+        Assert.NotEqual((cut.CompletedFile, cut.CompletedOffset), (cut.ComparedFile, cut.ComparedOffset));
+        Assert.Equal("Leader", (await leader.Wait(_ => true, "leader state")).Role);
+        await leader.Partition("peers", false);
+        await follower.Wait(s => s.Role == "Follower" && Compared(s, 2), "comparison after healing");
+        await leader.Apply(3, 33);
+        await follower.Apply(3, 33);
+        await follower.Wait(s => Compared(s, 3), "continued comparison");
+    }
+
+    [Fact]
+    public async Task NodeKilledDuringRestoreRestoresAgainFromItsPartialLocalFiles()
+    {
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        for (ulong id = 1; id <= 24; id++) await leader.Apply(id, (byte)id, 1024); // 24 MiB of TRL
+        await WaitPublished(container, 24);
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-process-node-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await using (var slow = await Node.Start(container, dataDirectory: directory, readDelayMilliseconds: 400))
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                Assert.Equal("Restoring", (await slow.Wait(_ => true, "restore in progress")).Role);
+                await slow.Kill(); // In the middle of downloading: partial files stay behind.
+            }
+            Assert.NotEmpty(Directory.EnumerateFiles(directory));
+            await using var restarted = await Node.Start(container, dataDirectory: directory);
+            var restored = await restarted.Wait(s => s.Role == "Follower" && s.EventId == 24, "restore after the kill", 60);
+            Assert.Equal(24, restored.Value);
+            Assert.Equal(0, restored.Applied);
+            await leader.Apply(25, 25);
+            await restarted.Apply(25, 25);
+            await restarted.Wait(s => Compared(s, 25), "comparison after the interrupted restore");
+        }
+        finally
+        {
+            await DeleteDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task TakeoverActivatesNoDatabaseUntilEveryDatabaseCaughtUp()
+    {
+        const string both = "main,second";
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container, databases: both);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        await leader.Apply(1, 11);
+        await leader.Apply(1, 12, database: "second");
+        await WaitPublished(container, 1);
+        await WaitPublished(container, 1, "second");
+        await using var follower = await Node.Start(container, databases: both);
+        await follower.Wait(s => s.Role == "Follower" && s.EventId == 1, "restored main");
+        await follower.Wait(s => s.EventId == 1, "restored second", database: "second");
+        await leader.Apply(2, 21);
+        await leader.Apply(2, 22, database: "second");
+        await follower.Apply(2, 21); // Its input for the second database lags behind.
+        await WaitPublished(container, 2);
+        await WaitPublished(container, 2, "second");
+        await leader.Kill();
+        await follower.Wait(s => s.Role == "Activating", "lease won, second database still lagging", 35);
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        var waiting = await follower.Wait(_ => true, "still activating");
+        Assert.Equal("Activating", waiting.Role);
+        // Nothing is adopted or published while one database lags: main stays at the old leader's history.
+        await follower.Apply(3, 31);
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        Assert.Equal(2ul, await PublishedEvent(container));
+        await follower.Apply(2, 22, database: "second");
+        var promoted = await follower.Wait(s => s.Role == "Leader", "activation after catching up");
+        Assert.Equal(3ul, promoted.EventId);
+        await WaitPublished(container, 3);
+        await WaitPublished(container, 2, "second");
+        Assert.Equal(22, (await follower.Wait(s => s.EventId == 2, "second database", database: "second")).Value);
     }
 
     [Fact]

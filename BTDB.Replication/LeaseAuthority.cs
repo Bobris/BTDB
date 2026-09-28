@@ -75,7 +75,7 @@ public sealed class LeaseAuthority
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(guaranteedLeaseDuration.Ticks);
             _ = IsValid;
             if (_fenced || request == 0 || request != _request) return false;
-            var duration = (long)((Int128)guaranteedLeaseDuration.Ticks * _slowRate / Scale) - _margin;
+            var duration = UsableDuration(guaranteedLeaseDuration).Ticks;
             if (duration <= 0 || (Int128)_requestStarted + duration > long.MaxValue)
             {
                 Fence();
@@ -102,6 +102,10 @@ public sealed class LeaseAuthority
             _held = false;
         }
     }
+
+    /// <summary>Local authority a provider-guaranteed lease yields after the drift bound and safety margin.</summary>
+    internal TimeSpan UsableDuration(TimeSpan guaranteedLeaseDuration) =>
+        TimeSpan.FromTicks((long)((Int128)guaranteedLeaseDuration.Ticks * _slowRate / Scale) - _margin);
 
     /// <summary>
     /// Upper bound, in this clock's ticks, on a peer window measured by another clock with the same rate bound.

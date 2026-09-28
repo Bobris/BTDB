@@ -132,6 +132,41 @@ public class LeaseSessionControllerTest
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
     }
 
+    [Fact]
+    public async Task MarginThatConsumesTheWholeLeaseFailsInsteadOfNeverHoldingAuthority()
+    {
+        var clock = new DeterministicScheduler(506);
+        var controller = new LeaseSessionController(new Storage(), clock.CreateScope("node"), 1000, TimeSpan.FromTicks(100));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => controller.MaintainAsync().AsTask());
+        Assert.Contains("safety margin", error.Message);
+    }
+
+    [Theory]
+    [InlineData(50, null, "RequestTimeout")]
+    [InlineData(null, 50, "ConfirmationDuration")]
+    [InlineData(49, 49, null)]
+    public async Task TimeoutsThatDoNotFitHalfTheUsableLeaseStopLeaseMaintenance(int? requestTimeout, int? confirmation,
+        string? rejected)
+    {
+        var clock = new DeterministicScheduler(507);
+        var controller = new LeaseSessionController(new Storage(), clock.CreateScope("node"), 0, TimeSpan.Zero);
+        using var stop = new CancellationTokenSource();
+        LeaseAuthority? observed = null;
+        var run = controller.RunAsync(TimeSpan.FromTicks(10), current => observed ??= current, stop.Token,
+            requestTimeout is { } timeout ? TimeSpan.FromTicks(timeout) : null,
+            confirmation is { } window ? TimeSpan.FromTicks(window) : null);
+        if (rejected != null)
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => run);
+            Assert.StartsWith(rejected, error.Message);
+            return;
+        }
+        while (observed == null) clock.AdvanceBy(TimeSpan.FromTicks(1));
+        await stop.CancelAsync();
+        clock.AdvanceBy(TimeSpan.FromTicks(100));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+    }
+
     sealed class Storage : IReplicationLeaseStorage
     {
         public bool Available = true;

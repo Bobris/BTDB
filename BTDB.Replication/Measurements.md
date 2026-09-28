@@ -223,5 +223,6 @@ or beat v7 there, while v7 wins where the KVI load (CPU) dominates. A larger VM 
 
 - Warm-restore validation time for very large caches after a reboot (without page cache).
 - HTTP transport cost (serialization, TLS, Kestrel) on the peer path; the in-process reader stands in for it.
-- Handoff timing, network partitions, multi-database contention and comparison while follower execution lags.
+- Multi-database contention and comparison while follower execution lags. (Planned handoff took about 1.2 s across
+  processes on live Azure with a 1 s confirmation duration; see the subprocess tests.)
 - Publication throughput from more than one database at once, and storage account throttling limits.

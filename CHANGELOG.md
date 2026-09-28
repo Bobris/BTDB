@@ -4,6 +4,20 @@
 
 ### Added
 
+- Add replication recovery counters: `ReplicationStatus.RestoreAttempts`, `RestoreFailures`, `RestoreDuration`,
+  `LeaderSessions`, `LostLeaderSessions` and `FailedSteps`, exported by the `BTDB.Replication` meter as
+  `btdb.replication.restore.*`, `btdb.replication.leader.sessions*` and `btdb.replication.step.failures`.
+- Validate lease-dependent replication settings when the first lease is acquired: a drift bound and safety margin that
+  consume the whole lease, or a `RequestTimeout` or `ConfirmationDuration` of at least half the usable lease, stop lease
+  maintenance with `InvalidOperationException` instead of silently never holding authority or never granting.
+
+- Add `SystemReplicationScheduler`, the production `IReplicationScheduler`: lease deadlines use a clock that time
+  synchronization never slews and that keeps running while the process is stopped (`CLOCK_MONOTONIC_RAW` on Linux and
+  macOS, interrupt time on Windows), with timer callbacks serialized on the thread pool. `AddBTDBReplication` registers
+  it unless the application registers its own scheduler. `DBBenchmark replication clock` compares the Linux clocks.
+- Qualify more subprocess scenarios on Azurite and live Azure: planned upgrade handoff, storage and peer partitions of
+  a leader or follower, a kill during restore and partial multi-database activation.
+
 - Qualify the Azure adapter against live Azure: `BTDB.Replication.Azure.Test` and `BTDB.Replication.Process.Test`
   target the account named by `BTDB_AZURE_BLOB_ENDPOINT` through `DefaultAzureCredential` (Azurite stays the default),
   and `AzureQualificationTest` covers lease expiry against the local deadline, stale in-flight requests after takeover

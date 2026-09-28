@@ -26,6 +26,20 @@ Scenarios:
   recovery, and a follower takes over and publishes its optimistic tail.
 - **Divergence.** A follower applying a different event value exits through the restart path; the leader and
   canonical history keep their state.
+- **Planned upgrade handoff.** A restored generation-2 follower reports its prepared upgrade; the generation-1 leader
+  drains its grants and transfers the lease without waiting for expiry (about 1.2 s on Azurite and live Azure), and
+  then follows the new leader without ever contending again.
+- **Isolated leader.** A leader cut off from Blob storage and from its peers, while the process and its local input
+  keep running, gives up leadership when its lease authority ends; the follower takes over after expiry, and the healed
+  old leader follows and compares the new history.
+- **Follower cut off from its leader.** With every replication connection to the leader dropped for longer than the
+  lease, the follower keeps applying its input but never contends while the leader renews; after healing it compares
+  its tail and continues.
+- **Kill during restore.** A node whose Blob reads are slowed is killed in the middle of its restore; restarted on the
+  same directory it discards the partial files, restores the published history and follows.
+- **Partial multi-database activation.** With two databases, a lease winner whose second database lags behind the
+  published history stays `Activating` and adopts and publishes nothing, while local input continues; once the lagging
+  input is applied both databases activate and publish.
 
 `PublicHostingApiTest` guards the external-consumer boundary: internal authority and transition types stay hidden and
 public records redact credentials.
@@ -34,6 +48,10 @@ Set `BTDB_AZURE_BLOB_ENDPOINT=https://<account>.blob.core.windows.net` to run th
 every node process then authenticates with `DefaultAzureCredential` (Storage Blob Data Contributor). The recorded live
 run is in [ObjectStorages.md](../BTDB.Replication/ObjectStorages.md).
 
-Limits: loopback sockets, not production TLS/proxies. The test scheduler uses
-`Stopwatch` with serialized timers; it is not a production clock qualification. Network partitions, rolling-upgrade
-handoff across processes and restore performance remain open.
+Nodes use the production `SystemReplicationScheduler` with a 1000 ppm drift bound and a 250 ms safety margin. Test-only
+controls simulate partitions (a Blob pipeline policy that fails every request, middleware that drops replication
+connections), slow Blob reads (`BTDB_TEST_READ_DELAY_MILLISECONDS`), a second database (`BTDB_TEST_DATABASES`) and a
+higher application generation (`BTDB_TEST_GENERATION`).
+
+Limits: loopback sockets, not production TLS/proxies; partitions are injected per node rather than in the network;
+disk-full and device errors during restore are not simulated.

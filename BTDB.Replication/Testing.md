@@ -247,6 +247,12 @@ with `BTDB_AZURE_BLOB_ENDPOINT` (each node then authenticates with `DefaultAzure
   `DivergentFollowerTerminatesItsProcessWithoutPublishingItsLocalOutcome` and
   `CrashedFollowerRestartsFromItsOwnDiskStorage` cover the publication watchdog, divergence exit and restart from
   existing local files after a kill.
+- `PreparedHigherGenerationTakesOverWithoutWaitingForLeaseExpiryAndTheOldLeaderFollows`,
+  `IsolatedLeaderLosesLeadershipAndFollowsTheNewLeaderAfterHealing`,
+  `FollowerCutOffFromItsLeaderNeverTakesOverAndCatchesUpAfterHealing`,
+  `NodeKilledDuringRestoreRestoresAgainFromItsPartialLocalFiles` and
+  `TakeoverActivatesNoDatabaseUntilEveryDatabaseCaughtUp` cover planned handoff across processes, injected storage and
+  peer partitions, a kill in the middle of a restore and partial multi-database activation.
 - `PublicHostingApiTest` guards the external-consumer boundary: no friend-assembly access, no public way to create or
   renew authority, and no secrets in public record strings. See [hosting contracts](../Doc/ReplicationHosting.md).
 
@@ -267,11 +273,11 @@ with `BTDB_AZURE_BLOB_ENDPOINT` (each node then authenticates with `DefaultAzure
 
 - Live Azure runs are manual (not in CI). Throttling and credential renewal under production load are not exercised;
   restore throughput is measured separately in [Measurements.md](Measurements.md).
-- Physical disk faults: no torn-write or power-loss model of a disk file collection; process tests only kill or suspend
-  processes.
+- Physical disk faults: no torn-write, power-loss or disk-full model of a disk file collection; process tests kill,
+  suspend or partition processes.
 - Production clock qualification: in-process tests use virtual time and process tests a Stopwatch-based scheduler.
 - Exhaustive interleavings: schedules are seeded and hand-chosen, not model-checked, and `HistoryOracle` is not
   attached to coordinator or adapter runs.
 - Remote publication/deletion races beyond the held-request interleavings above, and remote orphan selection.
 - Production TLS/proxy deployment of the HTTP adapter.
-- Multi-process partitions, rolling-upgrade handoff across processes, and workload/restore performance.
+- Partitions in a real network (process tests inject them per node) and production TLS/proxy paths.

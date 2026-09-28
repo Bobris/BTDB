@@ -38,6 +38,7 @@ static class ReplicationMeasurements
         // The coordinator's per-poll InlineBudget; the leader honours up to ReplicationPeerPoll.MaximumInlineBytes.
         public int InlineKb = 1024;
         public int TrlSoftMb, TrlHardMb;
+        public int Seconds = 600;
     }
 
     public static async Task RunAsync(string[] args)
@@ -58,6 +59,7 @@ static class ReplicationMeasurements
         if (what is "pipeline" or "all") await PipelineAsync(options);
         if (what is "compare" or "all") await CompareAsync(options);
         if (what is "restore" or "all") await RestoreAsync(options);
+        if (what is "clock") await ClockMeasurement.RunAsync(options.Seconds);
     }
 
     static Options Parse(string[] args)
@@ -76,6 +78,7 @@ static class ReplicationMeasurements
                 case "--poll-transactions": options.PollTransactions = Next(); break;
                 case "--dataset-mb": options.DatasetMb = Next(); break;
                 case "--memory": options.OnDisk = false; break;
+                case "--seconds": options.Seconds = Next(); break;
                 case "--split-mb": options.SplitMb = Next(); break;
                 case "--readers": options.Readers = Next(); break;
                 case "--downloads": options.Downloads = Next(); break;

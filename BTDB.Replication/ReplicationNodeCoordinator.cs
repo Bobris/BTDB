@@ -137,17 +137,24 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
         try
         {
             IReadOnlyList<ActivationDatabase> databases;
+            var restoreStarted = scheduler.Elapsed;
             while (true)
             {
                 cancellation.ThrowIfCancellationRequested();
+                status?.RestoreStarted();
                 try { databases = await host.RestoreAsync(cancellation).ConfigureAwait(false); break; }
                 catch (InvalidDataException)
                 {
                     Restart("Conflicting canonical history was found during restore.");
                     return;
                 }
-                catch (IOException) { await WaitAsync(cancellation).ConfigureAwait(false); }
+                catch (IOException)
+                {
+                    status?.RestoreFailed();
+                    await WaitAsync(cancellation).ConfigureAwait(false);
+                }
             }
+            status?.Restored(scheduler.Elapsed - restoreStarted);
             _databases = databases;
             foreach (var database in databases)
                 if (database.RestoredBase.FileId != 0) _canonicalBase[database.Name] = database.RestoredBase;
@@ -167,7 +174,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             {
                 lock (_remoteLock)
                     if (_sessionAuthority != null && !ReferenceEquals(_sessionAuthority, current)) _remoteWork?.Cancel();
-            }, lifetime.Token, options.RequestTimeout);
+            }, lifetime.Token, options.RequestTimeout, options.ConfirmationDuration);
             Role = ReplicationNodeRole.Follower;
             while (!_restart)
             {
@@ -179,8 +186,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 try { await StepAsync(databases, request.Token, cancellation).ConfigureAwait(false); }
                 catch (InvalidDataException) { Restart("Local history or database configuration requires canonical restore."); }
                 catch (FileNotFoundException) { Restart("Required TRL bytes are no longer retained; canonical restore is required."); }
-                catch (IOException) { Disconnect(); }
-                catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { Disconnect(); }
+                catch (IOException) { status?.StepFailed(); Disconnect(); }
+                catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { status?.StepFailed(); Disconnect(); }
                 catch (InvalidOperationException) when (_sessionAuthority is { IsValid: false }) { DropLeadership(); }
                 ReleaseUncoordinatedHistory(databases);
                 if (_detached.Count != 0 && scheduler.Elapsed - _leaderEvidenceUntil >= detachedTimeout)
@@ -303,6 +310,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 }
                 if (!authority.IsValid) { DropLeadership(); return; }
                 Volatile.Write(ref _serving, new(identity, authority, databases, publishers, host, scheduler, options.ApplicationGeneration));
+                status?.LeaderSessionStarted();
             }
             lock (_remoteLock)
             {
@@ -682,7 +690,11 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             remoteWork = _remoteWork;
             _remoteWork = null;
         }
-        Interlocked.Exchange(ref _serving, null)?.Close();
+        if (Interlocked.Exchange(ref _serving, null) is { } serving)
+        {
+            serving.Close();
+            status?.LeaderSessionEnded();
+        }
         remoteWork?.Cancel();
         var jobs = _remoteMaintenance.ToArray();
         _remoteMaintenance.Clear();

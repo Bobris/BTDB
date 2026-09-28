@@ -391,7 +391,7 @@ production. The IDs are stable references used by other documents.
 | B1 | Authority qualification | Qualify clock drift and pause/suspend behavior of the production monotonic clock. Lease margins are measured on live Azure (a 15 s Azure Blob lease expired 14.94–15.06 s after its acquire was dispatched; see [ObjectStorages.md](ObjectStorages.md)); the M1 clock model is otherwise verified only in simulation. |
 | B3 | Application integration | ObjectDB/application state after rollback inside virtual batches, application-owned input replay and the schema lifecycle need end-to-end qualification with a real application. |
 | B5 | Publication and cleanup races | Stale predecessor appends, renewals, leader-record writes, PVL uploads, deletes and marks, and restores concurrent with publication and cleanup, are qualified on live Azure (`AzureQualificationTest`). A fenced predecessor's in-flight PVL/KVI commit landing first on a successor's identity makes the successor fence itself on the SHA conflict: safe, but its liveness cost (one lease expiry and reselection) is still to be measured on a real workload before adding a mechanism. |
-| B6 | Progress and operations | Budgets and defaults: poll and lease intervals, checkpoint cadence, deletion delay, watchdog deadlines, retention of application input; metrics and alert thresholds. |
+| B6 | Progress and operations | Recommended settings, recovery metrics, alerts and input-retention rules are documented in [ReplicationHosting.md](../Doc/ReplicationHosting.md) from the live-Azure subprocess qualification. Open: checkpoint cadence and activation deadline from export and restore times of a production-sized database. |
 
 Backlog within the selected design:
 

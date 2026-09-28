@@ -42,6 +42,7 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
     volatile bool _closed;
     bool _ineligible;
     string? _proposedHandle;
+    TimeSpan? _requestTimeout, _confirmationDuration;
 
     public void ProposeTransfer(string handle)
     {
@@ -86,11 +87,15 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
     /// application/provider contract errors propagate. No renewal waits on database work or publication.
     /// </summary>
     public async Task RunAsync(TimeSpan retryInterval, Action<LeaseAuthority?> observed,
-        CancellationToken cancellation, TimeSpan? requestTimeout = null)
+        CancellationToken cancellation, TimeSpan? requestTimeout = null, TimeSpan? confirmationDuration = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(retryInterval.Ticks);
         if (requestTimeout is { } timeoutDuration)
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(timeoutDuration.Ticks);
+        if (confirmationDuration is { } confirmation)
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(confirmation.Ticks);
+        _requestTimeout = requestTimeout;
+        _confirmationDuration = confirmationDuration;
         ArgumentNullException.ThrowIfNull(observed);
         try
         {
@@ -165,6 +170,7 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
             grant = new(proposed, transferred);
         grant ??= await storage.AcquireAsync(cancellation).ConfigureAwait(false);
         cancellation.ThrowIfCancellationRequested();
+        if (grant != null) Validate(candidate, grant.GuaranteedDuration);
         lock (_stateLock)
         {
             if (_closed || _ineligible || grant == null || !candidate.AcceptSuccess(acquire, grant.GuaranteedDuration)) return null;
@@ -174,6 +180,22 @@ internal sealed class LeaseSessionController(IReplicationLeaseStorage storage, I
             _authority = candidate;
             return candidate;
         }
+    }
+
+    // A configuration the provider's lease cannot support would otherwise never hold authority, lose it to one slow
+    // renewal, or never issue a confirmation grant (so detached nodes restart). Fail the node instead of stalling.
+    void Validate(LeaseAuthority candidate, TimeSpan guaranteed)
+    {
+        var usable = candidate.UsableDuration(guaranteed);
+        if (usable <= TimeSpan.Zero)
+            throw new InvalidOperationException($"A {guaranteed.TotalSeconds:0.###} s lease leaves no authority after " +
+                                                $"the {maximumClockDriftPpm} ppm drift bound and {safetyMargin.TotalMilliseconds:0} ms safety margin.");
+        if (_requestTimeout is { } timeout && timeout.Ticks * 2 >= usable.Ticks)
+            throw new InvalidOperationException($"RequestTimeout {timeout.TotalSeconds:0.###} s must be below half of " +
+                                                $"the {usable.TotalSeconds:0.###} s usable lease authority.");
+        if (_confirmationDuration is { } confirmation && candidate.BoundPeerWindow(confirmation).Ticks * 2 >= usable.Ticks)
+            throw new InvalidOperationException($"ConfirmationDuration {confirmation.TotalSeconds:0.###} s must be below " +
+                                                $"half of the {usable.TotalSeconds:0.###} s usable lease authority.");
     }
 
     public void Close()

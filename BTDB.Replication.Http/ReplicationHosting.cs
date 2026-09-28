@@ -12,7 +12,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 namespace BTDB.Replication.Http;
 
 /// <summary>Registers one hosted replication node. The application registers IReplicationNodeHost,
-/// ILeaderRecordStorage, IReplicationLeaseStorage and a qualified IReplicationScheduler as singleton services.</summary>
+/// ILeaderRecordStorage and IReplicationLeaseStorage as singleton services; IReplicationScheduler defaults to
+/// <see cref="SystemReplicationScheduler"/> unless the application registers another qualified one.</summary>
 public static class ReplicationHosting
 {
     public static IServiceCollection AddBTDBReplication(this IServiceCollection services, ReplicationNodeOptions options,
@@ -30,6 +31,7 @@ public static class ReplicationHosting
             throw new InvalidOperationException("Register only one replication node per host.");
 
         services.AddSingleton(options);
+        services.TryAddSingleton<IReplicationScheduler, SystemReplicationScheduler>();
         services.AddSingleton<ReplicationStatus>();
         services.AddMetrics();
         services.AddSingleton<ReplicationMetrics>();

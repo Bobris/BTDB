@@ -308,6 +308,35 @@ public class ReplicationHostingTest
         await host.Node.Leader.Task.WaitAsync(Timeout);
         Assert.Equal(2, host.Node.Restores);
         Assert.Equal(1, host.Storage.Acquires);
+        Assert.Equal(2, host.Status.RestoreAttempts);
+        Assert.Equal(1, host.Status.RestoreFailures);
+        Assert.NotNull(host.Status.RestoreDuration);
+        Assert.Equal(1, host.Status.LeaderSessions);
+        Assert.Equal(0, host.Status.LostLeaderSessions);
+        // The instruments are label-free observations of the same counters.
+        var observed = new Dictionary<string, double>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, observer) =>
+        {
+            if (instrument.Meter.Name == "BTDB.Replication") observer.EnableMeasurementEvents(instrument);
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+        {
+            Assert.True(tags.IsEmpty);
+            observed[instrument.Name] = value;
+        });
+        listener.SetMeasurementEventCallback<double>((instrument, value, tags, _) =>
+        {
+            Assert.True(tags.IsEmpty);
+            observed[instrument.Name] = value;
+        });
+        listener.Start();
+        listener.RecordObservableInstruments();
+        Assert.Equal(2, observed["btdb.replication.restore.attempts"]);
+        Assert.Equal(1, observed["btdb.replication.restore.failures"]);
+        Assert.Equal(1, observed["btdb.replication.leader.sessions"]);
+        Assert.Equal(0, observed["btdb.replication.leader.sessions.ended"]);
+        Assert.True(observed.ContainsKey("btdb.replication.restore.duration"));
     }
 
     [Fact]

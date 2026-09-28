@@ -96,18 +96,22 @@ fences immediately and lets the lease expire.
    ([Testing.md](Testing.md), [ObjectStorages.md](ObjectStorages.md)). It found that a restore overlapping publication
    or cleanup failed on every changed version, and that a checkpoint published between TRL discovery and the PVL/KVI
    listing could open with missing values; both are fixed. Remaining: throttling and credential renewal under load.
-4. **Process scenarios.** The existing subprocess scenarios pass on live Azure too. Extend them to network
-   partitions, rolling-upgrade handoff schedules, multi-database partial activation and disk/process failures during
-   restore.
+4. **Process scenarios.** Done: subprocess tests cover planned upgrade handoff, storage and peer partitions of a
+   leader or follower, a kill during restore and partial multi-database activation, in addition to leader kill,
+   `SIGSTOP`, stalled publication, divergence and follower crash; all 13 pass on Azurite and live Azure
+   ([BTDB.Replication.Process.Test](../BTDB.Replication.Process.Test/README.md)). Disk-full and device errors during
+   restore are not simulated.
 5. **Measurement.** Done on Azure ([Measurements.md](Measurements.md), `DBBenchmark replication*`): a cold restore
    of 100 GiB from Blob takes 4.4 minutes on an E8ads_v7, limited by the local disk; the findings led to lock-free
    node-local storage, sealed-TRL checksums, a 4 MiB poll budget and concurrent TRL staging. With production file
    sizes (2 GiB PVL, 1 GiB/4 GiB TRL) 30 GiB restore cold in 83–156 s on v4–v7. Remaining: warm-restore validation
    reads the whole cache, and HTTP peer cost, handoff timing and multi-database publication are unmeasured; set
    operational defaults from them.
-6. **Operations.** Detailed recovery metrics, configuration validation and examples for application-owned event
-   execution; document input retention and host restart requirements. Reader-visible progress and input lag stay
-   application-owned.
+6. **Operations.** Done: recovery counters in `ReplicationStatus` and the `BTDB.Replication` meter (restore attempts,
+   failures and duration, leader sessions started and ended, failed steps), validation of lease-dependent settings
+   when the first lease is acquired, and host guidance for application-owned event execution, input retention,
+   restarts, recommended settings and alerts ([ReplicationHosting.md](../Doc/ReplicationHosting.md)).
+   Reader-visible progress and input lag stay application-owned.
 7. **Release.** After qualification, update the README from the architecture status and prepare packaging.
 
 ## Validation discipline

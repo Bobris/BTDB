@@ -15,35 +15,48 @@ Register one node per ASP.NET host. The application supplies:
 | `IReplicationNodeHost` | Restore databases, supply fresh candidate identity, report completed application progress, prepare genesis/schema and handle restart/removal/detachment. |
 | `ILeaderRecordStorage` | Version-bound leader-document reads and lease-plus-version conditional replacement. |
 | `IReplicationLeaseStorage` | Confirm exclusive finite lease acquisition/renewal; return no grant when ownership is uncertain. |
-| `IReplicationScheduler` | Node-local monotonic elapsed time and serialized scheduled callbacks, including the required process/OS pause and clock-drift behavior. |
+| `IReplicationScheduler` | Optional: node-local monotonic elapsed time and serialized scheduled callbacks. Defaults to `SystemReplicationScheduler` (see *Clock and lease settings*). |
 
 The same Azure leader adapter implements both storage interfaces and native prepared lease transfer. Clients are
 created and authenticated by the application. Configure SDK retries to zero because replication reconciles conditional
 write ambiguity. Keep authority clients separate from data-transfer clients. For example, inside application setup:
 
 ```csharp
-// application, scheduler and authorityContainer are supplied by the host.
+// application and authorityContainer are supplied by the host.
 var leaderStorage = new AzureLeaderStorage(
     authorityContainer.GetBlobClient("cluster/leader.json"),
     TimeSpan.FromSeconds(15),
     """{"format":1,"clusterId":"my-cluster","term":0,"revision":0,"applicationGeneration":0,"databaseNames":[]} """);
 
 builder.Services.AddSingleton<IReplicationNodeHost>(application);
-builder.Services.AddSingleton<IReplicationScheduler>(scheduler);
 builder.Services.AddSingleton<ILeaderRecordStorage>(leaderStorage);
 builder.Services.AddSingleton<IReplicationLeaseStorage>(leaderStorage);
 builder.Services.AddBTDBReplication(
     new ReplicationNodeOptions("my-cluster", "https://node.example", pollInterval,
         leaseRetryInterval, requestTimeout, confirmationDuration, applicationGeneration),
-    maximumClockDriftPpm, safetyMargin);
+    maximumClockDriftPpm: 1000, safetyMargin: TimeSpan.FromMilliseconds(250));
 
 var app = builder.Build();
 app.MapBTDBReplication();
 await app.RunAsync();
 ```
 
-Intervals, drift and safety margin are host choices requiring deployment qualification. DI deliberately installs no
-wall-clock scheduler fallback. The HTTP endpoint must be an HTTPS origin without a path; HTTP is accepted only on
+Intervals, drift and safety margin are host choices requiring deployment qualification.
+
+### Clock and lease settings
+
+`SystemReplicationScheduler` measures lease deadlines with a clock that time synchronization never adjusts and that
+keeps running while the process is stopped: `CLOCK_MONOTONIC_RAW` on Linux and macOS, interrupt time
+(`Environment.TickCount64`, 10–16 ms resolution) on Windows. Linux `CLOCK_MONOTONIC` and `CLOCK_BOOTTIME`, which
+`Stopwatch` uses, are slewed by NTP (chrony by up to 8.3 % while it corrects an offset), so a custom scheduler must not
+use them. Qualified on Azure E-series VMs (see [M1Evidence.md](../BTDB.Replication/M1Evidence.md)):
+
+- `maximumClockDriftPpm: 1000` covers the hardware counter against the service clock with a large reserve.
+- `safetyMargin` of at least 250 ms: a 15 s Azure lease was observed free as early as 14.997 s after its acquire was
+  dispatched and at most 15.06 s after it, and the Windows clock resolution must fit in the margin as well.
+- Do not run a node on a host that suspends (laptops, hibernating VMs): the raw clock stops during system suspend. A
+  hypervisor freeze of the whole VM may stop every guest clock. Neither can corrupt published history, because every
+  durable effect is conditional at the service; a frozen former leader only wastes requests until it fences. The HTTP endpoint must be an HTTPS origin without a path; HTTP is accepted only on
 loopback. The adapter maps `POST /_btdb/replication`. TLS certificates, routing and external authentication to Blob
 storage belong to the host. Do not log Authorization headers or raw leader JSON.
 
@@ -130,6 +143,66 @@ cursor for a genuinely new database; keep application input for that database st
 rechecks the supplied authority before writes/commit and updates `GetProgress` with the completed cut, including
 genesis or schema-only work. The coordinator publishes genesis/schema before serving as leader.
 
+### Application-owned event execution
+
+A minimal event loop, run identically on every node; `input` is the application's own ordered stream (an event store,
+a Kafka partition), and `progress` holds the latest `LeaderTrlProgress` that `GetProgress` returns:
+
+```csharp
+using (var read = db.StartReadOnlyTransaction())
+    input.Seek(read.GetCommitUlong() + 1); // Resume after the restored or last applied event.
+await foreach (var e in input.ReadAsync(cancellation))
+{
+    using (var tr = await db.StartWritingTransaction(e.Id))
+    {
+        Apply(tr, e); // Deterministic: every node must write the same bytes for the same event.
+        tr.Commit();
+    }
+    using var read = db.StartReadOnlyTransaction();
+    var cut = capture.Completed; // Complete local work, before the next transaction starts.
+    progress = new LeaderTrlProgress(read.GetCommitUlong(), cut.FileId, cut.Offset);
+}
+```
+
+Keep the loop running in every role, including `Activating`: a lease winner adopts published history only after its
+own execution reached it. External effects (messages, payments) are not coordinated by replication; drive them from
+application state idempotently, for example through an outbox that only the current leader drains.
+
+### Input retention and restarts
+
+- **Retain input** from the event after the oldest published `CommitUlong` any node may restore until that node has
+  caught up. A restoring node resumes after the published history and re-executes everything after it: the former
+  leader's unpublished tail plus everything that arrived during restore. Size retention above the worst publication lag
+  plus the longest restore and restart, and alert on publication lag well before it approaches retention.
+- **Restart on request.** `RequestRestart` and `IReplicationFatalRecovery.RequestFatalRestart` expect the supervisor
+  (for example the Kubernetes restart policy) to start a fresh process; the host stops its HTTP endpoint first. The
+  new process restores every required database before it contends for the lease.
+- **Keep the node-local directory** across restarts (a `hostPath` or persistent volume, not the container's temporary
+  directory), so a restart validates cached files instead of downloading them; a lost directory only makes the next
+  restore cold.
+- **Keep the deletion delay** (at least a day) far above the longest restore, and the TRL retention of the input
+  source above it too.
+
+### Recommended settings
+
+Values qualified by the subprocess tests on live Azure; measure restore and export times for the real database size.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Lease duration (`AzureLeaderStorage`) | 15 s | Azure minimum; takeover after a crash takes one lease plus activation. |
+| `maximumClockDriftPpm`, `safetyMargin` | 1000 ppm, 250 ms | See *Clock and lease settings*. |
+| `PollInterval` | 50–200 ms | Comparison latency against one small request per follower per interval. |
+| `LeaseRetryInterval` | 250 ms | Acquisition retries only; renewals schedule themselves within the lease. |
+| `RequestTimeout` | 2 s | Must be below half of the usable lease (validated when the first lease is acquired). |
+| `ConfirmationDuration` | 1 s | Planned handoff waits this long; must be below half of the usable lease (validated). |
+| Checkpoint interval (`ReplicationMaintenance`) | 1 h | Bounds TRL replay on restore; several times the KVI export time. |
+| Deletion delay | 1 day or more | Above the longest restore; late predecessor marks can never become due. |
+| `ProgressTimeouts` | activation above the longest restore, publication 2 min, `RestartDelay` 90 s | Restart replication work that stops moving. |
+
+A lease-dependent setting the lease cannot support (a margin consuming the whole lease, a `RequestTimeout` or
+`ConfirmationDuration` of half the usable lease or more) stops lease maintenance with `InvalidOperationException` when
+the first lease is acquired, instead of silently never holding authority or never issuing grants.
+
 ## Upgrades, schema detachment and leak events
 
 Set `PreparedUpgrade` only after the host has validated compatibility, bounded lag with retained replay input, and
@@ -177,9 +250,9 @@ when its background-failure policy is `Ignore`; the supervisor must implement pr
 Coordinator transitions, lease selection/activation, peer sessions, comparers and HTTP wire DTOs remain
 internal. The public surface provides application and provider integration, not independent election control.
 
-Still pending: production clock qualification, full readiness/metrics, broader network/process-pause/upgrade scenarios,
-broader lifecycle qualification, live-Azure/performance
-qualification and release packaging. Public accessibility does not mark replication production-ready.
+Still pending: qualification with a real application (ObjectDB state after rollback inside virtual batches, input
+replay and the schema lifecycle) and release packaging. Public accessibility does not mark replication
+production-ready.
 
 ## Readiness and progress
 
@@ -209,7 +282,13 @@ writes, confirmed-only reads or external effects. Samples update on coordinator 
 can make them stale. The application owns reader-visible progress and input lag reporting.
 
 The host-scoped `BTDB.Replication` meter exports `btdb.replication.ready` (0/1), `btdb.replication.role`
-(`ReplicationNodeRole` numeric value), and `btdb.replication.status.age` (seconds since the last sample).
+(`ReplicationNodeRole` numeric value), and `btdb.replication.status.age` (seconds since the last sample), plus the
+recovery counters that `ReplicationStatus` also exposes: `btdb.replication.restore.attempts`,
+`btdb.replication.restore.failures`, `btdb.replication.restore.duration` (seconds of the completed restore),
+`btdb.replication.leader.sessions`, `btdb.replication.leader.sessions.ended` and `btdb.replication.step.failures`.
+Useful alerts: not ready for longer than the restore budget, growing restore or step failures (an unreachable leader
+or storage), leader sessions ending while the process runs, a status age of more than a few seconds, and publication
+lag reported by the application.
 Instruments have no database/node/endpoint labels or credential values. Configure collection/export through the host's
 normal .NET metrics pipeline. No diagnostic HTTP endpoint is automatically exposed.
 
