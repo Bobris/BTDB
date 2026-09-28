@@ -184,6 +184,12 @@
 
 ### Fixed
 
+- Let a replication leader restored from Blob serve its restored history to followers before its first local
+  commit. Its capture reported no complete prefix, so every follower read failed until new input arrived and followers
+  could not compare or release their local TRLs. Found by the new seeded schedule exploration
+  (`RandomSchedulesKeepOneAuthorityAndConvergeOnOneHistory`). Hosts should report the restored cut from `GetProgress`
+  until their first local transaction.
+
 - Keep replication restores working while the leader publishes and cleans up. A restore failed with `412` whenever
   the leader appended to the selected TRL tail, or cleanup marked or unmarked a selected file, so under continuous
   publication or frequent checkpoints restores retried indefinitely. `CanonicalTrlInventory` now continues reading a

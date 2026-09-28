@@ -108,8 +108,10 @@ marks. PVL/KVI metadata consists only of SHA-256 and optional deletion deadlines
   `ReplicatedOpenDoesNotAppendBeyondAnUncleanOrSealedTail`); this defect was found by the process tests.
 - `RestartRecoveryTest`: with plain or compressed KVI and empty or corrupt cache, a fresh process state restores a
   checkpoint after obsolete TRLs (including genesis) are deleted, adopts a new term, publishes, and restores again.
-  Replacement checkpoints or tail appends landing after discovery make the stale attempt fail; a repeated
-  initialization/open selects the new state without mixing versions.
+  With a version-strict test adapter, replacement checkpoints or tail appends landing after discovery make the stale
+  attempt fail, and a repeated initialization/open selects the new state without mixing versions.
+  `CanonicalTrlInventory` and the Azure adapter instead continue from newer versions that keep the selected bytes
+  (`AppendedTailStillRestoresTheSelectedPrefixAndRediscoveryUsesTheNewHistory`, `AzureQualificationTest`).
 
 ## Checkpoints and remote maintenance
 
@@ -166,6 +168,15 @@ positive delays in virtual time.
   stale timeouts cannot override progress.
 
 ## Coordinator simulation
+
+`RandomSchedulesKeepOneAuthorityAndConvergeOnOneHistory` explores seeded whole-node schedules beyond the named cases:
+three real coordinators under virtual time, random input pacing, Blob outages, peer partitions, process pauses, slow
+Blob writes, node replacement by a cold restore, and per-seed TRL rotation and local compaction. After every step no
+two nodes may hold lease authority; after healing, the published history must reach the last input with the
+deterministic value of every event and every surviving node must converge and acknowledge its capture. CI runs seeds
+1–200; `BTDB_REPLICATION_EXPLORATION_SEEDS=first:count` widens the sweep (5000 seeds pass). Seed 1051 found that a
+leader restored from Blob served nothing to followers before its first local commit; its smallest schedule is kept as
+`LeaderRestoredFromBlobServesItsRestoredHistoryBeforeAnyLocalCommit`.
 
 `ReplicationNodeCoordinatorTest` runs up to three real BTDB nodes with the actual lease, selection, activation,
 publisher, comparison and maintenance components under virtual time. Applications execute transactions directly; the
@@ -280,7 +291,7 @@ with `BTDB_AZURE_BLOB_ENDPOINT` (each node then authenticates with `DefaultAzure
 - Physical disk faults: no torn-write, power-loss or disk-full model of a disk file collection; process tests kill,
   suspend or partition processes.
 - Production clock qualification: in-process tests use virtual time and process tests a Stopwatch-based scheduler.
-- Exhaustive interleavings: schedules are seeded and hand-chosen, not model-checked, and `HistoryOracle` is not
+- Exhaustive interleavings: schedules are seeded (random or hand-chosen), not model-checked, and `HistoryOracle` is not
   attached to coordinator or adapter runs.
 - Remote publication/deletion races beyond the held-request interleavings above, and remote orphan selection.
 - Production TLS/proxy deployment of the HTTP adapter.

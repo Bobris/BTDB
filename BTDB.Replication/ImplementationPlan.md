@@ -84,9 +84,10 @@ fences immediately and lets the lease expire.
 
 ## Remaining work
 
-1. **Proof closure (B1/B3/B5/B6).** Map existing tests to the blocker register and close only the blockers they
-   actually prove. Extend schedule/property exploration beyond the named deterministic cases; keep each smallest
-   failing schedule as a regression test.
+1. **Proof closure (B1/B3/B5/B6).** The blocker register links the qualifying tests. Seeded whole-node schedule
+   exploration (`RandomSchedulesKeepOneAuthorityAndConvergeOnOneHistory`) runs in CI; it found that a leader restored
+   from Blob could not serve followers before its first local commit (fixed, regression test kept). Remaining: the
+   open parts of B3, B5 and B6 in [Architecture.md](Architecture.md).
 2. **Clock qualification.** Done: `SystemReplicationScheduler` uses the unadjusted hardware counter, measured on Azure
    against NTP-adjusted clocks and the service lease; 1000 ppm and a 250 ms margin are the documented, validated
    settings ([M1Evidence.md](M1Evidence.md), [ReplicationHosting.md](../Doc/ReplicationHosting.md)).

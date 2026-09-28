@@ -12,9 +12,11 @@ namespace BTDB.Replication;
 /// The owner closes the endpoint before replacing the connection. Close may race with a read in progress: every
 /// read rechecks closure and authority after copying bytes, so a closed endpoint never returns them.
 /// Files are not pinned for peers: a missing retained range requires follower recovery, never a Blob fallback.
+/// Restored is the verified restored cut: capture reports only commits after open, so without it a leader restored
+/// from Blob could serve nothing until its next local transaction.
 /// </summary>
 internal sealed class LeaderTrlReader(BTreeKeyValueDB database, TransactionLogCapture capture,
-    LeaseAuthority authority) : ILeaderTrlReader
+    LeaseAuthority authority, TransactionLogPosition restored = default) : ILeaderTrlReader
 {
     volatile bool _closed;
 
@@ -27,7 +29,8 @@ internal sealed class LeaderTrlReader(BTreeKeyValueDB database, TransactionLogCa
         RequireAuthority();
         // Local writers may already have appended an unfinished transaction. Only complete captured bytes
         // are available to peers, even when the physical file is longer.
-        var end = capture.Completed;
+        var completed = capture.Completed;
+        var end = completed < restored ? restored : completed;
         if (fileId == 0 || fileId > end.FileId)
             throw new IOException("The requested TRL is beyond the complete leader prefix.");
         if (database.FileCollection.FileInfoByIdx(fileId) is not IFileTransactionLog)

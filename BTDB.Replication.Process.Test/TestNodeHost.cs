@@ -91,6 +91,13 @@ internal sealed class TestNodeHost(string endpoint, BlobContainerClient containe
             database.Objects = new ObjectDB();
             database.Objects.Open(database.Db, false, new DBOptions().WithoutAutoRegistrationOfRelations());
         }
+        if (restored)
+        {
+            // Until its first local transaction the restored cut is this node's complete local work.
+            var position = database.Db.ReplicationRestoredPosition;
+            using var read = database.Db.StartReadOnlyTransaction();
+            lock (database.ProgressLock) database.Progress = new(read.GetCommitUlong(), position.FileId, position.Offset);
+        }
         return new(database.Name, database.Db, database.Capture, database.Storage, Genesis,
             restored ? database.Db.ReplicationRestoredPosition : default, id => $"{id}.trl");
     }

@@ -42,7 +42,9 @@ public interface IReplicationNodeHost
     ValueTask<IReadOnlyList<ActivationDatabase>> RestoreAsync(CancellationToken cancellation);
     // Fresh identity/key per lease acquisition, with database names matching the restored set.
     LeaderCandidate CreateCandidate();
-    // Atomic snapshot supplied after complete local work, before starting the next application transaction.
+    // Atomic snapshot supplied after complete local work, before starting the next application transaction. After a
+    // restore and before the first local transaction, report the restored cut (its CommitUlong and
+    // BTreeKeyValueDB.ReplicationRestoredPosition): a leader without progress gives followers nothing to compare.
     LeaderTrlProgress? GetProgress(string database);
     void RequestRestart(string reason);
     void ReportStatus(ReplicationNodeRole role);

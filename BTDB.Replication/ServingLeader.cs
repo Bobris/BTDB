@@ -23,7 +23,7 @@ internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAutho
     readonly byte[] _apiKey = Encoding.UTF8.GetBytes(identity.ApiKey);
     readonly ConfirmationGrants _grants = new(scheduler, authority);
     readonly Dictionary<string, LeaderTrlReader> _readers = databases.ToDictionary(d => d.Name,
-        d => new LeaderTrlReader(d.Database, d.Capture, authority), StringComparer.Ordinal);
+        d => new LeaderTrlReader(d.Database, d.Capture, authority, d.RestoredBase), StringComparer.Ordinal);
     readonly Dictionary<string, (CanonicalTrlPublisher Publisher, TransactionLogCapture Capture)> _databases = databases
         .Select((d, i) => (d.Name, publishers[i], d.Capture))
         .ToDictionary(p => p.Name, p => (p.Item2, p.Capture), StringComparer.Ordinal);

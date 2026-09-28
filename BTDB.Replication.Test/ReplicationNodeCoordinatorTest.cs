@@ -14,7 +14,7 @@ using Fault = BTDB.Replication.Test.CanonicalTrlPublisherTest.Fault;
 
 namespace BTDB.Replication.Test;
 
-public class ReplicationNodeCoordinatorTest
+public partial class ReplicationNodeCoordinatorTest
 {
     sealed class Cluster : IAsyncDisposable
     {
@@ -294,13 +294,22 @@ public class ReplicationNodeCoordinatorTest
                 TransactionLogSizeStrategy = SmallLogs ? new SmallTransactionLogs() : null
             }, cancellation);
             if (!CoordinatesMain) return [];
+            // Until its first local transaction the restored cut is this node's complete local work.
+            using (var read = Db.StartReadOnlyTransaction())
+                lock (_progressLock) _progress = new(read.GetCommitUlong(), Db.ReplicationRestoredPosition.FileId,
+                    Db.ReplicationRestoredPosition.Offset);
             return [new("main", Db, Capture, Storage, new(Cluster.Genesis(1), 1),
                 Db.ReplicationRestoredPosition, id => $"{id}.trl")];
         }
         public LeaderCandidate CreateCandidate() => new("cluster", _name, $"{_name}-{++_session}", Generation,
             CoordinatesMain ? ["main"] : [], _name, $"secret-{_name}-{_session}");
         public LeaderTrlProgress? GetProgress(string database) { lock (_progressLock) return _progress; }
-        public void RequestRestart(string reason) => Restarts++;
+        public readonly List<string> RestartReasons = new();
+        public void RequestRestart(string reason)
+        {
+            Restarts++;
+            RestartReasons.Add(reason);
+        }
         public ReplicationMaintenance? CreateMaintenance(ActivationDatabase database, CanonicalTrlPublisher publisher, LeaseAuthority authority) =>
             FailCheckpoint || Maintain ? new(Db!, Collection!, publisher, Storage, authority, _scope,
                 TimeSpan.FromTicks(1000), TimeSpan.FromTicks(1000)) : null;
@@ -461,7 +470,7 @@ public class ReplicationNodeCoordinatorTest
         cluster.Advance(20);
         var previous = follower.Status.Current;
         Assert.True(previous.Ready);
-        Assert.Null(Assert.Single(previous.Databases).LocalCommitted);
+        Assert.Equal(1ul, Assert.Single(previous.Databases).LocalCommitted?.EventId); // The restored cut.
         cluster.Trls.Inject = _ => Fault.DelayEffect;
         await leader.Write(2, 2);
         await follower.Write(2, 2);
@@ -472,7 +481,7 @@ public class ReplicationNodeCoordinatorTest
         Assert.Equal(following.LocalCommitted, following.Compared);
         Assert.Null(following.Published); // Comparison says nothing about Blob durability.
         Assert.Equal(1ul, await cluster.RestoreEvent());
-        Assert.Null(Assert.Single(previous.Databases).LocalCommitted);
+        Assert.Equal(1ul, Assert.Single(previous.Databases).LocalCommitted?.EventId); // Snapshots stay immutable.
         cluster.Trls.Inject = null;
         cluster.Trls.CompleteDelayed();
         cluster.Advance(30);

@@ -133,7 +133,9 @@ The application owns the database and backing storage and disposes them only aft
 The application owns the ordered event stream and handler execution. All nodes apply the same inputs in the same
 order using `StartWritingTransaction(eventId)`. Local commits never wait for peers or Blob. Publish an atomic
 `LeaderTrlProgress` through `GetProgress` only after complete local work and before starting the next application
-transaction. This is a completed native cut, not a durability acknowledgement or proof of reader visibility during
+transaction. After a restore, report the restored cut (its `CommitUlong` and
+`BTreeKeyValueDB.ReplicationRestoredPosition`) until the first local transaction: a leader that reports no progress
+gives its followers nothing to compare, so they cannot advance or release their local history. This is a completed native cut, not a durability acknowledgement or proof of reader visibility during
 virtual batching. `ReportStatus` reports the node role, not a comprehensive readiness/lag signal.
 
 `CreateCandidate` must return fresh session and API-key values for each acquisition, with the configured cluster,
