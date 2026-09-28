@@ -150,7 +150,9 @@ an authority-bound `IReplicationStorage` (such as `AzureReplicationStorage`), sc
 positive deletion delay. The coordinator separately runs ordinary local `Compact` on every node every
 `CompactionInterval` (default five minutes). These callbacks run within the coordinator's serialized leader publication lane. The publisher is borrowed:
 do not dispose it, retain it for another leadership session or start a separate publication loop. The coordinator owns
-the returned maintenance job. Local compaction has separate lifetime/cancellation from remote publication.
+the returned maintenance job. Jobs of different databases run concurrently, so one long or failing checkpoint never
+delays the others; a shared `publishLeakEvent` callback may therefore be invoked concurrently for different databases.
+Local compaction has separate lifetime/cancellation from remote publication.
 
 `LeaseAuthority` is supplied by the coordinator. Applications/adapters may inspect its deadline/validity or fence it,
 but its constructor and renewal operations are internal. Fencing is permanent. Provider port implementations must

@@ -138,6 +138,37 @@ public class RemoteMaintenanceTest
     }
 
     [Fact]
+    public async Task FailingDatabaseDoesNotStarveMaintenanceOfTheOthers()
+    {
+        var clock = new DeterministicScheduler(906);
+        var authority = Lease(clock);
+        using var failingLocal = new InMemoryReplicationFileStorage();
+        using var healthyLocal = new InMemoryReplicationFileStorage();
+        var failingCapture = new TransactionLogCapture();
+        var healthyCapture = new TransactionLogCapture();
+        using var failingDb = await CheckpointPublisherTest.OpenForPublication(failingLocal, failingCapture);
+        using var healthyDb = await CheckpointPublisherTest.OpenForPublication(healthyLocal, healthyCapture);
+        await CheckpointPublisherTest.Populate(failingDb);
+        await CheckpointPublisherTest.Populate(healthyDb);
+        using var failingStorage = new Storage(authority, clock.CreateScope("failing"));
+        using var healthyStorage = new Storage(authority, clock.CreateScope("healthy"));
+        await using var failingFiles = new ReplicationFileSet(failingLocal, failingStorage);
+        await using var healthyFiles = new ReplicationFileSet(healthyLocal, healthyStorage);
+        using var failingCanonical = CheckpointPublisherTest.CreateCanonical(failingDb, failingCapture, failingStorage.Inner, authority);
+        using var healthyCanonical = CheckpointPublisherTest.CreateCanonical(healthyDb, healthyCapture, healthyStorage.Inner, authority);
+        using var failing = new ReplicationMaintenance(failingDb, failingFiles, failingCanonical, failingStorage, authority,
+            clock.CreateScope("failing-maintenance"), TimeSpan.FromTicks(1000), TimeSpan.FromTicks(1));
+        using var healthy = new ReplicationMaintenance(healthyDb, healthyFiles, healthyCanonical, healthyStorage, authority,
+            clock.CreateScope("healthy-maintenance"), TimeSpan.FromTicks(1000), TimeSpan.FromTicks(1));
+        failingStorage.Inner.FailKvi = true;
+
+        for (var retry = 0; retry < 2; retry++)
+            await Assert.ThrowsAsync<IOException>(() => ReplicationMaintenance.RunDueAsync([failing, healthy], default));
+        Assert.Equal(2, failingStorage.Inner.KviAttempts.Count);
+        Assert.Single(healthyStorage.Inner.KviAttempts);
+    }
+
+    [Fact]
     public async Task BlockedCheckpointCannotPreventDeadlineAndSuccessfulCycleLeavesNoIdleTimer()
     {
         var clock = new DeterministicScheduler(907);

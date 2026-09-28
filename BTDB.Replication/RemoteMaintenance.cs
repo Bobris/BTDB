@@ -127,6 +127,15 @@ public sealed class ReplicationMaintenance(BTreeKeyValueDB database, Replication
         }
     }
 
+    /// <summary>Run every database's due work concurrently: each has its own storage and lane, so one long or
+    /// repeatedly failing database cannot delay or starve the others. The first failure propagates after all end.</summary>
+    internal static Task RunDueAsync(IReadOnlyList<ReplicationMaintenance> jobs, CancellationToken cancellation)
+    {
+        var runs = new Task[jobs.Count];
+        for (var i = 0; i < runs.Length; i++) runs[i] = jobs[i].RunDueAsync(cancellation).AsTask();
+        return Task.WhenAll(runs);
+    }
+
     static (uint FileId, ulong Length)[] Sources(KeyIndexSnapshot snapshot) =>
         [(snapshot.TransactionLogFileId, snapshot.TransactionLogOffset), .. snapshot.Sources.Select(s => (s.FileId, s.Length))];
 

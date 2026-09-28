@@ -307,7 +307,7 @@ compatible databases but never lead again, even when every newer node is unavail
 
 A checkpoint is a native KVI plus the files it needs; there is no manifest, pointer or selection CAS.
 `ReplicationMaintenance` runs on the leader per database at a configured interval, on its own lane that never holds
-back canonical TRL publication:
+back canonical TRL publication or the maintenance of other databases:
 
 1. Capture a pinned `KeyIndexSnapshot`. If its TRL cut and source files equal the last published checkpoint, skip
    the export and only collect garbage.

@@ -346,7 +346,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 await finished.ConfigureAwait(false); // Failures use the ordinary step error handling.
             }
             if (_maintenanceRun == null && _remoteMaintenance.Count != 0 && authority.IsValid && _serving?.Handoff == null)
-                _maintenanceRun = RunMaintenanceAsync(_remoteMaintenance.ToArray(), authority, _remoteWork!.Token);
+                _maintenanceRun = ReplicationMaintenance.RunDueAsync(_remoteMaintenance.ToArray(), _remoteWork!.Token);
             Role = authority.IsValid ? ReplicationNodeRole.Leader : ReplicationNodeRole.Follower;
             return;
         }
@@ -459,16 +459,6 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             if (poll.Databases[i].Progress != null)
             { Restart("New database initialization is published; restore its fixed input cursor."); return false; }
         return true;
-    }
-
-    // Starts inline and continues independently of the transition lane after its first incomplete remote operation.
-    async Task RunMaintenanceAsync(ReplicationMaintenance[] jobs, LeaseAuthority authority, CancellationToken cancellation)
-    {
-        foreach (var job in jobs)
-        {
-            if (!authority.IsValid || Volatile.Read(ref _serving)?.Handoff != null) return;
-            await job.RunDueAsync(cancellation).ConfigureAwait(false);
-        }
     }
 
     async ValueTask PrepareDatabaseAsync(ActivationDatabase database, LeaseAuthority authority, CancellationToken cancellation)

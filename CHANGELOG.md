@@ -133,6 +133,10 @@
 
 ### Fixed
 
+- Run leader checkpoint maintenance of all databases concurrently. Previously the jobs ran in sequence and the first
+  failure ended the round, so a database whose checkpoint kept failing starved every later database of checkpoints and
+  remote cleanup, and one long upload delayed the others.
+
 - Detect follower divergence when a sealed leader TRL is shorter than the local file. Compare short reads immediately
   so different-length values cannot hide a byte mismatch behind an endlessly retried truncated-read error.
 
