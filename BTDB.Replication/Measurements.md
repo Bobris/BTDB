@@ -136,6 +136,21 @@ poll takes 85 µs and a poll carrying the full 4 MiB inline budget 1.2 ms, 3.4 G
 transport therefore adds far less than the network round trip and stays an order of magnitude above the publication
 rates measured above; between VMs, the round trip, not the HTTP stack, sets the cost of a follower step.
 
+## Several databases publishing at once
+
+`DBBenchmark replication multi --databases N` writes 4 KiB values into N leader databases concurrently, each
+publishing to its own prefix of the same account (E8ads_v5, on-disk local storage):
+
+| Databases | Data per database | Aggregate TRL publication | Per database |
+| ---: | ---: | ---: | ---: |
+| 1 | 2 GiB | 189 MiB/s | 189 MiB/s |
+| 4 | 2 GiB | 651 MiB/s | 163 MiB/s |
+| 1 | 1 GiB | 164 MiB/s | 164 MiB/s |
+| 8 | 1 GiB | 802 MiB/s | 100 MiB/s |
+
+Each database has its own publication lane, so publication scales with the number of databases until the VM's local
+disk (about 835 MB/s of writes on this size) becomes the limit; the storage account was not throttled.
+
 ## Restore from Azure Blob Storage
 
 The leader writes N × 4 KiB values, overwrites half of them at random, compacts until done, publishes a checkpoint
@@ -234,4 +249,4 @@ or beat v7 there, while v7 wins where the KVI load (CPU) dominates. A larger VM 
 - TLS and a real network between VMs on the HTTP peer path (loopback HTTP is measured above).
 - Multi-database contention and comparison while follower execution lags. (Planned handoff took about 1.2 s across
   processes on live Azure with a 1 s confirmation duration; see the subprocess tests.)
-- Publication throughput from more than one database at once, and storage account throttling limits.
+- Storage account throttling limits (not reached by eight databases on one VM).

@@ -426,8 +426,9 @@ publication, divergence, follower crash) passed. Observed:
 
 ### Open Azure work
 
-- Throttling, credential renewal and genuine network faults under production load. Throughput and the 100 GB startup
-  target are measured in [Measurements.md](Measurements.md).
+- Throttling and genuine network faults under production load. Credential renewal is qualified (a managed-identity
+  token refreshed on every renewal keeps one lease authority); throughput, eight concurrently publishing databases and
+  the 100 GB startup target are measured in [Measurements.md](Measurements.md).
 
 ## Amazon S3 (later research)
 

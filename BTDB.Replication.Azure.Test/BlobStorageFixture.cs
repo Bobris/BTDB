@@ -78,13 +78,15 @@ public sealed class BlobStorageFixture : IAsyncLifetime
         return container;
     }
 
-    /// <summary>Another client of an existing container, as a separate node with its own request faults sees it.</summary>
-    internal BlobContainerClient Connect(string container, HttpPipelinePolicy? policy = null)
+    /// <summary>Another client of an existing container, as a separate node with its own request faults sees it.
+    /// On live Azure, wrapCredential can replace the node's token credential (for example to force token refreshes).</summary>
+    internal BlobContainerClient Connect(string container, HttpPipelinePolicy? policy = null,
+        Func<TokenCredential, TokenCredential>? wrapCredential = null)
     {
         var options = new BlobClientOptions();
         options.Retry.MaxRetries = 0;
         if (policy != null) options.AddPolicy(policy, HttpPipelinePosition.PerCall);
-        var service = _live != null ? new BlobServiceClient(_endpoint, _live, options)
+        var service = _live != null ? new BlobServiceClient(_endpoint, wrapCredential?.Invoke(_live) ?? _live, options)
             : new BlobServiceClient(_endpoint, _credential, options);
         return service.GetBlobContainerClient(container);
     }

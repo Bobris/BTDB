@@ -132,6 +132,48 @@ public class AzureQualificationTest(BlobStorageFixture fixture, ITestOutputHelpe
         return (acquireReplyDelay, lastRejected - dispatched, released - dispatched);
     }
 
+    /// <summary>Hands out tokens that look almost expired, so the SDK acquires a fresh token for nearly every request:
+    /// what renewals see around every managed-identity token refresh, compressed into one lease period.</summary>
+    sealed class ShortLivedTokens(TokenCredential inner) : TokenCredential
+    {
+        public int Acquisitions;
+        public override AccessToken GetToken(TokenRequestContext context, CancellationToken cancellation) =>
+            Shorten(inner.GetToken(context, cancellation));
+        public override async ValueTask<AccessToken> GetTokenAsync(TokenRequestContext context, CancellationToken cancellation) =>
+            Shorten(await inner.GetTokenAsync(context, cancellation));
+        AccessToken Shorten(AccessToken token)
+        {
+            Interlocked.Increment(ref Acquisitions);
+            return new(token.Token, DateTimeOffset.UtcNow.AddSeconds(30));
+        }
+    }
+
+    /// <summary>Live Azure only: lease renewals keep one authority for several lease periods while the SDK refreshes
+    /// the managed-identity token continuously on the renewal path.</summary>
+    [Fact]
+    public async Task LeaseAuthoritySurvivesContinuousTokenRefresh()
+    {
+        if (!fixture.IsLive) return;
+        var created = await fixture.ContainerAsync();
+        ShortLivedTokens? tokens = null;
+        var container = fixture.Connect(created.Name, wrapCredential: inner => tokens = new(inner));
+        var storage = new AzureLeaderStorage(container.GetBlobClient("leader.json"), LeaseDuration, Initial);
+        var leases = new LeaseSessionController(storage, new SystemReplicationScheduler(), DriftPpm, Margin);
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(50));
+        LeaseAuthority? first = null;
+        var lost = false;
+        var run = leases.RunAsync(TimeSpan.FromMilliseconds(250), current =>
+        {
+            if (first == null) first = current;
+            else if (!ReferenceEquals(first, current)) lost = true;
+        }, stop.Token, TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+        Assert.NotNull(first);
+        Assert.False(lost, "Lease authority changed while tokens were refreshed.");
+        output.WriteLine($"{tokens!.Acquisitions} token acquisitions during about 3 lease periods");
+        Assert.True(tokens.Acquisitions > 3);
+    }
+
     /// <summary>B5 stale in-flight requests: a leader dispatches a TRL append, a renewal and an application-data
     /// write while its authority is valid, then stalls past lease expiry. A successor acquires, selects and adopts;
     /// every delayed request then reaches Azure and is rejected by its lease or ETag condition.</summary>

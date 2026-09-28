@@ -97,7 +97,9 @@ fences immediately and lets the lease expire.
    and restore retry after deletion) and the subprocess failover suite pass against a live account from an Azure VM
    ([Testing.md](Testing.md), [ObjectStorages.md](ObjectStorages.md)). It found that a restore overlapping publication
    or cleanup failed on every changed version, and that a checkpoint published between TRL discovery and the PVL/KVI
-   listing could open with missing values; both are fixed. Remaining: throttling and credential renewal under load.
+   listing could open with missing values; both are fixed. A managed-identity token refreshed on every renewal keeps
+   one lease authority (`LeaseAuthoritySurvivesContinuousTokenRefresh`); throttling is handled by retryable I/O
+   (injected `503`) and was not reached by eight databases publishing from one VM.
 4. **Process scenarios.** Done: subprocess tests cover planned upgrade handoff, storage and peer partitions of a
    leader or follower, a kill during restore and partial multi-database activation, in addition to leader kill,
    `SIGSTOP`, stalled publication, divergence, follower crash and a sample ObjectDB application with schema upgrades;
@@ -109,8 +111,8 @@ fences immediately and lets the lease expire.
    node-local storage, sealed-TRL checksums, a 4 MiB poll budget and concurrent TRL staging. With production file
    sizes (2 GiB PVL, 1 GiB/4 GiB TRL) 30 GiB restore cold in 83–156 s on v4–v7. Loopback HTTP peer cost (223 µs per empty poll, 2.6 ms per 4 MiB
    inline poll on E8ads_v5) and planned handoff (about 1.2 s) are measured too, and operational defaults are documented in
-   [ReplicationHosting.md](../Doc/ReplicationHosting.md). Remaining: warm-restore validation reads the whole cache, and
-   multi-database publication throughput and TLS between VMs are unmeasured.
+   [ReplicationHosting.md](../Doc/ReplicationHosting.md). Eight databases publish 802 MiB/s together, limited by the local disk. Remaining,
+   within the startup target: warm-restore validation reads the whole cache; TLS between VMs is unmeasured.
 6. **Operations.** Done: recovery counters in `ReplicationStatus` and the `BTDB.Replication` meter (restore attempts,
    failures and duration, leader sessions started and ended, failed steps), validation of lease-dependent settings
    when the first lease is acquired, and host guidance for application-owned event execution, input retention,

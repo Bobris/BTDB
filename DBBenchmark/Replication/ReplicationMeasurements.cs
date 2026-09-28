@@ -39,6 +39,7 @@ static class ReplicationMeasurements
         public int InlineKb = 1024;
         public int TrlSoftMb, TrlHardMb;
         public int Seconds = 600;
+        public int Databases = 4;
     }
 
     public static async Task RunAsync(string[] args)
@@ -60,6 +61,7 @@ static class ReplicationMeasurements
         if (what is "compare" or "all") await CompareAsync(options);
         if (what is "restore" or "all") await RestoreAsync(options);
         if (what is "clock") await ClockMeasurement.RunAsync(options.Seconds);
+        if (what is "multi") await MultiPublishAsync(options);
     }
 
     static Options Parse(string[] args)
@@ -79,6 +81,7 @@ static class ReplicationMeasurements
                 case "--dataset-mb": options.DatasetMb = Next(); break;
                 case "--memory": options.OnDisk = false; break;
                 case "--seconds": options.Seconds = Next(); break;
+                case "--databases": options.Databases = Next(); break;
                 case "--split-mb": options.SplitMb = Next(); break;
                 case "--readers": options.Readers = Next(); break;
                 case "--downloads": options.Downloads = Next(); break;
@@ -459,6 +462,49 @@ static class ReplicationMeasurements
             if (result != TrlPublishResult.Pending || attempt == 10) throw new InvalidOperationException($"Publication ended with {result}.");
             Console.WriteLine("  publication pending, retrying");
             await Task.Delay(1000);
+        }
+    }
+
+    /// Aggregate TRL publication of one and then --databases leader databases writing and publishing concurrently, each
+    /// to its own prefix of the Azure account (or in memory): every database has its own serialized canonical lane.
+    static async Task MultiPublishAsync(Options options)
+    {
+        var valueSize = options.RestoreValueSize ?? 4096;
+        var values = checked((int)((long)options.DatasetMb * 1024 * 1024 / valueSize));
+        var container = options.Account == null ? null : new Azure.Storage.Blobs.BlobServiceClient(
+                new Uri($"https://{options.Account}.blob.core.windows.net"), new Azure.Identity.DefaultAzureCredential())
+            .GetBlobContainerClient(options.Container);
+        if (container != null) await container.CreateIfNotExistsAsync();
+        Console.WriteLine();
+        Console.WriteLine($"## Multi-database publication: {values} x {valueSize} B values per database, " +
+                          (container == null ? "in-memory remote" : $"Azure Blob {options.Account}/{options.Container}"));
+        foreach (var count in new[] { 1, options.Databases }.Distinct())
+        {
+            var run = "multi-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-" +
+                      Guid.NewGuid().ToString("N")[..6];
+            var started = Stopwatch.GetTimestamp();
+            var bytes = await Task.WhenAll(Enumerable.Range(0, count).Select(i => Task.Run(async () =>
+            {
+                using var memory = new BenchmarkReplicationStorage(TimeSpan.FromMilliseconds(options.LatencyMs));
+                IReplicationStorage remote = container == null ? memory
+                    : new BTDB.Replication.Azure.AzureReplicationStorage(container, $"{run}-{i}");
+                using var empty = new BenchmarkReplicationStorage();
+                await using var leader = await Node.Replicated(options.OnDisk, empty);
+                using var publisher = new CanonicalTrlPublisher(leader.Db, leader.Capture!, remote,
+                    StopwatchScheduler.Authority(), 1, TrlFileName.Key);
+                var value = new byte[valueSize];
+                new Random(i).NextBytes(value);
+                for (ulong id = 1; id <= (ulong)values; id++)
+                {
+                    await leader.WriteAsync(id, value);
+                    if (id % 4096 == 0) await PublishAsync(publisher);
+                }
+                await PublishAsync(publisher);
+                return leader.LocalTrlBytes(0);
+            })));
+            var seconds = (Stopwatch.GetTimestamp() - started) / (double)Stopwatch.Frequency;
+            Console.WriteLine($"- {count} database(s): {Mb(bytes.Sum())} written and published in {seconds:F1} s, " +
+                              $"{bytes.Sum() / 1048576.0 / seconds:F0} MiB/s aggregate, {bytes.Sum() / 1048576.0 / seconds / count:F0} MiB/s per database");
         }
     }
 

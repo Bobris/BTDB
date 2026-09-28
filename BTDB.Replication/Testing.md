@@ -235,7 +235,9 @@ own appends), `SmallTrlAppendsStageOnlyTheirSuffixAndMergeTrailingBlocksOccasion
 [ObjectStorages.md](ObjectStorages.md). A pipeline policy holds requests after dispatch or delays replies:
 
 - `LocalLeaseDeadlineEndsWhileTheServiceStillHoldsTheLease` polls a competing acquire and prints how long the service
-  kept each lease, with and without a delayed acquire reply (B1).
+  kept each lease, with and without a delayed acquire reply (B1). `LeaseAuthoritySurvivesContinuousTokenRefresh` (live
+  only) renews for three lease periods while the SDK refreshes a short-lived managed-identity token on nearly every
+  request.
 - `DelayedPredecessorRequestsAreRejectedAfterTakeover`, `StalePureValuesUploadFencesWhicheverSessionLandsSecond` and
   `DelayedPredecessorCleanupCannotDeleteAFileTheSuccessorProtects` deliver a predecessor's in-flight append, renewal,
   leader-record write, PVL commit, delete and mark after a successor took over (B5).
