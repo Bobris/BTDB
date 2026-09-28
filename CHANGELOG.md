@@ -29,6 +29,15 @@
 
 ### Changed
 
+- Replicated `OpenAsync` loads the KVI (typically a fifth to a third of the database) while it downloads, or while a
+  parallel task computes its SHA-256 for a cached copy, and accepts the load only after that verification; a cached
+  copy that fails is discarded and the downloaded KVI loads instead. The TRLs it replays prefetch as soon as its header
+  is read and each referenced file as soon as the load reaches it. `ReplicationFileSet.InitializeAsync` no longer
+  hashes the cache: it removes only candidates ruled out by metadata, the first prefetch verifies the rest, and
+  `GetFile` hides unverified cached copies. Measured on a KVI-heavy 10 GiB database: cold restore 28–31 % and warm
+  23–25 % faster. Add `IStreamingFileRead`, `IFileReplicatedCollection.StartStreamingRead` and
+  `IFileReplicatedCollection.DiscardLocalFile` (removes an unused file's local copy even when unverified).
+
 - `AzureReplicationStorage` stages up to four TRL blocks at once; staging one block at a time capped canonical TRL
   publication at about 110 MiB/s on Azure.
 

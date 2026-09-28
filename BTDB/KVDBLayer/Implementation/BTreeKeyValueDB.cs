@@ -477,6 +477,16 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         var firstTrLogOffset = 0u;
         var hasKeyIndex = false;
         var selectedKeyIndexId = 0u;
+        // A KVI is typically a fifth to a third of the database: download (cold) or validate (warm) the TRLs it
+        // replays and every file it references while it loads, instead of after it. Shared with later prefetches.
+        var prefetching = new HashSet<uint>();
+        var prefetches = new List<Task>();
+        // On the thread pool: a collection may validate a cached copy synchronously, which must not stall the load.
+        void StartPrefetch(uint fileId)
+        {
+            if (prefetching.Add(fileId))
+                prefetches.Add(Task.Run(() => files.PrefetchAsync(fileId, cancellation).AsTask(), cancellation));
+        }
         try
         {
             foreach (var id in keyIndexIds)
@@ -487,11 +497,31 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                     continue;
                 }
                 if (info.TrLogFileId != 0 && !allTrlIds.Contains(info.TrLogFileId)) continue;
-                await files.PrefetchAsync(id, cancellation).ConfigureAwait(false);
+                // The KVI starts first so it never queues behind the TRL prefetches in the collection's transfer
+                // bound. Streaming loads it while it downloads (cold) or while its checksum runs (warm).
+                var streaming = files.StartStreamingRead(id, cancellation);
+                var keyIndexPrefetch = streaming == null ? files.PrefetchAsync(id, cancellation).AsTask() : null;
+                if (info.TrLogFileId != 0)
+                    foreach (var trlId in allTrlIds)
+                        if (trlId >= info.TrLogFileId) StartPrefetch(trlId);
+                if (keyIndexPrefetch != null) await keyIndexPrefetch.ConfigureAwait(false);
                 _nextRoot = _lastCommitted.CreateWritableTransaction();
                 try
                 {
-                    if (!LoadKeyIndex(id, info, out var usedFileIds))
+                    var loaded = LoadKeyIndex(id, info, out var usedFileIds, StartPrefetch, streaming);
+                    if (streaming != null && !await streaming.CompleteAsync(cancellation).ConfigureAwait(false))
+                    {
+                        // A cached copy failed its checksum after loading: load the downloaded file instead.
+                        streaming.Dispose();
+                        streaming = null;
+                        _nextRoot.Dispose();
+                        _nextRoot = _lastCommitted.CreateWritableTransaction();
+                        await files.PrefetchAsync(id, cancellation).ConfigureAwait(false);
+                        loaded = LoadKeyIndex(id, info, out usedFileIds, StartPrefetch);
+                    }
+                    streaming?.Dispose();
+                    streaming = null;
+                    if (!loaded)
                     {
                         files.MakeIdxUnknown(id);
                         continue;
@@ -517,6 +547,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
                 finally
                 {
+                    streaming?.Dispose();
                     if (_nextRoot != null)
                     {
                         _nextRoot.Dispose();
@@ -552,6 +583,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             var prefetchIds = keyIndexReferences?.ToArray() ?? files.FileIdsOfType(KVFileType.TransactionLog).ToArray();
             await Task.WhenAll(prefetchIds.Select(id => files.PrefetchAsync(id, cancellation).AsTask()))
                 .ConfigureAwait(false);
+            // Early prefetches for a rejected KVI candidate are not required; only observe them.
+            foreach (var prefetch in prefetches) await prefetch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             if (!_readOnly)
             {
                 var tail = _fileIdWithTransactionLog != 0 ? _fileIdWithTransactionLog : _fileIdWithPreviousTransactionLog;
@@ -568,6 +601,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 _fileCollection.DeleteAllUnknownFiles();
             }
             ReplicationRestoredPosition = new(_lastCommitted.TrLogFileId, _lastCommitted.TrLogOffset);
+        }
+        catch
+        {
+            // A failed open leaves no prefetch it started running or starting afterwards: a late one could otherwise
+            // begin a new download attempt after the caller has already seen the failure.
+            foreach (var prefetch in prefetches) await prefetch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            throw;
         }
         finally
         {
@@ -739,15 +779,27 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         catch (Exception) { return false; }
     }
 
-    bool LoadKeyIndex(uint fileId, IKeyIndex info, out HashSet<uint> usedFileIds)
+    bool LoadKeyIndex(uint fileId, IKeyIndex info, out HashSet<uint> usedFileIds, Action<uint>? referenced = null,
+        IStreamingFileRead? streaming = null)
     {
         var replicatedFiles = FileCollection as LazyFileCollectionWithFileInfos;
         var referencedFiles = new HashSet<uint>();
         usedFileIds = referencedFiles;
         try
         {
-            var file = FileCollection.GetFile(fileId);
-            var readerController = file!.GetExclusiveReader();
+            IMemReader readerController;
+            ulong fileSize;
+            if (streaming != null)
+            {
+                readerController = streaming.Reader;
+                fileSize = streaming.Length;
+            }
+            else
+            {
+                var file = FileCollection.GetFile(fileId);
+                readerController = file!.GetExclusiveReader();
+                fileSize = file.GetSize();
+            }
             var reader = new MemReader(readerController);
             FileKeyIndex.SkipHeader(ref reader);
             var keyCount = info.KeyValueCount;
@@ -778,7 +830,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                         var vFileId = reader2.ReadVUInt32();
                         if (vFileId != 0 && replicatedFiles != null)
                             vFileId = replicatedFiles.GetLocalFileId(vFileId);
-                        if (vFileId > 0) referencedFiles.Add(vFileId);
+                        if (vFileId > 0 && referencedFiles.Add(vFileId)) referenced?.Invoke(vFileId);
                         MemoryMarshal.Write(trueValue, vFileId);
                         var valueOfs = reader2.ReadVUInt32();
                         var valueSize = reader2.ReadVInt32();
@@ -842,7 +894,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                             var vFileId = reader2.ReadVUInt32();
                             if (vFileId != 0 && replicatedFiles != null)
                                 vFileId = replicatedFiles.GetLocalFileId(vFileId);
-                            if (vFileId > 0) referencedFiles.Add(vFileId);
+                            if (vFileId > 0 && referencedFiles.Add(vFileId)) referenced?.Invoke(vFileId);
                             trueValue.Clear();
                             MemoryMarshal.Write(trueValue, vFileId);
                             var valueOfs = reader2.ReadVUInt32();
@@ -893,7 +945,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
             }
 
-            return TestKviMagicEndMarker(fileId, ref reader, file);
+            return TestKviMagicEndMarker(fileId, ref reader, fileSize);
         }
         catch (Exception)
         {
@@ -901,10 +953,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    bool TestKviMagicEndMarker(uint fileId, ref MemReader reader, IFileCollectionFile file)
+    bool TestKviMagicEndMarker(uint fileId, ref MemReader reader, IFileCollectionFile file) =>
+        TestKviMagicEndMarker(fileId, ref reader, file.GetSize());
+
+    bool TestKviMagicEndMarker(uint fileId, ref MemReader reader, ulong fileSize)
     {
         if (reader.Eof) return true;
-        if ((ulong)reader.GetCurrentPosition() + 4 == file.GetSize() &&
+        if ((ulong)reader.GetCurrentPosition() + 4 == fileSize &&
             reader.ReadInt32BE() == EndOfIndexFileMarker) return true;
         if (_lenientOpen)
         {

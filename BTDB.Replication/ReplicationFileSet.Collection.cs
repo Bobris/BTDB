@@ -3,7 +3,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,23 +61,14 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
                 if (!inventory.ContainsKey(localFile.Index))
                     DiscardCachedFile(localFile, "no corresponding file in the remote inventory");
             }
-            // Whole-file hashing dominates a warm start: hash cached files in parallel within the download bound, then
-            // apply the results in order. A single candidate is validated inline on the calling thread.
-            var cached = inventory.Values.Select(file => (File: file, Candidate: Local.GetFile(file.Index)))
-                .Where(pair => pair.Candidate != null).ToArray();
-            var reasons = new string?[cached.Length];
-            try
+            // Cheap metadata discards what can never be reused (another type or length, an active remote file, no
+            // checksum). The whole-file checksum runs on the first prefetch instead: a warm open then validates the
+            // files a KVI needs while the KVI loads, and never hashes cached files it does not use.
+            foreach (var file in inventory.Values)
             {
-                Parallel.For(0, cached.Length, new ParallelOptions
-                {
-                    MaxDegreeOfParallelism = maxConcurrentDownloads, CancellationToken = linked.Token
-                }, i => ValidateCachedFile(cached[i].Candidate!, cached[i].File.Selected, linked.Token, out reasons[i]));
-            }
-            catch (AggregateException error) { ExceptionDispatchInfo.Throw(error.InnerExceptions[0]); }
-            for (var i = 0; i < cached.Length; i++)
-            {
-                if (reasons[i] == null) cached[i].File.UseValidatedLocal(cached[i].Candidate!);
-                else DiscardCachedFile(cached[i].Candidate!, reasons[i]!, cached[i].File.Index);
+                linked.Token.ThrowIfCancellationRequested();
+                if (Local.GetFile(file.Index) is { } candidate && CachedFileMismatch(candidate, file.Selected) is { } reason)
+                    DiscardCachedFile(candidate, reason, file.Index);
             }
             // Publish the inventory only once complete: a failed attempt must not leave a partial or stale listing.
             _remoteFiles = inventory;
@@ -103,6 +93,13 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
 
     bool OwnsSource(KeyIndexFileSource source) => ReferenceEquals(Local.GetFile(source.FileId), source.File);
 
+    public IStreamingFileRead? StartStreamingRead(uint fileId, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        EnsureInitialized();
+        return _remoteFiles.TryGetValue(fileId, out var file) ? file.StartStreamingRead(cancellation) : null;
+    }
+
     public async ValueTask PrefetchAsync(uint fileId, CancellationToken cancellation = default)
     {
         cancellation.ThrowIfCancellationRequested();
@@ -125,9 +122,13 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         if (!_remoteFiles.TryGetValue(fileId, out var file))
             return FileCollectionWithFileInfos.ReadFileInfo(Local.GetFile(fileId) ??
                 throw new FileNotFoundException($"File {fileId} is not in either inventory."));
-        // Initialization verified the cached copy, or prefetch downloaded this exact selected version.
-        // Reuse its header rather than issuing another range request for every cached file.
+        // Prefetch verified the cached copy or downloaded this exact selected version: reuse its header rather than
+        // issuing another range request. An unverified cached copy is verified first; the database reads only the
+        // headers of files it needs (the chosen KVI and the TRLs it replays), so no checksum is wasted.
         if (file.GetCachedLocal() is { } local) return FileCollectionWithFileInfos.ReadFileInfo(local);
+        // A cached KVI is verified while it loads (StartStreamingRead), so read its header remotely instead.
+        if (Local.GetFile(fileId) != null && FileExtension(file.Selected.FileType) != "kvi")
+            return FileCollectionWithFileInfos.ReadFileInfo(await file.GetLocalAsync(cancellation).ConfigureAwait(false));
         var selected = file.Selected;
 
         // Headers are variable length (KVI Ulong metadata in particular). Grow only when parsing needs more bytes.
@@ -169,7 +170,10 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         return _remoteFiles.Values;
     }
 
-    public IFileCollectionFile GetFile(uint index) => Local.GetFile(index);
+    // A selected remote file is visible only once prefetch verified or downloaded it: an unverified cached copy or a
+    // download in progress looks missing, so no reader can see bytes that are not the selected version.
+    public IFileCollectionFile GetFile(uint index) =>
+        _remoteFiles.TryGetValue(index, out var remote) && !remote.IsLocalReady ? null! : Local.GetFile(index);
     public uint GetCount() => Local.GetCount();
     public IEnumerable<IFileCollectionFile> Enumerate() => Local.Enumerate();
     public void ConcurrentTemporaryTruncate(uint index, uint offset) => Local.ConcurrentTemporaryTruncate(index, offset);
@@ -183,6 +187,8 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         Local.GetFile(fileId)?.Remove();
         _remoteFiles.Remove(fileId);
     }
+
+    public void DiscardLocalFile(uint fileId) => Local.GetFile(fileId)?.Remove();
 
     public IFileCollectionFile CreateTransactionLogFile(uint fileId)
     {
@@ -253,23 +259,37 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         }
     }
 
-    async Task<IFileCollectionFile> PopulateCacheAsync(RemoteFile selected)
+    async Task<IFileCollectionFile> PopulateCacheAsync(RemoteFile selected, DownloadProgress? progress = null)
     {
-        await _downloads.WaitAsync(_lifetime.Token).ConfigureAwait(false);
         try
         {
-            // Cached bytes live only under the remote ID; another local file is never searched for a copy.
-            var id = selected.FileId;
-            if (GetLocalFileId(id) is var localId && localId != id)
-                throw new InvalidOperationException($"Remote file {id} is mapped to local file {localId} this session and is not downloaded again.");
-            if (Local.GetFile(id) is { } candidate)
+            await _downloads.WaitAsync(_lifetime.Token).ConfigureAwait(false);
+            try
             {
-                if (ValidateCachedFile(candidate, selected, _lifetime.Token, out var reason)) return candidate;
-                DiscardCachedFile(candidate, reason!, selected.FileId);
+                // Cached bytes live only under the remote ID; another local file is never searched for a copy.
+                var id = selected.FileId;
+                if (GetLocalFileId(id) is var localId && localId != id)
+                    throw new InvalidOperationException($"Remote file {id} is mapped to local file {localId} this session and is not downloaded again.");
+                if (Local.GetFile(id) is { } candidate)
+                {
+                    if (ValidateCachedFile(candidate, selected, _lifetime.Token, out var reason))
+                    {
+                        progress?.Finish(candidate, (long)selected.Length);
+                        return candidate;
+                    }
+                    DiscardCachedFile(candidate, reason!, selected.FileId);
+                }
+                var downloaded = await DownloadAsync(selected, _lifetime.Token, progress).ConfigureAwait(false);
+                progress?.Finish(downloaded, (long)selected.Length);
+                return downloaded;
             }
-            return await DownloadAsync(selected, _lifetime.Token).ConfigureAwait(false);
+            finally { _downloads.Release(); }
         }
-        finally { _downloads.Release(); }
+        catch (Exception error)
+        {
+            progress?.Fail(error);
+            throw;
+        }
     }
 
     void DiscardCachedFile(IFileCollectionFile candidate, string reason, uint? remoteId = null)
@@ -294,33 +314,25 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         _ => "<unknown>"
     };
 
-    bool ValidateCachedFile(IFileCollectionFile candidate, RemoteFile selected, CancellationToken cancellation,
-        out string? reason)
+    // Metadata that rules a cached copy out without reading its bytes; null when only the checksum can decide.
+    string? CachedFileMismatch(IFileCollectionFile candidate, RemoteFile selected)
     {
         var localExtension = FileExtension(Local.GetFileType(candidate.Index));
         var remoteExtension = FileExtension(selected.FileType);
         if (localExtension != remoteExtension || localExtension == "<unknown>")
-        {
-            reason = $"extension mismatch (local .{localExtension}, remote .{remoteExtension})";
-            return false;
-        }
-        // Check cheap metadata before reading any local bytes.
+            return $"extension mismatch (local .{localExtension}, remote .{remoteExtension})";
         var length = candidate.GetSize();
-        if (length != selected.Length)
-        {
-            reason = $"length mismatch (local {length}, remote {selected.Length})";
-            return false;
-        }
-        if (!selected.IsSealed)
-        {
-            reason = "remote file is active and cannot reuse cached bytes";
-            return false;
-        }
-        if (selected.Sha256 is null)
-        {
-            reason = "remote SHA-256 metadata is missing";
-            return false;
-        }
+        if (length != selected.Length) return $"length mismatch (local {length}, remote {selected.Length})";
+        if (!selected.IsSealed) return "remote file is active and cannot reuse cached bytes";
+        if (selected.Sha256 is null) return "remote SHA-256 metadata is missing";
+        return null;
+    }
+
+    bool ValidateCachedFile(IFileCollectionFile candidate, RemoteFile selected, CancellationToken cancellation,
+        out string? reason)
+    {
+        reason = CachedFileMismatch(candidate, selected);
+        if (reason != null) return false;
         try { VerifyLocalChecksum(candidate, selected, cancellation); }
         catch (IOException error)
         {
@@ -389,7 +401,14 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
             Index = selected.FileId;
         }
 
-        internal void UseValidatedLocal(IFileCollectionFile local) => _local = local;
+        internal void UseValidatedLocal(IFileCollectionFile local)
+        {
+            _local = local;
+            IsLocalReady = true;
+        }
+
+        // Set once a verified or downloaded local copy exists; it stays set while that copy is in use.
+        internal volatile bool IsLocalReady;
 
         internal IFileCollectionFile? GetCachedLocal()
         {
@@ -398,6 +417,34 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         }
 
         internal Task<IFileCollectionFile>? Pending { get { lock (_lock) return _pending; } }
+
+        // Null when a verified copy or a prefetch already exists, or a cached copy is ruled out by metadata.
+        internal IStreamingFileRead? StartStreamingRead(CancellationToken cancellation)
+        {
+            lock (_lock)
+            {
+                ObjectDisposedException.ThrowIf(_owner._disposed, this);
+                if (_local != null && ReferenceEquals(_owner.Local.GetFile(Index), _local)) return null;
+                if (_pending is { IsFaulted: false, IsCanceled: false }) return null;
+                if (_owner.Local.GetFile(Index) is { } candidate)
+                    return _owner.CachedFileMismatch(candidate, Selected) == null
+                        ? new CachedStreamingRead(_owner, this, candidate, cancellation) : null;
+                var progress = new DownloadProgress();
+                _pending = _owner.PopulateCacheAsync(Selected, progress);
+                return new DownloadingStreamingRead(this, progress, cancellation);
+            }
+        }
+
+        // A streamed cached copy passed its checksum.
+        internal void AcceptVerified(IFileCollectionFile local)
+        {
+            lock (_lock)
+            {
+                if (!ReferenceEquals(_owner.Local.GetFile(Index), local)) return;
+                _local = local;
+                IsLocalReady = true;
+            }
+        }
 
         internal async ValueTask<IFileCollectionFile> GetLocalAsync(CancellationToken cancellation)
         {
@@ -409,6 +456,7 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
                 if (_local != null)
                 {
                     if (ReferenceEquals(_owner.Local.GetFile(_local.Index), _local)) return _local;
+                    IsLocalReady = false;
                     _local = null;
                     _pending = null;
                 }
@@ -420,6 +468,7 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
             lock (_lock)
             {
                 ObjectDisposedException.ThrowIf(_owner._disposed, this);
+                IsLocalReady = true;
                 return _local = local;
             }
         }

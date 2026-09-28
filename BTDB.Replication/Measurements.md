@@ -176,6 +176,36 @@ references 48.2 GiB of TRL, and restore downloads all of it:
 - Extrapolated to 100 GiB of data in this shape (about 160 GiB of TRL), a cold restore takes about 5–9 minutes on
   these VMs.
 
+### KVI-heavy database
+
+Real databases have a KVI of about 20–30 % of their size. This dataset uses 64 B keys (pseudo-random after the ID, so
+prefix compression cannot shrink them) and 200 B values: 10 GiB of data, 53.7 million keys, a 3.3 GiB KVI, 7.2 GiB of
+PVL and 21.9 GiB of TRL, of which a restore downloads 16.4 GiB (`--dataset-mb 10240 --value 200 --key-bytes 64` with
+the production file sizes above). Each VM restored its own published copy with the current code and with the
+libraries of the previous commit (`--reuse-prefix`), twice each; means of both rounds:
+
+| VM | Cold, KVI streamed | Cold, before | Warm, KVI hashed while loading | Warm, before |
+| --- | ---: | ---: | ---: | ---: |
+| E8as_v4 | 73.9 s | 102.0 s (−28 %) | 34.3 s | 44.7 s (−23 %) |
+| E8ads_v5 | 54.4 s | 78.9 s (−31 %) | 31.2 s | 40.6 s (−23 %) |
+| E8ads_v6 | 64.1 s | 92.0 s (−30 %) | 31.5 s | 41.8 s (−25 %) |
+| E8ads_v7 | 58.8 s | 83.9 s (−30 %) | 25.0 s | 32.9 s (−24 %) |
+
+- Before, open downloaded or hashed the whole KVI, loaded it, and only then fetched the files it references; warm
+  initialization hashed the entire cache first. Now the KVI loads while it downloads (cold) or while a parallel task
+  hashes it (warm), and each referenced file is fetched as soon as the load reaches it.
+- The rest is bound by one KVI load thread (tens of millions of keys into the B-tree) and the local disk. Runs of the
+  same code vary by up to about 15 %, so differences below that are not meaningful; 16 instead of 4 blocks in flight
+  for the streamed KVI was within that noise and was not kept.
+
+### Why newer generations are not proportionally faster
+
+CPU-bound work does scale: a single commit takes 1.75 µs on v4 and 1.03 µs on v7, and sealed-file SHA-256 runs at
+1.6 GB/s on v5 against 2.1 GB/s on v7. Restore, however, is bound by limits Azure sets per VM size, not by generation:
+the 8-vCPU temporary disk writes at 835 MB/s on E8ads_v5 (temporary SSD) but only 560 MB/s on E8ads_v6/v7 (NVMe,
+which reads at 1.1 GB/s), measured with direct 4 MiB I/O. A cold restore writes every downloaded byte, so v5 can match
+or beat v7 there, while v7 wins where the KVI load (CPU) dominates. A larger VM size raises these limits.
+
 ## Changes made from these measurements
 
 - `OnDiskReplicationFileStorage`: lock-free reads from pinned blocks and read-only mappings, mappings grown in steps
@@ -184,6 +214,8 @@ references 48.2 GiB of TRL, and restore downloads all of it:
   written, a 110 ms stall at every TRL rotation, and lock contention that capped concurrent reads.
 - Sealed TRLs record their whole-file SHA-256, so warm restores reuse them (previously 41 % of the cold bytes were
   downloaded again).
+- Open streams the KVI while it downloads or while its checksum runs and fetches referenced files during the load;
+  initialization no longer hashes the cache (above).
 - Followers request the 4 MiB inline maximum per poll and retain two polls' worth of leader bytes.
 - `AzureReplicationStorage` stages four TRL blocks at once; one at a time capped publication at about 110 MiB/s.
 

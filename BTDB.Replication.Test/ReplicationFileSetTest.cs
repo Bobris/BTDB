@@ -64,8 +64,9 @@ public class ReplicationFileSetTest
         Add(local, 2, [1]);
         Add(local, 4, [2]);
         await using var files = new ReplicationFileSet(local, remote);
-        local.FailReads = 4;
+        remote.BeforeEnumerate = _ => throw new InvalidOperationException("Listing failed midway.");
         await Assert.ThrowsAsync<InvalidOperationException>(() => files.InitializeAsync().AsTask());
+        remote.BeforeEnumerate = null;
         remote.Files.GetFile(2).Remove();
         remote.Types.Remove(2);
         local.FailReads = null;
@@ -220,7 +221,7 @@ public class ReplicationFileSetTest
     [InlineData("length", 0)]
     [InlineData("sha", 1)]
     [InlineData("matching", 1)]
-    public async Task InitializationChecksExtensionThenLengthThenShaAndLogsRemovalReasons(string kind, int expectedReads)
+    public async Task InitializationChecksMetadataAndFirstPrefetchChecksShaAndLogsRemovalReasons(string kind, int expectedReads)
     {
         using var local = new InMemoryReplicationFileStorage();
         using var remote = new CheckpointPublisherTest.Storage();
@@ -239,10 +240,13 @@ public class ReplicationFileSetTest
         remote.BeforeRead = (_, _, _) => { remoteReads++; return ValueTask.CompletedTask; };
         await using var files = new ReplicationFileSet(observed, remote, logger: logger);
         await files.InitializeAsync();
-        Assert.Equal(expectedReads, observed.Reads);
+        // Initialization reads no bytes; only a candidate that the checksum alone can decide survives it, unseen.
+        var deferred = expectedReads != 0;
+        Assert.Equal(0, observed.Reads);
         Assert.Equal(0, remoteReads);
-        Assert.Equal(kind == "matching", local.GetFile(2) != null);
-        if (kind == "matching") Assert.Empty(logger.Messages);
+        Assert.Equal(deferred, local.GetFile(2) != null);
+        Assert.Null(files.GetFile(2));
+        if (deferred) Assert.Empty(logger.Messages);
         else
         {
             var message = Assert.Single(logger.Messages);
@@ -260,6 +264,8 @@ public class ReplicationFileSetTest
         await files.PrefetchAsync(2);
         Assert.Equal(expectedReads, observed.Reads);
         Assert.Equal(kind == "matching" ? 0 : 1, remoteReads);
+        if (kind == "matching") Assert.Empty(logger.Messages);
+        if (kind == "sha") Assert.Contains("SHA-256 validation failed", Assert.Single(logger.Messages));
         var bytes = new byte[3];
         local.GetFile(2)!.RandomRead(bytes, 0, false);
         Assert.Equal(new byte[] { 1, 2, 3 }, bytes);
@@ -387,9 +393,11 @@ public class ReplicationFileSetTest
         Assert.Same(unselected, local.GetFile(100));
         remote.BeforeEnumerate = null;
         await files.InitializeAsync();
-        Assert.Null(local.GetFile(2)); // Matching IDs with different bytes are removed during initialization.
+        Assert.Null(files.GetFile(2)); // A matching ID with different bytes stays unseen and is replaced on prefetch.
         Assert.Null(local.GetFile(100));
-        Assert.Equal(0u, local.GetCount());
+        await files.PrefetchAsync(2);
+        Assert.NotSame(selected, local.GetFile(2));
+        Assert.Equal(1u, local.GetCount());
     }
 
     [Fact]
@@ -771,7 +779,7 @@ public class ReplicationFileSetTest
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task InitializationValidatesCacheBeforePrefetch(bool matching)
+    public async Task PrefetchValidatesCacheAndHidesItUntilThen(bool matching)
     {
         using var local = new InMemoryReplicationFileStorage();
         using var remote = new CheckpointPublisherTest.Storage();
@@ -781,7 +789,7 @@ public class ReplicationFileSetTest
         remote.BeforeRead = (_, _, _) => { reads++; return ValueTask.CompletedTask; };
         await using var files = new ReplicationFileSet(local, remote);
         await files.InitializeAsync();
-        Assert.Equal(matching, files.GetFile(2) != null);
+        Assert.Null(files.GetFile(2)); // Unverified until the first prefetch, whatever its bytes.
         Assert.Equal(0, reads);
         await files.PrefetchAsync(2);
         var bytes = new byte[3];

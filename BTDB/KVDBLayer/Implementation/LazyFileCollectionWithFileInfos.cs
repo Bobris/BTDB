@@ -96,6 +96,9 @@ internal sealed class LazyFileCollectionWithFileInfos : IFileCollectionWithFileI
     internal ValueTask PrefetchAsync(uint fileId, CancellationToken cancellation) =>
         _fileCollection.PrefetchAsync(RemoteId(fileId), cancellation);
 
+    internal IStreamingFileRead? StartStreamingRead(uint fileId, CancellationToken cancellation) =>
+        _fileCollection.StartStreamingRead(RemoteId(fileId), cancellation);
+
     public IEnumerable<KeyValuePair<uint, IFileInfo>> FileInfos
     {
         get
@@ -146,7 +149,7 @@ internal sealed class LazyFileCollectionWithFileInfos : IFileCollectionWithFileI
         foreach (var fileId in _fileInfos.Where(fi => fi.Value.FileType == KVFileType.Unknown).Select(fi => fi.Key)
                      .ToArray())
         {
-            _fileCollection.GetFile(fileId)?.Remove();
+            _fileCollection.DiscardLocalFile(fileId);
             _fileInfos.TryRemove(fileId);
             _knownFiles.TryRemove(fileId, out _);
         }

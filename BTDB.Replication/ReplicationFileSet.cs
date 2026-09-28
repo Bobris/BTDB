@@ -83,10 +83,13 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
     /// <summary>Restore under the exact remote file ID before publication starts.
     /// A collision fails without touching the existing local file. Sealed files with a checksum are verified while
     /// they are written. Partial/invalid downloads are removed and never establish a placement.</summary>
-    internal async ValueTask<IFileCollectionFile> DownloadAsync(RemoteFile file, CancellationToken cancellation = default)
+    internal async ValueTask<IFileCollectionFile> DownloadAsync(RemoteFile file, CancellationToken cancellation = default,
+        DownloadProgress? progress = null)
     {
         cancellation.ThrowIfCancellationRequested();
         var target = Local.ImportFile(file.FileId, FileExtension(file.FileType));
+        progress?.Start(target);
+        long written = 0;
         const int blockSize = DownloadBlockSize;
         const int parallelBlocks = 4;
         var buffers = new byte[parallelBlocks][];
@@ -114,6 +117,8 @@ public sealed partial class ReplicationFileSet(IReplicationFileStorage local, IR
                 }
                 cancellation.ThrowIfCancellationRequested();
                 WriteBlock(target, buffers[head].AsSpan(0, count));
+                written += count;
+                progress?.Report(written);
                 hash?.AppendData(buffers[head], 0, count);
                 head = (head + 1) % parallelBlocks;
                 active--;

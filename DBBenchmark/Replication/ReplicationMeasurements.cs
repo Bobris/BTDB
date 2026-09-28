@@ -23,6 +23,7 @@ static class ReplicationMeasurements
     {
         public int Transactions = 200_000;
         public int ValueSize = 256;
+        public int? RestoreValueSize;
         public int LatencyMs;
         public int PollMs = 50;
         public int PollTransactions = 100;
@@ -33,6 +34,7 @@ static class ReplicationMeasurements
         public int Downloads = 4;
         public string? Account;
         public string Container = "btdb-bench";
+        public string? ReusePrefix;
         // The coordinator's per-poll InlineBudget; the leader honours up to ReplicationPeerPoll.MaximumInlineBytes.
         public int InlineKb = 1024;
         public int TrlSoftMb, TrlHardMb;
@@ -67,7 +69,8 @@ static class ReplicationMeasurements
             switch (args[i])
             {
                 case "--transactions": options.Transactions = Next(); break;
-                case "--value": options.ValueSize = Next(); break;
+                case "--value": options.ValueSize = Next(); options.RestoreValueSize = options.ValueSize; break;
+                case "--key-bytes": Node.KeyBytes = Math.Max(8, Next()); break;
                 case "--latency-ms": options.LatencyMs = Next(); break;
                 case "--poll-ms": options.PollMs = Next(); break;
                 case "--poll-transactions": options.PollTransactions = Next(); break;
@@ -78,6 +81,7 @@ static class ReplicationMeasurements
                 case "--downloads": options.Downloads = Next(); break;
                 case "--account": options.Account = args[++i]; break;
                 case "--container": options.Container = args[++i]; break;
+                case "--reuse-prefix": options.ReusePrefix = args[++i]; break;
                 case "--dir": Node.BaseDirectory = args[++i]; break;
                 case "--inline-kb": options.InlineKb = Next(); break;
                 case "--trl-soft-mb": options.TrlSoftMb = Next(); break;
@@ -110,6 +114,24 @@ static class ReplicationMeasurements
             Files = files;
             Capture = capture;
             Db = db;
+        }
+
+        // Keys are a big-endian ID followed by pseudo-random bytes up to KeyBytes, which KVI prefix compression cannot
+        // shrink: longer keys give the KVI its real share of the database.
+        public static int KeyBytes = 8;
+
+        public static byte[] Key(ulong id)
+        {
+            var key = new byte[KeyBytes];
+            BinaryPrimitives.WriteUInt64BigEndian(key, id);
+            var state = id * 0x9E3779B97F4A7C15UL;
+            for (var i = 8; i < key.Length; i++)
+            {
+                state ^= state >> 29;
+                state *= 0xBF58476D1CE4E5B9UL;
+                key[i] = (byte)(state >> 56);
+            }
+            return key;
         }
 
         // Local storage location, e.g. a VM's temporary or NVMe disk.
@@ -158,8 +180,7 @@ static class ReplicationMeasurements
 
         public async Task WriteAsync(ulong id, ReadOnlyMemory<byte> value, ulong? keyId = null)
         {
-            var key = new byte[8];
-            BinaryPrimitives.WriteUInt64BigEndian(key, keyId ?? id);
+            var key = Key(keyId ?? id);
             using var transaction = Capture != null ? await Db.StartWritingTransaction(id) : await Db.StartWritingTransaction();
             using var cursor = transaction.CreateCursor();
             cursor.CreateOrUpdateKeyValue(key, value.Span);
@@ -258,7 +279,6 @@ static class ReplicationMeasurements
         var readers = Enumerable.Range(0, options.Readers).Select(seed => Task.Run(() =>
         {
             var random = new Random(seed);
-            var key = new byte[8];
             var buffer = new byte[options.ValueSize].AsSpan();
             long count = 0;
             while (!stop.IsCancellationRequested)
@@ -269,7 +289,7 @@ static class ReplicationMeasurements
                 using var cursor = transaction.CreateCursor();
                 for (var i = 0; i < 16; i++)
                 {
-                    BinaryPrimitives.WriteUInt64BigEndian(key, (ulong)random.NextInt64(1, last + 1));
+                    var key = Node.Key((ulong)random.NextInt64(1, last + 1));
                     if (cursor.Find(key, 0) != FindResult.Exact) throw new InvalidOperationException("A committed key is missing.");
                     if (cursor.GetValueSpan(ref buffer).Length != options.ValueSize) throw new InvalidOperationException("Value length differs.");
                     count++;
@@ -419,6 +439,26 @@ static class ReplicationMeasurements
         }
     }
 
+    // Like the coordinator, retry an unresolved (Pending) write, e.g. after a transient provider failure.
+    static async Task PublishAsync(CanonicalTrlPublisher publisher)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            TrlPublishResult result;
+            try { result = await publisher.PublishNextAsync(true); }
+            catch (IOException error) when (attempt < 10)
+            {
+                Console.WriteLine($"  publication retry after {error.Message}");
+                await Task.Delay(1000);
+                continue;
+            }
+            if (result is TrlPublishResult.Published or TrlPublishResult.Idle) return;
+            if (result != TrlPublishResult.Pending || attempt == 10) throw new InvalidOperationException($"Publication ended with {result}.");
+            Console.WriteLine("  publication pending, retrying");
+            await Task.Delay(1000);
+        }
+    }
+
     /// A remote to publish to and restore from: in memory, or Azure Blob Storage with the production adapter.
     sealed record RestoreRemote(string Description, IReplicationStorage Storage,
         Func<CanonicalTrlInventory, IRemoteFileCollection> Bind,
@@ -432,24 +472,27 @@ static class ReplicationMeasurements
             using var memory = new BenchmarkReplicationStorage(TimeSpan.FromMilliseconds(options.LatencyMs));
             await RestoreAsync(options, new($"in-memory remote, latency {options.LatencyMs} ms", memory, memory.Bind,
                 (_, _) => memory,
-                () => Task.FromResult($"TRL {Mb(memory.TrlBytes)}, PVL/KVI {Mb(memory.ImmutableBytes)}")));
+                () => Task.FromResult($"TRL {Mb(memory.TrlBytes)}, PVL {Mb(memory.ImmutableBytes - memory.KviBytes)}, KVI {Mb(memory.KviBytes)}")));
             return;
         }
         var service = new Azure.Storage.Blobs.BlobServiceClient(new Uri($"https://{options.Account}.blob.core.windows.net"),
             new Azure.Identity.DefaultAzureCredential());
         var container = service.GetBlobContainerClient(options.Container);
         await container.CreateIfNotExistsAsync();
-        var prefix = "restore-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        // Unique per run: machines started in the same second must never share a canonical namespace.
+        var prefix = options.ReusePrefix ?? "restore-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) +
+            "-" + Environment.MachineName + "-" + Guid.NewGuid().ToString("N")[..6];
         var azure = new BTDB.Replication.Azure.AzureReplicationStorage(container, prefix);
         await RestoreAsync(options, new($"Azure Blob {options.Account}/{options.Container}/{prefix}", azure,
             inventory => azure.Bind(inventory), (inventory, authority) => azure.Bind(inventory, authority),
             async () =>
             {
-                long trl = 0, immutable = 0;
+                long trl = 0, pvl = 0, kvi = 0;
                 await foreach (var blob in container.GetBlobsAsync(Azure.Storage.Blobs.Models.BlobTraits.None, Azure.Storage.Blobs.Models.BlobStates.None, prefix + "/", CancellationToken.None))
                     if (blob.Name.EndsWith(".trl", StringComparison.Ordinal)) trl += blob.Properties.ContentLength ?? 0;
-                    else immutable += blob.Properties.ContentLength ?? 0;
-                return $"TRL {Mb(trl)}, PVL/KVI {Mb(immutable)}";
+                    else if (blob.Name.EndsWith(".kvi", StringComparison.Ordinal)) kvi += blob.Properties.ContentLength ?? 0;
+                    else pvl += blob.Properties.ContentLength ?? 0;
+                return $"TRL {Mb(trl)}, PVL {Mb(pvl)}, KVI {Mb(kvi)}";
             }));
     }
 
@@ -457,14 +500,16 @@ static class ReplicationMeasurements
     /// with an empty cache (cold) and again from the restored node's cache (warm).
     static async Task RestoreAsync(Options options, RestoreRemote remote)
     {
-        const int valueSize = 4096;
+        var valueSize = options.RestoreValueSize ?? 4096;
         var values = checked((int)((long)options.DatasetMb * 1024 * 1024 / valueSize));
         Console.WriteLine();
-        Console.WriteLine($"## Restore: {values} x {valueSize} B values ({options.DatasetMb} MiB) with 50% overwritten, compacted and checkpointed, plus a 10% overwrite TRL tail, " +
+        Console.WriteLine($"## Restore: {values} x {valueSize} B values with {Node.KeyBytes} B keys ({options.DatasetMb} MiB) with 50% overwritten, compacted and checkpointed, plus a 10% overwrite TRL tail, " +
                           $"{(options.OnDisk ? "on-disk" : "in-memory")} local storage, {remote.Description}, {options.Downloads} concurrent downloads");
         var genesis = new TrlSuccessor(TrlFileName.Key(1), 1);
         var buildStarted = Stopwatch.GetTimestamp();
         using var empty = new BenchmarkReplicationStorage();
+        // --reuse-prefix restores a dataset an earlier run with the same parameters published.
+        if (options.ReusePrefix == null)
         await using (var leader = await Node.Replicated(options.OnDisk, empty))
         {
             var authority = StopwatchScheduler.Authority();
@@ -481,13 +526,11 @@ static class ReplicationMeasurements
                     random.NextBytes(value.AsSpan(0, 16));
                     ++id;
                     await leader.WriteAsync(id, value, overwrite ? (ulong)random.Next(1, values + 1) : id);
-                    if (id % 4096 == 0 && await publisher.PublishNextAsync(true) is not (TrlPublishResult.Published or TrlPublishResult.Idle))
-                        throw new InvalidOperationException("Publication failed.");
+                    if (id % 4096 == 0) await PublishAsync(publisher);
                     if (id % (ulong)Math.Max(1, total / 10) == 0)
                         Console.WriteLine($"  built {id * 100 / (ulong)total} % in {(Stopwatch.GetTimestamp() - buildStarted) / (double)Stopwatch.Frequency:F0} s");
                 }
-                if (await publisher.PublishNextAsync(true) is not (TrlPublishResult.Published or TrlPublishResult.Idle))
-                    throw new InvalidOperationException("Publication failed.");
+                await PublishAsync(publisher);
             }
             var phase = Stopwatch.GetTimestamp();
             void Phase(string name, long bytes = 0)

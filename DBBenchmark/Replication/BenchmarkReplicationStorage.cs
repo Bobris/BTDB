@@ -250,6 +250,20 @@ sealed class BenchmarkReplicationStorage(TimeSpan latency = default) : IReplicat
         }
     }
 
+    public long KviBytes
+    {
+        get
+        {
+            lock (_lock)
+            {
+                long total = 0;
+                foreach (var file in _immutables.Values)
+                    if (file.Type == KVFileType.KeyIndex) total += (long)file.File.GetSize();
+                return total;
+            }
+        }
+    }
+
     public long ImmutableBytes
     {
         get

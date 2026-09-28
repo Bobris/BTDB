@@ -181,12 +181,12 @@ generation argument and write zero in the native header field; remote destinatio
 Neither the live BTree nor its local file IDs are changed.
 
 The internal `ReplicationFileSet` implements `IFileReplicatedCollection` with two separate inventories.
-Inherited `GetCount`, `GetFile`, and `Enumerate` expose only physical local cache/storage, including unverified
-cache files; none downloads a remote body. After `InitializeAsync`, `GetRemoteFile` and
+Inherited `GetCount` and `Enumerate` expose physical local cache/storage, including unverified cache files; `GetFile`
+hides a selected remote file until prefetch verified or downloaded it. None downloads a remote body. After `InitializeAsync`, `GetRemoteFile` and
 `RemoteEnumerate` expose the selected remote inventory, independent of local cache contents. Remote handles are
 read-only and bound to the selected remote version; reading one does not populate local storage. Equal numeric IDs
-alone never establish that cached and remote bytes match. Initialization validates existing local counterparts. `PrefetchAsync` downloads missing counterparts before BTDB
-reads them; it validates any cache candidate introduced after initialization. Creating or removing a local file does not change remote inventory. Remote deletion remains
+alone never establish that cached and remote bytes match. `PrefetchAsync` verifies a cached counterpart by its whole-file
+checksum or downloads it before BTDB reads it. Creating or removing a local file does not change remote inventory. Remote deletion remains
 part of the publication protocol. No caller-driven file-restore phase is required.
 
 Existing `BTreeKeyValueDB` constructors retain the original synchronous opening, eager metadata loading and advisory
@@ -215,10 +215,15 @@ and filename type hints. Existing standalone collections are not replication sto
 `OpenAsync` on an ordinary collection retains standalone semantics, including historical opening and retention.
 
 The collection owner first calls and awaits `InitializeAsync(cancellation)` to discover the remote inventory,
-removing local files without a mapping to the complete remote listing. Mapped candidates are checked during initialization: compare the filename extension first, then length, then calculate the local SHA-256 and
-compare it with remote metadata. Remove mismatches without downloading a replacement. Candidates are hashed in parallel within the download bound.
-Validated files remain cached and prefetch reuses them without hashing again. Active files or files without trustworthy SHA metadata are removed
-for later download. Failed or cancelled initialization publishes no inventory (a retry starts from a fresh listing); repeated
+removing local files without a mapping to the complete remote listing. Initialization reads no file bytes: it removes
+mapped candidates whose extension or length differs, whose remote file is active or which lack SHA metadata. The
+first prefetch of a remaining candidate calculates its SHA-256 within the download bound and either reuses it or
+removes and downloads it; until then `GetFile` does not expose it, and header reads verify it first (a KVI header is
+read remotely instead). `OpenAsync` reads the KVI, typically a fifth to a third of the database, through
+`StartStreamingRead`: a download is read as it is written, and a cached copy is read while a parallel task hashes it.
+The load is accepted only after `IStreamingFileRead.CompleteAsync` confirms the checksum; a cached copy that fails is
+discarded and the downloaded KVI loads again. The TRLs the KVI replays prefetch as soon as its header is read and each
+referenced file as soon as the load reaches it, so the other downloads (cold) and checksums (warm) overlap the load. `DiscardLocalFile` removes an unused file's local copy even when it was never verified. Failed or cancelled initialization publishes no inventory (a retry starts from a fresh listing); repeated
 initialization after success does not remove files created in the current session. The owner then passes the initialized collection to `BTreeKeyValueDB.OpenAsync(options, cancellation)`. Neither `OpenAsync`
 nor `PrefetchAsync` invokes initialization. Remote inventory/metadata access and prefetch throw
 `InvalidOperationException` while initialization is incomplete, including after a failed or cancelled attempt;

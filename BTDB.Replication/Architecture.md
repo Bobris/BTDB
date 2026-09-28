@@ -340,19 +340,21 @@ export snapshots, and has its own cancellation independent of remote authority.
 `ReplicationFileSet` is the `IFileReplicatedCollection` of a replicated database: a local file storage plus a separate
 remote inventory (`CanonicalTrlInventory` for TRLs and the storage listing for PVL/KVI).
 
-1. `InitializeAsync` lists the remote inventory, removes local files without a remote counterpart and validates the
-   remaining candidates (extension, length, SHA-256), hashing in parallel within the download bound. The inventory
-   becomes visible only after a complete successful attempt. Every selected file keeps its remote ID locally.
+1. `InitializeAsync` lists the remote inventory, removes local files without a remote counterpart and candidates
+   whose extension, length or remote metadata rule them out, without reading file bytes. The inventory becomes
+   visible only after a complete successful attempt. Every selected file keeps its remote ID locally.
 2. `BTreeKeyValueDB.OpenAsync` tries KVIs in descending ID order, reads only needed headers, replays TRL from the
-   selected cut in lineage order and prefetches every referenced file before returning. Downloads use 4 MiB ranges
+   selected cut in lineage order and prefetches every referenced file before returning. The KVI loads while it
+   downloads or while its cached copy is hashed, and prefetch of the replayed TRLs and each referenced file starts
+   during the load, so downloads and cached-file checksums overlap it. Downloads use 4 MiB ranges
    with four in flight per file and a bounded number of files; sealed files are verified while written, the growing
    tail is always downloaded again, and a partial download is removed.
 3. A removed remote file or a version change fails the attempt; the host disposes it and restores again from the
    newest published state. There is no remote restore pin and no old-KVI fallback. A broken current closure keeps
    the node unavailable; published history is never replaced by initialization.
 
-The target is complete startup of about 100 GB within 15 minutes, including cold download and replay. It is a target,
-not a measured result.
+The target is complete startup of about 100 GB within 15 minutes, including cold download and replay; measured in
+[Measurements.md](Measurements.md).
 
 ## Failures and progress
 
