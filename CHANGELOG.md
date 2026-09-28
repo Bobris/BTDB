@@ -4,6 +4,10 @@
 
 ### Added
 
+- Qualify replication with a sample ObjectDB application in the subprocess tests: rollbacks inside virtual batches
+  replicate byte for byte and survive failover and cold restore, and an upgraded leader's schema commit detaches old
+  nodes while upgraded replacements restore it. Record the clock qualification of `SystemReplicationScheduler`.
+
 - Add replication recovery counters: `ReplicationStatus.RestoreAttempts`, `RestoreFailures`, `RestoreDuration`,
   `LeaderSessions`, `LostLeaderSessions` and `FailedSteps`, exported by the `BTDB.Replication` meter as
   `btdb.replication.restore.*`, `btdb.replication.leader.sessions*` and `btdb.replication.step.failures`.

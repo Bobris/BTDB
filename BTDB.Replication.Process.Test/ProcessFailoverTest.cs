@@ -59,7 +59,8 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
         string Diagnostics { get { lock (_diagnostics) return _diagnostics.ToString(); } }
 
         public static async Task<Node> Start(BlobContainerClient container, int? progressTimeoutMilliseconds = null,
-            string? dataDirectory = null, ulong generation = 1, int readDelayMilliseconds = 0, string databases = "main")
+            string? dataDirectory = null, ulong generation = 1, int readDelayMilliseconds = 0, string databases = "main",
+            bool objects = false)
         {
             var ownsDataDirectory = dataDirectory == null;
             dataDirectory ??= Path.Combine(Path.GetTempPath(), "btdb-process-node-" + Guid.NewGuid().ToString("N"));
@@ -85,6 +86,7 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
             start.Environment["BTDB_TEST_GENERATION"] = generation.ToString();
             start.Environment["BTDB_TEST_READ_DELAY_MILLISECONDS"] = readDelayMilliseconds.ToString();
             start.Environment["BTDB_TEST_DATABASES"] = databases;
+            start.Environment["BTDB_TEST_APPLICATION"] = objects ? "objectdb" : "kv";
             var node = new Node(ChildProcess.Start(start)!, dataDirectory, ownsDataDirectory);
             try
             {
@@ -117,6 +119,13 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
             using var reply = await _client.PostAsync($"{Endpoint}/test/apply/{id}/{value}?kb={kilobytes}&db={database}", null);
             reply.EnsureSuccessStatusCode();
         }
+        public async Task Orders(ulong from, int count)
+        {
+            using var reply = await _client.PostAsync($"{Endpoint}/test/orders/{from}/{count}", null);
+            reply.EnsureSuccessStatusCode();
+        }
+        public async Task<OrderSummary> OrderSummary() =>
+            (await _client.GetFromJsonAsync<OrderSummary>(Endpoint + "/test/orders"))!;
         public async Task Partition(string target, bool enabled)
         {
             using var reply = await _client.PostAsync($"{Endpoint}/test/partition/{target}/{enabled}", null);
@@ -376,6 +385,91 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
         await WaitPublished(container, 3);
         await WaitPublished(container, 2, "second");
         Assert.Equal(22, (await follower.Wait(s => s.EventId == 2, "second database", database: "second")).Value);
+    }
+
+    [Fact]
+    public async Task ObjectDbRollbacksInsideVirtualBatchesReplicateAndSurviveFailover()
+    {
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container, objects: true);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        await leader.Orders(1, 20);
+        await WaitPublished(container, 20);
+        await using var follower = await Node.Start(container, objects: true);
+        await follower.Wait(s => s.Role == "Follower" && s.EventId == 20, "restored follower");
+        for (ulong from = 21; from <= 40; from += 10)
+        {
+            await leader.Orders(from, 10);
+            await follower.Orders(from, 10);
+        }
+        // Byte equality includes every rolled-back order and its rejection inside the virtual batches.
+        await follower.Wait(s => Compared(s, 40), "comparison of batched ObjectDB events");
+        var expected = await leader.OrderSummary();
+        Assert.Equal(expected, await follower.OrderSummary());
+        Assert.Equal(5, expected.Rejections); // Events 7, 14, 21, 28 and 35.
+        await leader.Kill();
+        await follower.Wait(s => s.Role == "Leader" && s.EventId == 40, "takeover", 35);
+        await follower.Orders(41, 10);
+        await WaitPublished(container, 50);
+        await using var replacement = await Node.Start(container, objects: true);
+        await replacement.Wait(s => s.Role == "Follower" && s.EventId == 50, "cold restore");
+        var summary = await follower.OrderSummary();
+        Assert.Equal(summary, await replacement.OrderSummary());
+        Assert.Equal(7, summary.Rejections);
+        Assert.Equal(43, summary.Orders);
+    }
+
+    [Fact]
+    public async Task UpgradedLeaderPublishesItsSchemaDetachingOldFollowersWhileUpgradedReplacementsRestoreIt()
+    {
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container, objects: true);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        await using var old = await Node.Start(container, objects: true);
+        await old.Wait(s => s.Role == "Follower", "old follower");
+        await leader.Orders(1, 10);
+        await old.Orders(1, 10);
+        await old.Wait(s => Compared(s, 10), "old follower comparison");
+        await WaitPublished(container, 10);
+        // The upgraded build restores the old schema and executes nothing until its own schema is published.
+        await using var upgraded = await Node.Start(container, generation: 2, objects: true);
+        await upgraded.Wait(s => s.Role == "Follower" && s.EventId == 10, "restored upgraded node");
+        await upgraded.PrepareUpgrade();
+        await upgraded.Wait(s => s.Role == "Leader", "handoff to the upgraded build");
+        await leader.Wait(s => s.Detached, "old leader detaches on the schema commit", 30);
+        await old.Wait(s => s.Detached, "old follower detaches on the schema commit", 30);
+        Assert.Equal(2, (await upgraded.OrderSummary()).IndexedFirstCustomer); // The new index covers orders 1 and 6.
+        await upgraded.Orders(11, 10);
+        await WaitPublished(container, 20);
+        // Old nodes keep running locally; an upgraded replacement restores the schema commit by ordinary replay.
+        await old.Orders(11, 5);
+        await using var replacement = await Node.Start(container, generation: 2, objects: true);
+        await replacement.Wait(s => s.Role == "Follower" && s.EventId == 20, "upgraded replacement");
+        await upgraded.Orders(21, 10);
+        await replacement.Orders(21, 10);
+        await replacement.Wait(s => Compared(s, 30), "comparison with the upgraded schema");
+        var summary = await upgraded.OrderSummary();
+        Assert.Equal(summary, await replacement.OrderSummary());
+        Assert.Equal(5, summary.IndexedFirstCustomer); // Orders 1, 6, 11, 16 and 26; 21 was rejected.
+    }
+
+    [Fact]
+    public async Task UpgradedFollowerExecutingBeforeItsSchemaIsPublishedRestartsWithoutAffectingHistory()
+    {
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container, objects: true);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        await leader.Orders(1, 5);
+        await WaitPublished(container, 5);
+        await using var upgraded = await Node.Start(container, generation: 2, objects: true);
+        await upgraded.Wait(s => s.Role == "Follower" && s.EventId == 5, "restored upgraded follower");
+        // Executing with the new relation persists its index upgrade locally, which the leader never wrote.
+        await leader.Orders(6, 5);
+        await upgraded.Orders(6, 5);
+        await upgraded.ExpectRestartExit("Follower native history diverged");
+        Assert.Equal("Leader", (await leader.Wait(_ => true, "unaffected leader")).Role);
+        await leader.Orders(11, 5);
+        await WaitPublished(container, 15);
     }
 
     [Fact]

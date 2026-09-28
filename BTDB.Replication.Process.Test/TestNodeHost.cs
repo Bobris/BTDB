@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
+using BTDB.ODBLayer;
 using Azure.Storage.Blobs;
 using BTDB.Replication.Azure;
 using BTDB.Replication.Test;
@@ -13,10 +14,10 @@ namespace BTDB.Replication.ProcessTests;
 
 // Compared is the last cut the follower matched with its leader (not local TRL retention).
 internal sealed record NodeStatus(string Role, ulong EventId, int Value, int Applied, uint CompletedFile,
-    uint CompletedOffset, uint ComparedFile, uint ComparedOffset);
+    uint CompletedOffset, uint ComparedFile, uint ComparedOffset, bool Detached = false);
 
 internal sealed class TestNodeHost(string endpoint, BlobContainerClient container, string dataDirectory,
-    ulong generation, string[] names) : IReplicationNodeHost, IAsyncDisposable, IReplicationFatalRecovery
+    ulong generation, string[] names, bool objects = false) : IReplicationNodeHost, IAsyncDisposable, IReplicationFatalRecovery
 {
     // One application database: its own local directory, capture, Blob prefix and publication gate.
     sealed class Database
@@ -38,6 +39,8 @@ internal sealed class TestNodeHost(string endpoint, BlobContainerClient containe
         public readonly object ProgressLock = new();
         public ReplicationFileSet? Collection;
         public BTreeKeyValueDB? Db;
+        public ObjectDB? Objects;
+        public bool RelationsReady;
         public LeaderTrlProgress? Progress;
         public int Applied;
     }
@@ -54,9 +57,12 @@ internal sealed class TestNodeHost(string endpoint, BlobContainerClient containe
         return restored;
     }
 
-    static async ValueTask<ActivationDatabase> RestoreAsync(Database database, CancellationToken cancellation)
+    async ValueTask<ActivationDatabase> RestoreAsync(Database database, CancellationToken cancellation)
     {
         // A failed attempt owns and disposes its opened resources before the coordinator retries.
+        database.Objects?.Dispose();
+        database.Objects = null;
+        database.RelationsReady = false;
         database.Db?.Dispose();
         database.Db = null;
         if (database.Collection != null) { await database.Collection.DisposeAsync(); database.Collection = null; }
@@ -76,8 +82,15 @@ internal sealed class TestNodeHost(string endpoint, BlobContainerClient containe
         database.Db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
         {
             FileCollection = files, TransactionLogCapture = database.Capture, CompactorScheduler = null,
-            Compression = new NoCompressionStrategy()
+            Compression = new NoCompressionStrategy(), RequireExplicitTransactions = objects
         }, cancellation);
+        if (objects)
+        {
+            // Relations are registered only by InitializeRelations: under leader authority in PrepareSchemaAsync, or
+            // on a follower whose restored schema already matches (a read-only check that writes nothing).
+            database.Objects = new ObjectDB();
+            database.Objects.Open(database.Db, false, new DBOptions().WithoutAutoRegistrationOfRelations());
+        }
         return new(database.Name, database.Db, database.Capture, database.Storage, Genesis,
             restored ? database.Db.ReplicationRestoredPosition : default, id => $"{id}.trl");
     }
@@ -106,10 +119,65 @@ internal sealed class TestNodeHost(string endpoint, BlobContainerClient containe
     public void ReportStatus(ReplicationNodeRole role) => Role = role;
     public void DatabaseRemoved(string database) { }
     public ValueTask<ulong> CaptureInitializationCursorAsync(string database, CancellationToken cancellation) => ValueTask.FromResult(0ul);
-    public ValueTask PrepareSchemaAsync(ActivationDatabase database, LeaseAuthority authority, CancellationToken cancellation)
+    public async ValueTask PrepareSchemaAsync(ActivationDatabase database, LeaseAuthority authority, CancellationToken cancellation)
     {
-        UpdateProgress(_databases[database.Name]);
-        return ValueTask.CompletedTask;
+        var state = _databases[database.Name];
+        if (state.Objects != null)
+        {
+            // Genesis or an upgrade: persist this generation's schemas and indexes in one non-application writer.
+            if (!authority.IsValid) throw new IOException("Leader authority ended before schema preparation.");
+            await state.Writer.WaitAsync(cancellation);
+            try
+            {
+                await state.Objects.InitializeRelations(OrderApplication.Relations(generation));
+                state.RelationsReady = true;
+            }
+            finally { state.Writer.Release(); }
+        }
+        UpdateProgress(state);
+    }
+
+    // One virtual batch of consecutive order events, finished before progress is reported.
+    public async Task ApplyOrdersAsync(string name, ulong from, int count)
+    {
+        var database = _databases[name];
+        await database.Writer.WaitAsync();
+        try
+        {
+            var db = database.Objects ?? throw new IOException("Database is not restored.");
+            if (!database.RelationsReady)
+            {
+                await db.InitializeRelations(OrderApplication.Relations(generation));
+                database.RelationsReady = true;
+            }
+            using (var read = database.Db!.StartReadOnlyTransaction())
+                if (from != read.GetCommitUlong() + 1) throw new InvalidOperationException("Test input must be consecutive.");
+            try
+            {
+                for (var id = from; id < from + (ulong)count; id++) await OrderApplication.ApplyAsync(db, generation, id);
+            }
+            finally { db.FinishTransactionBatchAfterCurrentTransaction(); }
+            Interlocked.Add(ref database.Applied, count);
+            UpdateProgress(database);
+        }
+        finally { database.Writer.Release(); }
+    }
+
+    public async Task<OrderSummary> OrdersAsync(string name)
+    {
+        var database = _databases[name];
+        await database.Writer.WaitAsync();
+        try
+        {
+            var db = database.Objects ?? throw new IOException("Database is not restored.");
+            if (!database.RelationsReady)
+            {
+                await db.InitializeRelations(OrderApplication.Relations(generation));
+                database.RelationsReady = true;
+            }
+            return OrderApplication.Summary(db, generation);
+        }
+        finally { database.Writer.Release(); }
     }
 
     // A positive size writes that many KiB of the value byte, to give a restore something to download.
@@ -154,9 +222,10 @@ internal sealed class TestNodeHost(string endpoint, BlobContainerClient containe
         Span<byte> buffer = stackalloc byte[1];
         var value = id != 0 && cursor.FindExactKey([checked((byte)id)]) ? cursor.GetValueSpan(ref buffer)[0] : -1;
         var completed = database.Capture.Completed;
-        var compared = replication.Current.Databases.FirstOrDefault(d => d.Name == name)?.Compared;
+        var replicated = replication.Current.Databases.FirstOrDefault(d => d.Name == name);
+        var compared = replicated?.Compared;
         return new(Role.ToString(), id, value, database.Applied, completed.FileId, completed.Offset,
-            compared?.TrlFileId ?? 0, compared?.TrlPosition ?? 0);
+            compared?.TrlFileId ?? 0, compared?.TrlPosition ?? 0, replicated?.Detached ?? false);
     }
     public void PausePublication()
     {
@@ -167,6 +236,7 @@ internal sealed class TestNodeHost(string endpoint, BlobContainerClient containe
     {
         foreach (var database in _databases.Values)
         {
+            database.Objects?.Dispose();
             database.Db?.Dispose();
             if (database.Collection != null) await database.Collection.DisposeAsync();
             database.Files.Dispose();

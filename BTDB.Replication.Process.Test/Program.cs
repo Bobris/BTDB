@@ -67,7 +67,8 @@ internal static class Program
             throw new ArgumentException("BTDB_TEST_DATA_DIRECTORY must name the node's local storage directory.");
         var generation = ulong.Parse(Environment.GetEnvironmentVariable("BTDB_TEST_GENERATION") ?? "1");
         var names = (Environment.GetEnvironmentVariable("BTDB_TEST_DATABASES") ?? "main").Split(',');
-        await using var node = new TestNodeHost(endpoint, container, dataDirectory, generation, names);
+        await using var node = new TestNodeHost(endpoint, container, dataDirectory, generation, names,
+            Environment.GetEnvironmentVariable("BTDB_TEST_APPLICATION") == "objectdb");
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole().SetMinimumLevel(LogLevel.Warning);
@@ -97,6 +98,12 @@ internal static class Program
             await node.ApplyAsync(db ?? names[0], checked((ulong)id), checked((byte)value), kb ?? 0);
             return Results.NoContent();
         });
+        app.MapPost("/test/orders/{from:long}/{count:int}", async (long from, int count, string? db) =>
+        {
+            await node.ApplyOrdersAsync(db ?? names[0], checked((ulong)from), count);
+            return Results.NoContent();
+        });
+        app.MapGet("/test/orders", (string? db) => node.OrdersAsync(db ?? names[0]));
         app.MapPost("/test/pause-publication", () => { node.PausePublication(); return Results.NoContent(); });
         app.MapPost("/test/prepare-upgrade", () => { node.PrepareUpgrade(); return Results.NoContent(); });
         app.MapPost("/test/partition/{target}/{enabled:bool}", (string target, bool enabled) =>
@@ -109,5 +116,9 @@ internal static class Program
         await app.StartAsync();
         Console.WriteLine("READY " + endpoint);
         await app.WaitForShutdownAsync();
+        // Report why the replication worker stopped the host; its logger may not flush before exit.
+        foreach (var service in app.Services.GetServices<IHostedService>())
+            if (service is BackgroundService { ExecuteTask: { IsFaulted: true } failed })
+                Console.Error.WriteLine("WORKER FAILED " + failed.Exception!.GetBaseException());
     }
 }

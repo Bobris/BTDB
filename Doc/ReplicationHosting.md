@@ -211,6 +211,13 @@ Only an offer of a higher generation than the leader's starts a handoff; among e
 The leader drains grants and transfers through `IReplicationLeaseTransferStorage` (Azure native lease Change); the
 target proves ownership by renewal and then activates normally.
 
+An upgraded build whose relations change the persisted schema (for example a new secondary index) must not execute
+events before its schema is published, neither as a follower nor while activating: its first writer would persist the
+upgrade locally, and the node would diverge and restart (published history stays intact). Start its event loop only
+after `PrepareSchemaAsync` ran on it as leader, or when its restored history already contains its schema. Today that
+means handing off to an upgraded node that has not fallen behind the published history (for example while input is
+paused), then replacing the old nodes; a rolling upgrade under continuous input is not supported yet.
+
 `SchemaDetached` is called when the leader announces a schema commit beyond the follower's canonical base, before
 comparison. Report that database as local-only and keep serving its ordinary reads/writes; the node can no longer
 become leader in this session. `DatabaseRemoved` means the selected database set no longer contains the database;

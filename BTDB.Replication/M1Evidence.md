@@ -63,9 +63,32 @@ The leader issues a grant only while `now + B < D`, tracks the maximum `now + B`
 transfers the lease only after that time. `AuthorityTest.WorstClockRatesKeepPeerExpiryInsideServiceLease` checks
 these inequalities at both rate extremes with integer rounding. No synchronized wall clocks are required.
 
-Not qualified here: the production clock implementation, OS-suspend behavior and the service rate bound. Live Azure
-lease expiry, delayed acquire replies and a 250 ms operational margin are measured in
-[ObjectStorages.md](ObjectStorages.md); lease break is still unqualified. GET observations never renew local
+Live Azure lease expiry, delayed acquire replies and a 250 ms operational margin are measured in
+[ObjectStorages.md](ObjectStorages.md); lease break is still unqualified.
+
+## Production clock qualification (2026-09-28)
+
+`SystemReplicationScheduler` is the production clock: `CLOCK_MONOTONIC_RAW` on Linux and macOS, interrupt time
+(`Environment.TickCount64`) on Windows.
+
+- **Why the raw counter.** Linux `CLOCK_MONOTONIC` and `CLOCK_BOOTTIME` (and therefore `Stopwatch`) run at the rate
+  NTP sets. chrony slews up to 83 333 ppm (its default `maxslewrate`) while correcting an offset, so a slow slew could
+  make a local deadline pass seconds after the service lease; the raw counter is never adjusted. Its own error is the
+  oscillator's: on an E8ads_v5 VM (Ubuntu 24.04, kernel 6.17, `tsc` clocksource, chrony on the Hyper-V PTP clock)
+  chrony reported the counter 1.0–1.5 ppm slow, and `DBBenchmark replication clock` measured `CLOCK_MONOTONIC`,
+  `CLOCK_BOOTTIME` and `CLOCK_REALTIME` running 1.15 ppm faster than it over 21 minutes, never more than 6.6 ppm
+  apart in any second. A 1000 ppm drift bound is therefore a reserve of almost three orders of magnitude.
+- **Pauses.** A stopped process (`SIGSTOP`) keeps its clock running: the subprocess test
+  `UnavailableLeaderIsReplacedAndItsUnpublishedTailSurvivesWithoutReexecution(suspend: true)` resumes a leader
+  stopped past its lease, which then follows the new leader. The raw counter does not advance during system suspend, so hosts must not suspend; a hypervisor freeze of the
+  VM may stop every guest clock alike.
+- **What the clock protects.** Every durable effect is conditional at the service: TRL appends on the tail ETag, PVL
+  and KVI creation if absent with SHA reconciliation, cleanup on the object version, `leader.json` on lease and ETag.
+  A clock that ran slow (a frozen VM) therefore cannot corrupt published history; a former leader wastes requests and
+  fences on the first rejected one, and its confirmation grants are diagnostics, never votes. The deadline keeps such
+  attempts inside the lease in normal operation.
+- **Configuration.** 1000 ppm and a margin of at least 250 ms, validated against each acquired lease; the Windows
+  counter's 10–16 ms resolution must fit in the margin. GET observations never renew local
 authority. Administrative early lease release or break is outside the cooperative transfer argument and must not be
 used as an automatic failover shortcut.
 

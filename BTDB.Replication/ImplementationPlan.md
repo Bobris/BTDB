@@ -87,8 +87,9 @@ fences immediately and lets the lease expire.
 1. **Proof closure (B1/B3/B5/B6).** Map existing tests to the blocker register and close only the blockers they
    actually prove. Extend schedule/property exploration beyond the named deterministic cases; keep each smallest
    failing schedule as a regression test.
-2. **Clock qualification.** Qualify the production monotonic clock, rate bound, safety margin and OS-suspend
-   behavior assumed in [M1Evidence.md](M1Evidence.md), and document them for hosts.
+2. **Clock qualification.** Done: `SystemReplicationScheduler` uses the unadjusted hardware counter, measured on Azure
+   against NTP-adjusted clocks and the service lease; 1000 ppm and a 250 ms margin are the documented, validated
+   settings ([M1Evidence.md](M1Evidence.md), [ReplicationHosting.md](../Doc/ReplicationHosting.md)).
 3. **Live Azure qualification.** Done 2026-09-28: `BTDB.Replication.Azure.Test` (including `AzureQualificationTest`:
    finite-lease expiry against the local deadline, delayed acquire replies, stale in-flight appends, renewals,
    leader-record writes, PVL uploads, deletes and marks, restore concurrent with publication, checkpoints and cleanup,

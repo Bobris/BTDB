@@ -4,6 +4,7 @@
         <GenerateProgramFile>false</GenerateProgramFile>
         <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <IsPackable>false</IsPackable>
         <IsTestProject>true</IsTestProject>
     </PropertyGroup>
@@ -19,6 +20,7 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <ProjectReference Include="../BTDB.Replication.Http/BTDB.Replication.Http.csproj"/>
+        <ProjectReference Include="../BTDB.SourceGenerator/BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
         <ProjectReference Include="../BTDB.Replication.Azure/BTDB.Replication.Azure.csproj"/>
     </ItemGroup>
 </Project>
