@@ -191,6 +191,12 @@
 
 ### Fixed
 
+- Cancel and drain sibling activation range reads immediately when any read fails, preserving the original failure
+  instead of waiting indefinitely for an earlier blocked range before retrying activation.
+- Fence replication leadership and request restart as soon as any database reports a canonical publication conflict,
+  without waiting for other databases' publication calls. Cancel outstanding publications and drain them before
+  releasing native sources, including when a provider ignores cancellation.
+
 - Let a replication leader restored from Blob serve its restored history to followers before its first local
   commit. Its capture reported no complete prefix, so every follower read failed until new input arrived and followers
   could not compare or release their local TRLs. Found by the new seeded schedule exploration

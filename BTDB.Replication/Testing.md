@@ -9,6 +9,7 @@ blocker tracked in Architecture.md.
 ## Running the suites
 
 ```sh
+dotnet test BTDB.SourceGenerator.Test/BTDB.SourceGenerator.Tests.csproj
 dotnet test BTDB.Replication.Test/BTDB.Replication.Test.csproj
 dotnet test BTDB.Replication.Http.Test/BTDB.Replication.Http.Test.csproj
 dotnet test BTDB.Replication.Azure.Test/BTDB.Replication.Azure.Test.csproj    # needs Azurite
@@ -18,7 +19,8 @@ dotnet test BTDBTest/BTDBTest.csproj --filter 'FullyQualifiedName~ReplicationPre
 
 Install Azurite 3.35.0 (`npm install --global azurite@3.35.0`, the version CI installs) so `azurite-blob` is on
 `PATH`, or set `BTDB_AZURITE_EXECUTABLE`. The fixtures start their own loopback instance with temporary storage and
-development credentials; they never read cloud credentials or create Azure resources.
+development credentials by default. To keep a run local, leave `BTDB_AZURE_BLOB_ENDPOINT` unset; setting it opts
+into live Azure tests that use credentials and create/delete test containers (see [Azure adapter](#azure-adapter)).
 
 ## Deterministic simulation harness
 
@@ -78,7 +80,7 @@ an actual create collision stops serving and requests restart rather than merely
 
 The lane keeps one unresolved conditional intent because an old read cannot prove a delayed request failed.
 Exact retries preserve the same token and source cut. Range comparison uses bounded 64 KiB buffers.
-`TrlFileNameTest` rejects noncanonical names and term directories. Azure tests verify empty TRL metadata, ID discovery
+`TrlFileNameTest` rejects noncanonical names and term directories. Azure tests verify TRL checksum/deletion metadata, ID discovery
 from filenames (including a legacy gap), checkpoint restore after pruning genesis, CAS fencing and persistent deletion
 marks. PVL/KVI metadata consists only of SHA-256 and optional deletion deadlines.
 
@@ -165,7 +167,9 @@ positive delays in virtual time.
   conditional `applicationData` writes, reconciliation and follower/fenced read-only access.
 - `LeadershipActivationTest`: Blob validation despite peer acknowledgement, divergence never adopting, a lagging
   database adopting none, all databases adopting before any publisher is returned, and append racing adoption. `ReplicationProgressWatchdogTest` checks that
-  stale timeouts cannot override progress.
+  stale timeouts cannot override progress. `FailedParallelValidationReadCancelsSiblingsAndPreservesTheFailure`
+  holds earlier ranges while a later range fails: siblings are cancelled and drained, the original failure is reported,
+  and no database is adopted.
 
 ## Coordinator simulation
 
@@ -190,6 +194,10 @@ coordinator never runs handlers.
   `CaughtUpFollowerComparesInlinePollBytesWithoutRangeReads` (with and without small logs) needs no range reads.
 - Faults: startup outage prevents election, divergence requests restart while local writes continue, malformed leader
   records request restart, and wrong API keys or stale sessions fail authentication.
+- Multi-database publication conflict: `ConflictFencesAndRequestsRestartBeforeAnotherDatabaseFinishes` holds one
+  database's publication while another detects divergent canonical bytes. Both database orders and providers that
+  honor or ignore cancellation fence authority, stop peer serving and request restart before the held call finishes.
+  Cleanup still drains outstanding calls before releasing their native sources; no progress watchdog is required.
 - Activation conflict: `DelayedPredecessorGenesisConflictsWithActivationAndRestartsWithoutAWatchdog` lands the old
   genesis between empty-root discovery and the new leader's CAS. The new leader fences and restarts without renewing
   the lease or requiring a watchdog; a fresh node restores the winning initialization cursor and can lead.
@@ -277,26 +285,21 @@ with `BTDB_AZURE_BLOB_ENDPOINT` (each node then authenticates with `DefaultAzure
 
 ## Recorded measurements
 
-- Parallel download against Azurite: four 128 MB files took 1.40 s with 256 KiB ranges and 1.00 s with 4 MiB ranges,
-  which is why downloads use 4 MiB ranges (peak 16 MiB of buffers per file). Real Blob latency was not measured.
-- Cache validation at startup: 1 GB of cached files on local disk took 2.7 s hashed serially and 1.1 s with four
-  concurrent validations.
-- Azure PVL upload: a 128 MB PVL took 595 ms with serial block staging and about 330 ms with four concurrent stages
-  (Azurite).
-- The removed follower-side schema scanner needed about 5.8 s for 23 MB of 20-byte transactions; leader-announced
-  schema positions replaced it.
-- The opt-in [live Azure probe](../BTDB.Replication.Test/Integration/azure_probe.py) is not run automatically; its
-  recorded run is described in [ObjectStorages.md](ObjectStorages.md).
+[Measurements.md](Measurements.md) owns benchmark results and their hardware/workload limits, including Azure cold
+and warm restore, peer traffic, publication and handoff. [ObjectStorages.md](ObjectStorages.md) records provider
+qualification; [M1Evidence.md](M1Evidence.md) records clock and lease timing. These are recorded runs, not results of
+an ordinary local test invocation.
 
 ## Not covered yet
 
-- Live Azure runs are manual (not in CI). Throttling and credential renewal under production load are not exercised;
-  restore throughput is measured separately in [Measurements.md](Measurements.md).
-- Physical disk faults: no torn-write, power-loss or disk-full model of a disk file collection; process tests kill,
-  suspend or partition processes.
-- Production clock qualification: in-process tests use virtual time and process tests a Stopwatch-based scheduler.
-- Exhaustive interleavings: schedules are seeded (random or hand-chosen), not model-checked, and `HistoryOracle` is not
-  attached to coordinator or adapter runs.
-- Remote publication/deletion races beyond the held-request interleavings above, and remote orphan selection.
-- Production TLS/proxy deployment of the HTTP adapter.
-- Partitions in a real network (process tests inject them per node) and production TLS/proxy paths.
+- Production-application qualification (B3), including its input retention, handlers and external effects.
+- Live Azure runs in CI and sustained production-load throttling/credential behavior. Injected throttling and
+  continuous token-refresh scenarios do exist; see the Azure tests above.
+- Physical disk faults: no torn-write, power-loss or full device-failure model. Unit tests inject local write errors;
+  subprocess tests kill, suspend or partition processes.
+- Exhaustive interleavings: seeded schedules are not model checking, and `HistoryOracle` is not attached to coordinator
+  or adapter runs. Held-request tests cover specific publication/deletion races, not every possible schedule.
+- Real network partitions and the production TLS/proxy path; process tests inject partitions per node.
+
+Production clock measurements already exist in [M1Evidence.md](M1Evidence.md). In-process tests use virtual time;
+public hosting uses `SystemReplicationScheduler`, not an NTP-adjusted Stopwatch clock.

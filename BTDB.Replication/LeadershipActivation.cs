@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
@@ -154,16 +155,18 @@ internal static class LeadershipActivation
         var pending = new Queue<(ulong Offset, int Count, byte[] Buffer, Task<int> Read)>();
         var free = new Stack<byte[]>();
         var requested = offset;
+        ExceptionDispatchInfo? readFailure = null;
         try
         {
             while (true)
             {
                 while (pending.Count < ParallelReads && requested < end)
                 {
+                    reads.Token.ThrowIfCancellationRequested();
                     var count = (int)Math.Min(BlockSize, end - requested);
                     var buffer = free.Count != 0 ? free.Pop() : ArrayPool<byte>.Shared.Rent(BlockSize);
                     pending.Enqueue((requested, count, buffer,
-                        inventory.ReadAsync(file, requested, buffer.AsMemory(0, count), reads.Token).AsTask()));
+                        ReadAsync(requested, buffer.AsMemory(0, count))));
                     requested += (uint)count;
                 }
                 if (!pending.TryDequeue(out var block)) return;
@@ -180,6 +183,13 @@ internal static class LeadershipActivation
                 verified(block.Offset + (uint)block.Count);
             }
         }
+        catch
+        {
+            // Sibling cancellation can reach the ordered await before the failing block does.
+            // Preserve the failure that cancelled the group, rather than reporting that secondary cancellation.
+            readFailure?.Throw();
+            throw;
+        }
         finally
         {
             // Stop and drain outstanding reads before their pooled buffers are returned.
@@ -191,6 +201,22 @@ internal static class LeadershipActivation
             }
             foreach (var buffer in free) ArrayPool<byte>.Shared.Return(buffer);
             ArrayPool<byte>.Shared.Return(local);
+        }
+
+        async Task<int> ReadAsync(ulong position, Memory<byte> destination)
+        {
+            try
+            {
+                return await inventory.ReadAsync(file, position, destination, reads.Token).ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                // A later range can fail while the first range is still blocked. Cancel immediately, not only
+                // when ordered consumption eventually reaches this task. Covered by the failed-parallel-read activation test.
+                Interlocked.CompareExchange(ref readFailure, ExceptionDispatchInfo.Capture(error), null);
+                await reads.CancelAsync().ConfigureAwait(false);
+                throw;
+            }
         }
     }
 

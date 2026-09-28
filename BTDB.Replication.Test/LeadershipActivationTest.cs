@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 using BTDB.Replication.Test.Simulation;
@@ -22,6 +23,52 @@ public class LeadershipActivationTest
     static string Key(uint id) => $"{id}.trl";
     static ActivationDatabase Input(Node node, Storage remote) => new("main", node.Db, node.Capture, remote,
         new(Key(1), 1), new(1, 0), id => $"{id}.trl");
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task FailedParallelValidationReadCancelsSiblingsAndPreservesTheFailure(int failedBlock)
+    {
+        using var node = await Node.Create(false);
+        await node.Write(1, 1, size: 2 * 1024 * 1024);
+        var remote = new Storage();
+        var clock = new DeterministicScheduler(712);
+        using var original = new CanonicalTrlPublisher(node.Db, node.Capture, remote, Lease(clock, "old"), 1, Key);
+        await original.PublishNextAsync();
+        var writes = remote.Requests.Count;
+        var failure = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = 0;
+        var cancelled = 0;
+        remote.BeforeRangeReadAsync = async (offset, token) =>
+        {
+            Interlocked.Increment(ref started);
+            if (offset == failedBlock * 256 * 1024)
+            {
+                await failure.Task;
+                return;
+            }
+            try { await Task.Delay(Timeout.Infinite, token); }
+            catch (OperationCanceledException) { Interlocked.Increment(ref cancelled); throw; }
+        };
+        using var cancellation = new CancellationTokenSource();
+        var run = LeadershipActivation.ActivateAsync(new(Lease(clock, "new"), 2, "session", ["main"]),
+            [Input(node, remote)], cancellation.Token).AsTask();
+        var expected = new IOException("Later validation block failed.");
+        try
+        {
+            Assert.Equal(4, Volatile.Read(ref started));
+            failure.SetException(expected);
+            var actual = await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Same(expected, actual);
+            Assert.Equal(3, Volatile.Read(ref cancelled));
+            Assert.Equal(writes, remote.Requests.Count); // Validation failure must not adopt anything.
+        }
+        finally
+        {
+            cancellation.Cancel();
+            await ((Task)run).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ContinueOnCapturedContext);
+        }
+    }
 
     [Fact]
     public async Task ValidatesBlobDespitePeerAcknowledgementAndAdoptsWithoutPublishingOptimisticTail()

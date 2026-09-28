@@ -324,24 +324,38 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             var publications = new Task<TrlPublishResult>[publishers.Count];
             for (var i = 0; i < publishers.Count; i++)
                 publications[i] = publishers[i].PublishNextAsync(true, cancellation).AsTask();
-            await ((Task)Task.WhenAll(publications)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-            // Observe every failure; only the first one propagates below.
-            foreach (var publication in publications) _ = publication.Exception;
-            var lost = false;
             var conflict = false;
+            try
+            {
+                // A conflicting database must fence the node even if another provider call never completes.
+                // Keep state transitions on this lane; then drain all calls before releasing their native sources.
+                var pending = new List<Task<TrlPublishResult>>(publications);
+                while (pending.Count != 0)
+                {
+                    var publication = await Task.WhenAny(pending).ConfigureAwait(false);
+                    pending.Remove(publication);
+                    if (conflict || !publication.IsCompletedSuccessfully || publication.Result != TrlPublishResult.Conflict)
+                        continue;
+                    conflict = true;
+                    authority.Fence();
+                    try { Restart("Canonical TRL conflicts with local history; restore is required."); }
+                    finally { await remoteRequest.CancelAsync().ConfigureAwait(false); }
+                }
+            }
+            finally
+            {
+                await ((Task)Task.WhenAll(publications)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                // Observe every failure; only the first one propagates below when no conflict won.
+                foreach (var publication in publications) _ = publication.Exception;
+            }
+            if (conflict) return;
+            var lost = false;
             for (var i = 0; i < publishers.Count; i++)
             {
                 ObservePublication(databases, publishers, authority, i);
                 AdvanceCanonicalBase(databases[i], publishers[i].PublishedPosition);
                 if (!publications[i].IsCompletedSuccessfully) continue;
-                conflict |= publications[i].Result == TrlPublishResult.Conflict;
                 lost |= publications[i].Result == TrlPublishResult.AuthorityLost;
-            }
-            if (conflict)
-            {
-                authority.Fence();
-                Restart("Canonical TRL conflicts with local history; restore is required.");
-                return;
             }
             if (lost)
             {

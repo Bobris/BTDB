@@ -137,12 +137,13 @@
   `btdb_sha256` and `btdb_delete_after`; no term, successor or recovery-root metadata.
 - Treat every local file as a disposable, untrusted cache. Reuse only sealed files verified against the selected
   remote identity, length and a freshly calculated whole-file SHA-256; ETag and length alone do not prove equality.
-  PVL/KVI carry SHA-256 metadata; canonical TRLs currently do not, so restore downloads them again (add a post-seal
-  checksum only if measurement shows the cost matters). Unverified local data is never canonical input.
+  PVL/KVI and newly sealed canonical TRLs carry SHA-256 metadata. Restore downloads the growing tail and older
+  sealed files without a checksum again. Unverified local data is never canonical input.
 - Download in parallel with bounded memory; without a KVI replay all canonical TRLs in ascending lineage order while
   later files download; with a KVI fetch only its required files. All required databases finish restore before
   election. Prioritize local disk and startup time over aggressive Blob-space savings.
 - Local disk exhaustion is a fatal node error with normal fencing, unavailability and restart/rebuild; no special
   quota or low-disk mode. Terminate old readers before removing obsolete cache.
 - Target complete startup within 15 minutes for about 100 GB, including cold restore and replay. Qualify end-to-end
-  readiness with real measurements; do not claim the target is achieved.
+  readiness with real measurements. Recorded Azure benchmarks are in `Measurements.md`; they do not qualify the
+  production application or every deployment.

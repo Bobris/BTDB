@@ -369,7 +369,7 @@ The target is complete startup of about 100 GB within 15 minutes, including cold
 | --- | --- |
 | Lease lost, fenced or expired | Cancel remote work, drop leadership, continue as follower; local work continues. |
 | Selection conflict | Fence the lease; another node or a later lease reconciles. |
-| TRL publication conflict | Fence the lease and request restart for canonical restore. |
+| TRL publication conflict | Fence the lease and request restart immediately, independently of other database publications; cancel and drain outstanding work before releasing its files. |
 | Ambiguous storage result | Reconcile the exact intent; retry the same intent while authority is valid. |
 | Follower divergence or missing retained TRL | Request restart; restore rebuilds from Blob Storage. |
 | Leader unreachable | Reconnect via `leader.json`; lease expiry lets an eligible follower take over. |
@@ -398,7 +398,7 @@ Backlog within the selected design:
 
 | Area | Remaining work |
 | --- | --- |
-| Restore performance | Measured on Azure ([Measurements.md](Measurements.md)): 100 GiB cold in 4.4 minutes, warm in 100 s; 30 GiB with production file sizes cold in 83–156 s. Open: whole-cache validation on warm starts. |
+| Restore performance | Measured on Azure ([Measurements.md](Measurements.md)): 100 GiB cold in 4.4 minutes, warm in 100 s; 30 GiB with production file sizes cold in 83–156 s. Warm starts hash only files used by the selected recovery closure; no trusted-cache receipt is needed. Qualify the production workload separately. |
 | Graceful shutdown | Same-generation lease handoff on shutdown instead of waiting for lease expiry, if the pause proves significant. |
 | Providers | S3 adapter research (ObjectStorages.md); production Kestrel/proxy qualification of the HTTP transport. |
 | Stronger reads | Confirmed-only, bounded-lag or minimum-position reads are optional future APIs, not requirements. |
@@ -425,7 +425,6 @@ Backlog within the selected design:
 | 2026-09-27 | The leader announces its latest non-application commit in every poll; followers no longer decode leader TRL (the scanner cost about 5.8 s per 23 MB of small transactions). |
 | 2026-09-27 | Deletion delay must be positive; unchanged checkpoints are not re-exported; unmarked TRLs and PVLs are never rewritten by checkpoint protection. |
 | 2026-09-27 | A steady-state checkpoint needs no request per retained file (measured 173 HEADs before). Removed and detached databases release local TRL retention; a node that initialized a database follows after losing the lease instead of restarting. |
-
 | 2026-09-28 | Shared `{id}.trl` names across terms; conditional create with byte comparison on collision. Publish in native order and regenerate unfinished transactions after restart. Only SHA-256 and deletion deadlines remain Blob metadata; this supersedes successor links and KVI recovery-root hints. Sealed TRLs record their SHA-256 in the sealing write, so warm restores reuse them. |
 
 Superseded alternatives, kept only as reasons: manifest- or chunk-based checkpoint publication and whole-file TRL

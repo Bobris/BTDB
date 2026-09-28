@@ -42,6 +42,8 @@ public class CanonicalTrlPublisherTest
         public Func<int, Fault>? Inject;
         public Action<TrlWrite>? BeforeEffect;
         public Action<uint>? BeforeRangeRead;
+        public Func<uint, CancellationToken, ValueTask>? BeforeRangeReadAsync;
+        public Func<TrlWrite, CancellationToken, ValueTask<TrlWriteResult>>? OverrideWrite;
         public long RangeBytes;
         int _version;
         public int Applied;
@@ -52,20 +54,21 @@ public class CanonicalTrlPublisherTest
             ct.ThrowIfCancellationRequested();
             return ValueTask.FromResult(Blobs.GetValueOrDefault(key)?.State);
         }
-        public ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken ct)
+        public async ValueTask ReadRangeAsync(string key, string token, uint offset, Memory<byte> destination, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
             BeforeRangeRead?.Invoke(offset);
+            if (BeforeRangeReadAsync != null) await BeforeRangeReadAsync(offset, ct);
             ct.ThrowIfCancellationRequested();
             var blob = Blobs[key];
             if (token != blob.State.Token) throw new IOException("Selected TRL version changed.");
             MaximumRangeRead = Math.Max(MaximumRangeRead, destination.Length);
             RangeBytes += destination.Length;
             blob.Bytes.AsMemory((int)offset, destination.Length).CopyTo(destination);
-            return ValueTask.CompletedTask;
         }
         public ValueTask<TrlWriteResult> WriteAsync(TrlWrite write, CancellationToken ct)
         {
+            if (OverrideWrite != null) return OverrideWrite(write, ct);
             ct.ThrowIfCancellationRequested();
             var suffix = new byte[write.AppendLength];
             for (uint offset = 0; offset < suffix.Length;)
