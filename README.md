@@ -12,6 +12,8 @@ Currently this project these parts:
 - Event Storage
 - Bon (Binary object notation)
 - Incremental SourceGenerator for IOC Container factory generation
+- Replication of BTDB databases across disposable nodes with Azure Blob Storage (preview,
+  [BTDB.Replication](BTDB.Replication/README.md))
 
 All code written in C# 12 and licensed under very
 permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting .Net 9.0, main code has just 2

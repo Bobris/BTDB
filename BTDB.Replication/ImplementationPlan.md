@@ -114,7 +114,9 @@ fences immediately and lets the lease expire.
    when the first lease is acquired, and host guidance for application-owned event execution, input retention,
    restarts, recommended settings and alerts ([ReplicationHosting.md](../Doc/ReplicationHosting.md)).
    Reader-visible progress and input lag stay application-owned.
-7. **Release.** After qualification, update the README from the architecture status and prepare packaging.
+7. **Release.** Prepared: `BTDB.Replication`, `BTDB.Replication.Azure` and `BTDB.Replication.Http` pack as
+   `{BTDB version}-preview` NuGet packages with their READMEs, and the README states the preview status. Publishing
+   them (adding them to `Releaser`) and dropping the suffix wait for the open parts of B3.
 
 ## Validation discipline
 

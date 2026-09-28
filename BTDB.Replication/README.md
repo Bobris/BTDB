@@ -5,8 +5,11 @@ authors a single canonical history in Azure Blob Storage; every node keeps a loc
 the application's ordered events locally. The application's event log remains the source for replaying a recent tail
 that was not yet published.
 
-Status: implemented and tested with deterministic simulation, loopback HTTP, Azurite and subprocess failover tests; not
-yet qualified on production Azure or packaged for release. See [Architecture](Architecture.md#open-work) for open work.
+Status: preview. Implemented and tested with deterministic simulation and seeded schedule exploration, loopback HTTP,
+Azurite, and subprocess failover and ObjectDB application tests; the adapter and subprocess suites also pass against
+live Azure, and restore throughput is measured on Azure VMs. Packages are prepared as `-preview` versions. Open before
+production use: rolling schema upgrades under continuous input and qualification with the production application
+(see [Architecture](Architecture.md#open-work)).
 
 ## Properties
 
@@ -16,7 +19,8 @@ yet qualified on production Azure or packaged for release. See [Architecture](Ar
 - **One shared recovery base.** Blob Storage holds one canonical history per database (native TRL chain plus KVI
   checkpoints), independent of the replica count. Local files are only a validated cache.
 - **Disposable compute.** A new node restores from the latest checkpoint and canonical TRL, reusing local files only
-  when their identity, length and SHA-256 match. No persistent volume is required.
+  when their identity, length and SHA-256 match. No persistent volume is required. A restore keeps working while the
+  leader publishes and cleans up.
 - **Local-speed commits.** Application commits and default reads are local. Followers compare their native TRL bytes
   with the leader's through a lightweight poll; a mismatch restarts and rebuilds the follower.
 - **Independent compaction.** Every node compacts locally without creating a KVI. Only the leader publishes checkpoints
@@ -32,7 +36,7 @@ yet qualified on production Azure or packaged for release. See [Architecture](Ar
 | `BTDB.Replication` | Coordinator, authority, publication, comparison, file set, checkpoints and cleanup. |
 | [`BTDB.Replication.Http`](../BTDB.Replication.Http/README.md) | Peer transport over ASP.NET Core/Kestrel and hosting registration. |
 | [`BTDB.Replication.Azure`](../BTDB.Replication.Azure/README.md) | Azure leader record/lease and data storage adapters. |
-| [`BTDB.Replication.Process.Test`](../BTDB.Replication.Process.Test/README.md) | Subprocess failover tests using only the public API. |
+| [`BTDB.Replication.Process.Test`](../BTDB.Replication.Process.Test/README.md) | Subprocess failover, partition, upgrade and ObjectDB application tests using only the public API. |
 
 ## Documents
 

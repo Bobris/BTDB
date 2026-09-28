@@ -3,11 +3,33 @@
         <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-        <IsPackable>false</IsPackable>
+        <IsPackable>true</IsPackable>
+        <PackageId>BTDB.Replication.Http</PackageId>
+        <Version>35.10.2</Version>
+        <!-- Preview until the open blockers in BTDB.Replication/Architecture.md are closed. -->
+        <PackageVersion>$(Version)-preview</PackageVersion>
+        <Authors>Boris Letocha</Authors>
+        <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+        <Description>ASP.NET Core hosting, health checks, metrics and the HTTP peer transport for BTDB.Replication.</Description>
+        <PackageTags>BTDB replication ASP.NET Core HTTP</PackageTags>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <DebugSymbols>true</DebugSymbols>
+        <DebugType>embedded</DebugType>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
     </PropertyGroup>
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App"/>
         <ProjectReference Include="../BTDB.Replication/BTDB.Replication.csproj"/>
         <InternalsVisibleTo Include="BTDB.Replication.Http.Test"/>
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="/"/>
     </ItemGroup>
 </Project>

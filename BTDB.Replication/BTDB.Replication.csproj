@@ -5,7 +5,26 @@
         <Nullable>enable</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <IsPackable>false</IsPackable>
+        <IsPackable>true</IsPackable>
+        <PackageId>BTDB.Replication</PackageId>
+        <Version>35.10.2</Version>
+        <!-- Preview until the open blockers in BTDB.Replication/Architecture.md are closed. -->
+        <PackageVersion>$(Version)-preview</PackageVersion>
+        <Authors>Boris Letocha</Authors>
+        <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+        <Description>Leader-based replication of BTDB databases across disposable compute nodes with a canonical history in object storage.</Description>
+        <PackageTags>BTDB replication KeyValue database</PackageTags>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <DebugSymbols>true</DebugSymbols>
+        <DebugType>embedded</DebugType>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../BTDB/BTDB.csproj"/>
@@ -15,5 +34,8 @@
         <InternalsVisibleTo Include="BTDB.Replication.Http"/>
         <InternalsVisibleTo Include="BTDB.Replication.Http.Test"/>
         <InternalsVisibleTo Include="DBBenchmark"/>
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="/"/>
     </ItemGroup>
 </Project>
