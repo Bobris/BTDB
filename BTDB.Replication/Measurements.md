@@ -131,7 +131,8 @@ In-process comparison runs at 7–14 GiB/s, so round trips dominate; the coordin
 
 `HttpReplicationPeerTransportTest.MeasurePollLatencyAndInlineThroughput` (opt-in with `BTDB_REPLICATION_MEASURE=1`,
 Release build) polls a leader endpoint over real Kestrel HTTP on loopback, with the binary peer encoding: an empty
-poll takes 85 µs and a poll carrying the full 4 MiB inline budget 1.2 ms, 3.4 GiB/s (Apple M-series laptop). The
+poll takes 85 µs and a poll carrying the full 4 MiB inline budget 1.2 ms, 3.4 GiB/s, on an Apple M-series laptop;
+223 µs and 2.6 ms (1.5 GiB/s) on an E8ads_v5 VM. The
 transport therefore adds far less than the network round trip and stays an order of magnitude above the publication
 rates measured above; between VMs, the round trip, not the HTTP stack, sets the cost of a follower step.
 

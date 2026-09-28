@@ -10,9 +10,10 @@ described in [ReplicationCore.md](../Doc/ReplicationCore.md) and hosting in [Rep
 The mechanisms below are implemented: the node coordinator, lease authority and leader selection, activation and
 canonical TRL publication, follower comparison and the poll protocol, schema detachment, upgrade handoff, checkpoint
 publication with delayed remote cleanup, restore through `ReplicationFileSet`, progress watchdogs, the HTTP transport
-and ASP.NET Core hosting, and the Azure adapters. They are exercised by deterministic in-process simulation, loopback
-HTTP, Azurite and subprocess failover tests. They are not yet qualified against production Azure, real clocks under
-pauses, or deployment-scale restore; see [Open work](#open-work).
+and ASP.NET Core hosting, and the Azure adapters. They are exercised by deterministic in-process simulation and seeded
+schedule exploration, loopback HTTP, Azurite, and subprocess failover and ObjectDB application tests, and qualified
+against live Azure (adapter and subprocess suites, clock and lease margins, restore of 100 GiB on Azure VMs). Open:
+qualification with the production application; see [Open work](#open-work).
 
 ### Admission rule
 
@@ -384,14 +385,14 @@ not caught up.
 ## Open work
 
 Blocker register: engineering work that must be closed, with linked evidence, before the mechanism is relied on in
-production. The IDs are stable references used by other documents.
+production. The IDs are stable references used by other documents; closed entries stay for their evidence.
 
 | ID | Area | Remaining work |
 | --- | --- | --- |
-| B1 | Authority qualification | Qualified on Azure: the production clock (`SystemReplicationScheduler`), its rate against NTP and the service, process pauses and lease margins ([M1Evidence.md](M1Evidence.md), [ObjectStorages.md](ObjectStorages.md)). Remaining: hosts that suspend are unsupported, and Azure lease break is unqualified (never used automatically). |
-| B3 | Application integration | A sample ObjectDB application qualifies rollbacks inside virtual batches, input replay across failover and cold restore, and a schema upgrade published by a handed-off upgraded leader that detaches old nodes (`BTDB.Replication.Process.Test`). Open: (1) a rolling schema upgrade under continuous input: an upgraded follower cannot execute events before its schema is published (it would persist the upgrade locally and diverge, `UpgradedFollowerExecutingBeforeItsSchemaIsPublishedRestartsWithoutAffectingHistory`), so it lags and a handoff to it waits in activation; it needs either execution with the published schema until the upgrade (a write-free ObjectDB schema check and both relation versions) or a restore of the frozen published history after the drain. (2) Qualification with the production application. |
-| B5 | Publication and cleanup races | Stale predecessor appends, renewals, leader-record writes, PVL uploads, deletes and marks, and restores concurrent with publication and cleanup, are qualified on live Azure (`AzureQualificationTest`). A fenced predecessor's in-flight PVL/KVI commit landing first on a successor's identity makes the successor fence itself on the SHA conflict: safe, but its liveness cost (one lease expiry and reselection) is still to be measured on a real workload before adding a mechanism. |
-| B6 | Progress and operations | Recommended settings, recovery metrics, alerts and input-retention rules are documented in [ReplicationHosting.md](../Doc/ReplicationHosting.md) from the live-Azure subprocess qualification. Open: checkpoint cadence and activation deadline from export and restore times of a production-sized database. |
+| B1 | Authority qualification | Closed 2026-09-28: the production clock (`SystemReplicationScheduler`), its rate against NTP and the service, process pauses and lease margins are qualified on Azure ([M1Evidence.md](M1Evidence.md), [ObjectStorages.md](ObjectStorages.md)). Documented limits: hosts that suspend are unsupported; Azure lease break is never used. |
+| B3 | Application integration | A sample ObjectDB application qualifies rollbacks inside virtual batches, input replay across failover and cold restore, and a schema upgrade published by a handed-off upgraded leader that detaches old nodes (`BTDB.Replication.Process.Test`). A rolling schema upgrade under continuous input works through the handoff, the activation deadline and a restore of the frozen published history (`RollingSchemaUpgradeUnderInputRestoresTheLaggingUpgradedLeaderOntoPublishedHistory`); an upgraded node must not execute before its schema is published (`UpgradedFollowerExecutingBeforeItsSchemaIsPublishedRestartsWithoutAffectingHistory`). Open: qualification with the production application. |
+| B5 | Publication and cleanup races | Closed 2026-09-28: stale predecessor appends, renewals, leader-record writes, PVL uploads, deletes and marks, and restores concurrent with publication and cleanup, are qualified on live Azure (`AzureQualificationTest`). A fenced predecessor's PVL/KVI commit landing first on a successor's identity makes the successor fence itself on the SHA conflict; that costs one takeover (a lease expiry plus activation, 15–20 s in the live subprocess tests) and needs a predecessor request delayed beyond its lease and the successor's activation, so no mechanism is added. |
+| B6 | Progress and operations | Closed 2026-09-28: recommended settings, recovery metrics, alerts and input-retention rules are documented in [ReplicationHosting.md](../Doc/ReplicationHosting.md), with checkpoint cadence and deadlines derived from the measured 100 GiB export and restore times ([Measurements.md](Measurements.md)). |
 
 Backlog within the selected design:
 

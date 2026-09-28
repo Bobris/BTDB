@@ -1,9 +1,9 @@
 # BTDB.Replication implementation status and plan
 
-Status 2026-09-28. Milestones M0–M6 are implemented and exercised by deterministic in-process, real-BTDB, Azurite
-and subprocess tests. What remains is proof closure, live-provider and production qualification, measurement and
-release work (M7). No B1/B3/B5/B6 blocker in the [Architecture.md](Architecture.md) blocker register is closed by
-this status: link the closing tests there first.
+Status 2026-09-28. Milestones M0–M6 are implemented; M7 (qualification, measurement and release preparation) is done
+except for qualification with the production application. The adapter and subprocess suites pass against live
+Azure, and blockers B1, B5 and B6 in the [Architecture.md](Architecture.md) register are closed with linked evidence;
+B3 stays open for the production application.
 
 ## Sources of truth
 
@@ -86,8 +86,8 @@ fences immediately and lets the lease expire.
 
 1. **Proof closure (B1/B3/B5/B6).** The blocker register links the qualifying tests. Seeded whole-node schedule
    exploration (`RandomSchedulesKeepOneAuthorityAndConvergeOnOneHistory`) runs in CI; it found that a leader restored
-   from Blob could not serve followers before its first local commit (fixed, regression test kept). Remaining: the
-   open parts of B3, B5 and B6 in [Architecture.md](Architecture.md).
+   from Blob could not serve followers before its first local commit (fixed, regression test kept). B1, B5 and B6 are
+   closed with linked evidence; B3 remains open only for qualification with the production application.
 2. **Clock qualification.** Done: `SystemReplicationScheduler` uses the unadjusted hardware counter, measured on Azure
    against NTP-adjusted clocks and the service lease; 1000 ppm and a 250 ms margin are the documented, validated
    settings ([M1Evidence.md](M1Evidence.md), [ReplicationHosting.md](../Doc/ReplicationHosting.md)).
@@ -100,14 +100,15 @@ fences immediately and lets the lease expire.
    listing could open with missing values; both are fixed. Remaining: throttling and credential renewal under load.
 4. **Process scenarios.** Done: subprocess tests cover planned upgrade handoff, storage and peer partitions of a
    leader or follower, a kill during restore and partial multi-database activation, in addition to leader kill,
-   `SIGSTOP`, stalled publication, divergence and follower crash; all 13 pass on Azurite and live Azure
+   `SIGSTOP`, stalled publication, divergence, follower crash and a sample ObjectDB application with schema upgrades;
+   all 17 pass on Azurite and live Azure
    ([BTDB.Replication.Process.Test](../BTDB.Replication.Process.Test/README.md)). Disk-full and device errors during
    restore are not simulated.
 5. **Measurement.** Done on Azure ([Measurements.md](Measurements.md), `DBBenchmark replication*`): a cold restore
    of 100 GiB from Blob takes 4.4 minutes on an E8ads_v7, limited by the local disk; the findings led to lock-free
    node-local storage, sealed-TRL checksums, a 4 MiB poll budget and concurrent TRL staging. With production file
-   sizes (2 GiB PVL, 1 GiB/4 GiB TRL) 30 GiB restore cold in 83–156 s on v4–v7. Loopback HTTP peer cost (85 µs per empty poll, 1.2 ms per 4 MiB
-   inline poll) and planned handoff (about 1.2 s) are measured too, and operational defaults are documented in
+   sizes (2 GiB PVL, 1 GiB/4 GiB TRL) 30 GiB restore cold in 83–156 s on v4–v7. Loopback HTTP peer cost (223 µs per empty poll, 2.6 ms per 4 MiB
+   inline poll on E8ads_v5) and planned handoff (about 1.2 s) are measured too, and operational defaults are documented in
    [ReplicationHosting.md](../Doc/ReplicationHosting.md). Remaining: warm-restore validation reads the whole cache, and
    multi-database publication throughput and TLS between VMs are unmeasured.
 6. **Operations.** Done: recovery counters in `ReplicationStatus` and the `BTDB.Replication` meter (restore attempts,
@@ -117,7 +118,7 @@ fences immediately and lets the lease expire.
    Reader-visible progress and input lag stay application-owned.
 7. **Release.** Prepared: `BTDB.Replication`, `BTDB.Replication.Azure` and `BTDB.Replication.Http` pack as
    `{BTDB version}-preview` NuGet packages with their READMEs, and the README states the preview status. Publishing
-   them (adding them to `Releaser`) and dropping the suffix wait for the open parts of B3.
+   them (adding them to `Releaser`) and dropping the suffix wait for B3's production-application qualification.
 
 ## Validation discipline
 

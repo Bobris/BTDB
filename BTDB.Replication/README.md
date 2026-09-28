@@ -8,8 +8,7 @@ that was not yet published.
 Status: preview. Implemented and tested with deterministic simulation and seeded schedule exploration, loopback HTTP,
 Azurite, and subprocess failover and ObjectDB application tests; the adapter and subprocess suites also pass against
 live Azure, and restore throughput is measured on Azure VMs. Packages are prepared as `-preview` versions. Open before
-production use: rolling schema upgrades under continuous input and qualification with the production application
-(see [Architecture](Architecture.md#open-work)).
+production use: qualification with the production application (see [Architecture](Architecture.md#open-work)).
 
 ## Properties
 

@@ -266,8 +266,10 @@ with `BTDB_AZURE_BLOB_ENDPOINT` (each node then authenticates with `DefaultAzure
   peer partitions, a kill in the middle of a restore and partial multi-database activation.
 - `ObjectDbRollbacksInsideVirtualBatchesReplicateAndSurviveFailover`,
   `UpgradedLeaderPublishesItsSchemaDetachingOldFollowersWhileUpgradedReplacementsRestoreIt` and
-  `UpgradedFollowerExecutingBeforeItsSchemaIsPublishedRestartsWithoutAffectingHistory` run a sample ObjectDB application
-  (B3): rollbacks inside virtual batches, replay across failover, and the schema upgrade lifecycle.
+  `UpgradedFollowerExecutingBeforeItsSchemaIsPublishedRestartsWithoutAffectingHistory` and
+  `RollingSchemaUpgradeUnderInputRestoresTheLaggingUpgradedLeaderOntoPublishedHistory` run a sample ObjectDB application
+  (B3): rollbacks inside virtual batches, replay across failover, and the schema upgrade lifecycle with and without
+  continuous input.
 - `PublicHostingApiTest` guards the external-consumer boundary: no friend-assembly access, no public way to create or
   renew authority, and no secrets in public record strings. See [hosting contracts](../Doc/ReplicationHosting.md).
 

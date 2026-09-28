@@ -4,6 +4,10 @@
 
 ### Added
 
+- Qualify a rolling schema upgrade under continuous input in the subprocess tests and document the procedure: the
+  lagging upgraded leader's activation deadline restarts it onto the frozen published history, and the selected
+  generation keeps old builds from leading meanwhile.
+
 - Prepare `BTDB.Replication`, `BTDB.Replication.Azure` and `BTDB.Replication.Http` as NuGet packages, versioned
   `{BTDB version}-preview` with their READMEs, and mention replication in the README.
 

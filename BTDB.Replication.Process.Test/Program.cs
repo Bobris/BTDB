@@ -78,8 +78,11 @@ internal static class Program
         builder.Services.AddSingleton<IReplicationLeaseStorage>(storage);
         builder.Services.AddSingleton<ILeaderRecordStorage>(storage);
         var progressMilliseconds = Environment.GetEnvironmentVariable("BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS");
-        var progressTimeouts = progressMilliseconds == null ? null : new ReplicationProgressTimeouts(
-            TimeSpan.FromSeconds(20), TimeSpan.FromMilliseconds(int.Parse(progressMilliseconds)), TimeSpan.FromSeconds(1));
+        var activationMilliseconds = Environment.GetEnvironmentVariable("BTDB_TEST_ACTIVATION_TIMEOUT_MILLISECONDS");
+        var progressTimeouts = progressMilliseconds == null && activationMilliseconds == null ? null : new ReplicationProgressTimeouts(
+            activationMilliseconds == null ? TimeSpan.FromSeconds(20) : TimeSpan.FromMilliseconds(int.Parse(activationMilliseconds)),
+            progressMilliseconds == null ? TimeSpan.FromSeconds(20) : TimeSpan.FromMilliseconds(int.Parse(progressMilliseconds)),
+            TimeSpan.FromSeconds(1));
         builder.Services.AddBTDBReplication(new("cluster", endpoint, TimeSpan.FromMilliseconds(50),
             TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1), generation, ProgressTimeouts: progressTimeouts),
             1000, TimeSpan.FromMilliseconds(250)); // The recommended production drift bound and margin.

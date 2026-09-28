@@ -197,9 +197,9 @@ Values qualified by the subprocess tests on live Azure; measure restore and expo
 | `LeaseRetryInterval` | 250 ms | Acquisition retries only; renewals schedule themselves within the lease. |
 | `RequestTimeout` | 2 s | Must be below half of the usable lease (validated when the first lease is acquired). |
 | `ConfirmationDuration` | 1 s | Planned handoff waits this long; must be below half of the usable lease (validated). |
-| Checkpoint interval (`ReplicationMaintenance`) | 1 h | Bounds TRL replay on restore; several times the KVI export time. |
+| Checkpoint interval (`ReplicationMaintenance`) | 1 h | Bounds TRL replay on restore; a checkpoint of 100 GiB uploads at 330–450 MiB/s, so its KVI (20–30 % of the data) takes 1–2 minutes. |
 | Deletion delay | 1 day or more | Above the longest restore; late predecessor marks can never become due. |
-| `ProgressTimeouts` | activation above the longest restore, publication 2 min, `RestartDelay` 90 s | Restart replication work that stops moving. |
+| `ProgressTimeouts` | activation 15 min (seconds on an upgraded build, see below), publication 2 min, `RestartDelay` 90 s | A cold 100 GiB restore takes 4.4–9 minutes on E8 VMs; restart replication work that stops moving. |
 
 A lease-dependent setting the lease cannot support (a margin consuming the whole lease, a `RequestTimeout` or
 `ConfirmationDuration` of half the usable lease or more) stops lease maintenance with `InvalidOperationException` when
@@ -216,9 +216,22 @@ target proves ownership by renewal and then activates normally.
 An upgraded build whose relations change the persisted schema (for example a new secondary index) must not execute
 events before its schema is published, neither as a follower nor while activating: its first writer would persist the
 upgrade locally, and the node would diverge and restart (published history stays intact). Start its event loop only
-after `PrepareSchemaAsync` ran on it as leader, or when its restored history already contains its schema. Today that
-means handing off to an upgraded node that has not fallen behind the published history (for example while input is
-paused), then replacing the old nodes; a rolling upgrade under continuous input is not supported yet.
+after `PrepareSchemaAsync` ran on it as leader, or when its restored history already contains its schema.
+
+Rolling schema upgrade under continuous input:
+
+1. Start the upgraded build with an activation progress deadline (`ReplicationProgressTimeouts.Activation`, a few
+   seconds) and its event loop stopped; it restores and follows without executing.
+2. Report `PreparedUpgrade`. The old leader drains, stops publishing and transfers the lease; the upgraded node selects
+   its generation, which permanently keeps older builds from leading.
+3. It usually lags the now frozen published history and cannot catch up by executing, so its activation deadline
+   fences it and requests a fatal restart. Restarted on the same directory, it restores exactly the published history,
+   acquires the lease after expiry, publishes its schema in `PrepareSchemaAsync` and starts its event loop from the
+   retained input after the published `CommitUlong`.
+4. Old nodes detach on the schema commit and keep serving locally; replace them with upgraded nodes, which restore the
+   schema commit and follow.
+
+Leadership pauses for about one lease duration plus the restore; input received meanwhile is replayed from retention.
 
 `SchemaDetached` is called when the leader announces a schema commit beyond the follower's canonical base, before
 comparison. Report that database as local-only and keep serving its ordinary reads/writes; the node can no longer

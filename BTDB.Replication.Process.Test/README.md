@@ -41,8 +41,10 @@ Scenarios:
   order inside a virtual batch, and a rejected order rolls back inside the batch before a second transaction with the
   same event ID records the rejection. Followers compare these batches byte for byte, a takeover and a cold restore
   reproduce the same state, and a generation-2 build adding a secondary index publishes its schema after a handoff:
-  old nodes detach, an upgraded replacement restores the schema commit and compares. An upgraded follower that
-  executes before its schema is published diverges and restarts without affecting published history.
+  old nodes detach, an upgraded replacement restores the schema commit and compares. Under continuous input the
+  upgraded node lags after the handoff; its activation deadline restarts it, it restores the frozen published history
+  and becomes leader while old nodes stay out. An upgraded follower that executes before its schema is published
+  diverges and restarts without affecting published history.
 - **Partial multi-database activation.** With two databases, a lease winner whose second database lags behind the
   published history stays `Activating` and adopts and publishes nothing, while local input continues; once the lagging
   input is applied both databases activate and publish.

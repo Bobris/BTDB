@@ -60,7 +60,7 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
 
         public static async Task<Node> Start(BlobContainerClient container, int? progressTimeoutMilliseconds = null,
             string? dataDirectory = null, ulong generation = 1, int readDelayMilliseconds = 0, string databases = "main",
-            bool objects = false)
+            bool objects = false, int? activationTimeoutMilliseconds = null)
         {
             var ownsDataDirectory = dataDirectory == null;
             dataDirectory ??= Path.Combine(Path.GetTempPath(), "btdb-process-node-" + Guid.NewGuid().ToString("N"));
@@ -82,6 +82,9 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
             if (progressTimeoutMilliseconds is { } timeout)
                 start.Environment["BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS"] = timeout.ToString();
             else start.Environment.Remove("BTDB_TEST_PROGRESS_TIMEOUT_MILLISECONDS");
+            if (activationTimeoutMilliseconds is { } activation)
+                start.Environment["BTDB_TEST_ACTIVATION_TIMEOUT_MILLISECONDS"] = activation.ToString();
+            else start.Environment.Remove("BTDB_TEST_ACTIVATION_TIMEOUT_MILLISECONDS");
             start.Environment["BTDB_TEST_DATA_DIRECTORY"] = dataDirectory;
             start.Environment["BTDB_TEST_GENERATION"] = generation.ToString();
             start.Environment["BTDB_TEST_READ_DELAY_MILLISECONDS"] = readDelayMilliseconds.ToString();
@@ -150,12 +153,12 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
             Assert.Equal(0, _process.ExitCode);
             Assert.Contains("RESTART " + reason, Diagnostics);
         }
-        public async Task ExpectFatalExit()
+        public async Task ExpectFatalExit(string reason = "Replication publication made no forward progress.", int seconds = 15)
         {
-            await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+            await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(seconds));
             await Task.WhenAll(_output, _error);
             Assert.Equal(75, _process.ExitCode);
-            Assert.Contains("FATAL Replication publication made no forward progress.", Diagnostics);
+            Assert.Contains("FATAL " + reason, Diagnostics);
         }
 
         public async Task Signal(string signal)
@@ -451,6 +454,55 @@ public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<Blo
         var summary = await upgraded.OrderSummary();
         Assert.Equal(summary, await replacement.OrderSummary());
         Assert.Equal(5, summary.IndexedFirstCustomer); // Orders 1, 6, 11, 16 and 26; 21 was rejected.
+    }
+
+    [Fact]
+    public async Task RollingSchemaUpgradeUnderInputRestoresTheLaggingUpgradedLeaderOntoPublishedHistory()
+    {
+        var container = await fixture.ContainerAsync();
+        await using var leader = await Node.Start(container, objects: true);
+        await leader.Wait(s => s.Role == "Leader", "initial leader");
+        await using var old = await Node.Start(container, objects: true);
+        await old.Wait(s => s.Role == "Follower", "old follower");
+        await leader.Orders(1, 10);
+        await old.Orders(1, 10);
+        await WaitPublished(container, 10);
+        var directory = Path.Combine(Path.GetTempPath(), "btdb-process-node-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await using (var upgraded = await Node.Start(container, generation: 2, objects: true, dataDirectory: directory,
+                             activationTimeoutMilliseconds: 3000))
+            {
+                await upgraded.Wait(s => s.Role == "Follower" && s.EventId == 10, "restored upgraded node");
+                // Input continues on the old build; the upgraded node cannot execute it before its schema exists.
+                await leader.Orders(11, 10);
+                await old.Orders(11, 10);
+                await WaitPublished(container, 20);
+                await upgraded.PrepareUpgrade();
+                // After the handoff it lags behind the now frozen published history and cannot catch up by executing:
+                // the activation deadline fences and restarts it.
+                await upgraded.ExpectFatalExit("Replication activation made no forward progress.", 40);
+            }
+            // The restarted node restores the published history, and the selected generation keeps old nodes out.
+            await using var restarted = await Node.Start(container, generation: 2, objects: true, dataDirectory: directory,
+                activationTimeoutMilliseconds: 3000);
+            await restarted.Wait(s => s.Role == "Leader" && s.EventId == 20, "upgraded leader on published history", 40);
+            await leader.Wait(s => s.Detached, "old leader detaches", 30);
+            await old.Wait(s => s.Detached, "old follower detaches", 30);
+            var record = System.Text.Json.Nodes.JsonNode.Parse(
+                (await container.GetBlobClient("leader.json").DownloadContentAsync()).Value.Content.ToString())!;
+            Assert.Equal(2ul, record["applicationGeneration"]!.GetValue<ulong>());
+            // Its event loop resumes from retained input after the published history.
+            await restarted.Orders(21, 10);
+            await WaitPublished(container, 30);
+            await using var replacement = await Node.Start(container, generation: 2, objects: true);
+            await replacement.Wait(s => s.Role == "Follower" && s.EventId == 30, "upgraded replacement");
+            Assert.Equal(await restarted.OrderSummary(), await replacement.OrderSummary());
+        }
+        finally
+        {
+            await DeleteDirectory(directory);
+        }
     }
 
     [Fact]
