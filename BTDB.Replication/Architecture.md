@@ -349,9 +349,15 @@ remote inventory (`CanonicalTrlInventory` for TRLs and the storage listing for P
    during the load, so downloads and cached-file checksums overlap it. Downloads use 4 MiB ranges
    with four in flight per file and a bounded number of files; sealed files are verified while written, the growing
    tail is always downloaded again, and a partial download is removed.
-3. A removed remote file or a version change fails the attempt; the host disposes it and restores again from the
-   newest published state. There is no remote restore pin and no old-KVI fallback. A broken current closure keeps
-   the node unavailable; published history is never replaced by initialization.
+3. The attempt keeps its selected state while the leader continues. A newer version of a selected file still serves
+   the selected bytes when it provably keeps them: a TRL at least as long (canonical TRLs are append-only, so appends,
+   sealing, adoption and deletion marks change only its version), or a PVL/KVI with the same length and SHA-256
+   (marks change only metadata). A KVI whose TRL cut lies beyond the discovered TRL history was published after
+   discovery and is ignored, so the attempt opens the newest checkpoint that existed at discovery. A removed file or
+   any other change fails the attempt; the host disposes it and restores again from the newest published state. The
+   deletion delay therefore bounds how long a restore may take. There is no remote restore pin and no fallback to an
+   older KVI when the selected closure is broken; a broken current closure keeps the node unavailable, and published
+   history is never replaced by initialization.
 
 The target is complete startup of about 100 GB within 15 minutes, including cold download and replay; measured in
 [Measurements.md](Measurements.md).
@@ -382,9 +388,9 @@ production. The IDs are stable references used by other documents.
 
 | ID | Area | Remaining work |
 | --- | --- | --- |
-| B1 | Authority qualification | Qualify clock drift, pause/suspend behavior and lease margins on production Azure; the M1 clock model is verified only in simulation. |
+| B1 | Authority qualification | Qualify clock drift and pause/suspend behavior of the production monotonic clock. Lease margins are measured on live Azure (a 15 s Azure Blob lease expired 14.94–15.06 s after its acquire was dispatched; see [ObjectStorages.md](ObjectStorages.md)); the M1 clock model is otherwise verified only in simulation. |
 | B3 | Application integration | ObjectDB/application state after rollback inside virtual batches, application-owned input replay and the schema lifecycle need end-to-end qualification with a real application. |
-| B5 | Publication and cleanup races | A fenced predecessor's in-flight PVL/KVI commit can land on the identity a successor allocated; the successor then fences itself on the SHA conflict. Safe, but a liveness cost to measure before adding a mechanism. Qualify stale-publication and cleanup interleavings against real Azure. |
+| B5 | Publication and cleanup races | Stale predecessor appends, renewals, leader-record writes, PVL uploads, deletes and marks, and restores concurrent with publication and cleanup, are qualified on live Azure (`AzureQualificationTest`). A fenced predecessor's in-flight PVL/KVI commit landing first on a successor's identity makes the successor fence itself on the SHA conflict: safe, but its liveness cost (one lease expiry and reselection) is still to be measured on a real workload before adding a mechanism. |
 | B6 | Progress and operations | Budgets and defaults: poll and lease intervals, checkpoint cadence, deletion delay, watchdog deadlines, retention of application input; metrics and alert thresholds. |
 
 Backlog within the selected design:

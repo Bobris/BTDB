@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,7 +12,8 @@ namespace BTDB.Replication;
 
 /// <summary>
 /// Snapshot of the shared TRL namespace. Native headers and KVI references determine recovery; no term directory,
-/// successor metadata or checkpoint sidecar participates. A missing dependency or version change fails this attempt.
+/// successor metadata or checkpoint sidecar participates. A missing dependency fails this attempt; a newer version of
+/// a selected TRL still serves its selected bytes (see <see cref="ReadAsync"/>).
 /// </summary>
 public sealed class CanonicalTrlInventory : IRemoteFileCollection
 {
@@ -19,6 +21,8 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
     // Shared native IDs in ascending order.
     readonly List<TrlHead> _chain;
     readonly Dictionary<uint, TrlHead> _byId;
+    // Newer versions of selected TRLs that were verified to still cover their selected length.
+    readonly ConcurrentDictionary<uint, string> _followed = new();
 
     CanonicalTrlInventory(IReplicationStorage storage, List<TrlHead> chain, TrlSuccessor root)
     {
@@ -80,10 +84,29 @@ public sealed class CanonicalTrlInventory : IRemoteFileCollection
             file.Length != head.State.Length || offset > file.Length)
             throw new InvalidDataException("Read is outside the selected canonical version.");
         var count = (int)Math.Min((ulong)buffer.Length, file.Length - offset);
-        if (count != 0)
-            await _storage.ReadRangeAsync(head.Key, head.State.Token, (uint)offset, buffer[..count], cancellation)
-                .ConfigureAwait(false);
-        return count;
+        if (count == 0) return count;
+        var token = _followed.GetValueOrDefault(file.FileId, head.State.Token);
+        for (var followed = 0; ; followed++)
+        {
+            try
+            {
+                await _storage.ReadRangeAsync(head.Key, token, (uint)offset, buffer[..count], cancellation).ConfigureAwait(false);
+                return count;
+            }
+            catch (IOException) when (followed < MaximumFollowedVersions)
+            {
+                // Canonical TRLs are append-only: appends, sealing and adoption keep every published byte, and deletion
+                // marks change only metadata. A leader publishing during a restore therefore changes the version of the
+                // selected tail (and cleanup those of older TRLs) without changing the selected bytes. Continue from a
+                // newer version that still covers the selection; a deleted or shorter object still fails this attempt.
+                var current = await _storage.ReadAsync(head.Key, cancellation).ConfigureAwait(false);
+                if (current == null || current.Token == token || current.Length < head.State.Length) throw;
+                _followed[file.FileId] = token = current.Token;
+            }
+        }
     }
 
+    // A leader appending faster than one metadata and range round trip can change the version again before the read;
+    // each retry needs a newer version, so this bounds only a leader outpacing the reader, never a stuck one.
+    const int MaximumFollowedVersions = 16;
 }

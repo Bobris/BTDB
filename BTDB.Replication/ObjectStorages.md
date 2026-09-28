@@ -50,8 +50,11 @@ or PVL/KVI objects, local disks or peer traffic; every new term therefore CAS-fe
 | `IRemoteFileCollection` | `EnumerateAsync` and version-bound `ReadAsync` of `RemoteFile(FileId, FileType, Length, Version, IsSealed, Sha256)`. |
 | `IReplicationStorage` | Canonical TRL `ReadAsync`/`ReadRangeAsync`/`WriteAsync`; `EnsurePureValuesAsync`, `ProtectPureValuesAsync`, `PublishKeyIndexAsync`; `ResolveRecoveryRootAsync`; `EnumerateMaintenanceAsync`, `ScheduleDeletionAsync`, `CancelDeletionAsync`, `DeleteAsync`. |
 
-A read must fail if the selected version changed or disappeared; partial success never combines versions. Tokens are
-opaque. File IDs and types come from numeric names and extensions without reading native headers; higher IDs order
+A read returns the listed content or fails; partial success never combines contents. A newer version counts only
+when it provably keeps the listed bytes: a canonical TRL (append-only) at least as long, or an immutable PVL/KVI with
+the same length and SHA-256, whose version changes only through deletion-mark metadata. The Azure adapter and
+`CanonicalTrlInventory` then continue from that version, so a restore survives a leader that keeps publishing and
+cleaning up; a deleted or otherwise changed object fails the read. Tokens are opaque. File IDs and types come from numeric names and extensions without reading native headers; higher IDs order
 TRLs and KVIs within their sequences, and native generations are not used.
 
 ### Conditional-write outcomes
@@ -398,11 +401,33 @@ unleased write to that blob but not to another blob; after change, renewal with 
 ID succeeded. The probe used small diagnostic payloads (its diagnostic metadata is not part of the current production format), and
 its ambiguity case only discarded a known successful response.
 
+**Live Azure qualification, 2026-09-28**: `BTDB.Replication.Azure.Test` and `BTDB.Replication.Process.Test` ran with
+`BTDB_AZURE_BLOB_ENDPOINT` against a Standard_LRS StorageV2 account in Sweden Central from an E8ads_v5 VM in the same
+region, authenticated by its managed identity (Storage Blob Data Contributor, shared keys disabled, SDK retries off).
+All 31 adapter tests passed in four consecutive runs and all 8 subprocess tests (leader kill, `SIGSTOP`, stalled
+publication, divergence, follower crash) passed. Observed:
+
+- A 15 s lease expired between 14.94 s and 15.06 s after its acquire was dispatched (24 trials, 50 ms polling); in
+  one trial it was already free 14.997 s after dispatch, so the service does not guarantee the full duration from the
+  client's dispatch and a zero safety margin is unsafe. With 1000 ppm drift and a 250 ms margin the local deadline
+  passed at least 200 ms before the last reply that still reported the lease held, in every trial and also when the
+  acquire reply was delayed by 3 s (`LocalLeaseDeadlineEndsWhileTheServiceStillHoldsTheLease`).
+- Requests dispatched with valid authority and delivered after takeover were rejected: a TRL append by the adopted
+  tail's ETag, a renewal and a leader-record write by the new lease
+  (`DelayedPredecessorRequestsAreRejectedAfterTakeover`). A stale delete of a marked PVL lost to protection's version
+  change, and a late mark of an unmarked dependency was cleared by the successor's cleanup long before due
+  (`DelayedPredecessorCleanupCannotDeleteAFileTheSuccessorProtects`). Two sessions committing different PVL content to
+  one identity: whichever lands second fences itself (`StalePureValuesUploadFencesWhicheverSessionLandsSecond`).
+- Restores with 100 ms added to every read, while the leader published every transaction and checkpointed, compacted
+  and marked files every few transactions, all opened complete, consistent states at least as new as the history
+  published when they started, without retries (`RestoresCompleteConsistentlyWhileTheLeaderPublishesAndCollects`).
+  Before the fix every such restore failed with `412` on a changed version. A restore whose selected files were
+  deleted failed with `IOException` and a fresh discovery restored the newest state.
+
 ### Open Azure work
 
-- Live qualification of concurrency schedules, genuine network faults and pending effects after timeouts, real clock
-  drift/suspend, lease expiry timing, credential renewal and throttling. Throughput and the 100 GB startup target are
-  measured in [Measurements.md](Measurements.md).
+- Throttling, credential renewal and genuine network faults under production load. Throughput and the 100 GB startup
+  target are measured in [Measurements.md](Measurements.md).
 
 ## Amazon S3 (later research)
 

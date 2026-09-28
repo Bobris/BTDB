@@ -1,5 +1,6 @@
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -29,6 +30,8 @@ public sealed class AzureReplicationStorage : IReplicationStorage
     readonly CanonicalTrlInventory? canonical;
     readonly LeaseAuthority? authority;
     readonly TimeProvider timeProvider;
+    // Newer versions of listed PVL/KVI objects verified to hold the same content (see ReadAsync).
+    readonly ConcurrentDictionary<(uint, KVFileType), ETag> followed = new();
     const string DeleteAfterKey = "btdb_delete_after";
     const string Sha256Key = "btdb_sha256";
 
@@ -406,22 +409,42 @@ public sealed class AzureReplicationStorage : IReplicationStorage
         var count = (int)Math.Min((ulong)buffer.Length, file.Length - offset);
         cancellation.ThrowIfCancellationRequested();
         if (count == 0) return 0;
+        var blob = Blob(file.FileId, file.FileType == KVFileType.PureValues ? ".pvl" : ".kvi");
+        var key = (file.FileId, file.FileType);
         try
         {
-            var response = await Blob(file.FileId, file.FileType == KVFileType.PureValues ? ".pvl" : ".kvi")
-                .DownloadStreamingAsync(new BlobDownloadOptions
-                {
-                    Range = new HttpRange(checked((long)offset), count),
-                    Conditions = new BlobRequestConditions { IfMatch = new ETag(file.Version) }
-                }, cancellation).ConfigureAwait(false);
-            using var stream = response.Value.Content;
-            await stream.ReadExactlyAsync(buffer[..count], cancellation).ConfigureAwait(false);
+            try
+            {
+                await DownloadAsync(followed.GetValueOrDefault(key, new ETag(file.Version))).ConfigureAwait(false);
+            }
+            catch (RequestFailedException error) when (error.Status == 412 && file.Sha256 != null)
+            {
+                // The content is immutable; a deletion mark or its removal changes only metadata and thus the version.
+                // The same length and whole-file SHA-256 identify the listed bytes, so a restore overlapping cleanup
+                // continues instead of starting over. Any other change still fails the attempt.
+                var current = (await blob.GetPropertiesAsync(cancellationToken: cancellation).ConfigureAwait(false)).Value;
+                if ((ulong)current.ContentLength != file.Length || !current.Metadata.TryGetValue(Sha256Key, out var sha) ||
+                    !sha.Equals(file.Sha256, StringComparison.OrdinalIgnoreCase)) throw;
+                followed[key] = current.ETag;
+                await DownloadAsync(current.ETag).ConfigureAwait(false);
+            }
             return count;
         }
         catch (RequestFailedException error) when (error.Status is 404 or 412 or 416)
         { throw new IOException("Selected checkpoint file is no longer available.", error); }
         catch (Exception error) when (AzureLeaderStorage.IsTransient(error, cancellation))
         { throw new IOException("Azure checkpoint file read failed.", error); }
+
+        async Task DownloadAsync(ETag version)
+        {
+            var response = await blob.DownloadStreamingAsync(new BlobDownloadOptions
+            {
+                Range = new HttpRange(checked((long)offset), count),
+                Conditions = new BlobRequestConditions { IfMatch = version }
+            }, cancellation).ConfigureAwait(false);
+            using var stream = response.Value.Content;
+            await stream.ReadExactlyAsync(buffer[..count], cancellation).ConfigureAwait(false);
+        }
     }
 
     public async ValueTask EnsurePureValuesAsync(uint id, KeyIndexFileSource source, CancellationToken cancellation)

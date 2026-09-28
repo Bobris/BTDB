@@ -63,8 +63,9 @@ The leader issues a grant only while `now + B < D`, tracks the maximum `now + B`
 transfers the lease only after that time. `AuthorityTest.WorstClockRatesKeepPeerExpiryInsideServiceLease` checks
 these inequalities at both rate extremes with integer rounding. No synchronized wall clocks are required.
 
-Not qualified here: the production clock implementation, OS-suspend behavior, the service rate bound, the operational
-margin and all Azure lease error variants (break, delayed acquire after expiry). GET observations never renew local
+Not qualified here: the production clock implementation, OS-suspend behavior and the service rate bound. Live Azure
+lease expiry, delayed acquire replies and a 250 ms operational margin are measured in
+[ObjectStorages.md](ObjectStorages.md); lease break is still unqualified. GET observations never renew local
 authority. Administrative early lease release or break is outside the cooperative transfer argument and must not be
 used as an automatic failover shortcut.
 

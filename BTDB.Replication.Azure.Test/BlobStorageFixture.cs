@@ -1,26 +1,42 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using Azure.Core;
 using Azure.Core.Pipeline;
+using Azure.Identity;
 using Azure.Storage;
 using Azure.Storage.Blobs;
 using Xunit;
 
 namespace BTDB.Replication.Azure.Test;
 
-public sealed class AzuriteFixture : IAsyncLifetime
+/// <summary>Blob service for the Azure adapter suites: a private loopback Azurite by default, or a live Azure
+/// account when BTDB_AZURE_BLOB_ENDPOINT names its blob endpoint (authenticated by DefaultAzureCredential, which
+/// needs a Storage Blob Data Contributor role). Live runs create one container per test and delete them all.</summary>
+public sealed class BlobStorageFixture : IAsyncLifetime
 {
-    Process _process = null!;
-    string _directory = null!;
+    Process? _process;
+    string? _directory;
     Uri _endpoint = null!;
     Task<string> _output = null!, _error = null!;
     readonly StorageSharedKeyCredential _credential = new("test", Convert.ToBase64String(new byte[32]));
+    TokenCredential? _live;
+    readonly ConcurrentBag<string> _created = new();
+
+    public bool IsLive => _live != null;
 
     public async Task InitializeAsync()
     {
+        if (Environment.GetEnvironmentVariable("BTDB_AZURE_BLOB_ENDPOINT") is { Length: > 0 } live)
+        {
+            _endpoint = new(live);
+            _live = new DefaultAzureCredential();
+            return;
+        }
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -55,17 +71,30 @@ public sealed class AzuriteFixture : IAsyncLifetime
 
     internal async Task<BlobContainerClient> ContainerAsync(HttpPipelinePolicy? policy = null)
     {
-        var options = new BlobClientOptions();
-        options.Retry.MaxRetries = 0;
-        if (policy != null) options.AddPolicy(policy, global::Azure.Core.HttpPipelinePosition.PerCall);
-        var service = new BlobServiceClient(_endpoint, _credential, options);
-        var container = service.GetBlobContainerClient("test-" + Guid.NewGuid().ToString("N"));
+        var name = "btdb-test-" + Guid.NewGuid().ToString("N");
+        _created.Add(name);
+        var container = Connect(name, policy);
         await container.CreateAsync();
         return container;
     }
 
+    /// <summary>Another client of an existing container, as a separate node with its own request faults sees it.</summary>
+    internal BlobContainerClient Connect(string container, HttpPipelinePolicy? policy = null)
+    {
+        var options = new BlobClientOptions();
+        options.Retry.MaxRetries = 0;
+        if (policy != null) options.AddPolicy(policy, HttpPipelinePosition.PerCall);
+        var service = _live != null ? new BlobServiceClient(_endpoint, _live, options)
+            : new BlobServiceClient(_endpoint, _credential, options);
+        return service.GetBlobContainerClient(container);
+    }
+
     public async Task DisposeAsync()
     {
+        if (_live != null)
+            foreach (var name in _created)
+                try { await Connect(name).DeleteIfExistsAsync(); }
+                catch (Exception) { } // Best effort: a lifecycle rule or a later run removes leftovers.
         if (_process != null)
         {
             if (!_process.HasExited) _process.Kill(true);

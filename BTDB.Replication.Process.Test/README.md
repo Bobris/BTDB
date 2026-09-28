@@ -30,6 +30,10 @@ Scenarios:
 `PublicHostingApiTest` guards the external-consumer boundary: internal authority and transition types stay hidden and
 public records redact credentials.
 
-Limits: local Azurite and loopback sockets, not live Azure or production TLS/proxies. The test scheduler uses
+Set `BTDB_AZURE_BLOB_ENDPOINT=https://<account>.blob.core.windows.net` to run the same scenarios against live Azure;
+every node process then authenticates with `DefaultAzureCredential` (Storage Blob Data Contributor). The recorded live
+run is in [ObjectStorages.md](../BTDB.Replication/ObjectStorages.md).
+
+Limits: loopback sockets, not production TLS/proxies. The test scheduler uses
 `Stopwatch` with serialized timers; it is not a production clock qualification. Network partitions, rolling-upgrade
 handoff across processes and restore performance remain open.

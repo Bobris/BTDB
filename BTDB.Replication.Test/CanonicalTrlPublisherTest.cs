@@ -853,7 +853,7 @@ public class CanonicalTrlPublisherTest
     }
 
     [Fact]
-    public async Task ChangedVersionFailsRestoreAndRediscoveryUsesTheNewCompleteHistory()
+    public async Task AppendedTailStillRestoresTheSelectedPrefixAndRediscoveryUsesTheNewHistory()
     {
         using var f = await Fixture.CreateAsync(false);
         await Write(f, 1);
@@ -862,12 +862,17 @@ public class CanonicalTrlPublisherTest
         await Write(f, 2);
         await f.Publisher.PublishNextAsync();
         using var local = new InMemoryReplicationFileStorage();
-        await using var files = new ReplicationFileSet(local, selected);
-        await files.InitializeAsync();
-        await Assert.ThrowsAsync<IOException>(() => BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        await using (var files = new ReplicationFileSet(local, selected))
         {
-            FileCollection = files, CompactorScheduler = null
-        }).AsTask());
+            await files.InitializeAsync();
+            // A leader publishing during a restore must not fail it: the append-only tail keeps the selected bytes.
+            using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+            {
+                FileCollection = files, CompactorScheduler = null
+            });
+            using var transaction = db.StartReadOnlyTransaction();
+            Assert.Equal(1ul, transaction.GetCommitUlong());
+        }
         Assert.Equal((2ul, 2L), await Restore(f.Remote, false));
     }
 

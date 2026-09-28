@@ -9,8 +9,9 @@
     </PropertyGroup>
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App"/>
-        <Compile Include="../BTDB.Replication.Azure.Test/AzuriteFixture.cs" Link="AzuriteFixture.cs"/>
+        <Compile Include="../BTDB.Replication.Azure.Test/BlobStorageFixture.cs" Link="BlobStorageFixture.cs"/>
         <Compile Include="../BTDB.Replication.Test/LocalReplicatedCollection.cs" Link="LocalReplicatedCollection.cs"/>
+        <PackageReference Include="Azure.Identity" Version="1.21.0"/>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0"/>
         <PackageReference Include="xunit" Version="2.9.3"/>
         <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">

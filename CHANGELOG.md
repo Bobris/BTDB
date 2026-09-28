@@ -4,6 +4,11 @@
 
 ### Added
 
+- Qualify the Azure adapter against live Azure: `BTDB.Replication.Azure.Test` and `BTDB.Replication.Process.Test`
+  target the account named by `BTDB_AZURE_BLOB_ENDPOINT` through `DefaultAzureCredential` (Azurite stays the default),
+  and `AzureQualificationTest` covers lease expiry against the local deadline, stale in-flight requests after takeover
+  and restores concurrent with publication and cleanup. Results are recorded in `BTDB.Replication/ObjectStorages.md`.
+
 - Add `OnDiskReplicationFileStorage`, durable node-local replication storage with one `{id:D8}.{hint}` file per ID in a
   directory, and the `IReplicationFileStorage` contract it shares with `InMemoryReplicationFileStorage`.
   `ReplicationFileSet` now accepts any `IReplicationFileStorage`. A file being appended keeps its unmapped tail in
@@ -160,6 +165,16 @@
   reuse placements now come only from restore validation, downloads and confirmed uploads.
 
 ### Fixed
+
+- Keep replication restores working while the leader publishes and cleans up. A restore failed with `412` whenever
+  the leader appended to the selected TRL tail, or cleanup marked or unmarked a selected file, so under continuous
+  publication or frequent checkpoints restores retried indefinitely. `CanonicalTrlInventory` now continues reading a
+  selected TRL from any newer version that is at least as long (canonical TRLs are append-only), and
+  `AzureReplicationStorage` continues reading a PVL/KVI from a newer version with the same length and `btdb_sha256`.
+- Never open a replication restore with missing values: a checkpoint published between TRL discovery and the PVL/KVI
+  listing could reference TRL bytes beyond the discovered tail, and the database opened with corrupted values.
+  `ReplicationFileSet` now ignores a KVI whose TRL cut lies outside the selected inventory, so open uses the newest
+  checkpoint that existed at discovery.
 
 - Revalidate completed streaming download results against the actual local cache, so prefetch and streaming reads
   download an evicted file again even when the original reader was abandoned before completion.

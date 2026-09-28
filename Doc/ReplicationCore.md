@@ -252,7 +252,9 @@ Replication opening rejects `OpenUpToCommitUlong` and `PreserveHistoryUpToCommit
 Use the existing synchronous constructors for either feature. History retention cannot be enabled later on a database
 opened with `IFileReplicatedCollection`.
 `ReadFileInfoAsync` reads required variable-length native headers through small version-bound ranges. Full KVI/TRL bodies needed to select a KVI and replay are fetched
-asynchronously before decoding.
+asynchronously before decoding. `ReplicationFileSet` reports a KVI whose TRL cut lies outside the selected TRL inventory
+(its cut TRL absent or listed shorter) as unknown, so open skips it: the PVL/KVI listing follows TRL discovery, and
+such a checkpoint was published in between and would otherwise open with missing values.
 
 At the end of `OpenAsync`, issue `PrefetchAsync` for every value/log file referenced by the selected valid KVI,
 including its TRL cursor file. If no valid KVI was accepted, request every TRL instead. Issue all requests before

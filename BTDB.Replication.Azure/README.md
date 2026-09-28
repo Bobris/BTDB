@@ -50,8 +50,14 @@ dotnet test BTDB.Replication.Azure.Test/BTDB.Replication.Azure.Test.csproj
 
 Tests start an isolated loopback Azurite process with temporary storage (set `BTDB_AZURITE_EXECUTABLE` if it is not on
 PATH) and exercise the actual SDK with conditional operations, lost responses, lease expiry and transfer, native
-publication, activation, checkpoint restore and cleanup. Azurite results are not live Azure availability, throttling
-or throughput qualification. Provider semantics were checked against Microsoft's
+publication, activation, checkpoint restore and cleanup. To qualify live Azure instead, set
+`BTDB_AZURE_BLOB_ENDPOINT=https://<account>.blob.core.windows.net`; `DefaultAzureCredential` then needs Storage Blob
+Data Contributor on that account, and each test uses its own temporary container. The recorded live run is in
+[ObjectStorages.md](../BTDB.Replication/ObjectStorages.md).
+
+A restore keeps reading a selected object after the leader changes its version, as long as the new version provably
+keeps the selected bytes: a canonical TRL that is at least as long, or a PVL/KVI with the same length and
+`btdb_sha256` (deletion marks change only metadata). Provider semantics were checked against Microsoft's
 [Lease Blob](https://learn.microsoft.com/rest/api/storageservices/lease-blob),
 [Get Block List](https://learn.microsoft.com/rest/api/storageservices/get-block-list) and
 [Put Block List](https://learn.microsoft.com/rest/api/storageservices/put-block-list) documentation.

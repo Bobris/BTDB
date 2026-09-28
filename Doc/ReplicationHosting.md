@@ -94,6 +94,11 @@ await files.InitializeAsync(cancellation);
 // IReplicationStorage maintenanceStorage = storage.Bind(inventory, authority);
 ```
 
+The leader may keep publishing, checkpointing and marking files during a restore: the attempt keeps reading its
+selected bytes from newer versions that provably contain them and ignores checkpoints published after discovery. It
+fails with retryable `IOException` only when a selected file was deleted, so keep the deletion delay well above the
+longest restore.
+
 `IReplicationStorage` combines TRL, immutable-file publication and maintenance operations. `IRemoteFileCollection`
 remains the read-only inventory contract accepted by `ReplicationFileSet`. A binding preserves its selected TRL
 versions and optional authority; create a new binding after acquisition rather than modifying the old one.

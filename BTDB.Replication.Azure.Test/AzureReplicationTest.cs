@@ -16,18 +16,18 @@ using Xunit;
 
 namespace BTDB.Replication.Azure.Test;
 
-public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<AzuriteFixture>
+public class AzureReplicationTest(BlobStorageFixture fixture) : IClassFixture<BlobStorageFixture>
 {
-    const string Initial = """{"format":1,"clusterId":"cluster","term":0,"revision":0,"applicationGeneration":0,"databaseNames":[]} """;
+    internal const string Initial = """{"format":1,"clusterId":"cluster","term":0,"revision":0,"applicationGeneration":0,"databaseNames":[]} """;
 
-    sealed class Clock : IReplicationScheduler
+    internal sealed class Clock : IReplicationScheduler
     {
         readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
         public TimeSpan Elapsed => _clock.Elapsed;
         public IDisposable Schedule(TimeSpan delay, Action callback, string description) => throw new NotSupportedException();
     }
 
-    static async Task<BTreeKeyValueDB> Open(InMemoryReplicationFileStorage files, TransactionLogCapture capture, uint splitSize = int.MaxValue)
+    internal static async Task<BTreeKeyValueDB> Open(InMemoryReplicationFileStorage files, TransactionLogCapture capture, uint splitSize = int.MaxValue)
     {
         var file = files.AddFile("trl", FileIdParity.Odd);
         var writer = new MemWriter(file.GetAppenderWriter());
@@ -45,7 +45,7 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         });
     }
 
-    static async Task Write(BTreeKeyValueDB db, ulong id)
+    internal static async Task Write(BTreeKeyValueDB db, ulong id)
     {
         using var transaction = await db.StartWritingTransaction(id);
         using var cursor = transaction.CreateCursor();
@@ -578,13 +578,17 @@ public class AzureReplicationTest(AzuriteFixture fixture) : IClassFixture<Azurit
         await Assert.ThrowsAsync<InvalidOperationException>(() => oldSession.EnsurePureValuesAsync(6, source, default).AsTask());
         Assert.False((await container.GetBlobClient("db/6.pvl").ExistsAsync()).Value);
 
-        // Advancing canonical storage never silently advances an already selected restore snapshot.
+        // Advancing canonical storage never silently advances an already selected restore snapshot, but the snapshot
+        // keeps reading its selected prefix from the appended (append-only) version.
         writer = new MemWriter(trl.GetAppenderWriter());
         writer.WriteUInt8(2);
         writer.Flush();
         Assert.Equal(TrlWriteOutcome.Applied, (await newSession.WriteAsync(
             new(trl.Index, "1.trl", created.State!.Token, 1, 2, trl), default)).Outcome);
-        await Assert.ThrowsAsync<IOException>(() => restore.ReadAsync(original, 0, bytes, default).AsTask());
+        bytes[0] = 0;
+        Assert.Equal(1, await restore.ReadAsync(original, 0, bytes, default));
+        Assert.Equal(1, bytes[0]);
+        Assert.Equal(0, await restore.ReadAsync(original, 1, bytes, default));
         var fresh = storage.Bind(await CanonicalTrlInventory.DiscoverAsync(storage, new("1.trl", trl.Index)));
         selected.Clear();
         await foreach (var file in fresh.EnumerateAsync(default)) selected.Add(file);

@@ -89,11 +89,16 @@ fences immediately and lets the lease expire.
    failing schedule as a regression test.
 2. **Clock qualification.** Qualify the production monotonic clock, rate bound, safety margin and OS-suspend
    behavior assumed in [M1Evidence.md](M1Evidence.md), and document them for hosts.
-3. **Live Azure qualification.** Run the storage/lease suites against real Azure, including response loss, stale
-   in-flight operations, finite-lease expiry, concurrent publication/cleanup and restore retry. Azurite results are
-   not provider evidence.
-4. **Process scenarios.** Extend subprocess tests to network partitions, rolling-upgrade handoff schedules,
-   multi-database partial activation and disk/process failures during restore.
+3. **Live Azure qualification.** Done 2026-09-28: `BTDB.Replication.Azure.Test` (including `AzureQualificationTest`:
+   finite-lease expiry against the local deadline, delayed acquire replies, stale in-flight appends, renewals,
+   leader-record writes, PVL uploads, deletes and marks, restore concurrent with publication, checkpoints and cleanup,
+   and restore retry after deletion) and the subprocess failover suite pass against a live account from an Azure VM
+   ([Testing.md](Testing.md), [ObjectStorages.md](ObjectStorages.md)). It found that a restore overlapping publication
+   or cleanup failed on every changed version, and that a checkpoint published between TRL discovery and the PVL/KVI
+   listing could open with missing values; both are fixed. Remaining: throttling and credential renewal under load.
+4. **Process scenarios.** The existing subprocess scenarios pass on live Azure too. Extend them to network
+   partitions, rolling-upgrade handoff schedules, multi-database partial activation and disk/process failures during
+   restore.
 5. **Measurement.** Done on Azure ([Measurements.md](Measurements.md), `DBBenchmark replication*`): a cold restore
    of 100 GiB from Blob takes 4.4 minutes on an E8ads_v7, limited by the local disk; the findings led to lock-free
    node-local storage, sealed-TRL checksums, a 4 MiB poll budget and concurrent TRL staging. With production file

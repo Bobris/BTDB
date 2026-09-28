@@ -205,9 +205,12 @@ without contention, cancellation during restore, shutdown fencing an uncooperati
 failures stopping the host, readiness metrics and configuration validation. See the
 [adapter instructions](../BTDB.Replication.Http/README.md).
 
-## Azure adapter (Azurite)
+## Azure adapter
 
-`BTDB.Replication.Azure.Test` uses Azure.Storage.Blobs against Azurite. It covers lease acquisition with lost-response
+`BTDB.Replication.Azure.Test` uses Azure.Storage.Blobs against a private Azurite by default, or against live Azure
+when `BTDB_AZURE_BLOB_ENDPOINT` names a blob endpoint (for example `https://account.blob.core.windows.net`). Live runs
+authenticate with `DefaultAzureCredential`, which needs Storage Blob Data Contributor on the account, and create and
+delete one container per test; run them from a VM in the account's region so timings match production. It covers lease acquisition with lost-response
 reconciliation, finite lease expiry, prepared lease transfer confirmed by the target's renewal, selection requiring
 lease plus ETag, atomic canonical append/adoption and version-bound reads, end-to-end acquire/select/adopt/publish/KVI
 restore, immutable PVL SHA fencing, and restore after obsolete genesis TRLs are deleted via the checkpoint root.
@@ -217,10 +220,24 @@ own appends), `SmallTrlAppendsStageOnlyTheirSuffixAndMergeTrailingBlocksOccasion
 `DeletionDeadlineSurvivesNewAdapterAndDoesNotMoveOnRetry`, throttling surfacing as retryable `IOException`, and
 `EmptyPrefixIsRejectedBecauseCleanupListsTheWholeNamespace`.
 
+`AzureQualificationTest` is the provider qualification; its live results are in
+[ObjectStorages.md](ObjectStorages.md). A pipeline policy holds requests after dispatch or delays replies:
+
+- `LocalLeaseDeadlineEndsWhileTheServiceStillHoldsTheLease` polls a competing acquire and prints how long the service
+  kept each lease, with and without a delayed acquire reply (B1).
+- `DelayedPredecessorRequestsAreRejectedAfterTakeover`, `StalePureValuesUploadFencesWhicheverSessionLandsSecond` and
+  `DelayedPredecessorCleanupCannotDeleteAFileTheSuccessorProtects` deliver a predecessor's in-flight append, renewal,
+  leader-record write, PVL commit, delete and mark after a successor took over (B5).
+- `RestoreOpensTheDiscoveredStateDespiteLaterPublicationCheckpointAndMarks`,
+  `RestoreFromAnInventoryWhoseFilesWereDeletedFailsAndAFreshDiscoverySucceeds` and
+  `RestoresCompleteConsistentlyWhileTheLeaderPublishesAndCollects` restore while the leader appends, checkpoints,
+  compacts and marks files, and check every value of the opened database.
+
 ## Process failover
 
 [`BTDB.Replication.Process.Test`](../BTDB.Replication.Process.Test/README.md) launches independent .NET/Kestrel node
-processes that use only the public hosting/provider API with real Azure adapters against Azurite:
+processes that use only the public hosting/provider API with real Azure adapters against Azurite, or against live Azure
+with `BTDB_AZURE_BLOB_ENDPOINT` (each node then authenticates with `DefaultAzureCredential`):
 
 - `UnavailableLeaderIsReplacedAndItsUnpublishedTailSurvivesWithoutReexecution` kills or (except on Windows) suspends
   the leader without releasing its lease; after real lease expiry the follower publishes the compared unpublished tail
@@ -248,13 +265,13 @@ processes that use only the public hosting/provider API with real Azure adapters
 
 ## Not covered yet
 
-- Live Azure behavior: latency, throttling, failover timing and throughput are only exercised against Azurite (plus
-  the one-off probe). The 15-minute startup target for about 100 GB has not been measured.
+- Live Azure runs are manual (not in CI). Throttling and credential renewal under production load are not exercised;
+  restore throughput is measured separately in [Measurements.md](Measurements.md).
 - Physical disk faults: no torn-write or power-loss model of a disk file collection; process tests only kill or suspend
   processes.
 - Production clock qualification: in-process tests use virtual time and process tests a Stopwatch-based scheduler.
 - Exhaustive interleavings: schedules are seeded and hand-chosen, not model-checked, and `HistoryOracle` is not
   attached to coordinator or adapter runs.
-- Concurrent remote publication/deletion races beyond the listed restart cases, and remote orphan selection.
+- Remote publication/deletion races beyond the held-request interleavings above, and remote orphan selection.
 - Production TLS/proxy deployment of the HTTP adapter.
 - Multi-process partitions, rolling-upgrade handoff across processes, and workload/restore performance.

@@ -12,7 +12,7 @@ using Xunit.Abstractions;
 
 namespace BTDB.Replication.Azure.Test;
 
-public class CheckpointRequestTest(AzuriteFixture fixture, ITestOutputHelper output) : IClassFixture<AzuriteFixture>
+public class CheckpointRequestTest(BlobStorageFixture fixture, ITestOutputHelper output) : IClassFixture<BlobStorageFixture>
 {
     sealed class Clock : IReplicationScheduler
     {

@@ -2,6 +2,7 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using Azure.Identity;
 using Azure.Storage;
 using Azure.Storage.Blobs;
 using BTDB.Replication.Azure;
@@ -20,17 +21,21 @@ internal static class Program
     public static async Task Main(string[] args)
     {
         if (args.Length != 2 || args[0] != "--node" || !Uri.TryCreate(args[1], UriKind.Absolute, out var containerUri) ||
-            !containerUri.IsLoopback || containerUri.Scheme != "http")
-            throw new ArgumentException("This test executable accepts only --node <loopback Azurite container URI>.");
+            (containerUri.Scheme != "https" && !(containerUri.IsLoopback && containerUri.Scheme == "http")))
+            throw new ArgumentException(
+                "This test executable accepts only --node <loopback Azurite or live Azure https container URI>.");
         using var reservation = new TcpListener(IPAddress.Loopback, 0);
         reservation.Start();
         var endpoint = $"http://127.0.0.1:{((IPEndPoint)reservation.LocalEndpoint).Port}";
         reservation.Stop();
         var options = new BlobClientOptions();
         options.Retry.MaxRetries = 0;
-        var credential = new StorageSharedKeyCredential("test", Convert.ToBase64String(new byte[32]));
-        var container = new BlobContainerClient(containerUri, credential, options);
-        var authorityContainer = new BlobContainerClient(containerUri, credential, options);
+        // Live Azure (https) authenticates like a production node; Azurite uses the fixture's fixed account key.
+        var live = containerUri.Scheme == "https" ? new DefaultAzureCredential() : null;
+        var key = new StorageSharedKeyCredential("test", Convert.ToBase64String(new byte[32]));
+        BlobContainerClient Connect() => live != null ? new(containerUri, live, options) : new(containerUri, key, options);
+        var container = Connect();
+        var authorityContainer = Connect();
         const string initial = """{"format":1,"clusterId":"cluster","term":0,"revision":0,"applicationGeneration":0,"databaseNames":[]} """;
         var storage = new AzureLeaderStorage(authorityContainer.GetBlobClient("leader.json"), TimeSpan.FromSeconds(15), initial);
         var dataDirectory = Environment.GetEnvironmentVariable("BTDB_TEST_DATA_DIRECTORY") ??

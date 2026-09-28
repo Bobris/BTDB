@@ -123,7 +123,7 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
         // Prefetch verified the cached copy or downloaded this exact selected version: reuse its header rather than
         // issuing another range request. An unverified cached copy is verified first; the database reads only the
         // headers of files it needs (the chosen KVI and the TRLs it replays), so no checksum is wasted.
-        if (file.GetCachedLocal() is { } local) return FileCollectionWithFileInfos.ReadFileInfo(local);
+        if (file.GetCachedLocal() is { } local) return CheckCheckpointCut(FileCollectionWithFileInfos.ReadFileInfo(local));
         // A cached KVI is verified while it loads (StartStreamingRead), so read its header remotely instead.
         if (Local.GetFile(fileId) != null && FileExtension(file.Selected.FileType) != "kvi")
             return FileCollectionWithFileInfos.ReadFileInfo(await file.GetLocalAsync(cancellation).ConfigureAwait(false));
@@ -141,12 +141,32 @@ public sealed partial class ReplicationFileSet : IFileReplicatedCollection, IAsy
                 if (read <= 0 || read > header.Length - filled) throw new IOException("Truncated remote file header.");
                 filled += read;
             }
-            try { return ParseHeader(header, (ulong)header.Length == selected.Length); }
+            try { return CheckCheckpointCut(ParseHeader(header, (ulong)header.Length == selected.Length)); }
             catch (EndOfStreamException) when ((ulong)header.Length < selected.Length)
             {
                 Array.Resize(ref header, (int)Math.Min((ulong)checked(Math.Max(1, header.Length) * 2), selected.Length));
             }
         }
+    }
+
+    // The PVL/KVI listing follows TRL discovery, so a checkpoint published in between can reference history this
+    // inventory lacks: its cut TRL absent or listed shorter, and opening it would silently miss values. Such a KVI is
+    // hidden (open then skips it), exactly as if the listing had preceded discovery: the newest KVI that existed at
+    // discovery is covered and outlives this restore by the deletion delay, and without one discovery kept the whole
+    // TRL history.
+    IFileInfo CheckCheckpointCut(IFileInfo info) =>
+        info is IKeyIndex { TrLogFileId: not 0 } checkpoint &&
+        (!_remoteFiles.TryGetValue(checkpoint.TrLogFileId, out var trl) ||
+         trl.Selected.FileType != KVFileType.TransactionLog || trl.Selected.Length < checkpoint.TrLogOffset)
+            ? NewerCheckpoint.Instance : info;
+
+    sealed class NewerCheckpoint : IFileInfo
+    {
+        public static readonly NewerCheckpoint Instance = new();
+        public KVFileType FileType => KVFileType.Unknown;
+        public Guid? Guid => null;
+        public long Generation => -1;
+        public long SubDBId => -1;
     }
 
     static IFileInfo ParseHeader(byte[] bytes, bool complete)

@@ -16,7 +16,7 @@ using ChildProcess = System.Diagnostics.Process;
 
 namespace BTDB.Replication.ProcessTests;
 
-public class ProcessFailoverTest(AzuriteFixture fixture) : IClassFixture<AzuriteFixture>
+public class ProcessFailoverTest(BlobStorageFixture fixture) : IClassFixture<BlobStorageFixture>
 {
     sealed class Node : IAsyncDisposable
     {
