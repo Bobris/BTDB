@@ -7,7 +7,9 @@
 - Start the `BTDB.Replication.EventLog` event log (preview, in progress; see
   `BTDB.Replication/EventLogImplementationPlan.md`): public `IEventLog`/`IEventTopic` contracts for named topics of
   opaque records, the `IEventLogStorage` object-storage contract, and the validated binary split, frame, seal and
-  merged-object format.
+  merged-object format. The per-topic owner lane appends batches with one conditional write per commit, rotates
+  splits with proactive seals, writes large records as their own sealed split, repeats ambiguous writes until
+  resolved, takes over a tail by its ETag and deduplicates publisher sessions so a record commits exactly once.
 
 - Qualify a rolling schema upgrade under continuous input in the subprocess tests and document the procedure: the
   lagging upgraded leader's activation deadline restarts it onto the frozen published history, and the selected

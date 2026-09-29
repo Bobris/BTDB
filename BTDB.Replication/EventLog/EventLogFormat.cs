@@ -362,6 +362,19 @@ internal static class EventLogFormat
         };
     }
 
+    /// <summary>Validate a level-0 split header prefix of <see cref="SplitHeaderLength"/> bytes.</summary>
+    public static (ulong SplitId, ulong FirstOffset) ParseSplitHeader(ReadOnlySpan<byte> header, string topic)
+    {
+        var length = SplitHeaderLength(topic);
+        if (header.Length < length || !header[..4].SequenceEqual(Magic) || header[4] != FormatVersion ||
+            header[5] != KindSplit) throw Corrupt("split header");
+        var position = 8 + BinaryPrimitives.ReadUInt16LittleEndian(header[6..]);
+        if (position + 20 != length || Encoding.UTF8.GetString(header[8..position]) != topic) throw Corrupt("topic");
+        VerifyChecksum(header, position + 16, "header checksum");
+        return (BinaryPrimitives.ReadUInt64LittleEndian(header[position..]),
+            BinaryPrimitives.ReadUInt64LittleEndian(header[(position + 8)..]));
+    }
+
     static int ReadEntry(ReadOnlySpan<byte> content, int table, int index) =>
         checked((int)BinaryPrimitives.ReadUInt32LittleEndian(content[(table + index * EntryWidth)..]));
 
