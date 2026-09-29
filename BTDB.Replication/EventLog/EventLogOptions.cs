@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 
 namespace BTDB.Replication.EventLog;
 
-public sealed class EventLogOptions
+public sealed record EventLogOptions
 {
     /// <summary>Maximum length of an ordinary split, including its header and seal.</summary>
     public int SplitCap { get; init; } = 256 * 1024;
