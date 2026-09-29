@@ -18,10 +18,10 @@ public interface IEventTopic
 {
     string Name { get; }
 
-    /// <summary>Durably append one record and return its offset. The caller must not modify the memory until the task
-    /// completes. Publications that one process starts on one topic, each after the previous call returned, commit in
-    /// call order. Cancellation or failure after dispatch means an unknown outcome, never proof that the record was not
-    /// stored; a committed record is stored exactly once.</summary>
+    /// <summary>Durably append one record and return its offset. The record is copied before the call returns, so
+    /// the caller may reuse its buffer at once. Publications that one process starts on one topic, each after the
+    /// previous call returned, commit in call order. Cancellation or failure after dispatch means an unknown outcome,
+    /// never proof that the record was not stored; a committed record is stored exactly once.</summary>
     ValueTask<ulong> PublishAsync(ReadOnlyMemory<byte> record, CancellationToken cancellation = default);
 
     /// <summary>First retained offset and durable next offset. Next covers every receipt completed before the call

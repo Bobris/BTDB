@@ -236,6 +236,7 @@ public class EventLogOwnerLaneTest
         var a = await Lane(storage, A, Small(400, 300));
         await Submit(a, 1, 1, Bytes(0));
         await Lane(storage, B, Small(400, 300)); // a candidate that never writes, like a helper
+        Assert.Equal(1ul, await a.ValidateAsync(default));
         Assert.Equal(1ul, await Submit(a, 1, 2, Bytes(1)));
         await AssertHistory(storage, 2);
     }

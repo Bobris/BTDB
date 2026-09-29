@@ -623,8 +623,12 @@ internal sealed class EventLogOwnerLane
             .ConfigureAwait(false);
         var fenced = properties == null || properties.Version != version;
         if (!fenced && sealedTail)
-            fenced = await _storage.GetPropertiesAsync(EventLogFormat.SplitKey(_topic, splitId + 1), cancellation)
-                .ConfigureAwait(false) != null;
+        {
+            // A helper's header-only successor still carries this session; the next commit appends to it.
+            var successor = await _storage.GetPropertiesAsync(EventLogFormat.SplitKey(_topic, splitId + 1), cancellation)
+                .ConfigureAwait(false);
+            fenced = successor != null && successor.Owner != Self;
+        }
         lock (_lock)
         {
             ThrowIfStopped();

@@ -141,12 +141,13 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
     {
         if (record.Length > _options.MaxRecordSize)
             throw new EventLogRecordTooLargeException($"Record of {record.Length} bytes exceeds {_options.MaxRecordSize}.");
-        var outstanding = new Outstanding(0, record.ToArray());
+        var copy = record.ToArray(); // owned from here on: the caller may reuse its buffer at once
+        Outstanding outstanding;
         bool start;
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_service.Disposal.IsCancellationRequested, this);
-            outstanding = new(_nextSequence++, outstanding.Record);
+            outstanding = new(_nextSequence++, copy);
             _outstanding.Enqueue(outstanding);
             start = !_publishing;
             _publishing = true;

@@ -85,7 +85,7 @@ public readonly record struct EventLogBounds(ulong First, ulong Next);
 public readonly record struct EventLogRecord(ulong Offset, ReadOnlyMemory<byte> Payload);
 ```
 
-`PublishAsync` returns the record's offset once it is durable. The caller must not modify the memory until the task completes. A record above the configured maximum size is rejected before acceptance. There is no batch overload: concurrent calls are coalesced internally (section 7). Add one only if measurements show that per-call overhead matters.
+`PublishAsync` returns the record's offset once it is durable. The record is copied before the call returns, so the caller may reuse its buffer at once. A record above the configured maximum size is rejected before acceptance. There is no batch overload: concurrent calls are coalesced internally (section 7). Add one only if measurements show that per-call overhead matters.
 
 `ReadAsync` yields records with consecutive offsets from `start`. `end` is exclusive, and `end: null` follows live records until cancellation. A `start` below `First`, or above the durable next offset at call time, fails explicitly; the log never silently skips data. A yielded payload stays valid until the enumerator advances; copy it to keep it.
 
