@@ -13,6 +13,8 @@
   `EventLogService` runs one node: publications are forwarded to the topic owner through `IEventLogPeerTransport`
   in call order, an unreachable owner is taken over after `OwnerTimeout`, followers receive live batches and
   validated heartbeats from the owner instead of reading storage, and `GetBoundsAsync` is fresh.
+  `AzureEventLogStorage` stores topics as Block Blobs with one conditional Put Blob per commit (staged blocks above
+  the single-request limit), owner metadata installed atomically, and delayed conditional deletion.
 
 - Qualify a rolling schema upgrade under continuous input in the subprocess tests and document the procedure: the
   lagging upgraded leader's activation deadline restarts it onto the frozen published history, and the selected
