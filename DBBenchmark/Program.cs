@@ -49,6 +49,18 @@ class Program
             return;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "eventlog-storage", StringComparison.OrdinalIgnoreCase))
+        {
+            EventLog.EventLogStorageScreening.RunAsync().GetAwaiter().GetResult();
+            return;
+        }
+
+        if (args.Length > 0 && string.Equals(args[0], "eventlog-e2e", StringComparison.OrdinalIgnoreCase))
+        {
+            EventLog.EventLogEndToEnd.RunAsync(args[1..]).GetAwaiter().GetResult();
+            return;
+        }
+
         if (args.Length > 0 && string.Equals(args[0], "replication", StringComparison.OrdinalIgnoreCase))
         {
             Replication.ReplicationMeasurements.RunAsync(args[1..]).GetAwaiter().GetResult();

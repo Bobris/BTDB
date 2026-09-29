@@ -20,6 +20,8 @@
   The owner merges sealed splits in the background into immutable level-1 and level-2 objects (fan-out 16, named
   `l{level}/{firstOffset}.elog`) whose headers index every record, and deletes covered objects after
   `DeletionDelay`; readers locate offsets from the listing and read merged objects from the containing frame.
+  `DBBenchmark eventlog-storage` reruns the Azure storage-primitive screening, and `DBBenchmark eventlog-e2e`
+  measures open-loop publish-to-all-nodes latency over loopback HTTP with in-memory or Azure storage.
 
 - Qualify a rolling schema upgrade under continuous input in the subprocess tests and document the procedure: the
   lagging upgraded leader's activation deadline restarts it onto the frozen published history, and the selected

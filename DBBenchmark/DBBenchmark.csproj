@@ -13,6 +13,7 @@
         <ProjectReference Include="..\BTDB\BTDB.csproj"/>
         <ProjectReference Include="..\BTDB.Replication\BTDB.Replication.csproj"/>
         <ProjectReference Include="..\BTDB.Replication.Azure\BTDB.Replication.Azure.csproj"/>
+        <ProjectReference Include="..\BTDB.Replication.Http\BTDB.Replication.Http.csproj"/>
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Azure.Identity" Version="1.21.0"/>
