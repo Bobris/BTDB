@@ -44,6 +44,12 @@ public sealed record EventLogOptions
 
     public long MaxMergedObjectLength { get; init; } = 1L << 30;
 
+    /// <summary>How often the owner runs a background merge and cleanup pass.</summary>
+    public TimeSpan MergeInterval { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Wall clock for deletion deadlines, which storage persists.</summary>
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+
     /// <summary>Source of publisher and owner session identities.</summary>
     public Func<ulong> NewSessionId { get; init; } = () =>
     {

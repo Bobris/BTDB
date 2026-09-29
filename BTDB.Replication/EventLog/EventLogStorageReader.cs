@@ -104,6 +104,31 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
         return located;
     }
 
+    /// <summary>The part of a merged object from the frame containing <paramref name="offset"/>, found through its
+    /// header index, or null with the object's last split ID when the offset lies beyond it.</summary>
+    async ValueTask<(EventLogLocated? Located, ulong LastSplitId)> LoadMergedAsync(EventLogObjectInfo info, ulong offset,
+        CancellationToken cancellation)
+    {
+        lock (_lock)
+            if (_cache.TryGetValue((info.Key, info.Version), out var cached))
+                return offset < cached.Object.NextOffset ? (cached, cached.Object.LastSplitId) : (null, cached.Object.LastSplitId);
+        var prefix = new byte[EventLogFormat.MergedFixedLength(topic)];
+        await storage.ReadRangeAsync(info.Key, info.Version, 0, prefix, cancellation).ConfigureAwait(false);
+        var merged = EventLogFormat.ParseMergedFixed(prefix, topic);
+        if (offset >= merged.FirstOffset + merged.RecordCount) return (null, merged.LastSplitId);
+        if (offset == merged.FirstOffset)
+            return (await LoadAsync(info.Key, info, cancellation).ConfigureAwait(false)
+                    ?? throw new EventLogVersionChangedException(info.Key), merged.LastSplitId);
+        var header = new byte[merged.HeaderLength];
+        await storage.ReadRangeAsync(info.Key, info.Version, 0, header, cancellation).ConfigureAwait(false);
+        var frameStart = EventLogFormat.MergedFrameStart(header, merged, offset);
+        var range = new byte[info.Length - frameStart];
+        await storage.ReadRangeAsync(info.Key, info.Version, frameStart, range, cancellation).ConfigureAwait(false);
+        var firstFrameOffset = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(range.AsSpan(5));
+        var parsed = EventLogFormat.ParseMergedRange(range, merged, firstFrameOffset);
+        return (new(info.Key, info.Version, range, parsed), merged.LastSplitId);
+    }
+
     static int GreatestAtMost(IList<ulong> keys, ulong value)
     {
         int low = 0, high = keys.Count - 1, result = -1;
@@ -154,10 +179,9 @@ internal sealed class EventLogStorageReader(IEventLogStorage storage, string top
             var index = GreatestAtMost(merged.Keys, offset);
             if (index < 0) continue;
             var info = merged.Values[index];
-            var located = await LoadAsync(info.Key, info, cancellation).ConfigureAwait(false);
-            if (located == null) return (null, false);
-            if (offset < located.Object.NextOffset) return (located, false);
-            afterSplit = Math.Max(afterSplit, located.Object.LastSplitId);
+            var (located, lastSplitId) = await LoadMergedAsync(info, offset, cancellation).ConfigureAwait(false);
+            if (located != null) return (located, false);
+            afterSplit = Math.Max(afterSplit, lastSplitId);
         }
         var splits = listing.Splits;
         int low = 0, high = splits.Count - 1, candidate = -1;

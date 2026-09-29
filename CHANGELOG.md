@@ -17,6 +17,9 @@
   the single-request limit), owner metadata installed atomically, and delayed conditional deletion.
   `AddBTDBEventLog`/`MapBTDBEventLog` host a node over HTTP (`/_btdb/eventlog/v1`, bearer API key, streamed
   subscriptions with buffering disabled) through `HttpEventLogPeerTransport`.
+  The owner merges sealed splits in the background into immutable level-1 and level-2 objects (fan-out 16, named
+  `l{level}/{firstOffset}.elog`) whose headers index every record, and deletes covered objects after
+  `DeletionDelay`; readers locate offsets from the listing and read merged objects from the containing frame.
 
 - Qualify a rolling schema upgrade under continuous input in the subprocess tests and document the procedure: the
   lagging upgraded leader's activation deadline restarts it onto the frozen published history, and the selected

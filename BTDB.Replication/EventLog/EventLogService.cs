@@ -111,6 +111,9 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
     ulong _cacheStart;
     bool _committedSinceHeartbeat;
     IDisposable? _heartbeat;
+    IDisposable? _mergeTimer;
+    CancellationTokenSource? _mergeCancellation;
+    readonly EventLogMerger _merger;
 
     public EventLogTopic(EventLogService service, string name)
     {
@@ -119,6 +122,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         _options = service.Options;
         _session = _options.NewSessionId();
         _reader = new(service.Storage, name, _options.MergeLevels);
+        _merger = new(service.Storage, name, _options, service.Scheduler);
     }
 
     public string Name { get; }
@@ -378,8 +382,50 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             _cacheBytes = 0;
             _cacheStart = lane.NextOffset;
             _knownNext = Math.Max(_knownNext, lane.NextOffset);
+            _mergeCancellation?.Cancel();
+            _mergeCancellation = CancellationTokenSource.CreateLinkedTokenSource(_service.Disposal);
         }
         ScheduleHeartbeat(lane);
+        ScheduleMerge(lane);
+    }
+
+    void ScheduleMerge(EventLogOwnerLane lane)
+    {
+        if (_options.MergeFanOut == 0 || _options.MergeLevels == 0) return;
+        lock (_lock)
+        {
+            if (_lane != lane || _mergeCancellation is not { IsCancellationRequested: false } cancellation) return;
+            _mergeTimer?.Dispose();
+            _mergeTimer = _service.Scheduler.Schedule(_options.MergeInterval, () => _ = MergeAsync(lane, cancellation.Token),
+                "event log merge");
+        }
+    }
+
+    /// <summary>One background merge and cleanup pass while this node owns the topic; appends keep priority because
+    /// the pass runs separately from the lane and losing ownership cancels it.</summary>
+    internal async Task<EventLogMerger.PassResult?> MergeAsync(EventLogOwnerLane lane, CancellationToken cancellation)
+    {
+        EventLogMerger.PassResult? result = null;
+        try
+        {
+            if (lane.IsInstalled && !lane.IsStopped) result = await _merger.RunPassAsync(cancellation).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return null; }
+        catch (Exception) { } // storage trouble: the next pass retries
+        ScheduleMerge(lane);
+        return result;
+    }
+
+    internal async Task<EventLogMerger.PassResult?> MergeNowAsync()
+    {
+        EventLogOwnerLane? lane;
+        CancellationToken token;
+        lock (_lock)
+        {
+            lane = _lane;
+            token = _mergeCancellation?.Token ?? CancellationToken.None;
+        }
+        return lane == null ? null : await _merger.RunPassAsync(token).ConfigureAwait(false);
     }
 
     void OwnerLost(EventLogOwnerLane lane)
@@ -391,6 +437,8 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             _lane = null;
             _heartbeat?.Dispose();
             _heartbeat = null;
+            _mergeTimer?.Dispose();
+            _mergeCancellation?.Cancel();
             subscribers = [.. _subscribers];
             _subscribers.Clear();
             _cache.Clear();
@@ -764,6 +812,8 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             lane = _lane;
             _lane = null;
             _heartbeat?.Dispose();
+            _mergeTimer?.Dispose();
+            _mergeCancellation?.Cancel();
             subscribers = [.. _subscribers];
             _subscribers.Clear();
         }

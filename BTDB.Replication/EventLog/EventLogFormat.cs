@@ -293,45 +293,21 @@ internal static class EventLogFormat
             if (seal != null || sawEnd) throw Corrupt("data after the end");
             if (marker == FrameMarker)
             {
-                if (content.Length < position + 25) throw Corrupt("frame");
-                var length = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(content[(position + 1)..]) + 9);
-                if (length < 25 || content.Length - position < length) throw Corrupt("frame length");
-                var frame = content.Slice(position, length);
-                VerifyChecksum(frame, length - 4, "frame checksum");
-                var frameOffset = BinaryPrimitives.ReadUInt64LittleEndian(frame[5..]);
-                var records = BinaryPrimitives.ReadUInt32LittleEndian(frame[13..]);
-                var runCount = BinaryPrimitives.ReadUInt32LittleEndian(frame[17..]);
-                if (frameOffset != next || records == 0 || runCount > records) throw Corrupt("frame offsets");
-                var runs = new EventLogTransferRun[runCount];
-                var local = 21;
-                ulong runRecords = 0;
-                for (var i = 0; i < runCount; i++)
+                var frame = ReadFrame(content, position, next);
+                if (kind == KindMerged)
                 {
-                    if (local + RunLength > length - 4) throw Corrupt("frame runs");
-                    runs[i] = new(BinaryPrimitives.ReadUInt64LittleEndian(frame[local..]),
-                        BinaryPrimitives.ReadUInt64LittleEndian(frame[(local + 8)..]),
-                        BinaryPrimitives.ReadUInt32LittleEndian(frame[(local + 16)..]));
-                    runRecords += runs[i].Count;
-                    local += RunLength;
+                    if (frames.Count >= frameCount || ReadEntry(content, frameTable, frames.Count) != position)
+                        throw Corrupt("frame table");
+                    var recordPosition = frame.RecordsPosition;
+                    for (var i = 0; i < frame.RecordCount; i++)
+                    {
+                        if (ReadEntry(content, recordTable, recordIndex++) != recordPosition) throw Corrupt("record table");
+                        recordPosition += 4 + (int)BinaryPrimitives.ReadUInt32LittleEndian(content[recordPosition..]);
+                    }
                 }
-                if (runRecords != records) throw Corrupt("frame runs");
-                var recordsPosition = local;
-                for (var i = 0; i < records; i++)
-                {
-                    if (local + 4 > length - 4) throw Corrupt("record");
-                    if (kind == KindMerged && ReadEntry(content, recordTable, recordIndex) != position + local)
-                        throw Corrupt("record table");
-                    recordIndex++;
-                    var recordLength = BinaryPrimitives.ReadUInt32LittleEndian(frame[local..]);
-                    if (recordLength > (uint)(length - 4 - local - 4)) throw Corrupt("record length");
-                    local += 4 + (int)recordLength;
-                }
-                if (local != length - 4) throw Corrupt("frame layout");
-                if (kind == KindMerged && (frames.Count >= frameCount || ReadEntry(content, frameTable, frames.Count) != position))
-                    throw Corrupt("frame table");
-                frames.Add(new(position, length, frameOffset, records, runs, position + recordsPosition));
-                next += records;
-                position += length;
+                frames.Add(frame);
+                next = frame.NextOffset;
+                position += frame.Length;
             }
             else if (marker == SealMarker && kind == KindSplit)
             {
@@ -373,6 +349,125 @@ internal static class EventLogFormat
         VerifyChecksum(header, position + 16, "header checksum");
         return (BinaryPrimitives.ReadUInt64LittleEndian(header[position..]),
             BinaryPrimitives.ReadUInt64LittleEndian(header[(position + 8)..]));
+    }
+
+    /// <summary>Validate one frame at <paramref name="position"/> that must start at <paramref name="expectedOffset"/>.</summary>
+    static EventLogFrame ReadFrame(ReadOnlySpan<byte> content, int position, ulong expectedOffset)
+    {
+        if (content.Length < position + 29 || content[position] != FrameMarker) throw Corrupt("frame");
+        var length = (long)BinaryPrimitives.ReadUInt32LittleEndian(content[(position + 1)..]) + 9;
+        if (length < 29 || content.Length - position < length) throw Corrupt("frame length");
+        var frame = content.Slice(position, (int)length);
+        VerifyChecksum(frame, frame.Length - 4, "frame checksum");
+        var frameOffset = BinaryPrimitives.ReadUInt64LittleEndian(frame[5..]);
+        var records = BinaryPrimitives.ReadUInt32LittleEndian(frame[13..]);
+        var runCount = BinaryPrimitives.ReadUInt32LittleEndian(frame[17..]);
+        if (frameOffset != expectedOffset || records == 0 || runCount > records) throw Corrupt("frame offsets");
+        var runs = new EventLogTransferRun[runCount];
+        var local = 21;
+        ulong runRecords = 0;
+        for (var i = 0; i < runCount; i++)
+        {
+            if (local + RunLength > frame.Length - 4) throw Corrupt("frame runs");
+            runs[i] = new(BinaryPrimitives.ReadUInt64LittleEndian(frame[local..]),
+                BinaryPrimitives.ReadUInt64LittleEndian(frame[(local + 8)..]),
+                BinaryPrimitives.ReadUInt32LittleEndian(frame[(local + 16)..]));
+            runRecords += runs[i].Count;
+            local += RunLength;
+        }
+        if (runRecords != records) throw Corrupt("frame runs");
+        var recordsPosition = local;
+        for (var i = 0; i < records; i++)
+        {
+            if (local + 4 > frame.Length - 4) throw Corrupt("record");
+            var recordLength = BinaryPrimitives.ReadUInt32LittleEndian(frame[local..]);
+            if (recordLength > (uint)(frame.Length - 4 - local - 4)) throw Corrupt("record length");
+            local += 4 + (int)recordLength;
+        }
+        if (local != frame.Length - 4) throw Corrupt("frame layout");
+        return new(position, frame.Length, frameOffset, records, runs, position + recordsPosition);
+    }
+
+    /// <summary>The fixed part of a merged header: enough to locate its tables.</summary>
+    internal readonly record struct MergedHeader(byte Level, ulong SplitId, ulong LastSplitId, ulong FirstOffset,
+        ulong RecordCount, int FrameCount, int FrameTable, int RecordTable, int HeaderLength);
+
+    public static int MergedFixedLength(string topic) => 8 + TopicBytes(topic) + 16 + 22;
+
+    public static MergedHeader ParseMergedFixed(ReadOnlySpan<byte> prefix, string topic)
+    {
+        var fixedLength = MergedFixedLength(topic);
+        if (prefix.Length < fixedLength || !prefix[..4].SequenceEqual(Magic) || prefix[4] != FormatVersion ||
+            prefix[5] != KindMerged) throw Corrupt("merged header");
+        var position = 8 + BinaryPrimitives.ReadUInt16LittleEndian(prefix[6..]);
+        if (position + 38 != fixedLength || Encoding.UTF8.GetString(prefix[8..position]) != topic) throw Corrupt("topic");
+        var splitId = BinaryPrimitives.ReadUInt64LittleEndian(prefix[position..]);
+        var firstOffset = BinaryPrimitives.ReadUInt64LittleEndian(prefix[(position + 8)..]);
+        position += 16;
+        var level = prefix[position];
+        var lastSplitId = BinaryPrimitives.ReadUInt64LittleEndian(prefix[(position + 1)..]);
+        var recordCount = BinaryPrimitives.ReadUInt64LittleEndian(prefix[(position + 9)..]);
+        var frameCount = BinaryPrimitives.ReadUInt32LittleEndian(prefix[(position + 17)..]);
+        if (level == 0 || prefix[position + 21] != EntryWidth || lastSplitId < splitId ||
+            frameCount + recordCount > MaxObjectLength / EntryWidth) throw Corrupt("merged header");
+        var frameTable = position + 22;
+        var recordTable = frameTable + (int)frameCount * EntryWidth;
+        return new(level, splitId, lastSplitId, firstOffset, recordCount, (int)frameCount, frameTable, recordTable,
+            recordTable + (int)recordCount * EntryWidth + 4);
+    }
+
+    /// <summary>Validate a complete merged header (from <see cref="ParseMergedFixed"/>) and return the position of the
+    /// frame that contains <paramref name="offset"/>.</summary>
+    public static int MergedFrameStart(ReadOnlySpan<byte> header, MergedHeader merged, ulong offset)
+    {
+        if (header.Length < merged.HeaderLength) throw Corrupt("merged header");
+        VerifyChecksum(header, merged.HeaderLength - 4, "header checksum");
+        if (offset < merged.FirstOffset || offset - merged.FirstOffset >= merged.RecordCount)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        var record = ReadEntry(header, merged.RecordTable, (int)(offset - merged.FirstOffset));
+        int low = 0, high = merged.FrameCount - 1, result = -1;
+        while (low <= high)
+        {
+            var middle = (low + high) / 2;
+            if (ReadEntry(header, merged.FrameTable, middle) <= record)
+            {
+                result = middle;
+                low = middle + 1;
+            }
+            else high = middle - 1;
+        }
+        if (result < 0) throw Corrupt("frame table");
+        return ReadEntry(header, merged.FrameTable, result);
+    }
+
+    /// <summary>Parse the frames and end marker of a merged object from a range starting at a frame boundary; positions
+    /// are relative to <paramref name="range"/>.</summary>
+    public static EventLogObject ParseMergedRange(ReadOnlySpan<byte> range, MergedHeader merged, ulong firstOffset)
+    {
+        var frames = new List<EventLogFrame>();
+        var position = 0;
+        var next = firstOffset;
+        while (true)
+        {
+            if (position >= range.Length) throw Corrupt("merged content");
+            if (range[position] == EndMarker)
+            {
+                if (range.Length - position != EndLength) throw Corrupt("end marker");
+                VerifyChecksum(range[position..], 9, "end checksum");
+                if (BinaryPrimitives.ReadUInt64LittleEndian(range[(position + 1)..]) != next ||
+                    next != merged.FirstOffset + merged.RecordCount) throw Corrupt("end marker");
+                break;
+            }
+            var frame = ReadFrame(range, position, next);
+            frames.Add(frame);
+            next = frame.NextOffset;
+            position += frame.Length;
+        }
+        return new()
+        {
+            Level = merged.Level, SplitId = merged.SplitId, LastSplitId = merged.LastSplitId, FirstOffset = firstOffset,
+            NextOffset = next, Frames = frames, HeaderLength = 0, Length = range.Length
+        };
     }
 
     static int ReadEntry(ReadOnlySpan<byte> content, int table, int index) =>
