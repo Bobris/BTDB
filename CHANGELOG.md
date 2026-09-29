@@ -15,6 +15,8 @@
   validated heartbeats from the owner instead of reading storage, and `GetBoundsAsync` is fresh.
   `AzureEventLogStorage` stores topics as Block Blobs with one conditional Put Blob per commit (staged blocks above
   the single-request limit), owner metadata installed atomically, and delayed conditional deletion.
+  `AddBTDBEventLog`/`MapBTDBEventLog` host a node over HTTP (`/_btdb/eventlog/v1`, bearer API key, streamed
+  subscriptions with buffering disabled) through `HttpEventLogPeerTransport`.
 
 - Qualify a rolling schema upgrade under continuous input in the subprocess tests and document the procedure: the
   lagging upgraded leader's activation deadline restarts it onto the frozen published history, and the selected
