@@ -215,6 +215,10 @@
 
 ### Fixed
 
+- `OnDiskReplicationFileStorage` releases its read-only mapping before truncating a rewound file, because Windows
+  refuses to shorten a file with a mapped view. Rewinding uncommitted transaction logs below the mapped prefix, then
+  flushing, sealing or disposing the file, no longer fails with "a user-mapped section open". Readers of that
+  prefix wait for the file to be mapped again.
 - Cancel and drain sibling activation range reads immediately when any read fails, preserving the original failure
   instead of waiting indefinitely for an earlier blocked range before retrying activation.
 - Fence replication leadership and request restart as soon as any database reports a canonical publication conflict,

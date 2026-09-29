@@ -136,13 +136,16 @@ public sealed class OnDiskReplicationFileStorageTest : IDisposable
         // Mapping steps release and reuse blocks several times while readers copy committed bytes.
         var expected = Pattern(96 * 1024 * 1024 + 123, 21);
         using var stop = new CancellationTokenSource();
+        // A busy thread pool may start readers only after the writer finished: wait for them and let each check once.
+        using var started = new CountdownEvent(4);
         var file = files.AddFile("trl", FileIdParity.Odd);
-        var readers = Enumerable.Range(0, 4).Select(seed => Task.Run(() =>
+        var readers = Enumerable.Range(0, 4).Select(seed => Task.Factory.StartNew(() =>
         {
+            started.Signal();
             var random = new Random(seed);
             var buffer = new byte[3 * 1024 * 1024 / 2]; // Spans the mapped prefix and blocks.
             var checks = 0;
-            while (!stop.IsCancellationRequested)
+            while (!stop.IsCancellationRequested || checks == 0)
             {
                 var size = (long)file.GetSize();
                 var length = (int)Math.Min(buffer.Length, size);
@@ -153,7 +156,8 @@ public sealed class OnDiskReplicationFileStorageTest : IDisposable
                 checks++;
             }
             return checks;
-        })).ToArray();
+        }, TaskCreationOptions.LongRunning)).ToArray();
+        started.Wait();
         var writer = new MemWriter(file.GetAppenderWriter());
         for (var offset = 0; offset < expected.Length; offset += 4000)
         {
@@ -200,6 +204,46 @@ public sealed class OnDiskReplicationFileStorageTest : IDisposable
         file.HardFlushTruncateSwitchToReadOnlyMode();
         Assert.Equal(expected, ReadAll(file));
         Assert.Equal(expected.Length, new FileInfo(Path.Combine(_directory, "00000001.trl")).Length);
+    }
+
+    [Fact]
+    public async Task ReadersOfTheKeptPrefixSurviveRewindsThatTruncateTheMappedFile()
+    {
+        using var files = new OnDiskReplicationFileStorage(_directory);
+        var file = files.ImportFile(1, "trl");
+        var expected = Pattern(12 * 1024 * 1024, 15); // Long enough to move the kept prefix under a mapping.
+        const int kept = 1024 * 1024 + 17;
+        Append(file, expected);
+        using var stop = new CancellationTokenSource();
+        using var started = new CountdownEvent(4);
+        var readers = Enumerable.Range(0, 4).Select(seed => Task.Factory.StartNew(() =>
+        {
+            started.Signal();
+            var random = new Random(seed);
+            var buffer = new byte[256 * 1024];
+            var checks = 0;
+            while (!stop.IsCancellationRequested || checks == 0)
+            {
+                var position = random.Next(kept - buffer.Length + 1);
+                file.RandomRead(buffer, (ulong)position, false);
+                Assert.True(buffer.AsSpan().SequenceEqual(expected.AsSpan(position, buffer.Length)));
+                checks++;
+            }
+            return checks;
+        }, TaskCreationOptions.LongRunning)).ToArray();
+        started.Wait();
+        for (var round = 0; round < 5; round++)
+        {
+            var writer = new MemWriter(file.GetAppenderWriter());
+            writer.SetCurrentPosition(kept);
+            writer.Flush();
+            file.HardFlush();
+            Assert.Equal(kept, new FileInfo(Path.Combine(_directory, "00000001.trl")).Length);
+            Append(file, expected.AsSpan(kept));
+        }
+        stop.Cancel();
+        foreach (var checks in await Task.WhenAll(readers)) Assert.True(checks > 0);
+        Assert.Equal(expected, ReadAll(file));
     }
 
     [Fact]

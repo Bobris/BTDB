@@ -182,6 +182,7 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
         // memory stays bounded and remaps stay rare.
         const long MinimumMappingStep = 8L * 1024 * 1024;
         const long MaximumMappingStep = 64L * 1024 * 1024;
+        const int ErrorUserMappedFile = 1224;
         readonly OnDiskReplicationFileStorage _owner;
         readonly string _path;
         readonly FileStream _stream;
@@ -241,11 +242,30 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
             }
         }
 
-        // Caller holds _lock. Only a flush of the whole logical length may drop bytes beyond it on disk.
+        // Caller holds _lock. Only a flush of the whole logical length may drop bytes beyond it on disk. Windows
+        // refuses to shorten a file with a mapped view, so the mapping goes first; readers of its bytes wait on _lock
+        // in MapForReading until the caller maps the file again or publishes its final content.
         void PersistAndTruncate()
         {
             Persist(_length);
-            if (_stream.Length != _length) _stream.SetLength(_length);
+            if (_stream.Length == _length) return;
+            if (_content.Mapping != null) Publish(new(null, 0, _content.Blocks));
+            // A reader that started copying before the unmap keeps the view mapped until its copy finishes.
+            var spin = new SpinWait();
+            var deadline = Environment.TickCount64 + 10_000;
+            while (true)
+            {
+                try
+                {
+                    _stream.SetLength(_length);
+                    return;
+                }
+                catch (IOException e) when ((e.HResult & 0xFFFF) == ErrorUserMappedFile &&
+                                            Environment.TickCount64 < deadline)
+                {
+                    spin.SpinOnce();
+                }
+            }
         }
 
         // Caller holds _lock. Maps every persisted byte and drops the blocks it covers, keeping the block from
@@ -300,12 +320,14 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
             return true;
         }
 
-        // A file that nobody appends to is read through one mapping of its persisted bytes.
-        void MapForReading()
+        // A file that nobody appends to is read through one mapping of its persisted bytes. A snapshot replaced while
+        // waiting for the lock (e.g. unmapped for a truncation and mapped again) is simply read again.
+        void MapForReading(Content seen)
         {
             lock (_lock)
             {
                 ThrowIfRemoved();
+                if (!ReferenceEquals(_content, seen)) return;
                 if (_persisted <= _content.Mapped)
                     throw new InvalidOperationException("Replication file content is neither mapped nor buffered.");
                 MapPersisted(long.MaxValue);
@@ -356,7 +378,7 @@ public sealed class OnDiskReplicationFileStorage : IReplicationFileStorage
                 if (index >= content.Blocks.Length || content.Blocks[index] is not { Block: { } block } reference)
                 {
                     // Only a file nobody appends to lacks both; map its persisted bytes once.
-                    MapForReading();
+                    MapForReading(content);
                     continue;
                 }
                 var start = (int)(position % BlockSize);
