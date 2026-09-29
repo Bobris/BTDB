@@ -283,6 +283,65 @@ with `BTDB_AZURE_BLOB_ENDPOINT` (each node then authenticates with `DefaultAzure
 - `PublicHostingApiTest` guards the external-consumer boundary: no friend-assembly access, no public way to create or
   renew authority, and no secrets in public record strings. See [hosting contracts](../Doc/ReplicationHosting.md).
 
+## Event log
+
+The optional event log (`BTDB.Replication.EventLog`, see [EventLogImplementationPlan.md](EventLogImplementationPlan.md))
+has its own suites under `EventLog/` in `BTDB.Replication.Test`, plus Azure and HTTP tests:
+
+- `EventLogFormatTest`:
+  - round trips of splits, frames, records, transfer runs and seals;
+  - an empty split is valid but never sealed;
+  - every flipped byte and every truncation is detected;
+  - merged objects are deterministic, copy frames byte for byte and index every record;
+  - topic names and object keys are validated.
+- `EventLogOwnerLaneTest`, with a fault-injecting in-memory storage:
+  - topic creation and contiguous offsets;
+  - rotation with proactive seals and no seal-only writes;
+  - large records in their own sealed split, including into an empty tail;
+  - repeated ambiguous writes, both landed and not landed, never duplicate;
+  - candidate takeover fences the owner, and a predecessor winning the race fences the candidate;
+  - resubmission to a new owner returns the original offsets;
+  - a landed write whose response was lost stays committed even when a takeover follows it;
+  - pipelined sequences commit in order, and an unfilled gap fails;
+  - idle-owner validation detects a takeover;
+  - takeover of a sealed idle tail through a header-only successor, including when a helper created it first;
+  - oversized records are rejected.
+- `EventLogServiceTest`, with several in-process nodes, an in-process transport with partitions and the real
+  scheduler:
+  - unique contiguous offsets from all nodes, and call order of pipelined publications;
+  - live following without storage requests;
+  - takeover of an unreachable owner with exactly-once commits, and the deposed owner forwarding afterwards;
+  - an idle deposed owner and its subscribers noticing the takeover through heartbeat validation;
+  - fresh bounds from a follower, with a storage fallback;
+  - takeover of a restarted node's own session;
+  - an out-of-range read failing;
+  - gap-free storage replay followed by live records.
+- `EventLogMergerTest`:
+  - level-1 and level-2 objects named by first offset;
+  - reads from every offset through the header index;
+  - no deletion before the deadline, and cleanup afterwards;
+  - appends after cleanup, and the tail and its group are never merged;
+  - identical objects from concurrent and repeated mergers;
+  - verification and cleanup after a crash between creation and marking;
+  - merging in the owner service.
+- `AzureEventLogStorageTest` (Azurite):
+  - the conditional-write, owner, range, listing and deletion contract;
+  - staged large content;
+  - an owner lane that loses upload responses without duplicates;
+  - two nodes over Azure.
+- `EventLogHttpTest` (Kestrel):
+  - wire round trips and rejection of malformed input;
+  - three nodes publishing and following over HTTP;
+  - rejection of unauthenticated requests;
+  - takeover after the owner process stops.
+
+Not covered yet:
+
+- TLS and proxy paths.
+- Multi-VM partitions.
+- Exhaustive interleavings of seal, create and takeover. The listed cases are directed schedules.
+- Sustained load with merging on live Azure.
+
 ## Recorded measurements
 
 [Measurements.md](Measurements.md) owns benchmark results and their hardware/workload limits, including Azure cold

@@ -47,6 +47,7 @@ or PVL/KVI objects, local disks or peer traffic; every new term therefore CAS-fe
 | `IReplicationLeaderStorage` | `AcquireAsync` (finite lease), `RenewAsync(handle)`, `TransferAsync(current, proposed)` (planned handoff, confirmed by the target's renewal); `ReadAsync` -> body + token; `WriteAsync(leaseHandle, expectedToken, json)` -> `Applied`/`Rejected`/`Ambiguous`. |
 | `IRemoteFileCollection` | `EnumerateAsync` and version-bound `ReadAsync` of `RemoteFile(FileId, FileType, Length, Version, IsSealed, Sha256)`. |
 | `IReplicationStorage` | Canonical TRL `ReadAsync`/`ReadRangeAsync`/`WriteAsync`; `EnsurePureValuesAsync`, `ProtectPureValuesAsync`, `PublishKeyIndexAsync`; `ResolveRecoveryRootAsync`; `EnumerateMaintenanceAsync`, `ScheduleDeletionAsync`, `CancelDeletionAsync`, `DeleteAsync`. |
+| `IEventLogStorage` (event log) | `ReadAsync`, `GetPropertiesAsync`, version-bound `ReadRangeAsync`; `WriteAsync(key, expectedVersion or create-if-absent, content, owner, sha256)` and content-preserving `SetOwnerAsync` -> `Applied`/`Rejected`/`Ambiguous`; `ListAsync`, `ScheduleDeletionAsync`, `DeleteAsync`. |
 
 A read returns the listed content or fails; partial success never combines contents. A newer version counts only
 when it provably keeps the listed bytes: a canonical TRL (append-only) at least as long, or an immutable PVL/KVI with
@@ -308,6 +309,19 @@ These are the only BTDB Blob metadata fields. TRL IDs come from filenames; linea
 come from native file contents. There are no term directories, successor pointers, recovery hints or extra manifests.
 Earlier name/metadata formats are not supported. A create collision compares the existing native bytes; equal content
 can be reused and an equal shorter prefix extended with version-bound CAS. Divergence requires restart.
+
+### Event log topics
+
+`AzureEventLogStorage` keeps the optional event log below its own nonempty prefix: `{topic}/{splitId:D20}.elog` for
+splits and `{topic}/l{level}/{firstOffset:D20}.elog` for merged objects. Each commit is one conditional Put Blob of the
+whole bounded split (`If-Match`, or `If-None-Match: *` to create), which installs content and the owner metadata
+`btdb_elog_owner`/`btdb_elog_endpoint` atomically. Content above the single-request limit (64 MiB) is staged under
+SDK-generated block IDs and committed with the same condition. A takeover without data is a content-preserving
+`Set Blob Metadata` with `If-Match`; writable splits carry only owner metadata, so it replaces nothing else. Merged
+objects record `btdb_sha256`; covered objects get `btdb_delete_after` and are deleted with `If-Match` after the
+deadline. Status codes 404, 409 and 412 on a mutation are `Rejected`, transient failures `Ambiguous`, with
+`Retry.MaxRetries = 0`. The storage decision and its measurements are in
+[EventLogImplementationPlan.md](EventLogImplementationPlan.md#16-live-gzrs-storage-screening).
 
 ### Conditional tail append with Block Blob
 

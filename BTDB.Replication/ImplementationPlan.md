@@ -25,6 +25,9 @@ This status summarizes the linked evidence, not a new live qualification run.
   suffix is a separate release decision.
 - **Deployment coverage.** Qualify the intended TLS/proxy path and real network partitions. Live Azure tests are
   manual; physical disk faults are not modeled. See [test limits](Testing.md#not-covered-yet).
+- **Event log.** The optional `BTDB.Replication.EventLog` is implemented as a preview (E0 harness, E1–E5). Its
+  application integration, migration and multi-VM qualification remain; see
+  [EventLogImplementationPlan.md](EventLogImplementationPlan.md#11-implementation-milestones).
 - **Optional work.** Same-generation shutdown handoff, S3 and stronger reads remain in the
   [architecture backlog](Architecture.md#open-work); they are not prerequisites for the selected protocol.
 

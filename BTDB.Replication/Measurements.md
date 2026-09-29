@@ -230,6 +230,24 @@ the 8-vCPU temporary disk writes at 835 MB/s on E8ads_v5 (temporary SSD) but onl
 which reads at 1.1 GB/s), measured with direct 4 MiB I/O. A cold restore writes every downloaded byte, so v5 can match
 or beat v7 there, while v7 wins where the KVI load (CPU) dominates. A larger VM size raises these limits.
 
+## Event log
+
+Storage primitives on Azure Standard_GZRS are recorded in
+[EventLogImplementationPlan.md](EventLogImplementationPlan.md#16-live-gzrs-storage-screening) (`DBBenchmark
+eventlog-storage`). `DBBenchmark eventlog-e2e` measures publish-to-all-nodes latency: open-loop arrivals round-robin
+over nodes in one process, loopback HTTP, in-memory storage and 1 KiB records. Every node follows the topic. The
+latency of a record ends when the last node receives it.
+
+Run on 2026-09-29, Apple M2 Max, Release:
+
+| Nodes | Rate | Records | p50 ms | p95 ms | p99 ms | p99.9 ms | max ms | Errors |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 3 | 500/s | 1,500 | 0.18 | 0.45 | 1.37 | 5.64 | 7.70 | 0 |
+| 4 | 5,000/s | 20,000 | 0.14 | 1.54 | 2.66 | 5.84 | 7.22 | 0 |
+
+This is the library and loopback floor. Storage latency adds to every commit: about 9–27 ms p50–p99 per bounded Put
+Blob on GZRS. Multi-VM and live Azure end-to-end runs on the target workload are still open.
+
 ## Changes made from these measurements
 
 - `OnDiskReplicationFileStorage`: lock-free reads from pinned blocks and read-only mappings, mappings grown in steps

@@ -1,6 +1,6 @@
 # BTDB.Replication Event Log — implementation proposal
 
-Status: design only, 2026-09-29. The event log is not implemented. The live Azure GZRS storage screening is complete (section 16). It selects bounded single-request Put Blob splits of up to 256 KiB, merged into larger objects in the background (sections 5 and 6). The 10 ms goal is aspirational, not an acceptance threshold.
+Status: implemented as a preview on 2026-09-29 (E0 harness and E1–E5, section 11) in `BTDB.Replication/EventLog/`, `BTDB.Replication.Azure/AzureEventLogStorage.cs` and `BTDB.Replication.Http/`. Application integration (E6), migration and multi-VM qualification (E7) remain open. The live Azure GZRS storage screening is complete (section 16). It selects bounded single-request Put Blob splits of up to 256 KiB, merged into larger objects in the background (sections 5 and 6). The 10 ms goal is aspirational, not an acceptance threshold.
 
 Confirmed requirements:
 
@@ -136,7 +136,7 @@ Topic prefixes are separate from database replication cleanup prefixes. Segment 
 Each segment has a versioned header with topic identity, segment number and first record offset. A commit frame contains:
 
 * a bounded length and the record count;
-* internal transfer identities, where required for lost-response reconciliation;
+* the publisher session and consecutive sequence numbers of its records, as runs (section 7);
 * each record's length and payload;
 * a checksum.
 
@@ -206,7 +206,7 @@ Small splits keep append latency low but create many objects (section 5). A back
   * A level-1 group covers splits `16k+1 .. 16k+16`.
   * A level-2 group covers splits `256m+1 .. 256m+256`.
 
-  A group is eligible once its last split is sealed. A level-2 merge may read the group from level-1 objects or from original splits, whichever still exist. Large-record splits take part like any other split. If a group's total size exceeds the configured maximum object size, it is not merged at that level.
+  A group is eligible once a later split exists, so neither the tail nor the latest split, where tail discovery starts, is ever merged. A level-2 merge may read the group from level-1 objects or from original splits, whichever still exist. Large-record splits take part like any other split. If a group's total size exceeds the configured maximum object size, it is not merged at that level.
 * **Naming.** A merged object is a new, immutable blob named by its level and its first record offset, zero-padded to 20 digits: `l1/{firstOffset}.elog` or `l2/{firstOffset}.elog`. The application's event ID is that offset plus its shift. Splits are never sealed empty (section 5), so first offsets are unique within a level. Because the names are zero-padded, LIST returns merged objects in offset order.
 * **How.** Create the object with create-if-absent (`If-None-Match: *`). Large content uses attempt-unique staged blocks and a Put Block List with the same condition. The object contains, in order:
   1. the merged header, including the covered split ID range;
@@ -264,6 +264,7 @@ Exactly-once is the responsibility of the internal delivery protocol:
 * One accepted invocation creates one immutable internal pending operation. Queueing, reconnecting and storage retry do not create a second operation.
 * Before storage dispatch, assign a candidate canonical segment, version and position, and keep the exact prepared bytes. If the response is lost, reconcile that candidate against canonical bytes. Never allocate another offset and append again merely because the first response timed out.
 * Forwarding from a non-owner needs a private transfer identity, generated inside the library, because a lost HTTP response cannot distinguish “owner never received the request” from “owner durably committed it.” This is a transport detail, not an interface requirement. Include the transfer identity with its data in the durable frame only to resolve this concrete ambiguity. Identical payload bytes alone cannot identify an invocation.
+* Implemented identity: every node's publisher for a topic has a random 64-bit session and numbers its calls with consecutive sequences, and frames store them as runs (session, first sequence, count). Because a session's records commit in call order (contract 8), its committed sequences are always a prefix. A resubmission therefore carries the oldest sequence without a receipt, whether any record was dispatched before, and the durable offset known at its first dispatch. An owner that does not know the session installs itself first and then scans committed frames from that offset.
 * A reconnect to the same live owner session joins the same pending operation or returns its completed result. Keep only outstanding transfer state and session-scoped recent completions in memory; do not build a general historical deduplication service.
 * On an owner change, first fence or adopt the canonical tail so that a predecessor cannot later land an unseen write. Then resolve the bounded set of outstanding transfers against committed frames, including preceding splits if rotation occurred. If a transfer is found, resume the still-live Publish call with its original result. Only after proving absence behind that fence may the new owner submit it, once.
 * Cold recovery can serve previously committed records without producer state. If an outstanding call survives on another node and no exact candidate position was received, scan the relevant committed history for its private transfer identity. Correctness must not depend on a volatile old-owner table. Initial retention is disabled, so this evidence is available; future cleanup must preserve unresolved-transfer evidence.
@@ -364,7 +365,7 @@ Milestones use an E prefix so that they do not collide with the database-replica
 
 | Milestone | Work and likely files | Completion evidence |
 | --- | --- | --- |
-| E0: latency feasibility | `DBBenchmark/EventLog/`: minimal Azure write and HTTP fanout harness; fix the workload definition. The storage-primitive screening is done (section 16), but its benchmark source is not in the repository yet. | End-to-end distributions and confirmed storage strategy, with no unsupported 10 ms claim |
+| E0: latency feasibility | `DBBenchmark/EventLog/`: `eventlog-storage` reruns the storage-primitive screening (section 16), `eventlog-e2e` measures open-loop publish-to-all-nodes latency over loopback HTTP. Implemented; multi-VM runs on the target workload remain. | End-to-end distributions and confirmed storage strategy, with no unsupported 10 ms claim |
 | E1: API and model | `BTDB.Replication/EventLog/`: contracts, offsets, framing, deterministic storage and transport fixtures | Model tests establish the immutable prefix, exact offsets, per-process order, batching and independent consumers |
 | E2: durable topic engine | Publisher lane, segment discovery/rotation/adoption, internal transfer reconciliation and recovery | The fault schedules below pass; a restart with all local state deleted recovers every acknowledged record |
 | E3: Azure adapter | `BTDB.Replication.Azure/AzureEventLogStorage.cs`: conditional operations and reconciliation | Azurite contract suite plus live provider tests, including lost-response and stale-writer cases |
@@ -372,6 +373,16 @@ Milestones use an E prefix so that they do not collide with the database-replica
 | E5: background merge | Merge, garbage detection and delayed deletion | Merge-race and reader tests pass; object count stays bounded under sustained load |
 | E6: application integration | Producer/consumer adapters in the consuming application over the public API | Outside this repository; the application's existing event and upgrade tests pass |
 | E7: migration and qualification | Import/cutover tooling, operational docs, benchmarks and observability | Event IDs and application state verified across migration; measured latency distributions for the target workload; no mandatory 10 ms gate |
+
+Implementation status on 2026-09-29:
+
+* **E1–E5 implemented** with the tests listed in `Testing.md`:
+  * format, owner lane, service and merger with in-memory and fault-injecting storage;
+  * the Azure adapter on Azurite, including a lost upload response;
+  * HTTP hosting between Kestrel nodes.
+* **E4 not yet covered:** TLS and proxy paths are not tested.
+* **E6 is outside this repository.**
+* **E7 open:** migration tooling (the plan uses the normal publish path), observability counters and multi-VM qualification.
 
 E0 happens first because it can still change the storage strategy. E1 and E2 establish correctness before performance tuning. Avoid refactoring native database replication into a generic log framework merely to share names; reuse small mechanisms when their contracts actually match.
 

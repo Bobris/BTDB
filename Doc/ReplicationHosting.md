@@ -403,3 +403,46 @@ for restore, exposing native KVI/PVL and TRLs from the shared namespace. Native 
 closure. Do not treat a missing original genesis alone as an empty database: `ResolveRecoveryRootAsync` locates the
 oldest retained TRL and rejects a KVI with no TRL history. Native open rejects missing required history. The subprocess
 host demonstrates startup without recovery-root metadata.
+
+## Event log
+
+`BTDB.Replication.EventLog` is an optional, Kafka-like log of opaque records in named topics. It can supply the
+application's ordered input and its serializer metadata. Database replication does not depend on it. Each topic has
+one owner node, fenced by the ETag of the topic's writable tail blob. Other nodes forward publications to the owner
+and follow live records and heartbeats from it; a topic whose owner stays unreachable for `OwnerTimeout` is taken over.
+The design and its limits are in
+[EventLogImplementationPlan.md](../BTDB.Replication/EventLogImplementationPlan.md).
+
+```csharp
+var blobOptions = new BlobClientOptions();
+blobOptions.Retry.MaxRetries = 0; // the log resolves ambiguous conditional writes itself
+var container = new BlobServiceClient(accountUri, credential, blobOptions).GetBlobContainerClient("eventlog");
+builder.Services.AddSingleton<IEventLogStorage>(new AzureEventLogStorage(container, "cluster-1"));
+builder.Services.AddBTDBEventLog("https://node-1.internal:8443", apiKey, new EventLogOptions());
+var app = builder.Build();
+app.MapBTDBEventLog();
+
+var events = app.Services.GetRequiredService<IEventLog>().GetTopic("events");
+var offset = await events.PublishAsync(payload);                       // durable, exactly once per call
+var end = (await events.GetBoundsAsync()).Next;                        // covers every completed receipt
+await foreach (var record in events.ReadAsync(lastApplied + 1, end))   // replay to a captured end
+    Apply(record.Offset, record.Payload);
+await foreach (var record in events.ReadAsync(end, null, stopping))    // then follow live records
+    Apply(record.Offset, record.Payload);
+```
+
+- **Endpoint and authentication.** The endpoint is this node's HTTPS origin as peers reach it (HTTP only on
+  loopback). Peers call `POST /_btdb/eventlog/v1/{submit,bounds,subscribe}` with the cluster's bearer key.
+  Subscriptions are long streamed responses, so disable response buffering and idle timeouts in front of that path.
+- **Order and duplicates.** Publications that one process starts on a topic, each after the previous call returned,
+  commit in call order. A failure or cancellation after dispatch means an unknown outcome, but a committed record
+  exists once.
+- **Offsets and replay.** Offsets start at 0 and are contiguous per topic; the application maps them to its event
+  IDs. The application persists its applied offset with its own transaction, as with Kafka.
+- **Storage.** Splits are at most `SplitCap` (256 KiB) and are sealed once less than `SealFreeSpace` remains. A record
+  larger than a split gets its own sealed split, up to `MaxRecordSize`.
+- **Merging and cleanup.** The owner merges sealed splits every `MergeInterval` into level-1 and level-2 objects
+  (fan-out 16) and deletes covered objects after `DeletionDelay` (default one day). Nothing is deleted before the
+  record history is covered, and there is no retention in v1.
+- **Benchmarks.** `DBBenchmark eventlog-e2e` measures publish-to-all-nodes latency, and `DBBenchmark eventlog-storage`
+  measures the storage primitives on Azure.

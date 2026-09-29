@@ -46,6 +46,10 @@
 - Use one ordered event stream for the entire cluster; per-database cursors refer to it. The application ensures
   identical ordered transactions on all nodes hosting the same database, including rollback, and supplies
   recoverable input through injected interfaces. Kafka is only an example; replication owns no consumer or handler.
+- `BTDB.Replication.EventLog` is an optional sibling component that can serve as that application event log: named
+  topics of opaque records in Blob Storage with per-topic ETag ownership. It never changes database replication:
+  Commit still never awaits Blob Storage, and execution, retry and skip policy stay in the application. Its design and
+  status live in `EventLogImplementationPlan.md`.
 - The application event log supplies durability and replay. Blob KVI/TRL accelerates recovery from a valid base; an
   unpublished BTDB tail may be regenerated. Do not add client durability acknowledgements, Blob waits, an outbox or a
   business command acknowledgement. Published-boundary tracking is internal restore bookkeeping.

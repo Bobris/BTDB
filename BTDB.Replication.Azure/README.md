@@ -8,6 +8,9 @@ This project implements the Azure SDK boundary of `BTDB.Replication` through pub
 - `AzureReplicationStorage` (`IReplicationStorage`): canonical TRL reads, conditional append and unchanged-content
   adoption, numeric PVL/KVI discovery, immutable publication with atomic SHA-256 metadata, shared native-file discovery and
   delayed conditional cleanup.
+- `AzureEventLogStorage` (`IEventLogStorage`): the optional event log's topics as Block Blobs: one conditional Put
+  Blob per commit with atomic owner metadata, staged uploads above 64 MiB, and delayed conditional cleanup of merged
+  history. See [ObjectStorages.md](../BTDB.Replication/ObjectStorages.md#event-log-topics).
 
 ## Usage
 

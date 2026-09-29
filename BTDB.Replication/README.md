@@ -32,7 +32,7 @@ production use: qualification with the production application (see [Architecture
 
 | Project | Contents |
 | --- | --- |
-| `BTDB.Replication` | Coordinator, authority, publication, comparison, file set, checkpoints and cleanup. |
+| `BTDB.Replication` | Coordinator, authority, publication, comparison, file set, checkpoints and cleanup; the optional `EventLog` of opaque records ([plan](EventLogImplementationPlan.md)). |
 | [`BTDB.Replication.Http`](../BTDB.Replication.Http/README.md) | Peer transport over ASP.NET Core/Kestrel and hosting registration. |
 | [`BTDB.Replication.Azure`](../BTDB.Replication.Azure/README.md) | Azure leader record/lease and data storage adapters. |
 | [`BTDB.Replication.Process.Test`](../BTDB.Replication.Process.Test/README.md) | Subprocess failover, partition, upgrade and ObjectDB application tests using only the public API. |
@@ -45,4 +45,5 @@ production use: qualification with the production application (see [Architecture
 - [Object storage](ObjectStorages.md): the provider-neutral storage contract and Azure/S3 research.
 - [Testing](Testing.md): test harness, coverage and measurements. [M1 evidence](M1Evidence.md): authority clock model.
 - [Implementation plan](ImplementationPlan.md): implementation status and remaining steps.
+- [Event log plan](EventLogImplementationPlan.md): design, measurements and status of the optional event log.
 - [AGENTS.md](AGENTS.md): working agreement for changes to this library.

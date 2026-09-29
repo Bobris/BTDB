@@ -15,6 +15,10 @@ schedule exploration, loopback HTTP, Azurite, and subprocess failover and Object
 against live Azure (adapter and subprocess suites, clock and lease margins, restore of 100 GiB on Azure VMs). Open:
 qualification with the production application; see [Open work](#open-work).
 
+The optional event log (`BTDB.Replication.EventLog`) is a sibling component, not part of this protocol: it has its own
+per-topic ETag ownership and never changes database authority, publication or restore. Its design, invariants and
+status live in [EventLogImplementationPlan.md](EventLogImplementationPlan.md).
+
 ### Admission rule
 
 Implement only mechanisms whose necessity has been established. A proposed field, message, state, persisted record or

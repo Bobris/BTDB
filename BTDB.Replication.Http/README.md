@@ -23,6 +23,10 @@ The advertised endpoint is an absolute HTTPS origin without credentials, query, 
 on loopback. Requests go to `POST /_btdb/replication`; redirects are rejected. Certificates and routing belong to the
 host. Do not log the Authorization header; the adapter never logs identities, credentials or bodies.
 
+The optional event log is hosted separately with `services.AddBTDBEventLog(endpoint, apiKey, options)` and
+`app.MapBTDBEventLog()`, served at `POST /_btdb/eventlog/v1/{submit,bounds,subscribe}` by `HttpEventLogPeerTransport`;
+see the [hosting guide](../Doc/ReplicationHosting.md#event-log).
+
 ## Wire boundary
 
 Each request carries the selected cluster ID, term, session ID and endpoint plus one operation: `connect`, `poll`,
