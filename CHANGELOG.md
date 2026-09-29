@@ -4,6 +4,11 @@
 
 ### Added
 
+- Start the `BTDB.Replication.EventLog` event log (preview, in progress; see
+  `BTDB.Replication/EventLogImplementationPlan.md`): public `IEventLog`/`IEventTopic` contracts for named topics of
+  opaque records, the `IEventLogStorage` object-storage contract, and the validated binary split, frame, seal and
+  merged-object format.
+
 - Qualify a rolling schema upgrade under continuous input in the subprocess tests and document the procedure: the
   lagging upgraded leader's activation deadline restarts it onto the frozen published history, and the selected
   generation keeps old builds from leading meanwhile.
