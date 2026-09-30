@@ -16,7 +16,7 @@ so this evidence does not close B1 or B5 in [Architecture.md](Architecture.md). 
 | Request and challenge identity | An old response must not answer a newer request or extend a newer window. Lease requests are numbered per session; each poll carries one challenge, and a follower counts a grant only from its own dispatch time and only if it arrives within the window (`ReplicationNodeCoordinator.PollLeaderAsync`). | `AuthorityTest.OlderResponseCannotOverrideTheCurrentRequest`, `ReplicationPeerPollTest.StaleIncompleteReorderedOrInvalidAnswersAreRejected`; no dedicated test yet for a grant arriving after its window |
 | One maximum grant deadline | Early lease transfer can leave valid predecessor grants. Stop issuing and wait out their maximum possible expiry; no per-follower revocation or acknowledgement is needed. | `AuthorityTest.OneDrainDeadlineWaitsOutEveryGrantAndStopsNewGrants` |
 | Unchanged-content tail adoption | A lease on `leader.json` does not protect data blobs; even same-byte adoption must invalidate the old tail token. | `LeaseServiceTest.LeaderLeaseDoesNotFenceAnotherBlobAndChangingLeaseDoesNotChangeEtag`, `CanonicalTrlPublisherTest.AdoptionChangesOnlyVersionAndFencesDelayedOldTermAppend`, `CanonicalTrlPublisherTest.OldAppendWinningFirstForcesTheAdopterToRediscoverInsteadOfDroppingHistory` |
-| One shared key per native ID | Competing leaders must collide on the same object. Compare bytes on failed creates; incomplete multi-file transactions replay only after their complete native end arrives. | `CanonicalTrlPublisherTest.CreateCollisionComparesExistingNativeBytesBeforeContinuing`, `CanonicalTrlPublisherTest.RestartDuringMultiFilePublicationRegeneratesExactlyTheSameTrls` |
+| One shared key per native ID | Competing leaders must collide on the same object. Compare bytes on failed creates; incomplete multi-file transactions replay only after their complete native end arrives. | `CanonicalTrlPublisherTest.CreateCollisionComparesExistingNativeBytesBeforeContinuing`, `CanonicalTrlPublisherTest.RestartDuringMultiFilePublicationTerminatesTheUnfinishedTransactionWithARollback` |
 | Explicit ambiguous outcome | Reading the old version after a timeout is compatible with a later successful effect; a retry must not duplicate it. | `StorageFaultTest.TimeoutAndOldReadDoNotPreventLaterRemoteEffect`, `CanonicalTrlPublisherTest.ExactRetryCannotDuplicateBytesWhenOriginalRequestLandsLate` |
 
 No operation ID, append hash, metadata format version, per-transaction envelope or per-follower revocation protocol
@@ -39,8 +39,8 @@ and native KVI references and TRL predecessor headers determine the retained rec
 | Adoption | Verified tail and expected token | Same bytes, new token | Rediscover if an old append wins. No term metadata is needed to invalidate the old token. |
 
 Files are published oldest first. A crash may expose only the beginning of a transaction. Recovery exposes only
-complete commits/rollbacks, rewinds the unfinished disposable local suffix and regenerates it from application input
-with identical IDs, offsets and bytes. Activation compares every published prefix before permitting new publication.
+complete commits/rollbacks and ends the unfinished transaction with a native rollback in the successor of the last
+published TRL. Activation compares every published prefix before permitting new publication.
 
 ## Clock model
 

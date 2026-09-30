@@ -634,14 +634,11 @@ public class CanonicalTrlPublisherTest
         }
     }
 
-    [Theory]
-    [InlineData(false, 2)]
-    [InlineData(false, 4)]
-    [InlineData(true, 2)]
-    [InlineData(true, 4)]
-    public async Task RestartDuringMultiFilePublicationRegeneratesExactlyTheSameTrls(bool disk, int stopAt)
+    // Leaves the second transaction published only up to request stopAt, whose effect is delayed; the old
+    // leader then loses authority, so its unfinished transaction stays on the remote.
+    static async Task<(TransactionLogPosition Baseline, CanonicalTrlInventory Inventory)> AbandonMultiFilePublication(
+        Fixture f, int stopAt)
     {
-        using var f = await Fixture.CreateAsync();
         await Write(f, 1);
         Assert.Equal(TrlPublishResult.Published, await f.Publisher.PublishNextAsync());
         var baseline = f.Capture.Completed;
@@ -650,7 +647,37 @@ public class CanonicalTrlPublisherTest
         f.Remote.Inject = n => n == stopRequest ? Fault.DelayEffect : Fault.None;
         Assert.Equal(TrlPublishResult.Pending, await f.Publisher.PublishNextAsync());
         f.Authority.Fence();
-        var inventory = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
+        f.Remote.Inject = null;
+        return (baseline, await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1)));
+    }
+
+    static ValueTask<BTreeKeyValueDB> OpenRestoredAsync(ReplicationFileSet files, TransactionLogCapture capture) =>
+        BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
+        {
+            FileCollection = files, TransactionLogCapture = capture, Compression = new NoCompressionStrategy(),
+            CompactorScheduler = null, TransactionLogSizeStrategy = new TinyLogs()
+        });
+
+    // Differs from the abandoned transaction from its first command, as a changed or nondeterministic execution would.
+    static async Task WriteDifferentSecondTransaction(BTreeKeyValueDB db)
+    {
+        using var tr = await db.StartWritingTransaction(2);
+        using var cursor = tr.CreateCursor();
+        for (var i = 0; i < 5; i++) cursor.CreateOrUpdateKeyValue([2, (byte)(100 + i)], Enumerable.Repeat((byte)2, 700).ToArray());
+        tr.Commit();
+    }
+
+    [Theory]
+    [InlineData(false, 2)]
+    [InlineData(false, 4)]
+    [InlineData(true, 2)]
+    [InlineData(true, 4)]
+    public async Task RestartDuringMultiFilePublicationTerminatesTheUnfinishedTransactionWithARollback(bool disk, int stopAt)
+    {
+        using var f = await Fixture.CreateAsync();
+        var (baseline, inventory) = await AbandonMultiFilePublication(f, stopAt);
+        var tail = inventory.Tail!;
+        Assert.True(new TransactionLogPosition(tail.FileId, tail.State.Length) > baseline);
         var directory = Path.Combine(Path.GetTempPath(), "btdb-partial-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -658,41 +685,82 @@ public class CanonicalTrlPublisherTest
             await using var files = new ReplicationFileSet(local, inventory);
             await files.InitializeAsync();
             var capture = new TransactionLogCapture();
-            using var db = await BTreeKeyValueDB.OpenAsync(new KeyValueDBOptions
-            {
-                FileCollection = files, TransactionLogCapture = capture, Compression = new NoCompressionStrategy(),
-                CompactorScheduler = null, TransactionLogSizeStrategy = new TinyLogs()
-            });
-            Assert.Equal(baseline, db.ReplicationRestoredPosition);
+            using var db = await OpenRestoredAsync(files, capture);
+            // The restored base is the published end; the rollback opens the successor of the published tail.
+            Assert.Equal(new TransactionLogPosition(tail.FileId, tail.State.Length), db.ReplicationRestoredPosition);
+            Assert.Equal(tail.FileId + 2, capture.Completed.FileId);
+            var terminator = new byte[local.GetFile(tail.FileId + 2).GetSize()];
+            local.GetFile(tail.FileId + 2).RandomRead(terminator, 0, false);
+            Assert.Equal((byte)KVCommandType.Rollback, terminator[^1]);
             using (var read = db.StartReadOnlyTransaction()) Assert.Equal(1ul, read.GetCommitUlong());
             var selected = new SelectedLeadership(Lease(f.Clock), 2, "new", ["main"]);
-            ActivationDatabase[] databases = [new("main", db, capture, f.Remote, new(Key(1), 1), baseline, Key)];
-            Assert.Null(await LeadershipActivation.ActivateAsync(selected, databases));
-            using (var tr = await db.StartWritingTransaction(2))
-            {
-                using var cursor = tr.CreateCursor();
-                for (var i = 0; i < 8; i++) cursor.CreateOrUpdateKeyValue([2, (byte)i], Enumerable.Repeat((byte)2, 700).ToArray());
-                tr.Commit();
-            }
-            Assert.Equal(f.Capture.Completed, capture.Completed);
-            foreach (var original in f.Files.Enumerate())
-            {
-                var regenerated = local.GetFile(original.Index);
-                Assert.Equal(original.GetSize(), regenerated.GetSize());
-                var expected = new byte[original.GetSize()];
-                var actual = new byte[expected.Length];
-                original.RandomRead(expected, 0, false);
-                regenerated.RandomRead(actual, 0, false);
-                Assert.Equal(expected, actual);
-            }
-            f.Remote.Inject = null;
-            var publishers = await LeadershipActivation.ActivateAsync(selected, databases);
-            using var publisher = Assert.Single(publishers!);
+            ActivationDatabase[] databases = [new("main", db, capture, f.Remote, new(Key(1), 1), db.ReplicationRestoredPosition, Key)];
+            // The candidate already holds every published byte, so it adopts without regenerating the abandoned one.
+            using var publisher = Assert.Single((await LeadershipActivation.ActivateAsync(selected, databases))!);
+            await WriteDifferentSecondTransaction(db);
             Assert.Equal(TrlPublishResult.Published, await publisher.PublishNextAsync());
+            // A follower that executed the abandoned transaction completely no longer matches and restores.
+            var reader = new LeaderTrlReader(db, capture, selected.Authority, db.ReplicationRestoredPosition);
+            Assert.Equal(TrlCompareResult.Diverged,
+                await new TrlPrefixComparer(f.Files.GetFile, f.Capture, baseline).CompareAsync(reader, capture.Completed));
             f.Remote.CompleteDelayed(); // An old create/CAS cannot replace the adopted or newly published bytes.
-            Assert.Equal((2ul, 9L), await Restore(f.Remote));
+            Assert.Equal((2ul, 6L), await Restore(f.Remote));
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task EveryRestoreTerminatesAnUnfinishedTransactionWithTheSameBytes()
+    {
+        using var f = await Fixture.CreateAsync();
+        var (_, inventory) = await AbandonMultiFilePublication(f, 3);
+        var terminators = new List<byte[]>();
+        for (var node = 0; node < 2; node++)
+        {
+            using var local = new InMemoryReplicationFileStorage();
+            await using var files = new ReplicationFileSet(local, inventory);
+            await files.InitializeAsync();
+            using var db = await OpenRestoredAsync(files, new());
+            var terminator = local.GetFile(inventory.Tail!.FileId + 2);
+            var bytes = new byte[terminator.GetSize()];
+            terminator.RandomRead(bytes, 0, false);
+            terminators.Add(bytes);
+        }
+        Assert.Equal(terminators[0], terminators[1]);
+    }
+
+    [Fact]
+    public async Task OldCreateWinningTheTerminatingSuccessorConflictsAndARestoreTerminatesAgain()
+    {
+        using var f = await Fixture.CreateAsync();
+        var (_, inventory) = await AbandonMultiFilePublication(f, 2);
+        var tail = inventory.Tail!;
+        using var local = new InMemoryReplicationFileStorage();
+        await using var files = new ReplicationFileSet(local, inventory);
+        await files.InitializeAsync();
+        var capture = new TransactionLogCapture();
+        using var db = await OpenRestoredAsync(files, capture);
+        var selected = new SelectedLeadership(Lease(f.Clock), 2, "new", ["main"]);
+        ActivationDatabase[] databases = [new("main", db, capture, f.Remote, new(Key(1), 1), db.ReplicationRestoredPosition, Key)];
+        using var publisher = Assert.Single((await LeadershipActivation.ActivateAsync(selected, databases))!);
+        // The old leader's delayed create of the same successor lands first and continues its transaction.
+        f.Remote.CompleteDelayed();
+        Assert.True(f.Remote.Blobs.ContainsKey(Key(tail.FileId + 2)));
+        Assert.Equal(TrlPublishResult.Conflict, await publisher.PublishNextAsync());
+        // Restart restores the longer published prefix, still unfinished, and terminates it one file later.
+        var restored = await CanonicalTrlInventory.DiscoverAsync(f.Remote, new(Key(1), 1));
+        using var nextLocal = new InMemoryReplicationFileStorage();
+        await using var nextFiles = new ReplicationFileSet(nextLocal, restored);
+        await nextFiles.InitializeAsync();
+        var nextCapture = new TransactionLogCapture();
+        using var next = await OpenRestoredAsync(nextFiles, nextCapture);
+        Assert.Equal(tail.FileId + 4, nextCapture.Completed.FileId);
+        var nextSelected = new SelectedLeadership(Lease(f.Clock), 3, "next", ["main"]);
+        ActivationDatabase[] nextDatabases = [new("main", next, nextCapture, f.Remote, new(Key(1), 1), next.ReplicationRestoredPosition, Key)];
+        using var nextPublisher = Assert.Single((await LeadershipActivation.ActivateAsync(nextSelected, nextDatabases))!);
+        await WriteDifferentSecondTransaction(next);
+        Assert.Equal(TrlPublishResult.Published, await nextPublisher.PublishNextAsync());
+        Assert.Equal((2ul, 6L), await Restore(f.Remote));
     }
 
     [Fact]

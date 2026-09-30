@@ -78,6 +78,13 @@
 
 ### Changed
 
+- Replicated `BTreeKeyValueDB.OpenAsync` no longer rewinds a transaction that a previous leader published only
+  partly across TRL files and regenerates it in place. It keeps the published bytes and ends the transaction with a
+  native rollback at the start of the successor of the last published TRL. Every node restored from that history
+  writes the same terminator, and the application input then executes the transaction again after it. Takeover no
+  longer depends on reproducing the abandoned bytes, so an unfinished transaction that no candidate could regenerate
+  identically (for example after a changed or nondeterministic execution) no longer blocks leadership forever.
+  `ReplicationRestoredPosition` is then the published end of the last TRL. Unfinished legacy tails are still rewound.
 - Merge the replication leader-storage contracts `ILeaderRecordStorage`, `IReplicationLeaseStorage` and
   `IReplicationLeaseTransferStorage` into `IReplicationLeaderStorage`; lease transfer is now required instead of a
   runtime capability. Merge `IReplicationFatalRecovery` into `IReplicationNodeHost` as the required

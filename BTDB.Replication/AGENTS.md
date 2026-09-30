@@ -71,7 +71,8 @@
 
 - A committed transaction with unchanged `CommitUlong` is non-application; application commits change it. Genesis is
   non-application while setting the predecessor cursor. Rollbacks are decoded separately, kept in ordinary TRL and
-  compared in order with later commits; no attempt protocol or synthetic rollback record. No reserved Ulong slots,
+  compared in order with later commits; no attempt protocol or synthetic rollback record other than the native
+  rollback that terminates an unfinished published transaction on open. No reserved Ulong slots,
   kind sidecars or new `KVCommandType`.
 - Non-application writes (genesis, schema) run only under leader authority, waited for in startup orchestration, not
   a generic core writer gate. ObjectDB checks the complete relation list read-only and persists new schemas, index
@@ -96,8 +97,9 @@
   per-batch `state.json` or per-transaction capture record. Track only the latest complete local position and the
   acknowledged prefix. All terms share `{id}.trl`. Publish native files in order with conditional create/CAS;
   compare existing bytes on create collisions and request restart on divergence. A crash may leave an unfinished
-  final transaction: replay exposes only complete transactions and regenerates the disposable local suffix at the
-  same IDs and offsets. Reconcile ambiguous writes before later mutations.
+  final transaction: replay exposes only complete transactions, and writable open ends it with a native rollback at
+  the start of the successor of the last published TRL, so no candidate must reproduce published bytes of an
+  abandoned transaction. Reconcile ambiguous writes before later mutations.
 - Followers poll the leader once per step: per database the progress `(eventId, trlFileId, trlPosition)`, the
   published cut, the latest non-application commit position and inline native TRL bytes within a budget, plus one
   grant; remaining bytes come by range. Compare native bytes directly in bounded chunks; do not decode commands or

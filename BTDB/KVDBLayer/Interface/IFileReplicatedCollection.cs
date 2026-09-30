@@ -50,7 +50,7 @@ public interface IFileReplicatedCollection : IFileCollection
     ValueTask PublishTransactionLogHeaderAsync(IFileCollectionFile file, CancellationToken cancellation) =>
         throw new System.NotSupportedException("This collection cannot publish a legacy transition header.");
 
-    /// During startup only, discard a local TRL belonging exclusively to an unfinished transaction.
+    /// During startup only, discard a local TRL belonging exclusively to an unfinished legacy transaction.
     /// Its remote bytes remain published and must be compared before later publication under the same ID.
     void DiscardUncommittedTransactionLog(uint fileId) => GetFile(fileId)?.Remove();
 

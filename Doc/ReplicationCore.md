@@ -298,12 +298,15 @@ chunks, accepts identical content, or extends an identical shorter prefix throug
 requires restart. Existing tails use CAS; adoption performs an unchanged-content CAS to invalidate old tokens.
 A fixed plan survives ambiguous outcomes, and capture is acknowledged only when the complete plan is published.
 
-A crash between files may expose an unfinished final transaction. Asynchronous native open replays complete commits
-and rollbacks, discards only the unfinished local suffix, and resumes at the same native ID and offset. Application
-input regenerates that suffix; takeover compares it with the published bytes before proceeding. Hosts must use
-`BTreeKeyValueDB.ReplicationRestoredPosition` for `ActivationDatabase.RestoredBase`, rather than a Blob's physical end.
-`IFileReplicatedCollection.DiscardUncommittedTransactionLog` permits startup to recreate only that unfinished local
-suffix; it never deletes the remote object. Published objects are always compared before they are reused.
+A crash between files may expose an unfinished final transaction. Asynchronous writable open replays complete
+commits and rollbacks, keeps the unfinished published bytes and writes a native `Rollback` at the start of the
+deterministic successor of the last published TRL (previous-file link to that TRL). Every node restored from the same
+history writes the same terminator; application input then executes the transaction again after it. Only a leader
+publishes the successor, after adopting the published tail. Hosts must use
+`BTreeKeyValueDB.ReplicationRestoredPosition` for `ActivationDatabase.RestoredBase`: the published end of the last TRL
+in this case, otherwise the last complete position. An unfinished legacy tail is still rewound before its transition
+header; `IFileReplicatedCollection.DiscardUncommittedTransactionLog` permits startup to recreate only that local
+suffix and never deletes the remote object. Published objects are always compared before they are reused.
 
 `Pending` retains an unresolved intent; `retryPending` resends that exact conditional write. `Adopted` reports a fresh
 ETag without changing content, and `Published` acknowledges the fixed complete position. `Conflict` fences authority

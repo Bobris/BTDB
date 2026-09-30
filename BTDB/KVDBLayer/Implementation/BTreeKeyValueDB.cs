@@ -23,8 +23,9 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     uint _replicationKeyIndexTrlId, _replicationKeyIndexTrlOffset;
     bool _hasReplicationKeyIndex;
 
-    /// <summary>The complete native position recovered by asynchronous replication open, before new local writes.
-    /// Includes a published legacy-transition header; an unfinished transaction is excluded and regenerated from input.</summary>
+    /// <summary>The native position recovered by asynchronous replication open, before new local writes. Includes a
+    /// published legacy-transition header. When the history ends inside an unfinished transaction, it is the published
+    /// end of the last TRL; the rollback that open writes into its local successor lies beyond it.</summary>
     public TransactionLogPosition ReplicationRestoredPosition { get; private set; }
 
     IReadOnlySet<uint>? _replicationKeyIndexReferences;
@@ -566,7 +567,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
             if (!hasKeyIndex && _missingSomeTrlFiles.HasValue)
                 throw new System.IO.InvalidDataException("Published replication history is missing a required TRL or usable KVI.");
-            await LoadTransactionLogsAsync(firstTrLogId, firstTrLogOffset, cancellation).ConfigureAwait(false);
+            var unfinished = await LoadTransactionLogsAsync(firstTrLogId, firstTrLogOffset, cancellation).ConfigureAwait(false);
 
             if (!_readOnly)
             {
@@ -585,10 +586,18 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 .ConfigureAwait(false);
             // Early prefetches for a rejected KVI candidate are not required; only observe them.
             foreach (var prefetch in prefetches) await prefetch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            TransactionLogPosition? restored = null;
             if (!_readOnly)
             {
                 var tail = _fileIdWithTransactionLog != 0 ? _fileIdWithTransactionLog : _fileIdWithPreviousTransactionLog;
-                if (tail != 0 && files.IsLegacyTransactionLog(tail))
+                if (unfinished)
+                {
+                    // The restored base is the published end that the terminating successor continues, so activation
+                    // and followers compare from bytes the remote inventory holds.
+                    restored = new(tail, checked((uint)_fileCollection.GetFile(tail)!.GetSize()));
+                    TerminateUnfinishedTransaction();
+                }
+                else if (tail != 0 && files.IsLegacyTransactionLog(tail))
                 {
                     // Every node starts from the remote inventory. Publish the same header before any local work
                     // can affect allocation; conditional creation reconciles concurrent startup attempts.
@@ -600,7 +609,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
                 }
                 _fileCollection.DeleteAllUnknownFiles();
             }
-            ReplicationRestoredPosition = new(_lastCommitted.TrLogFileId, _lastCommitted.TrLogOffset);
+            ReplicationRestoredPosition = restored ?? new(_lastCommitted.TrLogFileId, _lastCommitted.TrLogOffset);
         }
         catch
         {
@@ -990,12 +999,14 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    async ValueTask LoadTransactionLogsAsync(uint firstTrLogId, uint firstTrLogOffset,
+    /// Returns true when the replayed history ends inside a transaction that the caller must terminate.
+    async ValueTask<bool> LoadTransactionLogsAsync(uint firstTrLogId, uint firstTrLogOffset,
         CancellationToken cancellation)
     {
+        var files = (LazyFileCollectionWithFileInfos)_fileCollection;
         while (firstTrLogId != 0 && firstTrLogId != uint.MaxValue)
         {
-            await ((LazyFileCollectionWithFileInfos)_fileCollection).PrefetchAsync(firstTrLogId, cancellation).ConfigureAwait(false);
+            await files.PrefetchAsync(firstTrLogId, cancellation).ConfigureAwait(false);
             _fileIdWithTransactionLog = 0;
             if (LoadTransactionLog(firstTrLogId, firstTrLogOffset, null))
             {
@@ -1006,22 +1017,38 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             _fileIdWithPreviousTransactionLog = firstTrLogId;
             var fileInfo = _fileCollection.FileInfoByIdx(firstTrLogId);
             if (fileInfo == null)
-                return;
+                return false;
             firstTrLogId = ((IFileTransactionLog)fileInfo).NextFileId;
         }
-        // A crash may publish only the first files of a transaction. Regenerate that suffix from input at
-        // the exact last complete native position, so every node keeps the same IDs, offsets and bytes.
-        if (!_readOnly && _nextRoot != null && _lastCommitted.TrLogFileId != 0 &&
-            (_fileIdWithPreviousTransactionLog != _lastCommitted.TrLogFileId ||
-             _fileCollection.GetFile(_lastCommitted.TrLogFileId).GetSize() != _lastCommitted.TrLogOffset))
-        {
-            _nextRoot?.Dispose();
-            _nextRoot = null;
-            ((LazyFileCollectionWithFileInfos)_fileCollection).RewindUncommittedTransactionLogs(
-                _lastCommitted.TrLogFileId, _lastCommitted.TrLogOffset);
-            _fileIdWithTransactionLog = _lastCommitted.TrLogFileId;
-            _fileIdWithPreviousTransactionLog = _lastCommitted.TrLogFileId;
-        }
+        if (_readOnly || _nextRoot == null || _lastCommitted.TrLogFileId == 0 ||
+            (_fileIdWithPreviousTransactionLog == _lastCommitted.TrLogFileId &&
+             _fileCollection.GetFile(_lastCommitted.TrLogFileId).GetSize() == _lastCommitted.TrLogOffset))
+            return false;
+        _nextRoot.Dispose();
+        _nextRoot = null;
+        _fileIdWithTransactionLog = 0;
+        if (!files.IsLegacyTransactionLog(_fileIdWithPreviousTransactionLog)) return true;
+        // An unfinished legacy tail predates replication, so no leader published part of it: rewind it before
+        // the transition header, which startup publishes without authority.
+        files.RewindUncommittedTransactionLogs(_lastCommitted.TrLogFileId, _lastCommitted.TrLogOffset);
+        _fileIdWithTransactionLog = _lastCommitted.TrLogFileId;
+        _fileIdWithPreviousTransactionLog = _lastCommitted.TrLogFileId;
+        return false;
+    }
+
+    // A crash or lost authority may publish only the first files of a transaction, and replay leaves it pending.
+    // Every node restored from that history ends it with the same native rollback at the start of the deterministic
+    // successor of the last published file. Regenerating the suffix in place would require every candidate to
+    // reproduce bytes that the previous leader published; a nondeterministic or changed execution would then block
+    // every takeover. Nothing is published here: only a leader publishes the successor, after adopting the tail.
+    void TerminateUnfinishedTransaction()
+    {
+        WriteStartOfNewTransactionLogFile();
+        _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Rollback);
+        _writerWithTransactionLog.Flush();
+        var offset = checked((uint)_writerWithTransactionLog.GetCurrentPosition());
+        AdvanceReplicationStructuralBoundary(_lastCommitted, _fileIdWithTransactionLog, offset);
+        _transactionLogCapture?.Complete(_fileIdWithTransactionLog, offset);
     }
 
     void AdvanceReplicationStructuralBoundary(IRootNode root, uint fileId, uint offset)

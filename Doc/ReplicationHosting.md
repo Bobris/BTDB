@@ -115,8 +115,8 @@ remains the read-only inventory contract accepted by `ReplicationFileSet`. A bin
 versions and optional authority; create a new binding after acquisition rather than modifying the old one.
 
 The supplied `TransactionLogCapture` belongs to that opened database. `RestoredBase` is the fixed verified startup
-file/offset (`BTreeKeyValueDB.ReplicationRestoredPosition`); it is not the follower's moving comparison acknowledgement
-or the physical end of an unfinished Blob transaction. Return `{id}.trl` for every term. A zero restored base denotes an unpublished addition, never a missing
+file/offset (`BTreeKeyValueDB.ReplicationRestoredPosition`); it is not the follower's moving comparison acknowledgement.
+After an unfinished Blob transaction it is the published end of the last TRL, before the local rollback terminator. Return `{id}.trl` for every term. A zero restored base denotes an unpublished addition, never a missing
 published file. Failed restore attempts must release their resources before retry.
 
 `ReplicationFileSet` keeps local operations local. Initialize the remote inventory explicitly; local counts, lookup

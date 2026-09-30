@@ -73,9 +73,13 @@ conditional storage fakes and `InProcessReplicationPeerTransport`. They do not r
 `CanonicalTrlPublisherTest` publishes real native commits and rollbacks through an in-memory conditional store.
 It covers ordered multi-file publication, fixed shared names across terms, ambiguous writes, unchanged-content adoption,
 authority loss, and byte-for-byte create collision checks (identical objects, identical shorter prefixes and divergence).
-`RestartDuringMultiFilePublicationRegeneratesExactlyTheSameTrls` interrupts publication at multiple file boundaries,
-restores into both memory and disk storage, waits for replay before activation, regenerates the same bytes/IDs, and
-releases delayed old requests after takeover. `DivergentCreateCollisionFencesTheLeaderAndRequestsRestart` checks that
+`RestartDuringMultiFilePublicationTerminatesTheUnfinishedTransactionWithARollback` interrupts publication at multiple
+file boundaries, restores into both memory and disk storage, checks the rollback terminator and restored base, then
+executes a transaction that differs from the abandoned one from its first command: activation adopts, publication
+succeeds, a follower holding the complete abandoned transaction diverges, and delayed old requests are harmless
+(the regenerating open diverged here). `EveryRestoreTerminatesAnUnfinishedTransactionWithTheSameBytes` checks the
+terminator is deterministic, and `OldCreateWinningTheTerminatingSuccessorConflictsAndARestoreTerminatesAgain` lets the
+old leader's delayed create take the successor ID first. `DivergentCreateCollisionFencesTheLeaderAndRequestsRestart` checks that
 an actual create collision stops serving and requests restart rather than merely giving up the lease.
 
 The lane keeps one unresolved conditional intent because an old read cannot prove a delayed request failed.
