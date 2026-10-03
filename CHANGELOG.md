@@ -4,6 +4,9 @@
 
 ### Added
 
+- Release automation versions and publishes all three replication preview packages together with BTDB, checks
+  child-process exit codes, and pushes the release tag explicitly.
+
 - Start the `BTDB.Replication.EventLog` event log (preview, in progress; see
   `BTDB.Replication/EventLogImplementationPlan.md`): public `IEventLog`/`IEventTopic` contracts for named topics of
   opaque records, the `IEventLogStorage` object-storage contract, and the validated binary split, frame, seal and
@@ -222,6 +225,9 @@
 
 ### Fixed
 
+- Source generator registers dispatcher methods that a handler inherits as default interface implementations,
+  calling them through the interface. Previously such handlers had no entry for that dispatcher, so dispatching
+  failed at runtime with "No handler for message ...".
 - `OnDiskReplicationFileStorage` releases its read-only mapping before truncating a rewound file, because Windows
   refuses to shorten a file with a mapped view. Rewinding uncommitted transaction logs below the mapped prefix, then
   flushing, sealing or disposing the file, no longer fails with "a user-mapped section open". Readers of that

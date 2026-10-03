@@ -1696,16 +1696,24 @@ public class SourceGenerator : IIncrementalGenerator
             .Select(s => new TypeRef(s)).ToArray();
 
         var dispatchers = ImmutableArray.CreateBuilder<DispatcherInfo>();
-        foreach (var (name, _, _, ifaceName) in symbol.AllInterfaces.SelectMany(
+        foreach (var (name, _, _, ifaceName, _) in symbol.AllInterfaces.SelectMany(
                      DetectDispatcherInfo))
         {
             var m = symbol.GetMembers().OfType<IMethodSymbol>().FirstOrDefault(m =>
                 m.Name == name && m.Parameters.Length == 1);
-            if (m == null) continue;
+            string? callType = null;
+            if (m == null)
+            {
+                // Default interface methods are not members of the class and can only be called through the interface.
+                m = FindDefaultInterfaceDispatcherMethod(symbol, name);
+                if (m == null) continue;
+                callType = m.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            }
+
             dispatchers.Add(new(name,
                 m.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 m.ReturnType.SpecialType == SpecialType.System_Void ? null : m.ReturnType.ToDisplayString(),
-                ifaceName));
+                ifaceName, callType));
         }
 
         var containingNamespace = symbol.ContainingNamespace;
@@ -2660,6 +2668,26 @@ public class SourceGenerator : IIncrementalGenerator
         return false;
     }
 
+    static IMethodSymbol? FindDefaultInterfaceDispatcherMethod(INamedTypeSymbol symbol, string name)
+    {
+        foreach (var iface in symbol.AllInterfaces)
+        {
+            if (iface.DeclaredAccessibility == Accessibility.Private) continue;
+            foreach (var m in iface.GetMembers(name).OfType<IMethodSymbol>())
+            {
+                if (m is not { IsStatic: false, IsAbstract: false, Parameters.Length: 1 }) continue;
+                if (m.DeclaredAccessibility != Accessibility.Public &&
+                    !(m.DeclaredAccessibility == Accessibility.Internal &&
+                      SymbolEqualityComparer.Default.Equals(m.ContainingAssembly, symbol.ContainingAssembly))) continue;
+                // Skip default implementations the class overrides explicitly or that a more derived interface reimplements.
+                if (!SymbolEqualityComparer.Default.Equals(symbol.FindImplementationForInterfaceMember(m), m)) continue;
+                return m;
+            }
+        }
+
+        return null;
+    }
+
     static DispatcherInfo[] DetectDispatcherInfo(INamedTypeSymbol symbol)
     {
         if (!symbol.GetAttributes().Any(a =>
@@ -2699,7 +2727,7 @@ public class SourceGenerator : IIncrementalGenerator
                 builder.Add(new(methodSymbol.Name.Substring(6, methodSymbol.Name.Length - 6 - 10),
                     parameters[1].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                     returnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+                    symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), null));
             }
         }
 
@@ -3049,7 +3077,7 @@ public class SourceGenerator : IIncrementalGenerator
             {
             """);
 
-        foreach (var (name, type, resultType, _) in generationInfo.Dispatchers)
+        foreach (var (name, type, resultType, _, _) in generationInfo.Dispatchers)
         {
             // language=c#
             factoryCode.Append($$"""
@@ -3836,7 +3864,7 @@ public class SourceGenerator : IIncrementalGenerator
         }
 
         var dispatchers = new StringBuilder();
-        foreach (var (name, type, resultType, ifaceName) in generationInfo.Dispatchers)
+        foreach (var (name, type, resultType, ifaceName, callType) in generationInfo.Dispatchers)
         {
             const string dispatcherIndent = "               ";
             var returnPrefix = resultType is null ? "" : "return ";
@@ -3849,7 +3877,7 @@ public class SourceGenerator : IIncrementalGenerator
                            return (container, message) =>
                            {
                                var res = nestedFactory(container, null);
-                               {{returnPrefix}}Unsafe.As<{{generationInfo.FullName}}>(res).{{name}}(Unsafe.As<{{type}}>(message));{{returnNullLine}}
+                               {{returnPrefix}}Unsafe.As<{{callType ?? generationInfo.FullName}}>(res).{{name}}(Unsafe.As<{{type}}>(message));{{returnNullLine}}
                            };
                         };
                 """);
@@ -5900,4 +5928,5 @@ record MethodInfo(
 // Name == null for primary key, InKeyValue could be true only for primary key, IncludePrimaryKeyOrder is used only for secondary key
 record IndexInfo(string? Name, uint Order, bool InKeyValue, uint IncludePrimaryKeyOrder);
 
-record DispatcherInfo(string Name, string? Type, string? ResultType, string IfaceName);
+// CallType is the interface to call through when the method is a default interface implementation; null calls the class.
+record DispatcherInfo(string Name, string? Type, string? ResultType, string IfaceName, string? CallType);

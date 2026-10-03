@@ -126,10 +126,12 @@ static class Program
             return 1;
         }
 
-        Build(projDir, newVersion, nugetToken);
-        BuildSourceGenerator(projDir, newVersion, nugetToken);
-        BuildAzureStorage(projDir, newVersion, nugetToken);
+        Build(projDir);
+        BuildSourceGenerator(projDir);
+        BuildAzureStorage(projDir);
+        BuildReplication(projDir);
         BuildODbDump(projDir);
+        PublishPackages(projDir, newVersion, nugetToken);
 
         if (choice == '4') return 0;
         var client = new GitHubClient(new ProductHeaderValue("BTDB-releaser"));
@@ -156,6 +158,8 @@ static class Program
         Commands.Stage(gitrepo, "BTDB.AzureStorage/BTDB.AzureStorage.csproj");
         Commands.Stage(gitrepo, "BTDB.SourceGenerator/BTDB.SourceGenerator.csproj");
         Commands.Stage(gitrepo, "ODbDump/ODbDump.csproj");
+        foreach (var project in ReplicationProjects)
+            Commands.Stage(gitrepo, project + "/" + project + ".csproj");
         var author = new LibGit2Sharp.Signature("Releaser", "boris.letocha@gmail.com", DateTime.Now);
         gitrepo.Commit("Released " + newVersion, author, author);
         gitrepo.ApplyTag(newVersion);
@@ -167,8 +171,10 @@ static class Program
                 Password = ""
             };
         gitrepo.Network.Push(gitrepo.Head, options);
+        gitrepo.Network.Push(gitrepo.Network.Remotes["origin"], "refs/tags/" + newVersion, options);
         var release = new NewRelease(newVersion);
         release.Name = newVersion;
+        release.TargetCommitish = gitrepo.Head.Tip.Sha;
         release.Body = string.Join("", releaseLogLines.Select(s => s + '\n'));
         var release2 = await client.Repository.Release.Create(btdbRepo.Id, release);
         Console.WriteLine("release url:");
@@ -201,6 +207,13 @@ static class Program
         content = await File.ReadAllTextAsync(fn);
         content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
         await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
+        foreach (var project in ReplicationProjects)
+        {
+            fn = projDir + "/" + project + "/" + project + ".csproj";
+            content = await File.ReadAllTextAsync(fn);
+            content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
+            await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
+        }
     }
 
     static async Task<ReleaseAsset> UploadWithRetry(string projDir, GitHubClient client, Release release2,
@@ -223,7 +236,7 @@ static class Program
         throw new OperationCanceledException("Upload Asset " + fileName + " failed");
     }
 
-    static void Build(string projDir, string newVersion, string nugetToken)
+    static void Build(string projDir)
     {
         var start = new ProcessStartInfo("dotnet", "pack -c Release")
         {
@@ -232,6 +245,8 @@ static class Program
         };
         var process = Process.Start(start);
         process!.WaitForExit();
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException("dotnet command failed with exit code " + process.ExitCode);
         var source = projDir + "/BTDB";
         var releaseSources = projDir + "/artifacts/bin/BTDB/release/Sources";
         foreach (var fn in Directory.GetFiles(source, "*.*", SearchOption.AllDirectories).ToList())
@@ -246,16 +261,9 @@ static class Program
         System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources,
             projDir + "/artifacts/bin/BTDB/release/BTDB.zip",
             System.IO.Compression.CompressionLevel.Optimal, false);
-        start = new("dotnet", "nuget push BTDB." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
-        {
-            UseShellExecute = true,
-            WorkingDirectory = projDir + "/artifacts/package/release"
-        };
-        process = Process.Start(start);
-        process!.WaitForExit();
     }
 
-    static void BuildSourceGenerator(string projDir, string newVersion, string nugetToken)
+    static void BuildSourceGenerator(string projDir)
     {
         var start = new ProcessStartInfo("dotnet", "pack -c Release")
         {
@@ -264,17 +272,11 @@ static class Program
         };
         var process = Process.Start(start);
         process!.WaitForExit();
-        start = new("dotnet",
-            "nuget push BTDB.SourceGenerator." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
-        {
-            UseShellExecute = true,
-            WorkingDirectory = projDir + "/artifacts/package/release"
-        };
-        process = Process.Start(start);
-        process!.WaitForExit();
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException("dotnet command failed with exit code " + process.ExitCode);
     }
 
-    static void BuildAzureStorage(string projDir, string newVersion, string nugetToken)
+    static void BuildAzureStorage(string projDir)
     {
         var start = new ProcessStartInfo("dotnet", "pack -c Release")
         {
@@ -283,14 +285,53 @@ static class Program
         };
         var process = Process.Start(start);
         process!.WaitForExit();
-        start = new("dotnet",
-            "nuget push BTDB.AzureStorage." + newVersion + ".nupkg -s https://nuget.org -k " + nugetToken)
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException("dotnet command failed with exit code " + process.ExitCode);
+    }
+
+    static readonly string[] ReplicationProjects =
+        ["BTDB.Replication", "BTDB.Replication.Azure", "BTDB.Replication.Http"];
+
+    static void BuildReplication(string projDir)
+    {
+        foreach (var project in ReplicationProjects)
         {
-            UseShellExecute = true,
-            WorkingDirectory = projDir + "/artifacts/package/release"
-        };
-        process = Process.Start(start);
-        process!.WaitForExit();
+            var start = new ProcessStartInfo("dotnet")
+            {
+                WorkingDirectory = projDir + "/" + project
+            };
+            start.ArgumentList.Add("pack");
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("Release");
+            using var pack = Process.Start(start);
+            pack!.WaitForExit();
+            if (pack.ExitCode != 0)
+                throw new InvalidOperationException("Packing " + project + " failed with exit code " + pack.ExitCode);
+        }
+    }
+
+    static void PublishPackages(string projDir, string newVersion, string nugetToken)
+    {
+        var projects = new[] { "BTDB", "BTDB.SourceGenerator", "BTDB.AzureStorage" }.Concat(ReplicationProjects);
+        foreach (var project in projects)
+        {
+            var packageVersion = newVersion + (ReplicationProjects.Contains(project) ? "-preview" : "");
+            var start = new ProcessStartInfo("dotnet")
+            {
+                WorkingDirectory = projDir + "/artifacts/package/release"
+            };
+            start.ArgumentList.Add("nuget");
+            start.ArgumentList.Add("push");
+            start.ArgumentList.Add(project + "." + packageVersion + ".nupkg");
+            start.ArgumentList.Add("-s");
+            start.ArgumentList.Add("https://nuget.org");
+            start.ArgumentList.Add("-k");
+            start.ArgumentList.Add(nugetToken);
+            using var push = Process.Start(start);
+            push!.WaitForExit();
+            if (push.ExitCode != 0)
+                throw new InvalidOperationException("Publishing " + project + " failed with exit code " + push.ExitCode);
+        }
     }
 
     static void BuildODbDump(string projDir)
@@ -302,6 +343,8 @@ static class Program
         };
         var process = Process.Start(start);
         process!.WaitForExit();
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException("dotnet command failed with exit code " + process.ExitCode);
         var source = projDir + "/artifacts/publish/ODbDump/Release";
         System.IO.Compression.ZipFile.CreateFromDirectory(source,
             projDir + "/artifacts/bin/ODbDump/Release/ODbDump.zip",

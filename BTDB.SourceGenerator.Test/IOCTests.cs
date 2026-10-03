@@ -552,6 +552,46 @@ public class IOCTests : GeneratorTestsBase
     }
 
     [Fact]
+    public Task VerifyDefaultInterfaceDispatcherMethodGeneration()
+    {
+        // language=cs
+        return VerifySourceGenerator(@"
+            using System;
+            using BTDB.IOC;
+            namespace TestNamespace;
+
+            [BTDB.Generate]
+            public partial interface IDispatcher
+            {
+                public static unsafe partial delegate*<IContainer, object, object?> CreateVerifyDispatcher(IContainer container);
+                public static unsafe partial delegate*<IContainer, object, object?> CreateConsumeDispatcher(IContainer container);
+            }
+
+            public interface IHandler<in TMessage> : IDispatcher
+            {
+                void Verify(TMessage message)
+                {
+                }
+
+                void Consume(TMessage message);
+            }
+
+            public class Message
+            {
+                public string Text { get; set; }
+            }
+
+            public class MessageHandler : IHandler<Message>
+            {
+                public void Consume(Message message)
+                {
+                    Console.WriteLine(message.Text);
+                }
+            }
+            ");
+    }
+
+    [Fact]
     public Task VerifyGenerateForOnAssembly()
     {
         // language=cs
