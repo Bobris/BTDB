@@ -5,7 +5,7 @@
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <IsPackable>true</IsPackable>
         <PackageId>BTDB.Replication.Http</PackageId>
-        <Version>35.10.2</Version>
+        <Version>35.11.0</Version>
         <!-- Preview until the open blockers in BTDB.Replication/Architecture.md are closed. -->
         <PackageVersion>$(Version)-preview</PackageVersion>
         <Authors>Boris Letocha</Authors>
