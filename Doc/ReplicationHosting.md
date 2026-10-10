@@ -486,5 +486,18 @@ await foreach (var record in events.ReadAsync(end, null, stopping))    // then f
 - **Merging and cleanup.** The owner merges sealed splits every `MergeInterval` into level-1 and level-2 objects
   (fan-out 16) and deletes covered objects after `DeletionDelay` (default one day). Nothing is deleted before the
   record history is covered, and there is no retention in v1.
+- **Pipelining.** A node keeps up to `MaxPublishRoundsInFlight` (default 64) publication rounds per topic in flight,
+  so records published during the owner's storage write join its next write. Keep it above the expected number of
+  concurrent publications per node; 1 restores strictly sequential rounds.
+- **Commit window.** The owner may delay a write so records published in response to the previous commit join it,
+  which helps request/response loops spread over nodes. By default it picks the window itself, up to
+  `AdaptiveCommitLingerMax` (3 ms), from when records arrive after the moment a write would start: waiting `L` saves
+  about one write for the share `f(L)` of records arriving within `L` and costs `L` for every record, so it opens only
+  when `f(L) > L / write duration`. Independent arrivals never satisfy that, and sparse arrivals must also clear a
+  Poisson significance margin. A nonzero `CommitLinger` sets a fixed window instead; `AdaptiveCommitLingerMax = 0`
+  without it writes at once. Any window ends early once the queue fills the next batch (record count or remaining
+  split room). See the [fixed](../BTDB.Replication/Measurements.md#commit-window) and
+  [adaptive](../BTDB.Replication/Measurements.md#adaptive-commit-window) measurements.
 - **Benchmarks.** `DBBenchmark eventlog-e2e` measures publish-to-all-nodes latency, and `DBBenchmark eventlog-storage`
-  measures the storage primitives on Azure.
+  measures the storage primitives on Azure. `EventLogBench` measures latency and throughput of 1–4 nodes on
+  Kubernetes, including event-sourcing consumption ([results](../BTDB.Replication/Measurements.md#event-log-on-aks)).

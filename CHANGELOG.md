@@ -19,8 +19,35 @@
   pending publications report the first (root-cause) fault, leader records are validated like replication discovery,
   and `StartQuery` returns `Ambient.Scope`.
 
+- Add the `EventLogBench` multi-node benchmark: a node host (EventLog over HTTPS peers and Azure Blob Storage plus a
+  control API) and a driver that measures open-loop latency and closed-loop throughput of raw EventLog topics and of
+  event-sourcing consumption into ObjectDB, joining publications and deliveries of all nodes on clock-offset-corrected
+  time. Kubernetes manifests and a container recipe are in `EventLogBench/deploy`.
+
 - Add `Releaser prepare [major|minor|patch]` (patch by default) to build the complete NuGet package family and symbols
   for the next release without publishing, reading credentials or changing tracked versions, the changelog or Git.
+
+### Improved
+
+- The EventLog owner now waits briefly before each storage write when publishers answer commits, so records sent
+  right after the previous commit, often from other nodes, share the write instead of waiting for the next one. By
+  default it chooses the window itself, up to `EventLogOptions.AdaptiveCommitLingerMax` (3 ms), from when records
+  arrive after the moment a write would start: it opens only while that pays off and stays closed for independent
+  traffic. `EventLogOptions.CommitLinger` sets a fixed window instead, and `AdaptiveCommitLingerMax = TimeSpan.Zero`
+  with no fixed window restores immediate writes. A window ends early once the queue fills the next batch; windows
+  below 2 ms yield instead of using a timer. `EventLogService.CommitLinger(topic)` reports the window in use.
+
+- EventLog publishers pipeline publication rounds: a node keeps up to `EventLogOptions.MaxPublishRoundsInFlight`
+  (default 64) rounds per topic in flight instead of waiting for each round's commit, so records published during the
+  owner's storage write join its next write. Rounds carry the true oldest unresolved sequence and are marked previously
+  dispatched when an older unresolved record was, so the owner keeps call order and exactly-once reconciliation.
+
+- When queued records exceed the remaining room of the EventLog owner's writable split, the batch now fills that room
+  and seals the split in the same write. Previously the whole batch went to a successor after a seal-only write that
+  rewrote up to 256 KiB without carrying a record, which pushed closed-loop load into small batches and extra
+  latency. Together with pipelining this cut p50 publish latency at 1,000 records/s on AKS with GZRS
+  storage from 27–29 ms to 13–15 ms and raised throughput at 128 publish loops per pod 1.7–2.4×
+  (`BTDB.Replication/Measurements.md`).
 
 ### Fixed
 

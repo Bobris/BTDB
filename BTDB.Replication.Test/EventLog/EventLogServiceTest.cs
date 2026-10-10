@@ -124,6 +124,101 @@ public class EventLogServiceTest
         Assert.Equal(offsets.OrderBy(o => o), offsets);
     }
 
+    /// <summary>Owner-side view of submissions: counts them and can lose a request or its response.</summary>
+    sealed class SubmitInterceptor(IEventLogPeerHandler inner) : IEventLogPeerHandler
+    {
+        int _submits;
+        public int Submits => Volatile.Read(ref _submits);
+        public Func<int, SubmitLoss>? Loss;
+
+        public async ValueTask<EventLogSubmitResponse> SubmitAsync(EventLogSubmitRequest request,
+            CancellationToken cancellation)
+        {
+            var index = Interlocked.Increment(ref _submits);
+            var loss = Loss?.Invoke(index) ?? SubmitLoss.None;
+            if (loss == SubmitLoss.Request) throw new PeerUnavailableException("lost request");
+            var response = await inner.SubmitAsync(request, cancellation);
+            if (loss == SubmitLoss.Response) throw new PeerUnavailableException("lost response");
+            return response;
+        }
+
+        public ValueTask<EventLogBoundsResponse> GetBoundsAsync(string topic, CancellationToken cancellation) =>
+            inner.GetBoundsAsync(topic, cancellation);
+
+        public IAsyncEnumerable<EventLogLiveMessage> SubscribeAsync(string topic, ulong from,
+            CancellationToken cancellation) => inner.SubscribeAsync(topic, from, cancellation);
+    }
+
+    public enum SubmitLoss { None, Request, Response }
+
+    static (EventLogService Owner, EventLogService Follower, SubmitInterceptor Interceptor) StartPair(
+        IEventLogStorage storage, EventLogOptions options)
+    {
+        var transport = new InProcessEventLogTransport();
+        var scheduler = new SystemReplicationScheduler();
+        var owner = new EventLogService(storage, transport.From("a"), "a", scheduler, options);
+        var interceptor = new SubmitInterceptor(owner);
+        transport.Register("a", interceptor);
+        var follower = new EventLogService(storage, transport.From("b"), "b", scheduler, options);
+        transport.Register("b", follower);
+        return (owner, follower, interceptor);
+    }
+
+    [Fact]
+    public async Task FollowerDispatchesRecordsWhileTheOwnerWriteIsInFlight()
+    {
+        var storage = new FaultyEventLogStorage();
+        var (a, b, interceptor) = StartPair(storage, EventLogCluster.FastOptions);
+        await using var _ = a;
+        await using var __ = b;
+        await Publish(a, -1);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var writing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        storage.BeforeMutation = operation =>
+        {
+            if (operation.Kind != "write") return default;
+            writing.TrySetResult();
+            return new(gate.Task);
+        };
+        var first = Publish(b, 1);
+        await writing.Task.WaitAsync(Timeout);
+        var second = Publish(b, 2);
+        // The second record reaches the owner while the first one's storage write is still blocked.
+        var deadline = DateTime.UtcNow + Timeout;
+        while (interceptor.Submits < 2 && DateTime.UtcNow < deadline) await Task.Delay(5);
+        Assert.Equal(2, interceptor.Submits);
+        Assert.False(first.IsCompleted);
+        gate.SetResult();
+        var offsets = await Task.WhenAll(first, second);
+        Assert.Equal(new[] { 1ul, 2ul }, offsets);
+    }
+
+    [Theory]
+    [InlineData(SubmitLoss.Request)]
+    [InlineData(SubmitLoss.Response)]
+    public async Task PipelinedRoundsSurviveALostSubmissionExactlyOnceInCallOrder(SubmitLoss loss)
+    {
+        var storage = new InMemoryEventLogStorage();
+        var (a, b, interceptor) = StartPair(storage, EventLogCluster.FastOptions);
+        await using var _ = a;
+        await using var __ = b;
+        await Publish(a, -1);
+        interceptor.Loss = index => index == 2 ? loss : SubmitLoss.None;
+        var topic = b.GetTopic(Topic);
+        var tasks = new List<Task<ulong>>();
+        for (var i = 0; i < 300; i++)
+        {
+            tasks.Add(topic.PublishAsync(Bytes(i)).AsTask());
+            if (i % 30 == 0) await Task.Delay(1); // spread the calls over several pipelined rounds
+        }
+        var offsets = await Task.WhenAll(tasks).WaitAsync(Timeout);
+        Assert.True(interceptor.Submits > 2);
+        Assert.Equal(offsets.OrderBy(o => o), offsets);
+        var records = await new EventLogStorageReader(storage, Topic).ReadAllAsync();
+        Assert.Equal(Enumerable.Range(-1, 301).Select(i => Bytes(i)), records.Select(r => r.Payload.ToArray()));
+        Assert.Equal(Enumerable.Range(0, 300).Select(i => (ulong)i + 1), offsets);
+    }
+
     [Fact]
     public async Task FollowerReceivesLiveRecordsWithoutReadingStorage()
     {

@@ -248,6 +248,131 @@ Run on 2026-09-29, Apple M2 Max, Release:
 This is the library and loopback floor. Storage latency adds to every commit: about 9–27 ms p50–p99 per bounded Put
 Blob on GZRS. Multi-VM and live Azure end-to-end runs on the target workload are still open.
 
+## Event log on AKS
+
+`EventLogBench` (see its [README](../EventLogBench/README.md)) ran on 2026-10-10 in Sweden Central: AKS 1.35 with five
+Standard_E8ads_v5 nodes in zones 1–3 (one benchmark pod per node, one driver node), one Standard_GZRS StorageV2
+account, workload identity, HTTPS/HTTP2 between pods with a private CA, .NET 10, server GC, default `EventLogOptions`.
+Every pod published its share and consumed the whole topic; the first pod owned it. Raw EventLog records were 1 KiB;
+event-sourcing (ES) events carried a 256-byte payload, were consumed on every pod into its own on-disk ObjectDB (one
+relation upsert per event, `MaximumBatchSize` 32) and completed `PublishAndWaitAsync` after local visibility. Each
+scenario ran 20 s; latency excludes the first second. Clock offsets between pods were estimated with 0.1–0.5 ms minimum
+RTT and drifted less than 0.03 ms per scenario. All 96 runs (11.7 million records in the final 64) completed without
+errors, missing deliveries or duplicates.
+
+Open loop, delivery to the last pod, p50 / p99 ms:
+
+| Load | 1 pod | 2 pods | 3 pods | 4 pods |
+| --- | ---: | ---: | ---: | ---: |
+| EventLog 100/s | 8.5 / 23.5 | 9.9 / 24.3 | 9.3 / 20.0 | 8.9 / 19.6 |
+| EventLog 1,000/s | 12.9 / 27.5 | 14.1 / 27.2 | 13.9 / 27.0 | 13.2 / 29.6 |
+| EventLog 5,000/s | 15.6 / 32.7 | 14.8 / 28.0 | 14.9 / 52.5 | 16.3 / 42.0 |
+| EventLog 10,000/s | 25.5 / 55.5 | 19.6 / 39.7 | 17.0 / 47.0 | 19.4 / 43.4 |
+| ES 100/s | 9.7 / 27.8 | 10.6 / 30.9 | 12.6 / 27.3 | 12.0 / 29.7 |
+| ES 1,000/s | 13.7 / 29.6 | 15.2 / 36.8 | 14.6 / 27.9 | 14.8 / 35.5 |
+| ES 5,000/s | 16.6 / 33.6 | 17.2 / 513.5 | 15.0 / 35.0 | 15.9 / 30.3 |
+| ES 10,000/s | 20.4 / 52.6 | 19.1 / 44.3 | 16.1 / 79.7 | 17.3 / 37.5 |
+
+Closed loop, C publish-and-await loops per pod: records/s and receipt p50 ms:
+
+| Load | 1 pod | 2 pods | 3 pods | 4 pods |
+| --- | ---: | ---: | ---: | ---: |
+| EventLog C=1 | 114 @ 8.3 | 106 @ 18.2 | 161 @ 18.2 | 207 @ 18.7 |
+| EventLog C=16 | 927 @ 16.6 | 1,741 @ 17.7 | 2,552 @ 18.4 | 3,414 @ 17.8 |
+| EventLog C=128 | 6,931 @ 17.5 | 12,602 @ 19.3 | 15,905 @ 21.7 | 23,119 @ 20.8 |
+| EventLog C=1024 | 24,181 @ 40.7 | 23,108 @ 86.4 | 23,301 @ 130.5 | 23,349 @ 171.4 |
+| ES C=1 | 106 @ 8.9 | 102 @ 18.6 | 166 @ 17.3 | 218 @ 17.2 |
+| ES C=16 | 828 @ 18.4 | 1,670 @ 18.5 | 2,555 @ 18.0 | 3,406 @ 18.0 |
+| ES C=128 | 5,790 @ 19.9 | 12,619 @ 19.2 | 19,057 @ 18.9 | 25,512 @ 18.8 |
+| ES C=1024 | 27,497 @ 33.9 | 49,062 @ 39.4 | 71,866 @ 41.3 | 75,516 @ 53.2 |
+
+One conditional Put Blob of the owner took 7.9–10.5 ms p50 and 16–43 ms p99 (including background merges). A single
+publisher therefore commits in about one write (8.3 ms p50); records that arrive while a write is in flight wait for
+it and then for their own, so typical latency is 1.5–2 writes. ES consumption added 0.02–2 ms from reader to handler
+and about 0.1 ms to batch visibility. The topic owner sustains about 100–115 writes/s, so throughput is bounded by the
+batch per write: about 24,000 1 KiB records/s (23 MiB/s) and 76,000 small events/s, regardless of the number of pods.
+Closed loops with few publishers and two or more pods take two writes, because the first record to reach an idle owner
+starts a write alone. One scenario (ES 5,000/s, 2 pods) saw storage writes up to 293 ms for seven seconds while a
+background merge ran, raising its p99 to 513 ms.
+
+The same image with `MaxPublishRoundsInFlight = 1` and the previous owner lane (the code before these measurements)
+had, in p50 receipt ms (final code in parentheses):
+
+| Load | 2 pods | 4 pods |
+| --- | ---: | ---: |
+| EventLog 1,000/s | 26.9 (14.0) | 29.3 (13.1) |
+| EventLog 5,000/s | 33.5 (14.5) | 30.5 (16.0) |
+| EventLog C=16 | 29.2 (17.7), 1,138 (1,741)/s | 35.1 (17.8), 1,987 (3,414)/s |
+| EventLog C=128 | 30.6 (19.3), 7,578 (12,602)/s | 55.9 (20.8), 9,651 (23,119)/s |
+| ES 1,000/s | 28.4 (15.1) | 29.5 (14.6) |
+| ES 5,000/s | 29.2 (16.9) | 30.0 (15.6) |
+| ES C=16 | 37.4 (18.5), 854 (1,670)/s | 39.3 (18.0), 1,613 (3,406)/s |
+| ES C=128 | 36.5 (19.2), 6,872 (12,619)/s | 39.4 (18.8), 12,843 (25,512)/s |
+
+### Commit window
+
+`EventLogOptions.CommitLinger` was measured on a second cluster of the same shape on 2026-10-10: a sweep of 0, 0.5, 1
+and 2 ms over the unsaturated loads (`--suite linger`, 15 s each), then the full suite without a window and with 1 ms
+(20 s each). All 176 runs completed without errors or missing deliveries. Receipt p50 ms and records/s, without → with
+a 1 ms window:
+
+| Load | 1 pod | 2 pods | 3 pods | 4 pods |
+| --- | ---: | ---: | ---: | ---: |
+| EventLog 100/s | 9.0 → 15.3 | 10.0 → 13.7 | 9.7 → 11.1 | 12.4 → 14.3 |
+| EventLog 1,000/s | 14.1 → 15.1 | 14.2 → 14.5 | 14.4 → 14.6 | 16.4 → 15.2 |
+| EventLog 10,000/s | 29.4 → 16.5 | 19.5 → 17.7 | 17.3 → 17.5 | 18.2 → 18.6 |
+| EventLog C=1 | 9.2 → 10.5, 102 → 90 | 17.9 → 9.7, 106 → 182 | 17.9 → 9.8, 162 → 254 | 18.7 → 11.3, 205 → 273 |
+| EventLog C=16 | 19.0 → 10.2, 800 → 1,506 | 17.9 → 10.4, 1,713 → 2,374 | 16.9 → 12.3, 2,759 → 3,134 | 19.1 → 19.4, 3,192 → 3,715 |
+| EventLog C=128 | 19.6 → 10.6, 6,206 → 11,347 | 19.0 → 21.0, 12,685 → 12,617 | 20.0 → 20.6, 17,031 → 20,574 | 21.8 → 23.2, 21,663 → 20,621 |
+| EventLog C=1024 | 43.1 → 45.9, 22,722 → 21,486 | 83.8 → 81.7, 23,653 → 24,614 | 124.9 → 134.5, 24,292 → 22,514 | 187.4 → 180.7, 21,390 → 22,583 |
+| ES 100/s | 12.2 → 13.9 | 9.7 → 13.9 | 11.2 → 16.0 | 12.6 → 16.1 |
+| ES 1,000/s | 14.7 → 15.3 | 14.4 → 15.7 | 15.1 → 16.3 | 15.9 → 16.0 |
+| ES 10,000/s | 22.0 → 16.6 | 17.5 → 17.5 | 16.2 → 18.5 | 17.5 → 17.6 |
+| ES C=1 | 9.9 → 10.6, 96 → 89 | 17.4 → 10.0, 111 → 183 | 17.8 → 10.7, 162 → 242 | 19.6 → 12.2, 195 → 257 |
+| ES C=16 | 19.9 → 10.5, 777 → 1,460 | 18.1 → 10.8, 1,708 → 2,272 | 17.7 → 18.4, 2,627 → 2,885 | 19.2 → 19.4, 3,243 → 3,671 |
+| ES C=128 | 19.9 → 11.3, 5,791 → 9,119 | 18.5 → 20.3, 12,978 → 13,322 | 19.3 → 21.8, 18,669 → 17,261 | 20.6 → 21.6, 23,389 → 22,988 |
+| ES C=1024 | 34.9 → 26.6, 26,941 → 35,133 | 39.3 → 34.6, 49,292 → 55,625 | 39.9 → 42.1, 75,339 → 71,231 | 58.2 → 57.4, 68,822 → 69,778 |
+
+The window helps publish-and-await loops whose next record arrives shortly after a commit: one publisher per pod on
+2–4 pods fell from 18–19 ms to 10–11 ms, and 16 loops on 1–2 pods from 18–19 ms to about 10 ms with up to twice the
+throughput. It only works when it is longer than the round trip of the other pods' answers: with 16 loops on 3–4 pods
+1 ms was not enough and 2 ms brought p50 to 12 ms in the sweep. Open-loop traffic pays for it: 1.5–6 ms more at 100/s,
+up to 1 ms at 1,000/s and nothing measurable from 5,000/s. Saturated throughput did not change for 1 KiB records.
+A fixed window is therefore opt-in; the adaptive window below is the default.
+
+### Adaptive commit window
+
+`AdaptiveCommitLingerMax` = 3 ms was compared on a third cluster of the same shape with no window and fixed 1 and 2 ms
+windows (`--suite adaptive`, 15 s each), which adds a mixed load: 1,000 independent records/s plus 4
+publish-and-await loops per pod at once. Receipt p50 ms (none / 1 ms / 2 ms / adaptive) and the adaptive window's
+median:
+
+| Load | 1 pod | 2 pods | 3 pods | 4 pods |
+| --- | ---: | ---: | ---: | ---: |
+| EventLog 100/s | 9.5 / 10.6 / 16.1 / 12.5 (0.00) | 14.7 / 13.6 / 16.1 / 16.5 (0.00) | 12.1 / 16.1 / 15.9 / 12.9 (0.00) | 10.4 / 15.9 / 16.5 / 10.9 (0.00) |
+| EventLog 1,000/s | 13.9 / 14.1 / 14.9 / 15.2 (0.00) | 16.7 / 15.4 / 16.2 / 16.7 (0.00) | 16.4 / 16.4 / 15.8 / 15.4 (0.00) | 14.9 / 15.8 / 16.9 / 14.7 (0.00) |
+| EventLog 5,000/s | 17.5 / 15.1 / 15.9 / 15.6 (0.38) | 17.7 / 16.1 / 17.3 / 17.9 (0.00) | 17.5 / 16.6 / 16.8 / 16.8 (0.00) | 16.1 / 17.2 / 17.3 / 16.2 (0.00) |
+| EventLog C=1 | 9.0 / 9.7 / 10.9 / 9.2 (0.00) | 18.7 / 9.9 / 11.7 / 11.0 (1.12) | 20.1 / 10.3 / 11.1 / 10.6 (1.12) | 18.2 / 18.3 / 11.7 / 10.1 (1.31) |
+| EventLog C=16 | 18.4 / 10.0 / 11.2 / 9.2 (0.19) | 19.4 / 10.5 / 11.6 / 10.8 (1.31) | 19.8 / 13.3 / 11.9 / 11.2 (1.50) | 19.7 / 20.0 / 11.8 / 10.8 (1.69) |
+| EventLog C=128 | 18.9 / 10.7 / 11.7 / 10.0 (0.56) | 20.6 / 21.7 / 12.9 / 12.4 (2.06) | 23.8 / 21.2 / 23.0 / 20.8 (2.81) | 22.6 / 23.8 / 24.8 / 21.7 (3.00) |
+| EventLog mixed | 15.1 / 12.6 / 13.2 / 13.5 (0.38) | 17.7 / 13.3 / 13.6 / 14.2 (1.31) | 17.7 / 14.1 / 12.3 / 12.3 (1.12) | 17.4 / 17.6 / 12.4 / 11.3 (1.50) |
+| ES 100/s | 10.7 / 14.8 / 14.5 / 12.7 (0.00) | 14.4 / 14.4 / 17.7 / 14.8 (0.00) | 16.5 / 14.3 / 16.0 / 11.2 (0.00) | 13.5 / 16.0 / 17.0 / 11.6 (0.00) |
+| ES 1,000/s | 14.3 / 15.7 / 15.2 / 15.1 (0.00) | 16.6 / 15.6 / 17.8 / 15.6 (0.00) | 16.8 / 16.1 / 16.5 / 15.4 (0.00) | 15.6 / 16.7 / 16.9 / 15.3 (0.00) |
+| ES 5,000/s | 18.5 / 15.5 / 16.3 / 15.5 (0.38) | 19.2 / 16.6 / 17.5 / 16.5 (0.00) | 17.4 / 16.6 / 16.8 / 15.8 (0.00) | 16.5 / 17.2 / 16.7 / 15.7 (0.00) |
+| ES C=1 | 9.1 / 10.3 / 11.2 / 9.5 (0.00) | 19.5 / 10.6 / 12.3 / 10.6 (1.12) | 19.5 / 10.3 / 11.7 / 10.5 (1.12) | 19.4 / 19.0 / 11.4 / 10.5 (1.12) |
+| ES C=16 | 17.9 / 10.7 / 11.5 / 10.0 (0.38) | 19.3 / 11.4 / 12.2 / 11.2 (1.31) | 20.1 / 18.0 / 11.7 / 11.6 (1.69) | 18.5 / 19.6 / 12.5 / 11.8 (1.88) |
+| ES C=128 | 19.0 / 11.2 / 12.4 / 11.7 (1.12) | 22.4 / 21.4 / 16.6 / 14.9 (3.00) | 20.7 / 21.3 / 22.5 / 15.7 (3.00) | 20.6 / 22.5 / 24.2 / 22.6 (3.00) |
+| ES mixed | 15.3 / 13.6 / 13.1 / 14.3 (0.75) | 17.0 / 14.9 / 13.7 / 14.4 (1.31) | 17.7 / 16.0 / 12.8 / 13.0 (1.50) | 18.1 / 18.0 / 13.2 / 11.9 (1.69) |
+
+Across these 56 scenarios the adaptive window was on average 3.5 % above the best fixed choice for each scenario and
+within 10 % of it in 50; no window averaged 35 %, 1 ms 18 % and 2 ms 14 %. It stayed closed for independent arrivals
+and for one publish-and-await loop on one pod, and chose 1.1–1.7 ms for loops on 2–4 pods and 2–3 ms for 128 loops.
+The full suite with the adaptive window showed no loss at saturation (1 KiB records 21–23k/s, small events up to
+70k/s) and kept the closed-loop gains (for example 16 loops on 4 pods: 18.5 → 11.1 ms, 2,914 → 5,083 records/s).
+Two corrections came from this measurement: arrivals are timed from the moment a write would start without a window,
+so a periodic source that always reaches an idle owner shortly after a commit no longer opens one, and a window ends
+once the queue fills the next batch. All runs, 65 million records, completed without errors or missing deliveries.
+
 ## Changes made from these measurements
 
 - `OnDiskReplicationFileStorage`: lock-free reads from pinned blocks and read-only mappings, mappings grown in steps
@@ -260,6 +385,16 @@ Blob on GZRS. Multi-VM and live Azure end-to-end runs on the target workload are
   initialization no longer hashes the cache (above).
 - Followers request the 4 MiB inline maximum per poll and retain two polls' worth of leader bytes.
 - `AzureReplicationStorage` stages four TRL blocks at once; one at a time capped publication at about 110 MiB/s.
+- EventLog publishers pipeline publication rounds (`MaxPublishRoundsInFlight`, default 64). With one round at a time a
+  record published during the owner's write waited for two writes; 8 rounds were too few for event sourcing, whose
+  concurrent callers form single-record rounds (ES at 64 loops per pod: 4,700 events/s at 26 ms p50 with 8 rounds,
+  7,100 at 17.5 ms with 64).
+- The EventLog owner fills and seals a partly written split when the queue exceeds its remaining room, instead of
+  spending a seal-only write. Closed loops had settled on small batches: EventLog at 128 loops on 2 pods rose from
+  7,000 to 12,600 records/s and its p50 fell from 36 to 19 ms.
+- The EventLog owner chooses a commit window from the arrival times by default (`AdaptiveCommitLingerMax`, 3 ms);
+  `CommitLinger` sets a fixed one (see [Commit window](#commit-window) and
+  [Adaptive commit window](#adaptive-commit-window)).
 
 ## Not covered
 

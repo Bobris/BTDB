@@ -45,6 +45,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDB.Replication.EventSourc
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDB.Replication.EventSourcing.Test", "BTDB.Replication.EventSourcing.Test\BTDB.Replication.EventSourcing.Test.csproj", "{CDA5E697-BF51-4C44-BCB0-130D8C528AAF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventLogBench", "EventLogBench\EventLogBench.csproj", "{71B29618-9EFC-42E3-BA66-E2DA61215845}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -307,6 +309,18 @@ Global
 		{CDA5E697-BF51-4C44-BCB0-130D8C528AAF}.Release|x64.Build.0 = Release|Any CPU
 		{CDA5E697-BF51-4C44-BCB0-130D8C528AAF}.Release|x86.ActiveCfg = Release|Any CPU
 		{CDA5E697-BF51-4C44-BCB0-130D8C528AAF}.Release|x86.Build.0 = Release|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Debug|x64.Build.0 = Debug|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Debug|x86.Build.0 = Debug|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Release|Any CPU.Build.0 = Release|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Release|x64.ActiveCfg = Release|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Release|x64.Build.0 = Release|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Release|x86.ActiveCfg = Release|Any CPU
+		{71B29618-9EFC-42E3-BA66-E2DA61215845}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

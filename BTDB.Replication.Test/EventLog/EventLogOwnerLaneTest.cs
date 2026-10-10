@@ -66,6 +66,166 @@ public class EventLogOwnerLaneTest
     }
 
     [Fact]
+    public async Task BurstLargerThanTheTailRoomFillsAndSealsTheTailInsteadOfASealOnlyWrite()
+    {
+        var storage = new FaultyEventLogStorage();
+        var lane = await Lane(storage, A, Small(512, 64));
+        Assert.Equal(0ul, await Submit(lane, 7, 1, Bytes(0, 20)));
+        var frames = new Dictionary<string, int>();
+        var sealOnly = 0;
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        storage.BeforeMutation = _ => new(gate.Task);
+        storage.AfterMutation = async operation =>
+        {
+            var blob = await storage.Inner.ReadAsync(operation.Key, default);
+            var count = EventLogFormat.Parse(blob!.Content.Span, Topic).Frames.Count;
+            lock (frames)
+            {
+                if (frames.TryGetValue(operation.Key, out var before) && before == count) sealOnly++;
+                frames[operation.Key] = count;
+            }
+        };
+        // The first record of the burst starts a blocked write; the rest queue up beyond the tail's remaining room.
+        var tasks = Enumerable.Range(1, 40).Select(i => Submit(lane, 7, (ulong)i + 1, Bytes(i, 20)).AsTask()).ToArray();
+        gate.SetResult();
+        Assert.Equal(Enumerable.Range(1, 40).Select(i => (ulong)i), await Task.WhenAll(tasks));
+        await AssertHistory(storage, 41, 20);
+        Assert.Equal(0, sealOnly);
+        foreach (var key in storage.Inner.Keys.ToArray()[..^1])
+        {
+            var blob = await storage.ReadAsync(key, default);
+            Assert.NotNull(EventLogFormat.Parse(blob!.Content.Span, Topic).Seal);
+            Assert.True(blob.Content.Length <= 512);
+        }
+    }
+
+    [Fact]
+    public async Task CommitLingerGathersRecordsReachingAnIdleOwnerIntoOneWrite()
+    {
+        var storage = new FaultyEventLogStorage();
+        var scheduler = new TestScheduler(manual: true);
+        var lane = await Lane(storage, A, Small(4096, 512) with { CommitLinger = TimeSpan.FromMilliseconds(5) }, scheduler);
+        var before = storage.Mutations("write");
+        var first = Submit(lane, 7, 1, Bytes(0)).AsTask();
+        var second = Submit(lane, 7, 2, Bytes(1)).AsTask();
+        await Task.Delay(50);
+        Assert.False(first.IsCompleted);
+        Assert.Equal(before, storage.Mutations("write"));
+        scheduler.Advance(TimeSpan.FromMilliseconds(5));
+        var offsets = await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(new[] { 0ul, 1ul }, offsets);
+        Assert.Equal(before + 1, storage.Mutations("write"));
+    }
+
+    [Fact]
+    public async Task CommitLingerAlsoPrecedesWritesOfABusyOwner()
+    {
+        var storage = new FaultyEventLogStorage();
+        var scheduler = new TestScheduler(manual: true);
+        var lane = await Lane(storage, A, Small(4096, 512) with { CommitLinger = TimeSpan.FromMilliseconds(5) }, scheduler);
+        var before = storage.Mutations("write");
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var writing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        storage.BeforeMutation = _ =>
+        {
+            writing.TrySetResult();
+            return new(gate.Task);
+        };
+        var first = Submit(lane, 7, 1, Bytes(0)).AsTask();
+        await Task.Delay(20);
+        scheduler.Advance(TimeSpan.FromMilliseconds(5));
+        await writing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var second = Submit(lane, 7, 2, Bytes(1)).AsTask(); // queued while the first write is in flight
+        gate.SetResult();
+        Assert.Equal(0ul, await first.WaitAsync(TimeSpan.FromSeconds(10)));
+        await Task.Delay(50);
+        Assert.False(second.IsCompleted); // the next write waits for the window
+        var third = Submit(lane, 7, 3, Bytes(2)).AsTask();
+        scheduler.Advance(TimeSpan.FromMilliseconds(5));
+        var offsets = await Task.WhenAll(second, third).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(new[] { 1ul, 2ul }, offsets);
+        Assert.Equal(before + 2, storage.Mutations("write"));
+    }
+
+    [Fact]
+    public async Task AdaptiveLingerOpensForPublishersAnsweringCommits()
+    {
+        var storage = new FaultyEventLogStorage();
+        var scheduler = new TestScheduler(manual: true);
+        var options = Small(1 << 20, 1 << 16) with { AdaptiveCommitLingerMax = TimeSpan.FromMilliseconds(3) };
+        var lane = await Lane(storage, A, options, scheduler);
+        // Every write takes 9 ms of virtual time.
+        storage.BeforeMutation = _ =>
+        {
+            scheduler.Advance(TimeSpan.FromMilliseconds(9));
+            return default;
+        };
+        Task<ulong>? remote = null;
+        for (var i = 0; i < 100; i++)
+        {
+            // A local answer starts the write at once; a remote one arrives 0.3 ms later, during that write.
+            var sequence = (ulong)i + 1;
+            scheduler.Schedule(TimeSpan.FromMilliseconds(0.3), () => remote = Submit(lane, 8, sequence, Bytes(i)).AsTask(),
+                "remote answer");
+            await Submit(lane, 7, sequence, Bytes(i)).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            await remote!.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        Assert.InRange(lane.CommitLinger, TimeSpan.FromMilliseconds(0.3), TimeSpan.FromMilliseconds(0.6));
+    }
+
+    [Fact]
+    public async Task AdaptiveLingerStaysClosedForAPeriodicSourceReachingAnIdleOwner()
+    {
+        var storage = new FaultyEventLogStorage();
+        var scheduler = new TestScheduler(manual: true);
+        var options = Small(1 << 20, 1 << 16) with { AdaptiveCommitLingerMax = TimeSpan.FromMilliseconds(3) };
+        var lane = await Lane(storage, A, options, scheduler);
+        storage.BeforeMutation = _ =>
+        {
+            scheduler.Advance(TimeSpan.FromMilliseconds(9.5));
+            return default;
+        };
+        for (var i = 0; i < 200; i++)
+        {
+            scheduler.Advance(TimeSpan.FromMilliseconds(0.5));
+            await Submit(lane, 7, (ulong)i + 1, Bytes(i)).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        Assert.Equal(TimeSpan.Zero, lane.CommitLinger);
+    }
+
+    [Fact]
+    public async Task LingerEndsOnceTheQueueFillsTheNextBatch()
+    {
+        var storage = new FaultyEventLogStorage();
+        var scheduler = new TestScheduler(manual: true);
+        var lane = await Lane(storage, A, Small(512, 64) with { CommitLinger = TimeSpan.FromMilliseconds(50) }, scheduler);
+        // Twenty 40-byte records fill three 512-byte splits (about six each). Without the window's timer advancing, the
+        // full batches are written at once; only the remainder waits for the window.
+        var tasks = Enumerable.Range(0, 20).Select(i => Submit(lane, 7, (ulong)i + 1, Bytes(i, 40)).AsTask()).ToArray();
+        await Task.WhenAll(tasks[..^4]).WaitAsync(TimeSpan.FromSeconds(10));
+        scheduler.Advance(TimeSpan.FromSeconds(1));
+        await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(10));
+        await AssertHistory(storage, 20, 40);
+    }
+
+    [Fact]
+    public async Task SubMillisecondLingerDelaysTheWriteUntilTheWindowEnds()
+    {
+        var storage = new FaultyEventLogStorage();
+        var linger = TimeSpan.FromMilliseconds(1.5);
+        var lane = await Lane(storage, A, Small(4096, 512) with { CommitLinger = linger }, new SystemReplicationScheduler());
+        var started = new TaskCompletionSource<TimeSpan>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var submitted = System.Diagnostics.Stopwatch.StartNew();
+        storage.BeforeMutation = _ =>
+        {
+            started.TrySetResult(submitted.Elapsed);
+            return default;
+        };
+        Assert.Equal(0ul, await Submit(lane, 7, 1, Bytes(0)).AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.True(await started.Task >= linger);
+    }
+
+    [Fact]
     public async Task LargeRecordGetsItsOwnSealedSplit()
     {
         var storage = new FaultyEventLogStorage();

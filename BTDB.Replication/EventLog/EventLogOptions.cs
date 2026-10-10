@@ -16,6 +16,24 @@ public sealed record EventLogOptions
 
     public int MaxBatchRecords { get; init; } = 1024;
 
+    /// <summary>Before each storage write the owner waits this long, so records that publishers send right after the
+    /// previous commit (often from other nodes answering it) share the write instead of waiting for the next one. It
+    /// adds up to this much latency to every commit and lowers the maximum write rate. Nonzero overrides the adaptive
+    /// window of <see cref="AdaptiveCommitLingerMax"/>; zero (default) leaves the choice to it. Waits below 2 ms yield
+    /// the thread in a loop because timers are coarser, which costs CPU while records wait.</summary>
+    public TimeSpan CommitLinger { get; init; } = TimeSpan.Zero;
+
+    /// <summary>The owner chooses the commit window itself, up to this value, from when records arrive after each
+    /// commit: it waits only while publishers answer commits (publish-and-await loops, typically spread over nodes) and
+    /// stays at zero for independent arrivals. The default 3 ms covers answers from other nodes in one region. Zero
+    /// disables the window unless <see cref="CommitLinger"/> sets a fixed one.</summary>
+    public TimeSpan AdaptiveCommitLingerMax { get; init; } = TimeSpan.FromMilliseconds(3);
+
+    /// <summary>Publication rounds one node keeps in flight per topic, so records arriving during the owner's storage
+    /// write are already queued for its next write. Concurrent callers often form single-record rounds, so keep this
+    /// above the expected number of concurrent publications per node. One restores strictly sequential rounds.</summary>
+    public int MaxPublishRoundsInFlight { get; init; } = 64;
+
     /// <summary>Retry delay for an ambiguous storage write; the same write is repeated until resolved.</summary>
     public TimeSpan AmbiguousRetryDelay { get; init; } = TimeSpan.FromMilliseconds(50);
 
@@ -68,6 +86,11 @@ public sealed record EventLogOptions
         if (MaxRecordSize <= 0 || MaxRecordSize > EventLogFormat.MaxObjectLength / 2)
             throw new ArgumentOutOfRangeException(nameof(MaxRecordSize));
         if (MaxBatchRecords <= 0) throw new ArgumentOutOfRangeException(nameof(MaxBatchRecords));
+        if (CommitLinger < TimeSpan.Zero || CommitLinger > TimeSpan.FromSeconds(1))
+            throw new ArgumentOutOfRangeException(nameof(CommitLinger));
+        if (AdaptiveCommitLingerMax < TimeSpan.Zero || AdaptiveCommitLingerMax > TimeSpan.FromMilliseconds(100))
+            throw new ArgumentOutOfRangeException(nameof(AdaptiveCommitLingerMax));
+        if (MaxPublishRoundsInFlight <= 0) throw new ArgumentOutOfRangeException(nameof(MaxPublishRoundsInFlight));
         if (MergeFanOut is 1 or < 0 || MergeLevels < 0 || MergeLevels > 9)
             throw new ArgumentOutOfRangeException(nameof(MergeFanOut));
     }

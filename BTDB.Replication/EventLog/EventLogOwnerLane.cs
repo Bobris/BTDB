@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -71,6 +72,9 @@ internal sealed class EventLogOwnerLane
     readonly Dictionary<ulong, SessionState> _sessions = new();
     readonly TaskCompletionSource _stoppedCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly List<TaskCompletionSource<bool>> _commitWaiters = [];
+    readonly CommitLingerEstimator? _lingerEstimator;
+    long _queuedCost;
+    TaskCompletionSource? _batchFull;
 
     ulong _splitId;
     string _version;
@@ -100,6 +104,8 @@ internal sealed class EventLogOwnerLane
         _frames = tail.Object.Frames.Count;
         _sealed = tail.Sealed;
         _installed = installed;
+        if (options.CommitLinger == TimeSpan.Zero && options.AdaptiveCommitLingerMax > TimeSpan.Zero)
+            _lingerEstimator = new(options.AdaptiveCommitLingerMax);
     }
 
     public EventLogOwner Self { get; }
@@ -124,6 +130,12 @@ internal sealed class EventLogOwnerLane
     public ulong NextOffset
     {
         get { lock (_lock) return _next; }
+    }
+
+    /// <summary>The commit window in use: fixed, or the adaptive choice.</summary>
+    public TimeSpan CommitLinger
+    {
+        get { lock (_lock) return _lingerEstimator?.Current ?? _options.CommitLinger; }
     }
 
     public string TailVersion
@@ -273,9 +285,12 @@ internal sealed class EventLogOwnerLane
 
     void Enqueue(SessionState state, Pending pending)
     {
+        _lingerEstimator?.Arrival(_scheduler.Elapsed);
         state.Accepted = pending.Sequence;
         state.Pending.Add(pending.Sequence, pending);
         _queue.Enqueue(pending);
+        _queuedCost += Cost(pending);
+        if (_batchFull != null && BatchFullLocked()) _batchFull.TrySetResult();
     }
 
     async ValueTask ResolveSessionAsync(ulong session, ulong oldestUnresolved, ulong resumeFrom,
@@ -330,11 +345,15 @@ internal sealed class EventLogOwnerLane
     {
         while (true)
         {
+            TimeSpan linger;
+            lock (_lock) linger = _queue.Count > 0 ? _lingerEstimator?.Current ?? _options.CommitLinger : TimeSpan.Zero;
+            if (linger > TimeSpan.Zero) await LingerAsync(linger).ConfigureAwait(false);
             List<Pending>? batch;
             bool install;
+            bool fillsTail;
             lock (_lock)
             {
-                batch = TakeBatchLocked();
+                batch = TakeBatchLocked(out fillsTail);
                 install = batch == null && _installRequested && !_installed;
                 if (batch == null && !install)
                 {
@@ -346,7 +365,13 @@ internal sealed class EventLogOwnerLane
             }
             try
             {
-                if (batch != null) await CommitAsync(batch).ConfigureAwait(false);
+                if (batch != null)
+                {
+                    var writeStarted = _scheduler.Elapsed;
+                    await CommitAsync(batch, fillsTail).ConfigureAwait(false);
+                    if (_lingerEstimator != null)
+                        lock (_lock) _lingerEstimator.Committed(writeStarted, _scheduler.Elapsed, _queue.Count > 0);
+                }
                 else await SetOwnerAsync().ConfigureAwait(false);
             }
             catch (Exception exception)
@@ -358,21 +383,79 @@ internal sealed class EventLogOwnerLane
         }
     }
 
-    List<Pending>? TakeBatchLocked()
+    /// <summary>Before each write, gather records that publishers send in response to the previous commit; see
+    /// <see cref="EventLogOptions.CommitLinger"/> and <see cref="EventLogOptions.AdaptiveCommitLingerMax"/>. Ends early
+    /// once the queue fills the next batch.</summary>
+    async Task LingerAsync(TimeSpan linger)
     {
+        TaskCompletionSource full;
+        lock (_lock)
+        {
+            if (_stopReason != null || BatchFullLocked()) return;
+            _batchFull = full = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        try
+        {
+            if (linger >= TimeSpan.FromMilliseconds(2))
+            {
+                using var cancel = new CancellationTokenSource();
+                var delay = _scheduler.DelayAsync(linger, "event log commit linger", cancel.Token);
+                if (await Task.WhenAny(delay, full.Task).ConfigureAwait(false) != delay) cancel.Cancel();
+                return;
+            }
+            var start = Stopwatch.GetTimestamp();
+            while (Stopwatch.GetElapsedTime(start) < linger && !full.Task.IsCompleted) await Task.Yield();
+        }
+        finally
+        {
+            lock (_lock) _batchFull = null;
+        }
+    }
+
+    /// <summary>
+    /// The next batch, bounded by the room of an empty split. When the writable tail already holds frames and the
+    /// queued records do not all fit its remaining room, the batch fills that room instead, and <paramref name="fillsTail"/>
+    /// asks the commit to seal the tail in the same write. Otherwise the whole batch would go to a successor after a
+    /// seal-only write, which rewrites the tail without carrying any record.
+    /// </summary>
+    List<Pending>? TakeBatchLocked(out bool fillsTail)
+    {
+        fillsTail = false;
         if (_queue.Count == 0) return null;
         var batch = new List<Pending>();
-        var room = _options.SplitCap - _headerLength - EventLogFormat.SealLength - EventLogFormat.FrameLength(0, 0, 0);
+        var overhead = EventLogFormat.SealLength + EventLogFormat.FrameLength(0, 0, 0);
+        var room = (long)_options.SplitCap - _headerLength - overhead;
+        var tailRoom = !_sealed && _frames > 0 ? (long)_options.SplitCap - _content.Length - overhead : room;
+        if (Cost(_queue.Peek()) > tailRoom) tailRoom = room; // not even one record fits: rotate as before
         long bytes = 0;
         while (_queue.Count > 0 && batch.Count < _options.MaxBatchRecords)
         {
-            var next = _queue.Peek();
-            var cost = next.Record.Length + 4 + 20;
-            if (batch.Count > 0 && bytes + cost > room) break;
+            var cost = Cost(_queue.Peek());
+            if (batch.Count > 0 && bytes + cost > tailRoom)
+            {
+                fillsTail = tailRoom < room;
+                break;
+            }
             batch.Add(_queue.Dequeue());
+            _queuedCost -= cost;
             bytes += cost;
         }
         return batch;
+    }
+
+    // Conservative: a record may start its own transfer run.
+    static long Cost(Pending pending) => pending.Record.Length + 4L + EventLogFormat.RunLength;
+
+    /// <summary>The queue already fills the next batch: by record count, or by the room left in a tail holding frames
+    /// (otherwise of an empty split), so waiting longer cannot add records to it.</summary>
+    bool BatchFullLocked()
+    {
+        if (_queue.Count >= _options.MaxBatchRecords) return true;
+        var overhead = EventLogFormat.SealLength + EventLogFormat.FrameLength(0, 0, 0);
+        var room = !_sealed && _frames > 0
+            ? (long)_options.SplitCap - _content.Length - overhead
+            : (long)_options.SplitCap - _headerLength - overhead;
+        return _queuedCost >= room;
     }
 
     static List<EventLogTransferRun> Runs(List<Pending> batch)
@@ -386,7 +469,7 @@ internal sealed class EventLogOwnerLane
         return runs;
     }
 
-    async Task CommitAsync(List<Pending> batch)
+    async Task CommitAsync(List<Pending> batch, bool fillsTail)
     {
         var records = batch.Select(p => p.Record).ToArray();
         var runs = Runs(batch);
@@ -401,7 +484,7 @@ internal sealed class EventLogOwnerLane
         {
             if (!large && _content.Length + frameLength + EventLogFormat.SealLength <= _options.SplitCap)
             {
-                await AppendAsync(frame, count, ShouldSeal(_content.Length + frameLength)).ConfigureAwait(false);
+                await AppendAsync(frame, count, fillsTail || ShouldSeal(_content.Length + frameLength)).ConfigureAwait(false);
                 Complete(batch, first);
                 return;
             }
@@ -653,6 +736,8 @@ internal sealed class EventLogOwnerLane
             _stopReason = reason;
             failed = [.. _queue];
             _queue.Clear();
+            _queuedCost = 0;
+            _batchFull?.TrySetResult();
             foreach (var state in _sessions.Values)
             {
                 foreach (var held in state.Held.Values)

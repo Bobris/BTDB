@@ -169,7 +169,7 @@ Exact storage operations around a proactive seal of split `N`. The owner holds `
 | 2 | Put Blob `N+1` = header + `B`, inherited owner metadata | `If-None-Match: *` | `B`; returns `ETag(N+1)` | step 1 |
 | 3 | Put Blob `N+1` = header + `B` + `C` | `If-Match: ETag(N+1)` | `C` | step 2 |
 
-Every step carries records, so each batch is durable after one request, as with an ordinary append. Without the proactive seal, a batch `B` that does not fit costs one additional seal-only request on `N` before step 2.
+Every step carries records, so each batch is durable after one request, as with an ordinary append. Without the proactive seal, a batch `B` that does not fit costs one additional seal-only request on `N` before step 2. The proactive seal alone does not prevent that when the queue holds more than the remaining room of `N` (at least `SealFreeSpace`): the owner then takes into `A` only the records that fit, seals `N` in step 1 and leaves the rest for `B`.
 
 A record whose frame does not fit an empty split within the cap is written as its own split, sealed immediately:
 
@@ -254,6 +254,8 @@ Batching policy:
 * Bound queued bytes, pending requests and subscriber buffers. Report overload before acceptance when possible. Include queue residence in measured end-to-end latency.
 
 A node forwards its publications for one topic over one ordered stream, and the owner commits them in stream order. A node's committed publications on a topic are therefore always a prefix of its call sequence (contract 8). After an owner change, the node resolves its outstanding transfers in order and resubmits only the uncommitted suffix, in the original order.
+
+A node pipelines its rounds: it dispatches each new group of consecutive undispatched records at once, with up to `MaxPublishRoundsInFlight` (default 64) rounds per topic in flight, instead of waiting for the previous round's commit. Otherwise a record published during the owner's storage write waited for that write, then for its own round's write, and the writes of different nodes alternated instead of merging. Every round carries the oldest sequence still without a receipt, so the owner holds a later round until its predecessors arrive (failing it with a sequence gap after `OwnerTimeout`), and a round counts as previously dispatched when any older unresolved record was, so an owner that does not know the session reconciles history before accepting it. After a failed round no new round starts until the rounds in flight finish; the retry then starts at the oldest unresolved record. When the queued records exceed the remaining room of a writable split that already holds frames, the owner fills that room and seals the split in the same write; the rest goes to the successor in the next write. It never spends a seal-only write that carries no record. A commit window delays each write so records sent in answer to the previous commit join it: by default the owner chooses it from the arrival times after each commit, up to `AdaptiveCommitLingerMax` (3 ms), and keeps it at zero for independent traffic; `CommitLinger` sets a fixed window instead. The AKS benchmark in `EventLogBench` measured both changes (see [Measurements.md](Measurements.md#event-log-on-aks)).
 
 ### Exactly-once completion of a single Publish call
 

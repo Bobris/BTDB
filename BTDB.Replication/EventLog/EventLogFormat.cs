@@ -55,7 +55,7 @@ internal static class EventLogFormat
     const byte EntryWidth = 4;
     internal const int SealLength = 1 + 8 + 8 + 4;
     internal const int EndLength = 1 + 8 + 4;
-    const int RunLength = 8 + 8 + 4;
+    internal const int RunLength = 8 + 8 + 4;
     internal const int MaxTopicLength = 100;
     internal const int MaxObjectLength = int.MaxValue - 64;
 

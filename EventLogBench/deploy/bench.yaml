@@ -1,0 +1,127 @@
+# Rendered by run.sh: ${IMAGE}, ${CLIENT_ID}, ${BLOB_ENDPOINT}, ${STORAGE_PREFIX}, ${REPLICAS}, ${COMMIT_LINGER_US} and
+# ${ADAPTIVE_LINGER_MAX_US} (empty for the EventLogOptions defaults).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: elb
+  namespace: bench
+  annotations:
+    azure.workload.identity/client-id: ${CLIENT_ID}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elb
+  namespace: bench
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: elb
+  ports:
+    - name: peer
+      port: 8443
+    - name: control
+      port: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elb
+  namespace: bench
+spec:
+  serviceName: elb
+  replicas: ${REPLICAS}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: elb
+  template:
+    metadata:
+      labels:
+        app: elb
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: elb
+      nodeSelector:
+        eventlog-bench: node
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: elb
+              topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: elb
+      containers:
+        - name: node
+          image: ${IMAGE}
+          env:
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: PEER_ENDPOINT_FORMAT
+              value: "https://elb-{0}.elb.bench.svc.cluster.local:8443"
+            - name: BLOB_ENDPOINT
+              value: ${BLOB_ENDPOINT}
+            - name: STORAGE_PREFIX
+              value: ${STORAGE_PREFIX}
+            - name: API_KEY
+              valueFrom: { secretKeyRef: { name: elb-api, key: key } }
+            - name: TLS_CERT
+              value: /tls/tls.crt
+            - name: TLS_KEY
+              value: /tls/tls.key
+            - name: DATA_ROOT
+              value: /data
+            - name: COMMIT_LINGER_US
+              value: "${COMMIT_LINGER_US}"
+            - name: ADAPTIVE_LINGER_MAX_US
+              value: "${ADAPTIVE_LINGER_MAX_US}"
+          ports:
+            - containerPort: 8443
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /ctl/info, port: 8080 }
+            periodSeconds: 2
+          resources:
+            requests: { cpu: "6", memory: 32Gi }
+          volumeMounts:
+            - { name: tls, mountPath: /tls, readOnly: true }
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: tls
+          secret: { secretName: elb-tls }
+        - name: data
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elb-driver
+  namespace: bench
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elb-driver
+  template:
+    metadata:
+      labels:
+        app: elb-driver
+    spec:
+      nodeSelector:
+        eventlog-bench: driver
+      containers:
+        - name: driver
+          image: ${IMAGE}
+          command: ["sleep", "infinity"]
+          resources:
+            requests: { cpu: "2", memory: 8Gi }

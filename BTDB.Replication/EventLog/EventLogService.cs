@@ -59,6 +59,10 @@ public sealed class EventLogService : IEventLog, IEventLogPeerHandler, IAsyncDis
     /// <summary>The owner session this node currently holds for a topic, if any; for diagnostics and tests.</summary>
     public bool IsOwner(string topic) => _topics.TryGetValue(topic, out var t) && t.IsOwner;
 
+    /// <summary>The commit window this node's owner lane currently uses for a topic, or null when it does not own it;
+    /// for diagnostics of <see cref="EventLogOptions.AdaptiveCommitLingerMax"/>.</summary>
+    public TimeSpan? CommitLinger(string topic) => _topics.TryGetValue(topic, out var t) ? t.CommitLinger : null;
+
     public async ValueTask DisposeAsync()
     {
         if (_disposal.IsCancellationRequested) return;
@@ -76,6 +80,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         public readonly byte[] Record = record;
         public readonly TaskCompletionSource<ulong> Completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool Dispatched;
+        public bool InFlight;
         public ulong ResumeFrom;
     }
 
@@ -102,6 +107,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
     readonly List<Subscriber> _subscribers = [];
     ulong _nextSequence = 1;
     bool _publishing;
+    TaskCompletionSource? _publishWake;
     ulong _knownNext;
     EventLogOwnerLane? _lane;
     string? _ownerEndpoint;
@@ -133,6 +139,11 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         get { lock (_lock) return _lane is { IsStopped: false, IsInstalled: true }; }
     }
 
+    internal TimeSpan? CommitLinger
+    {
+        get { lock (_lock) return _lane is { IsStopped: false, IsInstalled: true } lane ? lane.CommitLinger : null; }
+    }
+
     TimeSpan Now => _service.Scheduler.Elapsed;
 
     // ----- Publishing -----
@@ -144,6 +155,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         var copy = record.ToArray(); // owned from here on: the caller may reuse its buffer at once
         Outstanding outstanding;
         bool start;
+        TaskCompletionSource? wake;
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_service.Disposal.IsCancellationRequested, this);
@@ -151,52 +163,123 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             _outstanding.Enqueue(outstanding);
             start = !_publishing;
             _publishing = true;
+            wake = _publishWake;
+            _publishWake = null;
         }
+        wake?.TrySetResult();
         if (start) _ = PublishLoopAsync();
         return new(outstanding.Completion.Task.WaitAsync(cancellation));
     }
 
+    /// <summary>
+    /// Dispatches rounds of consecutive outstanding records without waiting for earlier rounds, up to
+    /// <see cref="EventLogOptions.MaxPublishRoundsInFlight"/>, so records arriving during a storage write join the next
+    /// one. The owner holds a session's later sequences until their predecessors arrive, keeping call order. After a
+    /// failed round no new round starts until every round in flight finished; the retry then begins at the oldest
+    /// unresolved record.
+    /// </summary>
     async Task PublishLoopAsync()
     {
         var disposal = _service.Disposal;
+        var rounds = new List<Task<bool>>();
+        var healthy = true;
         while (true)
         {
-            List<Outstanding> round;
+            List<Outstanding>? round = null;
+            Task? wake = null;
             lock (_lock)
             {
-                if (_outstanding.Count == 0 || disposal.IsCancellationRequested)
+                if (rounds.Count == 0 && (_outstanding.Count == 0 || disposal.IsCancellationRequested))
                 {
                     _publishing = false;
+                    _publishWake = null;
                     break;
                 }
-                round = [];
-                foreach (var item in _outstanding)
+                var mayDispatch = healthy && !disposal.IsCancellationRequested &&
+                                  rounds.Count < _options.MaxPublishRoundsInFlight;
+                if (mayDispatch) round = TakeRoundLocked();
+                if (round == null && mayDispatch)
                 {
-                    if (round.Count == _options.MaxBatchRecords) break;
-                    round.Add(item);
+                    _publishWake = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    wake = _publishWake.Task;
                 }
             }
-            try
+            if (round != null)
             {
-                var (lane, endpoint) = await ResolveOwnerAsync(true, disposal).ConfigureAwait(false);
-                if (lane != null) await SubmitLocalAsync(lane, round, disposal).ConfigureAwait(false);
-                else if (endpoint != null) await SubmitRemoteAsync(endpoint, round, disposal).ConfigureAwait(false);
-                else await _service.Scheduler.DelayAsync(_options.ContentionBackoff, "event log owner wait", disposal)
-                    .ConfigureAwait(false);
+                rounds.Add(RunRoundAsync(round, disposal));
+                continue;
             }
-            catch (OperationCanceledException) when (disposal.IsCancellationRequested) { }
-            catch (Exception)
+            if (rounds.Count == 0)
             {
-                // Storage or takeover trouble: keep the records outstanding and try again.
-                try
-                {
-                    await _service.Scheduler.DelayAsync(_options.ContentionBackoff, "event log publish retry", disposal)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) { }
+                // Unreachable while healthy: an outstanding record that is neither resolved nor in flight forms a round.
+                healthy = true;
+                continue;
             }
+            await Task.WhenAny(wake == null ? [.. rounds] : [.. rounds, wake]).ConfigureAwait(false);
+            for (var i = rounds.Count - 1; i >= 0; i--)
+            {
+                if (!rounds[i].IsCompleted) continue;
+                if (!rounds[i].Result) healthy = false;
+                rounds.RemoveAt(i);
+            }
+            if (rounds.Count == 0) healthy = true;
         }
         if (disposal.IsCancellationRequested) FailOutstanding(new ObjectDisposedException(nameof(EventLogService)));
+    }
+
+    /// <summary>The oldest consecutive outstanding records that are neither resolved nor in flight.</summary>
+    List<Outstanding>? TakeRoundLocked()
+    {
+        List<Outstanding>? round = null;
+        foreach (var item in _outstanding)
+        {
+            if (item.InFlight || item.Completion.Task.IsCompleted)
+            {
+                if (round != null) break;
+                continue;
+            }
+            if (round != null && (round.Count == _options.MaxBatchRecords || item.Sequence != round[^1].Sequence + 1))
+                break;
+            round ??= [];
+            item.InFlight = true;
+            round.Add(item);
+        }
+        return round;
+    }
+
+    /// <summary>True when every record of the round got its offset.</summary>
+    async Task<bool> RunRoundAsync(List<Outstanding> round, CancellationToken disposal)
+    {
+        try
+        {
+            var (lane, endpoint) = await ResolveOwnerAsync(true, disposal).ConfigureAwait(false);
+            if (lane != null) return await SubmitLocalAsync(lane, round, disposal).ConfigureAwait(false);
+            if (endpoint != null) return await SubmitRemoteAsync(endpoint, round, disposal).ConfigureAwait(false);
+            await _service.Scheduler.DelayAsync(_options.ContentionBackoff, "event log owner wait", disposal)
+                .ConfigureAwait(false);
+            return false;
+        }
+        catch (OperationCanceledException) when (disposal.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception)
+        {
+            // Storage or takeover trouble: keep the records outstanding and try again.
+            try
+            {
+                await _service.Scheduler.DelayAsync(_options.ContentionBackoff, "event log publish retry", disposal)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { }
+            return false;
+        }
+        finally
+        {
+            lock (_lock)
+                foreach (var item in round)
+                    item.InFlight = false;
+        }
     }
 
     void FailOutstanding(Exception reason)
@@ -210,43 +293,53 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         foreach (var item in failed) item.Completion.TrySetException(reason);
     }
 
-    (bool PreviouslyDispatched, ulong ResumeFrom) PrepareRound(List<Outstanding> round)
+    /// <summary>
+    /// Marks the round dispatched. A round counts as previously dispatched when it or any older unresolved record was
+    /// dispatched before, possibly to a predecessor owner: a lane that does not know the session must then reconcile
+    /// committed history from the lowest such resume offset before accepting it. The oldest unresolved sequence lets
+    /// the owner hold this round until older rounds still in flight arrive.
+    /// </summary>
+    (bool PreviouslyDispatched, ulong ResumeFrom, ulong OldestUnresolved) PrepareRound(List<Outstanding> round)
     {
         lock (_lock)
         {
             var previously = false;
             var resumeFrom = _knownNext;
+            var oldest = round[0].Sequence;
+            var last = round[^1].Sequence;
+            foreach (var item in _outstanding)
+            {
+                if (item.Sequence > last) break;
+                if (item.Completion.Task.IsCompleted) continue;
+                oldest = Math.Min(oldest, item.Sequence);
+                if (!item.Dispatched) continue;
+                previously = true;
+                resumeFrom = Math.Min(resumeFrom, item.ResumeFrom);
+            }
             foreach (var item in round)
             {
-                if (item.Dispatched)
-                {
-                    previously = true;
-                    resumeFrom = Math.Min(resumeFrom, item.ResumeFrom);
-                }
-                else
-                {
-                    item.Dispatched = true;
-                    item.ResumeFrom = _knownNext;
-                }
+                if (item.Dispatched) continue;
+                item.Dispatched = true;
+                item.ResumeFrom = _knownNext;
             }
-            return (previously, resumeFrom);
+            return (previously, resumeFrom, oldest);
         }
     }
 
     void Resolve(Outstanding item, ulong offset)
     {
+        item.Completion.TrySetResult(offset);
         lock (_lock)
         {
-            if (_outstanding.TryPeek(out var head) && head == item) _outstanding.Dequeue();
+            // Pipelined rounds may resolve out of order; the queue keeps the oldest unresolved record at its head.
+            while (_outstanding.TryPeek(out var head) && head.Completion.Task.IsCompleted) _outstanding.Dequeue();
             _knownNext = Math.Max(_knownNext, offset + 1);
         }
-        item.Completion.TrySetResult(offset);
     }
 
-    async Task SubmitLocalAsync(EventLogOwnerLane lane, List<Outstanding> round, CancellationToken cancellation)
+    async Task<bool> SubmitLocalAsync(EventLogOwnerLane lane, List<Outstanding> round, CancellationToken cancellation)
     {
-        var (previously, resumeFrom) = PrepareRound(round);
-        var oldest = round[0].Sequence;
+        var (previously, resumeFrom, oldest) = PrepareRound(round);
         var tasks = new Task<ulong>[round.Count];
         for (var i = 0; i < round.Count; i++)
             tasks[i] = lane.SubmitAsync(_session, round[i].Sequence, round[i].Record, oldest, previously, resumeFrom,
@@ -260,25 +353,26 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             catch (EventLogOwnerLostException)
             {
                 OwnerLost(lane);
-                return;
+                return false;
             }
             catch (EventLogSequenceGapException)
             {
-                return;
+                return false;
             }
         }
+        return true;
     }
 
-    async Task SubmitRemoteAsync(string endpoint, List<Outstanding> round, CancellationToken cancellation)
+    async Task<bool> SubmitRemoteAsync(string endpoint, List<Outstanding> round, CancellationToken cancellation)
     {
-        var (previously, resumeFrom) = PrepareRound(round);
+        var (previously, resumeFrom, oldest) = PrepareRound(round);
         var records = new ReadOnlyMemory<byte>[round.Count];
         for (var i = 0; i < round.Count; i++) records[i] = round[i].Record;
         EventLogSubmitResponse response;
         try
         {
             response = await _service.Transport.SubmitAsync(endpoint,
-                new(Name, _session, round[0].Sequence, round[0].Sequence, previously, resumeFrom, records),
+                new(Name, _session, round[0].Sequence, oldest, previously, resumeFrom, records),
                 cancellation).ConfigureAwait(false);
         }
         catch (Exception) when (!cancellation.IsCancellationRequested)
@@ -286,7 +380,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             PeerFailed(endpoint);
             await _service.Scheduler.DelayAsync(_options.ContentionBackoff, "event log peer retry", cancellation)
                 .ConfigureAwait(false);
-            return;
+            return false;
         }
         PeerAnswered(endpoint, response.DurableNext);
         switch (response.Status)
@@ -294,7 +388,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             case EventLogSubmitStatus.Committed:
                 if (response.Offsets.Count != round.Count) throw new InvalidOperationException("Wrong number of offsets.");
                 for (var i = 0; i < round.Count; i++) Resolve(round[i], response.Offsets[i]);
-                break;
+                return true;
             case EventLogSubmitStatus.NotOwner:
                 lock (_lock)
                     if (_ownerEndpoint == endpoint)
@@ -305,6 +399,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
                     .ConfigureAwait(false);
                 break;
         }
+        return false;
     }
 
     void PeerFailed(string endpoint)
