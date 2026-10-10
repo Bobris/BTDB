@@ -223,8 +223,11 @@ public class EventLogServiceTest
     public async Task FollowerReceivesLiveRecordsWithoutReadingStorage()
     {
         await using var cluster = new EventLogCluster();
-        var a = cluster.Start("a");
-        var b = cluster.Start("b");
+        // No owner change is under test: a scheduling stall longer than the fast 250 ms timeout would end the live
+        // subscription and correctly make the follower catch up from storage.
+        var options = EventLogCluster.FastOptions with { OwnerTimeout = TimeSpan.FromSeconds(10) };
+        var a = cluster.Start("a", options);
+        var b = cluster.Start("b", options);
         await Publish(a, 0);
         var topic = b.GetTopic(Topic);
         var bounds = await topic.GetBoundsAsync();
