@@ -1,3 +1,5 @@
+#nullable enable annotations
+
 using LibGit2Sharp;
 using Octokit;
 using System;
@@ -19,16 +21,19 @@ static class Program
 
     static async Task<int> MainAsync(string[] args)
     {
-        var choice = args.Length == 0 ? '\0' : args.Length == 1 ? args[0] switch
+        var prepare = args is ["prepare", ..];
+        if (prepare) args = args[1..];
+        var choice = args switch
         {
-            "major" => '1',
-            "minor" => '2',
-            "patch" => '3',
+            [] => prepare ? '3' : '\0',
+            ["major"] => '1',
+            ["minor"] => '2',
+            ["patch"] => '3',
             _ => '?'
-        } : '?';
+        };
         if (choice == '?')
         {
-            Console.WriteLine("Usage: Releaser [major|minor|patch]");
+            Console.WriteLine("Usage: Releaser [major|minor|patch] | prepare [major|minor|patch]");
             return 1;
         }
 
@@ -69,7 +74,7 @@ static class Program
         int workDirChangesCount;
         using (var workDirChanges = gitrepo.Diff.Compare<TreeChanges>())
             workDirChangesCount = workDirChanges.Count;
-        if (workDirChangesCount > 0)
+        if (!prepare && workDirChangesCount > 0)
         {
             Console.WriteLine("DANGER! THERE ARE " + workDirChangesCount + " CHANGES IN WORK DIR!");
         }
@@ -102,6 +107,16 @@ static class Program
         if (choice == '3')
             lastVersionNumber = patchVersionNumber;
         var newVersion = lastVersionNumber.ToString(3);
+        if (prepare)
+        {
+            var outputDirectory = Path.Combine(projDir, "artifacts", "package", "prepare", newVersion);
+            foreach (var project in PackageProjects)
+                PackProject(projDir, project, newVersion, outputDirectory);
+            Console.WriteLine("Prepared packages: " + outputDirectory);
+            Console.WriteLine("No packages published; project versions, changelog, commits and tags are unchanged.");
+            return 0;
+        }
+
         Console.WriteLine("Building version " + newVersion);
         await UpdateCsProj(projDir, newVersion);
         var outputLogLines = logLines.ToList();
@@ -126,10 +141,9 @@ static class Program
             return 1;
         }
 
-        Build(projDir);
-        BuildSourceGenerator(projDir);
-        BuildAzureStorage(projDir);
-        BuildReplication(projDir);
+        foreach (var project in PackageProjects)
+            PackProject(projDir, project);
+        ZipBTDBSources(projDir);
         BuildODbDump(projDir);
         PublishPackages(projDir, newVersion, nugetToken);
 
@@ -154,11 +168,7 @@ static class Program
         Console.WriteLine("BTDB repo id: " + btdbRepo.Id);
         await File.WriteAllTextAsync(projDir + "/CHANGELOG.md", string.Join("", outputLogLines.Select(s => s + '\n')));
         Commands.Stage(gitrepo, "CHANGELOG.md");
-        Commands.Stage(gitrepo, "BTDB/BTDB.csproj");
-        Commands.Stage(gitrepo, "BTDB.AzureStorage/BTDB.AzureStorage.csproj");
-        Commands.Stage(gitrepo, "BTDB.SourceGenerator/BTDB.SourceGenerator.csproj");
-        Commands.Stage(gitrepo, "ODbDump/ODbDump.csproj");
-        foreach (var project in ReplicationProjects)
+        foreach (var project in VersionedProjects)
             Commands.Stage(gitrepo, project + "/" + project + ".csproj");
         var author = new LibGit2Sharp.Signature("Releaser", "boris.letocha@gmail.com", DateTime.Now);
         gitrepo.Commit("Released " + newVersion, author, author);
@@ -191,27 +201,12 @@ static class Program
 
     static async Task UpdateCsProj(string projDir, string newVersion)
     {
-        var fn = projDir + "/BTDB/BTDB.csproj";
-        var content = await File.ReadAllTextAsync(fn);
-        content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
-        await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
-        fn = projDir + "/BTDB.SourceGenerator/BTDB.SourceGenerator.csproj";
-        content = await File.ReadAllTextAsync(fn);
-        content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
-        await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
-        fn = projDir + "/BTDB.AzureStorage/BTDB.AzureStorage.csproj";
-        content = await File.ReadAllTextAsync(fn);
-        content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
-        await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
-        fn = projDir + "/ODbDump/ODbDump.csproj";
-        content = await File.ReadAllTextAsync(fn);
-        content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
-        await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
-        foreach (var project in ReplicationProjects)
+        var version = new Regex("<Version>.+</Version>");
+        foreach (var project in VersionedProjects)
         {
-            fn = projDir + "/" + project + "/" + project + ".csproj";
-            content = await File.ReadAllTextAsync(fn);
-            content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
+            var fn = projDir + "/" + project + "/" + project + ".csproj";
+            var content = await File.ReadAllTextAsync(fn);
+            content = version.Replace(content, "<Version>" + newVersion + "</Version>");
             await File.WriteAllTextAsync(fn, content, new UTF8Encoding(false));
         }
     }
@@ -236,17 +231,8 @@ static class Program
         throw new OperationCanceledException("Upload Asset " + fileName + " failed");
     }
 
-    static void Build(string projDir)
+    static void ZipBTDBSources(string projDir)
     {
-        var start = new ProcessStartInfo("dotnet", "pack -c Release")
-        {
-            UseShellExecute = true,
-            WorkingDirectory = projDir + "/BTDB"
-        };
-        var process = Process.Start(start);
-        process!.WaitForExit();
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException("dotnet command failed with exit code " + process.ExitCode);
         var source = projDir + "/BTDB";
         var releaseSources = projDir + "/artifacts/bin/BTDB/release/Sources";
         foreach (var fn in Directory.GetFiles(source, "*.*", SearchOption.AllDirectories).ToList())
@@ -263,57 +249,39 @@ static class Program
             System.IO.Compression.CompressionLevel.Optimal, false);
     }
 
-    static void BuildSourceGenerator(string projDir)
-    {
-        var start = new ProcessStartInfo("dotnet", "pack -c Release")
-        {
-            UseShellExecute = true,
-            WorkingDirectory = projDir + "/BTDB.SourceGenerator"
-        };
-        var process = Process.Start(start);
-        process!.WaitForExit();
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException("dotnet command failed with exit code " + process.ExitCode);
-    }
-
-    static void BuildAzureStorage(string projDir)
-    {
-        var start = new ProcessStartInfo("dotnet", "pack -c Release")
-        {
-            UseShellExecute = true,
-            WorkingDirectory = projDir + "/BTDB.AzureStorage"
-        };
-        var process = Process.Start(start);
-        process!.WaitForExit();
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException("dotnet command failed with exit code " + process.ExitCode);
-    }
-
     static readonly string[] ReplicationProjects =
-        ["BTDB.Replication", "BTDB.Replication.Azure", "BTDB.Replication.Http"];
+        ["BTDB.Replication", "BTDB.Replication.Azure", "BTDB.Replication.Http", "BTDB.Replication.EventSourcing"];
 
-    static void BuildReplication(string projDir)
+    static readonly string[] PackageProjects = ["BTDB", "BTDB.SourceGenerator", "BTDB.AzureStorage", .. ReplicationProjects];
+
+    // Projects whose <Version> the release updates and commits.
+    static readonly string[] VersionedProjects = [.. PackageProjects, "ODbDump"];
+
+    static void PackProject(string projDir, string project, string? version = null, string? outputDirectory = null)
     {
-        foreach (var project in ReplicationProjects)
+        var start = new ProcessStartInfo("dotnet")
         {
-            var start = new ProcessStartInfo("dotnet")
-            {
-                WorkingDirectory = projDir + "/" + project
-            };
-            start.ArgumentList.Add("pack");
-            start.ArgumentList.Add("-c");
-            start.ArgumentList.Add("Release");
-            using var pack = Process.Start(start);
-            pack!.WaitForExit();
-            if (pack.ExitCode != 0)
-                throw new InvalidOperationException("Packing " + project + " failed with exit code " + pack.ExitCode);
+            WorkingDirectory = Path.Combine(projDir, project)
+        };
+        start.ArgumentList.Add("pack");
+        start.ArgumentList.Add("-c");
+        start.ArgumentList.Add("Release");
+        if (version != null)
+            start.ArgumentList.Add("-p:Version=" + version);
+        if (outputDirectory != null)
+        {
+            start.ArgumentList.Add("--output");
+            start.ArgumentList.Add(outputDirectory);
         }
+        using var pack = Process.Start(start);
+        pack!.WaitForExit();
+        if (pack.ExitCode != 0)
+            throw new InvalidOperationException("Packing " + project + " failed with exit code " + pack.ExitCode);
     }
 
     static void PublishPackages(string projDir, string newVersion, string nugetToken)
     {
-        var projects = new[] { "BTDB", "BTDB.SourceGenerator", "BTDB.AzureStorage" }.Concat(ReplicationProjects);
-        foreach (var project in projects)
+        foreach (var project in PackageProjects)
         {
             var packageVersion = newVersion + (ReplicationProjects.Contains(project) ? "-preview" : "");
             var start = new ProcessStartInfo("dotnet")

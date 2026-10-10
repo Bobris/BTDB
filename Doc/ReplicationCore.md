@@ -4,6 +4,11 @@ These are opt-in BTDB core building blocks used by [BTDB.Replication](../BTDB.Re
 implement leader election, Blob publication or follower comparison; setting these options alone does not make a
 database replicated or enforce leader authority.
 
+For application schedulers above these core building blocks, `BTDB.Replication` exposes
+`ReplicationLeadership.RunWhileLeaderAsync(Func<CancellationToken, Task>, CancellationToken)`. HTTP hosting registers
+it per node and connects it to actual activation, revocation, expiry and handoff; see
+[application work during leadership](ReplicationHosting.md#application-work-during-leadership).
+
 ```csharp
 using var kv = new BTreeKeyValueDB(new KeyValueDBOptions
 {

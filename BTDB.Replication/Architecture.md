@@ -147,6 +147,14 @@ authority never becomes valid again. `LeaseSessionController` renews at least ha
 after a failed request it retries no later than that, so one transient error cannot outlast the lease. Disqualification
 (newer generation observed, schema detachment, transfer, shutdown) is permanent for the node session.
 
+`ReplicationLeadership` exposes application work for an activated local session. Activation signals it only after
+canonical adoption and schema publication; fencing signals revocation without running user code under authority
+locks. An independent check of the proven deadline cancels work even if renewal/publication is blocked, and a
+confirmed renewal extends that check. Handoff cancels work when grant draining begins. This is a cooperative
+application cancellation mechanism, not external-effect fencing; callback failures/retries remain application-owned.
+See [hosting](../Doc/ReplicationHosting.md#application-work-during-leadership) and
+[tests](Testing.md#application-leadership-work) for the API and necessity cases.
+
 ### Confirmation grants
 
 Every poll carries a challenge; the leader answers with a grant only when the whole grant window, bounded for clock

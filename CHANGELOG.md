@@ -2,6 +2,31 @@
 
 ## [unreleased]
 
+### Added
+
+- Add `ReplicationLeadership.RunWhileLeaderAsync` for application schedulers: run once per activated local leader
+  session, cancel on fencing, conservative lease expiry, handoff drain or shutdown, and expose callback failures
+  through the subscription task. HTTP hosting registers the node-scoped service automatically; callback execution
+  and cleanup do not block replication, and successive callbacks in one subscription never overlap.
+
+- Add the `BTDB.Replication.EventSourcing` preview package: typed event dispatch with synchronous validation,
+  separate ordered Layer2 data/metadata topics, ambient ObjectDB access, local result waits, per-event native virtual
+  batching, replay from the restored database cursor and replication-progress integration. Release automation
+  includes the new package. Failed handlers roll back their event and stop consumption without skipping it.
+  `Ambient.RegisterPostCommit` runs actions after the entire batch becomes visible, suppresses replay and discards
+  rolled-back registrations. Optional shared-storage consumer heartbeats expose self, selected leader and live node
+  IDs through `Ambient.Cluster`, exclude startup replay and expire crashed sessions. `EventPublisher.Completion` and
+  pending publications report the first (root-cause) fault, leader records are validated like replication discovery,
+  and `StartQuery` returns `Ambient.Scope`.
+
+- Add `Releaser prepare [major|minor|patch]` (patch by default) to build the complete NuGet package family and symbols
+  for the next release without publishing, reading credentials or changing tracked versions, the changelog or Git.
+
+### Fixed
+
+- Document installation and the included EventLog across all three replication preview packages; fix package README
+  links and stale statements that HTTP hosting is non-packable or release packaging remains unimplemented.
+
 ## 35.11.0
 
 ### Added

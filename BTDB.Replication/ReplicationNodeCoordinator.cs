@@ -74,7 +74,7 @@ public interface IReplicationNodeHost
 /// divergence stop replication without disposing databases or cancelling ordinary local application work.</summary>
 internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options, IReplicationNodeHost host,
     IReplicationLeaderStorage records, LeaseSessionController leases, IReplicationPeerTransport transport,
-    IReplicationScheduler scheduler, ReplicationStatus? status = null)
+    IReplicationScheduler scheduler, ReplicationStatus? status = null, ReplicationLeadership? applicationLeadership = null)
 {
     IReadOnlyList<ActivationDatabase> _databases = Array.Empty<ActivationDatabase>();
     IReadOnlyList<CanonicalTrlPublisher>? _publishers;
@@ -133,7 +133,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     {
         options.Validate();
         var detachedTimeout = options.EffectiveDetachedLeaderTimeout;
-        using var shutdown = cancellation.Register(StopWatchdogs);
+        using var shutdown = cancellation.Register(() => { StopWatchdogs(); applicationLeadership?.Stop(); });
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         Task? maintenance = null;
         Task? localMaintenance = null;
@@ -204,6 +204,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             StopWatchdogs();
             if (Volatile.Read(ref _recoveryState) == 1) await _fatalRestart.Task.ConfigureAwait(false);
             status?.Stop();
+            applicationLeadership?.Stop();
             lifetime.Cancel();
             leases.Close();
             Disconnect();
@@ -313,8 +314,11 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                     throw;
                 }
                 if (!authority.IsValid) { DropLeadership(); return; }
-                Volatile.Write(ref _serving, new(identity, authority, databases, publishers, host, scheduler, options.ApplicationGeneration));
+                var serving = new ServingLeader(identity, authority, databases, publishers, host, scheduler,
+                    options.ApplicationGeneration, applicationLeadership);
+                Volatile.Write(ref _serving, serving);
                 status?.LeaderSessionStarted();
+                serving.StartApplicationLeadership(nodeCancellation);
             }
             lock (_remoteLock)
             {
@@ -700,6 +704,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
 
     void DropLeadership()
     {
+        applicationLeadership?.EndSession();
         CancellationTokenSource? remoteWork;
         lock (_remoteLock)
         {

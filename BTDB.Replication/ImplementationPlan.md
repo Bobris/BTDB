@@ -1,7 +1,8 @@
 # BTDB.Replication implementation status
 
 Status recorded on 2026-09-28: M0–M6 are implemented. M7 has recorded adapter, process, clock and performance
-qualification; production-application qualification remains open (B3). Packages are prepared as `-preview`.
+qualification; production-application qualification remains open (B3). All three packages were published as
+`35.11.0-preview`; release automation includes them. See [packages and release preparation](../Doc/ReplicationPackages.md).
 This status summarizes the linked evidence, not a new live qualification run.
 
 ## Implemented
@@ -13,7 +14,7 @@ This status summarizes the linked evidence, not a new live qualification run.
 | M2: core support | Native capture, deterministic TRL IDs, legacy startup conversion, virtual batching and startup schema writes. | [Core APIs](../Doc/ReplicationCore.md) |
 | M3: storage | Canonical TRL CAS, ambiguity reconciliation, verified cache and dependency-first checkpoint export. | [ObjectStorages.md](ObjectStorages.md), [restore tests](Testing.md#discovery-restore-and-local-cache) |
 | M4: coordination | Follower-first restore, activation, comparison, takeover and progress watchdogs. | [Authority and activation tests](Testing.md#authority-selection-and-activation) |
-| M5: lifecycle | Generation floor, prepared upgrade handoff, database changes, schema detachment and opaque application data. | [Coordinator tests](Testing.md#coordinator-simulation) |
+| M5: lifecycle | Generation floor, prepared upgrade handoff, database changes, schema detachment, opaque application data and application work during active leader sessions. | [Coordinator tests](Testing.md#coordinator-simulation), [application leadership work](Testing.md#application-leadership-work) |
 | M6: maintenance | Independent local compaction, leader checkpoints and delayed conditional cleanup. | [Maintenance tests](Testing.md#checkpoints-and-remote-maintenance) |
 | M7: integration | Azure adapter, HTTP hosting, health/metrics, subprocess scenarios and preview package metadata. | [Hosting](../Doc/ReplicationHosting.md), [provider evidence](ObjectStorages.md), [measurements](Measurements.md) |
 
@@ -21,13 +22,16 @@ This status summarizes the linked evidence, not a new live qualification run.
 
 - **B3: production application.** Qualify the actual application's ordered execution, replay, schema upgrades and
   external-effect policy. The sample ObjectDB process tests are supporting evidence, not completion of B3.
-- **Release.** Add the replication packages to `Releaser` and publish them after qualification; removing the preview
-  suffix is a separate release decision.
+- **Stable release.** Removing the preview suffix remains a separate release decision after qualification.
 - **Deployment coverage.** Qualify the intended TLS/proxy path and real network partitions. Live Azure tests are
   manual; physical disk faults are not modeled. See [test limits](Testing.md#not-covered-yet).
 - **Event log.** The optional `BTDB.Replication.EventLog` is implemented as a preview (E0 harness, E1–E5). Its
   application integration, migration and multi-VM qualification remain; see
   [EventLogImplementationPlan.md](EventLogImplementationPlan.md#11-implementation-milestones).
+- **Typed application wrapper.** `BTDB.Replication.EventSourcing` adds synchronous validation, separate Layer2 data and
+  metadata topics, ambient ObjectDB transactions, native virtual batching, restart replay, actions after visible
+  batches with replay suppression and optional shared-storage discovery of live consumers. See
+  [integration and tests](../Doc/ReplicationEventSourcing.md). This supports application integration without closing B3.
 - **Optional work.** Same-generation shutdown handoff, S3 and stronger reads remain in the
   [architecture backlog](Architecture.md#open-work); they are not prerequisites for the selected protocol.
 

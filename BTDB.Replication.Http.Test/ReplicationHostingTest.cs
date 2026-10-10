@@ -66,6 +66,9 @@ public class ReplicationHostingTest
             """);
         public int Acquires;
         public bool BlockRenewal;
+        public bool BlockSelection;
+        public readonly TaskCompletionSource Selecting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource ReleaseSelection = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly TaskCompletionSource Renewing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly TaskCompletionSource ReleaseRenewal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ValueTask<LeaseGrant?> AcquireAsync(CancellationToken cancellation)
@@ -90,14 +93,19 @@ public class ReplicationHostingTest
             cancellation.ThrowIfCancellationRequested();
             lock (_lock) return ValueTask.FromResult(_record);
         }
-        public ValueTask<LeaderWriteOutcome> WriteAsync(string leaseHandle, string expectedToken, string json, CancellationToken cancellation)
+        public async ValueTask<LeaderWriteOutcome> WriteAsync(string leaseHandle, string expectedToken, string json, CancellationToken cancellation)
         {
             cancellation.ThrowIfCancellationRequested();
+            if (BlockSelection)
+            {
+                Selecting.TrySetResult();
+                await ReleaseSelection.Task.WaitAsync(cancellation);
+            }
             lock (_lock)
             {
-                if (leaseHandle != "lease" || expectedToken != _record.Token) return ValueTask.FromResult(LeaderWriteOutcome.Rejected);
+                if (leaseHandle != "lease" || expectedToken != _record.Token) return LeaderWriteOutcome.Rejected;
                 _record = new((int.Parse(_record.Token) + 1).ToString(), json);
-                return ValueTask.FromResult(LeaderWriteOutcome.Applied);
+                return LeaderWriteOutcome.Applied;
             }
         }
     }
@@ -136,6 +144,7 @@ public class ReplicationHostingTest
         public readonly WebApplication App;
         public IHostApplicationLifetime Lifetime => App.Services.GetRequiredService<IHostApplicationLifetime>();
         public ReplicationStatus Status => App.Services.GetRequiredService<ReplicationStatus>();
+        public ReplicationLeadership Leadership => App.Services.GetRequiredService<ReplicationLeadership>();
         public Task<HealthReport> Health() => App.Services.GetRequiredService<HealthCheckService>().CheckHealthAsync();
         public LeaseSessionController Leases => App.Services.GetRequiredService<LeaseSessionController>();
         public ReplicationNodeCoordinator Coordinator => App.Services.GetRequiredService<ReplicationNodeCoordinator>();
@@ -241,7 +250,16 @@ public class ReplicationHostingTest
     public async Task ShutdownFencesBeforeAnUncooperativeRenewalReturns()
     {
         await using var host = new RunningHost();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var leaderWork = host.Leadership.RunWhileLeaderAsync(async cancellation =>
+        {
+            started.SetResult();
+            try { await Task.Delay(System.Threading.Timeout.Infinite, cancellation); }
+            finally { ended.SetResult(); }
+        });
         await host.StartLeader();
+        await started.Task.WaitAsync(Timeout);
         var authority = host.Leases.Current!;
         host.Storage.BlockRenewal = true;
         host.Clock.Fire("lease maintenance");
@@ -252,12 +270,38 @@ public class ReplicationHostingTest
         Assert.Equal(HealthStatus.Unhealthy, (await host.Health()).Status);
         Assert.Null(host.Leases.Current);
         Assert.False(host.Worker.ExecuteTask!.IsCompleted);
+        await ended.Task.WaitAsync(Timeout);
+        await leaderWork.WaitAsync(Timeout);
         host.Storage.ReleaseRenewal.SetResult();
         await host.Worker.ExecuteTask.WaitAsync(Timeout);
         Assert.Null(host.Leases.Current);
         Assert.Equal(1, host.Storage.Acquires);
         Assert.Equal(ReplicationNodeRole.Stopped, host.Coordinator.Role);
         Assert.Equal(0, host.Clock.Pending);
+    }
+
+    [Fact]
+    public async Task LeaderSubscriptionStartsAfterSelectionAndActivationAndCallbackFailureDoesNotStopTheNode()
+    {
+        await using var host = new RunningHost();
+        host.Storage.BlockSelection = true;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var work = host.Leadership.RunWhileLeaderAsync(_ =>
+        {
+            started.SetResult();
+            throw new InvalidOperationException("Application scheduler failed");
+        });
+        await host.App.StartAsync();
+        await host.Storage.Selecting.Task.WaitAsync(Timeout);
+        Assert.Equal(ReplicationNodeRole.Activating, host.Coordinator.Role);
+        Assert.False(started.Task.IsCompleted);
+        Assert.NotNull(host.Leases.Current); // Acquired lease alone has not activated application work.
+        host.Storage.ReleaseSelection.SetResult();
+        await started.Task.WaitAsync(Timeout);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => work);
+        await host.Node.Leader.Task.WaitAsync(Timeout);
+        Assert.True(host.Leases.Current!.IsValid);
+        Assert.False(host.Worker.ExecuteTask!.IsCompleted);
     }
 
     [Fact]

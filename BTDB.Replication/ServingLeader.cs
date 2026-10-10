@@ -15,10 +15,11 @@ namespace BTDB.Replication;
 /// connections, answers polls with progress, grants and inline TRL bytes, and serves range reads.</summary>
 internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAuthority authority,
     IReadOnlyList<ActivationDatabase> databases, IReadOnlyList<CanonicalTrlPublisher> publishers,
-    IReplicationNodeHost host, IReplicationScheduler scheduler, ulong generation)
+    IReplicationNodeHost host, IReplicationScheduler scheduler, ulong generation, ReplicationLeadership? leadership = null)
 {
     readonly object _lock = new();
     readonly IReplicationNodeHost _host = host;
+    readonly ReplicationLeadership? _leadership = leadership;
     readonly ulong _generation = generation;
     readonly byte[] _apiKey = Encoding.UTF8.GetBytes(identity.ApiKey);
     readonly ConfirmationGrants _grants = new(scheduler, authority);
@@ -31,6 +32,14 @@ internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAutho
     PreparedHandoff? _handoff;
     public PreparedHandoff? Handoff { get { lock (_lock) return _handoff; } }
     public bool IsDrained { get { lock (_lock) return _grants.IsDrained; } }
+
+    internal void StartApplicationLeadership(CancellationToken shutdown)
+    {
+        if (_leadership == null) return;
+        // Publish this session before activation, but serialize with an offer that may start draining immediately.
+        lock (_lock)
+            if (!_closed && _handoff == null && authority.IsValid) _leadership.Activate(authority, shutdown);
+    }
 
     public bool Authenticate(string apiKey)
     {
@@ -133,6 +142,7 @@ internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAutho
                 {
                     leader._handoff = offer;
                     leader._grants.BeginDrain();
+                    leader._leadership?.EndSession();
                 }
             }
             return ValueTask.CompletedTask;

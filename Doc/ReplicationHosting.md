@@ -1,10 +1,14 @@
 # Hosting BTDB replication
 
-The source projects now expose public application/storage contracts and ASP.NET hosting extensions. They remain
-non-packable while production qualification continues. Reference `BTDB.Replication.Http` and, for Azure storage,
-`BTDB.Replication.Azure`. No `InternalsVisibleTo` access is needed. The
+The preview NuGet packages expose public application/storage contracts and ASP.NET hosting extensions. Install
+`BTDB.Replication.Http` and, for Azure storage, `BTDB.Replication.Azure` at the same version; see
+[packages and release preparation](ReplicationPackages.md). No `InternalsVisibleTo` access is needed. The
 [subprocess application](../BTDB.Replication.Process.Test/Program.cs) builds and runs using only these public APIs.
 Its loopback controls, test clock and simulated application input are test infrastructure, not production defaults.
+
+For typed application events, `BTDB.Replication.EventSourcing` wraps an initialized ObjectDB and separate EventLog
+data/metadata topics with synchronous validation, ordered consumption, native batching and restart replay. See
+[the integration guide](ReplicationEventSourcing.md); restore, schemas and authority remain host-owned.
 
 ## Composition
 
@@ -135,6 +139,44 @@ transaction. After a restore, report the restored cut (its `CommitUlong` and
 `BTreeKeyValueDB.ReplicationRestoredPosition`) until the first local transaction: a leader that reports no progress
 gives its followers nothing to compare, so they cannot advance or release their local history. This is a completed native cut, not a durability acknowledgement or proof of reader visibility during
 virtual batching. `ReportStatus` reports the node role, not a comprehensive readiness/lag signal.
+
+### Application work during leadership
+
+`AddBTDBReplication` registers a singleton `ReplicationLeadership` for this node. Inject it into a scheduler or
+resolve it from the host's services, then observe its long-lived subscription task:
+
+```csharp
+var leadership = app.Services.GetRequiredService<ReplicationLeadership>();
+await leadership.RunWhileLeaderAsync(async leaderCancellation =>
+{
+    await scheduler.RunAsync(leaderCancellation);
+}, stoppingToken);
+```
+
+The helper waits as a follower and starts the callback after actual local activation: term selection, canonical
+validation/adoption and required schema preparation/publication have completed. A lease acquisition, sampled role
+or discovery `LeaderNodeId` alone does not start it. Subscribing after activation starts immediately under the current
+session. Repeated role reports and lease renewals do not restart a callback that completed normally; the subscription
+waits for the next session instead.
+
+The callback's token is canceled on fencing, conservative lease expiry, handoff drain start or node shutdown. An
+independent deadline callback checks the currently proven lease deadline and respects confirmed renewal, so a hung
+provider or publication call cannot defer this cancellation. Handoff cancels application scheduling before waiting
+out confirmation grants. User callbacks and cancellation registrations do not execute on the coordinator's calling
+stack or under its lease locks.
+
+Callbacks for one subscription never overlap: after cancellation, the next active session waits for the previous
+callback's cleanup. A session that ended while cleanup was running is not replayed later. Callback exceptions fault
+the returned task and end only that subscription; replication remains running. The application chooses its own
+retry/restart policy. Caller cancellation unsubscribes, cancels the current callback and waits for its cleanup.
+Node shutdown completes the subscription after cleanup. Observe and join this task before disposing resources used
+by the callback; replication does not wait for application callback cleanup.
+
+Cancellation is cooperative and does not fence an already dispatched external effect. The scheduler must honor the
+token, and external systems still need the application's idempotency or fencing policy. The callback has no borrowed
+ambient context; with `BTDB.Replication.EventSourcing`, open `publisher.StartQuery()` where a local snapshot is needed.
+
+### Host identity and schema callbacks
 
 `CreateCandidate` must return fresh session and API-key values for each acquisition, with the configured cluster,
 endpoint, generation and complete selected database set. `CaptureInitializationCursorAsync` supplies the predecessor
@@ -270,9 +312,9 @@ when its background-failure policy is `Ignore`; the supervisor must implement pr
 Coordinator transitions, lease selection/activation, peer sessions, comparers and HTTP wire DTOs remain
 internal. The public surface provides application and provider integration, not independent election control.
 
-Still pending: qualification with a real application (ObjectDB state after rollback inside virtual batches, input
-replay and the schema lifecycle) and release packaging. Public accessibility does not mark replication
-production-ready.
+Still pending: qualification with the production application's ordered execution, replay, schema lifecycle and
+external effects. The sample ObjectDB application tests provide supporting evidence. Preview publication does not
+close the production-application blocker.
 
 ## Readiness and progress
 

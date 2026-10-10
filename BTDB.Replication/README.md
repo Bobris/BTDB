@@ -7,8 +7,22 @@ that was not yet published.
 
 Status: preview. Implemented and tested with deterministic simulation and seeded schedule exploration, loopback HTTP,
 Azurite, and subprocess failover and ObjectDB application tests; the adapter and subprocess suites also pass against
-live Azure, and restore throughput is measured on Azure VMs. Packages are prepared as `-preview` versions. Open before
-production use: qualification with the production application (see [Architecture](Architecture.md#open-work)).
+live Azure, and restore throughput is measured on Azure VMs. Packages are published as `-preview` versions. Open before
+production use: qualification with the production application (see [Architecture](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/Architecture.md#open-work)).
+
+## Install
+
+Requires .NET 10. For an ASP.NET Core host with Azure Blob Storage, install both adapters at the same preview version:
+
+```sh
+dotnet add package BTDB.Replication.Http --version 35.11.0-preview
+dotnet add package BTDB.Replication.Azure --version 35.11.0-preview
+```
+
+Both depend on `BTDB.Replication`, which brings in BTDB. The optional `BTDB.Replication.EventLog` namespace is
+included in the core package; its HTTP hosting and Azure storage are included in the two adapters. There is no
+separate EventLog package. See the [package and release guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationPackages.md)
+and the [hosting guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationHosting.md) for integration.
 
 ## Properties
 
@@ -32,18 +46,19 @@ production use: qualification with the production application (see [Architecture
 
 | Project | Contents |
 | --- | --- |
-| `BTDB.Replication` | Coordinator, authority, publication, comparison, file set, checkpoints and cleanup; the optional `EventLog` of opaque records ([plan](EventLogImplementationPlan.md)). |
-| [`BTDB.Replication.Http`](../BTDB.Replication.Http/README.md) | Peer transport over ASP.NET Core/Kestrel and hosting registration. |
-| [`BTDB.Replication.Azure`](../BTDB.Replication.Azure/README.md) | Azure leader record/lease and data storage adapters. |
-| [`BTDB.Replication.Process.Test`](../BTDB.Replication.Process.Test/README.md) | Subprocess failover, partition, upgrade and ObjectDB application tests using only the public API. |
+| `BTDB.Replication` | Coordinator, authority, publication, comparison, file set, checkpoints and cleanup; the optional `EventLog` of opaque records ([plan](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/EventLogImplementationPlan.md)). |
+| [`BTDB.Replication.Http`](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication.Http/README.md) | Peer transport over ASP.NET Core/Kestrel and hosting registration. |
+| [`BTDB.Replication.Azure`](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication.Azure/README.md) | Azure leader record/lease and data storage adapters. |
+| [`BTDB.Replication.EventSourcing`](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication.EventSourcing/README.md) | Typed event validation, Layer2 data/metadata topics, ambient ObjectDB consumption and restart replay. |
+| [`BTDB.Replication.Process.Test`](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication.Process.Test/README.md) | Subprocess failover, partition, upgrade and ObjectDB application tests using only the public API. |
 
 ## Documents
 
-- [Architecture](Architecture.md): behavior, invariants, mechanisms, open work and design history.
-- [Hosting](../Doc/ReplicationHosting.md): how an application integrates and configures a node.
-- [Core APIs](../Doc/ReplicationCore.md): the opt-in BTDB core features replication builds on.
-- [Object storage](ObjectStorages.md): the provider-neutral storage contract and Azure/S3 research.
-- [Testing](Testing.md): test harness, coverage and measurements. [M1 evidence](M1Evidence.md): authority clock model.
-- [Implementation plan](ImplementationPlan.md): implementation status and remaining steps.
-- [Event log plan](EventLogImplementationPlan.md): design, measurements and status of the optional event log.
-- [AGENTS.md](AGENTS.md): working agreement for changes to this library.
+- [Architecture](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/Architecture.md): behavior, invariants, mechanisms, open work and design history.
+- [Hosting](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationHosting.md): how an application integrates and configures a node.
+- [Core APIs](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationCore.md): the opt-in BTDB core features replication builds on.
+- [Object storage](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/ObjectStorages.md): the provider-neutral storage contract and Azure/S3 research.
+- [Testing](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/Testing.md): test harness, coverage and measurements. [M1 evidence](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/M1Evidence.md): authority clock model.
+- [Implementation plan](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/ImplementationPlan.md): implementation status and remaining steps.
+- [Event log plan](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/EventLogImplementationPlan.md): design, measurements and status of the optional event log.
+- [AGENTS.md](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/AGENTS.md): working agreement for changes to this library.

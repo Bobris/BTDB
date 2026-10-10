@@ -175,6 +175,20 @@ positive delays in virtual time.
   holds earlier ranges while a later range fails: siblings are cancelled and drained, the original failure is reported,
   and no database is adopted.
 
+## Application leadership work
+
+`ReplicationLeadershipTest` covers follower waiting, late subscription, one invocation per activated session,
+normal completion, callback failure isolation, execution-context isolation, cleanup before replacement execution,
+caller cancellation, fencing, confirmed renewal and conservative expiry while a provider ignores cancellation.
+The held-renewal case motivates an independent deadline check: role reports and renewal completion alone cannot
+stop work at the proven deadline. Handoff tests issue a live confirmation grant and prove cancellation at drain
+start, including an offer that arrives before application activation; a drained session cannot activate work later.
+These cases use an injected monotonic scheduler and explicit task gates, with no clock sleeps.
+
+`ReplicationHostingTest` verifies DI integration and activation gating while term selection is held, callback error
+isolation and application cancellation during HTTP shutdown before an uncooperative renewal returns. These tests
+support the application's lifecycle integration; they do not qualify external effects or close B3.
+
 ## Coordinator simulation
 
 `RandomSchedulesKeepOneAuthorityAndConvergeOnOneHistory` explores seeded whole-node schedules beyond the named cases:

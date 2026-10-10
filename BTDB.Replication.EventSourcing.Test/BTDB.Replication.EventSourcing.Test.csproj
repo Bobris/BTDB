@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+    </PropertyGroup>
+    <ItemGroup>
+        <Compile Include="../BTDB.Replication.Test/LocalReplicatedCollection.cs" Link="LocalReplicatedCollection.cs" />
+        <Compile Include="../BTDB.Replication/EventLog/InMemoryEventLogStorage.cs" Link="InMemoryEventLogStorage.cs" />
+        <Compile Include="../BTDB.Replication.Azure.Test/BlobStorageFixture.cs" Link="BlobStorageFixture.cs" />
+        <PackageReference Include="Azure.Identity" Version="1.21.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <ProjectReference Include="../BTDB.Replication.EventSourcing/BTDB.Replication.EventSourcing.csproj" />
+        <ProjectReference Include="../BTDB.Replication.Azure/BTDB.Replication.Azure.csproj" />
+        <ProjectReference Include="../BTDB.SourceGenerator/BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
+</Project>

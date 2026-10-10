@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 
 namespace BTDB.Replication;
 
@@ -20,6 +21,11 @@ public sealed class LeaseAuthority
     long _deadline;
     bool _held;
     bool _fenced;
+
+    // Async notification only: no application cancellation callback may run under the lease lock.
+    readonly TaskCompletionSource _revoked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal Task Revoked => _revoked.Task;
 
     internal LeaseAuthority(IReplicationScheduler clock, int maximumClockDriftPpm, TimeSpan safetyMargin)
     {
@@ -100,6 +106,7 @@ public sealed class LeaseAuthority
         {
             _fenced = true;
             _held = false;
+            _revoked.TrySetResult();
         }
     }
 

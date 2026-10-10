@@ -1,15 +1,24 @@
 # HTTP replication peer adapter
 
-This non-packable adapter connects `IReplicationPeerTransport` to ASP.NET Core/Kestrel and `HttpClient`, and registers
+This preview NuGet package connects `IReplicationPeerTransport` to ASP.NET Core/Kestrel and `HttpClient`, and registers
 a node in an ASP.NET host. The coordinator keeps owning authentication decisions, grants, comparison, schema
 detachment and handoff; the adapter adds no application execution, Blob fallback, retries or canonical state.
+
+Requires .NET 10 and the ASP.NET Core shared framework:
+
+```sh
+dotnet add package BTDB.Replication.Http --version 35.11.0-preview
+```
+
+The package includes `HttpEventLogPeerTransport` and the optional EventLog hosting extensions.
+See the [package guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationPackages.md) for the complete package family.
 
 ## Hosting
 
 Register the host-owned `IReplicationNodeHost`, `IReplicationLeaderStorage` and
 `IReplicationScheduler` as singletons, call `services.AddBTDBReplication(nodeOptions, maximumClockDriftPpm,
 safetyMargin)` and map `app.MapBTDBReplication()` before starting the host; see the
-[hosting guide](../Doc/ReplicationHosting.md). One node, transport and hosted service are registered per host;
+[hosting guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationHosting.md). One node, transport and hosted service are registered per host;
 duplicate registration, invalid options and a missing route fail before lease acquisition. Readiness is exposed as the
 `btdb-replication` health check and the `BTDB.Replication` meter.
 
@@ -25,7 +34,7 @@ host. Do not log the Authorization header; the adapter never logs identities, cr
 
 The optional event log is hosted separately with `services.AddBTDBEventLog(endpoint, apiKey, options)` and
 `app.MapBTDBEventLog()`, served at `POST /_btdb/eventlog/v1/{submit,bounds,subscribe}` by `HttpEventLogPeerTransport`;
-see the [hosting guide](../Doc/ReplicationHosting.md#event-log).
+see the [hosting guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationHosting.md#event-log).
 
 ## Wire boundary
 
@@ -51,5 +60,5 @@ admits 32 simultaneous requests by default and answers excess requests with HTTP
 progress, heartbeat, ranges, inline bytes, prepared handoff, identity and credential changes, stale in-flight replies,
 cancellation, unavailable files, overload, redirects, message limits and malformed replies. Native BTDB histories with
 TRL rotation, rollback and different virtual batching cross the HTTP boundary. Hosted-service tests run the actual
-coordinator inside Kestrel. The [subprocess suite](../BTDB.Replication.Process.Test/README.md) covers separate
-processes. TLS/proxy deployment, large-cluster load and live-Azure qualification remain open.
+coordinator inside Kestrel. The [subprocess suite](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication.Process.Test/README.md) covers separate
+processes, including recorded live-Azure runs. TLS/proxy deployment and large-cluster load remain open.

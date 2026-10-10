@@ -10,14 +10,25 @@ This project implements the Azure SDK boundary of `BTDB.Replication` through pub
   delayed conditional cleanup.
 - `AzureEventLogStorage` (`IEventLogStorage`): the optional event log's topics as Block Blobs: one conditional Put
   Blob per commit with atomic owner metadata, staged uploads above 64 MiB, and delayed conditional cleanup of merged
-  history. See [ObjectStorages.md](../BTDB.Replication/ObjectStorages.md#event-log-topics).
+  history. See [ObjectStorages.md](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/ObjectStorages.md#event-log-topics).
+
+## Install
+
+Requires .NET 10:
+
+```sh
+dotnet add package BTDB.Replication.Azure --version 35.11.0-preview
+```
+
+This preview package includes both database replication and EventLog storage adapters. See the
+[package guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationPackages.md) for the complete package family.
 
 ## Usage
 
 Construct one data adapter per database with its own nonempty prefix; cleanup lists everything below that prefix.
 Discover the canonical chain with `CanonicalTrlInventory.DiscoverAsync`, then bind it: `storage.Bind(inventory)` for
 restore, `storage.Bind(inventory, authority)` for leader maintenance. Bindings are separate instances whose selected TRL
-versions and authority never change. The [hosting guide](../Doc/ReplicationHosting.md) shows the complete wiring.
+versions and authority never change. The [hosting guide](https://github.com/Bobris/BTDB/blob/master/Doc/ReplicationHosting.md) shows the complete wiring.
 
 Supply authenticated `BlobClient` / `BlobContainerClient` instances; authentication and container provisioning belong
 to the host. Configure SDK clients with `Retry.MaxRetries = 0`: replication reconciles conditional-write ambiguity
@@ -41,7 +52,7 @@ and `databaseNames: []`. Transient provider failures and throttling surface as r
 - Prepared handoff uses lease `Change` after the grant drain. The target renews its proposed ID to confirm ownership,
   including after a lost `Change` response; an unknown or transferred handle uses Azure's 15-second minimum duration.
 
-Metadata keys, key layout and provider research are in [ObjectStorages.md](../BTDB.Replication/ObjectStorages.md).
+Metadata keys, key layout and provider research are in [ObjectStorages.md](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/ObjectStorages.md).
 
 ## Tests
 
@@ -56,7 +67,7 @@ PATH) and exercise the actual SDK with conditional operations, lost responses, l
 publication, activation, checkpoint restore and cleanup. To qualify live Azure instead, set
 `BTDB_AZURE_BLOB_ENDPOINT=https://<account>.blob.core.windows.net`; `DefaultAzureCredential` then needs Storage Blob
 Data Contributor on that account, and each test uses its own temporary container. The recorded live run is in
-[ObjectStorages.md](../BTDB.Replication/ObjectStorages.md).
+[ObjectStorages.md](https://github.com/Bobris/BTDB/blob/master/BTDB.Replication/ObjectStorages.md).
 
 A restore keeps reading a selected object after the leader changes its version, as long as the new version provably
 keeps the selected bytes: a canonical TRL that is at least as long, or a PVL/KVI with the same length and

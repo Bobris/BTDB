@@ -13,11 +13,14 @@ Currently this project these parts:
 - Bon (Binary object notation)
 - Incremental SourceGenerator for IOC Container factory generation
 - Replication of BTDB databases across disposable nodes with Azure Blob Storage (preview,
-  [BTDB.Replication](BTDB.Replication/README.md))
+  [BTDB.Replication](BTDB.Replication/README.md), [NuGet packages](Doc/ReplicationPackages.md)),
+  including an optional ordered EventLog with HTTP and Azure adapters and
+  [typed event dispatch and replay](BTDB.Replication.EventSourcing/README.md)
 
 All code written in C# 12 and licensed under very
-permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting .Net 9.0, main code has just 2
-dependencies (Microsoft.Extensions.Primitives, Microsoft.Extensions.ObjectPool). Code is tested using xUnit Framework.
+permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting .NET 10, main code uses
+Microsoft.Extensions.DependencyInjection, Microsoft.Extensions.Primitives and Microsoft.Extensions.ObjectPool.
+Code is tested using xUnit Framework.
 Used in production on Windows and Linux, on MacOS works as well.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
 It is available in Nuget <http://www.nuget.org/packages/BTDB>. Source code drops are Github releases.
