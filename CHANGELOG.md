@@ -29,6 +29,9 @@
 
 ### Improved
 
+- `EventPublisher` deserializes events in its data reader before the `BufferedEvents` queue, overlapping
+  deserialization with consumption of earlier events, and no longer copies record payloads.
+
 - The EventLog owner now waits briefly before each storage write when publishers answer commits, so records sent
   right after the previous commit, often from other nodes, share the write instead of waiting for the next one. By
   default it chooses the window itself, up to `EventLogOptions.AdaptiveCommitLingerMax` (3 ms), from when records

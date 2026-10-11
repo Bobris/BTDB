@@ -178,7 +178,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                 throw new EventLogOffsetNotAvailableException("The database cursor is outside retained EventLog history.");
             _replayEnd = bounds.Next;
             if (_lastApplied == _replayEnd) await ReadyAsync().ConfigureAwait(false);
-            var channel = Channel.CreateBounded<EventLogRecord>(new BoundedChannelOptions(_options.BufferedEvents)
+            var channel = Channel.CreateBounded<(ulong Offset, StoredEvent Stored)>(new BoundedChannelOptions(_options.BufferedEvents)
                 { SingleReader = true, SingleWriter = true });
             reading = ReadAsync(channel.Writer, _lastApplied);
             while (await channel.Reader.WaitToReadAsync(_lifetime).ConfigureAwait(false))
@@ -192,13 +192,13 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                     for (var count = 0; count < _options.MaximumBatchSize && channel.Reader.TryRead(out var record); count++)
                     {
                         _lifetime.ThrowIfCancellationRequested();
-                        if (record.Offset != cursor) throw new InvalidDataException("Nonconsecutive event input.");
-                        var stored = await DeserializeAsync(record.Payload).ConfigureAwait(false);
+                        var (offset, stored) = record;
+                        if (offset != cursor) throw new InvalidDataException("Nonconsecutive event input.");
                         var ev = stored.Event;
-                        ev.EventId = checked(record.Offset + 1);
+                        ev.EventId = checked(offset + 1);
                         using (var transaction = await Database.StartWritingTransaction(ev.EventId, inBatch: true).ConfigureAwait(false))
                         {
-                            using var scope = Ambient.StartConsume(this, transaction, ev, record.Offset < _replayEnd);
+                            using var scope = Ambient.StartConsume(this, transaction, ev, offset < _replayEnd);
                             var result = _dispatcher.Consume(ev);
                             transaction.Commit();
                             postCommit.AddRange(scope.PostCommit);
@@ -330,12 +330,17 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                 : throw new InvalidDataException("Event metadata is missing from the metadata topic.");
     }
 
-    async Task ReadAsync(ChannelWriter<EventLogRecord> writer, ulong start)
+    // Deserializes ahead of consumption so it overlaps with the consumer's transactions. EventDeserializer copies
+    // all event data (including ReadOnlyMemory<byte> fields), so the payload need not outlive the enumerator step.
+    async Task ReadAsync(ChannelWriter<(ulong Offset, StoredEvent Stored)> writer, ulong start)
     {
         try
         {
             await foreach (var record in _topic.ReadAsync(start, null, _lifetime).ConfigureAwait(false))
-                await writer.WriteAsync(new(record.Offset, record.Payload.ToArray()), _lifetime).ConfigureAwait(false);
+            {
+                var stored = await DeserializeAsync(record.Payload).ConfigureAwait(false);
+                await writer.WriteAsync((record.Offset, stored), _lifetime).ConfigureAwait(false);
+            }
             writer.TryComplete(new EndOfStreamException("The data topic stopped following live records."));
         }
         catch (Exception error) { writer.TryComplete(error); }

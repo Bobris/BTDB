@@ -113,7 +113,8 @@ Every event uses `StartWritingTransaction(eventId, inBatch: true)`, and commits 
 `MaximumBatchSize` bounds each group of buffered events; `FinishTransactionBatchAfterCurrentTransaction` then makes
 the native virtual batch visible. Each event retains its own native transaction and rollback in TRL, so nodes can
 use different batch sizes without reframing history. Pending result tasks complete after this visibility boundary.
-`BufferedEvents` bounds the data-reader queue, and record payloads are copied before advancing EventLog's enumerator.
+`BufferedEvents` bounds the data-reader queue. The reader deserializes each record before queueing, so
+deserialization overlaps with consumption of earlier events; deserialized events never reference the record payload.
 
 `StartAsync` captures the data topic's current durable end, catches up from the restored ObjectDB cursor and returns
 only after that history is visible. During catch-up `Ambient.IsReplay` is true. Records at or beyond the captured end

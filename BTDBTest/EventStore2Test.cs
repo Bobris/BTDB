@@ -10,6 +10,7 @@ using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System.Linq;
 using BTDB;
+using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.Serialization;
 using BTDB.StreamLayer;
@@ -86,6 +87,22 @@ public class EventStore2Test
         deserializer.ProcessMetadataLog(meta);
         Assert.True(deserializer.Deserialize(out obj2, data));
         Assert.Equal(obj, obj2);
+    }
+
+    [Fact]
+    public void DeserializedReadOnlyMemoryDoesNotReferenceInput()
+    {
+        var serializer = new EventSerializer();
+        var obj = new ObjWithReadOnlyMemory { Data = "ahoj"u8.ToArray() };
+        var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
+        serializer.ProcessMetadataLog(meta);
+        var data = serializer.Serialize(out _, obj).AsSyncReadOnlySpan().ToArray();
+
+        var deserializer = new EventDeserializer();
+        deserializer.ProcessMetadataLog(meta);
+        Assert.True(deserializer.Deserialize(out var obj2, ByteBuffer.NewAsync(data)));
+        Array.Clear(data);
+        Assert.Equal("ahoj"u8.ToArray(), ((ObjWithReadOnlyMemory)obj2).Data.ToArray());
     }
 
     public enum StateEnum
