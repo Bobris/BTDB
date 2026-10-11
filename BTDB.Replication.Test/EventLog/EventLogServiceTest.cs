@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -130,10 +131,12 @@ public class EventLogServiceTest
         int _submits;
         public int Submits => Volatile.Read(ref _submits);
         public Func<int, SubmitLoss>? Loss;
+        public readonly ConcurrentQueue<EventLogSubmitRequest> Requests = new();
 
         public async ValueTask<EventLogSubmitResponse> SubmitAsync(EventLogSubmitRequest request,
             CancellationToken cancellation)
         {
+            Requests.Enqueue(request);
             var index = Interlocked.Increment(ref _submits);
             var loss = Loss?.Invoke(index) ?? SubmitLoss.None;
             if (loss == SubmitLoss.Request) throw new PeerUnavailableException("lost request");
@@ -193,6 +196,30 @@ public class EventLogServiceTest
         Assert.Equal(new[] { 1ul, 2ul }, offsets);
     }
 
+    [Fact]
+    public async Task RemoteRoundsCarryAtMostMaxRecordSizeBytes()
+    {
+        var storage = new FaultyEventLogStorage();
+        var options = EventLogCluster.FastOptions with { MaxRecordSize = 100, MaxPublishRoundsInFlight = 1 };
+        var (a, b, interceptor) = StartPair(storage, options);
+        await using var _ = a;
+        await using var __ = b;
+        await Publish(a, -1);
+        // Hold the owner's writes so the follower's records queue up behind its single in-flight round.
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        storage.BeforeMutation = operation => operation.Kind == "write" ? new(gate.Task) : default;
+        var topic = b.GetTopic(Topic);
+        var publishing = Enumerable.Range(0, 40).Select(i => topic.PublishAsync(new byte[40]).AsTask()).ToArray();
+        var deadline = DateTime.UtcNow + Timeout;
+        while (interceptor.Submits < 1 && DateTime.UtcNow < deadline) await Task.Delay(5);
+        gate.SetResult();
+        var offsets = await Task.WhenAll(publishing).WaitAsync(Timeout);
+        Assert.Equal(Enumerable.Range(1, 40).Select(i => (ulong)i), offsets);
+        var rounds = interceptor.Requests.ToArray();
+        Assert.All(rounds, r => Assert.True(r.Records.Sum(record => record.Length) <= 100));
+        Assert.Contains(rounds, r => r.Records.Count == 2); // records still share rounds up to the limit
+    }
+
     [Theory]
     [InlineData(SubmitLoss.Request)]
     [InlineData(SubmitLoss.Response)]
@@ -217,6 +244,27 @@ public class EventLogServiceTest
         var records = await new EventLogStorageReader(storage, Topic).ReadAllAsync();
         Assert.Equal(Enumerable.Range(-1, 301).Select(i => Bytes(i)), records.Select(r => r.Payload.ToArray()));
         Assert.Equal(Enumerable.Range(0, 300).Select(i => (ulong)i + 1), offsets);
+    }
+
+    [Fact]
+    public async Task SubscriberFallingBehindByBytesIsDisconnected()
+    {
+        await using var cluster = new EventLogCluster();
+        var a = cluster.Start("a", EventLogCluster.FastOptions with { SubscriberBufferBytes = 1000 });
+        await Publish(a, 0);
+        await using var live = ((IEventLogPeerHandler)a).SubscribeAsync(Topic, 1, CancellationToken.None)
+            .GetAsyncEnumerator();
+        var first = live.MoveNextAsync().AsTask(); // registers the subscriber and takes the first message
+        var topic = a.GetTopic(Topic);
+        // A message above the limit still fits an empty queue.
+        await topic.PublishAsync(new byte[5000]).AsTask().WaitAsync(Timeout);
+        Assert.True(await first.WaitAsync(Timeout));
+        var offsets = new List<ulong>(live.Current.Kind == EventLogLiveKind.Batch ? [live.Current.Offset] : []);
+        // Three queued 300-byte records fit 1000 bytes; the fourth disconnects the subscriber.
+        for (var i = 0; i < 4; i++) await topic.PublishAsync(new byte[300]).AsTask().WaitAsync(Timeout);
+        while (await live.MoveNextAsync().AsTask().WaitAsync(Timeout))
+            if (live.Current.Kind == EventLogLiveKind.Batch) offsets.Add(live.Current.Offset);
+        Assert.Equal([1ul, 2, 3, 4], offsets);
     }
 
     [Fact]

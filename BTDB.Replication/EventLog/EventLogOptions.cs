@@ -11,8 +11,10 @@ public sealed record EventLogOptions
     /// <summary>Seal a split in the same write once less than this much space remains.</summary>
     public int SealFreeSpace { get; init; } = 64 * 1024;
 
-    /// <summary>Records above this size are rejected before acceptance.</summary>
-    public int MaxRecordSize { get; init; } = 16 * 1024 * 1024;
+    /// <summary>Records above this size are rejected before acceptance. The default admits 50 MiB payloads plus
+    /// a small envelope (such as event-sourcing metadata). A publication round to a remote owner carries at most this
+    /// many record bytes, so all nodes must use the same value.</summary>
+    public int MaxRecordSize { get; init; } = 51 * 1024 * 1024;
 
     public int MaxBatchRecords { get; init; } = 1024;
 
@@ -52,6 +54,10 @@ public sealed record EventLogOptions
     /// <summary>Committed bytes the owner keeps for subscribers that reconnect.</summary>
     public long RecentCacheBytes { get; init; } = 16 * 1024 * 1024;
 
+    /// <summary>Record bytes the owner queues for one live subscriber (beyond a single message, which always fits).
+    /// A subscriber falling further behind is disconnected and catches up from storage.</summary>
+    public long SubscriberBufferBytes { get; init; } = 64 * 1024 * 1024;
+
     /// <summary>Merge fan-out per level; zero disables background merging.</summary>
     public int MergeFanOut { get; init; } = 16;
 
@@ -86,6 +92,7 @@ public sealed record EventLogOptions
         if (MaxRecordSize <= 0 || MaxRecordSize > EventLogFormat.MaxObjectLength / 2)
             throw new ArgumentOutOfRangeException(nameof(MaxRecordSize));
         if (MaxBatchRecords <= 0) throw new ArgumentOutOfRangeException(nameof(MaxBatchRecords));
+        if (SubscriberBufferBytes <= 0) throw new ArgumentOutOfRangeException(nameof(SubscriberBufferBytes));
         if (CommitLinger < TimeSpan.Zero || CommitLinger > TimeSpan.FromSeconds(1))
             throw new ArgumentOutOfRangeException(nameof(CommitLinger));
         if (AdaptiveCommitLingerMax < TimeSpan.Zero || AdaptiveCommitLingerMax > TimeSpan.FromMilliseconds(100))

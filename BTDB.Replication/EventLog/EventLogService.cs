@@ -84,16 +84,31 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         public ulong ResumeFrom;
     }
 
-    sealed class Subscriber
+    sealed class Subscriber(long maximumBytes)
     {
         public readonly System.Threading.Channels.Channel<EventLogLiveMessage> Channel =
             System.Threading.Channels.Channel.CreateBounded<EventLogLiveMessage>(
                 new System.Threading.Channels.BoundedChannelOptions(1024) { SingleReader = true });
 
+        long _bytes;
+
+        static long Bytes(EventLogLiveMessage message)
+        {
+            long bytes = 0;
+            foreach (var record in message.Records) bytes += record.Length + 16;
+            return bytes;
+        }
+
+        // Overflow by count or bytes (beyond one message) completes the stream: the reader catches up from storage.
         public void Offer(EventLogLiveMessage message)
         {
-            if (!Channel.Writer.TryWrite(message)) Channel.Writer.TryComplete(); // overflow: catch up from storage
+            var bytes = Bytes(message);
+            var queued = Interlocked.Add(ref _bytes, bytes);
+            if ((queued > maximumBytes && queued > bytes) || !Channel.Writer.TryWrite(message))
+                Channel.Writer.TryComplete();
         }
+
+        public void Taken(EventLogLiveMessage message) => Interlocked.Add(ref _bytes, -Bytes(message));
     }
 
     readonly EventLogService _service;
@@ -227,10 +242,13 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         if (disposal.IsCancellationRequested) FailOutstanding(new ObjectDisposedException(nameof(EventLogService)));
     }
 
-    /// <summary>The oldest consecutive outstanding records that are neither resolved nor in flight.</summary>
+    /// <summary>The oldest consecutive outstanding records that are neither resolved nor in flight. A round holds at
+    /// most <see cref="EventLogOptions.MaxRecordSize"/> record bytes (but always one record), so a submission to a
+    /// remote owner fits the peer message limit that transports derive from it.</summary>
     List<Outstanding>? TakeRoundLocked()
     {
         List<Outstanding>? round = null;
+        long bytes = 0;
         foreach (var item in _outstanding)
         {
             if (item.InFlight || item.Completion.Task.IsCompleted)
@@ -238,11 +256,13 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
                 if (round != null) break;
                 continue;
             }
-            if (round != null && (round.Count == _options.MaxBatchRecords || item.Sequence != round[^1].Sequence + 1))
+            if (round != null && (round.Count == _options.MaxBatchRecords || item.Sequence != round[^1].Sequence + 1 ||
+                                  bytes + item.Record.Length > _options.MaxRecordSize))
                 break;
             round ??= [];
             item.InFlight = true;
             round.Add(item);
+            bytes += item.Record.Length;
         }
         return round;
     }
@@ -685,7 +705,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
                 refusal = new(EventLogLiveKind.CatchUp, lane.NextOffset, [], lane.TailVersion, null);
             else
             {
-                subscriber = new();
+                subscriber = new(_options.SubscriberBufferBytes);
                 foreach (var batch in _cache)
                     if (batch.FirstOffset + (ulong)batch.Records.Count > from)
                         subscriber.Offer(new(EventLogLiveKind.Batch, batch.FirstOffset, batch.Records, batch.TailVersion,
@@ -701,7 +721,10 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         try
         {
             await foreach (var message in subscriber!.Channel.Reader.ReadAllAsync(cancellation).ConfigureAwait(false))
+            {
+                subscriber.Taken(message);
                 yield return message;
+            }
         }
         finally
         {

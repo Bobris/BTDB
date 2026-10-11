@@ -64,6 +64,11 @@ can be consumed between validation and this event. Enforce ordered business inva
 may return an application rejection without changing data; the event's commit cursor still advances normally.
 Validation does not run again during replay. Do not mutate or reuse the event object until publication completes.
 
+An event whose serialized form exceeds `EventPublisherOptions.MaximumEventSize` fails its publication with
+`EventTooLargeException` (event type, size and limit) without writing data; metadata for a new event type may already
+be published. The default matches the EventLog default `MaxRecordSize` of 51 MiB, which admits 50 MiB payloads; keep
+it at most the data topic's `MaxRecordSize`.
+
 ## Data and metadata topics
 
 Use distinct topics, for example `application-events` and `application-metadata`. They must belong to the same
@@ -113,8 +118,10 @@ Every event uses `StartWritingTransaction(eventId, inBatch: true)`, and commits 
 `MaximumBatchSize` bounds each group of buffered events; `FinishTransactionBatchAfterCurrentTransaction` then makes
 the native virtual batch visible. Each event retains its own native transaction and rollback in TRL, so nodes can
 use different batch sizes without reframing history. Pending result tasks complete after this visibility boundary.
-`BufferedEvents` bounds the data-reader queue. The reader deserializes each record before queueing, so
-deserialization overlaps with consumption of earlier events; deserialized events never reference the record payload.
+`BufferedEvents` (default 256) and `BufferedBytes` (default 64 MiB of serialized events) bound the data-reader queue;
+the byte budget also covers the batch being consumed, and one event always fits however large. The reader reserves
+room before it deserializes a record, so deserialization overlaps with consumption of earlier events; deserialized
+events never reference the record payload.
 
 `StartAsync` captures the data topic's current durable end, catches up from the restored ObjectDB cursor and returns
 only after that history is visible. During catch-up `Ambient.IsReplay` is true. Records at or beyond the captured end

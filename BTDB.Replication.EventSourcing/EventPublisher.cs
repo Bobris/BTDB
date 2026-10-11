@@ -12,10 +12,26 @@ public sealed record EventPublisherOptions
 {
     public int MaximumBatchSize { get; init; } = 32;
     public int BufferedEvents { get; init; } = 256;
+    /// <summary>Serialized bytes of events read ahead of consumption, including those of the batch being consumed.
+    /// One event always fits, however large.</summary>
+    public long BufferedBytes { get; init; } = 64 * 1024 * 1024;
+    /// <summary>Largest serialized event; a larger one fails with <see cref="EventTooLargeException"/> before its data
+    /// publication. Keep it at most the data topic's EventLog <see cref="EventLogOptions.MaxRecordSize"/>.</summary>
+    public int MaximumEventSize { get; init; } = new EventLogOptions().MaxRecordSize;
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
     public Func<Guid> NewPublicationId { get; init; } = Guid.NewGuid;
     public ITypeNameMapper? TypeNameMapper { get; init; }
     public EventCluster? Cluster { get; init; }
+}
+
+/// <summary>An event whose serialized form exceeds <see cref="EventPublisherOptions.MaximumEventSize"/>; nothing of it was
+/// published to the data topic.</summary>
+public sealed class EventTooLargeException(Type eventType, int size, int maximumSize)
+    : Exception($"Event {eventType.Name} serializes to {size} bytes, more than the maximum event size {maximumSize}.")
+{
+    public Type EventType { get; } = eventType;
+    public int Size { get; } = size;
+    public int MaximumSize { get; } = maximumSize;
 }
 
 /// <summary>Replays ordered data and metadata EventLog topics into an already restored and schema-initialized ObjectDB.
@@ -33,8 +49,11 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
     readonly Layer2EventCodec _codec;
     readonly object _metadataLock = new();
     readonly SemaphoreSlim _publishing = new(1);
-    TaskCompletionSource _metadataChanged = NewMetadataSignal();
+    TaskCompletionSource _metadataChanged = NewSignal();
     ulong _metadataNext;
+    readonly object _bufferLock = new();
+    long _bufferedBytes;
+    TaskCompletionSource _bufferReleased = NewSignal();
     readonly IEventDispatcher _dispatcher;
     readonly EventPublisherOptions _options;
     readonly TransactionLogCapture? _capture;
@@ -60,7 +79,8 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
             throw new ArgumentException("Data and metadata must use different topics.", nameof(metadataTopic));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _options = options ?? new();
-        if (_options.MaximumBatchSize <= 0 || _options.BufferedEvents <= 0)
+        if (_options.MaximumBatchSize <= 0 || _options.BufferedEvents <= 0 || _options.BufferedBytes <= 0 ||
+            _options.MaximumEventSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(options));
         ArgumentNullException.ThrowIfNull(_options.TimeProvider);
         ArgumentNullException.ThrowIfNull(_options.NewPublicationId);
@@ -140,6 +160,8 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                     lock (_metadataLock) bytes = _codec.Serialize(stored, out metadata);
                     if (!metadata)
                     {
+                        if (bytes.Length > _options.MaximumEventSize)
+                            throw new EventTooLargeException(stored.Event.GetType(), bytes.Length, _options.MaximumEventSize);
                         writing = _topic.PublishAsync(bytes, linked.Token);
                         break;
                     }
@@ -178,7 +200,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                 throw new EventLogOffsetNotAvailableException("The database cursor is outside retained EventLog history.");
             _replayEnd = bounds.Next;
             if (_lastApplied == _replayEnd) await ReadyAsync().ConfigureAwait(false);
-            var channel = Channel.CreateBounded<(ulong Offset, StoredEvent Stored)>(new BoundedChannelOptions(_options.BufferedEvents)
+            var channel = Channel.CreateBounded<(ulong Offset, StoredEvent Stored, int Size)>(new BoundedChannelOptions(_options.BufferedEvents)
                 { SingleReader = true, SingleWriter = true });
             reading = ReadAsync(channel.Writer, _lastApplied);
             while (await channel.Reader.WaitToReadAsync(_lifetime).ConfigureAwait(false))
@@ -192,7 +214,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                     for (var count = 0; count < _options.MaximumBatchSize && channel.Reader.TryRead(out var record); count++)
                     {
                         _lifetime.ThrowIfCancellationRequested();
-                        var (offset, stored) = record;
+                        var (offset, stored, size) = record;
                         if (offset != cursor) throw new InvalidDataException("Nonconsecutive event input.");
                         var ev = stored.Event;
                         ev.EventId = checked(offset + 1);
@@ -205,6 +227,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                             if (_pending.TryGetValue(stored.PublicationId, out var pending)) completed.Add((pending, result));
                         }
                         cursor = ev.EventId;
+                        ReleaseBuffer(size);
                     }
                 }
                 catch (Exception error) { failure = error; }
@@ -278,7 +301,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
         catch (Exception error) { Fail(error); }
     }
 
-    static TaskCompletionSource NewMetadataSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+    static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     async Task ReadMetadataAsync()
     {
@@ -293,7 +316,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                     _codec.ApplyMetadata(record.Payload);
                     _metadataNext = checked(record.Offset + 1);
                     applied = _metadataChanged;
-                    _metadataChanged = NewMetadataSignal();
+                    _metadataChanged = NewSignal();
                 }
                 applied.TrySetResult();
             }
@@ -332,18 +355,51 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
 
     // Deserializes ahead of consumption so it overlaps with the consumer's transactions. EventDeserializer copies
     // all event data (including ReadOnlyMemory<byte> fields), so the payload need not outlive the enumerator step.
-    async Task ReadAsync(ChannelWriter<(ulong Offset, StoredEvent Stored)> writer, ulong start)
+    async Task ReadAsync(ChannelWriter<(ulong Offset, StoredEvent Stored, int Size)> writer, ulong start)
     {
         try
         {
             await foreach (var record in _topic.ReadAsync(start, null, _lifetime).ConfigureAwait(false))
             {
+                var size = record.Payload.Length;
+                await ReserveBufferAsync(size).ConfigureAwait(false);
                 var stored = await DeserializeAsync(record.Payload).ConfigureAwait(false);
-                await writer.WriteAsync((record.Offset, stored), _lifetime).ConfigureAwait(false);
+                await writer.WriteAsync((record.Offset, stored, size), _lifetime).ConfigureAwait(false);
             }
             writer.TryComplete(new EndOfStreamException("The data topic stopped following live records."));
         }
         catch (Exception error) { writer.TryComplete(error); }
+    }
+
+    // An empty buffer admits any event, so one larger than BufferedBytes still progresses.
+    async Task ReserveBufferAsync(int size)
+    {
+        while (true)
+        {
+            Task released;
+            lock (_bufferLock)
+            {
+                if (_bufferedBytes == 0 || _bufferedBytes + size <= _options.BufferedBytes)
+                {
+                    _bufferedBytes += size;
+                    return;
+                }
+                released = _bufferReleased.Task;
+            }
+            await released.WaitAsync(_lifetime).ConfigureAwait(false);
+        }
+    }
+
+    void ReleaseBuffer(int size)
+    {
+        TaskCompletionSource released;
+        lock (_bufferLock)
+        {
+            _bufferedBytes -= size;
+            released = _bufferReleased;
+            _bufferReleased = NewSignal();
+        }
+        released.TrySetResult();
     }
 
     void UpdateProgress()

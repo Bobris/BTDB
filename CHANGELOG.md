@@ -29,8 +29,19 @@
 
 ### Improved
 
+- `EventLogOptions.MaxRecordSize` defaults to 51 MiB (was 16 MiB), admitting 50 MiB payloads.
+  `HttpEventLogPeerTransport` without an explicit limit sizes its messages for that default.
+
+- Add `EventPublisherOptions.MaximumEventSize` (default: the EventLog default `MaxRecordSize`): a larger serialized
+  event fails with the new `EventTooLargeException` before its data publication.
+
 - `EventPublisher` deserializes events in its data reader before the `BufferedEvents` queue, overlapping
-  deserialization with consumption of earlier events, and no longer copies record payloads.
+  deserialization with consumption of earlier events, and no longer copies record payloads. The new
+  `EventPublisherOptions.BufferedBytes` (default 64 MiB) also bounds that queue and the batch being consumed by
+  serialized event bytes; one event always fits.
+
+- The EventLog owner bounds each live subscriber's queue by `EventLogOptions.SubscriberBufferBytes` (default 64 MiB,
+  one message always fits) besides its 1024 messages; a subscriber falling further behind catches up from storage.
 
 - The EventLog owner now waits briefly before each storage write when publishers answer commits, so records sent
   right after the previous commit, often from other nodes, share the write instead of waiting for the next one. By
@@ -53,6 +64,12 @@
   (`BTDB.Replication/Measurements.md`).
 
 ### Fixed
+
+- EventLog publication rounds sent to a remote owner carry at most `MaxRecordSize` record bytes. Several large
+  concurrent records from a follower no longer exceed the peer message limit and retry forever as a failing peer.
+
+- The HTTP EventLog transport raises the server's request body limit (Kestrel: about 30 MB) to its peer message
+  limit, so submissions of records above 30 MB from followers are accepted.
 
 - Document installation and the included EventLog across all three replication preview packages; fix package README
   links and stale statements that HTTP hosting is non-packable or release packaging remains unimplemented.

@@ -112,6 +112,25 @@ public class EventLogHttpTest
     }
 
     [Fact]
+    public async Task FollowerPublishesConcurrentRecordsOfFiftyMiB()
+    {
+        var storage = new InMemoryEventLogStorage();
+        await using var a = await Node.Start(storage);
+        await using var b = await Node.Start(storage);
+        Assert.Equal(0ul, await a.Log.GetTopic(Topic).PublishAsync(Bytes(0)).AsTask().WaitAsync(Timeout));
+        const int size = 50 * 1024 * 1024;
+        var records = Enumerable.Range(1, 2).Select(i => Enumerable.Repeat((byte)i, size).ToArray()).ToArray();
+        // Above Kestrel's default request body limit, and together above one peer message.
+        var offsets = await Task.WhenAll(records.Select(r => b.Log.GetTopic(Topic).PublishAsync(r).AsTask()))
+            .WaitAsync(Timeout);
+        Assert.Equal([1ul, 2ul], offsets);
+        Assert.True(a.Service.IsOwner(Topic));
+        using var cancel = new CancellationTokenSource(Timeout);
+        await foreach (var record in b.Log.GetTopic(Topic).ReadAsync(1, 3, cancel.Token))
+            Assert.True(record.Payload.Span.SequenceEqual(records[(int)record.Offset - 1]));
+    }
+
+    [Fact]
     public async Task UnauthenticatedPeerRequestsAreRejected()
     {
         await using var a = await Node.Start(new InMemoryEventLogStorage());

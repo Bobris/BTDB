@@ -476,13 +476,17 @@ await foreach (var record in events.ReadAsync(end, null, stopping))    // then f
 - **Endpoint and authentication.** The endpoint is this node's HTTPS origin as peers reach it (HTTP only on
   loopback). Peers call `POST /_btdb/eventlog/v1/{submit,bounds,subscribe}` with the cluster's bearer key.
   Subscriptions are long streamed responses, so disable response buffering and idle timeouts in front of that path.
+  The owner queues at most 1024 messages and `SubscriberBufferBytes` (default 64 MiB, one message always fits) for
+  each live subscriber; a subscriber falling further behind is disconnected and catches up from storage.
 - **Order and duplicates.** Publications that one process starts on a topic, each after the previous call returned,
   commit in call order. A failure or cancellation after dispatch means an unknown outcome, but a committed record
   exists once.
 - **Offsets and replay.** Offsets start at 0 and are contiguous per topic; the application maps them to its event
   IDs. The application persists its applied offset with its own transaction, as with Kafka.
 - **Storage.** Splits are at most `SplitCap` (256 KiB) and are sealed once less than `SealFreeSpace` remains. A record
-  larger than a split gets its own sealed split, up to `MaxRecordSize`.
+  larger than a split gets its own sealed split, up to `MaxRecordSize` (default 51 MiB, admitting 50 MiB payloads).
+  Use the same `MaxRecordSize` on all nodes: a publication round sent to a remote owner carries at most that many
+  record bytes, and the HTTP transport sizes its peer message limit and the server's request body limit from it.
 - **Merging and cleanup.** The owner merges sealed splits every `MergeInterval` into level-1 and level-2 objects
   (fan-out 16) and deletes covered objects after `DeletionDelay` (default one day). Nothing is deleted before the
   record history is covered, and there is no retention in v1.

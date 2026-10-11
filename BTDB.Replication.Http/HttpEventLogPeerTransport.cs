@@ -31,17 +31,24 @@ public sealed class HttpEventLogPeerTransport : IEventLogPeerTransport, IDisposa
     readonly string _apiKeyText;
     readonly int _maximumMessageBytes;
 
-    public HttpEventLogPeerTransport(string apiKey, int maximumMessageBytes = 32 * 1024 * 1024)
+    /// <param name="maximumMessageBytes">Largest peer message; defaults to the limit for the default
+    /// <see cref="EventLogOptions.MaxRecordSize"/>.</param>
+    public HttpEventLogPeerTransport(string apiKey, int? maximumMessageBytes = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(apiKey);
-        ArgumentOutOfRangeException.ThrowIfLessThan(maximumMessageBytes, 64 * 1024);
+        var maximum = maximumMessageBytes ?? MaximumMessageBytes(new EventLogOptions().MaxRecordSize);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximum, 64 * 1024, nameof(maximumMessageBytes));
         _apiKeyText = apiKey;
         _apiKey = Encoding.UTF8.GetBytes(apiKey);
-        _maximumMessageBytes = maximumMessageBytes;
+        _maximumMessageBytes = maximum;
         // Never forward a credential-bearing POST to a redirect target; callers supply deadlines.
         _client = new(new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false })
         { Timeout = Timeout.InfiniteTimeSpan };
     }
+
+    /// <summary>A submission carries up to <paramref name="maxRecordSize"/> record bytes; the rest covers framing.</summary>
+    internal static int MaximumMessageBytes(int maxRecordSize) =>
+        (int)Math.Min(int.MaxValue - 1024L, maxRecordSize + 8L * 1024 * 1024);
 
     internal bool IsMapped { get; private set; }
 
@@ -108,6 +115,9 @@ public sealed class HttpEventLogPeerTransport : IEventLogPeerTransport, IDisposa
                 context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                 return;
             }
+            // The server's own body limit (Kestrel: about 30 MB) would otherwise reject large submissions first.
+            if (context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } bodyLimit)
+                bodyLimit.MaxRequestBodySize = _maximumMessageBytes;
             var body = await ReadBoundedAsync(context.Request.Body, context.Request.ContentLength, _maximumMessageBytes,
                 context.RequestAborted).ConfigureAwait(false);
             await handle(body, context.Response).ConfigureAwait(false);

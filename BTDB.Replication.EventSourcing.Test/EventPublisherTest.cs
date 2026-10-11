@@ -42,6 +42,59 @@ public class EventPublisherTest
     }
 
     [Fact]
+    public async Task EventLargerThanTheMaximumFailsBeforeItsDataPublication()
+    {
+        using var db = await TestDatabase.OpenAsync();
+        var data = new MemoryTopic("data");
+        var metadata = new MemoryTopic("metadata");
+        await using var publisher = new EventPublisher(db.Objects, data, metadata, new Handler().Dispatcher(),
+            new() { TimeProvider = new FixedTime(), MaximumEventSize = 10 }, db.Capture);
+        await publisher.StartAsync();
+        var error = await Assert.ThrowsAsync<EventTooLargeException>(() =>
+            publisher.PublishAndWaitAsync(new Add { Amount = 1 }));
+        Assert.Equal(typeof(Add), error.EventType);
+        Assert.True(error.Size > 10);
+        Assert.Equal(0, data.Count);
+        Assert.False(publisher.Completion.IsCompleted);
+    }
+
+    [Fact]
+    public async Task BufferedBytesBoundTheReadAhead()
+    {
+        var data = new MemoryTopic("data");
+        var metadata = new MemoryTopic("metadata");
+        using (var source = await TestDatabase.OpenAsync())
+        await using (var publisher = source.Publisher(data, metadata, new Handler()))
+        {
+            await publisher.StartAsync();
+            for (var i = 1; i <= 10; i++) await publisher.PublishAsync(new AddPure { Amount = i });
+        }
+        var sizes = new List<int>();
+        await foreach (var record in data.ReadAsync(0, 10)) sizes.Add(record.Payload.Length);
+        Assert.True(sizes.Min() * 3 > sizes.Max() * 5 / 2);
+        using var cold = await TestDatabase.OpenAsync();
+        var handler = new Handler();
+        using var gate = new ManualResetEventSlim();
+        handler.Consuming = ev => { if (ev.EventId == 1) Assert.True(gate.Wait(TimeSpan.FromSeconds(10))); };
+        var requested = -1L;
+        data.BeforeRead = offset =>
+        {
+            Interlocked.Exchange(ref requested, (long)offset);
+            return Task.CompletedTask;
+        };
+        // Room for two events: the one being consumed and one read ahead.
+        await using var coldPublisher = new EventPublisher(cold.Objects, data, metadata, handler.Dispatcher(),
+            new() { TimeProvider = new FixedTime(), BufferedBytes = sizes.Max() * 5 / 2 }, cold.Capture);
+        var starting = coldPublisher.StartAsync();
+        await UntilAsync(() => Interlocked.Read(ref requested) >= 2);
+        await Task.Delay(100);
+        Assert.Equal(2, Interlocked.Read(ref requested)); // the third record waits for room before deserialization
+        gate.Set();
+        await starting;
+        Assert.Equal(Enumerable.Range(1, 10).Select(i => ((ulong)i, true)), handler.Seen);
+    }
+
+    [Fact]
     public async Task SeparateTopicsReuseMetadataAndReturnVisibleLocalResults()
     {
         using var db = await TestDatabase.OpenAsync();
