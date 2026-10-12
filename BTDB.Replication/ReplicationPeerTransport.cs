@@ -83,6 +83,9 @@ internal interface IReplicationPeerSession : IDisposable
         TimeSpan duration, int inlineBudget, CancellationToken cancellation);
     ILeaderTrlReader Reader(string database);
     ValueTask OfferHandoffAsync(PreparedHandoff offer, CancellationToken cancellation);
+    // Separate from the poll: a leader without presence support fails only this call.
+    ValueTask<ReplicationPresenceView> ExchangePresenceAsync(ReplicationPresenceRequest request,
+        CancellationToken cancellation);
 }
 
 internal interface IReplicationPeerTransport

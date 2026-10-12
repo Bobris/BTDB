@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Security.Principal;
 using BTDB;
 using BTDB.Collections;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -13,6 +14,7 @@ using Xunit;
 
 namespace BTDBTest;
 
+[Collection("IFieldHandler.UseNoEmitForRelations")]
 public class ObjectDbTableUpgradeTest : IDisposable
 {
     readonly IKeyValueDB _lowDb;
@@ -42,18 +44,20 @@ public class ObjectDbTableUpgradeTest : IDisposable
         _fieldHandlerLoggerMessages.Clear();
     }
 
-    void ReopenDb()
+    void ReopenDb(ISymmetricCipher? cipher = null)
     {
         _db.Dispose();
-        OpenDb();
+        OpenDb(cipher);
     }
 
-    void OpenDb()
+    void OpenDb(ISymmetricCipher? cipher = null)
     {
         _db = new ObjectDB();
-        _db.Open(_lowDb, false,
-            new DBOptions().WithoutAutoRegistration()
-                .WithFieldHandlerLogger(new DefaultFieldHandlerLogger(s => _fieldHandlerLoggerMessages.Add(s))));
+        var options = new DBOptions().WithoutAutoRegistration()
+            .WithFieldHandlerLogger(new DefaultFieldHandlerLogger(s => _fieldHandlerLoggerMessages.Add(s)));
+        if (cipher != null)
+            options.WithSymmetricCipher(cipher);
+        _db.Open(_lowDb, false, options);
     }
 
     public class JobV1
@@ -663,6 +667,166 @@ public class ObjectDbTableUpgradeTest : IDisposable
             using var cursor = tr.KeyValueDBTransaction.CreateCursor();
             Assert.Equal(0, cursor.GetKeyValueCount([ObjectDB.AllDictionariesPrefixByte]));
         }
+    }
+
+    void RunWithEmitMode(bool useNoEmit, Action test)
+    {
+        var saved = (IFieldHandler.UseNoEmit, IFieldHandler.UseNoEmitForKeyValue,
+            IFieldHandler.UseNoEmitForRelations, IFieldHandler.UseNoEmitForDescriptors);
+        try
+        {
+            IFieldHandler.UseNoEmit = useNoEmit;
+            IFieldHandler.UseNoEmitForKeyValue = useNoEmit;
+            IFieldHandler.UseNoEmitForRelations = useNoEmit;
+            IFieldHandler.UseNoEmitForDescriptors = useNoEmit;
+            ObjectDB.ResetAllMetadataCaches();
+            ReopenDb();
+            test();
+        }
+        finally
+        {
+            (IFieldHandler.UseNoEmit, IFieldHandler.UseNoEmitForKeyValue,
+                IFieldHandler.UseNoEmitForRelations, IFieldHandler.UseNoEmitForDescriptors) = saved;
+            ObjectDB.ResetAllMetadataCaches();
+        }
+    }
+
+    public class EncryptedDictionaryV1
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public IDictionary<string, EncryptedString> Values { get; set; }
+    }
+
+    public interface IEncryptedDictionaryV1Table : IRelation<EncryptedDictionaryV1>
+    {
+    }
+
+    public class EncryptedDictionaryV2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public IDictionary<string, string> Values { get; set; }
+    }
+
+    public interface IEncryptedDictionaryV2Table : IRelation<EncryptedDictionaryV2>
+    {
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void EncryptedStringToStringInDictionaryPreservesData(bool useNoEmit)
+    {
+        RunWithEmitMode(useNoEmit, () =>
+        {
+            var cipher = new AesGcmSymmetricCipher(new byte[32]);
+            ReopenDb(cipher);
+            var expected = new Dictionary<string, string>
+            {
+                ["password"] = "pAsSwOrD\0with a newline\n",
+                ["unicode"] = "Příliš žluťoučký kůň 🔐",
+                ["empty"] = ""
+            };
+            using (var tr = _db.StartTransaction())
+            {
+                var table = tr.InitRelation<IEncryptedDictionaryV1Table>("T")(tr);
+                table.Upsert(new()
+                {
+                    Id = 1,
+                    Values = expected.ToDictionary(pair => pair.Key, pair => (EncryptedString)pair.Value)
+                });
+                tr.Commit();
+            }
+
+            ReopenDb(cipher);
+
+            using (var tr = _db.StartTransaction())
+            {
+                var table = tr.InitRelation<IEncryptedDictionaryV2Table>("T")(tr);
+                var row = Assert.Single(table);
+                Assert.Equal(1ul, row.Id);
+                Assert.Equal(expected.Count, row.Values.Count);
+                foreach (var pair in expected)
+                    Assert.Equal(pair.Value, row.Values[pair.Key]);
+            }
+        });
+    }
+
+    public class NestedDictionaryV1
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public IDictionary<string, string> Values { get; set; }
+        public IDictionary<string, IDictionary<string, IDictionary<string, string>>> Nested { get; set; }
+    }
+
+    public interface INestedDictionaryV1Table : IRelation<NestedDictionaryV1>
+    {
+    }
+
+    public class NestedDictionaryV2
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public Dictionary<string, string> Values { get; set; }
+        public Dictionary<string, Dictionary<string, Dictionary<string, string>>> Nested { get; set; }
+    }
+
+    public interface INestedDictionaryV2Table : IRelation<NestedDictionaryV2>
+    {
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MakingNestedDictionariesEagerPreservesData(bool useNoEmit)
+    {
+        RunWithEmitMode(useNoEmit, () =>
+        {
+            var expected = new NestedDictionaryV1
+            {
+                Id = 1,
+                Values = new Dictionary<string, string> { ["first"] = "one", ["second"] = "" },
+                Nested = new Dictionary<string, IDictionary<string, IDictionary<string, string>>>
+                {
+                    ["group"] = new Dictionary<string, IDictionary<string, string>>
+                    {
+                        ["values"] = new Dictionary<string, string> { ["first"] = "jedna", ["second"] = "žluťoučký" },
+                        ["other"] = new Dictionary<string, string> { ["first"] = "different value" },
+                        ["empty"] = new Dictionary<string, string>()
+                    },
+                    ["empty"] = new Dictionary<string, IDictionary<string, string>>()
+                }
+            };
+            using (var tr = _db.StartTransaction())
+            {
+                var table = tr.InitRelation<INestedDictionaryV1Table>("T")(tr);
+                table.Upsert(expected);
+                tr.Commit();
+            }
+
+            ReopenDb();
+
+            using (var tr = _db.StartTransaction())
+            {
+                var table = tr.InitRelation<INestedDictionaryV2Table>("T")(tr);
+                var row = Assert.Single(table);
+                Assert.Equal(expected.Id, row.Id);
+                Assert.Equal(expected.Values.Count, row.Values.Count);
+                foreach (var pair in expected.Values)
+                    Assert.Equal(pair.Value, row.Values[pair.Key]);
+                Assert.Equal(expected.Nested.Count, row.Nested.Count);
+                foreach (var outer in expected.Nested)
+                {
+                    var actualMiddle = row.Nested[outer.Key];
+                    Assert.Equal(outer.Value.Count, actualMiddle.Count);
+                    foreach (var middle in outer.Value)
+                    {
+                        var actualInner = actualMiddle[middle.Key];
+                        Assert.Equal(middle.Value.Count, actualInner.Count);
+                        foreach (var inner in middle.Value)
+                            Assert.Equal(inner.Value, actualInner[inner.Key]);
+                    }
+                }
+            }
+        });
     }
 
     public class ObjWithDictV1

@@ -14,19 +14,23 @@ public enum ReplicationNodeRole { Restoring, Follower, Activating, Leader, Resta
 /// <summary>RequestTimeout bounds each discovery and follower control/comparison step. Leader activation, publication
 /// and checkpoint maintenance transfer bulk data, so they are bounded by lease authority and optional ProgressTimeouts.
 /// DetachedLeaderTimeout (default 15 minutes) is how long a schema-detached node waits without leader evidence before
-/// requesting a restart.</summary>
+/// requesting a restart. PresenceInterval (default 1 second) is how often a follower announces its
+/// <see cref="ReplicationPresence"/> to the leader; the leader expires a node silent for three intervals plus
+/// RequestTimeout.</summary>
 public sealed record ReplicationNodeOptions(string ClusterId, string Endpoint, TimeSpan PollInterval,
     TimeSpan LeaseRetryInterval, TimeSpan RequestTimeout, TimeSpan ConfirmationDuration, ulong ApplicationGeneration, TimeSpan? CompactionInterval = null,
-    ReplicationProgressTimeouts? ProgressTimeouts = null, TimeSpan? DetachedLeaderTimeout = null)
+    ReplicationProgressTimeouts? ProgressTimeouts = null, TimeSpan? DetachedLeaderTimeout = null, TimeSpan? PresenceInterval = null)
 {
     internal TimeSpan EffectiveCompactionInterval => CompactionInterval ?? TimeSpan.FromMinutes(5);
     internal TimeSpan EffectiveDetachedLeaderTimeout => DetachedLeaderTimeout ?? TimeSpan.FromMinutes(15);
+    internal TimeSpan EffectivePresenceInterval => PresenceInterval ?? TimeSpan.FromSeconds(1);
+    internal TimeSpan PresenceTimeout => 3 * EffectivePresenceInterval + RequestTimeout;
 
     internal void Validate()
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ClusterId);
         foreach (var duration in new[] { PollInterval, LeaseRetryInterval, RequestTimeout, ConfirmationDuration,
-                     EffectiveCompactionInterval, EffectiveDetachedLeaderTimeout })
+                     EffectiveCompactionInterval, EffectiveDetachedLeaderTimeout, EffectivePresenceInterval })
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(duration.Ticks);
         ProgressTimeouts?.Validate();
     }
@@ -74,7 +78,8 @@ public interface IReplicationNodeHost
 /// divergence stop replication without disposing databases or cancelling ordinary local application work.</summary>
 internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options, IReplicationNodeHost host,
     IReplicationLeaderStorage records, LeaseSessionController leases, IReplicationPeerTransport transport,
-    IReplicationScheduler scheduler, ReplicationStatus? status = null, ReplicationLeadership? applicationLeadership = null)
+    IReplicationScheduler scheduler, ReplicationStatus? status = null, ReplicationLeadership? applicationLeadership = null,
+    ReplicationPresence? presence = null)
 {
     IReadOnlyList<ActivationDatabase> _databases = Array.Empty<ActivationDatabase>();
     IReadOnlyList<CanonicalTrlPublisher>? _publishers;
@@ -114,6 +119,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     readonly List<ReplicationMaintenanceWatchdog> _maintenanceWatchdogs = new();
     readonly TaskCompletionSource _fatalRestart = new(TaskCreationOptions.RunContinuationsAsynchronously);
     volatile bool _restart;
+    TimeSpan _nextPresence;
 
     public ReplicationNodeRole Role { get; private set; } = ReplicationNodeRole.Restoring;
 
@@ -132,6 +138,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
     public async Task RunAsync(CancellationToken cancellation)
     {
         options.Validate();
+        presence?.Bind(scheduler, options.PresenceTimeout);
         var detachedTimeout = options.EffectiveDetachedLeaderTimeout;
         using var shutdown = cancellation.Register(() => { StopWatchdogs(); applicationLeadership?.Stop(); });
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
@@ -315,7 +322,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 }
                 if (!authority.IsValid) { DropLeadership(); return; }
                 var serving = new ServingLeader(identity, authority, databases, publishers, host, scheduler,
-                    options.ApplicationGeneration, applicationLeadership);
+                    options.ApplicationGeneration, applicationLeadership, presence, _candidate.NodeId);
                 Volatile.Write(ref _serving, serving);
                 status?.LeaderSessionStarted();
                 serving.StartApplicationLeadership(nodeCancellation);
@@ -396,6 +403,7 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             _leaderDatabases.UnionWith(LeaderJson.OptionalNames(json, "databaseNames") ?? []);
             _peer = await transport.ConnectAsync(identity, cancellation).ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
+            presence?.Connected(LeaderJson.OptionalString(json, "nodeId"));
             if (_comparedLeader != (identity.Term, identity.SessionId))
             {
                 _comparedLeader = (identity.Term, identity.SessionId);
@@ -414,11 +422,26 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
             }
         }
         if (!await PollLeaderAsync(databases, cancellation).ConfigureAwait(false)) return;
+        await ExchangePresenceAsync(cancellation).ConfigureAwait(false);
         if (_detached.Count == 0 && host.PreparedUpgrade is { } offer && offer.ApplicationGeneration == options.ApplicationGeneration)
         {
             leases.ProposeTransfer(offer.TransferId);
             await _peer.OfferHandoffAsync(offer, cancellation).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>Presence is best effort and separate from the poll, so a leader without presence support (an older
+    /// version during a rolling upgrade) or a failed exchange never disturbs replication; the view reports Settling.</summary>
+    async ValueTask ExchangePresenceAsync(CancellationToken cancellation)
+    {
+        if (presence == null || _peer == null || !presence.TakeDue(options.EffectivePresenceInterval, ref _nextPresence))
+            return;
+        try
+        {
+            var (request, sequence) = presence.Request(options.Endpoint);
+            presence.Received(await _peer.ExchangePresenceAsync(request, cancellation).ConfigureAwait(false), sequence);
+        }
+        catch (Exception) when (!cancellation.IsCancellationRequested) { }
     }
 
     // Inline TRL bytes one poll may carry, the most a leader honours; the rest of a larger backlog is read by range.

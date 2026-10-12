@@ -45,10 +45,10 @@ In a handler, `Ambient.RegisterPostCommit(Action)` schedules synchronous work af
 with a fresh query scope. Replay ignores it automatically and rollback discards it. Actions run locally on all live
 instances and are not persisted or retried.
 
-Set `EventPublisherOptions.Cluster` to an `EventCluster(nodeId, clusterId, membershipStorage, replicationLeaderStorage)`
-to read `Ambient.Cluster` or `publisher.Cluster`: `SelfNodeId`, `LeaderNodeId` and `LiveNodeIds`. Shared-storage
-heartbeats register consumers after replay, unregister them on shutdown and expire crashed sessions. Use an isolated
-membership storage prefix, the host's node ID and the same replication leader document; this adds no event topic.
+Set `EventPublisherOptions.Cluster` to an `EventCluster(nodeId, replicationPresence)` to read `Ambient.Cluster` or
+`publisher.Cluster`: `SelfNodeId`, `LeaderNodeId`, `LiveNodeIds` and `Settling`. Consumers announce themselves after
+replay to the selected replication leader through the node's `ReplicationPresence`, withdraw on shutdown and expire
+after a crash. Membership adds no shared-storage requests and no event topic; use the host's node ID.
 
 Layer2 uses two separate topics, following the Skymamba model: metadata is applied in topic order to both serializer
 and deserializer before dependent data is written or consumed. Metadata is retained from offset zero; data replay

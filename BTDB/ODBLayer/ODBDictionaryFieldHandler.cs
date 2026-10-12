@@ -339,7 +339,11 @@ public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedF
 
         if (asType.IsGenericType && asType.GetGenericTypeDefinition() == typeof(Dictionary<,>))
         {
-            var genericArguments = asType!.GetGenericArguments();
+            var genericArguments = asType.GetGenericArguments();
+            // Nested persistent dictionaries must be read in their stored form before eager conversion.
+            if (_valuesHandler is ODBDictionaryFieldHandler && genericArguments[1].IsGenericType &&
+                genericArguments[1].GetGenericTypeDefinition() == typeof(Dictionary<,>))
+                genericArguments[1] = _valuesHandler.HandledType()!;
             return this.BuildConvertingLoader(typeof(IDictionary<,>).MakeGenericType(genericArguments), asType,
                 typeConverterFactory);
         }

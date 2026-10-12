@@ -26,12 +26,9 @@ public class AzureEventSourcingTest(BlobStorageFixture blobs) : IClassFixture<Bl
         var data = log.GetTopic("events");
         var metadata = log.GetTopic("metadata");
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var leaderBlob = container.GetBlobClient("replication/leader.json");
-        var initialLeader = "{\"format\":1,\"clusterId\":\"typed-app\",\"nodeId\":\"a\"}";
-        await leaderBlob.UploadAsync(BinaryData.FromString(initialLeader), timeout.Token);
-        var leaders = new AzureLeaderStorage(leaderBlob, TimeSpan.FromSeconds(15), initialLeader);
-        var ac = new EventCluster("a", "typed-app", new AzureEventLogStorage(container, "membership"), leaders);
-        var bc = new EventCluster("b", "typed-app", new AzureEventLogStorage(container, "membership"), leaders);
+        await using var network = new PresenceNetwork("a", "b");
+        var ac = new EventCluster("a", network.Node("a"));
+        var bc = new EventCluster("b", network.Node("b"));
         using (var a = await TestDatabase.OpenAsync())
         using (var b = await TestDatabase.OpenAsync())
         {

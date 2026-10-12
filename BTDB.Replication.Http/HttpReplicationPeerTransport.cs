@@ -143,6 +143,16 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
                         }
                         finally { ArrayPool<byte>.Shared.Return(buffer); }
                         break;
+                    case PeerOperation.Presence:
+                        if (request.Presence is not { Endpoint.Length: > 0 } announcement)
+                            throw new ArgumentException("Invalid presence announcement.");
+                        var view = ReplicationPeerWire.EncodePresence(
+                            await session.ExchangePresenceAsync(announcement, cancellation).ConfigureAwait(false));
+                        CheckListener(listener, identity, cancellation);
+                        context.Response.ContentType = "application/octet-stream";
+                        context.Response.ContentLength = view.Length;
+                        await context.Response.Body.WriteAsync(view, cancellation).ConfigureAwait(false);
+                        break;
                     case PeerOperation.Handoff:
                         if (request.Handoff == null || !Guid.TryParse(request.Handoff.TransferId, out _))
                             throw new ArgumentException("Invalid prepared handoff.");
@@ -253,6 +263,19 @@ internal sealed class HttpReplicationPeerTransport : IReplicationPeerTransport, 
         {
             using var response = await SendAsync(Message(PeerOperation.Handoff) with { Handoff = offer }, cancellation).ConfigureAwait(false);
             RequireStatus(response, HttpStatusCode.NoContent);
+        }
+
+        public async ValueTask<ReplicationPresenceView> ExchangePresenceAsync(ReplicationPresenceRequest request,
+            CancellationToken cancellation)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _closed.Token);
+            using var response = await SendAsync(Message(PeerOperation.Presence) with { Presence = request }, linked.Token)
+                .ConfigureAwait(false);
+            RequireStatus(response, HttpStatusCode.OK);
+            var bytes = await ReadBoundedAsync(await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false),
+                response.Content.Headers.ContentLength, ReplicationPeerWire.MaximumPresenceBytes, linked.Token).ConfigureAwait(false);
+            try { return ReplicationPeerWire.DecodePresence(bytes); }
+            catch (InvalidDataException error) { throw new IOException("Invalid presence view.", error); }
         }
 
         async ValueTask<HttpResponseMessage> SendAsync(PeerRequest message, CancellationToken cancellation)

@@ -140,6 +140,28 @@ transaction. After a restore, report the restored cut (its `CommitUlong` and
 gives its followers nothing to compare, so they cannot advance or release their local history. This is a completed native cut, not a durability acknowledgement or proof of reader visibility during
 virtual batching. `ReportStatus` reports the node role, not a comprehensive readiness/lag signal.
 
+### Node presence
+
+`AddBTDBReplication` also registers a singleton `ReplicationPresence`. Each node may announce one short value
+(`Announce`, up to 4096 characters, `null` withdraws it). Followers send it to the selected leader once per
+`ReplicationNodeOptions.PresenceInterval` (default 1 s), and promptly after a change, as a separate peer request next to
+their poll. The leader answers with its view of every announced node, keyed by endpoint, and keeps that view only in
+memory: presence makes no shared-storage requests, and expiry uses the leader's monotonic clock, so node clocks need
+not agree. A node that stops announcing disappears after three intervals plus `RequestTimeout`.
+
+```csharp
+var presence = app.Services.GetRequiredService<ReplicationPresence>();
+presence.Announce("{\"role\":\"worker\"}");
+var view = presence.Current;                       // no I/O: LeaderNodeId, Settling, Members
+var fresh = await presence.RefreshAsync(stopping); // after an exchange that carries every earlier announcement
+```
+
+Lease fencing makes at most one leader serve presence. A new leader session starts empty and reports `Settling` until
+every live node had one presence timeout to announce itself; a node that has not exchanged with a leader within that
+timeout also reports `Settling`. A presence failure, including a leader running an older version without presence
+during a rolling upgrade, only leaves the view settling; it never disturbs replication. Presence is sampled discovery,
+not fencing: under a partition each side sees only the nodes reaching its leader.
+
 ### Application work during leadership
 
 `AddBTDBReplication` registers a singleton `ReplicationLeadership` for this node. Inject it into a scheduler or
@@ -234,6 +256,7 @@ Values qualified by the subprocess tests on live Azure; measure restore and expo
 | Lease duration (`AzureLeaderStorage`) | 15 s | Azure minimum; takeover after a crash takes one lease plus activation. |
 | `maximumClockDriftPpm`, `safetyMargin` | 1000 ppm, 250 ms | See *Clock and lease settings*. |
 | `PollInterval` | 50–200 ms | Comparison latency against one small request per follower per interval. |
+| `PresenceInterval` | 1 s (default) | One small presence request per follower per interval; changes travel with the next poll step. |
 | `LeaseRetryInterval` | 250 ms | Acquisition retries only; renewals schedule themselves within the lease. |
 | `RequestTimeout` | 2 s | Must be below half of the usable lease (validated when the first lease is acquired). |
 | `ConfirmationDuration` | 1 s | Planned handoff waits this long; must be below half of the usable lease (validated). |

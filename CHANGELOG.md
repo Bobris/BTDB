@@ -4,6 +4,12 @@
 
 ### Added
 
+- Add `ReplicationPresence`, registered by `AddBTDBReplication`: each node announces one value to the selected
+  replication leader, which aggregates the view in memory and returns it to followers with `LeaderNodeId` and a
+  `Settling` flag. Followers exchange presence once per `ReplicationNodeOptions.PresenceInterval` (default 1 s) as a
+  separate peer request, so a leader without presence support never disturbs replication. Presence makes no
+  shared-storage requests and needs no synchronized clocks.
+
 - Add `ReplicationLeadership.RunWhileLeaderAsync` for application schedulers: run once per activated local leader
   session, cancel on fencing, conservative lease expiry, handoff drain or shutdown, and expose callback failures
   through the subscription task. HTTP hosting registers the node-scoped service automatically; callback execution
@@ -28,6 +34,11 @@
   for the next release without publishing, reading credentials or changing tracked versions, the changelog or Git.
 
 ### Improved
+
+- `EventCluster` membership runs over `ReplicationPresence` instead of shared-storage heartbeats: the constructor
+  is now `EventCluster(nodeId, replicationPresence)`, `EventClusterSnapshot` reports `Settling` instead of
+  `SampledAt`, and `EventClusterOptions` keeps only `RequestTimeout` and `NewSessionId`. An idle three-node cluster
+  no longer writes and lists membership blobs every 5 seconds per node (about $40 a month on GZRS Hot).
 
 - An idle EventLog owner skips its background merge pass, and so the topic listing, while it committed nothing since
   the last pass and no deletion deadline is due. An idle topic now costs only the owner's heartbeat validation.
@@ -82,6 +93,10 @@
   (`BTDB.Replication/Measurements.md`).
 
 ### Fixed
+
+- Preserve nested dictionary values when upgrading stored `IDictionary` fields and their nested layers to `Dictionary`.
+  Select the conversion path once when creating the converter, without per-entry conversion checks.
+  Support value conversions including numeric, nullable, boxed and custom struct values, and handle empty dictionaries.
 
 - An EventLog topic whose owner restarted at the same endpoint or vanished while idle no longer leaves every follower
   polling storage (List and Get Blob up to five times per second per node and topic). A node following the topic live,

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using Xunit;
 
@@ -22,9 +23,26 @@ public class ReplicationPeerWireTest
                  {
                      Base(PeerOperation.Connect),
                      Base(PeerOperation.Read) with { Database = "a", FileId = 3, Offset = 1ul << 40, Count = 4096 },
-                     Base(PeerOperation.Handoff) with { Handoff = new(9, "10000000-0000-0000-0000-000000000009") }
+                     Base(PeerOperation.Handoff) with { Handoff = new(9, "10000000-0000-0000-0000-000000000009") },
+                     Base(PeerOperation.Presence) with { Presence = new("https://follower", "value", 12) },
+                     Base(PeerOperation.Presence) with { Presence = new("https://follower", null, 0) }
                  })
             Assert.Equal(request, ReplicationPeerWire.DecodeRequest(ReplicationPeerWire.EncodeRequest(request)));
+    }
+
+    [Fact]
+    public void PresenceViewRoundTripsAndRejectsOversizedValues()
+    {
+        var members = new Dictionary<string, string> { ["https://a"] = "A", ["https://b"] = "" };
+        var view = ReplicationPeerWire.DecodePresence(ReplicationPeerWire.EncodePresence(new(3, true, members)));
+        Assert.Equal((3ul, true), (view.Version, view.Settling));
+        Assert.Equal(members, view.Members);
+        Assert.Null(ReplicationPeerWire.DecodePresence(ReplicationPeerWire.EncodePresence(new(4, false, null))).Members);
+        var oversized = Base(PeerOperation.Presence) with
+        {
+            Presence = new("https://follower", new string('x', ReplicationPresence.MaximumValueLength + 1), 0)
+        };
+        Assert.Throws<InvalidDataException>(() => ReplicationPeerWire.DecodeRequest(ReplicationPeerWire.EncodeRequest(oversized)));
     }
 
     [Fact]

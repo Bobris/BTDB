@@ -235,6 +235,7 @@ public partial class ReplicationNodeCoordinatorTest
         public BTreeKeyValueDB? Db;
         public ReplicationFileSet? Collection;
         public readonly ReplicationStatus Status = new();
+        public readonly ReplicationPresence Presence = new();
         public ReplicationNodeCoordinator Coordinator = null!;
         public Task Run = null!;
         public int Restarts, Applied, Initializations, Compactions, LocalKvis;
@@ -267,7 +268,8 @@ public partial class ReplicationNodeCoordinatorTest
             var leases = Leases = new LeaseSessionController(Storage, _scope, 0, TimeSpan.Zero);
             Coordinator = new(new("cluster", _name, TimeSpan.FromTicks(10), TimeSpan.FromTicks(20),
                 TimeSpan.FromTicks(15), TimeSpan.FromTicks(10), Generation, CompactionTicks is { } ticks ? TimeSpan.FromTicks(ticks) : null,
-                ProgressTimeoutTicks is { } timeout ? new(TimeSpan.FromTicks(timeout), TimeSpan.FromTicks(timeout), TimeSpan.FromTicks(RestartDelayTicks), TimeSpan.FromTicks(timeout)) : null), this, Storage, leases, Peers, _scope, Status);
+                ProgressTimeoutTicks is { } timeout ? new(TimeSpan.FromTicks(timeout), TimeSpan.FromTicks(timeout), TimeSpan.FromTicks(RestartDelayTicks), TimeSpan.FromTicks(timeout)) : null,
+                PresenceInterval: TimeSpan.FromTicks(10)), this, Storage, leases, Peers, _scope, Status, presence: Presence);
             Run = Coordinator.RunAsync(Cancellation.Token);
         }
         public async ValueTask<IReadOnlyList<ActivationDatabase>> RestoreAsync(CancellationToken cancellation)
@@ -411,6 +413,9 @@ public partial class ReplicationNodeCoordinatorTest
             }
             public ValueTask OfferHandoffAsync(PreparedHandoff offer, CancellationToken cancellation)
             { owner.Check(endpoint, cancellation); return inner.OfferHandoffAsync(offer, cancellation); }
+            public ValueTask<ReplicationPresenceView> ExchangePresenceAsync(ReplicationPresenceRequest request,
+                CancellationToken cancellation)
+            { owner.Check(endpoint, cancellation); return inner.ExchangePresenceAsync(request, cancellation); }
             public ILeaderTrlReader Reader(string database) => new ReaderProxy(owner, endpoint, inner.Reader(database));
         }
         sealed class ReaderProxy(PeerTransport owner, string endpoint, ILeaderTrlReader inner) : ILeaderTrlReader
@@ -524,6 +529,59 @@ public partial class ReplicationNodeCoordinatorTest
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => follower.Run);
         Assert.False(follower.Status.Current.Ready);
         Assert.Equal(ReplicationNodeRole.Stopped, follower.Status.Current.Role);
+    }
+
+    [Fact]
+    public async Task PresenceFollowsTheSelectedLeaderWithoutStorageAndSettlesAfterTakeover()
+    {
+        await using var cluster = await Cluster.Create();
+        var a = cluster.Start("a");
+        var b = cluster.Start("b");
+        var c = cluster.Start("c");
+        cluster.Advance(20);
+        Assert.Equal(ReplicationNodeRole.Leader, a.Coordinator.Role);
+        a.Presence.Announce("A");
+        b.Presence.Announce("B");
+        c.Presence.Announce("C");
+        var writes = cluster.Trls.Blobs.Count;
+        cluster.Advance(60); // past the presence timeout (3 intervals + request timeout = 45 ticks) of the new leader
+        var all = new Dictionary<string, string> { ["a"] = "A", ["b"] = "B", ["c"] = "C" };
+        foreach (var node in new[] { a, b, c })
+        {
+            var view = node.Presence.Current;
+            Assert.Equal(("a", false), (view.LeaderNodeId, view.Settling));
+            Assert.Equal(all, view.Members);
+        }
+        Assert.Equal(writes, cluster.Trls.Blobs.Count); // presence never touches storage
+
+        c.Presence.Announce(null); // withdrawal travels with the next step, not the next interval
+        cluster.Advance(10);
+        Assert.Equal(new Dictionary<string, string> { ["a"] = "A", ["b"] = "B" }, a.Presence.Current.Members);
+        c.Presence.Announce("C");
+        cluster.Advance(10);
+        Assert.Equal(all, a.Presence.Current.Members);
+
+        a.Paused = true; // the leader stops; a follower takes over and starts with an empty, settling view
+        for (var i = 0; i < 40 && b.Coordinator.Role != ReplicationNodeRole.Leader &&
+                        c.Coordinator.Role != ReplicationNodeRole.Leader; i++) cluster.Advance(5);
+        var (leader, follower) = b.Coordinator.Role == ReplicationNodeRole.Leader ? (b, c) : (c, b);
+        Assert.Equal(ReplicationNodeRole.Leader, leader.Coordinator.Role);
+        Assert.True(leader.Presence.Current.Settling);
+        cluster.Advance(60);
+        var expected = new Dictionary<string, string> { ["b"] = "B", ["c"] = "C" };
+        foreach (var node in new[] { leader, follower })
+        {
+            var view = node.Presence.Current;
+            Assert.Equal((leader == b ? "b" : "c", false), (view.LeaderNodeId, view.Settling));
+            Assert.Equal(expected, view.Members);
+        }
+
+        follower.Cancellation.Cancel(); // a stopped node expires without withdrawing
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => follower.Run);
+        cluster.Advance(60);
+        Assert.Equal(new Dictionary<string, string> { [leader == b ? "b" : "c"] = leader == b ? "B" : "C" },
+            leader.Presence.Current.Members);
+        Assert.True(follower.Presence.Current.Settling);
     }
 
     [Fact]

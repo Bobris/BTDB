@@ -1,107 +1,62 @@
 using System.Text.Json;
-using BTDB.Replication.EventLog;
 
 namespace BTDB.Replication.EventSourcing;
 
 public sealed record EventClusterOptions
 {
-    public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(5);
-    public TimeSpan NodeTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    /// <summary>How long registration waits for the leader to confirm the announcement before startup continues
+    /// with a settling view.</summary>
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
-    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
     public Func<Guid> NewSessionId { get; init; } = Guid.NewGuid;
 }
 
-/// <summary>Sampled membership of consumers that finished startup replay. Not a leadership or fencing grant.</summary>
+/// <summary>Sampled membership of consumers that finished startup replay. Not a leadership or fencing grant. Settling
+/// means the view may be incomplete: the replication leader changed recently, or this node has not reached it.</summary>
 public sealed record EventClusterSnapshot(string SelfNodeId, string? LeaderNodeId,
-    IReadOnlyList<string> LiveNodeIds, DateTimeOffset SampledAt);
+    IReadOnlyList<string> LiveNodeIds, bool Settling);
 
-/// <summary>Shared-storage heartbeats, independent of database writes and the two Layer2 topics.
-/// Use one instance per publisher, a shared membership storage prefix and unique running node IDs.
-/// UTC clocks must be synchronized within the application's membership timeout budget.</summary>
+/// <summary>Consumer membership through <see cref="ReplicationPresence"/>: every node announces itself to the selected
+/// replication leader, which aggregates the view in memory. Nothing is written to shared storage, and node clocks need
+/// not agree. Use one instance per publisher, the node's <see cref="ReplicationPresence"/> and the same node ID as its
+/// <c>LeaderCandidate.NodeId</c>.</summary>
 public sealed class EventCluster
 {
-    sealed record Member(string NodeId, Guid SessionId, DateTimeOffset ExpiresAt);
-    sealed record View(string? Leader, Member[] Members, DateTimeOffset SampledAt);
+    sealed record Member(string NodeId, Guid SessionId);
 
-    readonly IEventLogStorage _storage;
-    readonly IReplicationLeaderStorage _leaders;
-    readonly string _clusterId, _prefix, _key;
+    readonly ReplicationPresence _presence;
     readonly EventClusterOptions _options;
     readonly Guid _session;
-    readonly SemaphoreSlim _refreshing = new(1);
-    View _view = new(null, [], DateTimeOffset.MinValue);
+    string? _announced;
     int _attached;
-    bool _registered;
 
-    public EventCluster(string selfNodeId, string clusterId, IEventLogStorage membershipStorage,
-        IReplicationLeaderStorage leaderStorage, EventClusterOptions? options = null)
+    public EventCluster(string selfNodeId, ReplicationPresence presence, EventClusterOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selfNodeId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(clusterId);
         SelfNodeId = selfNodeId;
-        _clusterId = clusterId;
-        _storage = membershipStorage ?? throw new ArgumentNullException(nameof(membershipStorage));
-        _leaders = leaderStorage ?? throw new ArgumentNullException(nameof(leaderStorage));
+        _presence = presence ?? throw new ArgumentNullException(nameof(presence));
         _options = options ?? new();
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(_options.HeartbeatInterval.Ticks);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(_options.RequestTimeout.Ticks);
-        if (_options.NodeTimeout <= _options.HeartbeatInterval)
-            throw new ArgumentOutOfRangeException(nameof(options), "Node timeout must exceed the heartbeat interval.");
-        ArgumentNullException.ThrowIfNull(_options.TimeProvider);
         ArgumentNullException.ThrowIfNull(_options.NewSessionId);
         _session = _options.NewSessionId();
         if (_session == Guid.Empty) throw new ArgumentException("Session IDs must be nonempty.", nameof(options));
-        _prefix = $"event-consumers/{Uri.EscapeDataString(clusterId)}/";
-        _key = _prefix + Uri.EscapeDataString(selfNodeId);
     }
 
     public string SelfNodeId { get; }
-    /// <summary>No I/O; expired members are removed even between heartbeat refreshes. Leader is last observed,
-    /// nullable before selection; it can name a node still activating or no longer reachable.</summary>
-    public EventClusterSnapshot Current
-    {
-        get
-        {
-            var view = Volatile.Read(ref _view);
-            var now = _options.TimeProvider.GetUtcNow();
-            return new(SelfNodeId, view.Leader,
-                Array.AsReadOnly(view.Members.Where(m => m.ExpiresAt > now).Select(m => m.NodeId).ToArray()), view.SampledAt);
-        }
-    }
 
-    /// <summary>Refresh from shared storage. The result is a sampled view, not an atomic cluster census.</summary>
-    public async ValueTask<EventClusterSnapshot> RefreshAsync(CancellationToken cancellation = default)
+    /// <summary>No I/O: the latest view received from the replication leader. LeaderNodeId is the selected replication
+    /// leader, nullable before selection; it can name a leader that is still activating or no longer reachable.</summary>
+    public EventClusterSnapshot Current => Snapshot(_presence.Current);
+
+    /// <summary>The view after this node's next presence exchange with the leader.</summary>
+    public async ValueTask<EventClusterSnapshot> RefreshAsync(CancellationToken cancellation = default) =>
+        Snapshot(await _presence.RefreshAsync(cancellation).ConfigureAwait(false));
+
+    EventClusterSnapshot Snapshot(ReplicationPresenceSnapshot presence)
     {
-        using var timeout = new CancellationTokenSource(_options.RequestTimeout, _options.TimeProvider);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, timeout.Token);
-        await _refreshing.WaitAsync(linked.Token).ConfigureAwait(false);
-        try
-        {
-            var leader = await _leaders.ReadAsync(linked.Token).ConfigureAwait(false);
-            var json = LeaderJson.Parse(leader.Json);
-            string? leaderId = null;
-            if (json.Count > 0)
-            {
-                if (LeaderJson.OptionalString(json, "clusterId") != _clusterId || LeaderJson.OptionalInt32(json, "format") != 1)
-                    throw new InvalidDataException("Leader document belongs to another cluster or format.");
-                leaderId = LeaderJson.OptionalString(json, "nodeId");
-            }
-            var members = new List<Member>();
-            await foreach (var info in _storage.ListAsync(_prefix, linked.Token).ConfigureAwait(false))
-            {
-                var blob = await _storage.ReadAsync(info.Key, linked.Token).ConfigureAwait(false);
-                if (blob == null) continue;
-                var member = Decode(blob);
-                if (info.Key != _prefix + Uri.EscapeDataString(member.NodeId))
-                    throw new InvalidDataException("Membership key does not match its node ID.");
-                members.Add(member);
-            }
-            Volatile.Write(ref _view, new(leaderId, members.OrderBy(m => m.NodeId, StringComparer.Ordinal).ToArray(),
-                _options.TimeProvider.GetUtcNow()));
-            return Current;
-        }
-        finally { _refreshing.Release(); }
+        var live = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var value in presence.Members.Values)
+            if (Decode(value) is { } member) live.Add(member.NodeId);
+        return new(SelfNodeId, presence.LeaderNodeId, Array.AsReadOnly(live.ToArray()), presence.Settling);
     }
 
     internal void Attach()
@@ -110,71 +65,48 @@ public sealed class EventCluster
             throw new InvalidOperationException("Use a separate EventCluster for each publisher session.");
     }
 
-    internal async Task BeatAsync(CancellationToken cancellation)
+    /// <summary>Announce this consumer once its replay finished. A live consumer of the same node ID announced from
+    /// another node fails startup; a settling view may not show it yet.</summary>
+    internal async Task RegisterAsync(CancellationToken cancellation)
     {
-        await HeartbeatAsync(cancellation).ConfigureAwait(false);
-        await RefreshAsync(cancellation).ConfigureAwait(false);
-    }
-
-    internal async Task RunAsync(CancellationToken cancellation)
-    {
-        while (true)
+        var value = JsonSerializer.Serialize(new Member(SelfNodeId, _session));
+        if (!_presence.TryClaim(value))
+            throw new InvalidOperationException("This node's presence is already announced by another consumer.");
+        _announced = value;
+        ReplicationPresenceSnapshot view;
+        using (var timeout = new CancellationTokenSource(_options.RequestTimeout))
+        using (var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, timeout.Token))
         {
-            await Task.Delay(_options.HeartbeatInterval, _options.TimeProvider, cancellation).ConfigureAwait(false);
-            await BeatAsync(cancellation).ConfigureAwait(false);
+            try { view = await _presence.RefreshAsync(linked.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { view = _presence.Current; }
         }
-    }
-
-    async ValueTask HeartbeatAsync(CancellationToken cancellation)
-    {
-        using var timeout = new CancellationTokenSource(_options.RequestTimeout, _options.TimeProvider);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, timeout.Token);
-        // A session ID plus conditional version prevents an old stop/renew from overwriting its replacement.
-        // The duplicate-ID and replacement-session tests exercise this race.
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Member(SelfNodeId, _session,
-            _options.TimeProvider.GetUtcNow() + _options.NodeTimeout));
-        var current = await _storage.ReadAsync(_key, linked.Token).ConfigureAwait(false);
-        while (true)
-        {
-            if (current != null)
+        foreach (var other in view.Members.Values)
+            if (Decode(other) is { } member && member.NodeId == SelfNodeId && member.SessionId != _session)
             {
-                var member = Decode(current);
-                if (member.SessionId != _session && member.ExpiresAt > _options.TimeProvider.GetUtcNow())
-                    throw new InvalidOperationException($"Node '{SelfNodeId}' already has a live consumer session.");
+                await StopAsync().ConfigureAwait(false);
+                throw new InvalidOperationException($"Node '{SelfNodeId}' already has a live consumer session.");
             }
-            var result = await _storage.WriteAsync(_key, current?.Version, bytes, null, null, linked.Token).ConfigureAwait(false);
-            if (result.Outcome == EventLogWriteOutcome.Applied) break;
-            current = await _storage.ReadAsync(_key, linked.Token).ConfigureAwait(false);
-            if (current != null && current.Content.Span.SequenceEqual(bytes)) break;
-            linked.Token.ThrowIfCancellationRequested();
-        }
-        _registered = true;
     }
 
+    /// <summary>Withdraw this consumer and wait (at most RequestTimeout) until the leader received the withdrawal; the
+    /// leader drops a crashed node after the presence timeout instead.</summary>
     internal async Task StopAsync()
     {
-        if (!_registered) return;
-        using var timeout = new CancellationTokenSource(_options.RequestTimeout, _options.TimeProvider);
-        try
-        {
-            var current = await _storage.ReadAsync(_key, timeout.Token).ConfigureAwait(false);
-            if (current == null || Decode(current).SessionId != _session) return;
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(new Member(SelfNodeId, _session, DateTimeOffset.MinValue));
-            await _storage.WriteAsync(_key, current.Version, bytes, null, null, timeout.Token).ConfigureAwait(false);
-        }
-        // Best-effort unregistration: a crash, lost response or unavailable storage instead expires by timeout.
-        catch (Exception) { }
-        finally
-        {
-            var view = Volatile.Read(ref _view);
-            Volatile.Write(ref _view, view with { Members = view.Members.Where(m => m.NodeId != SelfNodeId).ToArray() });
-        }
+        if (Interlocked.Exchange(ref _announced, null) is not { } value) return;
+        _presence.Withdraw(value);
+        if (!_presence.Reachable) return; // nobody to tell; the leader expires the node
+        using var timeout = new CancellationTokenSource(_options.RequestTimeout);
+        try { await _presence.RefreshAsync(timeout.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException) { } // best effort: the leader expires the node
     }
 
-    static Member Decode(EventLogBlob blob)
+    static Member? Decode(string value)
     {
-        var member = JsonSerializer.Deserialize<Member>(blob.Content.Span);
-        return member is { SessionId: var session } && session != Guid.Empty && !string.IsNullOrWhiteSpace(member.NodeId)
-            ? member : throw new InvalidDataException("Invalid consumer membership record.");
+        try
+        {
+            return JsonSerializer.Deserialize<Member>(value) is { NodeId: { Length: > 0 }, SessionId: var session } member &&
+                   session != Guid.Empty ? member : null;
+        }
+        catch (JsonException) { return null; }
     }
 }

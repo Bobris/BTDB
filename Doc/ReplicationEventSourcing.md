@@ -187,48 +187,54 @@ lambda; explicitly schedule and observe asynchronous work in the application whe
 Configure an `EventCluster` for each publisher to discover consumers that finished their startup replay:
 
 ```csharp
-// All instances share this storage prefix and cluster ID. Each running instance has its own node ID.
-// Azure example: membershipStorage = new AzureEventLogStorage(container, "application-membership").
-var cluster = new EventCluster(nodeId, clusterId, membershipStorage, replicationLeaderStorage);
+// The node's ReplicationPresence is registered by AddBTDBReplication. Each running instance has its own node ID.
+var presence = app.Services.GetRequiredService<ReplicationPresence>();
+var cluster = new EventCluster(nodeId, presence);
 await using var publisher = new EventPublisher(database, dataTopic, metadataTopic, dispatcher,
     new EventPublisherOptions { Cluster = cluster }, transactionLogCapture);
 await publisher.StartAsync(stopping);
 
-var snapshot = publisher.Cluster; // No I/O; periodically refreshed by heartbeats.
+var snapshot = publisher.Cluster; // No I/O; updated by replication presence exchanges.
 var self = snapshot.SelfNodeId;
 var leader = snapshot.LeaderNodeId;
 var live = snapshot.LiveNodeIds;
+var settling = snapshot.Settling; // The view may be incomplete: new leader or no leader reached recently.
 using (publisher.StartQuery())
 {
     var sameNode = Ambient.Cluster.SelfNodeId;
 }
-var refreshed = await cluster.RefreshAsync(stopping); // Explicit fresh shared-storage read.
+var refreshed = await cluster.RefreshAsync(stopping); // After this node's next exchange with the leader.
 ```
 
-Supply the same node ID used in the host's `LeaderCandidate.NodeId`. `LeaderNodeId` comes from the existing
-replication leader document, never from data/metadata topic ownership. It is null before a leader is selected and
-can name a leader that is still activating or no longer reachable. The snapshot exposes no lease or peer credentials.
-Use replication's own authority APIs for operations requiring leadership; membership is discovery, not fencing.
+Supply the same node ID used in the host's `LeaderCandidate.NodeId`. `LeaderNodeId` is the selected replication
+leader (from its leader document on followers), never data/metadata topic ownership. It is null before a leader is
+selected and can name a leader that is still activating or no longer reachable. The snapshot exposes no lease or peer
+credentials. Use replication's own authority APIs for operations requiring leadership; membership is discovery, not
+fencing.
 
-Each instance registers only after its captured startup data end is visible, before `StartAsync` returns. Restoring
-or replaying instances remain absent from `LiveNodeIds`, while `SelfNodeId` and the observed leader are available
-in replay handlers. A heartbeat keeps the instance registered even while the live topic is idle. Disposal and
-consumption failure unregister it; a crash or unsuccessful unregister expires by `NodeTimeout`. Cached snapshots
-filter expired entries without requiring another refresh. Heartbeats also refresh the observed leader and members.
+Membership is carried by [replication presence](ReplicationHosting.md#node-presence): each instance announces itself
+to the selected replication leader, which keeps the view in memory and returns it to every follower. Membership
+therefore makes no shared-storage requests, adds no event topic or replicated database writes, and needs no
+synchronized clocks: the leader expires a silent node on its own monotonic clock after three
+`ReplicationNodeOptions.PresenceInterval`s plus `RequestTimeout` (about 5 seconds by default). Lease fencing makes at
+most one leader aggregate the view at a time.
 
-`EventClusterOptions` injects time and session-ID creation, with default heartbeat interval 5 seconds, node timeout
-30 seconds and per-operation request timeout 10 seconds. Membership uses UTC expiration; synchronize node clocks
-and select a timeout that covers clock skew and expected storage delays. Views are sampled, not atomic cluster
-censuses or guarantees that another node is currently responsive. A blocked synchronous handler may still have a
-heartbeat; discovery identifies its live-consumption mode rather than measuring per-event responsiveness.
+Each instance registers only after its captured startup data end is visible, before `StartAsync` returns; registration
+waits up to `EventClusterOptions.RequestTimeout` (10 seconds) for the leader to confirm it and otherwise continues with
+a settling view. Restoring or replaying instances remain absent from `LiveNodeIds`, while `SelfNodeId` and the observed
+leader are available in replay handlers. Disposal and consumption failure withdraw the instance and wait for the leader
+to receive the withdrawal when it is reachable; a crash expires by the presence timeout.
 
-Membership uses ordinary conditional objects through the provider-neutral `IEventLogStorage`, in an isolated shared
-prefix. It adds no event topic or replicated database writes: the Layer2 data and metadata topics stay separate and
-unchanged. Stable node keys are reused after expiration; expired records are filtered, not garbage-collected. A
-session ID and ETag protect against a delayed old shutdown removing a replacement session, tested with two consumers
-reusing one node ID. A concurrent live duplicate fails startup. Use a separate `EventCluster` per publisher session,
-and a separate membership storage prefix for each application history. Membership I/O failures fault the publisher's
-`Completion` and stop the worker; hosts retain responsibility for restart policy.
+A new leader starts with an empty view and reports `Settling` until every live node had one presence timeout to
+announce itself again; a node that has not exchanged with a leader within that timeout also reports `Settling`. Views
+are sampled, not atomic cluster censuses or guarantees that another node is currently responsive; under a partition
+each side sees only the nodes reaching its leader. A blocked synchronous handler keeps its node announced; discovery
+identifies its live-consumption mode rather than measuring per-event responsiveness.
+
+A node announces one presence value, so use one `EventCluster` per node and per publisher session; a second one on the
+same node fails startup. A live consumer with the same node ID on another node also fails startup once the view shows
+it (a settling view may not show it yet). A delayed withdrawal concerns only its own node, so it never removes a
+replacement running elsewhere.
 
 For a replicated DB, pass its `TransactionLogCapture` into the publisher. `Progress` snapshots the completed event ID
 and TRL position after each visible batch and can be returned by `IReplicationNodeHost.GetProgress` once the wrapper

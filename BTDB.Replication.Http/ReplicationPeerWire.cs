@@ -7,12 +7,13 @@ using BTDB.StreamLayer;
 
 namespace BTDB.Replication.Http;
 
-internal enum PeerOperation : byte { Connect = 1, Poll = 2, Read = 3, Handoff = 4 }
+internal enum PeerOperation : byte { Connect = 1, Poll = 2, Read = 3, Handoff = 4, Presence = 5 }
 
 /// <summary>Database addresses a range read; Databases lists every database of one poll (empty for a heartbeat).</summary>
 internal sealed record PeerRequest(string ClusterId, ulong Term, string SessionId, string Endpoint, PeerOperation Operation,
     string? Database = null, long Challenge = 0, long DurationTicks = 0, uint FileId = 0, ulong Offset = 0,
-    int Count = 0, PreparedHandoff? Handoff = null, ReplicationPeerPollRequest[]? Databases = null, int InlineBudget = 0);
+    int Count = 0, PreparedHandoff? Handoff = null, ReplicationPeerPollRequest[]? Databases = null, int InlineBudget = 0,
+    ReplicationPresenceRequest? Presence = null);
 
 /// <summary>
 /// Compact binary peer messages: a version byte, then fixed fields in VUInt/string encoding. Requests carry the
@@ -25,6 +26,9 @@ internal static class ReplicationPeerWire
     const byte Version = 1;
     // Far above the handful of databases a node coordinates; bounds allocation from a hostile message.
     internal const int MaximumPolledDatabases = 256;
+    // Far above the nodes of one cluster; bounds allocation from a hostile message.
+    internal const int MaximumPresenceMembers = 256;
+    internal const int MaximumPresenceBytes = MaximumPresenceMembers * (ReplicationPresence.MaximumValueLength * 3 + 1024);
     const byte HasProgress = 1, HasPublished = 2, HasSchema = 4;
 
     public static byte[] EncodeRequest(PeerRequest request)
@@ -61,6 +65,11 @@ internal static class ReplicationPeerWire
                 writer.WriteVUInt64(request.Handoff!.ApplicationGeneration);
                 writer.WriteString(request.Handoff.TransferId);
                 break;
+            case PeerOperation.Presence:
+                writer.WriteString(request.Presence!.Endpoint);
+                writer.WriteString(request.Presence.Value);
+                writer.WriteVUInt64(request.Presence.KnownVersion);
+                break;
         }
         return writer.GetSpan().ToArray();
     }
@@ -94,6 +103,12 @@ internal static class ReplicationPeerWire
                 return request with { Database = database, FileId = fileId, Offset = offset, Count = (int)length };
             case PeerOperation.Handoff:
                 return request with { Handoff = new(reader.ReadVUInt64(), RequiredString(ref reader)) };
+            case PeerOperation.Presence:
+                var endpoint = RequiredString(ref reader);
+                var value = reader.ReadString();
+                if (value is { Length: > ReplicationPresence.MaximumValueLength })
+                    throw new InvalidDataException("Presence value exceeds its limit.");
+                return request with { Presence = new(endpoint, value, reader.ReadVUInt64()) };
             default:
                 throw new InvalidDataException("Unknown peer operation.");
         }
@@ -192,6 +207,43 @@ internal static class ReplicationPeerWire
             }
             return new ReplicationPeerPoll(challenge, granted, databases);
         });
+
+    public static byte[] EncodePresence(ReplicationPresenceView view)
+    {
+        var writer = new MemWriter();
+        writer.WriteUInt8(Version);
+        writer.WriteVUInt64(view.Version);
+        writer.WriteBool(view.Settling);
+        writer.WriteBool(view.Members != null);
+        if (view.Members is { } members)
+        {
+            writer.WriteVUInt32((uint)members.Count);
+            foreach (var (endpoint, value) in members)
+            {
+                writer.WriteString(endpoint);
+                writer.WriteString(value);
+            }
+        }
+        return writer.GetSpan().ToArray();
+    }
+
+    public static ReplicationPresenceView DecodePresence(ReadOnlyMemory<byte> bytes) => Decode(bytes, static (ref MemReader reader) =>
+    {
+        var version = reader.ReadVUInt64();
+        var settling = reader.ReadBool();
+        if (!reader.ReadBool()) return new ReplicationPresenceView(version, settling, null);
+        var count = reader.ReadVUInt32();
+        if (count > MaximumPresenceMembers) throw new InvalidDataException("Presence view exceeds its limits.");
+        var members = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        for (var i = 0; i < count; i++)
+        {
+            var endpoint = RequiredString(ref reader);
+            var value = RequiredString(ref reader);
+            if (value.Length > ReplicationPresence.MaximumValueLength || !members.TryAdd(endpoint, value))
+                throw new InvalidDataException("Invalid presence member.");
+        }
+        return new ReplicationPresenceView(version, settling, members.AsReadOnly());
+    });
 
     delegate T Reader<out T>(ref MemReader reader);
 

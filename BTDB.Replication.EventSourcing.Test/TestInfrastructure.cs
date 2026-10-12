@@ -219,3 +219,84 @@ internal sealed class Handler : IEventHandler<Add, Added>, IEventHandler<AddPure
 
     internal EventDispatcher Dispatcher() => new EventDispatcher().Register<Add, Added>(this).Register<AddPure>(this);
 }
+
+/// <summary>Node presences exchanging directly with the presence board of one selected leader, as the replication
+/// coordinator does over its peer transport. Endpoints double as node IDs.</summary>
+internal sealed class PresenceNetwork : IAsyncDisposable
+{
+    readonly SystemReplicationScheduler _scheduler = new();
+    readonly object _lock = new();
+    readonly Dictionary<string, (ReplicationPresence Presence, TimeSpan Next)> _nodes = new(StringComparer.Ordinal);
+    readonly HashSet<string> _crashed = new(StringComparer.Ordinal);
+    readonly CancellationTokenSource _stop = new();
+    readonly Task _pump;
+    ReplicationPresence.Board? _board;
+    string? _leader;
+    internal static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(20);
+    internal static readonly TimeSpan Timeout = TimeSpan.FromMilliseconds(300);
+
+    internal PresenceNetwork(params string[] leaderFirst)
+    {
+        foreach (var endpoint in leaderFirst) Node(endpoint);
+        if (leaderFirst.Length > 0) Lead(leaderFirst[0]);
+        _pump = Task.Run(PumpAsync);
+    }
+
+    internal ReplicationPresence Node(string endpoint)
+    {
+        lock (_lock)
+        {
+            if (_nodes.TryGetValue(endpoint, out var node)) return node.Presence;
+            var presence = new ReplicationPresence();
+            presence.Bind(_scheduler, Timeout);
+            if (_leader != null) presence.Connected(_leader);
+            _nodes[endpoint] = (presence, TimeSpan.Zero);
+            return presence;
+        }
+    }
+
+    /// <summary>A new leader session starts with an empty, settling board; followers reconnect to it.</summary>
+    internal void Lead(string endpoint)
+    {
+        lock (_lock)
+        {
+            if (_board != null) _nodes[_leader!].Presence.StopLeading(_board);
+            _leader = endpoint;
+            _board = _nodes[endpoint].Presence.StartLeading(endpoint, endpoint);
+            foreach (var (name, node) in _nodes)
+                if (name != endpoint) node.Presence.Connected(endpoint);
+        }
+    }
+
+    /// <summary>The node stops exchanging without withdrawing, like a crashed process.</summary>
+    internal void Crash(string endpoint)
+    {
+        lock (_lock) _crashed.Add(endpoint);
+    }
+
+    async Task PumpAsync()
+    {
+        while (!_stop.IsCancellationRequested)
+        {
+            lock (_lock)
+                foreach (var name in _nodes.Keys.ToArray())
+                {
+                    var (presence, next) = _nodes[name];
+                    if (name == _leader || _crashed.Contains(name) || _board == null ||
+                        !presence.TakeDue(Interval, ref next)) continue;
+                    _nodes[name] = (presence, next);
+                    var (request, sequence) = presence.Request(name);
+                    presence.Received(_board.Exchange(request), sequence);
+                }
+            try { await Task.Delay(2, _stop.Token); }
+            catch (OperationCanceledException) { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _stop.CancelAsync();
+        await _pump;
+        _stop.Dispose();
+    }
+}

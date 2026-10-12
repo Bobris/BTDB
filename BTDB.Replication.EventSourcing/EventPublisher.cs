@@ -244,12 +244,11 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
 
     async Task RunAsync()
     {
-        Task? reading = null, metadataReading = null, clusterWatching = null;
+        Task? reading = null, metadataReading = null;
         try
         {
             using (var read = Database.StartReadOnlyTransaction()) _lastApplied = read.GetCommitUlong();
             UpdateProgress();
-            if (_options.Cluster is { } cluster) await cluster.RefreshAsync(_lifetime).ConfigureAwait(false);
             var metadataBounds = await _metadataTopic.GetBoundsAsync(_lifetime).ConfigureAwait(false);
             if (metadataBounds.First != 0)
                 throw new EventLogOffsetNotAvailableException("Retain the complete Layer2 metadata topic.");
@@ -369,7 +368,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
         }
         catch (Exception error)
         {
-            // Cancellation caused by an earlier fault (input reader, cluster) reports that root cause.
+            // Cancellation caused by an earlier fault (input reader) reports that root cause.
             Fail(error);
             ExceptionDispatchInfo.Throw(Volatile.Read(ref _fault)!);
         }
@@ -382,7 +381,6 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
             if (reading != null)
                 try { await reading.ConfigureAwait(false); }
                 catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-            if (clusterWatching != null) await clusterWatching.ConfigureAwait(false);
             if (_options.Cluster is { } cluster) await cluster.StopAsync().ConfigureAwait(false);
         }
 
@@ -390,11 +388,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
 
         async Task ReadyAsync()
         {
-            if (_options.Cluster is { } cluster)
-            {
-                await cluster.BeatAsync(_lifetime).ConfigureAwait(false);
-                clusterWatching = WatchClusterAsync(cluster);
-            }
+            if (_options.Cluster is { } cluster) await cluster.RegisterAsync(_lifetime).ConfigureAwait(false);
             _ready.TrySetResult();
         }
     }
@@ -405,13 +399,6 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
         Interlocked.CompareExchange(ref _fault, error, null);
         _ready.TrySetException(error);
         _stop.Cancel();
-    }
-
-    async Task WatchClusterAsync(EventCluster cluster)
-    {
-        try { await cluster.RunAsync(_lifetime).ConfigureAwait(false); }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        catch (Exception error) { Fail(error); }
     }
 
     static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);

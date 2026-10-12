@@ -4,6 +4,8 @@ using System.Runtime.CompilerServices;
 using BTDB;
 using BTDB.Buffer;
 using BTDB.Encrypted;
+using BTDB.KVDBLayer;
+using BTDB.ODBLayer;
 using BTDB.Serialization;
 using Microsoft.Extensions.Primitives;
 using Xunit;
@@ -12,6 +14,158 @@ namespace BTDBTest.SerializationTests;
 
 public class DefaultTypeConverterFactoryTest
 {
+    [Generate]
+    public class DictionaryTypes
+    {
+        public Dictionary<string, int> Int { get; set; }
+        public Dictionary<string, int?> NullableInt { get; set; }
+        public Dictionary<string, long> Long { get; set; }
+        public Dictionary<string, long?> NullableLong { get; set; }
+        public Dictionary<string, object> Object { get; set; }
+        public Dictionary<string, LargeDictionaryValue> Large { get; set; }
+        public Dictionary<string, ReferencedDictionaryValue> Referenced { get; set; }
+        public Dictionary<string, ReferencedDictionaryValue?> NullableReferenced { get; set; }
+    }
+
+    static Dictionary<string, TTo> ConvertDictionary<TFrom, TTo>(
+        DefaultTypeConverterFactory factory, IDictionary<string, TFrom> source)
+    {
+        var converter = factory.GetConverter(typeof(IDictionary<string, TFrom>), typeof(Dictionary<string, TTo>));
+        Assert.NotNull(converter);
+        Dictionary<string, TTo> result = null!;
+        converter(ref Unsafe.As<IDictionary<string, TFrom>, byte>(ref source),
+            ref Unsafe.As<Dictionary<string, TTo>, byte>(ref result));
+        return result;
+    }
+
+    [Fact]
+    public void DictionaryValuesConvertNumericAndNullableTypes()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        var source = new Dictionary<string, int?> { ["positive"] = 42, ["deleted"] = 99, ["negative"] = -7, ["null"] = null };
+        source.Remove("deleted");
+        var result = ConvertDictionary<int?, long>(factory, source);
+        Assert.Equal(3, result.Count);
+        Assert.Equal(42L, result["positive"]);
+        Assert.Equal(-7L, result["negative"]);
+        Assert.Equal(0L, result["null"]);
+        var nullable = ConvertDictionary<int, long?>(factory, new Dictionary<string, int> { ["value"] = 123 });
+        Assert.Equal(123L, nullable["value"]);
+        Assert.Empty(ConvertDictionary<int, long>(factory, new Dictionary<string, int>()));
+        Assert.Empty(ConvertDictionary<int, int>(factory, new Dictionary<string, int>()));
+        Assert.Empty(ConvertDictionary<int, object>(factory, new Dictionary<string, int>()));
+        Assert.Null(ConvertDictionary<int, long>(factory, null!));
+    }
+
+    [Fact]
+    public void DictionaryValuesSupportBoxingAndUnboxing()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        var boxed = ConvertDictionary<int, object>(factory, new Dictionary<string, int> { ["value"] = 42 });
+        Assert.Equal(42, Assert.IsType<int>(boxed["value"]));
+        var unboxed = ConvertDictionary<object, int>(factory, boxed);
+        Assert.Equal(42, unboxed["value"]);
+    }
+
+    public struct LargeDictionaryValue
+    {
+        public long A;
+        public long B;
+        public long C;
+    }
+
+    public struct ReferencedDictionaryValue
+    {
+        public string Text;
+        public long Number;
+    }
+
+    [Fact]
+    public void DictionaryValuesConvertLargeAndReferenceContainingStructs()
+    {
+        var factory = new DefaultTypeConverterFactory();
+        factory.RegisterConverter((in int from, out LargeDictionaryValue to) =>
+            to = new() { A = from, B = from + 1, C = from + 2 });
+        Assert.Empty(ConvertDictionary<int, LargeDictionaryValue>(factory, new Dictionary<string, int>()));
+        var large = ConvertDictionary<int, LargeDictionaryValue>(factory,
+            new Dictionary<string, int> { ["first"] = 10, ["second"] = 20 });
+        Assert.Equal(2, large.Count);
+        Assert.Equal((10L, 11L, 12L), (large["first"].A, large["first"].B, large["first"].C));
+        Assert.Equal((20L, 21L, 22L), (large["second"].A, large["second"].B, large["second"].C));
+
+        factory.RegisterConverter((in int from, out ReferencedDictionaryValue to) =>
+        {
+            to = new() { Text = new string((char)('a' + from), 100), Number = from };
+            GC.Collect();
+        });
+        var referenced = ConvertDictionary<int, ReferencedDictionaryValue>(factory,
+            new Dictionary<string, int> { ["first"] = 1, ["second"] = 2 });
+        Assert.Equal(2, referenced.Count);
+        Assert.Equal(new string('b', 100), referenced["first"].Text);
+        Assert.Equal(1L, referenced["first"].Number);
+        Assert.Equal(new string('c', 100), referenced["second"].Text);
+        Assert.Equal(2L, referenced["second"].Number);
+
+        var cleared = ConvertDictionary<ReferencedDictionaryValue?, ReferencedDictionaryValue>(factory,
+            new Dictionary<string, ReferencedDictionaryValue?> { ["first"] = referenced["first"], ["null"] = null });
+        Assert.Equal(referenced["first"].Text, cleared["first"].Text);
+        Assert.Null(cleared["null"].Text);
+        Assert.Equal(0L, cleared["null"].Number);
+    }
+
+    public class DictionaryRow
+    {
+        [PrimaryKey(1)] public ulong Id { get; set; }
+        public IDictionary<string, int?> Values { get; set; }
+    }
+
+    public interface IDictionaryRowTable : IRelation<DictionaryRow>
+    {
+    }
+
+    [Fact]
+    public void PersistentDictionaryValuesConvertValueTypes()
+    {
+        using var lowDb = new InMemoryKeyValueDB();
+        using var db = new ObjectDB();
+        db.Open(lowDb, false);
+        using (var tr = db.StartTransaction())
+        {
+            tr.GetRelation<IDictionaryRowTable>().Upsert(new()
+            {
+                Id = 1,
+                Values = new Dictionary<string, int?> { ["value"] = 42, ["null"] = null }
+            });
+            tr.Commit();
+        }
+
+        using (var tr = db.StartTransaction())
+        {
+            var source = Assert.Single(tr.GetRelation<IDictionaryRowTable>()).Values;
+            Assert.IsAssignableFrom<IInternalODBDictionary>(source);
+            var factory = new DefaultTypeConverterFactory();
+            var numeric = ConvertDictionary<int?, long>(factory, source);
+            Assert.Equal(2, numeric.Count);
+            Assert.Equal(42L, numeric["value"]);
+            Assert.Equal(0L, numeric["null"]);
+            var boxed = ConvertDictionary<int?, object>(factory, source);
+            Assert.Equal(42, boxed["value"]);
+            Assert.Null(boxed["null"]);
+            factory.RegisterConverter((in int? from, out LargeDictionaryValue to) =>
+                to = new() { A = from ?? -1, B = 2, C = 3 });
+            var large = ConvertDictionary<int?, LargeDictionaryValue>(factory, source);
+            Assert.Equal((42L, 2L, 3L), (large["value"].A, large["value"].B, large["value"].C));
+            Assert.Equal((-1L, 2L, 3L), (large["null"].A, large["null"].B, large["null"].C));
+            factory.RegisterConverter((in int? from, out ReferencedDictionaryValue to) =>
+                to = new() { Text = from?.ToString(), Number = from ?? -1 });
+            var referenced = ConvertDictionary<int?, ReferencedDictionaryValue>(factory, source);
+            Assert.Equal("42", referenced["value"].Text);
+            Assert.Equal(42L, referenced["value"].Number);
+            Assert.Null(referenced["null"].Text);
+            Assert.Equal(-1L, referenced["null"].Number);
+        }
+    }
+
     [Fact]
     public void AssignForScalarTypesWorks()
     {

@@ -79,6 +79,7 @@ public partial class HttpReplicationPeerTransportTest(ITestOutputHelper output)
         public readonly TaskCompletionSource Cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool Block, IgnoreCancellation;
         public PreparedHandoff? Offer;
+        public ReplicationPresenceRequest? Presence;
         public int Reads;
         public ILeaderTrlReader? NativeReader;
         // When set, polls advertise progress to its end and return inline chunks of it (measurements).
@@ -118,6 +119,13 @@ public partial class HttpReplicationPeerTransportTest(ITestOutputHelper output)
         }
         public ValueTask OfferHandoffAsync(PreparedHandoff offer, CancellationToken cancellation)
         { backend.Offer = offer; return ValueTask.CompletedTask; }
+        public ValueTask<ReplicationPresenceView> ExchangePresenceAsync(ReplicationPresenceRequest request,
+            CancellationToken cancellation)
+        {
+            backend.Presence = request;
+            return ValueTask.FromResult(new ReplicationPresenceView(7, true, request.KnownVersion == 7 ? null
+                : new Dictionary<string, string> { ["https://leader"] = "L", [request.Endpoint] = request.Value ?? "" }));
+        }
         public ValueTask<int> ReadAsync(uint fileId, ulong offset, Memory<byte> destination, CancellationToken cancellation)
         {
             backend.Reads++;
@@ -156,6 +164,20 @@ public partial class HttpReplicationPeerTransportTest(ITestOutputHelper output)
         var offer = new PreparedHandoff(8, Guid.NewGuid().ToString());
         await session.OfferHandoffAsync(offer, default);
         Assert.Equal(offer, server.Backend.Offer);
+    }
+
+    [Fact]
+    public async Task PresenceCrossesRealHttpAndOmitsAKnownView()
+    {
+        await using var server = await Server.Start();
+        using var session = await server.Client.ConnectAsync(server.Identity, default);
+        var view = await session.ExchangePresenceAsync(new("https://follower", "F", 0), default);
+        Assert.Equal(new ReplicationPresenceRequest("https://follower", "F", 0), server.Backend.Presence);
+        Assert.Equal(7ul, view.Version);
+        Assert.True(view.Settling);
+        Assert.Equal(new Dictionary<string, string> { ["https://follower"] = "F", ["https://leader"] = "L" }, view.Members);
+        Assert.Null((await session.ExchangePresenceAsync(new("https://follower", null, 7), default)).Members);
+        Assert.Null(server.Backend.Presence!.Value);
     }
 
     [Fact]

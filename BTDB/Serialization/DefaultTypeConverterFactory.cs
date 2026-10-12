@@ -931,7 +931,8 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
         if (toCollectionMetadata == null) return null;
         var fromAsDictionaryType = typeof(Dictionary<,>).MakeGenericType(fromKVType);
         var layout = RawData.GetDictionaryEntriesLayout(fromKVType[0], fromKVType[1]);
-        if (fromKVType[0] == toKVType[0] && fromKVType[1] == toKVType[1])
+        if (fromKVType[0] != toKVType[0]) return null;
+        if (fromKVType[1] == toKVType[1])
         {
             return (ref byte fromI, ref byte toI) =>
             {
@@ -956,6 +957,12 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
                     var count = Unsafe.As<byte, int>(ref RawData.Ref(fromObject,
                         RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
                     var result = toCollectionMetadata.Creator((uint)count);
+                    if (count == 0)
+                    {
+                        Unsafe.As<byte, object>(ref toI) = result;
+                        return;
+                    }
+
                     var obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(fromObject));
                     ref readonly var mt = ref RawData.MethodTableRef(obj);
                     var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
@@ -977,8 +984,182 @@ public class DefaultTypeConverterFactory : ITypeConverterFactory
             };
         }
 
-        // Todo: Key/Value type converting converter
-        return null;
+        var valueConverter = GetConverter(fromKVType[1], toKVType[1]);
+        if (valueConverter == null) return null;
+        if (!toKVType[1].IsValueType)
+        {
+            return (ref byte fromI, ref byte toI) =>
+            {
+                var fromObject = Unsafe.As<byte, object>(ref fromI);
+                if (fromObject == null)
+                {
+                    Unsafe.As<byte, object>(ref toI) = null;
+                    return;
+                }
+
+                if (fromObject is IInternalODBDictionary fromODBDictionary)
+                {
+                    var result = toCollectionMetadata.Creator((uint)fromODBDictionary.Count);
+                    fromODBDictionary.Iterate((ref byte key, ref byte value) =>
+                    {
+                        object convertedValue = null!;
+                        valueConverter(ref value, ref Unsafe.As<object, byte>(ref convertedValue));
+                        toCollectionMetadata.AdderKeyValue(result, ref key,
+                            ref Unsafe.As<object, byte>(ref convertedValue));
+                    });
+                    Unsafe.As<byte, object>(ref toI) = result;
+                }
+                else if (fromObject.GetType().IsAssignableTo(fromAsDictionaryType))
+                {
+                    var count = Unsafe.As<byte, int>(ref RawData.Ref(fromObject,
+                        RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                    var result = toCollectionMetadata.Creator((uint)count);
+                    if (count == 0)
+                    {
+                        Unsafe.As<byte, object>(ref toI) = result;
+                        return;
+                    }
+
+                    var obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(fromObject));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
+                        {
+                            continue;
+                        }
+
+                        object convertedValue = null!;
+                        valueConverter(ref RawData.Ref(obj, offset + layout.OffsetValue),
+                            ref Unsafe.As<object, byte>(ref convertedValue));
+                        toCollectionMetadata.AdderKeyValue(result,
+                            ref RawData.Ref(obj, offset + layout.OffsetKey),
+                            ref Unsafe.As<object, byte>(ref convertedValue));
+                    }
+
+                    Unsafe.As<byte, object>(ref toI) = result;
+                }
+            };
+        }
+
+        if (!RawData.MethodTableOf(toKVType[1]).ContainsGCPointers &&
+            RawData.GetSizeAndAlign(toKVType[1]).Size <= 16)
+        {
+            return (ref byte fromI, ref byte toI) =>
+            {
+                var fromObject = Unsafe.As<byte, object>(ref fromI);
+                if (fromObject == null)
+                {
+                    Unsafe.As<byte, object>(ref toI) = null;
+                    return;
+                }
+
+                if (fromObject is IInternalODBDictionary fromODBDictionary)
+                {
+                    var result = toCollectionMetadata.Creator((uint)fromODBDictionary.Count);
+                    fromODBDictionary.Iterate((ref byte key, ref byte value) =>
+                    {
+                        Int128 convertedValue = 0;
+                        valueConverter(ref value, ref Unsafe.As<Int128, byte>(ref convertedValue));
+                        toCollectionMetadata.AdderKeyValue(result, ref key,
+                            ref Unsafe.As<Int128, byte>(ref convertedValue));
+                    });
+                    Unsafe.As<byte, object>(ref toI) = result;
+                }
+                else if (fromObject.GetType().IsAssignableTo(fromAsDictionaryType))
+                {
+                    var count = Unsafe.As<byte, int>(ref RawData.Ref(fromObject,
+                        RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                    var result = toCollectionMetadata.Creator((uint)count);
+                    if (count == 0)
+                    {
+                        Unsafe.As<byte, object>(ref toI) = result;
+                        return;
+                    }
+
+                    var obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(fromObject));
+                    ref readonly var mt = ref RawData.MethodTableRef(obj);
+                    var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                    var offsetDelta = mt.ComponentSize;
+                    for (var i = 0; i < count; i++, offset += offsetDelta)
+                    {
+                        if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
+                        {
+                            continue;
+                        }
+
+                        Int128 convertedValue = 0;
+                        valueConverter(ref RawData.Ref(obj, offset + layout.OffsetValue),
+                            ref Unsafe.As<Int128, byte>(ref convertedValue));
+                        toCollectionMetadata.AdderKeyValue(result,
+                            ref RawData.Ref(obj, offset + layout.OffsetKey),
+                            ref Unsafe.As<Int128, byte>(ref convertedValue));
+                    }
+
+                    Unsafe.As<byte, object>(ref toI) = result;
+                }
+            };
+        }
+
+        // A typed array keeps references in larger or GC-containing structs visible to the GC.
+        return (ref byte fromI, ref byte toI) =>
+        {
+            var fromObject = Unsafe.As<byte, object>(ref fromI);
+            if (fromObject == null)
+            {
+                Unsafe.As<byte, object>(ref toI) = null;
+                return;
+            }
+
+            var scratch = Array.CreateInstance(toKVType[1], 1);
+            var scratchOffset = RawData.MethodTableRef(scratch).BaseSize - (uint)Unsafe.SizeOf<nint>();
+            if (fromObject is IInternalODBDictionary fromODBDictionary)
+            {
+                var result = toCollectionMetadata.Creator((uint)fromODBDictionary.Count);
+                fromODBDictionary.Iterate((ref byte key, ref byte value) =>
+                {
+                    Array.Clear(scratch);
+                    valueConverter(ref value, ref RawData.Ref(scratch, scratchOffset));
+                    toCollectionMetadata.AdderKeyValue(result, ref key,
+                        ref RawData.Ref(scratch, scratchOffset));
+                });
+                Unsafe.As<byte, object>(ref toI) = result;
+            }
+            else if (fromObject.GetType().IsAssignableTo(fromAsDictionaryType))
+            {
+                var count = Unsafe.As<byte, int>(ref RawData.Ref(fromObject,
+                    RawData.Align(8 + 6 * (uint)Unsafe.SizeOf<nint>(), 8)));
+                var result = toCollectionMetadata.Creator((uint)count);
+                if (count == 0)
+                {
+                    Unsafe.As<byte, object>(ref toI) = result;
+                    return;
+                }
+
+                var obj = RawData.HashSetEntries(Unsafe.As<HashSet<object>>(fromObject));
+                ref readonly var mt = ref RawData.MethodTableRef(obj);
+                var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
+                var offsetDelta = mt.ComponentSize;
+                for (var i = 0; i < count; i++, offset += offsetDelta)
+                {
+                    if (Unsafe.As<byte, int>(ref RawData.Ref(obj, offset + layout.OffsetNext)) < -1)
+                    {
+                        continue;
+                    }
+
+                    Array.Clear(scratch);
+                    valueConverter(ref RawData.Ref(obj, offset + layout.OffsetValue),
+                        ref RawData.Ref(scratch, scratchOffset));
+                    toCollectionMetadata.AdderKeyValue(result,
+                        ref RawData.Ref(obj, offset + layout.OffsetKey),
+                        ref RawData.Ref(scratch, scratchOffset));
+                }
+
+                Unsafe.As<byte, object>(ref toI) = result;
+            }
+        };
     }
 
     Converter? CreateUnboxing(Type to)

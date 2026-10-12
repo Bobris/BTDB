@@ -15,8 +15,10 @@ namespace BTDB.Replication;
 /// connections, answers polls with progress, grants and inline TRL bytes, and serves range reads.</summary>
 internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAuthority authority,
     IReadOnlyList<ActivationDatabase> databases, IReadOnlyList<CanonicalTrlPublisher> publishers,
-    IReplicationNodeHost host, IReplicationScheduler scheduler, ulong generation, ReplicationLeadership? leadership = null)
+    IReplicationNodeHost host, IReplicationScheduler scheduler, ulong generation, ReplicationLeadership? leadership = null,
+    ReplicationPresence? presence = null, string? nodeId = null)
 {
+    readonly ReplicationPresence.Board? _presence = presence?.StartLeading(identity.Endpoint, nodeId);
     readonly object _lock = new();
     readonly IReplicationNodeHost _host = host;
     readonly ReplicationLeadership? _leadership = leadership;
@@ -85,6 +87,7 @@ internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAutho
             _closed = true;
             foreach (var reader in _readers.Values) reader.Close();
         }
+        if (_presence != null) presence!.StopLeading(_presence);
     }
 
     sealed class Connection(ServingLeader leader) : IReplicationPeerSession
@@ -129,6 +132,14 @@ internal sealed class ServingLeader(ReplicationPeerIdentity identity, LeaseAutho
             }
             lock (leader._lock) Check();
             return new(challenge, granted, answers);
+        }
+        public ValueTask<ReplicationPresenceView> ExchangePresenceAsync(ReplicationPresenceRequest request,
+            CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            lock (leader._lock) Check();
+            if (leader._presence is not { } board) throw new IOException("This leader does not serve presence.");
+            return ValueTask.FromResult(board.Exchange(request));
         }
         public ValueTask OfferHandoffAsync(PreparedHandoff offer, CancellationToken cancellation)
         {
