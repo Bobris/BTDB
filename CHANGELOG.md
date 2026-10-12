@@ -29,6 +29,9 @@
 
 ### Improved
 
+- An idle EventLog owner skips its background merge pass, and so the topic listing, while it committed nothing since
+  the last pass and no deletion deadline is due. An idle topic now costs only the owner's heartbeat validation.
+
 - `EventLogOptions.MaxRecordSize` defaults to 51 MiB (was 16 MiB), admitting 50 MiB payloads.
   `HttpEventLogPeerTransport` without an explicit limit sizes its messages for that default.
 
@@ -64,6 +67,12 @@
   (`BTDB.Replication/Measurements.md`).
 
 ### Fixed
+
+- An EventLog topic whose owner restarted at the same endpoint or vanished while idle no longer leaves every follower
+  polling storage (List and Get Blob up to five times per second per node and topic). A node following the topic live,
+  or the restarted node when a peer contacts it, takes the topic over, so an idle topic again costs only the owner's
+  heartbeat validation. Publications from other nodes to such a restarted, idle owner no longer retry forever.
+  `EventLogOptions` now requires `OwnerTimeout` to exceed `HeartbeatInterval`.
 
 - EventLog publication rounds sent to a remote owner carry at most `MaxRecordSize` record bytes. Several large
   concurrent records from a follower no longer exceed the peer message limit and retry forever as a failing peer.

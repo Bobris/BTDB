@@ -42,10 +42,13 @@ public sealed record EventLogOptions
     /// <summary>Maximum attempts to take over a contended tail before giving up for this round.</summary>
     public int TakeoverAttempts { get; init; } = 5;
 
-    /// <summary>An idle owner validates its tail and sends a heartbeat at this interval.</summary>
+    /// <summary>An idle owner validates its tail (one storage properties read, two after a seal) and sends a heartbeat
+    /// at this interval; this is the only recurring storage request of an idle topic besides the merge listing. It also
+    /// bounds how long an idle deposed owner and its subscribers take to notice a takeover.</summary>
     public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(1);
 
-    /// <summary>Without a batch or heartbeat for this long, a follower treats the owner as unreachable.</summary>
+    /// <summary>Without a batch or heartbeat for this long, a follower treats the owner as unreachable. Must exceed
+    /// <see cref="HeartbeatInterval"/>; keep it a few heartbeats long so one late heartbeat does not end a subscription.</summary>
     public TimeSpan OwnerTimeout { get; init; } = TimeSpan.FromSeconds(3);
 
     /// <summary>Delay before contending again after a lost takeover race.</summary>
@@ -68,7 +71,8 @@ public sealed record EventLogOptions
 
     public long MaxMergedObjectLength { get; init; } = 1L << 30;
 
-    /// <summary>How often the owner runs a background merge and cleanup pass.</summary>
+    /// <summary>How often the owner runs a background merge and cleanup pass. A pass is skipped, without listing
+    /// storage, while the owner committed nothing since the last pass and no deletion deadline is due.</summary>
     public TimeSpan MergeInterval { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>Wall clock for deletion deadlines, which storage persists.</summary>
@@ -97,6 +101,8 @@ public sealed record EventLogOptions
             throw new ArgumentOutOfRangeException(nameof(CommitLinger));
         if (AdaptiveCommitLingerMax < TimeSpan.Zero || AdaptiveCommitLingerMax > TimeSpan.FromMilliseconds(100))
             throw new ArgumentOutOfRangeException(nameof(AdaptiveCommitLingerMax));
+        if (HeartbeatInterval <= TimeSpan.Zero || OwnerTimeout <= HeartbeatInterval)
+            throw new ArgumentOutOfRangeException(nameof(OwnerTimeout), "Owner timeout must exceed the heartbeat interval.");
         if (MaxPublishRoundsInFlight <= 0) throw new ArgumentOutOfRangeException(nameof(MaxPublishRoundsInFlight));
         if (MergeFanOut is 1 or < 0 || MergeLevels < 0 || MergeLevels > 9)
             throw new ArgumentOutOfRangeException(nameof(MergeFanOut));

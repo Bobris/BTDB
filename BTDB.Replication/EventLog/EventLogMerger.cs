@@ -22,11 +22,14 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
     readonly Dictionary<string, Merged> _known = new(StringComparer.Ordinal);
     readonly HashSet<(string Key, string Version)> _verified = new();
 
-    public sealed record PassResult(int Created, int Marked, int Deleted);
+    /// <summary>NextDeadline is when a pass over unchanged storage would next do anything: the earliest deletion
+    /// deadline of a marked object, or the pass time when something was left undone; null when only new history can
+    /// give it work.</summary>
+    public sealed record PassResult(int Created, int Marked, int Deleted, DateTimeOffset? NextDeadline);
 
     public async ValueTask<PassResult> RunPassAsync(CancellationToken cancellation)
     {
-        if (options.MergeFanOut == 0 || options.MergeLevels == 0) return new(0, 0, 0);
+        if (options.MergeFanOut == 0 || options.MergeLevels == 0) return new(0, 0, 0, null);
         var splits = new SortedList<ulong, EventLogObjectInfo>();
         var mergedInfos = new List<(EventLogObjectInfo Info, int Level)>();
         await foreach (var info in storage.ListAsync(topic + "/", cancellation).ConfigureAwait(false))
@@ -35,13 +38,19 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
             if (level == 0) splits[number] = info;
             else if (level <= options.MergeLevels) mergedInfos.Add((info, level));
         }
-        if (splits.Count == 0) return new(0, 0, 0);
+        if (splits.Count == 0) return new(0, 0, 0, null);
         var maxSplit = splits.Keys[^1];
         var merged = new List<(Merged Object, EventLogObjectInfo Info)>();
         foreach (var (info, _) in mergedInfos)
             merged.Add((await LearnAsync(info, cancellation).ConfigureAwait(false), info));
 
         var created = 0;
+        var now = options.TimeProvider.GetUtcNow();
+        DateTimeOffset? nextDeadline = null;
+        void Due(DateTimeOffset deadline)
+        {
+            if (nextDeadline == null || deadline < nextDeadline) nextDeadline = deadline;
+        }
         for (var level = 1; level <= options.MergeLevels; level++)
         {
             var span = Span(level);
@@ -57,7 +66,11 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
                 if (merged.Any(m => m.Object.Level >= level && m.Object.FirstSplit <= first && m.Object.LastSplit >= last))
                     continue;
                 var result = await MergeGroupAsync(level, first, last, splits, merged, cancellation).ConfigureAwait(false);
-                if (result == null) continue;
+                if (result == null)
+                {
+                    Due(now);
+                    continue;
+                }
                 merged.Add(result.Value);
                 created++;
             }
@@ -65,19 +78,24 @@ internal sealed class EventLogMerger(IEventLogStorage storage, string topic, Eve
 
         var marked = 0;
         var deleted = 0;
-        var now = options.TimeProvider.GetUtcNow();
         foreach (var info in splits.Values.Concat(merged.Select(m => m.Info)))
         {
             if (!await IsGarbageAsync(info, merged, cancellation).ConfigureAwait(false)) continue;
             if (info.DeleteAfter is not { } due)
             {
                 if (await storage.ScheduleDeletionAsync(info.Key, info.Version, options.DeletionDelay, cancellation)
-                        .ConfigureAwait(false) != null) marked++;
+                        .ConfigureAwait(false) != null)
+                {
+                    marked++;
+                    Due(now + options.DeletionDelay);
+                }
+                else Due(now);
             }
-            else if (due <= now && await storage.DeleteAsync(info.Key, info.Version, cancellation).ConfigureAwait(false))
-                deleted++;
+            else if (due > now) Due(due);
+            else if (await storage.DeleteAsync(info.Key, info.Version, cancellation).ConfigureAwait(false)) deleted++;
+            else Due(now);
         }
-        return new(created, marked, deleted);
+        return new(created, marked, deleted, nextDeadline);
     }
 
     ulong Span(int level)

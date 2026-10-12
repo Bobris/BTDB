@@ -487,9 +487,9 @@ await foreach (var record in events.ReadAsync(end, null, stopping))    // then f
   larger than a split gets its own sealed split, up to `MaxRecordSize` (default 51 MiB, admitting 50 MiB payloads).
   Use the same `MaxRecordSize` on all nodes: a publication round sent to a remote owner carries at most that many
   record bytes, and the HTTP transport sizes its peer message limit and the server's request body limit from it.
-- **Merging and cleanup.** The owner merges sealed splits every `MergeInterval` into level-1 and level-2 objects
-  (fan-out 16) and deletes covered objects after `DeletionDelay` (default one day). Nothing is deleted before the
-  record history is covered, and there is no retention in v1.
+- **Merging and cleanup.** The owner merges sealed splits every `MergeInterval` (while it commits) into level-1 and
+  level-2 objects (fan-out 16) and deletes covered objects after `DeletionDelay` (default one day). Nothing is
+  deleted before the record history is covered, and there is no retention in v1.
 - **Pipelining.** A node keeps up to `MaxPublishRoundsInFlight` (default 64) publication rounds per topic in flight,
   so records published during the owner's storage write join its next write. Keep it above the expected number of
   concurrent publications per node; 1 restores strictly sequential rounds.
@@ -502,6 +502,15 @@ await foreach (var record in events.ReadAsync(end, null, stopping))    // then f
   without it writes at once. Any window ends early once the queue fills the next batch (record count or remaining
   split room). See the [fixed](../BTDB.Replication/Measurements.md#commit-window) and
   [adaptive](../BTDB.Replication/Measurements.md#adaptive-commit-window) measurements.
+- **Idle cost and liveness.** Followers of an idle topic do not touch storage. Its owner reads the tail's
+  properties once per `HeartbeatInterval` (default 1 s) to detect a takeover. Its merge pass, checked every
+  `MergeInterval` (default 30 s), lists the topic only after the owner committed something since the last pass or
+  when a deletion deadline is due, so an idle topic is not listed. A topic without a reachable owner, for example
+  after its owner restarted and nothing was published since, is taken over by a node following it live or by the
+  restarted node when a peer contacts it, so it returns to that cost. A longer `HeartbeatInterval` lowers the owner's
+  request rate proportionally, but an idle deposed owner and its subscribers notice a takeover up to that much later,
+  and `OwnerTimeout` (must exceed it; default 3 s) must grow with it, which delays failover of followers and
+  publishers. `MergeInterval` affects only how soon an active topic is merged and cleaned up.
 - **Benchmarks.** `DBBenchmark eventlog-e2e` measures publish-to-all-nodes latency, and `DBBenchmark eventlog-storage`
   measures the storage primitives on Azure. `EventLogBench` measures latency and throughput of 1–4 nodes on
   Kubernetes, including event-sourcing consumption ([results](../BTDB.Replication/Measurements.md#event-log-on-aks)).

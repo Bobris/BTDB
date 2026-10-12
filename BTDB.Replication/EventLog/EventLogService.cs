@@ -9,10 +9,11 @@ namespace BTDB.Replication.EventLog;
 
 /// <summary>
 /// One node's event log: every topic publishes through its current owner, reached in process or through
-/// <see cref="IEventLogPeerTransport"/>, and this node serves the topics it owns to its peers. A node takes over a
-/// topic when the topic has no owner, when the recorded owner is this endpoint's previous session, or when the owner
-/// stayed unreachable for <see cref="EventLogOptions.OwnerTimeout"/>. Followers read storage only to catch up and while
-/// the owner is unreachable; live records and heartbeats come from the owner.
+/// <see cref="IEventLogPeerTransport"/>, and this node serves the topics it owns to its peers. A node publishing,
+/// following live records or serving a peer takes over a topic when the topic has no owner, when the recorded owner is
+/// this endpoint's previous session, or when the owner stayed unreachable for <see cref="EventLogOptions.OwnerTimeout"/>.
+/// Followers read storage only to catch up and while the owner is unreachable; live records and heartbeats come from
+/// the owner, so an idle topic costs only the owner's heartbeat validation.
 /// </summary>
 public sealed class EventLogService : IEventLog, IEventLogPeerHandler, IAsyncDisposable
 {
@@ -134,6 +135,8 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
     IDisposable? _heartbeat;
     IDisposable? _mergeTimer;
     CancellationTokenSource? _mergeCancellation;
+    ulong? _mergedNext;
+    DateTimeOffset? _mergeDeadline;
     readonly EventLogMerger _merger;
 
     public EventLogTopic(EventLogService service, string name)
@@ -500,6 +503,8 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             _knownNext = Math.Max(_knownNext, lane.NextOffset);
             _mergeCancellation?.Cancel();
             _mergeCancellation = CancellationTokenSource.CreateLinkedTokenSource(_service.Disposal);
+            _mergedNext = null;
+            _mergeDeadline = null;
         }
         ScheduleHeartbeat(lane);
         ScheduleMerge(lane);
@@ -518,13 +523,29 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
     }
 
     /// <summary>One background merge and cleanup pass while this node owns the topic; appends keep priority because
-    /// the pass runs separately from the lane and losing ownership cancels it.</summary>
+    /// the pass runs separately from the lane and losing ownership cancels it. Only the owner writes the topic, so
+    /// while it committed nothing since the last successful pass and no deletion deadline is due, a pass would find
+    /// nothing to do and is skipped, and an idle topic is not listed.</summary>
     internal async Task<EventLogMerger.PassResult?> MergeAsync(EventLogOwnerLane lane, CancellationToken cancellation)
     {
         EventLogMerger.PassResult? result = null;
         try
         {
-            if (lane.IsInstalled && !lane.IsStopped) result = await _merger.RunPassAsync(cancellation).ConfigureAwait(false);
+            var next = lane.NextOffset;
+            bool idle;
+            lock (_lock)
+                idle = _mergedNext == next &&
+                       (_mergeDeadline is not { } deadline || deadline > _options.TimeProvider.GetUtcNow());
+            if (!idle && lane.IsInstalled && !lane.IsStopped)
+            {
+                result = await _merger.RunPassAsync(cancellation).ConfigureAwait(false);
+                lock (_lock)
+                    if (_lane == lane)
+                    {
+                        _mergedNext = next;
+                        _mergeDeadline = result.NextDeadline;
+                    }
+            }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return null; }
         catch (Exception) { } // storage trouble: the next pass retries
@@ -640,15 +661,43 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
 
     // ----- Serving peers -----
 
+    /// <summary>
+    /// The lane for a peer request. Peers route here because storage or an owner hint names this endpoint, so a node
+    /// without a lane and without a known owner resolves ownership itself and takes over a topic whose recorded owner is
+    /// its own previous session, missing or suspected; otherwise it returns the recorded owner as the hint. Without this,
+    /// an idle topic whose owner restarted at the same endpoint has no owner, and every follower polls storage.
+    /// </summary>
+    async ValueTask<(EventLogOwnerLane? Lane, string? Hint)> ServingLaneAsync(bool install, CancellationToken cancellation)
+    {
+        EventLogOwnerLane? lane;
+        lock (_lock)
+        {
+            lane = _lane is { IsStopped: false } l ? l : null;
+            if (lane == null && _ownerEndpoint != null) return (null, _ownerEndpoint);
+        }
+        if (lane == null)
+        {
+            if (_service.Disposal.IsCancellationRequested) return (null, null);
+            string? endpoint;
+            (lane, endpoint) = await ResolveOwnerAsync(true, cancellation).ConfigureAwait(false);
+            if (lane == null) return (null, endpoint);
+        }
+        if (install) await lane.InstallAsync().WaitAsync(cancellation).ConfigureAwait(false);
+        return (lane, null);
+    }
+
     internal async ValueTask<EventLogSubmitResponse> ServeSubmitAsync(EventLogSubmitRequest request,
         CancellationToken cancellation)
     {
         EventLogOwnerLane? lane;
         string? hint;
-        lock (_lock)
+        try
         {
-            lane = _lane is { IsStopped: false } l ? l : null;
-            hint = _ownerEndpoint;
+            (lane, hint) = await ServingLaneAsync(false, cancellation).ConfigureAwait(false);
+        }
+        catch (EventLogOwnerLostException)
+        {
+            (lane, hint) = (null, null);
         }
         if (lane == null) return new(EventLogSubmitStatus.NotOwner, [], _knownNext, hint);
         var tasks = new Task<ulong>[request.Records.Count];
@@ -673,17 +722,10 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
 
     internal async ValueTask<EventLogBoundsResponse> ServeBoundsAsync(CancellationToken cancellation)
     {
-        EventLogOwnerLane? lane;
-        string? hint;
-        lock (_lock)
-        {
-            lane = _lane is { IsStopped: false } l ? l : null;
-            hint = _ownerEndpoint;
-        }
-        if (lane == null) return new(false, default, hint);
         try
         {
-            await lane.InstallAsync().WaitAsync(cancellation).ConfigureAwait(false);
+            var (lane, hint) = await ServingLaneAsync(true, cancellation).ConfigureAwait(false);
+            if (lane == null) return new(false, default, hint);
             return new(true, new(0, await lane.ValidateAsync(cancellation).ConfigureAwait(false)), null);
         }
         catch (EventLogOwnerLostException)
@@ -697,9 +739,15 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
     {
         Subscriber? subscriber = null;
         EventLogLiveMessage? refusal = null;
+        string? hint = null;
+        try
+        {
+            (_, hint) = await ServingLaneAsync(true, cancellation).ConfigureAwait(false);
+        }
+        catch (EventLogOwnerLostException) { }
         lock (_lock)
         {
-            if (_lane is not { IsStopped: false, IsInstalled: true } lane) refusal = EventLogLiveMessage.NotOwner(_ownerEndpoint);
+            if (_lane is not { IsStopped: false, IsInstalled: true } lane) refusal = EventLogLiveMessage.NotOwner(hint);
             else if (from > lane.NextOffset) refusal = EventLogLiveMessage.NotOwner(null);
             else if (from < _cacheStart && from < lane.NextOffset)
                 refusal = new(EventLogLiveKind.CatchUp, lane.NextOffset, [], lane.TailVersion, null);
@@ -788,7 +836,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
                 }
                 if (offset == end) yield break;
             }
-            await using var live = new LiveSubscription(this, offset, cancellation);
+            await using var live = new LiveSubscription(this, offset, end == null, cancellation);
             var gap = false;
             while (await live.NextAsync().ConfigureAwait(false) is { } message)
             {
@@ -823,6 +871,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
     {
         readonly EventLogTopic _topic;
         readonly ulong _from;
+        readonly bool _takeOver;
         readonly CancellationToken _outer;
         CancellationTokenSource? _cts;
         IAsyncEnumerator<EventLogLiveMessage>? _enumerator;
@@ -830,10 +879,11 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
         string? _endpoint;
         bool _done;
 
-        public LiveSubscription(EventLogTopic topic, ulong from, CancellationToken outer)
+        public LiveSubscription(EventLogTopic topic, ulong from, bool takeOver, CancellationToken outer)
         {
             _topic = topic;
             _from = from;
+            _takeOver = takeOver;
             _outer = outer;
         }
 
@@ -857,7 +907,7 @@ internal sealed class EventLogTopic : IEventTopic, IAsyncDisposable
             {
                 if (_enumerator == null)
                 {
-                    var (lane, endpoint) = await _topic.ResolveOwnerAsync(false, _outer).ConfigureAwait(false);
+                    var (lane, endpoint) = await _topic.ResolveOwnerAsync(_takeOver, _outer).ConfigureAwait(false);
                     _cts = CancellationTokenSource.CreateLinkedTokenSource(_outer);
                     if (lane != null)
                         _enumerator = _topic.ServeSubscribeAsync(_from, _cts.Token).GetAsyncEnumerator(_cts.Token);

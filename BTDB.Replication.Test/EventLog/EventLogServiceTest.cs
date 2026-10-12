@@ -14,7 +14,9 @@ namespace BTDB.Replication.Test.EventLog;
 internal sealed class CountingStorage(IEventLogStorage inner) : IEventLogStorage
 {
     int _requests;
+    int _lists;
     public int Requests => Volatile.Read(ref _requests);
+    public int Lists => Volatile.Read(ref _lists);
     public bool Unavailable { get; set; }
 
     void Count()
@@ -32,7 +34,8 @@ internal sealed class CountingStorage(IEventLogStorage inner) : IEventLogStorage
     { Count(); return inner.WriteAsync(key, expectedVersion, content, owner, sha256, c); }
     public ValueTask<EventLogWriteResult> SetOwnerAsync(string key, string expectedVersion, EventLogOwner owner, CancellationToken c)
     { Count(); return inner.SetOwnerAsync(key, expectedVersion, owner, c); }
-    public IAsyncEnumerable<EventLogObjectInfo> ListAsync(string prefix, CancellationToken c) { Count(); return inner.ListAsync(prefix, c); }
+    public IAsyncEnumerable<EventLogObjectInfo> ListAsync(string prefix, CancellationToken c)
+    { Count(); Interlocked.Increment(ref _lists); return inner.ListAsync(prefix, c); }
     public ValueTask<string?> ScheduleDeletionAsync(string key, string version, TimeSpan delay, CancellationToken c)
     { Count(); return inner.ScheduleDeletionAsync(key, version, delay, c); }
     public ValueTask<bool> DeleteAsync(string key, string version, CancellationToken c) { Count(); return inner.DeleteAsync(key, version, c); }
@@ -369,6 +372,67 @@ public class EventLogServiceTest
         var restarted = cluster.Start("a");
         Assert.Equal(1ul, await Publish(restarted, 1));
         Assert.True(restarted.IsOwner(Topic));
+    }
+
+    public enum IdleOwner { Live, RestartedAndFollowing, RestartedOnlyServing, Vanished }
+
+    /// <summary>An idle topic costs one validation per heartbeat on its owner and nothing on followers, also after its
+    /// owner restarted at the same endpoint or vanished: a follower or the restarted node takes the topic over instead
+    /// of every follower polling storage.</summary>
+    [Theory]
+    [InlineData(IdleOwner.Live)]
+    [InlineData(IdleOwner.RestartedAndFollowing)]
+    [InlineData(IdleOwner.RestartedOnlyServing)]
+    [InlineData(IdleOwner.Vanished)]
+    public async Task IdleTopicCostsOneStorageRequestPerHeartbeat(IdleOwner scenario)
+    {
+        await using var cluster = new EventLogCluster();
+        var a = cluster.Start("a");
+        var b = cluster.Start("b");
+        await Publish(a, 0);
+        using var cancel = new CancellationTokenSource(Timeout);
+        Task Follow(EventLogService node) => Task.Run(async () =>
+        {
+            try { await foreach (var _ in node.GetTopic(Topic).ReadAsync(0, null, cancel.Token)) { } }
+            catch (OperationCanceledException) { }
+        });
+        var following = new List<Task> { Follow(b) };
+        await Task.Delay(200);
+        if (scenario != IdleOwner.Live) await cluster.Stop("a");
+        if (scenario is IdleOwner.RestartedAndFollowing or IdleOwner.RestartedOnlyServing) a = cluster.Start("a");
+        if (scenario == IdleOwner.RestartedAndFollowing) following.Add(Follow(a));
+        await Task.Delay(1000); // ownership settles
+        var before = cluster.Nodes.Values.Sum(n => n.Storage.Requests);
+        var window = TimeSpan.FromSeconds(1);
+        await Task.Delay(window);
+        var requests = cluster.Nodes.Values.Sum(n => n.Storage.Requests) - before;
+        var heartbeats = window / EventLogCluster.FastOptions.HeartbeatInterval;
+        Assert.True(requests <= heartbeats * 1.5 + 5, $"{requests} storage requests in {heartbeats} heartbeats");
+        Assert.Single(cluster.Nodes.Values, n => n.Service.IsOwner(Topic));
+        Assert.Equal(1ul, await Publish(b, 1));
+        await cancel.CancelAsync();
+        await Task.WhenAll(following);
+    }
+
+    [Fact]
+    public async Task OwnerTimeoutMustExceedHeartbeatInterval()
+    {
+        await using var cluster = new EventLogCluster();
+        var node = cluster.Start("a", EventLogCluster.FastOptions with { OwnerTimeout = TimeSpan.FromMilliseconds(40) });
+        Assert.Throws<ArgumentOutOfRangeException>(() => node.GetTopic(Topic));
+    }
+
+    [Fact]
+    public async Task RemotePublicationReachesAnIdleRestartedOwner()
+    {
+        await using var cluster = new EventLogCluster();
+        var a = cluster.Start("a");
+        var b = cluster.Start("b");
+        await Publish(a, 0);
+        await cluster.Stop("a");
+        cluster.Start("a");
+        Assert.Equal(1ul, await Publish(b, 1));
+        Assert.True(cluster["a"].IsOwner(Topic));
     }
 
     [Fact]

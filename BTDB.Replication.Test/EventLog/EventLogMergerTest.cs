@@ -177,6 +177,44 @@ public class EventLogMergerTest
         Assert.Equal(Enumerable.Range(0, 12).Select(i => (ulong)i), records);
     }
 
+    [Fact]
+    public async Task IdleOwnerSkipsMergePassesUntilANewCommitOrADeletionDeadline()
+    {
+        var time = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var inner = new InMemoryEventLogStorage(time);
+        var storage = new CountingStorage(inner);
+        var transport = new InProcessEventLogTransport();
+        await using var service = new EventLogService(storage, transport.From("a"), "a", new SystemReplicationScheduler(),
+            new() { SplitCap = 256, SealFreeSpace = 200, MergeFanOut = 2, MergeLevels = 2, TimeProvider = time,
+                MergeInterval = TimeSpan.FromMilliseconds(20), DeletionDelay = TimeSpan.FromHours(1) });
+        transport.Register("a", service);
+        var topic = service.GetTopic(Topic);
+        for (var i = 0; i < 12; i++) await topic.PublishAsync(Bytes(i, 30));
+        var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!inner.Keys.Any(k => k.Contains("/l2/")) && DateTime.UtcNow < timeout) await Task.Delay(10);
+        await Task.Delay(300); // the passes after the last commit mark the covered splits
+
+        var lists = storage.Lists;
+        await Task.Delay(300); // 15 merge intervals without commits
+        Assert.Equal(lists, storage.Lists);
+
+        await topic.PublishAsync(Bytes(12, 30));
+        await Task.Delay(300);
+        Assert.True(storage.Lists > lists);
+        lists = storage.Lists;
+        await Task.Delay(300);
+        Assert.Equal(lists, storage.Lists);
+
+        var keys = inner.Keys.Count;
+        time.Advance(TimeSpan.FromHours(2)); // the deletion deadline of the marked splits passes
+        while (inner.Keys.Count >= keys && DateTime.UtcNow < timeout) await Task.Delay(10);
+        Assert.True(inner.Keys.Count < keys);
+        Assert.True(storage.Lists > lists);
+        var records = new List<ulong>();
+        await foreach (var record in topic.ReadAsync(0, 13)) records.Add(record.Offset);
+        Assert.Equal(Enumerable.Range(0, 13).Select(i => (ulong)i), records);
+    }
+
     /// <summary>Lets creates through, then fails the first deletion mark like a crash.</summary>
     sealed class CrashAfterCreateStorage(IEventLogStorage inner) : IEventLogStorage
     {
