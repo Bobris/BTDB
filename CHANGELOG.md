@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.11.1
+
 ### Added
 
 - Add `ReplicationPresence`, registered by `AddBTDBReplication`: each node announces one value to the selected
