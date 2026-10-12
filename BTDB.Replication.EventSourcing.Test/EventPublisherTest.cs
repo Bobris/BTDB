@@ -220,7 +220,7 @@ public class EventPublisherTest
     }
 
     [Fact]
-    public async Task FailureRollsBackOnlyItsEventAndRestartRetriesTheUnconsumedRecord()
+    public async Task FatalFailureRollsBackOnlyItsEventAndRestartRetriesTheUnconsumedRecord()
     {
         var data = new MemoryTopic("data");
         var metadata = new MemoryTopic("metadata");
@@ -231,11 +231,11 @@ public class EventPublisherTest
             await publisher.StartAsync();
             await publisher.PublishAsync(new AddPure { Amount = 1 });
             var publishing = publisher.PublishAsync(new AddPure { Amount = -2 }).AsTask();
-            await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.Completion);
+            await Assert.ThrowsAsync<IOException>(() => publisher.Completion);
             await Assert.ThrowsAnyAsync<Exception>(() => publishing);
             Assert.Equal(1ul, publisher.LastAppliedEventId);
             Assert.Single(db.Read());
-            await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.DisposeAsync().AsTask());
+            await Assert.ThrowsAsync<IOException>(() => publisher.DisposeAsync().AsTask());
         }
         using var reopened = await TestDatabase.OpenAsync(files);
         var handler = new Handler();
@@ -332,10 +332,10 @@ public class EventPublisherTest
         }
         using var db = await TestDatabase.OpenAsync();
         var failing = db.Publisher(data, metadata, new Handler { Fail = true });
-        await Assert.ThrowsAsync<InvalidOperationException>(() => failing.StartAsync());
+        await Assert.ThrowsAsync<IOException>(() => failing.StartAsync());
         Assert.Equal(1ul, failing.LastAppliedEventId);
         Assert.Single(db.Read());
-        await Assert.ThrowsAsync<InvalidOperationException>(() => failing.DisposeAsync().AsTask());
+        await Assert.ThrowsAsync<IOException>(() => failing.DisposeAsync().AsTask());
         await using var recovered = db.Publisher(data, metadata, new Handler());
         await recovered.StartAsync();
         Assert.Equal(new[] { 1, -2 }, db.Read().Select(e => e.Amount));

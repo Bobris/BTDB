@@ -49,10 +49,10 @@ public class PostCommitTest
             await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10));
             if (failLast)
             {
-                await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.Completion);
+                await Assert.ThrowsAsync<IOException>(() => publisher.Completion);
                 await Assert.ThrowsAnyAsync<Exception>(() => third);
                 Assert.Equal(new[] { 1ul, 2ul }, executed);
-                await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.DisposeAsync().AsTask());
+                await Assert.ThrowsAsync<IOException>(() => publisher.DisposeAsync().AsTask());
             }
             else
             {

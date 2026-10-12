@@ -462,6 +462,39 @@ public partial class ReplicationNodeCoordinatorTest
     }
 
     [Fact]
+    public async Task CanonicalCutFollowsPublicationOnEveryRoleAndReleasesWaiters()
+    {
+        await using var cluster = await Cluster.Create();
+        var leader = cluster.Start("leader");
+        var follower = cluster.Start("follower");
+        cluster.Advance(20);
+        var restored = Assert.Single(follower.Status.Current.Databases).Canonical;
+        Assert.NotNull(restored); // The restored history is canonical.
+        cluster.Trls.Inject = _ => Fault.DelayEffect;
+        await leader.Write(2, 2);
+        await follower.Write(2, 2);
+        var leaderWait = leader.Status.WaitForCanonicalAsync("main", leader.Capture.Completed);
+        var followerWait = follower.Status.WaitForCanonicalAsync("main", follower.Capture.Completed);
+        cluster.Advance(10);
+        // Compared but not yet published: a restart would not restore event 2.
+        var following = Assert.Single(follower.Status.Current.Databases);
+        Assert.Equal(follower.Capture.Completed, following.Compared!.Value.Position);
+        Assert.Equal(restored, following.Canonical);
+        Assert.False(leaderWait.IsCompleted || followerWait.IsCompleted);
+        cluster.Trls.Inject = null;
+        cluster.Trls.CompleteDelayed();
+        cluster.Advance(30);
+        await Task.WhenAll(leaderWait, followerWait).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(leader.Capture.Completed, Assert.Single(leader.Status.Current.Databases).Canonical);
+        Assert.Equal(follower.Capture.Completed, Assert.Single(follower.Status.Current.Databases).Canonical);
+        // A stopped node can no longer make more history canonical.
+        var never = follower.Status.WaitForCanonicalAsync("main", new(follower.Capture.Completed.FileId + 1, 0));
+        follower.Cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => follower.Run);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => never.WaitAsync(TimeSpan.FromSeconds(10)));
+    }
+
+    [Fact]
     public async Task StatusSeparatesLocalComparedAndPublishedCutsAndKeepsPriorSnapshotsImmutable()
     {
         await using var cluster = await Cluster.Create();

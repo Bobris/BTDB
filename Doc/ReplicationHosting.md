@@ -330,6 +330,14 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 var status = app.Services.GetRequiredService<ReplicationStatus>().Current;
 ```
 
+Each `ReplicationDatabaseStatus` separates the local completed cut (`LocalCommitted`), the cut compared with the
+leader (`Compared`), the leader's own publication (`Published`) and `Canonical`: the end of this node's local TRL
+known to be canonical on any role (restored, published by this node, or compared with a leader that had published
+it). A restart restores at least the canonical history. `ReplicationStatus.WaitForCanonicalAsync(database,
+position)` completes once `Canonical` reaches a local TRL position such as `LeaderTrlProgress.Position`, within
+about one poll interval of publication; it fails once the database is removed or detached or the node stops or
+requires a restart.
+
 Readiness means restoration/initialization finished and the node can serve ordinary local work. Restore, activation,
 schema detachment, restart and shutdown are unhealthy. A disconnected restored follower may remain ready: neither
 live confirmation nor Blob publication is required for local work. This check does not grant leadership authority.
@@ -422,9 +430,11 @@ intent. Cancellation or an exception after dispatch can also leave an applied wr
 an unresolved operation over newer state; the application must resolve its intended semantics. A later `Rejected`
 result never proves that an earlier ambiguous attempt had no effect.
 
-JSON updates are independent of database transactions. BTDB does not interpret the payload, enforce its schema,
-expire it, observe application handlers, arbitrate event timeouts/commits, or skip events because of it. These policies
-belong entirely to the application. The existing activation/publication watchdogs monitor replication work only.
+JSON updates are independent of database transactions. BTDB replication does not interpret the payload, enforce its
+schema, expire it, observe application handlers, arbitrate event timeouts/commits, or skip events because of it. These
+policies belong entirely to the application. The exception is `BTDB.Replication.EventSourcing`: with
+`EventPoisonOptions` it keeps event skip decisions under the `btdbEventSkips` key, so keep `applicationData` an object
+and preserve that key in application writes (see [ReplicationEventSourcing.md](ReplicationEventSourcing.md)). The existing activation/publication watchdogs monitor replication work only.
 
 ## Operational backup recovery
 

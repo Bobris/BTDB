@@ -566,7 +566,8 @@ internal sealed class ReplicationNodeCoordinator(ReplicationNodeOptions options,
                 databases[i] = new(name, host.GetProgress(name),
                     _followers.TryGetValue(name, out var following) ? following.Follower.Compared : null,
                     _publishers is { } publishers ? publishers[i].PublishedPosition : null,
-                    _removed.Contains(name), _detached.Contains(name));
+                    _removed.Contains(name), _detached.Contains(name),
+                    _canonicalBase.TryGetValue(name, out var canonical) ? canonical : null);
             }
             var ready = initialized && !_restart && _detached.Count == 0 &&
                 Role is ReplicationNodeRole.Follower or ReplicationNodeRole.Leader;

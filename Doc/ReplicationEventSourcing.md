@@ -257,11 +257,64 @@ subscription before disposing the publisher or database. See
 
 ## Failure and lifetime
 
-A handler failure disposes its writer without committing, preserving earlier successful events in the batch. The
-wrapper flushes that successful prefix, faults `Completion`, fails pending local waits and stops its input workers.
-It does not skip the failed record or mark it consumed. Restart retries that record from the last successful cursor.
-Hosts must observe `Completion` and arrange their restart/error policy; the wrapper does not choose retry, timeout or
-skip policies for the application.
+A handler failure disposes its writer without committing: the event's writes, ID allocations and post-commit
+registrations are discarded, and earlier successful events in the batch stay. `EventPublisherOptions.
+IsFatalConsumeException` then decides between two outcomes:
+
+- **Deterministic (the default for most exceptions).** Every node consuming the event gets the same exception, so the
+  publisher commits only the cursor for the event and continues. Its local publication fails with the exception (the
+  event keeps its `EventId`), `OnConsumeFailed` reports it on every node, and replay reaches the same outcome.
+  Prefer returning a rejection result for expected business failures.
+- **Fatal (probably not deterministic).** `DefaultIsFatalConsumeException` treats `OutOfMemoryException`,
+  `InsufficientExecutionStackException`, `OperationCanceledException`, `IOException`, `TimeoutException`,
+  `ObjectDisposedException` and `ThreadInterruptedException` as fatal, also when wrapped as inner or aggregate
+  exceptions. The wrapper flushes the successful prefix, faults `Completion`, fails pending local waits and stops its
+  input workers. Restart retries the event from the last successful cursor. Hosts must observe `Completion` and
+  arrange restart.
+
+A classification must give the same answer on every node for the same event; an exception that depends on the node
+(time, memory, I/O) must be fatal, or replicas diverge. Commit and deserialization failures are always fatal.
+
+### Skipping events that never complete
+
+A fatal exception that repeats, or a process crash that no handler can catch (stack overflow, `FailFast`, an
+out-of-memory kill), would retry the event forever. Configure `EventPublisherOptions.Poison` to skip it; it needs
+BTDB replication and the database's `TransactionLogCapture`:
+
+```csharp
+var poison = new EventPoisonOptions(
+    services.GetRequiredService<ReplicationApplicationData>(),
+    services.GetRequiredService<ReplicationStatus>(), "main", attemptStorage, nodeId) { Attempts = 2 };
+new EventPublisherOptions { Poison = poison, OnEventSkipped = (id, reason) => log.Warning(...) };
+```
+
+- **Attempt window.** After every start, the publisher records each of the first `MaximumBatchSize` events in
+  `attemptStorage` (key `event-attempts/{data topic}/{node}`) before consuming it. An event that already started
+  `Attempts` times on this node without completing is skipped instead. A crash inside a batch is always within the
+  window, because the cursor restarts at that batch.
+- **Progress.** A restart restores canonical (published) history, which can be behind the crash. Once the window is
+  consumed, the publisher waits with `ReplicationStatus.WaitForCanonicalAsync` until the window's completed cut is
+  canonical: a leader's when it published the window, a follower's when it compared the window with a leader that
+  had published it. Each crash-restart cycle therefore restores further until the window reaches the failing event.
+- **Decision in leader.json.** The skip is recorded in `applicationData.btdbEventSkips` (an object from event ID to
+  reason; other application data is preserved) before the event's cursor commits. Only the active leader can write
+  it, so the decision follows the node whose history is canonical. A follower that exhausted its attempts waits,
+  retrying every `DecisionRetryInterval`, until a leader recorded the decision or it becomes the leader itself. After
+  `DecisionTimeout` (5 minutes) it stops with `TimeoutException`; if the leader consumed the event instead, the
+  restart restores canonical history beyond it.
+- **Applying decisions.** Every publisher reads the decisions once at start and skips listed events without
+  deserializing them; leader.json is not watched while running. A node that reaches the event first crashes the same
+  way and sees the decision after restart. A node that consumes an event the leader skipped diverges from canonical
+  history, which replication comparison detects and repairs by restore.
+- **Pruning.** After the window is canonical, an active leader removes decisions at or below that event ID: every
+  restore starts beyond them. A node that read its decisions before the prune at worst crashes on the event once more
+  and then restores beyond it.
+- **Operator skips.** On the active leader, `EventPublisher.SkipEventAsync(applicationData, eventId, reason)` records
+  a manual decision, for example for a deserialization failure; false means the write was rejected (not the leader
+  or a concurrent change). Restart the publishers to apply it. Never skip an event that a node already consumed.
+
+A skipped event commits only its cursor. A local publication waiting for it fails with `EventSkippedException`, and
+`OnEventSkipped` reports it on every node.
 
 Cancellation after publication dispatch can mean the event was stored and may still be consumed; cancellation is
 not proof of absence. A new caller retry is a new publication unless the application event contains its own stable

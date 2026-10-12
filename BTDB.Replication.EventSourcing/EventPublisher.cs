@@ -22,6 +22,30 @@ public sealed record EventPublisherOptions
     public Func<Guid> NewPublicationId { get; init; } = Guid.NewGuid;
     public ITypeNameMapper? TypeNameMapper { get; init; }
     public EventCluster? Cluster { get; init; }
+
+    /// <summary>Classifies an exception from <c>Consume</c>. A fatal one is probably not deterministic (out of memory,
+    /// I/O, cancellation): the publisher stops and retries the event after restart. Any other exception counts as
+    /// deterministic, so every node gets it: the event's transaction rolls back, only the cursor advances, and its
+    /// local publication fails with the exception.</summary>
+    public Func<Exception, bool> IsFatalConsumeException { get; init; } = DefaultIsFatalConsumeException;
+
+    /// <summary>Called on every node for an event whose <c>Consume</c> failed deterministically, before its batch is
+    /// visible. An exception from the callback stops the publisher.</summary>
+    public Action<Event, Exception>? OnConsumeFailed { get; init; }
+
+    /// <summary>Called with the event ID and reason for every event skipped by a leader.json decision.</summary>
+    public Action<ulong, string>? OnEventSkipped { get; init; }
+
+    /// <summary>Detects events whose consumption never completes and skips them on every node.</summary>
+    public EventPoisonOptions? Poison { get; init; }
+
+    public static bool DefaultIsFatalConsumeException(Exception error) => error switch
+    {
+        OutOfMemoryException or InsufficientExecutionStackException or OperationCanceledException or IOException
+            or TimeoutException or ObjectDisposedException or ThreadInterruptedException => true,
+        AggregateException aggregate => aggregate.InnerExceptions.Any(DefaultIsFatalConsumeException),
+        _ => error.InnerException is { } inner && DefaultIsFatalConsumeException(inner)
+    };
 }
 
 /// <summary>An event whose serialized form exceeds <see cref="EventPublisherOptions.MaximumEventSize"/>; nothing of it was
@@ -58,6 +82,11 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
     readonly EventPublisherOptions _options;
     readonly TransactionLogCapture? _capture;
     readonly ConcurrentDictionary<Guid, Pending> _pending = new();
+    readonly EventAttemptJournal? _attempts;
+    Dictionary<ulong, string> _skips = new();
+    ulong _windowEnd;
+    bool _windowDurable;
+    ulong _canonicalEventId;
     readonly CancellationTokenSource _stop = new();
     readonly CancellationToken _lifetime;
     readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -84,6 +113,17 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(options));
         ArgumentNullException.ThrowIfNull(_options.TimeProvider);
         ArgumentNullException.ThrowIfNull(_options.NewPublicationId);
+        ArgumentNullException.ThrowIfNull(_options.IsFatalConsumeException);
+        if (_options.Poison is { } poison)
+        {
+            if (poison.Attempts <= 0 || poison.DecisionRetryInterval <= TimeSpan.Zero || poison.DecisionTimeout <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(options));
+            if (capture == null)
+                throw new ArgumentException("Skipping poison events needs the database's TransactionLogCapture.", nameof(capture));
+            _attempts = new(poison.AttemptStorage,
+                $"event-attempts/{Uri.EscapeDataString(dataTopic.Name)}/{Uri.EscapeDataString(poison.NodeId)}",
+                poison.Attempts);
+        }
         if (dispatcher is EventDispatcher typed) typed.Freeze();
         _codec = new(_options.TypeNameMapper);
         _capture = capture;
@@ -179,6 +219,26 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
         finally { _pending.TryRemove(stored.PublicationId, out _); }
     }
 
+    /// <summary>Records an operator decision in leader.json to skip an event, for example one that stops every
+    /// publisher. Call it on the active leader: false means the write was rejected (not the leader, or a concurrent
+    /// change), so retry. Publishers apply decisions when they start: restart them afterwards. Never skip an event some
+    /// node already consumed.</summary>
+    public static ValueTask<bool> SkipEventAsync(ReplicationApplicationData applicationData, ulong eventId, string reason,
+        CancellationToken cancellation = default)
+    {
+        ArgumentNullException.ThrowIfNull(applicationData);
+        return SkipEventAsync(new ApplicationDataSkipDecisions(applicationData), eventId, reason, cancellation);
+    }
+
+    internal static ValueTask<bool> SkipEventAsync(IEventSkipDecisions decisions, ulong eventId, string reason,
+        CancellationToken cancellation)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(eventId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        return EventSkips.TryUpdateAsync(decisions, (eventId, reason), 0, TimeSpan.FromSeconds(1), TimeProvider.System,
+            cancellation);
+    }
+
     static async Task<TResult> ResultAsync<TResult>(Task<object?> task) where TResult : class =>
         (TResult)(await task.ConfigureAwait(false) ?? throw new InvalidOperationException("The handler returned no result."));
 
@@ -199,34 +259,74 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
             if (_lastApplied < bounds.First || _lastApplied > bounds.Next)
                 throw new EventLogOffsetNotAvailableException("The database cursor is outside retained EventLog history.");
             _replayEnd = bounds.Next;
+            if (_options.Poison is { } poison)
+            {
+                _skips = EventSkips.Parse((await poison.Decisions.ReadAsync(_lifetime).ConfigureAwait(false)).Value);
+                await _attempts!.LoadAsync(_lifetime).ConfigureAwait(false);
+                _windowEnd = checked(_lastApplied + (ulong)_options.MaximumBatchSize);
+            }
             if (_lastApplied == _replayEnd) await ReadyAsync().ConfigureAwait(false);
-            var channel = Channel.CreateBounded<(ulong Offset, StoredEvent Stored, int Size)>(new BoundedChannelOptions(_options.BufferedEvents)
+            var channel = Channel.CreateBounded<(ulong Offset, StoredEvent? Stored, int Size)>(new BoundedChannelOptions(_options.BufferedEvents)
                 { SingleReader = true, SingleWriter = true });
             reading = ReadAsync(channel.Writer, _lastApplied);
             while (await channel.Reader.WaitToReadAsync(_lifetime).ConfigureAwait(false))
             {
-                var completed = new List<(Pending Pending, object? Result)>();
+                var completed = new List<(Pending Pending, object? Result, Exception? Error)>();
                 var postCommit = new List<Action>();
                 var cursor = _lastApplied;
                 Exception? failure = null;
                 try
                 {
-                    for (var count = 0; count < _options.MaximumBatchSize && channel.Reader.TryRead(out var record); count++)
+                    for (var count = 0; count < _options.MaximumBatchSize && !AtWindowEnd(cursor) &&
+                                        channel.Reader.TryRead(out var record); count++)
                     {
                         _lifetime.ThrowIfCancellationRequested();
                         var (offset, stored, size) = record;
                         if (offset != cursor) throw new InvalidDataException("Nonconsecutive event input.");
-                        var ev = stored.Event;
-                        ev.EventId = checked(offset + 1);
-                        using (var transaction = await Database.StartWritingTransaction(ev.EventId, inBatch: true).ConfigureAwait(false))
+                        var eventId = checked(offset + 1);
+                        var skip = stored == null ? _skips[eventId] : null;
+                        if (skip == null && _attempts != null && offset < _windowEnd &&
+                            await _attempts.BeforeAttemptAsync(offset, _lifetime).ConfigureAwait(false))
                         {
-                            using var scope = Ambient.StartConsume(this, transaction, ev, offset < _replayEnd);
-                            var result = _dispatcher.Consume(ev);
-                            transaction.Commit();
-                            postCommit.AddRange(scope.PostCommit);
-                            if (_pending.TryGetValue(stored.PublicationId, out var pending)) completed.Add((pending, result));
+                            var options = _options.Poison!;
+                            skip = await DecideSkipAsync(eventId,
+                                $"Consumption on node '{options.NodeId}' did not complete in {options.Attempts} attempts.")
+                                .ConfigureAwait(false);
                         }
-                        cursor = ev.EventId;
+                        if (skip != null)
+                        {
+                            await CommitCursorAsync(eventId).ConfigureAwait(false);
+                            if (stored != null && _pending.TryGetValue(stored.PublicationId, out var skipped))
+                                completed.Add((skipped, null, new EventSkippedException(eventId, skip)));
+                            _options.OnEventSkipped?.Invoke(eventId, skip);
+                        }
+                        else
+                        {
+                            var ev = stored!.Event;
+                            ev.EventId = eventId;
+                            object? result = null;
+                            Exception? rejected = null;
+                            using (var transaction = await Database.StartWritingTransaction(eventId, inBatch: true).ConfigureAwait(false))
+                            {
+                                using var scope = Ambient.StartConsume(this, transaction, ev, offset < _replayEnd);
+                                try { result = _dispatcher.Consume(ev); }
+                                catch (Exception error) when (!_options.IsFatalConsumeException(error)) { rejected = error; }
+                                if (rejected == null)
+                                {
+                                    transaction.Commit();
+                                    postCommit.AddRange(scope.PostCommit);
+                                }
+                            }
+                            if (rejected != null)
+                            {
+                                // Every node gets the same exception: discard the event's writes, keep its position.
+                                await CommitCursorAsync(eventId).ConfigureAwait(false);
+                                _options.OnConsumeFailed?.Invoke(ev, rejected);
+                            }
+                            if (_pending.TryGetValue(stored.PublicationId, out var pending))
+                                completed.Add((pending, result, rejected));
+                        }
+                        cursor = eventId;
                         ReleaseBuffer(size);
                     }
                 }
@@ -248,8 +348,19 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
                         failure = failure == null ? error : new AggregateException(failure, error);
                     }
                 }
-                foreach (var (pending, result) in completed) pending.Completion.TrySetResult(result);
+                foreach (var (pending, result, error) in completed)
+                    if (error != null) pending.Completion.TrySetException(error);
+                    else pending.Completion.TrySetResult(result);
                 if (failure != null) ExceptionDispatchInfo.Throw(failure);
+                if (AtWindowEnd(cursor))
+                {
+                    // Leave the attempt window only once a restart would restore beyond it.
+                    var window = _options.Poison!;
+                    await window.WaitForCanonicalAsync(Progress!.Value, _lifetime).ConfigureAwait(false);
+                    _windowDurable = true;
+                    _canonicalEventId = cursor;
+                    await PruneSkipsAsync(window).ConfigureAwait(false);
+                }
             }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested && Volatile.Read(ref _fault) == null)
@@ -274,6 +385,8 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
             if (clusterWatching != null) await clusterWatching.ConfigureAwait(false);
             if (_options.Cluster is { } cluster) await cluster.StopAsync().ConfigureAwait(false);
         }
+
+        bool AtWindowEnd(ulong cursor) => _attempts != null && !_windowDurable && cursor == _windowEnd;
 
         async Task ReadyAsync()
         {
@@ -355,7 +468,7 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
 
     // Deserializes ahead of consumption so it overlaps with the consumer's transactions. EventDeserializer copies
     // all event data (including ReadOnlyMemory<byte> fields), so the payload need not outlive the enumerator step.
-    async Task ReadAsync(ChannelWriter<(ulong Offset, StoredEvent Stored, int Size)> writer, ulong start)
+    async Task ReadAsync(ChannelWriter<(ulong Offset, StoredEvent? Stored, int Size)> writer, ulong start)
     {
         try
         {
@@ -363,12 +476,56 @@ public sealed class EventPublisher : IEventPublisher, IAsyncDisposable
             {
                 var size = record.Payload.Length;
                 await ReserveBufferAsync(size).ConfigureAwait(false);
-                var stored = await DeserializeAsync(record.Payload).ConfigureAwait(false);
+                // A skipped event is never deserialized: its record may be what crashes the process.
+                var stored = _skips.ContainsKey(record.Offset + 1) ? null
+                    : await DeserializeAsync(record.Payload).ConfigureAwait(false);
                 await writer.WriteAsync((record.Offset, stored, size), _lifetime).ConfigureAwait(false);
             }
             writer.TryComplete(new EndOfStreamException("The data topic stopped following live records."));
         }
         catch (Exception error) { writer.TryComplete(error); }
+    }
+
+    // Only the active leader records the decision. A follower retries until a leader recorded one, or stops after
+    // DecisionTimeout: when the leader consumed the event, the restart restores canonical history beyond it.
+    async Task<string> DecideSkipAsync(ulong eventId, string reason)
+    {
+        var poison = _options.Poison!;
+        using var timeout = new CancellationTokenSource(poison.DecisionTimeout, _options.TimeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_lifetime, timeout.Token);
+        try
+        {
+            while (true)
+            {
+                var snapshot = await poison.Decisions.ReadAsync(linked.Token).ConfigureAwait(false);
+                if (EventSkips.Parse(snapshot.Value).TryGetValue(eventId, out var decided)) return decided;
+                if (await EventSkips.TryUpdateAsync(poison.Decisions, (eventId, reason), _canonicalEventId,
+                        poison.DecisionRetryInterval, _options.TimeProvider, linked.Token).ConfigureAwait(false))
+                    return reason;
+                await Task.Delay(poison.DecisionRetryInterval, _options.TimeProvider, linked.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+        {
+            throw new TimeoutException($"No active leader recorded a skip decision for event {eventId}.");
+        }
+    }
+
+    // Decisions at or below the canonical cut are never needed again. Only the leader writes; others leave them.
+    async Task PruneSkipsAsync(EventPoisonOptions poison)
+    {
+        try
+        {
+            await EventSkips.TryUpdateAsync(poison.Decisions, null, _canonicalEventId, poison.DecisionRetryInterval,
+                _options.TimeProvider, _lifetime).ConfigureAwait(false);
+        }
+        catch (IOException) { } // Best effort: a later start prunes again.
+    }
+
+    async Task CommitCursorAsync(ulong eventId)
+    {
+        using var transaction = await Database.StartWritingTransaction(eventId, inBatch: true).ConfigureAwait(false);
+        transaction.Commit();
     }
 
     // An empty buffer admits any event, so one larger than BufferedBytes still progresses.

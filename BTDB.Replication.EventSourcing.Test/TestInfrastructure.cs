@@ -192,7 +192,8 @@ internal sealed class Handler : IEventHandler<Add, Added>, IEventHandler<AddPure
     internal Action<Event>? Validating;
     internal Action<Event>? Consuming;
     internal readonly System.Collections.Concurrent.ConcurrentQueue<(ulong Id, bool Replay)> Seen = new();
-    internal bool Fail;
+    internal bool Fail; // fatal: stops the publisher
+    internal bool FailDeterministically; // rolls back only the event
 
     public Added? Validate(Add ev)
     {
@@ -212,7 +213,8 @@ internal sealed class Handler : IEventHandler<Add, Added>, IEventHandler<AddPure
             Id = ev.EventId, Amount = amount, When = ev.When, AllocatedId = Ambient.AllocateId()
         });
         Consuming?.Invoke(ev);
-        if (Fail && amount < 0) throw new InvalidOperationException("Handler failed after writing.");
+        if (Fail && amount < 0) throw new IOException("Handler failed after writing.");
+        if (FailDeterministically && amount < 0) throw new InvalidOperationException("Handler rejected the event after writing.");
     }
 
     internal EventDispatcher Dispatcher() => new EventDispatcher().Register<Add, Added>(this).Register<AddPure>(this);

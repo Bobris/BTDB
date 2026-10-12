@@ -28,5 +28,6 @@
         <ProjectReference Include="../BTDB.Replication/BTDB.Replication.csproj" />
         <ProjectReference Include="../BTDB.SourceGenerator/BTDB.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
         <None Include="README.md" Pack="true" PackagePath="/" />
+        <InternalsVisibleTo Include="BTDB.Replication.EventSourcing.Test" />
     </ItemGroup>
 </Project>

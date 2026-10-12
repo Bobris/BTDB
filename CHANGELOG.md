@@ -32,6 +32,21 @@
 - An idle EventLog owner skips its background merge pass, and so the topic listing, while it committed nothing since
   the last pass and no deletion deadline is due. An idle topic now costs only the owner's heartbeat validation.
 
+- `EventPublisher` no longer stops on a deterministic `Consume` exception: the event's writes roll back, only its
+  cursor commits, its local publication fails with the exception and `OnConsumeFailed` reports it. Exceptions that
+  `EventPublisherOptions.IsFatalConsumeException` classifies as fatal (by default out of memory, insufficient stack,
+  cancellation, I/O, timeouts) still stop the publisher for a restart.
+
+- Add `EventPublisherOptions.Poison` (`EventPoisonOptions`) to skip events whose consumption never completes, such as a
+  process crash on stack overflow or a repeating fatal exception: attempts of the first events after each start are
+  recorded in shared storage, and an event exhausting `Attempts` (default 2) is skipped on every node through a
+  decision the active leader records in leader.json (`applicationData.btdbEventSkips`), read once at start. After the
+  attempt window consumption waits until the window is canonical, so restarts keep progressing when the restored
+  cursor lags; decisions it covers are pruned. `EventPublisher.SkipEventAsync` records an operator decision.
+
+- Add `ReplicationDatabaseStatus.Canonical`, this node's canonical TRL cut on every role, and
+  `ReplicationStatus.WaitForCanonicalAsync` to wait until a completed local cut would survive a restart.
+
 - `EventLogOptions.MaxRecordSize` defaults to 51 MiB (was 16 MiB), admitting 50 MiB payloads.
   `HttpEventLogPeerTransport` without an explicit limit sizes its messages for that default.
 

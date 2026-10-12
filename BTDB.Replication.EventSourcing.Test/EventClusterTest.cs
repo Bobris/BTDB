@@ -191,10 +191,10 @@ public class EventClusterTest
         var publisher = db.Publisher(new MemoryTopic("data"), new MemoryTopic("metadata"), new Handler { Fail = true }, cluster);
         await publisher.StartAsync();
         var publishing = publisher.PublishAsync(new AddPure { Amount = -1 }).AsTask();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.Completion);
+        await Assert.ThrowsAsync<IOException>(() => publisher.Completion);
         await Assert.ThrowsAnyAsync<Exception>(() => publishing);
         Assert.Empty((await cluster.RefreshAsync()).LiveNodeIds);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.DisposeAsync().AsTask());
+        await Assert.ThrowsAsync<IOException>(() => publisher.DisposeAsync().AsTask());
         var wrong = new EventCluster("node", "wrong", storage, leaders);
         await Assert.ThrowsAsync<InvalidDataException>(() => wrong.RefreshAsync().AsTask());
     }

@@ -1,14 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 
 namespace BTDB.Replication;
 
 /// <summary>Sampled completed cuts, not reader-visible roots or client durability acknowledgements.
-/// Compared is historical byte equality, not a live confirmation grant. Null means unavailable.</summary>
+/// Compared is historical byte equality, not a live confirmation grant. Null means unavailable.
+/// Canonical is the end of this node's local TRL known to be canonical (restored, published by this node as leader,
+/// or compared with a leader that had published it), on every role: a restart restores at least this history.
+/// </summary>
 public sealed record ReplicationDatabaseStatus(string Name, LeaderTrlProgress? LocalCommitted,
-    LeaderTrlProgress? Compared, TransactionLogPosition? Published, bool Removed, bool Detached);
+    LeaderTrlProgress? Compared, TransactionLogPosition? Published, bool Removed, bool Detached,
+    TransactionLogPosition? Canonical = null);
 
 /// <summary>Credential-free local status. SampledAt uses the injected node-local monotonic clock.
 /// Ready means restored and available for ordinary local work, not caught up or authorized to publish.</summary>
@@ -21,12 +26,15 @@ public sealed class ReplicationStatus
     ReplicationNodeStatus _current = new(ReplicationNodeRole.Restoring, false, TimeSpan.Zero,
         Array.Empty<ReplicationDatabaseStatus>());
     int _stopping;
+    readonly object _changeLock = new();
+    TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public ReplicationNodeStatus Current
     {
         get
         {
-            var current = Volatile.Read(ref _current);
+            ReplicationNodeStatus current;
+            lock (_changeLock) current = _current;
             return current.Ready && Volatile.Read(ref _stopping) != 0 ? current with { Ready = false } : current;
         }
     }
@@ -46,7 +54,47 @@ public sealed class ReplicationStatus
     /// <summary>Follower or leader steps that failed with I/O or a request timeout, such as an unreachable leader.</summary>
     public long FailedSteps => Interlocked.Read(ref _failedSteps);
 
-    internal void Update(ReplicationNodeStatus status) => Volatile.Write(ref _current, status);
+    /// <summary>Completes once the database's canonical cut reaches <paramref name="position"/>, a local TRL position
+    /// such as <see cref="LeaderTrlProgress.Position"/> of a completed application cut. From then on a restart of this
+    /// node restores at least that history. Fails when the database is removed or detached, or the node stops or
+    /// requires a restart, because its canonical cut can no longer advance. Coordinator steps report the cut, so
+    /// completion lags publication by up to one poll interval.</summary>
+    public async Task WaitForCanonicalAsync(string database, TransactionLogPosition position,
+        CancellationToken cancellation = default)
+    {
+        ArgumentNullException.ThrowIfNull(database);
+        while (true)
+        {
+            Task changed;
+            ReplicationNodeStatus current;
+            lock (_changeLock)
+            {
+                changed = _changed.Task;
+                current = _current;
+            }
+            ReplicationDatabaseStatus? status = null;
+            foreach (var candidate in current.Databases)
+                if (candidate.Name == database) status = candidate;
+            if (status?.Canonical is { } canonical && canonical >= position) return;
+            if (status is { Removed: true } or { Detached: true })
+                throw new InvalidOperationException($"Database '{database}' is no longer replicated.");
+            if (current.Role is ReplicationNodeRole.Stopped or ReplicationNodeRole.RestartRequired)
+                throw new InvalidOperationException("The replication node stopped before the history became canonical.");
+            await changed.WaitAsync(cancellation).ConfigureAwait(false);
+        }
+    }
+
+    internal void Update(ReplicationNodeStatus status)
+    {
+        TaskCompletionSource changed;
+        lock (_changeLock)
+        {
+            _current = status;
+            changed = _changed;
+            _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        changed.TrySetResult();
+    }
     internal void RestoreStarted() => Interlocked.Increment(ref _restoreAttempts);
     internal void RestoreFailed() => Interlocked.Increment(ref _restoreFailures);
     internal void Restored(TimeSpan duration) => Interlocked.Exchange(ref _lastRestoreTicks, duration.Ticks);
