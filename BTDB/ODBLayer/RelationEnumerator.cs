@@ -653,27 +653,17 @@ public class RelationAdvancedEnumerator<T> : IEnumerator<T>, ICollection<T>, IRe
                 switch (startCursor.Find(_startKeyBytes, (uint)_keyBytes.Length))
                 {
                     case FindResult.Exact:
-                        if (_startKeyProposition == KeyProposition.Excluded)
+                    case FindResult.Next:
+                        if (_startKeyProposition == KeyProposition.Excluded && startCursor.KeyHasPrefix(_startKeyBytes))
                         {
+                            startCursor.FindLastKey(_startKeyBytes);
                             if (!startCursor.FindNextKey(_keyBytes)) return;
                         }
 
                         break;
                     case FindResult.Previous:
                         if (!startCursor.FindNextKey(_keyBytes)) return;
-                        if (_startKeyProposition == KeyProposition.Excluded)
-                        {
-                            if (!startCursor.FindNextKey(_keyBytes)) return;
-                        }
-
-                        break;
-                    case FindResult.Next:
-                        if (_startKeyProposition == KeyProposition.Excluded && startCursor.KeyHasPrefix(_startKeyBytes))
-                        {
-                            if (!startCursor.FindNextKey(_keyBytes)) return;
-                        }
-
-                        break;
+                        goto case FindResult.Next;
                     case FindResult.NotFound:
                         return;
                     default:

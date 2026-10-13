@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Fix advanced relation enumeration with an excluded lower bound: when the boundary row was deleted or never
+  existed, keep the first following row instead of skipping it. Excluding a partial key now skips every row with
+  that prefix. This applies to primary and secondary indexes in both enumeration directions.
+
 ## 35.11.1
 
 ### Added
