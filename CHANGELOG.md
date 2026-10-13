@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.11.2
+
 ### Fixed
 
 - Fix advanced relation enumeration with an excluded lower bound: when the boundary row was deleted or never
