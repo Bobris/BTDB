@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <!-- Not packed until the engine exists; see ImplementationPlan.md, section 20. -->
+        <IsPackable>false</IsPackable>
+        <PackageId>BTDB.LSM</PackageId>
+        <Version>35.11.2</Version>
+        <Authors>Boris Letocha</Authors>
+        <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <Description>Log-structured merge tree implementation of the BTDB key value database stored directly in object storage.</Description>
+        <PackageTags>BTDB LSM KeyValue database</PackageTags>
+        <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../BTDB/BTDB.csproj"/>
+        <InternalsVisibleTo Include="BTDB.LSM.Test"/>
+    </ItemGroup>
+</Project>

@@ -55,6 +55,12 @@ class Program
             return;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "lsm-storage", StringComparison.OrdinalIgnoreCase))
+        {
+            LSM.LsmStorageScreening.RunAsync().GetAwaiter().GetResult();
+            return;
+        }
+
         if (args.Length > 0 && string.Equals(args[0], "eventlog-e2e", StringComparison.OrdinalIgnoreCase))
         {
             EventLog.EventLogEndToEnd.RunAsync(args[1..]).GetAwaiter().GetResult();

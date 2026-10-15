@@ -1,7 +1,8 @@
 # BTDB.LSM — implementation plan
 
-Status: proposal, 2026-10-15. Nothing is implemented yet. Decisions D1–D7 were confirmed on 2026-10-15 (section 21);
-phase L0 can start.
+Status: phase L0 in progress (2026-10-15). Decisions D1–D7 are confirmed (section 21). The counted LSM prototype
+(`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle. The Azure screening harness (`DBBenchmark
+lsm-storage`) is ready, but the live run is still to do. Evidence is in [Measurements.md](Measurements.md).
 
 Confirmed requirements:
 
@@ -259,10 +260,12 @@ used data blocks are normally cached.
 
 `FindKeyIndex(i)` finds the smallest existing key whose rank is `i`.
 
-1. **Index-only bracketing.** Candidate pivots are index separators of all components, weighted by their entry counts.
-   For a pivot, each component's exact cumulative sum at its own boundary and lower and upper bounds for the other
-   components come from index data only. Bisection narrows to a key interval whose rank bounds contain `i` and whose
-   width is at most about one data block per component.
+1. **Index-only bracketing.** Pivots are block boundaries of the component with the most blocks left inside the
+   current interval. The rank of a pivot is bounded from index data only: per component, the cumulative sum before the
+   block containing the pivot, plus the block's minimum and maximum running delta (exact when the pivot is the block's
+   first key). Tombstone terms are pinned and exact. Only a pivot whose bounds contain `i` needs an exact rank.
+   Bisection stops when no component has more than `SelectFinalBlocks` (default 2) block boundaries inside the
+   interval.
 2. **Exact refinement.** Compute the exact `rank(lower)` (section 6.4), then run the merging iterator forward
    `i − rank(lower)` live keys.
 
@@ -424,7 +427,9 @@ At most `MaxImmutableMemtables` (default 2) can wait. Beyond that, writers stall
 * **Compression** is per block (Snappy by default, or none), behind an interface that allows LZ4 or Zstd later.
   Checksums use XxHash64 over the stored bytes, per block and for the footer.
 * **Index partition.** One entry per data block: a shortest separator, the block handle (offset, length), the entry
-  count and the cumulative delta sum before the block.
+  count, the cumulative delta sum before the block, and the minimum and maximum running delta inside the block. The
+  last two let select bound a rank without reading the block (section 6.5); in the L0 prototype they decide about 96%
+  of pivots from index data alone.
 * **Top-level index.** One entry per partition, with the same fields. It is pinned for every open table.
 * **Filter.** A partitioned blocked bloom filter on the full user key, 10 bits per key by default. It serves exact
   lookups and the `existsBelow` checks. Prefix filters are not built, because ODB prefixes are low cardinality and would
