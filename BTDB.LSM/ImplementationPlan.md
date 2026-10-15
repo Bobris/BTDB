@@ -1,8 +1,9 @@
 # BTDB.LSM — implementation plan
 
 Status: phase L0 in progress (2026-10-15). Decisions D1–D7 are confirmed (section 21). The counted LSM prototype
-(`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle. The Azure screening harness (`DBBenchmark
-lsm-storage`) is ready, but the live run is still to do. Evidence is in [Measurements.md](Measurements.md).
+(`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle. The live Azure storage screening is done (LRS,
+GZRS and Premium). Evidence and the resulting decisions are in [Measurements.md](Measurements.md). Phase L0 exit
+criteria are met.
 
 Confirmed requirements:
 
@@ -378,7 +379,7 @@ Each WAL chunk is one immutable object `wal/{chunk}`:
 ### 8.2 Group commit and durability modes
 
 * A single background uploader takes the WAL buffer contents. It creates the next chunk with create-if-absent when the
-  buffer reaches `WalChunkTargetSize` (default 256 KiB, selected by L0 measurements) or after `WalFlushInterval` has
+  buffer reaches `WalChunkTargetSize` (default 256 KiB, confirmed by L0 measurements) or after `WalFlushInterval` has
   elapsed (default 20 ms). Chunks of different commits are uploaded in order. Only the parts of one large commit can be
   in flight in parallel (section 7.5). A commit is durable once every chunk up to and including its final part is
   durable.
@@ -419,8 +420,8 @@ At most `MaxImmutableMemtables` (default 2) can wait. Beyond that, writers stall
 [footer: fixed size, magic, version, handles of the blocks above, checksum]
 ```
 
-* **Data block.** Target size `BlockSize` (default 32 KiB uncompressed, selected in L0, because a GET costs about
-  5–10 ms whatever its size). Keys are prefix-compressed with a restart point every 16 entries. The restart array
+* **Data block.** Target size `BlockSize` (default 32 KiB uncompressed, confirmed in L0: on every tier a ranged GET
+  of up to 64 KiB costs the same as 4 KiB, about 8–10 ms p50 on Standard and 5 ms on Premium). Keys are prefix-compressed with a restart point every 16 entries. The restart array
   carries cumulative delta sums. Each entry stores shared length, unshared length, flags (kind, `existsBelow`, value
   inline or separated, value compressed) and the value or handle. A key larger than `BlockSize` gets a block of its
   own; tests cover keys up to 1.2 MB.
@@ -489,8 +490,12 @@ This is modeled on Pebble's blob files and on BTDB's own split between key index
 
 * On a point miss, one ranged GET per needed block. When several components need a block for the same seek, the GETs
   are issued in parallel and joined.
-* Readahead: an iterator that crosses block boundaries in one direction grows a readahead window (64 KiB up to 2 MiB).
-  It issues coalesced ranged GETs asynchronously ahead of the cursor; backward scans are handled the same way.
+* Readahead: an iterator that crosses block boundaries in one direction grows a readahead window from 64 KiB up to
+  2 MiB. The window is split into requests of at most 256 KiB issued in parallel, because L0 measured a 1 MiB GET at 2–3
+  times the latency of a 256 KiB one while parallel requests keep their latency. Requests run asynchronously ahead of
+  the cursor; backward scans are handled the same way.
+* A cursor seek that misses in several components issues all their GETs asynchronously and waits once, so one
+  blocked thread covers them. The number of concurrently blocking storage reads is bounded (risk R2).
 * Compaction inputs bypass the cache: sequential 4 MiB parallel GETs, as in `ReplicationFileSet`.
 * A future local or secondary cache plugs in under the block cache (`IBlockSource`). It is not part of v1.
 
@@ -718,8 +723,8 @@ Confirmed on 2026-10-15.
 
 | ID | Risk | Mitigation |
 | --- | --- | --- |
-| R1 | Cache-miss latency: a cold point read costs a GET per component (about 5–20 ms). ODB transactions doing many random reads become slow when the working set exceeds the cache. | Parallel component GETs, bloom filters, pinned top indexes, readahead, larger blocks; measure in L4 and L6. A secondary cache can be added later behind `IBlockSource`. |
-| R2 | The synchronous cursor API blocks threads on GETs and can starve the thread pool under many concurrent readers. | Synchronous SDK reads (no sync-over-async), bounded parallelism, measurement in L0; document the guidance. |
+| R1 | Cache-miss latency. A cold point read costs a GET per component. Measured for 32 KiB: Standard 8–10 ms p50, ~40 ms p95, 65–80 ms p99; Premium 5 / 6.5 / 11 ms. ODB transactions doing many random reads become slow when the working set exceeds the cache. | Parallel component GETs, bloom filters, pinned top indexes, readahead. Recommend Premium block blob for latency-sensitive databases. Hedged reads are a candidate for Standard. Measure end to end in L4 and L6. A secondary cache can be added later behind `IBlockSource`. |
+| R2 | The synchronous cursor API blocks threads on GETs. L0 confirmed the risk: at 64 or more concurrent thread-pool work items, throughput collapses to about 400 and then about 40 requests/s while the pool grows. | Bound concurrent blocking reads; issue one seek's component GETs asynchronously and wait once; document `ThreadPool.SetMinThreads` for hosts with many concurrent cursors. |
 | R3 | Rank and select with tombstones and many components are complex and could be slow. | Prototype in L0 against an oracle, point Deletes for small ranges, compaction priority for tables with tombstones, a component count limit through L0 stalls. |
 | R4 | `existsBelow` lookups make blind writes read first. | Bloom filters; an ODB write usually follows a read of the same key (cached). Measure with ODB benchmarks. |
 | R5 | Large transactions are the expected workload. A transaction above `MaxTransactionMemory` fails, and memtable memory peaks at `MemtableSize + MaxTransactionMemory`. | Configurable limit; multi-chunk commits with parallel upload; optional early upload (section 7.5); spill to storage if a workload needs more. |

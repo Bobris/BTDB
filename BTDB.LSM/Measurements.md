@@ -94,7 +94,7 @@ Conclusions:
 * A later improvement can reduce the final iteration (about 67 steps) by bisecting on restart points inside the
   bracketing blocks. It is not needed for correctness.
 
-## 2. Azure storage screening (harness ready; live run pending)
+## 2. Azure storage screening (2026-10-15)
 
 Harness: `DBBenchmark lsm-storage` (`DBBenchmark/LSM/LsmStorageScreening.cs`), based on the event log screening. It
 uses raw REST with no SDK retries, closed loops and warm-up samples. It writes one JSON line per case plus
@@ -118,12 +118,98 @@ uses raw REST with no SDK retries, closed loops and warm-up samples. It writes o
 **Smoke run.** All cases completed without errors against local Azurite (`BENCH_CONNECTION_STRING`, 40 samples, 16
 MiB table). Azurite latencies are not representative and are not recorded.
 
-**Live run, still to do.** Run on a same-region Azure VM with a managed identity against a dedicated storage account
-(Standard_LRS and Standard_GZRS, optionally Premium block blob):
+**Live run.** The run took place on a Standard_D8ads_v5 VM (8 vCPU, Ubuntu 24.04, .NET 10.0.402, Release build) in
+Sweden Central. It used a managed identity against three new accounts in the same region:
+
+* Standard_LRS and Standard_GZRS (StorageV2);
+* Premium_LRS (BlockBlobStorage).
+
+Every account had shared keys disabled. Each case took 2,000 closed-loop samples after warm-up. Range cases read
+random 4 KiB-aligned offsets of a freshly uploaded 1 GiB block blob. The run was reproduced with:
 
 ```bash
-BENCH_ACCOUNT=<account> BENCH_SAMPLES=2000 BENCH_TABLE_MIB=1024 dotnet run -c Release --project DBBenchmark -- lsm-storage
+BENCH_ACCOUNT=<account> BENCH_SAMPLES=2000 BENCH_TABLE_MIB=1024 dotnet DBBenchmark.dll lsm-storage
 ```
 
-Record the results here, then choose `BlockSize`, `WalChunkTargetSize`, the readahead window and
-`RefreshRetryInterval`. Until then the plan's defaults (32 KiB blocks, 256 KiB WAL chunks) are provisional.
+The resources were deleted after the run. Values are latency p50 / p95 / p99 in ms, unless a column says otherwise.
+
+### Ranged GET latency by size
+
+| Read size | Standard_LRS | Standard_GZRS | Premium_LRS |
+| --- | --- | --- | --- |
+| 4 KiB | 14.5 / 45.6 / 79.0 | 8.7 / 39.7 / 65.1 | 4.8 / 6.2 / 11.2 |
+| 16 KiB | 9.4 / 41.2 / 78.3 | 10.0 / 39.8 / 69.1 | 4.9 / 6.5 / 11.2 |
+| 32 KiB | 8.0 / 38.9 / 69.5 | 9.4 / 39.0 / 75.0 | 4.9 / 6.5 / 10.9 |
+| 64 KiB | 10.7 / 43.2 / 80.2 | 12.5 / 40.9 / 73.6 | 5.3 / 7.5 / 11.5 |
+| 128 KiB | 18.2 / 47.4 / 92.0 | 18.8 / 45.4 / 71.3 | 5.7 / 8.2 / 12.3 |
+| 256 KiB | 21.6 / 52.2 / 101 | 22.7 / 53.5 / 90.4 | 6.8 / 9.2 / 14.8 |
+| 1 MiB | 35.8 / 79.8 / 114 | 32.0 / 73.4 / 106 | 11.7 / 52.3 / 54.4 |
+| 4 MiB | 85.0 / 127 / 177 | 81.0 / 121 / 160 | 61.8 / 73.0 / 83.0 |
+
+One 16 KiB LRS sample took 10 s. The next largest sample in the whole run was 706 ms, a GZRS group of parallel creates.
+
+### Parallel and synchronous reads (32 KiB)
+
+| Case | Standard_LRS | Standard_GZRS | Premium_LRS |
+| --- | --- | --- | --- |
+| async, 4 in flight | 7.2 / 40.3 / 63.6; 230 req/s | 8.8 / 35.6 / 58.3; 250 req/s | 5.0 / 7.0 / 11.3; 657 req/s |
+| async, 16 in flight | 6.8 / 32.2 / 60.9; 963 req/s | 8.5 / 28.8 / 52.3; 944 req/s | 5.0 / 7.1 / 12.1; 2,250 req/s |
+| async, 64 in flight | 6.7 / 22.7 / 46.5; 2,490 req/s | 8.3 / 27.4 / 70.8; 2,069 req/s | 5.2 / 7.0 / 10.6; 4,815 req/s |
+| sync (`HttpClient.Send`), serial, 32 KiB | 17.5 / 42.1 / 66.9 | 15.8 / 40.9 / 67.2 | 5.0 / 6.6 / 10.6 |
+| sync, serial, 256 KiB | 24.9 / 52.5 / 78.3 | 23.6 / 50.7 / 88.8 | 6.7 / 9.2 / 14.9 |
+| sync on thread pool, 16 work items | 1,390 req/s | 1,081 req/s | 2,599 req/s |
+| sync on thread pool, 64 work items | 403 req/s | 401 req/s | 438 req/s |
+| sync on thread pool, 256 work items | 38 req/s | 37 req/s | 38 req/s |
+
+In the thread-pool cases the pool grew to 21, 66 and 258 threads. The aggregate rate collapses because the pool
+injects threads slowly while all of them block in I/O. Per-request latency stays normal, and the short-lived probe
+work item showed no measurable queueing delay, so the probe did not capture the starvation. The serial sync p50 on
+Standard is about twice the async p50, but Premium shows no difference, so a sync-path penalty is not established.
+
+### Throughput, small objects, metadata, writes
+
+| Case | Standard_LRS | Standard_GZRS | Premium_LRS |
+| --- | --- | --- | --- |
+| Upload 1 GiB, 4 MiB blocks, 8 parallel | 545 MiB/s | 450 MiB/s | 661 MiB/s |
+| Sequential read, 4 MiB ranges, 4 / 8 / 16 parallel | 231 / 488 / 938 MiB/s | 238 / 466 / 890 MiB/s | 438 / 848 / 1,592 MiB/s |
+| 404 probe | 3.4 / 4.3 / 7.6 | 4.9 / 6.2 / 10.7 | 2.5 / 3.6 / 8.3 |
+| GET whole 1 KiB / 64 KiB / 256 KiB object (p50) | 3.5 / 4.0 / 5.9 | 5.0 / 5.4 / 7.4 | 2.7 / 3.1 / 4.8 |
+| Get Properties | 3.1 / 3.8 / 6.8 | 4.5 / 6.3 / 9.9 | 2.3 / 2.7 / 6.8 |
+| List 10 / 100 / 1,000 objects (p50) | 45.1 / 9.1 / 94.4 | 5.9 / 11.5 / 65.3 | 4.0 / 6.5 / 77.8 |
+| Create-if-absent 64 KiB | 7.5 / 11.0 / 17.4 | 9.7 / 15.9 / 28.4 | 5.6 / 19.4 / 25.7 |
+| Create-if-absent 256 KiB | 13.8 / 33.7 / 40.0 | 20.0 / 39.4 / 54.3 | 9.8 / 13.6 / 17.3 |
+| Create-if-absent 1 MiB | 21.4 / 42.7 / 70.5 | 30.6 / 46.5 / 66.2 | 17.9 / 23.7 / 32.6 |
+| 4 × 256 KiB created in parallel (one sample per group) | 16.6 / 41.8 / 64.0 | 23.4 / 46.7 / 67.1 | 10.9 / 17.0 / 21.2 |
+| Lease renew | 4.0 / 5.0 / 5.9 | 5.1 / 6.5 / 8.8 | 2.7 / 3.1 / 7.4 |
+
+### Decisions from the screening
+
+* **`BlockSize` = 32 KiB (confirmed).** On every tier, reads up to 64 KiB cost the same as 4 KiB. From 128 KiB on,
+  Standard pays about 8 ms more at p50. 64 KiB stays a reasonable option for scan-heavy data.
+* **Readahead.** Grow from 64 KiB to 256 KiB per request and reach larger windows by issuing several requests in
+  parallel, not by making one request bigger. Parallel requests keep their per-request latency up to at least 64 in
+  flight, and a single 1 MiB request costs 2–3 times a 256 KiB one. Compaction input uses 4 MiB ranges, 16 in
+  parallel (about 0.9 GB/s on Standard).
+* **Cold-read latency is the dominant risk on Standard tiers (R1).** A miss costs about 8–10 ms at p50, but about
+  40 ms at p95 and 65–80 ms at p99. A seek that misses in several components waits for the slowest of its parallel
+  GETs, so its typical latency moves toward the single-request p90. Premium block blob delivers about 5 ms at p50 and
+  11 ms at p99. Recommend Premium for latency-sensitive databases. Keep hedged reads (reissue a GET still pending
+  after about the p90 latency) as a candidate optimization for Standard, to be admitted only with an end-to-end
+  measurement.
+* **Synchronous reads on the thread pool (R2) are confirmed as a real problem.** Sync reads from 64 or more concurrent
+  thread-pool work items collapse throughput until the pool grows. The engine must:
+  * bound concurrent blocking storage reads;
+  * issue the per-component GETs of one seek asynchronously and wait once, so one blocked thread covers all of them;
+  * document `ThreadPool.SetMinThreads` for hosts with many concurrent cursors.
+
+  An async cursor path is out of scope for v1.
+* **WAL.**
+  * Keep `WalChunkTargetSize` = 256 KiB with up to 4 chunk uploads in flight. Four parallel 256 KiB creates take
+    16.6 ms (LRS) against 21.4 ms for one 1 MiB create.
+  * Small commits upload small chunks: the durable floor is about 7.5 ms p50 and 17 ms p99 on LRS for 64 KiB, and
+    about 5.6 ms p50 on Premium.
+  * The 20 ms `WalFlushInterval` default stays.
+* **Refresh.** A 404 probe costs 2.5–5 ms p50 and at most 11 ms p99, so `RefreshAsync` on an idle database costs two
+  cheap GETs. The 50 ms `RefreshRetryInterval` default stays.
+* **Probe, don't list.** Listing 1,000 objects takes 65–95 ms, and small listings have outliers of 45 ms. The engine
+  lists only at open and recovery and uses name probes afterwards.
