@@ -1,9 +1,13 @@
 # BTDB.LSM — implementation plan
 
-Status: phase L0 in progress (2026-10-15). Decisions D1–D7 are confirmed (section 21). The counted LSM prototype
-(`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle. The live Azure storage screening is done (LRS,
-GZRS and Premium). Evidence and the resulting decisions are in [Measurements.md](Measurements.md). Phase L0 exit
-criteria are met.
+Status: phase L0 is done and phase L1 is functionally complete (2026-10-16). Decisions D1–D7 are confirmed (section
+21).
+
+* L0: the counted LSM prototype (`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle, and the live
+  Azure storage screening is done (LRS, GZRS and Premium). Evidence is in [Measurements.md](Measurements.md).
+* L1: `LsmKeyValueDB` passes the shared `KeyValueDBTestBase` suite with default and tiny settings. It also passes a
+  randomized oracle test against `BTreeKeyValueDB` (180,000 operations over several cursors, commits, rollbacks and
+  snapshots) and persistence tests. Section 20.1 lists where L1 still differs from the target design.
 
 Confirmed requirements:
 
@@ -698,12 +702,56 @@ Each phase ends with green tests and a CHANGELOG entry where it changes public b
 | Phase | Content | Exit criteria |
 | --- | --- | --- |
 | **L0 Measure and de-risk** | Azure probes (extend `DBBenchmark eventlog-storage`): ranged GET p50/p99 for 4 KiB–4 MiB, 404 probe, Get Properties, List, parallel GET throughput, sync versus async SDK read, conditional Put Blob for WAL-sized chunks. Prototype counted components with rank and select (sections 6.2–6.5) and an oracle test. | Measured numbers recorded in `BTDB.LSM/Measurements.md`; `BlockSize`, `WalChunkTargetSize` and the readahead defaults chosen; rank and select prototype passes 10⁶ random operations. |
-| **L1 Core engine (in-memory storage)** | Projects, `ILsmStorage` and in-memory storage, block and table format, bloom filter, memtable (managed prototype), merging iterator, rank and select, write transactions, writer queue, cursors, flush to L0, manifest, versions, snapshots, block cache. | The `KeyValueDBTestBase` suite passes in all configurations; the oracle test passes. |
+| **L1 Core engine (in-memory storage)** — done, see 20.1 | Projects, `ILsmStorage` and in-memory storage, block and table format, bloom filter, memtable (managed prototype), merging iterator, rank and select, write transactions, writer queue, cursors, flush to L0, manifest, versions, snapshots, block cache. | The `KeyValueDBTestBase` suite passes in all configurations; the oracle test passes. |
 | **L2 Compaction and values** | Leveled compaction, L0 sublevels, range tombstones with counts, value separation, value-file GC, native memtable, `MaxTransactionMemory`, stalls, rate limits. | The tiny-config suites pass with continuous compaction; long oracle runs pass; memory stays within the budget under a stress test. |
 | **L3 Durability and lease** | WAL chunks, multi-chunk commits, group commit, `WaitForDurabilityAsync`, lease wait in `StartWritingTransaction`, reader-to-writer transition, lease loss, epoch fencing, ambiguity reconciliation, deferred deletion; measure whether early upload of large transactions is needed. | The crash-at-every-operation, zombie-writer and lease-loss simulations pass. |
 | **L4 Azure** | `BTDB.LSM.Azure` adapter (sync and async ranged reads, staged uploads, lease), Azurite and live tests. | The conformance suite passes on Azurite and live Azure; first live latency and throughput numbers recorded. |
 | **L5 Readers in other processes** | `RefreshAsync`, `WaitForCommitUlongAsync`, generation swap, catch-up after deletion, reader registry, freshness measurement. | Reader simulation and process tests pass; refresh latency and freshness p50/p99 measured on Azure. |
 | **L6 Integration and release** | ObjectDB subset on the LSM, benchmarks against `BTreeKeyValueDB` + `AzureBlobFileCollection` (memory, open time, cold and warm point reads, scans, write throughput, cost per operation), parameter tuning, `Doc/LsmKeyValueDB.md`, README pointer, preview packages. | The benchmark report is reviewed; the preview release is published. |
+
+### 20.1 Phase L1 state and differences from the target design
+
+Implemented in `BTDB.LSM`:
+
+* `ILsmStorage` and `InMemoryLsmStorage`.
+* The table format: prefix-compressed blocks with restart points and delta sums, per-block running-delta extremes in
+  the index, bloom filter, tombstones, properties, footer and XxHash64 checksums.
+* A byte-budgeted block cache.
+* The counted copy-on-write memtable.
+* Rank, index-only rank bounds, select and masked seeks over the component stack (`LsmView`).
+* The count-preserving merge (`LsmMerger`).
+* The writer queue and transactions.
+* Key-based cursors.
+* Flush to tables, the manifest, reopen, and deferred deletion of merged tables once no snapshot uses them.
+
+Deliberate L1 simplifications, each replaced in the phase named:
+
+| L1 state | Target |
+| --- | --- |
+| The memtable is a managed persistent treap with owner-based copy on write. | A native-memory counted tree (L2). |
+| Every cursor move is a fresh seek over all components. | A positioned merging iterator with readahead (L2). |
+| Data blocks are fully decoded into the cache. | Decode one restart interval; native cache (L2). |
+| A size-tiered merge of the newest tables runs when there are more than `MaxTables` tables. | Leveled compaction with L0 sublevels (L2). |
+| Single-level index and bloom filter, pinned per table. | Partitioned index and filters (L2). |
+| Values are always inline. | Value separation (L2). |
+| Flush and merge run synchronously while the writer slot is held. | Background flush and compaction with stalls (L2, L3). |
+| Each manifest object is a full checkpoint, and only flushed data survives reopening. | WAL, version edits and checkpoints (L3). |
+| There is no lease; every instance can write. | Lease on the first writing transaction (L3). The shared test suite starts writers with `StartTransaction()`, so L3 adds an option to acquire the lease at open. |
+
+Cursor semantics. `LsmKeyValueDB` cursors are positioned by key. Where `BTreeKeyValueDB` reports a cursor disturbed by
+another cursor's write as invalid and refuses to read it, the LSM cursor re-seeks by its key and stays readable. Key
+indexes, the fuzzy invalidation after erase, a created key filling an erased cursor's gap, and renamed keys followed by
+`UpdateKeySuffix` match the index-based behavior.
+
+`BTreeKeyValueDB` defects found by the oracle test (the oracle works around them; they are not fixed by this work):
+
+* **Lost write.** In one transaction, cursor A is on key k1 and cursor B on key k2 in the same leaf. After
+  `B.SetValue(v)`, `A.EraseCurrent()` restores k2's old value. Reproduced in both `StartTransaction` and
+  `StartWritingTransaction`.
+* `CreateOrUpdateKeyValue` keeps a stale "removed current" flag, so a following `GetKeyIndex` returns one less.
+* After `UpdateKeySuffix` returns `NotFound` or `NotUniquePrefix`, the cursor keeps a stale key index.
+* A cursor disturbed by several writes of other cursors can track a key index that differs from a fresh `Find` of the
+  same key.
 
 ## 21. Decisions
 

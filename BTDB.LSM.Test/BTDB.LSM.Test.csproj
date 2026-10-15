@@ -14,5 +14,6 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <ProjectReference Include="../BTDB.LSM/BTDB.LSM.csproj"/>
+        <ProjectReference Include="../BTDBTest/BTDBTest.csproj"/>
     </ItemGroup>
 </Project>

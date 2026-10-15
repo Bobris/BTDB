@@ -1,0 +1,25 @@
+using BTDB.KVDBLayer;
+using BTDB.LSM.Format;
+using BTDB.LSM.Storage;
+using BTDBTest;
+using Xunit.Abstractions;
+
+namespace BTDB.LSM.Test.Api;
+
+/// The shared IKeyValueDB contract suite with default options: everything stays in the memtable for small tests.
+public class LsmKeyValueDBTest(ITestOutputHelper testOutputHelper) : KeyValueDBTestBase(testOutputHelper)
+{
+    protected override IKeyValueDB NewKeyValueDB() =>
+        LsmKeyValueDB.OpenAsync(new() { Storage = new InMemoryLsmStorage() }).AsTask().GetAwaiter().GetResult();
+}
+
+/// The shared suite with a tiny memtable and tiny blocks, so tests constantly flush, merge tables, use multi-block
+/// tables, range tombstones and rank or select across several components.
+public class LsmKeyValueDBTinyTest(ITestOutputHelper testOutputHelper) : KeyValueDBTestBase(testOutputHelper)
+{
+    protected override IKeyValueDB NewKeyValueDB() => LsmKeyValueDB.OpenAsync(new()
+    {
+        Storage = new InMemoryLsmStorage(), MemtableSize = 2048, BlockSize = 256, RestartInterval = 4,
+        PointDeleteRangeLimit = 2, MaxTables = 4, BlockCache = new LsmBlockCache(64 * 1024)
+    }).AsTask().GetAwaiter().GetResult();
+}
