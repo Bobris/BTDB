@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
+using BTDB.LSM.Format;
 using BTDB.LSM.Storage;
 using Xunit;
 
@@ -158,7 +159,7 @@ public class LsmReaderTest
         writer.CreateKvi(default);
         using var reader = await LsmKeyValueDB.OpenAsync(Options(storage, false) with
         {
-            BlockCache = new Format.LsmBlockCache(64 * 1024)
+            BlockCache = new LsmBlockCache(64 * 1024)
         });
         using var old = reader.StartReadOnlyTransaction();
         for (var commit = 51; commit <= 100; commit++) model = await Commit(writer, random, (ulong)commit, model);
@@ -184,7 +185,7 @@ public class LsmReaderTest
         using var reader = await LsmKeyValueDB.OpenAsync(Options(storage, false) with
         {
             RegisterReader = true, ReaderHeartbeatInterval = TimeSpan.FromMilliseconds(250),
-            BlockCache = new Format.LsmBlockCache(64 * 1024)
+            BlockCache = new LsmBlockCache(64 * 1024)
         });
         // The registry entry expires after three heartbeats; 250 ms keeps it alive on a loaded test machine.
         var expected = new SortedDictionary<string, string>(model, StringComparer.Ordinal);

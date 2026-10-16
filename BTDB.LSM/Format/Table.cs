@@ -10,6 +10,27 @@ using BTDB.LSM.Storage;
 
 namespace BTDB.LSM.Format;
 
+/// Reads of immutable objects that report missing and truncated objects as BTDBException (invariant L7).
+static class LsmObjects
+{
+    public static void ReadRange(ILsmStorage storage, string key, long offset, Span<byte> destination, string kind)
+    {
+        try
+        {
+            storage.ReadRange(key, offset, destination);
+        }
+        catch (System.IO.FileNotFoundException ex)
+        {
+            throw new BTDBException(
+                $"{kind} {key} no longer exists: the snapshot is older than the deletion grace period.", ex);
+        }
+        catch (System.IO.EndOfStreamException ex)
+        {
+            throw new BTDBException($"{kind} {key} is truncated.", ex);
+        }
+    }
+}
+
 sealed class TableBuildOptions
 {
     public int BlockSize { get; init; } = 32 * 1024;
@@ -314,14 +335,7 @@ sealed class TableReader : ILsmComponent
         if (length < TableBuilder.FooterSize) throw new BTDBException($"Table {objectKey} is truncated.");
         var tailLength = (int)Math.Min(length, Math.Max(tailReadSize, TableBuilder.FooterSize));
         var tail = new byte[tailLength];
-        try
-        {
-            storage.ReadRange(objectKey, length - tailLength, tail);
-        }
-        catch (System.IO.FileNotFoundException ex)
-        {
-            throw new BTDBException($"Table {objectKey} no longer exists.", ex);
-        }
+        LsmObjects.ReadRange(storage, objectKey, length - tailLength, tail, "Table");
         var footer = LsmChecksum.Verify(tail.AsSpan(tailLength - TableBuilder.FooterSize), objectKey);
         if (BinaryPrimitives.ReadUInt64LittleEndian(footer) != TableBuilder.Magic)
             throw new BTDBException($"Table {objectKey} has an unknown format.");
@@ -341,7 +355,7 @@ sealed class TableReader : ILsmComponent
         else
         {
             meta = new byte[length - metaStart];
-            storage.ReadRange(objectKey, metaStart, meta);
+            LsmObjects.ReadRange(storage, objectKey, metaStart, meta, "Table");
             tailStart = metaStart;
         }
 
@@ -385,16 +399,7 @@ sealed class TableReader : ILsmComponent
     byte[] ReadChecked(long offset, int length)
     {
         var data = new byte[length];
-        try
-        {
-            _storage.ReadRange(ObjectKey, offset, data);
-        }
-        catch (System.IO.FileNotFoundException ex)
-        {
-            throw new BTDBException(
-                $"Table {ObjectKey} no longer exists: the snapshot is older than the deletion grace period.", ex);
-        }
-
+        LsmObjects.ReadRange(_storage, ObjectKey, offset, data, "Table");
         return data;
     }
 

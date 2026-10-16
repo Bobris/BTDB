@@ -294,7 +294,7 @@ public sealed partial class LsmKeyValueDB
         {
             var key = ValueKey(handle.FileNumber);
             var record = new byte[handle.StoredLength];
-            _storage.ReadRange(key, handle.Offset, record);
+            LsmObjects.ReadRange(_storage, key, handle.Offset, record, "Value file");
             return ValueFileWriter.VerifyRecord(record, key);
         });
         return pin.Span.ToArray();

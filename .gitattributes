@@ -25,3 +25,4 @@
 *.PDF	 diff=astextplain
 *.rtf	 diff=astextplain
 *.RTF	 diff=astextplain
+BTDB.LSM.Test/Format/Golden/** binary

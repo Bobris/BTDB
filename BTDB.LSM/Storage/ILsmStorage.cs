@@ -30,10 +30,10 @@ public interface ILsmStorage
     ValueTask<byte[]?> TryReadAsync(string key, CancellationToken cancellation);
 
     /// Reads exactly destination.Length bytes starting at offset; throws FileNotFoundException if the object does not
-    /// exist.
+    /// exist and EndOfStreamException if it ends before the range does.
     ValueTask ReadRangeAsync(string key, long offset, Memory<byte> destination, CancellationToken cancellation);
 
-    /// Synchronous ranged read for cursor cache misses; the cursor API is synchronous.
+    /// Synchronous ranged read for cursor cache misses, with the same exceptions; the cursor API is synchronous.
     void ReadRange(string key, long offset, Span<byte> destination);
 
     /// Lists objects whose key starts with prefix, in ascending key order.

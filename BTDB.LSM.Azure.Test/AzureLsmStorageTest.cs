@@ -56,6 +56,17 @@ public class AzureLsmStorageTest(BlobStorageFixture fixture) : IClassFixture<Blo
     }
 
     [Fact]
+    public async Task RangeBeyondTheEndThrowsEndOfStream()
+    {
+        var storage = await Storage();
+        await storage.CreateAsync("short", new byte[100], default);
+        Assert.Throws<EndOfStreamException>(() => storage.ReadRange("short", 90, new byte[20]));
+        Assert.Throws<EndOfStreamException>(() => storage.ReadRange("short", 200, new byte[20]));
+        await Assert.ThrowsAsync<EndOfStreamException>(async () =>
+            await storage.ReadRangeAsync("short", 90, new byte[20], default));
+    }
+
+    [Fact]
     public async Task ListIsOrderedByKeyAndDeleteAndPutWork()
     {
         var storage = await Storage();

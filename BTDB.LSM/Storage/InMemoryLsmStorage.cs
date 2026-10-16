@@ -69,8 +69,9 @@ public sealed class InMemoryLsmStorage(TimeProvider? timeProvider = null) : ILsm
                 throw new FileNotFoundException("Object does not exist: " + key);
         }
 
-        if (offset < 0 || offset + destination.Length > content.Length)
-            throw new ArgumentOutOfRangeException(nameof(offset), $"Range beyond the end of {key}");
+        if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
+        if (offset + destination.Length > content.Length)
+            throw new EndOfStreamException($"Range beyond the end of {key}");
         Interlocked.Increment(ref _readRequests);
         Interlocked.Add(ref _readBytes, destination.Length);
         content.AsSpan((int)offset, destination.Length).CopyTo(destination);
@@ -158,6 +159,12 @@ public sealed class InMemoryLsmStorage(TimeProvider? timeProvider = null) : ILsm
     public byte[]? Peek(string key)
     {
         lock (_lock) return _objects.TryGetValue(key, out var content) ? content.ToArray() : null;
+    }
+
+    /// Replaces the content of an object, for tests that corrupt or truncate storage.
+    public void Overwrite(string key, byte[] content)
+    {
+        lock (_lock) _objects[key] = content.ToArray();
     }
 
     public string[] Keys(string prefix)

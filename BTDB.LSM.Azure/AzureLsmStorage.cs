@@ -31,6 +31,7 @@ public sealed class AzureLsmStorage(BlobContainerClient container, AzureLsmStora
     {
         RequestFailedException failed => failed.Status is 0 or 408 or 429 or >= 500,
         OperationCanceledException => !cancellation.IsCancellationRequested,
+        EndOfStreamException => false,
         IOException or HttpRequestException or TimeoutException => true,
         _ => false
     };
@@ -137,6 +138,10 @@ public sealed class AzureLsmStorage(BlobContainerClient container, AzureLsmStora
             {
                 throw new FileNotFoundException("Object does not exist: " + key, key, error);
             }
+            catch (RequestFailedException error) when (error.Status == 416)
+            {
+                throw new EndOfStreamException($"Range beyond the end of {key}", error);
+            }
         }, cancellation);
     }
 
@@ -158,6 +163,10 @@ public sealed class AzureLsmStorage(BlobContainerClient container, AzureLsmStora
             catch (RequestFailedException error) when (error.Status == 404)
             {
                 throw new FileNotFoundException("Object does not exist: " + key, key, error);
+            }
+            catch (RequestFailedException error) when (error.Status == 416)
+            {
+                throw new EndOfStreamException($"Range beyond the end of {key}", error);
             }
         });
         buffer.CopyTo(destination);
