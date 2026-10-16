@@ -78,7 +78,8 @@ public sealed record LsmKeyValueDBOptions
     /// Target size of one WAL chunk; larger commits span several chunks.
     public int WalChunkTargetSize { get; init; } = 256 * 1024;
 
-    /// Group commit window of the WAL uploader.
+    /// Longest pause of an idle WAL uploader; a commit wakes it at once and commits arriving during an upload are
+    /// grouped into the next one.
     public TimeSpan WalFlushInterval { get; init; } = TimeSpan.FromMilliseconds(20);
 
     public int WalUploadParallelism { get; init; } = 4;

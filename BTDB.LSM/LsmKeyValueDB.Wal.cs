@@ -48,9 +48,8 @@ public sealed partial class LsmKeyValueDB
         {
             try
             {
+                // Upload as soon as a commit arrives; commits arriving during an upload form the next group.
                 await _walSignal.WaitAsync(_options.WalFlushInterval, stop);
-                // Group commit: let concurrent commits pile up for one flush interval.
-                await Task.Delay(_options.WalFlushInterval, _options.TimeProvider, stop);
             }
             catch (OperationCanceledException)
             {

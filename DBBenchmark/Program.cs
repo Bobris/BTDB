@@ -55,6 +55,12 @@ class Program
             return;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "lsm-azure", StringComparison.OrdinalIgnoreCase))
+        {
+            LSM.LsmAzureBenchmark.RunAsync().GetAwaiter().GetResult();
+            return;
+        }
+
         if (args.Length > 0 && string.Equals(args[0], "lsm-storage", StringComparison.OrdinalIgnoreCase))
         {
             LSM.LsmStorageScreening.RunAsync().GetAwaiter().GetResult();
