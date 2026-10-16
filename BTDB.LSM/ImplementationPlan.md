@@ -1,7 +1,8 @@
 # BTDB.LSM — implementation plan
 
-Status: phases L0–L5 are done, and L6 is done except the review of the benchmark report and the publication of the
-preview packages (2026-10-16). Decisions D1–D7 are confirmed (section 21).
+Status: phases L0–L6 are done (2026-10-16). The benchmark report (Measurements.md, sections 4–7) is reviewed and
+the preview publication is approved; the packages go out with the next BTDB release. Decisions D1–D7 are confirmed
+(section 21).
 
 * L0: the counted LSM prototype (now `BTDB.LSM.Test/Counting/Prototype`) passes 10⁶ random operations against an oracle, and the live
   Azure storage screening is done (LRS, GZRS and Premium). Evidence is in [Measurements.md](Measurements.md).
@@ -723,7 +724,7 @@ Each phase ends with green tests and a CHANGELOG entry where it changes public b
 | **L3 Durability and lease** — done, see 20.2 | WAL chunks, multi-chunk commits, group commit, `WaitForDurabilityAsync`, lease wait in `StartWritingTransaction`, reader-to-writer transition, lease loss, epoch fencing, ambiguity reconciliation, deferred deletion; measure whether early upload of large transactions is needed. | The crash-at-every-operation, zombie-writer and lease-loss simulations pass. |
 | **L4 Azure** — done, see 20.4 | `BTDB.LSM.Azure` adapter (sync and async ranged reads, staged uploads, lease), Azurite and live tests. | The conformance suite passes on Azurite and live Azure; first live latency and throughput numbers recorded. |
 | **L5 Readers in other processes** — done, see 20.3; Azure freshness measured in L4 | `RefreshAsync`, `WaitForCommitUlongAsync`, generation swap, catch-up after deletion, reader registry, freshness measurement. | Reader simulation and process tests pass; refresh latency and freshness p50/p99 measured on Azure. |
-| **L6 Integration and release** — done except review and publication, see 20.4 | ObjectDB subset on the LSM, benchmarks against `BTreeKeyValueDB` + `AzureBlobFileCollection` (memory, open time, cold and warm point reads, scans, write throughput, cost per operation), parameter tuning, `Doc/LsmKeyValueDB.md`, README pointer, preview packages. | The benchmark report is reviewed; the preview release is published. |
+| **L6 Integration and release** — done, see 20.4 and 20.5; report reviewed, publication approved | ObjectDB subset on the LSM, benchmarks against `BTreeKeyValueDB` + `AzureBlobFileCollection` (memory, open time, cold and warm point reads, scans, write throughput, cost per operation), parameter tuning, `Doc/LsmKeyValueDB.md`, README pointer, preview packages. | The benchmark report is reviewed; the preview release is published. |
 
 ### 20.1 Phase L1 state and differences from the target design
 
