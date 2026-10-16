@@ -1845,7 +1845,13 @@ public class BTreeImpl12
         ref var top = ref stack.Last;
         var prefix = NodeUtils12.GetPrefixSpan(top._node);
         ref var header = ref NodeUtils12.Ptr2NodeHeader(top._node);
-        if (header.HasLongKeys)
+        var commonPrefixLength = TreeNodeUtils.FindFirstDifference(prefix, key);
+        if (commonPrefixLength < prefix.Length)
+        {
+            // Only a leaf with a single key can have a node prefix longer than the unique prefix of the updated key
+            RebuildLeafWithNewKey(rootNode, ref stack, key, commonPrefixLength);
+        }
+        else if (header.HasLongKeys)
         {
             MakeUnique(rootNode, stack.AsSpan());
             ref var stackItem = ref stack.Last;
@@ -1944,6 +1950,45 @@ public class BTreeImpl12
             OverwriteNodePtrInStack(rootNode, stack.AsSpan(), fixFirstKeyIdx, newNode);
             break;
         }
+    }
+
+    void RebuildLeafWithNewKey(RootNode12 rootNode, ref StructList<CursorItem> stack, in ReadOnlySpan<byte> key,
+        int newPrefixLength)
+    {
+        ref var top = ref stack.Last;
+        var node = top._node;
+        var prefix = NodeUtils12.GetPrefixSpan(node);
+        ref var header = ref NodeUtils12.Ptr2NodeHeader(node);
+        var childCount = header._childCount;
+        var prefixShortening = (ulong)(prefix.Length - newPrefixLength);
+        var totalSuffixLength = (ulong)(key.Length - newPrefixLength);
+        for (var i = 0; i < childCount; i++)
+        {
+            if (i == top._posInNode) continue;
+            totalSuffixLength += prefixShortening + (ulong)GetLeafKeySuffix(node, i).Length;
+        }
+
+        var newNode = AllocateLeaf(childCount, (uint)newPrefixLength, totalSuffixLength, out var keyPusher);
+        for (var i = 0; i < childCount; i++)
+        {
+            if (i == top._posInNode)
+                keyPusher.AddKey(key);
+            else
+                keyPusher.AddKey(prefix, GetLeafKeySuffix(node, i));
+        }
+
+        keyPusher.Finish();
+        NodeUtils12.GetLeafValues(node).CopyTo(NodeUtils12.GetLeafValues(newNode));
+        MakeUnique(rootNode, stack.AsSpan()[..^1]);
+        OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, newNode);
+    }
+
+    static ReadOnlySpan<byte> GetLeafKeySuffix(IntPtr node, int idx)
+    {
+        if (NodeUtils12.Ptr2NodeHeader(node).HasLongKeys)
+            return NodeUtils12.LongKeyPtrToSpan(NodeUtils12.GetLongKeyPtrs(node)[idx]);
+        var keyOfs = NodeUtils12.GetKeySpans(node, out var keyData);
+        return GetShortKey(keyOfs, keyData, idx);
     }
 
     static Span<byte> GetShortKey(ReadOnlySpan<ushort> keyOfs, Span<byte> keyData, int idx)

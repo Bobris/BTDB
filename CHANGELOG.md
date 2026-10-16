@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Fix `AesGcmSymmetricCipher.OrderedDecrypt` returning a garbled first 16 bytes for every value after the first one,
+  because the CBC chain was not reset between values. Reading `OrderedEncryptedString` values now returns the stored
+  text; the stored data was always written correctly. Ordered encryption and decryption also no longer allocate.
+- Fix `BTreeKeyValueDB` cursors returning an empty key or value from `GetKeyMemory`, `GetKeySpan`,
+  `GetValueMemory`, `GetStorageSizeOfCurrentKey` and `IsValid` after another cursor of the same transaction wrote a
+  key; they now find their current key again, as `GetValueSpan` already did. A cursor whose key was erased still has
+  no current key.
+- Fix `UpdateKeySuffix` in `BTreeKeyValueDB` doing nothing (while reporting `Updated` and logging the change) or
+  throwing when the key was the only key in its tree leaf, for example the only key in the database.
+- Fix `UpdateKeySuffix` in `InMemoryKeyValueDB` corrupting the tree when it changed the first key of a leaf: later
+  finds missed that key and `CreateOrUpdateKeyValue` could insert it a second time. The cursor also kept pointing to
+  the old leaf, so it returned the old key.
+- Fix relation `LastBy…`/reverse scans skipping a matching row when an `Exact` constraint value was smaller than
+  another value stored for the same preceding key fields.
+- Fix reusing one `Constraint` instance in several relation queries at once, which made the queries match against
+  the wrong bytes. Constraints now keep their encoded value themselves.
+- Fix `RoaringBitmap.BuildAsync` looping forever on nested `And`/`Or`/`Not` operations whose inputs have different
+  pages, for example `And(And(a, b), c)`.
+- Fix `BonSerializer` deserialization skipping two or three values when one field could not be deserialized (for
+  example a `null` string or list), so the following fields got wrong values; `null` values inside `object` fields
+  and dictionaries were also not consumed.
+- Fix reading an event store that contains an empty event batch (`Store(metadata, [])`) throwing
+  `IndexOutOfRangeException`, which made the store unreadable and impossible to append to after reopening.
+
 ## 35.11.3
 
 ### Added

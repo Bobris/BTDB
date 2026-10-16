@@ -270,6 +270,8 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
 
             ctx.Node = new BTreeLeaf(ctx.TransactionId, currentKeyValues);
             ctx.Update = true;
+            ctx.Stack[ctx.Depth] = new NodeIdxPair { Node = ctx.Node, Idx = index };
+            ctx.FirstKeyInNodeChanged = index == 0;
             return;
         }
 
@@ -292,6 +294,8 @@ class BTreeLeafComp : IBTreeLeafNode, IBTreeNode
         leaf._keyValues[index].KeyLength = (ushort)ctx.Key.Length;
         leaf._keyBytes = newKeyBytes;
         RecalculateOffsets(leaf._keyValues);
+        ctx.Stack[ctx.Depth] = new NodeIdxPair { Node = leaf, Idx = index };
+        ctx.FirstKeyInNodeChanged = index == 0;
     }
 
     public FindResult FindKey(ref StructList<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)

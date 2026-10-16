@@ -1175,6 +1175,55 @@ public class ObjectDbTableScanTest : ObjectDbTestBase
     }
 
     [Fact]
+    public void LastBySecondaryKeyFindsExactValueBeforeLargerOneInSameGroup()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var t = tr.GetRelation<IThingWithSKTable>();
+            t.Upsert(new(1, "C", 5));
+            t.Upsert(new(2, "D", 5));
+            t.Upsert(new(3, "D", 7));
+            tr.Commit();
+        }
+
+        using var tr2 = _db.StartTransaction();
+        var t2 = tr2.GetRelation<IThingWithSKTable>();
+        var p = t2.LastByName(Constraint.String.Any, Constraint.Unsigned.Exact(5), null);
+        Assert.Equal(2ul, p.Tenant);
+        p = t2.LastByName(Constraint.First(Constraint.String.Any), Constraint.Unsigned.Exact(5), null);
+        Assert.Equal(2ul, p.Tenant);
+        Assert.Null(t2.LastByNameOrDefault(Constraint.String.Any, Constraint.Unsigned.Exact(6), null));
+    }
+
+    [Fact]
+    public void OneConstraintInstanceCanBeUsedInSeveralQueries()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            var t = tr.GetRelation<IThingWithSKTable>();
+            t.Upsert(new(1, "D", 5));
+            t.Upsert(new(2, "E", 5));
+            t.Upsert(new(3, "E", 6));
+            tr.Commit();
+        }
+
+        using var tr2 = _db.StartTransaction();
+        var t2 = tr2.GetRelation<IThingWithSKTable>();
+        var age = Constraint.Unsigned.Exact(5);
+        var name = Constraint.String.StartsWith("E");
+        var longPrefixQuery = t2.ScanByName(Constraint.String.Exact("DDDDDDDDDD"), age, Constraint.Unsigned.Any);
+        var anyNameQuery = t2.ScanByName(Constraint.String.Any, age, Constraint.Unsigned.Any);
+        var exactNameQuery = t2.ScanByName(Constraint.String.Exact("D"), age, Constraint.Unsigned.Any);
+        var startsWithQuery = t2.ScanByName(name, Constraint.Unsigned.Any, Constraint.Unsigned.Any);
+        var startsWithAndAgeQuery = t2.ScanByName(name, age, Constraint.Unsigned.Any);
+        Assert.Equal(0, longPrefixQuery.Count());
+        Assert.Equal(2, anyNameQuery.Count());
+        Assert.Equal(1, exactNameQuery.Count());
+        Assert.Equal(2, startsWithQuery.Count());
+        Assert.Equal(1, startsWithAndAgeQuery.Count());
+    }
+
+    [Fact]
     public void LastByNameWithStartsWithWorks()
     {
         FillThingWithSKData();

@@ -9,20 +9,15 @@ public class AesGcmSymmetricCipher : ISymmetricCipher
     const int NonceSize = 12;
     const int TagSize = 16;
     readonly AesGcm _aes;
-    readonly ICryptoTransform _decryptor;
-    readonly ICryptoTransform _encryptor;
+    readonly Aes _aesCbc;
+    static readonly byte[] ZeroIV = new byte[16];
     readonly object _lock = new object();
 
     public AesGcmSymmetricCipher(byte[] key)
     {
         _aes = new AesGcm(key, TagSize);
-        var aes = Aes.Create();
-        aes.Key = key;
-        aes.Mode = CipherMode.CBC;
-        aes.Padding = PaddingMode.Zeros;
-        aes.IV = new byte[16];
-        _decryptor = aes.CreateDecryptor();
-        _encryptor = aes.CreateEncryptor();
+        _aesCbc = Aes.Create();
+        _aesCbc.Key = key;
     }
 
     [ThreadStatic] static Random? _random;
@@ -90,14 +85,10 @@ public class AesGcmSymmetricCipher : ISymmetricCipher
 
     public void OrderedEncrypt(ReadOnlySpan<byte> plainInput, Span<byte> outputBuffer)
     {
-        var input = plainInput.ToArray();
-        byte[] output;
         lock (_lock)
         {
-            output = _encryptor.TransformFinalBlock(input, 0, input.Length);
+            _aesCbc.EncryptCbc(plainInput, ZeroIV, outputBuffer, PaddingMode.Zeros);
         }
-
-        output.CopyTo(outputBuffer);
     }
 
     public int CalcOrderedPlainSizeFor(ReadOnlySpan<byte> encryptedInput)
@@ -107,14 +98,12 @@ public class AesGcmSymmetricCipher : ISymmetricCipher
 
     public bool OrderedDecrypt(ReadOnlySpan<byte> encryptedInput, Span<byte> outputBuffer)
     {
-        var input = encryptedInput.ToArray();
-        var output = new byte[input.Length];
+        // Every value is encrypted on its own with a zero IV, so each decryption must start a new CBC chain.
         lock (_lock)
         {
-            _decryptor.TransformBlock(input, 0, input.Length, output, 0);
+            _aesCbc.DecryptCbc(encryptedInput, ZeroIV, outputBuffer, PaddingMode.None);
         }
 
-        output.CopyTo(outputBuffer);
         return true;
     }
 }

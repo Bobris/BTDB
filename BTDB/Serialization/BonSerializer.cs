@@ -15,6 +15,7 @@ namespace BTDB.Serialization;
 
 public delegate void Serialize(ref SerializerCtx ctx, ref byte value);
 
+// Consumes exactly one Bon item, also when it returns false
 public delegate bool Deserialize(ref DeserializerCtx ctx, ref byte value);
 
 public interface ISerializerFactory
@@ -665,6 +666,7 @@ public class BonSerializerFactory : ISerializerFactory
         {
             case BonType.Null:
             case BonType.Undefined:
+                AsCtx(ref ctx).Bon.Skip();
                 return null;
             case BonType.Class:
             {
@@ -1171,7 +1173,13 @@ public class BonSerializerFactory : ISerializerFactory
             var deserializers = CreateDeserializers(valueTupleTypes);
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
-                if (AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon) && tupleBon.Items >= deserializers.Length)
+                if (!AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon))
+                {
+                    AsCtx(ref ctx).Bon.Skip();
+                    return false;
+                }
+
+                if (tupleBon.Items >= deserializers.Length)
                 {
                     for (var i = 0; i < deserializers.Length; i++)
                     {
@@ -1196,7 +1204,13 @@ public class BonSerializerFactory : ISerializerFactory
             var deserializers = CreateDeserializers(tupleTypes);
             return (ref DeserializerCtx ctx, ref byte value) =>
             {
-                if (AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon) && tupleBon.Items >= deserializers.Length)
+                if (!AsCtx(ref ctx).Bon.TryGetTuple(out var tupleBon))
+                {
+                    AsCtx(ref ctx).Bon.Skip();
+                    return false;
+                }
+
+                if (tupleBon.Items >= deserializers.Length)
                 {
                     var res = RuntimeHelpers.GetUninitializedObject(type);
                     for (var i = 0; i < deserializers.Length; i++)
@@ -1250,6 +1264,7 @@ public class BonSerializerFactory : ISerializerFactory
                     return true;
                 }
 
+                AsCtx(ref ctx).Bon.Skip();
                 return false;
             };
         }
@@ -1317,6 +1332,7 @@ public class BonSerializerFactory : ISerializerFactory
                     return true;
                 }
 
+                AsCtx(ref ctx).Bon.Skip();
                 return false;
             };
         }
@@ -1383,6 +1399,7 @@ public class BonSerializerFactory : ISerializerFactory
                     return true;
                 }
 
+                AsCtx(ref ctx).Bon.Skip();
                 return false;
             };
         }
@@ -1426,10 +1443,6 @@ public class BonSerializerFactory : ISerializerFactory
                                     ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
                                 context.Result = true;
                             }
-                            else
-                            {
-                                AsCtx(ref Unsafe.AsRef<DeserializerCtx>((void*)context.CtxPtr)).Bon.Skip();
-                            }
                         }
                     };
                 }
@@ -1437,17 +1450,7 @@ public class BonSerializerFactory : ISerializerFactory
                 {
                     var offset = field.ByteOffset!.Value;
                     fieldDeserializers[i] = (ref DeserializerCtx ctx, ref byte value) =>
-                    {
-                        if (deserializer(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset)))
-                        {
-                            return true;
-                        }
-                        else
-                        {
-                            AsCtx(ref ctx).Bon.Skip();
-                            return false;
-                        }
-                    };
+                        deserializer(ref ctx, ref RawData.Ref(Unsafe.As<byte, object>(ref value), offset));
                 }
             }
 
@@ -1465,11 +1468,11 @@ public class BonSerializerFactory : ISerializerFactory
                 BonDeserializerCtx subCtx = new() { Factory = AsCtx(ref ctx).Factory, Bon = ref valuesBon };
                 while (!valuesBon.Eof)
                 {
-                    if (!name2Idx.TryGetValue(keyedBon.NextKeyUtf8(), out var idx) ||
-                        !fieldDeserializers[idx](ref AsCtx(ref subCtx), ref Unsafe.As<object, byte>(ref res)))
-                    {
+                    // Field deserializers consume their value even when they fail, so skip only unknown fields
+                    if (name2Idx.TryGetValue(keyedBon.NextKeyUtf8(), out var idx))
+                        fieldDeserializers[idx](ref AsCtx(ref subCtx), ref Unsafe.As<object, byte>(ref res));
+                    else
                         valuesBon.Skip();
-                    }
                 }
 
                 Unsafe.As<byte, object>(ref value) = res;

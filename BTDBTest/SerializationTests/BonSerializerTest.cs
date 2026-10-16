@@ -145,6 +145,43 @@ public class BonSerializerTest
         Assert.Equal(4.5, deserialized.Item4);
     }
 
+    [Generate]
+    public class FieldsAroundNullValues
+    {
+        public int A;
+        public string? NullString;
+        public long B;
+        public List<int>? NullList;
+        public object? NullObject;
+        public int C;
+        public Dictionary<string, object?>? Dict;
+        public int D;
+    }
+
+    [Fact]
+    public void FieldAfterValueThatDoesNotDeserializeKeepsItsValue()
+    {
+        var obj = new FieldsAroundNullValues
+        {
+            A = 1, B = 2, C = 3, D = 4,
+            Dict = new() { { "x", null }, { "y", 5L } }
+        };
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, obj);
+        var bon = new Bon(builder.FinishAsMemory());
+        var deserialized = Assert.IsType<FieldsAroundNullValues>(BonSerializerFactory.Deserialize(ref bon));
+        Assert.Equal(1, deserialized.A);
+        Assert.Null(deserialized.NullString);
+        Assert.Equal(2, deserialized.B);
+        Assert.Null(deserialized.NullList);
+        Assert.Null(deserialized.NullObject);
+        Assert.Equal(3, deserialized.C);
+        Assert.Equal(2, deserialized.Dict!.Count);
+        Assert.Null(deserialized.Dict["x"]);
+        Assert.Equal(5ul, deserialized.Dict["y"]);
+        Assert.Equal(4, deserialized.D);
+    }
+
     [Fact]
     public async Task TypeCouldBeSerializedAsWell()
     {

@@ -254,7 +254,7 @@ public class ReadOnlyEventStore : IReadEventStore
             CompressionStrategy.Decompress(ref block);
         }
 
-        fixed (void* blockPtr = &block[0])
+        fixed (byte* blockPtr = block)
         {
             var reader = new MemReader(blockPtr, block.Length);
             if ((blockType & BlockType.HasTypeDeclaration) != 0)

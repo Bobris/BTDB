@@ -13,6 +13,7 @@ ref struct UpdateKeySuffixCtx
     internal long KeyIndex;
     internal bool Update; // Node set
     internal IBTreeNode? Node;
+    internal bool FirstKeyInNodeChanged; // parent branch must update separator key
 
     internal int Depth;
     internal long TransactionId;

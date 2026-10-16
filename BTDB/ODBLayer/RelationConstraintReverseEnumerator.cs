@@ -137,10 +137,7 @@ class RelationConstraintReverseEnumerator<T> : RelationConstraintEnumerator<T> w
                 goto goDown;
             }
 
-            if (matchResult == IConstraint.MatchResult.No)
-            {
-                goto goNextFast;
-            }
+            // MatchResult.No continues below, for Exact constraints the matching key can still be earlier in the same group
         }
 
         if (dataDidntChangedForConstraint < i && _skipNextOn == -1)
@@ -181,7 +178,9 @@ class RelationConstraintReverseEnumerator<T> : RelationConstraintEnumerator<T> w
                         return true;
                     }
 
-                    goto nextKeyTest;
+                    // No key has these exact values, so nothing else in the current group can match
+                    i--;
+                    goto goNextFast;
                 } while (_constraints[i].MatchType == IConstraint.MatchType.Exact);
 
                 if (_constraints[i].MatchType == IConstraint.MatchType.Prefix)

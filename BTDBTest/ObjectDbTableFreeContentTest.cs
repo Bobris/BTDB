@@ -466,6 +466,42 @@ public class ObjectDbTableFreeContentTest : IDisposable
         Assert.Equal(new List<ulong> { 5, 6 }, doubleNotResult.Values);
     }
 
+    public static IEnumerable<object[]> NestedRoaringBitmapOperations()
+    {
+        IRoaringBitmapOp S(params ulong[] values) => RoaringBitmap.Source(values);
+        yield return [RoaringBitmap.And(RoaringBitmap.And(S(1), S(1)), S(65537)), Array.Empty<ulong>()];
+        yield return [RoaringBitmap.And(RoaringBitmap.Or(S(1), S(65537)), S(65537, 131074)), new ulong[] { 65537 }];
+        yield return [RoaringBitmap.And(S(1, 131074), RoaringBitmap.Not(RoaringBitmap.Or(S(5), S(131074)))),
+            new ulong[] { 1 }];
+        yield return [RoaringBitmap.Or(RoaringBitmap.And(S(1, 65537), S(65537)), S(2)), new ulong[] { 2, 65537 }];
+        yield return [RoaringBitmap.And(RoaringBitmap.And(S(65537), S(65537)),
+            RoaringBitmap.And(S(1, 65537), S(1, 65537))), new ulong[] { 65537 }];
+    }
+
+    [Theory]
+    [MemberData(nameof(NestedRoaringBitmapOperations))]
+    public async Task RoaringBitmapBuildAsyncSupportsNestedOperationsSkippingPages(IRoaringBitmapOp operation,
+        ulong[] expected)
+    {
+        var result = await Task.Run(() => BuildRoaringBitmapCommands(operation, 3 * 65536))
+            .WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(expected, result.Values);
+        Assert.Equal((ulong)expected.Length, result.Count);
+    }
+
+    [Fact]
+    public async Task RoaringBitmapBuildAsyncSupportsNotOfNestedOperation()
+    {
+        var operation = RoaringBitmap.Not(RoaringBitmap.And(
+            RoaringBitmap.Or(RoaringBitmap.Source([1ul]), RoaringBitmap.Source([65537ul])),
+            RoaringBitmap.Source([65537ul])));
+        var result = await Task.Run(() => BuildRoaringBitmapCommands(operation, 65538))
+            .WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(65538ul, result.Count);
+        Assert.DoesNotContain(65537ul, result.Values);
+        Assert.Contains(65538ul, result.Values);
+    }
+
     [Fact]
     public async Task RoaringBitmapBuildAsyncCopiesStoredBitmapPagesWithoutRecompressing()
     {

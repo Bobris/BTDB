@@ -228,6 +228,13 @@ class BTreeBranch : IBTreeNode
             }
         }
 
+        if (ctx.FirstKeyInNodeChanged && index > 0)
+        {
+            // The separator in front of the child is its first key
+            newBranch._keys[index - 1] = ctx.Key.ToArray();
+            ctx.FirstKeyInNodeChanged = false;
+        }
+
         ctx.Stack[ctx.Depth] = new NodeIdxPair { Node = newBranch, Idx = index };
         Debug.Assert(newBranch.TransactionId == ctx.TransactionId);
     }

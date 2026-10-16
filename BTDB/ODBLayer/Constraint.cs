@@ -597,8 +597,7 @@ public static partial class Constraint
 public class ConstraintListUlongStartsWith : Constraint<List<ulong>>
 {
     readonly ulong _value;
-    int _ofs;
-    int _len;
+    byte[]? _encoded;
 
     public ConstraintListUlongStartsWith(ulong value)
     {
@@ -609,9 +608,13 @@ public class ConstraintListUlongStartsWith : Constraint<List<ulong>>
 
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
-        _ofs = (int)buffer.GetCurrentPosition();
-        buffer.WriteVUInt64(_value);
-        _len = (int)buffer.GetCurrentPosition() - _ofs;
+        if (_encoded == null)
+        {
+            var writer = new MemWriter();
+            writer.WriteVUInt64(_value);
+            _encoded = writer.GetSpan().ToArray();
+        }
+
         return IConstraint.MatchType.NoPrefix;
     }
 
@@ -623,7 +626,7 @@ public class ConstraintListUlongStartsWith : Constraint<List<ulong>>
     {
         var count = reader.ReadVUInt32();
         if (count == 0) return IConstraint.MatchResult.No;
-        var val = buffer.AsReadOnlySpan(_ofs, _len);
+        var val = _encoded;
         return reader.CheckMagic(val) ? IConstraint.MatchResult.Yes : IConstraint.MatchResult.No;
     }
 
@@ -632,7 +635,7 @@ public class ConstraintListUlongStartsWith : Constraint<List<ulong>>
         var res = false;
         var count = reader.ReadVUInt32();
         if (count == 0) return IConstraint.MatchResult.No;
-        var val = buffer.AsReadOnlySpan(_ofs, _len);
+        var val = _encoded;
         if (reader.CheckMagic(val))
         {
             res = true;
@@ -654,8 +657,7 @@ public class ConstraintListUlongStartsWith : Constraint<List<ulong>>
 public class ConstraintListStringContains : Constraint<List<string>>
 {
     readonly string _value;
-    int _ofs;
-    int _len;
+    byte[]? _encoded;
 
     public ConstraintListStringContains(string value)
     {
@@ -666,9 +668,13 @@ public class ConstraintListStringContains : Constraint<List<string>>
 
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
-        _ofs = (int)buffer.GetCurrentPosition();
-        buffer.WriteString(_value);
-        _len = (int)buffer.GetCurrentPosition() - _ofs;
+        if (_encoded == null)
+        {
+            var writer = new MemWriter();
+            writer.WriteString(_value);
+            _encoded = writer.GetSpan().ToArray();
+        }
+
         return IConstraint.MatchType.NoPrefix;
     }
 
@@ -680,7 +686,7 @@ public class ConstraintListStringContains : Constraint<List<string>>
     {
         var res = false;
         var count = reader.ReadVUInt32();
-        var val = buffer.AsReadOnlySpan(_ofs, _len);
+        var val = _encoded;
         for (var i = 0; i < count; i++)
         {
             if (reader.CheckMagic(val))
@@ -975,16 +981,20 @@ public class ConstraintNullableDateTimeUpTo : Constraint<DateTime?>
 
 public abstract class ConstraintExact<T> : Constraint<T>
 {
-    int _ofs;
-    int _len;
+    // Kept in the constraint instead of the query buffer, so one instance can be used by several queries at once
+    byte[]? _encoded;
 
     public override bool IsSimpleExact() => true;
 
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
-        _ofs = (int)buffer.GetCurrentPosition();
-        WriteExactValue(ref buffer);
-        _len = (int)buffer.GetCurrentPosition() - _ofs;
+        if (_encoded == null)
+        {
+            var writer = new MemWriter();
+            WriteExactValue(ref writer);
+            _encoded = writer.GetSpan().ToArray();
+        }
+
         return IConstraint.MatchType.Exact;
     }
 
@@ -992,19 +1002,19 @@ public abstract class ConstraintExact<T> : Constraint<T>
 
     public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
-        writer.WriteBlock(buffer.AsReadOnlySpan(_ofs, _len));
+        writer.WriteBlock(_encoded!);
     }
 
     public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
-        if (reader.CheckMagic(buffer.AsReadOnlySpan(_ofs, _len))) return IConstraint.MatchResult.Yes;
+        if (reader.CheckMagic(_encoded)) return IConstraint.MatchResult.Yes;
         Skip(ref reader);
         return IConstraint.MatchResult.No;
     }
 
     public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
     {
-        if (reader.PeekSpanTillEof().StartsWith(buffer.AsReadOnlySpan(_ofs, _len))) return IConstraint.MatchResult.Yes;
+        if (reader.PeekSpanTillEof().StartsWith(_encoded)) return IConstraint.MatchResult.Yes;
         return IConstraint.MatchResult.No;
     }
 
@@ -1013,8 +1023,7 @@ public abstract class ConstraintExact<T> : Constraint<T>
 
 public abstract class ConstraintUpTo<T> : Constraint<T>
 {
-    int _ofs;
-    int _len;
+    byte[]? _encoded;
     readonly bool _including;
 
     public override bool IsSimpleExact() => false;
@@ -1026,9 +1035,13 @@ public abstract class ConstraintUpTo<T> : Constraint<T>
 
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
-        _ofs = (int)buffer.GetCurrentPosition();
-        WriteUpToValue(ref buffer);
-        _len = (int)buffer.GetCurrentPosition() - _ofs;
+        if (_encoded == null)
+        {
+            var writer = new MemWriter();
+            WriteUpToValue(ref writer);
+            _encoded = writer.GetSpan().ToArray();
+        }
+
         return IConstraint.MatchType.NoPrefix;
     }
 
@@ -1041,8 +1054,9 @@ public abstract class ConstraintUpTo<T> : Constraint<T>
     public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
         var readerBuf = reader.PeekSpanTillEof();
-        if (readerBuf.Length > _len) readerBuf = readerBuf.Slice(0, _len);
-        var comp = readerBuf.SequenceCompareTo(buffer.AsReadOnlySpan(_ofs, _len));
+        var encoded = _encoded.AsSpan();
+        if (readerBuf.Length > encoded.Length) readerBuf = readerBuf.Slice(0, encoded.Length);
+        var comp = readerBuf.SequenceCompareTo(encoded);
         Skip(ref reader);
         if (comp < 0 || _including && comp == 0) return IConstraint.MatchResult.Yes;
         return IConstraint.MatchResult.NoAfterLast;
@@ -1051,8 +1065,9 @@ public abstract class ConstraintUpTo<T> : Constraint<T>
     public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
     {
         var readerBuf = reader.PeekSpanTillEof();
-        if (readerBuf.Length > _len) readerBuf = readerBuf.Slice(0, _len);
-        var comp = readerBuf.SequenceCompareTo(buffer.AsReadOnlySpan(_ofs, _len));
+        var encoded = _encoded.AsSpan();
+        if (readerBuf.Length > encoded.Length) readerBuf = readerBuf.Slice(0, encoded.Length);
+        var comp = readerBuf.SequenceCompareTo(encoded);
         if (comp < 0 || _including && comp == 0) return IConstraint.MatchResult.Yes;
         return IConstraint.MatchResult.NoAfterLast;
     }
@@ -1172,8 +1187,7 @@ public class ConstraintBoolAny : ConstraintAny<bool>
 public class ConstraintStringStartsWith : Constraint<string>
 {
     readonly string _value;
-    int _ofs;
-    int _len;
+    byte[]? _encoded;
 
     public override bool IsSimpleExact() => false;
 
@@ -1184,20 +1198,24 @@ public class ConstraintStringStartsWith : Constraint<string>
 
     public override IConstraint.MatchType Prepare(ref MemWriter buffer)
     {
-        _ofs = (int)buffer.GetCurrentPosition();
-        buffer.WriteStringOrderedPrefix(_value);
-        _len = (int)buffer.GetCurrentPosition() - _ofs;
+        if (_encoded == null)
+        {
+            var writer = new MemWriter();
+            writer.WriteStringOrderedPrefix(_value);
+            _encoded = writer.GetSpan().ToArray();
+        }
+
         return IConstraint.MatchType.Prefix;
     }
 
     public override void WritePrefix(ref MemWriter writer, in MemWriter buffer)
     {
-        writer.WriteBlock(buffer.AsReadOnlySpan(_ofs, _len));
+        writer.WriteBlock(_encoded!);
     }
 
     public override IConstraint.MatchResult Match(ref MemReader reader, in MemWriter buffer)
     {
-        if (reader.CheckMagic(buffer.AsReadOnlySpan(_ofs, _len)))
+        if (reader.CheckMagic(_encoded))
         {
             reader.SkipStringOrdered();
             return IConstraint.MatchResult.Yes;
@@ -1209,7 +1227,7 @@ public class ConstraintStringStartsWith : Constraint<string>
 
     public override IConstraint.MatchResult MatchLast(ref MemReader reader, in MemWriter buffer)
     {
-        if (reader.PeekSpanTillEof().StartsWith(buffer.AsReadOnlySpan(_ofs, _len)))
+        if (reader.PeekSpanTillEof().StartsWith(_encoded))
         {
             return IConstraint.MatchResult.Yes;
         }

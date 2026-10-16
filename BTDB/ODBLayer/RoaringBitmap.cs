@@ -381,6 +381,7 @@ public static class RoaringBitmap
         ulong? _rightPageIndex;
         ulong _currentPageIndex;
         bool _initialized;
+        bool _currentPageUnread;
 
         public AndNotPageReader(IInternalODBRoaringBitmapPageReader left, IInternalODBRoaringBitmapPageReader right,
             ulong maxValidIndex)
@@ -394,14 +395,23 @@ public static class RoaringBitmap
         public ulong? ReadNext()
         {
             Initialize();
+            // Callers may skip a page by calling ReadNext again without ReadValue
+            if (_currentPageUnread)
+                _leftPageIndex = _left.ReadNext();
             if (!_leftPageIndex.HasValue)
+            {
+                _currentPageUnread = false;
                 return null;
+            }
+
             _currentPageIndex = _leftPageIndex.Value;
+            _currentPageUnread = true;
             return _currentPageIndex;
         }
 
         public Memory<byte> ReadValue(Memory<byte> content)
         {
+            _currentPageUnread = false;
             var leftContent = _left.ReadValue(_leftBuffer);
             while (_rightPageIndex.HasValue && _rightPageIndex.Value < _currentPageIndex)
                 _rightPageIndex = _right.ReadNext();
@@ -458,6 +468,7 @@ public static class RoaringBitmap
         ulong _currentPageIndex;
         CurrentPageSource _currentPageSource;
         bool _initialized;
+        bool _currentPageUnread;
 
         public BinaryPageReader(BinaryOperation operation, IInternalODBRoaringBitmapPageReader left,
             IInternalODBRoaringBitmapPageReader right)
@@ -470,9 +481,18 @@ public static class RoaringBitmap
         public ulong? ReadNext()
         {
             Initialize();
-            if (_operation == BinaryOperation.And)
-                return ReadNextAnd();
-            return ReadNextOr();
+            // Callers may skip a page by calling ReadNext again without ReadValue
+            if (_currentPageUnread)
+            {
+                if (_currentPageSource != CurrentPageSource.Right)
+                    _leftPageIndex = _left.ReadNext();
+                if (_currentPageSource != CurrentPageSource.Left)
+                    _rightPageIndex = _right.ReadNext();
+            }
+
+            var result = _operation == BinaryOperation.And ? ReadNextAnd() : ReadNextOr();
+            _currentPageUnread = result.HasValue;
+            return result;
         }
 
         ulong? ReadNextAnd()
@@ -524,6 +544,7 @@ public static class RoaringBitmap
 
         public Memory<byte> ReadValue(Memory<byte> content)
         {
+            _currentPageUnread = false;
             int len;
             if (_currentPageSource == CurrentPageSource.Left)
             {

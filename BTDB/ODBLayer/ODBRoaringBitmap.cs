@@ -20,6 +20,7 @@ interface IInternalODBRoaringBitmap
 
 interface IInternalODBRoaringBitmapPageReader : IDisposable
 {
+    // Moves to the next page even when ReadValue was not called for the current one
     ulong? ReadNext();
     Memory<byte> ReadValue(Memory<byte> content);
 }

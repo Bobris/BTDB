@@ -972,6 +972,91 @@ public abstract class KeyValueDBTestBase
         }
     }
 
+    [Theory]
+    [InlineData(new byte[] { 1, 2, 4 })]
+    [InlineData(new byte[] { 1, 2 })]
+    [InlineData(new byte[] { 1, 2, 4, 5, 6 })]
+    public void CanChangeKeySuffixOfOnlyKey(byte[] newKey)
+    {
+        using var db = NewKeyValueDB();
+        using (var tr = db.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key1, new byte[1]);
+            Assert.Equal(UpdateKeySuffixResult.Updated, cursor.UpdateKeySuffix(newKey, 2));
+            Assert.Equal(newKey, cursor.SlowGetKey());
+            Assert.Equal(FindResult.Exact, cursor.Find(newKey, 0));
+            tr.Commit();
+        }
+
+        using (var tr = db.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            Assert.Equal(FindResult.Exact, cursor.Find(newKey, 0));
+            Assert.Equal(newKey, cursor.SlowGetKey());
+            Assert.Equal(new byte[1], cursor.SlowGetValue());
+            Assert.Equal(1, tr.GetKeyValueCount());
+        }
+    }
+
+    [Fact]
+    public void CanChangeKeySuffixOfFirstKeysInLeaves()
+    {
+        using var db = NewKeyValueDB();
+        using (var tr = db.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            for (var i = 0; i < 200; i++) cursor.CreateOrUpdateKeyValue([(byte)i, 5], [1]);
+            tr.Commit();
+        }
+
+        using (var tr = db.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            for (var i = 0; i < 200; i++)
+            {
+                byte[] newKey = [(byte)i, 1];
+                Assert.Equal(UpdateKeySuffixResult.Updated, cursor.UpdateKeySuffix(newKey, 1));
+                Assert.Equal(newKey, cursor.SlowGetKey());
+                cursor.SetValue([2]);
+                Assert.Equal(newKey, cursor.SlowGetKey());
+            }
+
+            Assert.Equal(200, tr.GetKeyValueCount());
+            for (var i = 0; i < 200; i++)
+            {
+                Assert.Equal(FindResult.Exact, cursor.Find([(byte)i, 1], 0));
+                Assert.Equal(i, cursor.GetKeyIndex());
+                Assert.Equal(new byte[] { 2 }, cursor.SlowGetValue());
+            }
+
+            Assert.False(cursor.CreateOrUpdateKeyValue([100, 1], [3]));
+            Assert.Equal(200, tr.GetKeyValueCount());
+            tr.Commit();
+        }
+    }
+
+    [Fact]
+    public void CursorReadsCurrentKeyAndValueAfterOtherCursorInsert()
+    {
+        using var db = NewKeyValueDB();
+        using var tr = db.StartTransaction();
+        using var cursor = tr.CreateCursor();
+        using var otherCursor = tr.CreateCursor();
+        cursor.CreateOrUpdateKeyValue(Key2, [42]);
+        Assert.Equal(FindResult.Exact, cursor.Find(Key2, 0));
+        otherCursor.CreateOrUpdateKeyValue(Key1, [43]);
+        Assert.True(cursor.IsValid());
+        Memory<byte> buffer = default;
+        Assert.Equal(new byte[] { 42 }, cursor.GetValueMemory(ref buffer, true).ToArray());
+        otherCursor.CreateOrUpdateKeyValue(Key3, [44]);
+        Assert.Equal(Key2, cursor.GetKeyMemory(ref buffer, true).ToArray());
+        otherCursor.CreateOrUpdateKeyValue([0], [45]);
+        Span<byte> keyBuffer = stackalloc byte[16];
+        Assert.Equal(Key2, cursor.GetKeySpan(keyBuffer, true).ToArray());
+        Assert.Equal(3, cursor.GetKeyIndex());
+    }
+
     [Fact]
     public void UpdateKeySuffixChecksForKeyPrefixUniqueness()
     {

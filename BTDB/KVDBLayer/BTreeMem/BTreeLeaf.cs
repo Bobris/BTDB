@@ -160,6 +160,8 @@ class BTreeLeaf : IBTreeLeafNode, IBTreeNode
         }
 
         leaf._keyValues[index] = m;
+        ctx.Stack[ctx.Depth] = new NodeIdxPair { Node = leaf, Idx = index };
+        ctx.FirstKeyInNodeChanged = index == 0;
     }
 
     public FindResult FindKey(ref StructList<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)

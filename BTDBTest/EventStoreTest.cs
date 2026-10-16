@@ -74,6 +74,24 @@ public class EventStoreTest
     }
 
     [Fact]
+    public void CanReadStoreWithEmptyEventBatch()
+    {
+        var storage = new MemoryEventFileStorage();
+        var manager = new EventStoreManager();
+        var appender = manager.AppendToStore(storage);
+        appender.Store(null, []);
+        appender.Store(null, [1]);
+        var eventObserver = new StoringEventObserver();
+        new EventStoreManager().OpenReadOnlyStore(storage).ReadToEnd(eventObserver);
+        Assert.Equal(new object[] { null, null }, eventObserver.Metadata);
+        Assert.Equal(new[] { new object[] { }, new object[] { 1 } }, eventObserver.Events);
+        appender = new EventStoreManager().AppendToStore(storage);
+        appender.ReadFromStartToEnd(new StoringEventObserver());
+        Assert.True(appender.IsKnownAsAppendable());
+        Assert.False(appender.IsKnownAsCorrupted());
+    }
+
+    [Fact]
     public void CanFinalizeEventStore()
     {
         var manager = new EventStoreManager();

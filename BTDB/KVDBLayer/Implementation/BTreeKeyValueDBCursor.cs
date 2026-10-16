@@ -295,7 +295,16 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool IsValid()
     {
+        RevalidateIfModified();
         return _cursor!.IsValid();
+    }
+
+    // Another cursor's write invalidates this cursor's tree position, find the current key again by its index.
+    // When the current key was removed, the cursor stays between its neighbours and has no current key.
+    void RevalidateIfModified()
+    {
+        if (!_cursor!.IsValid() && _modifiedFromLastFind && !_removedCurrent && _keyIndex != -1)
+            FindKeyIndex(_keyIndex);
     }
 
     public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
@@ -313,18 +322,21 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     public ReadOnlyMemory<byte> GetKeyMemory(ref Memory<byte> buffer, bool copy = false)
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
+        RevalidateIfModified();
         return _cursor!.GetKeyMemory(ref buffer, copy);
     }
 
     public ReadOnlySpan<byte> GetKeySpan(scoped ref Span<byte> buffer, bool copy = false)
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
+        RevalidateIfModified();
         return _cursor!.GetKeySpan(ref buffer, copy);
     }
 
     public ReadOnlySpan<byte> GetKeySpan(Span<byte> buffer, bool copy = false)
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
+        RevalidateIfModified();
         return _cursor!.GetKeySpan(buffer, copy);
     }
 
