@@ -162,7 +162,12 @@ Every object is written once with create-if-absent and never modified.
 ## Other storage
 
 `ILsmStorage` is provider-neutral: create-if-absent, read, ranged read (synchronous and asynchronous), list, delete,
-put and a lease. `InMemoryLsmStorage` is for tests. Only Azure is implemented and qualified.
+put and a lease.
+
+* `InMemoryLsmStorage` is for tests.
+* `FileSystemLsmStorage` stores a database in a local directory that processes on one machine can share. It is meant
+  for development, tests and benchmarks: it does not fsync.
+* Only Azure is qualified for production.
 
 ## Design and measurements
 

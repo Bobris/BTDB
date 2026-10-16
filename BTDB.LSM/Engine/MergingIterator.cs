@@ -58,6 +58,7 @@ sealed class MergingIterator
 
     public bool SeekGE(ReadOnlySpan<byte> key, bool inclusive)
     {
+        _view.Prefetch(key);
         foreach (var child in _children) child.SeekGE(key, inclusive);
         return ResolveForward();
     }
@@ -65,6 +66,7 @@ sealed class MergingIterator
     /// Last live key lower than (or equal to, when inclusive) key; unbounded seeks the last live key.
     public bool SeekLE(ReadOnlySpan<byte> key, bool unbounded, bool inclusive)
     {
+        if (!unbounded) _view.Prefetch(key);
         foreach (var child in _children)
         {
             if (unbounded) child.SeekLast();

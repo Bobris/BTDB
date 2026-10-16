@@ -552,6 +552,15 @@ sealed class TableReader : ILsmComponent
         return partition.FirstKeys[local];
     }
 
+    public bool IsStored => true;
+
+    public void Prefetch(ReadOnlySpan<byte> key)
+    {
+        if (!HasPoints) return;
+        var block = Math.Max(0, CountBlocksBefore(key, true) - 1);
+        Readahead(block, 1, 1);
+    }
+
     public void AddFinePivots(int fromBlock, int toBlock, List<byte[]> pivots)
     {
         for (var block = Math.Max(0, fromBlock); block < Math.Min(toBlock, BlockCount); block++)

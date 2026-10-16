@@ -378,3 +378,41 @@ Findings:
   default.
 * The section 4 hypothesis about level-1 rewrites was wrong for this size: compaction kept up and never stalled the
   writer.
+
+## 6. Manifest size and parallel component reads (2026-10-16)
+
+**Full manifests stay.** Test: `BTDB.LSM.Test/Perf/ManifestSizeSmokeTest.cs`, Release build, Apple M2 Max. Each
+manifest is a full checkpoint of the table set. The test encodes one with 64 MiB tables and one value file per ten
+tables:
+
+| Tables | Database | Manifest | Encode | Decode |
+| --- | --- | --- | --- | --- |
+| 100 | 6 GiB | 792 bytes | 0.01 ms | 0.01 ms |
+| 1,000 | 62 GiB | 7.6 KB | 0.05 ms | 0.06 ms |
+| 10,000 | 625 GiB | 81 KB | 0.8 ms | 0.4 ms |
+| 100,000 | 6.1 TiB | 859 KB | 4.7 ms | 1.1 ms |
+
+The writer publishes a manifest after each flush or compaction, which itself uploads at least one table of up to 64
+MiB. Even at 6 TiB the manifest adds about 1.3% to such a publication: one more create of less than 1 MB, or about 20
+ms at the section 2 rates. A reader that refreshes after every publication reads the same amount. Incremental edits
+with periodic checkpoints (plan section 11) would save this, but at the cost of an edit chain, checkpoint scheduling
+and retention of the edits. They are not admitted.
+
+**Parallel component reads.** Test: `BTDB.LSM.Test/Perf/ColdSeekSmokeTest.cs` with `BTDB_LSM_SEEK_KEYS=200000`, on
+`LatencyLsmStorage` (section 5). The database had one bottom-level table of 200,000 keys and four level-0 tables of
+20,000 keys each, read with a 16 MiB cache. A seek or rank now starts the block reads of all stored components at
+once, then reads them in order, so it waits for the slowest read instead of their sum.
+
+| 100 operations each | Before | After |
+| --- | --- | --- |
+| Cold `Find` | 4.3 ms | 4.3–4.4 ms |
+| Cold `FindKeyIndex` | 22.9–23.3 ms | 17.0–17.7 ms |
+| `Find` again (cached) | 40.4 µs | 38.0 µs |
+| Synchronous table reads | 600 | 434, plus 211 asynchronous |
+
+* `Find` rarely misses in more than one component, so it stays at about one read.
+* `FindKeyIndex` computes ranks across all components, and each rank now overlaps their misses. That gives 25% less
+  latency.
+* Metadata partitions are still loaded synchronously before the prefetch. With a cache too small for the index and
+  filter partitions (a 1 MiB cache in the same test), every operation reloaded them and the prefetch had no effect.
+  Size `BlockCacheSize` so that an eighth of it holds the partitions.

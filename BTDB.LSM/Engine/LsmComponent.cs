@@ -125,6 +125,14 @@ interface ILsmComponent
     /// Number of blocks whose first key is lower than key (or lower or equal when inclusive).
     int CountBlocksBefore(ReadOnlySpan<byte> key, bool inclusive);
 
+    /// True for components backed by storage, whose lookups may miss the cache.
+    bool IsStored { get; }
+
+    /// Starts an asynchronous read of the data block a seek to key would read first, unless it is cached or already
+    /// being read, so a seek that misses in several components waits for their reads once (ImplementationPlan.md,
+    /// section 12.2).
+    void Prefetch(ReadOnlySpan<byte> key);
+
     /// Adds keys inside blocks [fromBlock, toBlock) at most one restart interval apart, used as select pivots
     /// finer than blocks.
     void AddFinePivots(int fromBlock, int toBlock, List<byte[]> pivots);

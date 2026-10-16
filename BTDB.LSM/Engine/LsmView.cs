@@ -10,9 +10,24 @@ sealed class LsmView
 {
     readonly ILsmComponent[] _components;
 
+    readonly int _storedComponents;
+
     public LsmView(ILsmComponent[] components)
     {
         _components = components;
+        foreach (var component in components)
+            if (component.IsStored)
+                _storedComponents++;
+    }
+
+    /// Before a lookup that reads every component, starts the block reads of all stored components at once; with a
+    /// single stored component there is nothing to overlap.
+    public void Prefetch(ReadOnlySpan<byte> key)
+    {
+        if (_storedComponents < 2) return;
+        foreach (var component in _components)
+            if (component.IsStored)
+                component.Prefetch(key);
     }
 
     public ReadOnlySpan<ILsmComponent> Components => _components;
@@ -36,6 +51,7 @@ sealed class LsmView
     {
         long rank = 0;
         var current = key;
+        if (first == 0) Prefetch(key);
         for (var i = first; i < _components.Length; i++)
         {
             var component = _components[i];

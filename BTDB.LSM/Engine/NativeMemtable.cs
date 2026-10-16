@@ -459,6 +459,12 @@ sealed unsafe class NativeMemtable : IMemtable
     public int CountBlocksBefore(ReadOnlySpan<byte> key, bool inclusive) =>
         (int)((CountBefore(key, inclusive) + VirtualBlockSize - 1) / VirtualBlockSize);
 
+    public bool IsStored => false;
+
+    public void Prefetch(ReadOnlySpan<byte> key)
+    {
+    }
+
     /// Every FinePivotStride-th key of the virtual blocks; ranks in the memtable are exact, so this only bounds the
     /// final linear step of select.
     public void AddFinePivots(int fromBlock, int toBlock, List<byte[]> pivots)

@@ -11,6 +11,8 @@
   catch up with `RefreshAsync` or `WaitForCommitUlongAsync`. Commits are non-durable by default and
   `WaitForDurabilityAsync` waits for the WAL upload. Bloom filters default to 16 bits per key, because on object
   storage a false positive costs a ranged GET; this makes random-key bulk loads about 5 times faster than with 10.
+  `FileSystemLsmStorage` stores a database in a local directory shared by processes on one machine (development and
+  tests).
   See [Doc/LsmKeyValueDB.md](Doc/LsmKeyValueDB.md).
 
 ### Fixed

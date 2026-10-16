@@ -143,6 +143,14 @@ sealed class LevelComponent : ILsmComponent
         return _tables[lo].BlockFirstKey(block - _blocksBefore[lo]);
     }
 
+    public bool IsStored => true;
+
+    public void Prefetch(ReadOnlySpan<byte> key)
+    {
+        var table = FirstEndingAfter(key);
+        if (table < _tables.Length) _tables[table].Prefetch(key);
+    }
+
     public void AddFinePivots(int fromBlock, int toBlock, List<byte[]> pivots)
     {
         for (var table = 0; table < _tables.Length; table++)

@@ -859,9 +859,8 @@ Not done yet, admitted only with evidence:
 
 | Item | Reason |
 | --- | --- |
-| Incremental manifest edits | Full checkpoints cost one object of a few hundred bytes per table per flush or compaction; to be measured with real table counts in L4/L6. |
+| Incremental manifest edits | Not admitted: a full manifest costs about 8 bytes per table, 81 KB at 625 GiB, which is small next to the table upload of each publication (Measurements.md, section 6). |
 | Early upload of large transactions and `MaxTransactionMemory` | No workload measurement yet (section 7.5). |
-| Time-based retention of obsolete objects, WAL chunks and orphans | Needed only for readers in other processes (L5). |
 
 ### 20.3 Phase L5 state
 
@@ -922,7 +921,28 @@ Implemented:
   * both projects pack as `-preview` with symbols;
   * `Releaser` treats them as preview packages.
 
-Findings that remain open, each to be admitted only with evidence (Measurements.md, section 4):
+Added after the qualification:
+
+* **Format tests** (`BTDB.LSM.Test/Format/LsmFormatTest.cs`, section 19.3):
+  * Golden files pin the bytes of a deterministic sample database, which has tables on several levels, value files, a
+    manifest and a WAL chunk with a commit.
+  * Every object of the sample is bit-flipped and truncated. Damage is reported as `BTDBException`, or it touches only
+    dead values in a value file.
+  * The tests found that truncated objects surfaced as storage exceptions. `ILsmStorage` now throws
+    `EndOfStreamException` for reads past the end, and the engine reports a truncated object.
+* **`FileSystemLsmStorage`:**
+  * a directory store for development, tests across processes and benchmarks;
+  * creates are atomic create-if-absent, by `link(2)` on Unix and by a move without replace on Windows;
+  * leases are records under a short exclusive file lock.
+* **Process tests** (`BTDB.LSM.Process.Test`, section 19.6), with writers and a reader in separate processes:
+  * the reader follows the writer through flushes and compactions;
+  * a waiting writer takes over from a killed one, and every commit the first writer reported durable survives;
+  * a disposed writer hands the lease over at once.
+* **`ObjectDbTest`** gets the same factory hook as `ObjectDbTestBase`. 334 ObjectDB tests run on the LSM.
+* **Parallel component reads** (section 12.2): seeks and ranks start the block reads of all stored components first.
+  This makes a cold `FindKeyIndex` 25% faster in simulation (Measurements.md, section 6).
+
+Findings that remain open, each to be admitted only with evidence (Measurements.md, sections 4–6):
 
 | Item | Evidence so far |
 | --- | --- |
@@ -930,6 +950,8 @@ Findings that remain open, each to be admitted only with evidence (Measurements.
 | Durable commit p95 of 22 ms on Premium | One run; LRS had 11 ms. |
 | Readahead across table boundaries in a level | Tables are 64 MiB by default, so a scan restarts the window rarely. |
 | Bounding concurrent blocking reads (R2) | Not exercised by the single-cursor benchmark. |
+| Prefetching index and filter partitions with the data blocks | They load synchronously before the parallel data reads; this matters only when the cache cannot hold them. |
+| Hedged reads on Standard storage | Section 2 risk R1; needs an end-to-end measurement on Standard storage. |
 
 ## 21. Decisions
 
