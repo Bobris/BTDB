@@ -20,8 +20,10 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
     [InlineData(3, 4096, 256, 0, 20_000)]
     [InlineData(4, 512, 64, 1_000_000, 20_000)]
     [InlineData(5, 2048, 256, 4, 100_000)]
+    [InlineData(6, 1024, 128, 2, 30_000, 0)]
+    [InlineData(7, 2048, 256, 64, 30_000, 2)]
     public async Task MatchesBTreeKeyValueDB(int seed, long memtableSize, int blockSize, int pointDeleteRangeLimit,
-        int operations)
+        int operations, int valueSeparationThreshold = 1024)
     {
         var random = new Random(seed);
         var storage = new InMemoryLsmStorage();
@@ -29,7 +31,9 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
         var actualDb = await LsmKeyValueDB.OpenAsync(new()
         {
             Storage = storage, MemtableSize = memtableSize, BlockSize = blockSize, RestartInterval = 2,
-            PointDeleteRangeLimit = pointDeleteRangeLimit, MaxTables = 3, BlockCache = new LsmBlockCache(32 * 1024)
+            PointDeleteRangeLimit = pointDeleteRangeLimit, Level0CompactionTrigger = 3, LevelBaseBytes = 4096,
+            LevelMultiplier = 3, LevelCount = 5, TargetFileSize = 2048,
+            ValueSeparationThreshold = valueSeparationThreshold, ValueGcThreshold = 0.6, BlockCache = new LsmBlockCache(32 * 1024)
         });
         try
         {

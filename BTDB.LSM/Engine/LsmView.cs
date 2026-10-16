@@ -68,15 +68,15 @@ sealed class LsmView
 
     public bool ExistsFrom(int first, ReadOnlySpan<byte> key) => TryGetFrom(first, key, out _);
 
-    public bool TryGet(ReadOnlySpan<byte> key, out ReadOnlyMemory<byte> value) => TryGetFrom(0, key, out value);
+    public bool TryGet(ReadOnlySpan<byte> key, out LsmValue value) => TryGetFrom(0, key, out value);
 
-    bool TryGetFrom(int first, ReadOnlySpan<byte> key, out ReadOnlyMemory<byte> value)
+    bool TryGetFrom(int first, ReadOnlySpan<byte> key, out LsmValue value)
     {
         for (var i = first; i < _components.Length; i++)
         {
             if (_components[i].TryGet(key, out var entry))
             {
-                value = entry.Value;
+                value = entry.LsmValue;
                 return entry.IsSet;
             }
 
@@ -88,170 +88,24 @@ sealed class LsmView
     }
 
     /// First live key greater than (or equal to, when inclusive) key.
-    public bool SeekGE(ReadOnlySpan<byte> key, bool inclusive, out byte[] liveKey, out ReadOnlyMemory<byte> value)
+    public bool SeekGE(ReadOnlySpan<byte> key, bool inclusive, out byte[] liveKey, out LsmValue value)
     {
-        var count = _components.Length;
-        var bounds = new byte[count][];
-        var boundInclusive = new bool[count];
-        var candidates = new LsmEntry[count];
-        var has = new bool[count];
-        var stale = new bool[count];
-        var start = key.ToArray();
-        for (var i = 0; i < count; i++)
-        {
-            bounds[i] = start;
-            boundInclusive[i] = inclusive;
-            stale[i] = true;
-        }
-
-        while (true)
-        {
-            byte[]? best = null;
-            for (var i = 0; i < count; i++)
-            {
-                if (stale[i])
-                {
-                    has[i] = _components[i].SeekGE(bounds[i], boundInclusive[i], out candidates[i]);
-                    stale[i] = false;
-                }
-
-                if (has[i] && (best == null || LsmKeys.Compare(candidates[i].Key, best) < 0)) best = candidates[i].Key;
-            }
-
-            if (best == null)
-            {
-                liveKey = [];
-                value = default;
-                return false;
-            }
-
-            var masked = -1;
-            for (var i = 0; i < count; i++)
-            {
-                if (has[i] && LsmKeys.Compare(candidates[i].Key, best) == 0)
-                {
-                    if (candidates[i].IsSet)
-                    {
-                        liveKey = best;
-                        value = candidates[i].Value;
-                        return true;
-                    }
-
-                    break;
-                }
-
-                if (_components[i].Tombstones.Find(best, out _) is >= 0 and var fragment)
-                {
-                    masked = i;
-                    var end = _components[i].Tombstones[fragment].End;
-                    // Everything older than the masking component is hidden up to the fragment end.
-                    for (var j = i + 1; j < count; j++)
-                    {
-                        if (LsmKeys.Compare(bounds[j], end) < 0)
-                        {
-                            bounds[j] = end;
-                            boundInclusive[j] = true;
-                            stale[j] = true;
-                        }
-                    }
-
-                    break;
-                }
-            }
-
-            for (var i = 0; i < (masked >= 0 ? masked + 1 : count); i++)
-            {
-                if (!has[i] || LsmKeys.Compare(candidates[i].Key, best) != 0) continue;
-                bounds[i] = best;
-                boundInclusive[i] = false;
-                stale[i] = true;
-            }
-        }
+        var iterator = new MergingIterator(this);
+        var found = iterator.SeekGE(key, inclusive);
+        liveKey = found ? iterator.Key : [];
+        value = found ? iterator.Value : default;
+        return found;
     }
 
-    /// Last live key lower than (or equal to, when inclusive) key; a null key means no upper bound.
+    /// Last live key lower than (or equal to, when inclusive) key; unbounded means no upper bound.
     public bool SeekLE(ReadOnlySpan<byte> key, bool unbounded, bool inclusive, out byte[] liveKey,
-        out ReadOnlyMemory<byte> value)
+        out LsmValue value)
     {
-        var count = _components.Length;
-        var bounds = new byte[]?[count];
-        var boundInclusive = new bool[count];
-        var candidates = new LsmEntry[count];
-        var has = new bool[count];
-        var stale = new bool[count];
-        var start = unbounded ? null : key.ToArray();
-        for (var i = 0; i < count; i++)
-        {
-            bounds[i] = start;
-            boundInclusive[i] = inclusive;
-            stale[i] = true;
-        }
-
-        while (true)
-        {
-            byte[]? best = null;
-            for (var i = 0; i < count; i++)
-            {
-                if (stale[i])
-                {
-                    has[i] = bounds[i] == null
-                        ? _components[i].SeekLast(out candidates[i])
-                        : _components[i].SeekLE(bounds[i], boundInclusive[i], out candidates[i]);
-                    stale[i] = false;
-                }
-
-                if (has[i] && (best == null || LsmKeys.Compare(candidates[i].Key, best) > 0)) best = candidates[i].Key;
-            }
-
-            if (best == null)
-            {
-                liveKey = [];
-                value = default;
-                return false;
-            }
-
-            var masked = -1;
-            for (var i = 0; i < count; i++)
-            {
-                if (has[i] && LsmKeys.Compare(candidates[i].Key, best) == 0)
-                {
-                    if (candidates[i].IsSet)
-                    {
-                        liveKey = best;
-                        value = candidates[i].Value;
-                        return true;
-                    }
-
-                    break;
-                }
-
-                if (_components[i].Tombstones.Find(best, out _) is >= 0 and var fragment)
-                {
-                    masked = i;
-                    var fragmentStart = _components[i].Tombstones[fragment].Start;
-                    for (var j = i + 1; j < count; j++)
-                    {
-                        if (bounds[j] == null || LsmKeys.Compare(bounds[j], fragmentStart) > 0 ||
-                            boundInclusive[j] && LsmKeys.Compare(bounds[j], fragmentStart) == 0)
-                        {
-                            bounds[j] = fragmentStart;
-                            boundInclusive[j] = false;
-                            stale[j] = true;
-                        }
-                    }
-
-                    break;
-                }
-            }
-
-            for (var i = 0; i < (masked >= 0 ? masked + 1 : count); i++)
-            {
-                if (!has[i] || LsmKeys.Compare(candidates[i].Key, best) != 0) continue;
-                bounds[i] = best;
-                boundInclusive[i] = false;
-                stale[i] = true;
-            }
-        }
+        var iterator = new MergingIterator(this);
+        var found = iterator.SeekLE(key, unbounded, inclusive);
+        liveKey = found ? iterator.Key : [];
+        value = found ? iterator.Value : default;
+        return found;
     }
 
     /// Live key with the given rank; index must be in [0, Count).
@@ -284,15 +138,10 @@ sealed class LsmView
         }
 
         var skip = index - (low == null ? 0 : Rank(low));
-        if (!SeekGE(low ?? [], true, out var key, out _))
-            throw new InvalidOperationException("Select did not find a live key; counts are inconsistent.");
-        while (skip > 0)
-        {
-            if (!SeekGE(key, false, out key, out _))
-                throw new InvalidOperationException("Select did not find a live key; counts are inconsistent.");
-            skip--;
-        }
-
-        return key;
+        var iterator = new MergingIterator(this);
+        var found = iterator.SeekGE(low ?? [], true);
+        for (; found && skip > 0; skip--) found = iterator.Next();
+        if (!found) throw new InvalidOperationException("Select did not find a live key; counts are inconsistent.");
+        return iterator.Key;
     }
 }

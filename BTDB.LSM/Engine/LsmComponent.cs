@@ -6,14 +6,27 @@ namespace BTDB.LSM.Engine;
 
 /// One point entry of a component. ExistsBelow says whether the key exists in the state below the component with the
 /// component's own tombstones applied, so the rank delta is derived (ImplementationPlan.md, section 6.1).
-readonly struct LsmEntry(byte[] key, bool isSet, bool existsBelow, ReadOnlyMemory<byte> value)
+readonly struct LsmEntry(
+    byte[] key,
+    bool isSet,
+    bool existsBelow,
+    ReadOnlyMemory<byte> value,
+    bool isSeparated = false)
 {
     public byte[] Key { get; } = key;
     public bool IsSet { get; } = isSet;
     public bool ExistsBelow { get; } = existsBelow;
+
+    /// The value, or the encoded handle of a separated value when IsSeparated.
     public ReadOnlyMemory<byte> Value { get; } = value;
+
+    public bool IsSeparated { get; } = isSeparated;
     public int Delta => (IsSet ? 1 : 0) - (ExistsBelow ? 1 : 0);
+    public LsmValue LsmValue => new(Value, IsSeparated);
 }
+
+/// A value as stored: inline bytes, or the handle of a value in a value file (ImplementationPlan.md, section 10).
+readonly record struct LsmValue(ReadOnlyMemory<byte> Data, bool IsSeparated);
 
 /// Range tombstone fragment [Start, End) masking everything older than its component. CoveredBelow counts the keys in
 /// the fragment that exist below the component (ImplementationPlan.md, section 6.3).
@@ -37,6 +50,7 @@ sealed class TombstoneSet
     public int Count => _items.Length;
     public ReadOnlySpan<LsmTombstone> Items => _items;
     public LsmTombstone this[int index] => _items[index];
+    public LsmTombstone this[Index index] => _items[index];
     public long CoveredSum => _coveredBefore[^1];
 
     /// Returns the index of the fragment containing key, or -1. coveredBefore sums CoveredBelow of all fragments that
@@ -113,4 +127,6 @@ interface ILsmComponent
 
     /// All points in ascending key order.
     IEnumerable<LsmEntry> Enumerate();
+
+    IComponentCursor CreateCursor();
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 
@@ -160,6 +161,8 @@ static class LsmChecksum
 static class LsmKeys
 {
     public static int Compare(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b) => a.SequenceCompareTo(b);
+
+    public static readonly IComparer<byte[]> Comparer = Comparer<byte[]>.Create((a, b) => a.AsSpan().SequenceCompareTo(b));
 
     /// Smallest key greater than every key starting with prefix, or null when no such key exists.
     public static byte[]? PrefixSuccessor(ReadOnlySpan<byte> prefix)

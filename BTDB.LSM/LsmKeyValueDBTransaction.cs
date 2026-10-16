@@ -15,7 +15,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     bool _writing;
     bool _finished;
     bool _disposed;
-    Memtable? _writable;
+    IMemtable? _writable;
     LsmView _view;
     ulong _commitUlong;
     ulong[] _ulongs;
@@ -36,6 +36,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     }
 
     internal long StateSequence => _state.Sequence;
+    internal LsmKeyValueDB Db => _db;
     internal LsmView View => _view;
 
     /// Incremented by every modification; cursors use it to invalidate cached positions and indexes.
@@ -119,17 +120,6 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
         while (cursor != null)
         {
             if (cursor != origin) cursor.NotifyRenamed(oldKey, newKey);
-            cursor = (LsmKeyValueDBCursor?)cursor.NextCursor;
-        }
-    }
-
-    /// Lets fuzzy invalid cursors adopt a key created exactly in their gap, as index-based cursors do.
-    internal void NotifyCreated(byte[] key, LsmKeyValueDBCursor origin)
-    {
-        var cursor = (LsmKeyValueDBCursor?)FirstCursor;
-        while (cursor != null)
-        {
-            if (cursor != origin) cursor.NotifyCreated(key);
             cursor = (LsmKeyValueDBCursor?)cursor.NextCursor;
         }
     }
@@ -261,5 +251,5 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     public long GetTransactionNumber() => _transactionNumber;
 
     public Dictionary<(uint Depth, uint Children), uint> CalcBTreeStats() =>
-        new() { [(0, (uint)_state.Tables.Length)] = 1 };
+        new() { [(0, (uint)_state.Version.Components.Length)] = 1 };
 }

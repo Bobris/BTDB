@@ -1,22 +1,26 @@
 using System;
 using System.Collections.Generic;
 using BTDB.KVDBLayer;
+using BTDB.LSM.Engine;
 using BTDB.LSM.Format;
 
 namespace BTDB.LSM;
 
 /// Cursor positioned by key (ImplementationPlan.md, section 7.4). Each move is a seek over the merged view; the key
 /// index is computed by rank and cached until the transaction is modified. After its key is erased the cursor is
-/// fuzzy invalid: it remembers the key, so next and previous move to the neighbors, and reading moves to the next key,
-/// matching the index-based behavior of the other implementations.
+/// fuzzy invalid: it remembers the key, so its index is the rank of the key minus one, next and previous move to the
+/// neighbors of the key, and reading moves to the next key. Creating the key again makes it current again.
 sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
 {
     LsmKeyValueDBTransaction? _transaction;
     byte[]? _key;
-    ReadOnlyMemory<byte> _value;
+    LsmValue _value;
+    ReadOnlyMemory<byte>? _resolvedValue;
     bool _removed;
     long _stamp;
     long _index = -1;
+    MergingIterator? _iterator;
+    long _iteratorStamp;
 
     public LsmKeyValueDBCursor(LsmKeyValueDBTransaction transaction)
     {
@@ -62,10 +66,36 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         _key = null;
     }
 
-    void Set(byte[] key, ReadOnlyMemory<byte> value, long index)
+    /// The iterator if it is positioned on the current key of the current view; otherwise null.
+    MergingIterator? PositionedIterator()
+    {
+        var iterator = _iterator;
+        if (iterator == null || !iterator.Valid || iterator.View != Tr.View ||
+            _iteratorStamp != Tr.ModificationStamp || _key == null ||
+            !iterator.Key.AsSpan().SequenceEqual(_key)) return null;
+        return iterator;
+    }
+
+    MergingIterator FreshIterator()
+    {
+        var view = Tr.View;
+        if (_iterator == null || _iterator.View != view) _iterator = new(view);
+        _iteratorStamp = Tr.ModificationStamp;
+        return _iterator;
+    }
+
+    bool SetFromIterator(MergingIterator iterator, bool found, in ReadOnlySpan<byte> prefix, long index)
+    {
+        if (!found || !iterator.Key.AsSpan().StartsWith(prefix)) return Fail();
+        Set(iterator.Key, iterator.Value, index);
+        return true;
+    }
+
+    void Set(byte[] key, LsmValue value, long index)
     {
         _key = key;
         _value = value;
+        _resolvedValue = null;
         _removed = false;
         _stamp = Tr.ModificationStamp;
         _index = index;
@@ -84,14 +114,8 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
     {
         var transaction = Tr;
         if (_key == null) throw new InvalidOperationException("Current key is not valid");
-        if (!_removed && _stamp == transaction.ModificationStamp) return;
-        if (!_removed && transaction.View.TryGet(_key, out var value))
-        {
-            Set(_key, value, -1);
-            return;
-        }
-
-        if (transaction.View.SeekGE(_key, false, out var next, out value))
+        if (!IsRemovedNow()) return;
+        if (transaction.View.SeekGE(_key, false, out var next, out var value))
         {
             Set(next, value, -1);
             return;
@@ -101,10 +125,10 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         throw new InvalidOperationException("Current key is not valid");
     }
 
+    /// Whether the cursor's key no longer exists; a key erased and created again makes the cursor current again.
     bool IsRemovedNow()
     {
-        if (_removed) return true;
-        if (_stamp == Tr.ModificationStamp) return false;
+        if (_stamp == Tr.ModificationStamp) return _removed;
         if (Tr.View.TryGet(_key!, out var value))
         {
             Set(_key!, value, -1);
@@ -112,33 +136,21 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         }
 
         _removed = true;
+        _stamp = Tr.ModificationStamp;
         return true;
     }
 
     public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
     {
-        var view = Tr.View;
-        if (view.SeekGE(prefix, true, out var key, out var value) && key.AsSpan().StartsWith(prefix))
-        {
-            Set(key, value, -1);
-            return true;
-        }
-
-        return Fail();
+        var iterator = FreshIterator();
+        return SetFromIterator(iterator, iterator.SeekGE(prefix, true), prefix, -1);
     }
 
     public bool FindLastKey(in ReadOnlySpan<byte> prefix)
     {
-        var view = Tr.View;
+        var iterator = FreshIterator();
         var successor = LsmKeys.PrefixSuccessor(prefix);
-        if (view.SeekLE(successor, successor == null, false, out var key, out var value) &&
-            key.AsSpan().StartsWith(prefix))
-        {
-            Set(key, value, -1);
-            return true;
-        }
-
-        return Fail();
+        return SetFromIterator(iterator, iterator.SeekLE(successor, successor == null, false), prefix, -1);
     }
 
     public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
@@ -146,13 +158,10 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         if (_key == null) return FindLastKey(prefix);
         var removed = IsRemovedNow();
         var index = removed || _index < 0 ? -1 : _index - 1;
-        if (Tr.View.SeekLE(_key, false, false, out var key, out var value) && key.AsSpan().StartsWith(prefix))
-        {
-            Set(key, value, index);
-            return true;
-        }
-
-        return Fail();
+        var iterator = removed ? null : PositionedIterator();
+        if (iterator != null) return SetFromIterator(iterator, iterator.Prev(), prefix, index);
+        iterator = FreshIterator();
+        return SetFromIterator(iterator, iterator.SeekLE(_key, false, false), prefix, index);
     }
 
     public bool FindNextKey(in ReadOnlySpan<byte> prefix)
@@ -160,13 +169,10 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         if (_key == null) return FindFirstKey(prefix);
         var removed = IsRemovedNow();
         var index = removed || _index < 0 ? -1 : _index + 1;
-        if (Tr.View.SeekGE(_key, false, out var key, out var value) && key.AsSpan().StartsWith(prefix))
-        {
-            Set(key, value, index);
-            return true;
-        }
-
-        return Fail();
+        var iterator = removed ? null : PositionedIterator();
+        if (iterator != null) return SetFromIterator(iterator, iterator.Next(), prefix, index);
+        iterator = FreshIterator();
+        return SetFromIterator(iterator, iterator.SeekGE(_key, false), prefix, index);
     }
 
     public FindResult Find(scoped in ReadOnlySpan<byte> key, uint prefixLen)
@@ -231,10 +237,14 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public bool IsValid() => _key != null;
 
+    /// The current value, read from its value file on first access when separated.
+    ReadOnlyMemory<byte> Value => _resolvedValue ??= Tr.Db.Resolve(_value);
+
     public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
     {
         EnsureCurrent();
-        return new((uint)_key!.Length, (uint)_value.Length);
+        var valueLength = _value.IsSeparated ? ValueHandle.Decode(_value.Data.Span).Length : _value.Data.Length;
+        return new((uint)_key!.Length, (uint)valueLength);
     }
 
     public ReadOnlyMemory<byte> GetKeyMemory(ref Memory<byte> buffer, bool copy = false)
@@ -265,24 +275,38 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         return buffer[.._key.Length];
     }
 
-    public bool IsValueCorrupted() => false;
+    public bool IsValueCorrupted()
+    {
+        EnsureCurrent();
+        try
+        {
+            _ = Value;
+            return false;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+    }
 
     public ReadOnlyMemory<byte> GetValueMemory(ref Memory<byte> buffer, bool copy = false)
     {
         EnsureCurrent();
-        if (!copy) return _value;
-        if (buffer.Length < _value.Length) buffer = GC.AllocateUninitializedArray<byte>(_value.Length);
-        _value.CopyTo(buffer);
-        return buffer[.._value.Length];
+        var value = Value;
+        if (!copy) return value;
+        if (buffer.Length < value.Length) buffer = GC.AllocateUninitializedArray<byte>(value.Length);
+        value.CopyTo(buffer);
+        return buffer[..value.Length];
     }
 
     public ReadOnlySpan<byte> GetValueSpan(scoped ref Span<byte> buffer, bool copy = false)
     {
         EnsureCurrent();
-        if (!copy) return _value.Span;
-        if (buffer.Length < _value.Length) buffer = GC.AllocateUninitializedArray<byte>(_value.Length);
-        _value.Span.CopyTo(buffer);
-        return buffer[.._value.Length];
+        var value = Value;
+        if (!copy) return value.Span;
+        if (buffer.Length < value.Length) buffer = GC.AllocateUninitializedArray<byte>(value.Length);
+        value.Span.CopyTo(buffer);
+        return buffer[..value.Length];
     }
 
     public void SetValue(in ReadOnlySpan<byte> value)
@@ -290,7 +314,7 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         EnsureCurrent();
         var index = _index;
         Tr.Upsert(_key!, value);
-        Set(_key!, value.ToArray(), index);
+        Set(_key!, new(value.ToArray(), false), index);
     }
 
     public void EraseCurrent()
@@ -319,8 +343,7 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
     {
         var keyCopy = key.ToArray();
         var created = Tr.Upsert(keyCopy, value);
-        Set(keyCopy, value.ToArray(), -1);
-        if (created) Tr.NotifyCreated(keyCopy, this);
+        Set(keyCopy, new(value.ToArray(), false), -1);
         return created;
     }
 
@@ -330,20 +353,6 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
         if (_key == null || _removed || !_key.AsSpan().SequenceEqual(oldKey)) return;
         Tr.View.TryGet(newKey, out var value);
         Set(newKey, value, -1);
-    }
-
-    internal void NotifyCreated(byte[] created)
-    {
-        if (_key == null || !IsRemovedNow()) return;
-        var view = Tr.View;
-        // Live keys strictly between the erased key and the created one; zero means the created key fills the gap.
-        var cmp = LsmKeys.Compare(created, _key);
-        var between = cmp == 0 ? 0 : cmp > 0
-            ? view.Rank(created) - view.Rank(_key)
-            : view.Rank(_key) - view.Rank(created) - 1;
-        if (between != 0) return;
-        view.TryGet(created, out var value);
-        Set(created, value, -1);
     }
 
     public UpdateKeySuffixResult UpdateKeySuffix(in ReadOnlySpan<byte> key, uint prefixLen)
@@ -368,11 +377,11 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
             return UpdateKeySuffixResult.NothingToDo;
         }
 
-        var valueCopy = value.ToArray();
+        var valueCopy = Tr.Db.Resolve(value).ToArray();
         Tr.Erase(existing);
         var keyCopy = key.ToArray();
         Tr.Upsert(keyCopy, valueCopy);
-        Set(keyCopy, valueCopy, -1);
+        Set(keyCopy, new(valueCopy, false), -1);
         Tr.NotifyRenamed(existing, keyCopy, this);
         return UpdateKeySuffixResult.Updated;
     }

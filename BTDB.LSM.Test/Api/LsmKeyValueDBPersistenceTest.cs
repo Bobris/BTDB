@@ -10,7 +10,8 @@ public class LsmKeyValueDBPersistenceTest
     static LsmKeyValueDB Open(ILsmStorage storage, long memtableSize = 64 * 1024 * 1024) =>
         LsmKeyValueDB.OpenAsync(new()
         {
-            Storage = storage, MemtableSize = memtableSize, BlockSize = 256, RestartInterval = 4, MaxTables = 3,
+            Storage = storage, MemtableSize = memtableSize, BlockSize = 256, RestartInterval = 4, Level0CompactionTrigger = 3,
+            LevelBaseBytes = 4096, LevelMultiplier = 3, LevelCount = 5, TargetFileSize = 2048,
             PointDeleteRangeLimit = 2
         }).AsTask().GetAwaiter().GetResult();
 
@@ -73,11 +74,65 @@ public class LsmKeyValueDBPersistenceTest
         Assert.True(tablesAfter <= 4, $"{tablesAfter} tables remain");
     }
 
-    static async Task<int> CountTables(InMemoryLsmStorage storage)
+    static async Task<int> CountTables(InMemoryLsmStorage storage) => await Count(storage, "tables/");
+
+    static async Task<int> Count(InMemoryLsmStorage storage, string prefix)
     {
         var count = 0;
-        await foreach (var _ in storage.ListAsync("tables/", default)) count++;
+        await foreach (var _ in storage.ListAsync(prefix, default)) count++;
         return count;
+    }
+
+    [Fact]
+    public async Task OverwrittenSeparatedValuesAreCollected()
+    {
+        var storage = new InMemoryLsmStorage();
+        var options = new LsmKeyValueDBOptions
+        {
+            Storage = storage, MemtableSize = 8 * 1024, BlockSize = 512, Level0CompactionTrigger = 2,
+            LevelBaseBytes = 16 * 1024, LevelMultiplier = 4, LevelCount = 4, TargetFileSize = 16 * 1024,
+            ValueSeparationThreshold = 100, ValueGcThreshold = 0.5
+        };
+        var maxValueFiles = 0;
+        using (var db = await LsmKeyValueDB.OpenAsync(options))
+        {
+            for (var round = 0; round < 40; round++)
+            {
+                using var tr = await db.StartWritingTransaction();
+                using var cursor = tr.CreateCursor();
+                for (var i = 0; i < 20; i++)
+                {
+                    var value = new byte[300];
+                    value[0] = (byte)round;
+                    value[1] = (byte)i;
+                    cursor.CreateOrUpdateKeyValue(Key(i), value);
+                }
+
+                tr.Commit();
+                maxValueFiles = System.Math.Max(maxValueFiles, await Count(storage, "values/"));
+            }
+
+            await db.Compact(default);
+        }
+
+        // 40 rounds of 6 KB each would leave many files without collection; after a full compaction only live ones stay.
+        Assert.True(await Count(storage, "values/") <= 2, $"{await Count(storage, "values/")} value files remain");
+        Assert.True(maxValueFiles < 20, $"up to {maxValueFiles} value files existed");
+        using (var db = await LsmKeyValueDB.OpenAsync(options))
+        {
+            using var tr = db.StartReadOnlyTransaction();
+            using var cursor = tr.CreateCursor();
+            Assert.Equal(20, tr.GetKeyValueCount());
+            for (var i = 0; i < 20; i++)
+            {
+                Assert.Equal(FindResult.Exact, cursor.Find(Key(i), 0));
+                var value = cursor.SlowGetValue();
+                Assert.Equal(300, value.Length);
+                Assert.Equal(39, value[0]);
+                Assert.Equal(i, value[1]);
+                Assert.Equal(300u, cursor.GetStorageSizeOfCurrentKey().Value);
+            }
+        }
     }
 
     [Fact]

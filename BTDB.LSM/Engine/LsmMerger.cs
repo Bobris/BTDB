@@ -5,26 +5,52 @@ using BTDB.LSM.Format;
 namespace BTDB.LSM.Engine;
 
 /// Merges a contiguous run of components into one, preserving every key's delta sum (ImplementationPlan.md, sections
-/// 6.2, 6.3 and 13). The run is newest first; below is the view of all components older than the run.
-static class LsmMerger
+/// 6.2, 6.3 and 13). The run is newest first; below is the view of all components older than the run. Entries are
+/// produced lazily so compaction output can be streamed into tables.
+sealed class LsmMerger
 {
-    public static (List<LsmEntry> Entries, TombstoneSet Tombstones) Merge(ReadOnlySpan<ILsmComponent> run,
-        LsmView below, int belowFirst)
+    readonly ILsmComponent[] _run;
+    readonly List<(byte[] Start, byte[] End)> _spans = [];
+
+    public LsmMerger(ILsmComponent[] run, LsmView below)
     {
+        _run = run;
         // Union of all fragments of the run masks the state below the run.
         var fragments = new List<LsmTombstone>();
         foreach (var component in run) fragments.AddRange(component.Tombstones.Items);
         fragments.Sort((a, b) => LsmKeys.Compare(a.Start, b.Start));
-        var spans = new List<(byte[] Start, byte[] End)>();
         foreach (var fragment in fragments)
         {
-            if (spans.Count > 0 && LsmKeys.Compare(fragment.Start, spans[^1].End) <= 0)
+            if (_spans.Count > 0 && LsmKeys.Compare(fragment.Start, _spans[^1].End) <= 0)
             {
-                if (LsmKeys.Compare(fragment.End, spans[^1].End) > 0) spans[^1] = (spans[^1].Start, fragment.End);
+                if (LsmKeys.Compare(fragment.End, _spans[^1].End) > 0) _spans[^1] = (_spans[^1].Start, fragment.End);
             }
-            else spans.Add((fragment.Start, fragment.End));
+            else _spans.Add((fragment.Start, fragment.End));
         }
 
+        var tombstones = new List<LsmTombstone>();
+        foreach (var (start, end) in _spans)
+        {
+            var coveredBelow = below.Rank(end) - below.Rank(start);
+            if (coveredBelow > 0) tombstones.Add(new(start, end, coveredBelow));
+        }
+
+        Tombstones = new([.. tombstones]);
+    }
+
+    /// Merged fragments; fragments masking nothing below the run are dropped.
+    public TombstoneSet Tombstones { get; }
+
+    public static (List<LsmEntry> Entries, TombstoneSet Tombstones) Merge(ILsmComponent[] run, LsmView below)
+    {
+        var merger = new LsmMerger(run, below);
+        return ([.. merger.Entries()], merger.Tombstones);
+    }
+
+    public IEnumerable<LsmEntry> Entries()
+    {
+        var run = _run;
+        var spans = _spans;
         var enumerators = new IEnumerator<LsmEntry>[run.Length];
         var has = new bool[run.Length];
         for (var i = 0; i < run.Length; i++)
@@ -33,7 +59,6 @@ static class LsmMerger
             has[i] = enumerators[i].MoveNext();
         }
 
-        var entries = new List<LsmEntry>();
         var spanIndex = 0;
         try
         {
@@ -46,7 +71,7 @@ static class LsmMerger
                         key = enumerators[i].Current.Key;
                 }
 
-                if (key == null) break;
+                if (key == null) yield break;
                 while (spanIndex < spans.Count && LsmKeys.Compare(spans[spanIndex].End, key) <= 0) spanIndex++;
                 var covered = spanIndex < spans.Count && LsmKeys.Compare(spans[spanIndex].Start, key) <= 0;
 
@@ -54,6 +79,7 @@ static class LsmMerger
                 var decided = false;
                 var isSet = false;
                 ReadOnlyMemory<byte> value = default;
+                var separated = false;
                 var existsBelow = false;
                 for (var i = 0; i < run.Length; i++)
                 {
@@ -65,6 +91,7 @@ static class LsmMerger
                             decided = true;
                             isSet = enumerators[i].Current.IsSet;
                             value = enumerators[i].Current.Value;
+                            separated = enumerators[i].Current.IsSeparated;
                         }
                         else if (run[i].Tombstones.Covers(key)) decided = true;
                     }
@@ -74,27 +101,22 @@ static class LsmMerger
                 }
 
                 if (covered) existsBelow = false;
-                if (isSet || existsBelow) entries.Add(new(key, isSet, existsBelow, isSet ? value : default));
+                var result = isSet || existsBelow
+                    ? new LsmEntry(key, isSet, existsBelow, isSet ? value : default, isSet && separated)
+                    : default;
 
                 for (var i = 0; i < run.Length; i++)
                 {
                     if (has[i] && LsmKeys.Compare(enumerators[i].Current.Key, key) == 0)
                         has[i] = enumerators[i].MoveNext();
                 }
+
+                if (result.Key != null) yield return result;
             }
         }
         finally
         {
             foreach (var enumerator in enumerators) enumerator.Dispose();
         }
-
-        var tombstones = new List<LsmTombstone>();
-        foreach (var (start, end) in spans)
-        {
-            var coveredBelow = below.RankFrom(belowFirst, end) - below.RankFrom(belowFirst, start);
-            if (coveredBelow > 0) tombstones.Add(new(start, end, coveredBelow));
-        }
-
-        return (entries, new([.. tombstones]));
     }
 }

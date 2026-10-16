@@ -213,3 +213,33 @@ Standard is about twice the async p50, but Premium shows no difference, so a syn
   cheap GETs. The 50 ms `RefreshRetryInterval` default stays.
 * **Probe, don't list.** Listing 1,000 objects takes 65–95 ms, and small listings have outliers of 45 ms. The engine
   lists only at open and recovery and uses name probes afterwards.
+
+## 3. Memtable GC cost (2026-10-16)
+
+Test: `BTDB.LSM.Test/Perf/MemtableGcSmokeTest.cs`, Release build, Apple M2 Max, in-memory storage. One run
+inserts 1,000,000 random 16-byte keys with 16-byte values into a database with a 64 MiB memtable and a 16 MiB block
+cache, in transactions of 1,000 or 10 operations. GC numbers are process-wide; the four cases run one after another.
+Two runs gave consistent results; the table shows the range.
+
+| Memtable | Ops per transaction | Inserts/s | GC pause (share of run) | gen2 collections | GC heap at end |
+| --- | --- | --- | --- | --- | --- |
+| Managed treap (L1) | 1,000 | 319,000–327,000 | 1.03–1.09 s (33–35%) | 18–19 | 288–295 MiB |
+| Managed treap (L1) | 10 | 249,000–250,000 | 1.31–1.32 s (33%) | 24 | 251–266 MiB |
+| Native B+tree (L2) | 1,000 | 376,000–404,000 | 0.39 s (15–16%) | 36–39 | 90–134 MiB |
+| Native B+tree (L2) | 10 | 364,000–373,000 | 0.42–0.44 s (16%) | 44–46 | 87–181 MiB |
+
+Earlier, a single isolated run of the managed memtable with 1,000 operations per transaction measured a 32% GC pause
+(937 ms of 2.9 s), 1.1 GB allocated and a 262 MiB heap. That evidence admitted the native memtable (plan, section 7.1).
+
+Findings:
+
+* The native memtable removes long-lived managed objects. GC pause time drops by about 3 times and inserts are 20–50%
+  faster. The remaining allocations are short-lived: cursor key and value copies, entry materialization during flush,
+  and table building.
+* The native arena counts copy-on-write garbage against `MemtableSize`. With random keys, every transaction copies
+  each first-touched leaf (about 1.1 KiB) and its branch path, so the arena fills about 3 times faster than the managed
+  estimate: 76,000 entries per 64 MiB with 1,000 operations per transaction, and 26,000 with 10. The managed memtable's
+  accounting (entry bytes + 96 per entry) underestimated its real heap use by about 4 times. A candidate follow-up, to
+  admit only after measuring flush pressure on a real workload, is rebuilding the live tree into a fresh arena when
+  garbage dominates; the old arena would be retired through the same snapshot-safe release.
+* Larger transactions amortize the copies best. They match the expected use (plan, decision D4).

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using BTDB.Buffer;
 using BTDB.LSM.Format;
+using BTDB.LSM.Memory;
 
 namespace BTDB.LSM.Engine;
 
@@ -27,11 +28,39 @@ sealed class MemNode
     };
 }
 
-/// Counted copy-on-write memtable (ImplementationPlan.md, section 7.1): a persistent treap whose nodes aggregate entry
-/// count and delta sum, plus tombstone fragments. A writing transaction owns a private copy: nodes it created are
-/// mutated in place, all others are copied on write, so committed snapshots never change. Managed prototype for
-/// phase L1; a native-memory tree replaces it in phase L2.
-sealed class Memtable : ILsmComponent
+/// Mutable counted component of the newest data (ImplementationPlan.md, section 7.1). A writing transaction modifies a
+/// private copy; committed snapshots never change.
+interface IMemtable : ILsmComponent
+{
+    /// Bytes counted against MemtableSize.
+    long ApproximateBytes { get; }
+
+    bool IsEmpty { get; }
+
+    /// Native memory released together with the memtable, or null for a managed memtable.
+    NativeArena? Arena { get; }
+
+    /// Returns a copy that the given owner may modify; this instance stays unchanged.
+    IMemtable CloneForWriting(long owner);
+
+    bool TryGetNode(ReadOnlySpan<byte> key, out bool isSet, out bool existsBelow);
+
+    /// Changes an existing point; returns false if the key has no point in this memtable.
+    bool UpdateExisting(ReadOnlySpan<byte> key, bool isSet, ReadOnlySpan<byte> value);
+
+    void Insert(byte[] key, bool isSet, bool existsBelow, ReadOnlySpan<byte> value);
+    void Remove(ReadOnlySpan<byte> key);
+
+    /// Removes all points in [start, end).
+    void RemoveRange(ReadOnlySpan<byte> start, ReadOnlySpan<byte> end);
+
+    void SetTombstones(TombstoneSet tombstones);
+}
+
+/// Managed counted copy-on-write memtable: a persistent treap whose nodes aggregate entry count and delta sum, plus
+/// tombstone fragments. Nodes created by the writing owner are mutated in place, all others are copied on write. Kept
+/// as a reference implementation; NativeMemtable is the default (see BTDB.LSM/Measurements.md).
+sealed class Memtable : IMemtable
 {
     public const int VirtualBlockSize = 64;
 
@@ -49,8 +78,9 @@ sealed class Memtable : ILsmComponent
 
     public static Memtable CreateEmpty() => new(null, TombstoneSet.Empty, 0, 0);
 
-    /// Returns a copy that the given owner may modify; this instance stays unchanged.
-    public Memtable CloneForWriting(long owner) => new(_root, _tombstones, ApproximateBytes, owner);
+    public IMemtable CloneForWriting(long owner) => new Memtable(_root, _tombstones, ApproximateBytes, owner);
+
+    public NativeArena? Arena => null;
 
     public long ApproximateBytes { get; private set; }
     public bool IsEmpty => _root == null && _tombstones.Count == 0;
@@ -345,4 +375,6 @@ sealed class Memtable : ILsmComponent
     {
         foreach (var node in InOrder(_root)) yield return ToEntry(node);
     }
+
+    public IComponentCursor CreateCursor() => new SeekingComponentCursor(this);
 }

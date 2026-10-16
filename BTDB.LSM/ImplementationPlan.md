@@ -1,13 +1,15 @@
 # BTDB.LSM — implementation plan
 
-Status: phase L0 is done and phase L1 is functionally complete (2026-10-16). Decisions D1–D7 are confirmed (section
-21).
+Status: phases L0 and L1 are done; phase L2 is in progress (2026-10-16). Decisions D1–D7 are confirmed (section 21).
 
 * L0: the counted LSM prototype (`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle, and the live
   Azure storage screening is done (LRS, GZRS and Premium). Evidence is in [Measurements.md](Measurements.md).
 * L1: `LsmKeyValueDB` passes the shared `KeyValueDBTestBase` suite with default and tiny settings. It also passes a
   randomized oracle test against `BTreeKeyValueDB` (180,000 operations over several cursors, commits, rollbacks and
-  snapshots) and persistence tests. Section 20.1 lists where L1 still differs from the target design.
+  snapshots) and persistence tests.
+* L2 so far: leveled compaction with level components, a positioned merging iterator, value separation with value-file
+  garbage collection, and the native counted memtable. Section 20.1 lists what remains and where the implementation
+  still differs from the target design.
 
 Confirmed requirements:
 
@@ -724,24 +726,57 @@ Implemented in `BTDB.LSM`:
 * Key-based cursors.
 * Flush to tables, the manifest, reopen, and deferred deletion of merged tables once no snapshot uses them.
 
-Deliberate L1 simplifications, each replaced in the phase named:
+Done in L2:
 
-| L1 state | Target |
+* **Leveled compaction** (`LsmVersion`, `LevelComponent`, `LsmCompaction`):
+  * L0 tables are separate components; levels 1..n are non-overlapping tables presented as one component each, with
+    prefix sums over tables for rank and blocks.
+  * The picker scores L0 by table count and the other levels by size against `LevelBaseBytes × LevelMultiplier^(n-1)`.
+    A level picks its table round-robin.
+  * Single-table moves without overlaps are trivial moves.
+  * Outputs are split at `TargetFileSize` into non-overlapping tables. Tombstones crossing a split are clipped, and each
+    part gets its own `CoveredBelow` from the levels below.
+  * `Compact()` merges everything into the bottom level.
+* **Positioned merging iterator** (`MergingIterator`, `TableCursor`, `LevelCursor`): children stay positioned, a step
+  advances only the children at the current key, a masking fragment moves older children past it in one seek, and a
+  direction change reseeks. Cursors keep their iterator while the transaction is unmodified.
+* **Value separation** (`ValueFile`, `ValueSeparation`):
+  * Values longer than `ValueSeparationThreshold` move to value files at flush. Tables store a handle (file, offset,
+    length) and record the bytes they reference per value file.
+  * Compaction copies handles.
+  * When a value file's live ratio is below `ValueGcThreshold`, compactions rewrite its values, and a rewrite compaction
+    is picked for any table still referencing it.
+  * Value files no table references are deleted once no snapshot can read them.
+  * Cursors read separated values only on `GetValue*`.
+* **Native memtable** (`NativeMemtable`, `NativeArena`):
+  * A counted copy-on-write B+tree (32 entries per node) in a native arena shared by all versions of a memtable.
+  * The arena is released when the memtable has been flushed and no snapshot uses it.
+  * The managed treap remains as a reference implementation (`NativeMemtable = false`) and as the oracle in
+    `NativeMemtableTest`.
+  * Measurements: [Measurements.md](Measurements.md), section 3.
+
+Remaining differences from the target design:
+
+| Current state | Target |
 | --- | --- |
-| The memtable is a managed persistent treap with owner-based copy on write. | A native-memory counted tree (L2). |
-| Every cursor move is a fresh seek over all components. | A positioned merging iterator with readahead (L2). |
-| Data blocks are fully decoded into the cache. | Decode one restart interval; native cache (L2). |
-| A size-tiered merge of the newest tables runs when there are more than `MaxTables` tables. | Leveled compaction with L0 sublevels (L2). |
+| Data blocks are fully decoded into a managed LRU cache. | Decode one restart interval; sharded native cache (L2). |
 | Single-level index and bloom filter, pinned per table. | Partitioned index and filters (L2). |
-| Values are always inline. | Value separation (L2). |
-| Flush and merge run synchronously while the writer slot is held. | Background flush and compaction with stalls (L2, L3). |
+| Flush and compaction run synchronously while the writer slot is held; compaction inputs are read through the block cache. | Background flush and compaction with stalls and rate limits, inputs read with large sequential GETs (L2, L3). |
+| The native arena counts copy-on-write garbage, so with small random transactions it fills about 3 times faster than its entry bytes. | Optional rebuild of the live tree into a fresh arena, if a real workload shows the flush pressure matters. |
 | Each manifest object is a full checkpoint, and only flushed data survives reopening. | WAL, version edits and checkpoints (L3). |
 | There is no lease; every instance can write. | Lease on the first writing transaction (L3). The shared test suite starts writers with `StartTransaction()`, so L3 adds an option to acquire the lease at open. |
 
 Cursor semantics. `LsmKeyValueDB` cursors are positioned by key. Where `BTreeKeyValueDB` reports a cursor disturbed by
-another cursor's write as invalid and refuses to read it, the LSM cursor re-seeks by its key and stays readable. Key
-indexes, the fuzzy invalidation after erase, a created key filling an erased cursor's gap, and renamed keys followed by
-`UpdateKeySuffix` match the index-based behavior.
+another cursor's write as invalid and refuses to read it, the LSM cursor re-seeks by its key and stays readable.
+
+After its key is erased, a cursor is fuzzy invalid:
+
+* its index is the rank of the key minus one;
+* next and previous move to the neighbors of the key;
+* creating the key again makes it current again.
+
+These rules match the key-based behavior that the shared suite specifies. Cursors on a key renamed by
+`UpdateKeySuffix` follow the new key.
 
 `BTreeKeyValueDB` defects found by the oracle test (the oracle works around them; they are not fixed by this work):
 

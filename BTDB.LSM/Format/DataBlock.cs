@@ -40,7 +40,7 @@ sealed class DataBlockBuilder(int restartInterval)
         FirstKey ??= key;
         _encoder.WriteVUInt64((ulong)shared);
         _encoder.WriteVUInt64((ulong)(key.Length - shared));
-        _encoder.WriteByte((byte)((entry.IsSet ? 1 : 0) | (entry.ExistsBelow ? 2 : 0)));
+        _encoder.WriteByte((byte)((entry.IsSet ? 1 : 0) | (entry.ExistsBelow ? 2 : 0) | (entry.IsSeparated ? 4 : 0)));
         if (entry.IsSet) _encoder.WriteVUInt64((ulong)entry.Value.Length);
         _encoder.WriteBytes(key.AsSpan(shared));
         if (entry.IsSet) _encoder.WriteBytes(entry.Value.Span);
@@ -89,7 +89,7 @@ sealed class DataBlockBuilder(int restartInterval)
 
 /// A decoded data block kept in the block cache. It is fully decoded for simplicity; decoding only the needed restart
 /// interval is a later optimization.
-sealed class DataBlock
+sealed class DataBlock : ICachedBlock
 {
     readonly byte[] _data;
     readonly byte[][] _keys;
@@ -164,7 +164,7 @@ sealed class DataBlock
     public byte[] Key(int index) => _keys[index];
 
     public LsmEntry Entry(int index) => new(_keys[index], (_flags[index] & 1) != 0, (_flags[index] & 2) != 0,
-        _data.AsMemory(_valueStart[index], _valueLength[index]));
+        _data.AsMemory(_valueStart[index], _valueLength[index]), (_flags[index] & 4) != 0);
 
     /// Sum of deltas of the first count entries.
     public int DeltaPrefix(int count) => _deltaPrefix[count];

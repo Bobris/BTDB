@@ -20,6 +20,20 @@ public class LsmKeyValueDBTinyTest(ITestOutputHelper testOutputHelper) : KeyValu
     protected override IKeyValueDB NewKeyValueDB() => LsmKeyValueDB.OpenAsync(new()
     {
         Storage = new InMemoryLsmStorage(), MemtableSize = 2048, BlockSize = 256, RestartInterval = 4,
-        PointDeleteRangeLimit = 2, MaxTables = 4, BlockCache = new LsmBlockCache(64 * 1024)
+        PointDeleteRangeLimit = 2, Level0CompactionTrigger = 2, LevelBaseBytes = 8192, LevelMultiplier = 4,
+        LevelCount = 5, TargetFileSize = 4096, BlockCache = new LsmBlockCache(64 * 1024)
+    }).AsTask().GetAwaiter().GetResult();
+}
+
+/// The shared suite with tiny settings and every non-empty value stored in value files, so reads, compaction copies
+/// handles and value-file garbage collection are exercised by every test.
+public class LsmKeyValueDBSeparatedValuesTest(ITestOutputHelper testOutputHelper) : KeyValueDBTestBase(testOutputHelper)
+{
+    protected override IKeyValueDB NewKeyValueDB() => LsmKeyValueDB.OpenAsync(new()
+    {
+        Storage = new InMemoryLsmStorage(), MemtableSize = 2048, BlockSize = 256, RestartInterval = 4,
+        PointDeleteRangeLimit = 2, Level0CompactionTrigger = 2, LevelBaseBytes = 8192, LevelMultiplier = 4,
+        LevelCount = 5, TargetFileSize = 4096, ValueSeparationThreshold = 0, ValueGcThreshold = 0.6,
+        BlockCache = new LsmBlockCache(64 * 1024)
     }).AsTask().GetAwaiter().GetResult();
 }

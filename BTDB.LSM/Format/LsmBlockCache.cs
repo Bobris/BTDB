@@ -4,8 +4,20 @@ using System.Threading;
 
 namespace BTDB.LSM.Format;
 
-/// Byte-budgeted LRU cache of decoded data blocks keyed by (file number, block offset). It can be shared by several
-/// databases. Concurrent misses of the same block may both load it; the first inserted copy wins. A sharded CLOCK
+interface ICachedBlock
+{
+    long MemorySize { get; }
+}
+
+/// Cached separated value.
+sealed class CachedValue(byte[] data) : ICachedBlock
+{
+    public byte[] Data { get; } = data;
+    public long MemorySize => Data.Length + 64;
+}
+
+/// Byte-budgeted LRU cache of decoded data blocks and separated values keyed by (file number, offset). It can be
+/// shared by several databases. Concurrent misses of the same block may both load it; the first inserted copy wins. A sharded CLOCK
 /// cache in native memory replaces it in phase L2 (ImplementationPlan.md, section 12.1).
 public sealed class LsmBlockCache
 {
@@ -26,9 +38,9 @@ public sealed class LsmBlockCache
     public long Hits => Interlocked.Read(ref _hits);
     public long Misses => Interlocked.Read(ref _misses);
 
-    sealed record Item((ulong File, long Offset) Key, DataBlock Block);
+    sealed record Item((ulong File, long Offset) Key, ICachedBlock Block);
 
-    internal DataBlock GetOrLoad(ulong file, long offset, Func<DataBlock> load)
+    internal T GetOrLoad<T>(ulong file, long offset, Func<T> load) where T : class, ICachedBlock
     {
         var key = (file, offset);
         lock (_lock)
@@ -38,7 +50,7 @@ public sealed class LsmBlockCache
                 _lru.Remove(node);
                 _lru.AddFirst(node);
                 _hits++;
-                return node.Value.Block;
+                return (T)node.Value.Block;
             }
 
             _misses++;
@@ -47,7 +59,7 @@ public sealed class LsmBlockCache
         var block = load();
         lock (_lock)
         {
-            if (_items.TryGetValue(key, out var existing)) return existing.Value.Block;
+            if (_items.TryGetValue(key, out var existing)) return (T)existing.Value.Block;
             var node = _lru.AddFirst(new Item(key, block));
             _items.Add(key, node);
             _sizeBytes += block.MemorySize;

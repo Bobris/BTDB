@@ -8,14 +8,15 @@ using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 using BTDB.LSM.Engine;
 using BTDB.LSM.Format;
+using BTDB.LSM.Memory;
 using BTDB.LSM.Storage;
 
 namespace BTDB.LSM;
 
 /// Log-structured merge tree implementation of IKeyValueDB stored directly in object storage
 /// (BTDB.LSM/ImplementationPlan.md). Phase L1: memtable, tables, manifest, flush and a simple merge of all tables; no
-/// WAL yet, so only flushed data survives reopening. Flush and merge run synchronously while the writer slot is held.
-/// Compaction is a size-tiered placeholder until leveled compaction in phase L2.
+/// WAL yet, so only flushed data survives reopening. Flush and leveled compaction run synchronously while the writer
+/// slot is held.
 public sealed class LsmKeyValueDB : ILsmKeyValueDB
 {
     static long _lastOwner;
@@ -24,10 +25,13 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
     readonly ILsmStorage _storage;
     readonly LsmBlockCache _cache;
     readonly TableBuildOptions _tableOptions;
+    readonly LsmCompactionOptions _compactionOptions;
+    readonly byte[]?[] _compactionPointers;
     readonly Lock _writeLock = new();
     readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new();
     readonly ConcurrentDictionary<LsmKeyValueDBTransaction, bool> _transactions = new();
-    readonly List<(TableReader Table, long ObsoleteAt)> _obsoleteTables = [];
+    readonly List<(string Key, ulong FileNumber, long ObsoleteAt)> _obsoleteObjects = [];
+    readonly List<(NativeArena Arena, long ObsoleteAt)> _retiredArenas = [];
     volatile LsmState _state;
     LsmKeyValueDBTransaction? _writingTransaction;
     LsmManifest _lastManifest;
@@ -44,6 +48,13 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
             BlockSize = options.BlockSize, RestartInterval = options.RestartInterval,
             BloomBitsPerKey = options.BloomBitsPerKey, Compress = options.CompressBlocks
         };
+        _compactionOptions = new()
+        {
+            Level0Trigger = options.Level0CompactionTrigger, LevelBaseBytes = options.LevelBaseBytes,
+            LevelMultiplier = options.LevelMultiplier, TargetFileSize = options.TargetFileSize,
+            ValueGcThreshold = options.ValueGcThreshold
+        };
+        _compactionPointers = new byte[]?[state.Version.LevelCount];
         _state = state;
         _lastManifest = manifest;
         _nextFileNumber = manifest.NextFileNumber;
@@ -66,14 +77,24 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
             manifest = LsmManifest.Decode(content, manifestKey);
         }
 
-        var tables = manifest.Tables.Select(t => TableReader.Open(options.Storage, cache, t.FileNumber,
-            TableKey(options.Prefix, t.FileNumber), t.Length, options.TableTailReadSize)).ToArray();
-        var state = new LsmState(Memtable.CreateEmpty(), tables, manifest.CommitUlong, manifest.Ulongs,
+        var levelCount = manifestKey == null ? options.LevelCount : manifest.LevelCount;
+        var levels = Enumerable.Range(0, levelCount).Select(_ => new List<TableReader>()).ToArray();
+        foreach (var (level, fileNumber, length) in manifest.Tables)
+            levels[level].Add(TableReader.Open(options.Storage, cache, fileNumber, TableKey(options.Prefix, fileNumber),
+                length, options.TableTailReadSize));
+        var version = new LsmVersion([.. levels[0]], levels.Select(l => l.ToArray()).ToArray(),
+            manifest.ValueFiles.ToDictionary(v => v.FileNumber, v => v.Length));
+        var state = new LsmState(NewMemtable(options), version, manifest.CommitUlong, manifest.Ulongs,
             manifest.TransactionNumber, manifest.Sequence);
         return new(options, cache, state, manifest);
     }
 
     static string TableKey(string prefix, ulong fileNumber) => $"{prefix}tables/{fileNumber:D16}.sst";
+
+    static IMemtable NewMemtable(LsmKeyValueDBOptions options) =>
+        options.NativeMemtable ? NativeMemtable.CreateEmpty(options.MemtableSize) : Memtable.CreateEmpty();
+
+    string ValueKey(ulong fileNumber) => $"{_options.Prefix}values/{fileNumber:D16}.vlf";
 
     string ManifestKey(long sequence) => $"{_options.Prefix}manifest/{sequence:D16}";
 
@@ -134,11 +155,11 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
         }
     }
 
-    internal void CommitWritingTransaction(Memtable memtable, ulong commitUlong, ulong[] ulongs,
+    internal void CommitWritingTransaction(IMemtable memtable, ulong commitUlong, ulong[] ulongs,
         long transactionNumber, bool persist)
     {
         var current = _state;
-        _state = new(memtable, current.Tables, commitUlong, ulongs, transactionNumber, current.Sequence + 1);
+        _state = new(memtable, current.Version, commitUlong, ulongs, transactionNumber, current.Sequence + 1);
         try
         {
             if (persist || memtable.ApproximateBytes >= MaxTrLogFileSize) FlushHoldingWriter();
@@ -162,21 +183,21 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
         }
     }
 
-    /// Writes the memtable to a new table and a manifest checkpoint. Must run while the writer slot is held or no
-    /// writer can start.
+    /// Writes the memtable to a new level 0 table, runs the compactions it makes due and writes a manifest
+    /// checkpoint. Must run while the writer slot is held or no writer can start.
     void FlushHoldingWriter()
     {
         var state = _state;
-        var tables = state.Tables;
+        var version = state.Version;
+        var createdValueFiles = new List<(ulong FileNumber, long Bytes)>();
         if (!state.Memtable.IsEmpty)
         {
-            var fileNumber = _nextFileNumber++;
-            var key = TableKey(_options.Prefix, fileNumber);
-            var content = TableBuilder.Build(state.Memtable.Enumerate(), state.Memtable.Tombstones, _tableOptions);
-            CreateObject(key, content);
-            tables = [TableReader.Open(_storage, _cache, fileNumber, key, content.Length, _options.TableTailReadSize),
-                ..tables];
-            Logger?.TransactionLogCreated((uint)fileNumber);
+            var values = NewValueSeparation(version, createdValueFiles);
+            var table = WriteTable(TableBuilder.Build(state.Memtable.Enumerate().Select(e => values.Apply(e)),
+                state.Memtable.Tombstones, _tableOptions));
+            values.Finish();
+            version = version.WithLevel0([table, .. version.Level0]);
+            Logger?.TransactionLogCreated((uint)table.FileNumber);
         }
         else if (state.CommitUlong == _lastManifest.CommitUlong && state.Ulongs.AsSpan().SequenceEqual(
                      _lastManifest.Ulongs) && state.TransactionNumber == _lastManifest.TransactionNumber)
@@ -184,49 +205,71 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
             return;
         }
 
-        var obsolete = Array.Empty<TableReader>();
-        if (tables.Length > _options.MaxTables) (tables, obsolete) = MergeNewestRun(tables);
-        var published = new LsmState(Memtable.CreateEmpty(), tables, state.CommitUlong, state.Ulongs,
-            state.TransactionNumber, state.Sequence + 1);
+        var obsolete = new List<TableReader>();
+        while (LsmCompaction.Pick(version, _compactionOptions, _compactionPointers) is { } plan)
+        {
+            Logger?.CompactionStart(0);
+            (version, var replaced) = LsmCompaction.Execute(version, plan, _compactionOptions, _tableOptions,
+                WriteTable, NewValueSeparation(version, createdValueFiles));
+            obsolete.AddRange(replaced);
+        }
+
+        Publish(new(NewMemtable(_options), version, state.CommitUlong, state.Ulongs, state.TransactionNumber,
+            state.Sequence + 1), obsolete, createdValueFiles);
+    }
+
+    ValueSeparation NewValueSeparation(LsmVersion version, List<(ulong FileNumber, long Bytes)> created) =>
+        new(_options.ValueSeparationThreshold, new ValueFileWriter(() => _nextFileNumber++, _options.TargetFileSize,
+                (fileNumber, content) =>
+                {
+                    CreateObject(ValueKey(fileNumber), content);
+                    created.Add((fileNumber, content.Length));
+                }),
+            fileNumber => version.LiveValueRatio(fileNumber) < _options.ValueGcThreshold, ReadValue);
+
+    /// Publishes a state whose tables no longer use obsolete, adding created value files and dropping value files no
+    /// table references; dropped objects are deleted once no snapshot can read them.
+    void Publish(LsmState state, IReadOnlyCollection<TableReader> obsolete,
+        IEnumerable<(ulong FileNumber, long Bytes)> createdValueFiles)
+    {
+        var version = state.Version.WithValueFiles(createdValueFiles, out var droppedValueFiles);
+        var published = new LsmState(state.Memtable, version, state.CommitUlong, state.Ulongs,
+            state.TransactionNumber, state.Sequence);
         WriteManifest(published);
+        var retiredArena = _state.Memtable.Arena;
         _state = published;
-        if (obsolete.Length > 0)
+        if (retiredArena != null && retiredArena != published.Memtable.Arena)
+            lock (_obsoleteObjects)
+                _retiredArenas.Add((retiredArena, published.Sequence));
+        lock (_obsoleteObjects)
         {
-            lock (_obsoleteTables)
-                foreach (var table in obsolete)
-                    _obsoleteTables.Add((table, published.Sequence));
-            DeleteObsoleteTables();
-        }
-    }
-
-    /// Size-tiered placeholder for leveled compaction (phase L2): merges the newest run of tables, extended while
-    /// the next older table is at most twice the run's size, so total merge work stays O(n log n).
-    (TableReader[] Tables, TableReader[] Obsolete) MergeNewestRun(TableReader[] tables)
-    {
-        var last = 1;
-        var runSize = tables[0].Length + tables[1].Length;
-        while (last + 1 < tables.Length && tables[last + 1].Length <= 2 * runSize)
-        {
-            last++;
-            runSize += tables[last].Length;
+            foreach (var table in obsolete)
+                _obsoleteObjects.Add((table.ObjectKey, table.FileNumber, published.Sequence));
+            foreach (var fileNumber in droppedValueFiles)
+                _obsoleteObjects.Add((ValueKey(fileNumber), fileNumber, published.Sequence));
         }
 
-        return MergeRun(tables, last);
+        DeleteObsoleteObjects();
     }
 
-    (TableReader[] Tables, TableReader[] Obsolete) MergeRun(TableReader[] tables, int last)
+    byte[] ReadValue(ValueHandle handle) => _cache.GetOrLoad(handle.FileNumber, handle.Offset, () =>
     {
-        Logger?.CompactionStart(0);
-        var run = tables[..(last + 1)];
-        var below = tables[(last + 1)..];
-        var (entries, tombstones) = LsmMerger.Merge(run, new LsmView(below), 0);
-        if (entries.Count == 0 && tombstones.Count == 0) return (below, run);
+        var key = ValueKey(handle.FileNumber);
+        var record = new byte[handle.StoredLength];
+        _storage.ReadRange(key, handle.Offset, record);
+        return new CachedValue(ValueFileWriter.VerifyRecord(record, key));
+    }).Data;
+
+    /// The bytes of a stored value, reading a separated value from its value file.
+    internal ReadOnlyMemory<byte> Resolve(LsmValue value) =>
+        value.IsSeparated ? ReadValue(ValueHandle.Decode(value.Data.Span)) : value.Data;
+
+    TableReader WriteTable(byte[] content)
+    {
         var fileNumber = _nextFileNumber++;
         var key = TableKey(_options.Prefix, fileNumber);
-        var content = TableBuilder.Build(entries, tombstones, _tableOptions);
         CreateObject(key, content);
-        var merged = TableReader.Open(_storage, _cache, fileNumber, key, content.Length, _options.TableTailReadSize);
-        return ([merged, ..below], run);
+        return TableReader.Open(_storage, _cache, fileNumber, key, content.Length, _options.TableTailReadSize);
     }
 
     void WriteManifest(LsmState state)
@@ -234,8 +277,9 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
         var manifest = new LsmManifest
         {
             Sequence = state.Sequence, NextFileNumber = _nextFileNumber, TransactionNumber = state.TransactionNumber,
-            CommitUlong = state.CommitUlong, Ulongs = state.Ulongs,
-            Tables = state.Tables.Select(t => (t.FileNumber, t.Length)).ToArray()
+            CommitUlong = state.CommitUlong, Ulongs = state.Ulongs, LevelCount = state.Version.LevelCount,
+            Tables = state.Version.AllTables().Select(t => (t.Level, t.Table.FileNumber, t.Table.Length)).ToArray(),
+            ValueFiles = state.Version.ValueFiles.Select(v => (v.Key, v.Value)).OrderBy(v => v.Key).ToArray()
         };
         CreateObject(ManifestKey(state.Sequence), manifest.Encode());
         var previous = _lastManifest;
@@ -256,27 +300,30 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
     internal void TransactionDisposed(LsmKeyValueDBTransaction transaction)
     {
         _transactions.TryRemove(transaction, out _);
-        DeleteObsoleteTables();
+        DeleteObsoleteObjects();
     }
 
-    void DeleteObsoleteTables()
+    void DeleteObsoleteObjects()
     {
-        List<TableReader> deletable;
-        lock (_obsoleteTables)
+        List<(string Key, ulong FileNumber, long ObsoleteAt)> deletable;
+        lock (_obsoleteObjects)
         {
-            if (_obsoleteTables.Count == 0) return;
+            if (_obsoleteObjects.Count == 0 && _retiredArenas.Count == 0) return;
             var oldestLive = long.MaxValue;
             foreach (var transaction in _transactions.Keys)
                 oldestLive = Math.Min(oldestLive, transaction.StateSequence);
-            deletable = _obsoleteTables.Where(o => o.ObsoleteAt <= oldestLive).Select(o => o.Table).ToList();
-            _obsoleteTables.RemoveAll(o => o.ObsoleteAt <= oldestLive);
+            deletable = _obsoleteObjects.Where(o => o.ObsoleteAt <= oldestLive).ToList();
+            _obsoleteObjects.RemoveAll(o => o.ObsoleteAt <= oldestLive);
+            // A memtable's native memory is released once no snapshot can reach any version of it.
+            foreach (var (arena, _) in _retiredArenas.Where(a => a.ObsoleteAt <= oldestLive)) arena.Dispose();
+            _retiredArenas.RemoveAll(a => a.ObsoleteAt <= oldestLive);
         }
 
-        foreach (var table in deletable)
+        foreach (var (key, fileNumber, _) in deletable)
         {
-            table.EvictFromCache();
-            _storage.DeleteAsync(table.ObjectKey, CancellationToken.None).AsTask().GetAwaiter().GetResult();
-            Logger?.FileMarkedForDelete((uint)table.FileNumber);
+            _cache.Evict(fileNumber);
+            _storage.DeleteAsync(key, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+            Logger?.FileMarkedForDelete((uint)fileNumber);
         }
     }
 
@@ -300,8 +347,14 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
         builder.Append("KeyValueCount:").Append(state.CreateView(state.Memtable).Count).AppendLine();
         builder.Append("MemtableEntries:").Append(state.Memtable.EntryCount).AppendLine();
         builder.Append("MemtableBytes:").Append(state.Memtable.ApproximateBytes).AppendLine();
-        builder.Append("Tables:").Append(state.Tables.Length).AppendLine();
-        builder.Append("TableBytes:").Append(state.Tables.Sum(t => t.Length)).AppendLine();
+        for (var level = 0; level < state.Version.LevelCount; level++)
+        {
+            var tables = level == 0 ? state.Version.Level0 : state.Version.Levels[level];
+            if (tables.Length == 0) continue;
+            builder.Append("Level").Append(level).Append(':').Append(tables.Length).Append(" tables, ")
+                .Append(state.Version.LevelBytes(level)).Append(" bytes").AppendLine();
+        }
+
         builder.Append("BlockCacheBytes:").Append(_cache.SizeBytes).AppendLine();
         builder.Append("BlockCacheHits:").Append(_cache.Hits).AppendLine();
         builder.Append("BlockCacheMisses:").Append(_cache.Misses).AppendLine();
@@ -311,7 +364,7 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
     public (ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) GetNativeMemoryStats() =>
         (0, 0, 0, 0);
 
-    /// Merges all tables into one. Returns false: there is never more work left after a full merge.
+    /// Flushes the memtable and merges every table into the bottom level. Returns false: no work is left after it.
     public async ValueTask<bool> Compact(CancellationToken cancellation)
     {
         var transaction = (LsmKeyValueDBTransaction)await StartWritingTransaction();
@@ -319,15 +372,13 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
         {
             FlushHoldingWriter();
             var state = _state;
-            if (state.Tables.Length <= 1) return false;
-            var (tables, obsolete) = MergeRun(state.Tables, state.Tables.Length - 1);
-            var published = new LsmState(state.Memtable, tables, state.CommitUlong, state.Ulongs,
-                state.TransactionNumber, state.Sequence + 1);
-            WriteManifest(published);
-            _state = published;
-            lock (_obsoleteTables)
-                foreach (var table in obsolete)
-                    _obsoleteTables.Add((table, published.Sequence));
+            if (state.Version.AllTables().Count() <= 1 && state.Version.Level0.Length == 0) return false;
+            Logger?.CompactionStart(0);
+            var created = new List<(ulong FileNumber, long Bytes)>();
+            var (version, obsolete) = LsmCompaction.CompactAll(state.Version, _compactionOptions, _tableOptions,
+                WriteTable, NewValueSeparation(state.Version, created));
+            Publish(new(state.Memtable, version, state.CommitUlong, state.Ulongs, state.TransactionNumber,
+                state.Sequence + 1), obsolete, created);
             return false;
         }
         finally
@@ -372,6 +423,7 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
             _disposed = true;
         }
 
-        DeleteObsoleteTables();
+        DeleteObsoleteObjects();
+        _state.Memtable.Arena?.Dispose();
     }
 }

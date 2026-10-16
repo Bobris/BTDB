@@ -17,6 +17,9 @@ public sealed class LsmKeyValueDBOptions
     /// Memtable size that triggers a flush to a new table. Also exposed as IKeyValueDB.MaxTrLogFileSize.
     public long MemtableSize { get; init; } = 64 * 1024 * 1024;
 
+    /// Keep the memtable in native memory (default); false uses the managed reference implementation.
+    public bool NativeMemtable { get; init; } = true;
+
     /// Target uncompressed data block size.
     public int BlockSize { get; init; } = 32 * 1024;
 
@@ -30,10 +33,27 @@ public sealed class LsmKeyValueDBOptions
     /// Ranges with at most this many live keys are erased with point deletes instead of a range tombstone.
     public int PointDeleteRangeLimit { get; init; } = 64;
 
-    /// Number of tables that triggers merging them into one (L1 placeholder for leveled compaction).
-    public int MaxTables { get; init; } = 8;
+    /// Number of level 0 tables that triggers their compaction into level 1.
+    public int Level0CompactionTrigger { get; init; } = 4;
+
+    /// Target size of level 1; each deeper level is LevelMultiplier times larger.
+    public long LevelBaseBytes { get; init; } = 256L * 1024 * 1024;
+
+    public int LevelMultiplier { get; init; } = 10;
+
+    /// Number of levels including level 0; the last one is the bottom level.
+    public int LevelCount { get; init; } = 7;
+
+    /// Target size of tables written by compaction.
+    public long TargetFileSize { get; init; } = 64L * 1024 * 1024;
 
     public int TableTailReadSize { get; init; } = 64 * 1024;
+
+    /// Values longer than this are stored in value files when written to tables; int.MaxValue keeps all inline.
+    public int ValueSeparationThreshold { get; init; } = 1024;
+
+    /// Value files whose live bytes drop below this ratio are rewritten.
+    public double ValueGcThreshold { get; init; } = 0.5;
 
     public IKeyValueDBLogger? Logger { get; init; }
 }
