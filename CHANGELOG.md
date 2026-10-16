@@ -2,7 +2,19 @@
 
 ## [unreleased]
 
+### Added
+
+- `ReadOnlyKeyValueDB` is finished: an immutable `IKeyValueDB` in one block of memory, opened from a memory mapped file
+  (`ReadOnlyKeyValueDB.OpenFile`), pinned memory (`ReadOnlyKeyValueDB.Create`) or an address. `ReadOnlyCreator` writes
+  any transaction into it (`WriteToFile`, `WriteToArray`, `Run`). All cursor operations, including O(log n) key index
+  access, `FastIterate` and `ObjectDB` reading, are supported. Its unfinished previous version threw
+  `NotImplementedException`; `ReadOnlyKeyValueDB` is now sealed, its transaction type is no longer public and the
+  format version 1 changed. See [Doc/ReadOnlyKeyValueDB.md](Doc/ReadOnlyKeyValueDB.md).
+
 ### Fixed
+
+- Fix `UnmanagedMemoryManager.Pin` failing a debug assertion for every valid element index, which terminated Debug
+  builds that pinned memory created from it.
 
 - Fix `AesGcmSymmetricCipher.OrderedDecrypt` returning a garbled first 16 bytes for every value after the first one,
   because the CBC chain was not reset between values. Reading `OrderedEncryptedString` values now returns the stored

@@ -18,6 +18,8 @@ Currently this project these parts:
   [typed event dispatch and replay](BTDB.Replication.EventSourcing/README.md)
 - LSM key value database stored directly in object storage with bounded memory and readers in other processes
   (preview, [LsmKeyValueDB](Doc/LsmKeyValueDB.md))
+- Immutable memory mapped key value database for shipping database snapshots
+  ([ReadOnlyKeyValueDB](Doc/ReadOnlyKeyValueDB.md))
 
 All code written in C# 12 and licensed under very
 permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting .NET 10, main code uses

@@ -30,7 +30,7 @@ public sealed unsafe class UnmanagedMemoryManager<T> : MemoryManager<T>
 
     public override MemoryHandle Pin(int elementIndex = 0)
     {
-        Debug.Assert(elementIndex < 0 || elementIndex >= _length);
+        Debug.Assert((uint)elementIndex <= (uint)_length);
         return new(_pointer + elementIndex);
     }
 
