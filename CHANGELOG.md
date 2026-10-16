@@ -2,6 +2,20 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Fix lost `SetValue` in `BTreeKeyValueDB`: when copy-on-write copied tree nodes for one cursor's `SetValue`, other
+  cursors kept pointers to the old nodes, so a later `EraseCurrent`/`EraseUpTo` through such a cursor rewrote the leaf
+  from its pre-`SetValue` copy, and reads through it returned the old value. Other cursors now re-read their node
+  path after such a write. `ICursor.WriteValue` returns whether nodes were copied and `ICursor.RefreshNodes` was added.
+- Fix `InMemoryKeyValueDB.SetValue` modifying tree nodes shared with older read-only snapshots, which made
+  uncommitted values visible there. Cursors also no longer throw or crash after another cursor's first write
+  made the transaction writable.
+- Fix cursor key index tracking in `BTreeKeyValueDB` and `InMemoryKeyValueDB`: `CreateOrUpdateKeyValue` after
+  `EraseCurrent` no longer reports a key index one too low; `UpdateKeySuffix` returning `NotFound` or
+  `NotUniquePrefix` now invalidates the cursor instead of leaving a stale key index; and a cursor whose key was
+  erased by another cursor stays between the same neighbouring keys when other keys are inserted next to it.
+
 ## 35.11.2
 
 ### Fixed

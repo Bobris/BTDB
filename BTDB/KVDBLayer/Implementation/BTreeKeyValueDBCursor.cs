@@ -19,6 +19,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
     bool _forbidPooling;
     internal bool Disposed;
     long _keyIndex;
+    Memory<byte> _removedKeyBuffer;
+    ReadOnlyMemory<byte> _removedKey;
 
     public static BTreeKeyValueDBCursor Create(BTreeKeyValueDBTransaction transaction, bool forbidPooling)
     {
@@ -429,7 +431,18 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         Span<byte> trueValue = stackalloc byte[12];
         _transaction.KeyValueDB.WriteCreateOrUpdateCommand(_cursor!.GetKeyParts(out var keySuffix), keySuffix, value,
             trueValue);
-        _cursor.WriteValue(trueValue);
+        if (!_cursor.WriteValue(trueValue)) return;
+        // Copy-on-write replaced nodes on the path, other cursors still could point to the old ones
+        var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
+        while (cursor != null)
+        {
+            if (cursor != this)
+            {
+                ((BTreeKeyValueDBCursor)cursor)._cursor!.RefreshNodes();
+            }
+
+            cursor = cursor.NextCursor;
+        }
     }
 
     public void EraseCurrent()
@@ -447,6 +460,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
             cursor = cursor.NextCursor;
         }
 
+        RememberRemovedKey();
         _transaction.MakeWritable();
         _transaction.KeyValueDB.WriteEraseOneCommand(_cursor!.GetKeyParts(out var keySuffix), keySuffix);
 
@@ -482,6 +496,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
             cursor = cursor.NextCursor;
         }
 
+        RememberRemovedKey();
+        trueTo.RememberRemovedKey();
         _transaction.MakeWritable();
         var firstKeyPrefix = _cursor!.GetKeyParts(out var firstKeySuffix);
         var secondKeyPrefix = trueTo._cursor!.GetKeyParts(out var secondKeySuffix);
@@ -520,6 +536,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         _transaction.KeyValueDB.WriteCreateOrUpdateCommand(key, default, value, trueValue);
         var result = _cursor!.Upsert(key, trueValue);
         _keyIndex = _cursor.CalcIndex();
+        _modifiedFromLastFind = false;
+        _removedCurrent = false;
         if (result)
         {
             cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
@@ -527,7 +545,7 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
             {
                 if (cursor != this)
                 {
-                    cursor.NotifyInsert((ulong)_keyIndex);
+                    ((BTreeKeyValueDBCursor)cursor).NotifyInsert((ulong)_keyIndex, key);
                 }
 
                 cursor = cursor.NextCursor;
@@ -552,18 +570,26 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         }
 
         _transaction.MakeWritable();
-        if (!_cursor!.FindFirst(key[..(int)prefixLen])) return UpdateKeySuffixResult.NotFound;
+        _modifiedFromLastFind = false;
+        _removedCurrent = false;
+        _keyIndex = -1;
+        if (!_cursor!.FindFirst(key[..(int)prefixLen]))
+        {
+            _cursor.Invalidate();
+            return UpdateKeySuffixResult.NotFound;
+        }
+
         if (_cursor.MoveNext())
         {
             if (_cursor.KeyHasPrefix(key[..(int)prefixLen]))
             {
+                _cursor.Invalidate();
                 return UpdateKeySuffixResult.NotUniquePrefix;
             }
         }
 
         _cursor.MovePrevious();
 
-        _keyIndex = -1;
         if (_cursor.KeyHasPrefix(key) && _cursor.GetKeyLength() == key.Length)
         {
             return UpdateKeySuffixResult.NothingToDo;
@@ -625,12 +651,18 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
                 _keyIndex = _cursor.CalcIndex();
             }
 
-            _cursor!.Invalidate();
             _modifiedFromLastFind = true;
+            _removedCurrent = false;
         }
 
         if ((ulong)_keyIndex >= startIndex && (ulong)_keyIndex <= endIndex)
         {
+            if (!_removedCurrent)
+            {
+                if (!_cursor!.IsValid()) _cursor.SeekIndex(_keyIndex);
+                RememberRemovedKey();
+            }
+
             _keyIndex = (long)startIndex;
             _removedCurrent = true;
         }
@@ -638,6 +670,8 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         {
             _keyIndex -= (long)(endIndex - startIndex + 1);
         }
+
+        _cursor!.Invalidate();
     }
 
     public void PreNotifyUpsert()
@@ -671,6 +705,33 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
                 _keyIndex++;
             }
         }
+    }
+
+    void NotifyInsert(ulong index, in ReadOnlySpan<byte> key)
+    {
+        if (_keyIndex == -1) return;
+        if (_removedCurrent && (ulong)_keyIndex == index)
+        {
+            // Inserted key lies between the same neighbours as the removed current key, so compare them
+            var comparison = key.SequenceCompareTo(_removedKey.Span);
+            if (comparison == 0)
+            {
+                _removedCurrent = false;
+            }
+            else if (comparison < 0)
+            {
+                _keyIndex++;
+            }
+        }
+        else if ((ulong)_keyIndex >= index)
+        {
+            _keyIndex++;
+        }
+    }
+
+    void RememberRemovedKey()
+    {
+        _removedKey = _cursor!.GetKeyMemory(ref _removedKeyBuffer, true);
     }
 
     public IKeyValueDBCursorInternal? PrevCursor { get; set; }

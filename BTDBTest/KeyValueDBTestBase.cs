@@ -1027,6 +1027,330 @@ public abstract class KeyValueDBTestBase
         Assert.Equal(UpdateKeySuffixResult.NotFound, cursor.UpdateKeySuffix(key, (uint)keyLength / 2));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SetValueIsNotLostWhenOtherCursorErasesInSameLeaf(bool writingTransaction)
+    {
+        using var db = NewKeyValueDB();
+        using (var tr = db.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue([], [1]);
+            cursor.CreateOrUpdateKeyValue([0], [1]);
+            cursor.CreateOrUpdateKeyValue([7], [1]);
+            tr.Commit();
+        }
+
+        using (var tr = writingTransaction ? await db.StartWritingTransaction() : db.StartTransaction())
+        {
+            using var eraser = tr.CreateCursor();
+            using var setter = tr.CreateCursor();
+            Assert.Equal(FindResult.Exact, eraser.Find([0], 0));
+            Assert.Equal(FindResult.Exact, setter.Find([], 0));
+            setter.SetValue([2]);
+            eraser.EraseCurrent();
+            using var fresh = tr.CreateCursor();
+            Assert.Equal(FindResult.Exact, fresh.Find([], 0));
+            Assert.Equal([2], fresh.SlowGetValue());
+            Assert.Equal(2, tr.GetKeyValueCount());
+            tr.Commit();
+        }
+
+        using (var tr = db.StartReadOnlyTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            Assert.Equal(FindResult.Exact, cursor.Find([], 0));
+            Assert.Equal([2], cursor.SlowGetValue());
+            Assert.True(cursor.FindNextKey([]));
+            Assert.Equal([7], cursor.SlowGetKey());
+            Assert.Equal([1], cursor.SlowGetValue());
+        }
+    }
+
+    [Fact]
+    public void SetValueIsVisibleToOtherCursorAndInvisibleToOlderSnapshot()
+    {
+        using var db = NewKeyValueDB();
+        using (var tr = db.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue([1], [1]);
+            cursor.CreateOrUpdateKeyValue([2], [1]);
+            tr.Commit();
+        }
+
+        using var snapshot = db.StartReadOnlyTransaction();
+        using var snapshotCursor = snapshot.CreateCursor();
+        Assert.Equal(FindResult.Exact, snapshotCursor.Find([1], 0));
+        using (var tr = db.StartTransaction())
+        {
+            using var reader = tr.CreateCursor();
+            using var setter = tr.CreateCursor();
+            Assert.Equal(FindResult.Exact, reader.Find([1], 0));
+            Assert.Equal(FindResult.Exact, setter.Find([1], 0));
+            setter.SetValue([2]);
+            Assert.Equal([2], reader.SlowGetValue());
+            reader.SetValue([3]);
+            Assert.Equal([3], setter.SlowGetValue());
+            Assert.Equal([1], snapshotCursor.SlowGetValue());
+            tr.Commit();
+        }
+
+        Assert.Equal([1], snapshotCursor.SlowGetValue());
+        using var fresh = snapshot.CreateCursor();
+        Assert.Equal(FindResult.Exact, fresh.Find([1], 0));
+        Assert.Equal([1], fresh.SlowGetValue());
+    }
+
+    [Fact]
+    public void CreateOrUpdateKeyValueAfterEraseCurrentTracksNewKeyIndex()
+    {
+        using var db = NewKeyValueDB();
+        using var tr = db.StartTransaction();
+        using var cursor = tr.CreateCursor();
+        cursor.CreateOrUpdateKeyValue([1], [1]);
+        cursor.CreateOrUpdateKeyValue([3], [1]);
+        cursor.CreateOrUpdateKeyValue([5], [1]);
+        Assert.Equal(FindResult.Exact, cursor.Find([3], 0));
+        cursor.EraseCurrent();
+        Assert.True(cursor.CreateOrUpdateKeyValue([7], [1]));
+        Assert.Equal(2, cursor.GetKeyIndex());
+        Assert.Equal([7], cursor.SlowGetKey());
+        Assert.True(cursor.FindPreviousKey([]));
+        Assert.Equal([5], cursor.SlowGetKey());
+        Assert.Equal(1, cursor.GetKeyIndex());
+    }
+
+    [Fact]
+    public void UpdateKeySuffixFailureInvalidatesCursor()
+    {
+        using var db = NewKeyValueDB();
+        using var tr = db.StartTransaction();
+        using var cursor = tr.CreateCursor();
+        cursor.CreateOrUpdateKeyValue([1, 1], [1]);
+        cursor.CreateOrUpdateKeyValue([1, 2], [1]);
+        cursor.CreateOrUpdateKeyValue([2, 1], [1]);
+        Assert.Equal(FindResult.Exact, cursor.Find([2, 1], 0));
+        Assert.Equal(2, cursor.GetKeyIndex());
+        Assert.Equal(UpdateKeySuffixResult.NotUniquePrefix, cursor.UpdateKeySuffix([1, 3], 1));
+        Assert.False(cursor.IsValid());
+        Assert.Equal(-1, cursor.GetKeyIndex());
+        Assert.Equal(FindResult.Exact, cursor.Find([2, 1], 0));
+        Assert.Equal(2, cursor.GetKeyIndex());
+        Assert.Equal(UpdateKeySuffixResult.NotFound, cursor.UpdateKeySuffix([3, 3], 1));
+        Assert.False(cursor.IsValid());
+        Assert.Equal(-1, cursor.GetKeyIndex());
+        Assert.True(cursor.FindNextKey([]));
+        Assert.Equal([1, 1], cursor.SlowGetKey());
+    }
+
+    [Theory]
+    [InlineData(new byte[] { 2 }, 1, new byte[] { 2 }, new byte[] { 7 })]
+    [InlineData(new byte[] { 3 }, 1, new byte[] { 1 }, new byte[] { 7 })]
+    [InlineData(new byte[] { 5 }, 0, new byte[] { 1 }, new byte[] { 5 })]
+    public void CursorWithErasedKeyTracksKeyInsertedIntoItsGap(byte[] insertedKey, long expectedIndex,
+        byte[] expectedPrevious, byte[] expectedNext)
+    {
+        using var db = NewKeyValueDB();
+        using var tr = db.StartTransaction();
+        using var writer = tr.CreateCursor();
+        writer.CreateOrUpdateKeyValue([1], [1]);
+        writer.CreateOrUpdateKeyValue([3], [1]);
+        writer.CreateOrUpdateKeyValue([7], [1]);
+        using var trackedNext = tr.CreateCursor();
+        using var trackedPrevious = tr.CreateCursor();
+        using var eraser = tr.CreateCursor();
+        Assert.Equal(FindResult.Exact, trackedNext.Find([3], 0));
+        Assert.Equal(FindResult.Exact, trackedPrevious.Find([3], 0));
+        Assert.Equal(FindResult.Exact, eraser.Find([3], 0));
+        Assert.True(writer.CreateOrUpdateKeyValue([9], [1]));
+        eraser.EraseCurrent();
+        Assert.True(writer.CreateOrUpdateKeyValue(insertedKey, [1]));
+        Assert.Equal(expectedIndex, trackedNext.GetKeyIndex());
+        Assert.Equal(expectedIndex, trackedPrevious.GetKeyIndex());
+        Assert.True(trackedNext.FindNextKey([]));
+        Assert.Equal(expectedNext, trackedNext.SlowGetKey());
+        Assert.True(trackedPrevious.FindPreviousKey([]));
+        Assert.Equal(expectedPrevious, trackedPrevious.SlowGetKey());
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task ManyCursorsTrackKeysLikeModel(int seed)
+    {
+        var random = new Random(seed);
+        var comparer = Comparer<byte[]>.Create((a, b) => a.AsSpan().SequenceCompareTo(b));
+        var committed = new SortedList<byte[], byte[]>(comparer);
+        using var db = NewKeyValueDB();
+        var snapshot = db.StartReadOnlyTransaction();
+        var snapshotModel = new SortedList<byte[], byte[]>(committed, comparer);
+        try
+        {
+            for (var round = 0; round < 60; round++)
+            {
+                var model = new SortedList<byte[], byte[]>(committed, comparer);
+                using var tr = random.Next(2) == 0 ? db.StartTransaction() : await db.StartWritingTransaction();
+                var cursors = Enumerable.Range(0, 2 + random.Next(3)).Select(_ => tr.CreateCursor()).ToList();
+                var cursorKeys = new byte[]?[cursors.Count];
+                try
+                {
+                    for (var op = 0; op < 100; op++)
+                    {
+                        var i = random.Next(cursors.Count);
+                        var cursor = cursors[i];
+                        var key = cursorKeys[i];
+                        var exists = key != null && model.ContainsKey(key);
+                        switch (random.Next(8))
+                        {
+                            case 0:
+                            case 1:
+                            {
+                                var newKey = RandomModelKey(random);
+                                var value = new[] { (byte)random.Next(256) };
+                                Assert.Equal(!model.ContainsKey(newKey), cursor.CreateOrUpdateKeyValue(newKey, value));
+                                model[newKey] = value;
+                                cursorKeys[i] = newKey;
+                                break;
+                            }
+                            case 2:
+                            {
+                                var findKey = RandomModelKey(random);
+                                var result = cursor.Find(findKey, 0);
+                                cursorKeys[i] = result == FindResult.NotFound ? null : cursor.SlowGetKey();
+                                break;
+                            }
+                            case 3:
+                                if (cursor.FindNextKey([]))
+                                {
+                                    var expected = model.Keys.FirstOrDefault(k =>
+                                        key == null || comparer.Compare(k, key) > 0);
+                                    Assert.Equal(expected, cursor.SlowGetKey());
+                                    cursorKeys[i] = expected;
+                                }
+                                else cursorKeys[i] = null;
+
+                                break;
+                            case 4:
+                                if (cursor.FindPreviousKey([]))
+                                {
+                                    var expected = model.Keys.LastOrDefault(k =>
+                                        key == null || comparer.Compare(k, key) < 0);
+                                    Assert.Equal(expected, cursor.SlowGetKey());
+                                    cursorKeys[i] = expected;
+                                }
+                                else cursorKeys[i] = null;
+
+                                break;
+                            case 5:
+                                if (exists)
+                                {
+                                    cursor.EraseCurrent();
+                                    model.Remove(key!);
+                                }
+
+                                break;
+                            case 6:
+                                if (exists)
+                                {
+                                    if (!cursor.IsValid()) Assert.Equal(FindResult.Exact, cursor.Find(key, 0));
+                                    var value = new[] { (byte)random.Next(256) };
+                                    cursor.SetValue(value);
+                                    model[key!] = value;
+                                }
+
+                                break;
+                            case 7:
+                            {
+                                var j = random.Next(cursors.Count);
+                                var toKey = cursorKeys[j];
+                                if (exists && j != i && toKey != null && model.ContainsKey(toKey))
+                                {
+                                    var erased = model.Keys.Where(k =>
+                                        comparer.Compare(k, key) >= 0 && comparer.Compare(k, toKey) <= 0).ToList();
+                                    Assert.Equal(erased.Count, cursor.EraseUpTo(cursors[j]));
+                                    foreach (var k in erased) model.Remove(k);
+                                }
+
+                                break;
+                            }
+                        }
+
+                        Assert.Equal(model.Count, tr.GetKeyValueCount());
+                        for (var c = 0; c < cursors.Count; c++)
+                        {
+                            var cursorKey = cursorKeys[c];
+                            long expectedIndex = -1;
+                            if (cursorKey != null)
+                            {
+                                expectedIndex = model.Keys.Count(k => comparer.Compare(k, cursorKey) < 0);
+                                if (!model.ContainsKey(cursorKey)) expectedIndex--;
+                            }
+
+                            Assert.Equal(expectedIndex, cursors[c].GetKeyIndex());
+                            if (cursorKey != null && model.ContainsKey(cursorKey) && cursors[c].IsValid())
+                            {
+                                Assert.Equal(cursorKey, cursors[c].SlowGetKey());
+                                Assert.Equal(model[cursorKey], cursors[c].SlowGetValue());
+                            }
+                        }
+                    }
+
+                    AssertContent(tr, model);
+                }
+                finally
+                {
+                    foreach (var c in cursors) c.Dispose();
+                }
+
+                if (random.Next(4) != 0)
+                {
+                    tr.Commit();
+                    committed = model;
+                }
+
+                AssertContent(snapshot, snapshotModel);
+                if (random.Next(3) == 0)
+                {
+                    snapshot.Dispose();
+                    snapshot = db.StartReadOnlyTransaction();
+                    snapshotModel = new(committed, comparer);
+                }
+            }
+        }
+        finally
+        {
+            snapshot.Dispose();
+        }
+
+        static byte[] RandomModelKey(Random random)
+        {
+            var key = new byte[random.Next(3)];
+            for (var i = 0; i < key.Length; i++) key[i] = (byte)random.Next(5);
+            return key;
+        }
+
+        static void AssertContent(IKeyValueDBTransaction transaction, SortedList<byte[], byte[]> model)
+        {
+            using var cursor = transaction.CreateCursor();
+            var index = 0;
+            if (cursor.FindFirstKey([]))
+            {
+                do
+                {
+                    Assert.Equal(model.Keys[index], cursor.SlowGetKey());
+                    Assert.Equal(model.Values[index], cursor.SlowGetValue());
+                    Assert.Equal(index, cursor.GetKeyIndex());
+                    index++;
+                } while (cursor.FindNextKey([]));
+            }
+
+            Assert.Equal(model.Count, index);
+        }
+    }
+
     protected readonly byte[] Key1 = [1, 2, 3];
 
     // ReSharper disable once MemberCanBePrivate.Global

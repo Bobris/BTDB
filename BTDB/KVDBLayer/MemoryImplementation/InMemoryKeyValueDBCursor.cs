@@ -18,6 +18,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
     bool _forbidPooling;
     internal bool Disposed;
     long _keyIndex;
+    ReadOnlyMemory<byte> _removedKey;
 
     public static InMemoryKeyValueDBCursor Create(InMemoryKeyValueDBTransaction transaction, bool forbidPooling)
     {
@@ -298,6 +299,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
     public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
     {
+        EnsureValidCursor();
         var nodeIdxPair = _stack[^1];
         return new(
             (uint)((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx).Length,
@@ -393,8 +395,40 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
             _transaction._btreeRoot!.FillStackByIndex(ref _stack, _keyIndex);
         }
 
-        var nodeIdxPair = _stack[^1];
-        ((IBTreeLeafNode)nodeIdxPair.Node).SetMemberValue(nodeIdxPair.Idx, value);
+        var leaf = _stack[^1].Node;
+        var key = ((IBTreeLeafNode)leaf).GetKey(_stack[^1].Idx);
+        // Update through the root, so nodes shared with older snapshots are copied instead of modified
+        var ctx = new CreateOrUpdateCtx
+        {
+            Key = key.Span,
+            Value = value,
+            Stack = ref _stack
+        };
+        _transaction._btreeRoot!.CreateOrUpdate(ref ctx);
+        if (ReferenceEquals(leaf, _stack[^1].Node)) return;
+        var cursor = (IKeyValueDBCursorInternal)_transaction.FirstCursor;
+        while (cursor != null)
+        {
+            if (cursor != this)
+            {
+                ((InMemoryKeyValueDBCursor)cursor).RefreshStack();
+            }
+
+            cursor = cursor.NextCursor;
+        }
+    }
+
+    void RefreshStack()
+    {
+        if (_stack.Count == 0 || _keyIndex < 0) return;
+        var root = _transaction!._btreeRoot!;
+        if (_keyIndex >= root.CalcKeyCount())
+        {
+            _stack.Clear();
+            return;
+        }
+
+        root.FillStackByIndex(ref _stack, _keyIndex);
     }
 
     void EnsureValidCursor()
@@ -429,6 +463,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
             cursor = cursor.NextCursor;
         }
 
+        _removedKey = GetCurrentKeyFromStackAsMemory().ToArray();
         _transaction.MakeWritable();
 
         _transaction._btreeRoot!.EraseRange((long)keyIndexToRemove, (long)keyIndexToRemove);
@@ -449,7 +484,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         var cursor = (IKeyValueDBCursorInternal)_transaction!.FirstCursor;
         while (cursor != null)
         {
-            if (cursor != this || cursor != to)
+            if (cursor != this && cursor != to)
             {
                 cursor.NotifyRemove(firstKeyIndex, lastKeyIndex);
             }
@@ -457,6 +492,8 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
             cursor = cursor.NextCursor;
         }
 
+        _removedKey = GetCurrentKeyFromStackAsMemory().ToArray();
+        trueTo._removedKey = trueTo.GetCurrentKeyFromStackAsMemory().ToArray();
         _transaction.MakeWritable();
         _transaction._btreeRoot!.EraseRange((long)firstKeyIndex, (long)lastKeyIndex);
         _stack.Clear();
@@ -501,7 +538,7 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
             {
                 if (cursor != this)
                 {
-                    cursor.NotifyInsert((ulong)_keyIndex);
+                    ((InMemoryKeyValueDBCursor)cursor).NotifyInsert((ulong)_keyIndex, key);
                 }
 
                 cursor = cursor.NextCursor;
@@ -535,6 +572,11 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         _transaction.MakeWritable();
         _transaction._btreeRoot!.UpdateKeySuffix(ref ctx);
         _keyIndex = ctx.KeyIndex;
+        if (ctx.Result is UpdateKeySuffixResult.NotFound or UpdateKeySuffixResult.NotUniquePrefix)
+        {
+            Invalidate();
+        }
+
         return ctx.Result;
     }
 
@@ -560,11 +602,8 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
     public void NotifyRemove(ulong startIndex, ulong endIndex)
     {
         if (_modificationForbidden) throw new BTDBException("DB cannot be modified during fast iteration");
-        if (_modifiedFromLastFind)
-        {
-            if (_keyIndex == -1) return;
-        }
-        else
+        if (_keyIndex == -1) return;
+        if (!_modifiedFromLastFind)
         {
             _stack.Clear();
             _modifiedFromLastFind = true;
@@ -573,6 +612,13 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
 
         if ((ulong)_keyIndex >= startIndex && (ulong)_keyIndex <= endIndex)
         {
+            if (!_removedCurrent)
+            {
+                _transaction!._btreeRoot!.FillStackByIndex(ref _stack, _keyIndex);
+                _removedKey = GetCurrentKeyFromStackAsMemory().ToArray();
+                _stack.Clear();
+            }
+
             _keyIndex = (long)startIndex;
             _removedCurrent = true;
         }
@@ -605,6 +651,28 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
         }
     }
 
+    void NotifyInsert(ulong index, in ReadOnlySpan<byte> key)
+    {
+        if (_keyIndex == -1) return;
+        if (_removedCurrent && (ulong)_keyIndex == index)
+        {
+            // Inserted key lies between the same neighbours as the removed current key, so compare them
+            var comparison = key.SequenceCompareTo(_removedKey.Span);
+            if (comparison == 0)
+            {
+                _removedCurrent = false;
+            }
+            else if (comparison < 0)
+            {
+                _keyIndex++;
+            }
+        }
+        else if ((ulong)_keyIndex >= index)
+        {
+            _keyIndex++;
+        }
+    }
+
     public IKeyValueDBCursorInternal? PrevCursor { get; set; }
 
     public IKeyValueDBCursorInternal? NextCursor { get; set; }
@@ -612,6 +680,6 @@ class InMemoryKeyValueDBCursor : IKeyValueDBCursorInternal
     public void NotifyWritableTransaction()
     {
         if (_modificationForbidden) throw new BTDBException("DB cannot be modified during fast iteration");
-        _stack.Clear();
+        RefreshStack();
     }
 }

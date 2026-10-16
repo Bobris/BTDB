@@ -1036,16 +1036,19 @@ public class BTreeImpl12
         if (content.Length != 12) throw new ArgumentOutOfRangeException(nameof(content));
     }
 
-    internal void WriteValue(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> content)
+    /// Returns true when nodes on the path were copied, so other cursors' stacks may point to replaced nodes.
+    internal bool WriteValue(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> content)
     {
         CheckContent12(content);
-        MakeUnique(rootNode, stack.AsSpan());
+        var copied = MakeUnique(rootNode, stack.AsSpan());
         ref var stackItem = ref stack.Last;
         content.CopyTo(NodeUtils12.GetLeafValues(stackItem._node).Slice(stackItem._posInNode * 12, 12));
+        return copied;
     }
 
-    void MakeUnique(RootNode12 rootNode, Span<CursorItem> stack)
+    bool MakeUnique(RootNode12 rootNode, Span<CursorItem> stack)
     {
+        var copied = false;
         for (var i = 0; i < stack.Length; i++)
         {
             ref var stackItem = ref stack[i];
@@ -1054,6 +1057,19 @@ public class BTreeImpl12
                 continue;
             var newNode = CloneNode(stackItem._node);
             OverwriteNodePtrInStack(rootNode, stack, i, newNode);
+            copied = true;
+        }
+
+        return copied;
+    }
+
+    internal static void RefreshNodes(RootNode12 rootNode, Span<CursorItem> stack)
+    {
+        if (stack.Length == 0) return;
+        stack[0]._node = rootNode.Root;
+        for (var i = 1; i < stack.Length; i++)
+        {
+            stack[i]._node = NodeUtils12.GetBranchValuePtr(stack[i - 1]._node, stack[i - 1]._posInNode);
         }
     }
 

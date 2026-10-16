@@ -385,11 +385,16 @@ class Cursor12 : ICursor
         return _rootNode.Impl.Upsert(_rootNode, ref _stack, key, content);
     }
 
-    public void WriteValue(in ReadOnlySpan<byte> content)
+    public bool WriteValue(in ReadOnlySpan<byte> content)
     {
         AssertWritable();
         AssertValid();
-        _rootNode.Impl.WriteValue(_rootNode, ref _stack, content);
+        return _rootNode.Impl.WriteValue(_rootNode, ref _stack, content);
+    }
+
+    public void RefreshNodes()
+    {
+        BTreeImpl12.RefreshNodes(_rootNode, _stack.AsSpan());
     }
 
     public void Invalidate()

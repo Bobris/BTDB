@@ -29,7 +29,17 @@ public interface ICursor
     int GetValueLength();
     ReadOnlySpan<byte> GetValue();
 
-    void WriteValue(in ReadOnlySpan<byte> content);
+    /// <summary>
+    /// Writes value of current key. Returns true when copy-on-write replaced nodes on the path,
+    /// in which case other cursors on the same tree must call <see cref="RefreshNodes"/>.
+    /// </summary>
+    bool WriteValue(in ReadOnlySpan<byte> content);
+
+    /// <summary>
+    /// Re-reads node pointers of the current position from the root, keeping the position unchanged.
+    /// Needed after another cursor's <see cref="WriteValue"/> copied nodes without changing tree structure.
+    /// </summary>
+    void RefreshNodes();
     bool Upsert(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> content);
     void UpdateKeySuffix(in ReadOnlySpan<byte> key);
     void Erase();
