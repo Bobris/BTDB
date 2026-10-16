@@ -102,6 +102,13 @@ public sealed class InMemoryLsmStorage(TimeProvider? timeProvider = null) : ILsm
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        lock (_lock) _objects[key] = content.ToArray();
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration,
         CancellationToken cancellation)
     {

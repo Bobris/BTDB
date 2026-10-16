@@ -51,6 +51,7 @@ public sealed partial class LsmKeyValueDB
                 return;
             }
 
+            DeleteObsoleteObjects();
             while (!stop.IsCancellationRequested)
             {
                 bool worked;
@@ -115,7 +116,7 @@ public sealed partial class LsmKeyValueDB
                         current.TransactionNumber),
                     .. current.Immutables
                 ], current.Version, current.CommitUlong, current.Ulongs, current.TransactionNumber,
-                current.CommitSequence, current.Sequence + 1);
+                current.CommitSequence, current.Sequence + 1, current.ManifestSequence);
             return true;
         }
     }
@@ -246,18 +247,23 @@ public sealed partial class LsmKeyValueDB
                 : current.Immutables.Where(m => m != flushed).ToArray();
             sequence = current.Sequence + 1;
             _state = new(current.Memtable, current.MemtableGeneration, immutables, version, current.CommitUlong,
-                current.Ulongs, current.TransactionNumber, current.CommitSequence, sequence);
+                current.Ulongs, current.TransactionNumber, current.CommitSequence, sequence,
+                _lastManifest.Sequence);
         }
 
+        var now = _options.TimeProvider.GetUtcNow();
+        var manifestSequence = _lastManifest.Sequence;
         lock (_obsoleteObjects)
         {
             if (flushed?.Memtable.Arena is { } arena) _retiredArenas.Add((arena, sequence));
-            foreach (var table in obsolete) _obsoleteObjects.Add((table.ObjectKey, table.FileNumber, sequence));
+            foreach (var table in obsolete)
+                _obsoleteObjects.Add((table.ObjectKey, table.FileNumber, sequence, now, manifestSequence));
             foreach (var fileNumber in droppedValueFiles)
-                _obsoleteObjects.Add((ValueKey(fileNumber), fileNumber, sequence));
-            // In-process snapshots never read the WAL, so covered chunks can go at once.
+                _obsoleteObjects.Add((ValueKey(fileNumber), fileNumber, sequence, now, manifestSequence));
+            // Snapshots never read the WAL and a reader finding a covered chunk gone reads the newer manifest
+            // instead, so covered chunks can go at once.
             for (var chunk = previousWalStart; chunk < _lastManifest.WalStartChunk; chunk++)
-                _obsoleteObjects.Add((WalKey(_options.Prefix, chunk), 0, 0));
+                _obsoleteObjects.Add((WalKey(_options.Prefix, chunk), 0, 0, DateTimeOffset.MinValue, 0));
         }
 
         DeleteObsoleteObjects();
@@ -301,9 +307,10 @@ public sealed partial class LsmKeyValueDB
         CreateObject(ManifestKey(manifest.Sequence), manifest.Encode(), true);
         var previous = _lastManifest;
         _lastManifest = manifest;
+        // Readers probe manifest names in order, so older manifests stay for the grace period.
         if (previous.Sequence > 0)
-            _storage.DeleteAsync(ManifestKey(previous.Sequence), CancellationToken.None).AsTask().GetAwaiter()
-                .GetResult();
+            lock (_obsoleteObjects)
+                _obsoleteObjects.Add((ManifestKey(previous.Sequence), 0, 0, _options.TimeProvider.GetUtcNow(), 0));
         Logger?.KeyValueIndexCreated((uint)manifest.Sequence, version.Components.Sum(c => c.EntryCount), 0,
             TimeSpan.Zero, 0);
     }
@@ -346,21 +353,39 @@ public sealed partial class LsmKeyValueDB
 
     void DeleteObsoleteObjects()
     {
-        List<(string Key, ulong FileNumber, long ObsoleteAt)> deletable;
+        List<(string Key, ulong FileNumber, long ObsoleteAt, DateTimeOffset Since, long Manifest)> deletable;
+        var now = _options.TimeProvider.GetUtcNow();
+        var grace = _options.DeletionGracePeriod;
+        bool HasLapsed((string, ulong, long, DateTimeOffset Since, long) o) => now - o.Since >= grace;
+        DateTimeOffset? newestLapsed = null;
         lock (_obsoleteObjects)
         {
             if (_obsoleteObjects.Count == 0 && _retiredArenas.Count == 0) return;
+            if (!_isWriter && _retiredArenas.Count == 0) return;
+            if (_isWriter)
+                foreach (var o in _obsoleteObjects)
+                    if (HasLapsed(o) && (newestLapsed == null || o.Since > newestLapsed))
+                        newestLapsed = o.Since;
+        }
+
+        // Readers in other processes are protected by the grace period and, when registered, by their entries,
+        // read after the objects became obsolete.
+        var oldestRegistered = newestLapsed is { } since ? OldestRegisteredManifest(since) : long.MaxValue;
+        lock (_obsoleteObjects)
+        {
             var oldestLive = long.MaxValue;
             foreach (var transaction in _transactions.Keys)
                 oldestLive = Math.Min(oldestLive, transaction.StateSequence);
-            deletable = _obsoleteObjects.Where(o => o.ObsoleteAt <= oldestLive).ToList();
-            _obsoleteObjects.RemoveAll(o => o.ObsoleteAt <= oldestLive);
+            bool Deletable((string, ulong, long ObsoleteAt, DateTimeOffset Since, long Manifest) o) =>
+                _isWriter && o.ObsoleteAt <= oldestLive && HasLapsed(o) && o.Manifest <= oldestRegistered;
+            deletable = _obsoleteObjects.Where(Deletable).ToList();
+            _obsoleteObjects.RemoveAll(Deletable);
             // A memtable's native memory is released once no snapshot can reach any version of it.
             foreach (var (arena, _) in _retiredArenas.Where(a => a.ObsoleteAt <= oldestLive)) arena.Dispose();
             _retiredArenas.RemoveAll(a => a.ObsoleteAt <= oldestLive);
         }
 
-        foreach (var (key, fileNumber, _) in deletable)
+        foreach (var (key, fileNumber, _, _, _) in deletable)
         {
             if (fileNumber != 0) _cache.Evict(fileNumber);
             _storage.DeleteAsync(key, CancellationToken.None).AsTask().GetAwaiter().GetResult();

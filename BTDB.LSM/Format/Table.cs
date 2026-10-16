@@ -311,7 +311,14 @@ sealed class TableReader : ILsmComponent
         if (length < TableBuilder.FooterSize) throw new BTDBException($"Table {objectKey} is truncated.");
         var tailLength = (int)Math.Min(length, Math.Max(tailReadSize, TableBuilder.FooterSize));
         var tail = new byte[tailLength];
-        storage.ReadRange(objectKey, length - tailLength, tail);
+        try
+        {
+            storage.ReadRange(objectKey, length - tailLength, tail);
+        }
+        catch (System.IO.FileNotFoundException ex)
+        {
+            throw new BTDBException($"Table {objectKey} no longer exists.", ex);
+        }
         var footer = LsmChecksum.Verify(tail.AsSpan(tailLength - TableBuilder.FooterSize), objectKey);
         if (BinaryPrimitives.ReadUInt64LittleEndian(footer) != TableBuilder.Magic)
             throw new BTDBException($"Table {objectKey} has an unknown format.");
@@ -375,7 +382,16 @@ sealed class TableReader : ILsmComponent
     byte[] ReadChecked(long offset, int length)
     {
         var data = new byte[length];
-        _storage.ReadRange(ObjectKey, offset, data);
+        try
+        {
+            _storage.ReadRange(ObjectKey, offset, data);
+        }
+        catch (System.IO.FileNotFoundException ex)
+        {
+            throw new BTDBException(
+                $"Table {ObjectKey} no longer exists: the snapshot is older than the deletion grace period.", ex);
+        }
+
         return data;
     }
 

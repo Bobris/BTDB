@@ -88,6 +88,22 @@ public sealed record LsmKeyValueDBOptions
 
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
+    /// The writer deletes objects no current state references only after this long, so readers in other processes can
+    /// finish reading them.
+    public TimeSpan DeletionGracePeriod { get; init; } = TimeSpan.FromMinutes(10);
+
+    /// Readers in other processes write a registry entry naming the oldest manifest their snapshots use; the writer
+    /// keeps everything such a reader may still need.
+    public bool RegisterReader { get; init; }
+
+    public TimeSpan ReaderHeartbeatInterval { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// First pause of WaitForCommitUlongAsync between refreshes; it doubles up to one second.
+    public TimeSpan RefreshRetryInterval { get; init; } = TimeSpan.FromMilliseconds(50);
+
+    /// A reader lists manifests when probing the next one misses, at most this often.
+    public TimeSpan ManifestListInterval { get; init; } = TimeSpan.FromSeconds(5);
+
     /// Values longer than this are stored in value files when written to tables; int.MaxValue keeps all inline.
     public int ValueSeparationThreshold { get; init; } = 1024;
 
@@ -109,4 +125,11 @@ public interface ILsmKeyValueDB : IKeyValueDB
     ValueTask AcquireWriterLeaseAsync(CancellationToken cancellation = default);
 
     bool HoldsWriterLease { get; }
+
+    /// Catches up to the newest durable state written by the writer; returns its CommitUlong. Existing transactions
+    /// keep their snapshots. The writer is always current.
+    ValueTask<ulong> RefreshAsync(CancellationToken cancellation = default);
+
+    /// Refreshes until CommitUlong is at least commitUlong.
+    ValueTask WaitForCommitUlongAsync(ulong commitUlong, CancellationToken cancellation = default);
 }

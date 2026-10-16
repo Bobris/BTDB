@@ -37,6 +37,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     }
 
     internal long StateSequence => _state.Sequence;
+    internal long ManifestSequence => _state.ManifestSequence;
 
     /// Epoch of the writer session this transaction writes under.
     internal long WriterEpoch { get; set; }

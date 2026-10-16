@@ -21,8 +21,12 @@ sealed class LsmState(
     ulong[] ulongs,
     long transactionNumber,
     long commitSequence,
-    long sequence)
+    long sequence,
+    long manifestSequence = 0)
 {
+    /// Manifest whose table set this state's version is; readers report the oldest one they use.
+    public long ManifestSequence { get; } = manifestSequence;
+
     public IMemtable Memtable { get; } = memtable;
 
     /// WAL generation of the mutable memtable; sealing starts the next generation.

@@ -29,7 +29,8 @@ public interface ILsmStorage
     /// Reads a whole small object; returns null if it does not exist.
     ValueTask<byte[]?> TryReadAsync(string key, CancellationToken cancellation);
 
-    /// Reads exactly destination.Length bytes starting at offset.
+    /// Reads exactly destination.Length bytes starting at offset; throws FileNotFoundException if the object does not
+    /// exist.
     ValueTask ReadRangeAsync(string key, long offset, Memory<byte> destination, CancellationToken cancellation);
 
     /// Synchronous ranged read for cursor cache misses; the cursor API is synchronous.
@@ -39,6 +40,9 @@ public interface ILsmStorage
     IAsyncEnumerable<LsmObjectInfo> ListAsync(string prefix, CancellationToken cancellation);
 
     ValueTask DeleteAsync(string key, CancellationToken cancellation);
+
+    /// Creates or replaces a small mutable object; only the reader registry uses it, each reader for its own key.
+    ValueTask PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation);
 
     /// Acquires the exclusive lease on key (creating the object if needed) for duration; false while another holder
     /// owns it. Acquiring again with the same leaseId extends it.

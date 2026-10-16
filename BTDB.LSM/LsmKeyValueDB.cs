@@ -31,7 +31,10 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     readonly Lock _stateLock = new();
     readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new();
     readonly ConcurrentDictionary<LsmKeyValueDBTransaction, bool> _transactions = new();
-    readonly List<(string Key, ulong FileNumber, long ObsoleteAt)> _obsoleteObjects = [];
+    /// Objects waiting for deletion: the state sequence and time they became obsolete and the first manifest that no
+    /// longer references them.
+    readonly List<(string Key, ulong FileNumber, long ObsoleteAt, DateTimeOffset Since, long Manifest)>
+        _obsoleteObjects = [];
     readonly List<(NativeArena Arena, long ObsoleteAt)> _retiredArenas = [];
     volatile LsmState _state;
     LsmKeyValueDBTransaction? _writingTransaction;
@@ -40,8 +43,9 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     ulong _nextFileNumber;
     volatile bool _disposed;
 
-    LsmKeyValueDB(LsmKeyValueDBOptions options, LsmBlockCache cache, LoadedDatabase loaded)
+    LsmKeyValueDB(LsmKeyValueDBOptions options, LsmBlockCache cache, LoadedDatabase loaded, string readerId)
     {
+        _readerId = readerId;
         _options = options;
         _storage = options.Storage;
         _cache = cache;
@@ -59,13 +63,16 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         };
         _compactionPointers = new byte[]?[loaded.Version.LevelCount];
         _state = new(loaded.Memtable, loaded.MemtableGeneration, loaded.Immutables, loaded.Version,
-            loaded.Metadata.CommitUlong, loaded.Metadata.Ulongs, loaded.Metadata.TransactionNumber, 0, 0);
+            loaded.Metadata.CommitUlong, loaded.Metadata.Ulongs, loaded.Metadata.TransactionNumber, 0, 0,
+            loaded.Manifest.Sequence);
+        _replay = loaded.Replay;
         _lastManifest = loaded.Manifest;
         _manifestSequence = loaded.Manifest.Sequence;
         _nextFileNumber = loaded.Manifest.NextFileNumber;
         _durableTransaction = loaded.Metadata.TransactionNumber;
         MaxTrLogFileSize = options.MemtableSize;
         Logger = options.Logger;
+        StartReaderHeartbeat();
     }
 
     /// Opens the database as a reader of its newest durable state; with AcquireWriterLeaseOnOpen it also becomes the
@@ -74,7 +81,9 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         CancellationToken cancellation = default)
     {
         var cache = options.BlockCache ?? new LsmBlockCache(options.BlockCacheSize);
-        var db = new LsmKeyValueDB(options, cache, await LoadAsync(options, cache, null, cancellation));
+        var readerId = Guid.NewGuid().ToString("N");
+        if (options.RegisterReader) await WriteRegistryEntryAsync(options, readerId, 0, cancellation);
+        var db = new LsmKeyValueDB(options, cache, await LoadAsync(options, cache, null, cancellation), readerId);
         if (options.AcquireWriterLeaseOnOpen) await db.AcquireWriterLeaseAsync(cancellation);
         return db;
     }
@@ -210,10 +219,10 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
                                 metadata.TransactionNumber),
                             .. current.Immutables
                         ], current.Version, metadata.CommitUlong, metadata.Ulongs, metadata.TransactionNumber,
-                        current.CommitSequence + 1, current.Sequence + 1)
+                        current.CommitSequence + 1, current.Sequence + 1, current.ManifestSequence)
                     : new(memtable, generation, current.Immutables, current.Version, metadata.CommitUlong,
                         metadata.Ulongs, metadata.TransactionNumber, current.CommitSequence + 1,
-                        current.Sequence + 1);
+                        current.Sequence + 1, current.ManifestSequence);
             }
 
             AppendWal(generation, metadata.TransactionNumber, record);
@@ -346,7 +355,9 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
                 throw new BTDBException("Cannot dispose KeyValueDB when writing transaction still running");
             while (_writeWaitingQueue.Count > 0) _writeWaitingQueue.Dequeue().TrySetCanceled();
             if (!_transactions.IsEmpty)
-                throw new BTDBException("Cannot dispose KeyValueDB when transactions still running");
+                throw new BTDBException("Cannot dispose KeyValueDB when transactions still running: " +
+                                        string.Join(", ", _transactions.Keys.Select(t =>
+                                            $"{(t.IsWriting() ? "writing" : "reading")} from {t.CreatedTime:O}")));
             _disposed = true;
         }
 
@@ -363,6 +374,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
 
                 RotateForShutdown();
                 RunAllWork();
+                DeleteObsoleteObjects();
                 _storage.ReleaseLeaseAsync(LockKey, _leaseId, CancellationToken.None).AsTask().GetAwaiter()
                     .GetResult();
                 _isWriter = false;
@@ -379,6 +391,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
             _fullCompactionRequests.Clear();
         }
 
+        StopReaderHeartbeat();
         DeleteObsoleteObjects();
         var state = _state;
         state.Memtable.Arena?.Dispose();

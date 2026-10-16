@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 using BTDB.LSM.Storage;
@@ -10,7 +11,7 @@ public class LsmKeyValueDBPersistenceTest
     static LsmKeyValueDB Open(ILsmStorage storage, long memtableSize = 64 * 1024 * 1024) =>
         LsmKeyValueDB.OpenAsync(new()
         {
-            Storage = storage, AcquireWriterLeaseOnOpen = true, MemtableSize = memtableSize, BlockSize = 256, RestartInterval = 4, IndexPartitionSize = 64, Level0CompactionTrigger = 3,
+            Storage = storage, AcquireWriterLeaseOnOpen = true, DeletionGracePeriod = TimeSpan.Zero, MemtableSize = memtableSize, BlockSize = 256, RestartInterval = 4, IndexPartitionSize = 64, Level0CompactionTrigger = 3,
             LevelBaseBytes = 4096, LevelMultiplier = 3, LevelCount = 5, TargetFileSize = 2048,
             PointDeleteRangeLimit = 2
         }).AsTask().GetAwaiter().GetResult();
@@ -89,7 +90,7 @@ public class LsmKeyValueDBPersistenceTest
         var storage = new InMemoryLsmStorage();
         var options = new LsmKeyValueDBOptions
         {
-            Storage = storage, AcquireWriterLeaseOnOpen = true, MemtableSize = 8 * 1024, BlockSize = 512, Level0CompactionTrigger = 2,
+            Storage = storage, AcquireWriterLeaseOnOpen = true, DeletionGracePeriod = TimeSpan.Zero, MemtableSize = 8 * 1024, BlockSize = 512, Level0CompactionTrigger = 2,
             LevelBaseBytes = 16 * 1024, LevelMultiplier = 4, LevelCount = 4, TargetFileSize = 16 * 1024,
             ValueSeparationThreshold = 100, ValueGcThreshold = 0.5
         };

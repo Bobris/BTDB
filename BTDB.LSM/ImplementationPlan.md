@@ -1,6 +1,7 @@
 # BTDB.LSM — implementation plan
 
-Status: phases L0–L3 are done; phase L4 is next (2026-10-16). Decisions D1–D7 are confirmed (section 21).
+Status: phases L0, L1, L2, L3 and L5 are done; phase L4 (Azure) is next, then L6 (2026-10-16). Decisions D1–D7 are
+confirmed (section 21).
 
 * L0: the counted LSM prototype (`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle, and the live
   Azure storage screening is done (LRS, GZRS and Premium). Evidence is in [Measurements.md](Measurements.md).
@@ -13,6 +14,8 @@ Status: phases L0–L3 are done; phase L4 is next (2026-10-16). Decisions D1–D
 * L3: WAL with group commit and multi-chunk commits, durability waits, recovery, the writer lease with epoch fencing,
   lease loss, ambiguity reconciliation and orphan adoption. Verified by crash-at-every-write and ambiguous-write
   simulations. Section 20.2 has the details.
+* L5 (done before L4, because it needs no Azure resources): `RefreshAsync`, `WaitForCommitUlongAsync`, the reader
+  registry and time-based retention. Section 20.3 has the details.
 
 Confirmed requirements:
 
@@ -711,7 +714,7 @@ Each phase ends with green tests and a CHANGELOG entry where it changes public b
 | **L2 Compaction and values** — done, see 20.1 | Leveled compaction, L0 sublevels, range tombstones with counts, value separation, value-file GC, native memtable, `MaxTransactionMemory`, stalls, rate limits. | The tiny-config suites pass with continuous compaction; long oracle runs pass; memory stays within the budget under a stress test. |
 | **L3 Durability and lease** — done, see 20.2 | WAL chunks, multi-chunk commits, group commit, `WaitForDurabilityAsync`, lease wait in `StartWritingTransaction`, reader-to-writer transition, lease loss, epoch fencing, ambiguity reconciliation, deferred deletion; measure whether early upload of large transactions is needed. | The crash-at-every-operation, zombie-writer and lease-loss simulations pass. |
 | **L4 Azure** | `BTDB.LSM.Azure` adapter (sync and async ranged reads, staged uploads, lease), Azurite and live tests. | The conformance suite passes on Azurite and live Azure; first live latency and throughput numbers recorded. |
-| **L5 Readers in other processes** | `RefreshAsync`, `WaitForCommitUlongAsync`, generation swap, catch-up after deletion, reader registry, freshness measurement. | Reader simulation and process tests pass; refresh latency and freshness p50/p99 measured on Azure. |
+| **L5 Readers in other processes** — done, see 20.3; Azure freshness measured in L4 | `RefreshAsync`, `WaitForCommitUlongAsync`, generation swap, catch-up after deletion, reader registry, freshness measurement. | Reader simulation and process tests pass; refresh latency and freshness p50/p99 measured on Azure. |
 | **L6 Integration and release** | ObjectDB subset on the LSM, benchmarks against `BTreeKeyValueDB` + `AzureBlobFileCollection` (memory, open time, cold and warm point reads, scans, write throughput, cost per operation), parameter tuning, `Doc/LsmKeyValueDB.md`, README pointer, preview packages. | The benchmark report is reviewed; the preview release is published. |
 
 ### 20.1 Phase L1 state and differences from the target design
@@ -854,6 +857,33 @@ Not done yet, admitted only with evidence:
 | Incremental manifest edits | Full checkpoints cost one object of a few hundred bytes per table per flush or compaction; to be measured with real table counts in L4/L6. |
 | Early upload of large transactions and `MaxTransactionMemory` | No workload measurement yet (section 7.5). |
 | Time-based retention of obsolete objects, WAL chunks and orphans | Needed only for readers in other processes (L5). |
+
+### 20.3 Phase L5 state
+
+Implemented (`LsmKeyValueDB.Reader.cs`, `WalReplay` in `LsmKeyValueDB.Recovery.cs`):
+
+* **`RefreshAsync`** works incrementally:
+  * It probes `manifest/{n+1}…` for newer manifests. When a probe misses, it lists manifests at most every
+    `ManifestListInterval`. If a probed manifest's tables are already deleted, it falls back to the newest listed one.
+  * A newer manifest rebuilds the version, reusing open table readers, and drops replayed memtables of flushed
+    generations.
+  * The reader then reads `wal/{next}…` until the first missing chunk and replays it into a copy of the memtable, so
+    snapshots of the previous round never change.
+  * Replaced memtable arenas are released when no snapshot uses them.
+* **`WaitForCommitUlongAsync`** refreshes until CommitUlong reaches the target, pausing `RefreshRetryInterval` and
+  doubling up to one second. The writer is always current.
+* **Retention:**
+  * The writer deletes tables, value files, old manifests and orphans only after `DeletionGracePeriod` (default 10
+    min) and only if no in-process snapshot uses them.
+  * With `RegisterReader`, a reader writes `readers/{id}`: the oldest manifest its snapshots use, and an expiry. It
+    registers with 0 before loading anything and updates the entry on every refresh and heartbeat. The writer keeps
+    any object obsolete since a manifest newer than a live entry, and it uses only a registry read made after the
+    object became obsolete. The test found the stale-cache race this rule closes.
+  * Covered WAL chunks are deleted at once: a reader that misses one reads the newer manifest instead.
+* **Errors:** a deleted table surfaces as `BTDBException` "no longer exists: the snapshot is older than the deletion
+  grace period"; `ILsmStorage.ReadRange` throws `FileNotFoundException` for a missing object.
+
+Not measured yet: refresh latency and freshness on Azure (phase L4 qualification).
 
 ## 21. Decisions
 

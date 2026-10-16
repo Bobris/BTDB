@@ -107,7 +107,9 @@ public sealed partial class LsmKeyValueDB
                 if (!ulong.TryParse(name.AsSpan(0, name.IndexOf('.')), out var fileNumber)) continue;
                 highest = Math.Max(highest, fileNumber);
                 if (referenced.Contains(fileNumber)) continue;
-                lock (_obsoleteObjects) _obsoleteObjects.Add((info.Key, fileNumber, 0));
+                lock (_obsoleteObjects)
+                    _obsoleteObjects.Add((info.Key, fileNumber, 0, _options.TimeProvider.GetUtcNow(),
+                        loaded.Manifest.Sequence + 1));
             }
         }
 
@@ -126,8 +128,10 @@ public sealed partial class LsmKeyValueDB
             sequence = previous.Sequence + 1;
             _state = new(loaded.Memtable, loaded.MemtableGeneration, loaded.Immutables, loaded.Version,
                 loaded.Metadata.CommitUlong, loaded.Metadata.Ulongs, loaded.Metadata.TransactionNumber,
-                previous.CommitSequence + 1, sequence);
+                previous.CommitSequence + 1, sequence, loaded.Manifest.Sequence);
         }
+
+        _replay = loaded.Replay;
 
         _lastManifest = loaded.Manifest;
         _nextFileNumber = Math.Max(_nextFileNumber, loaded.Manifest.NextFileNumber);

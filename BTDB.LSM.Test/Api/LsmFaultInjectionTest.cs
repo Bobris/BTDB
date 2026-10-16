@@ -95,6 +95,12 @@ sealed class FaultyLsmStorage(InMemoryLsmStorage inner, int seed) : ILsmStorage
         await inner.DeleteAsync(key, cancellation);
     }
 
+    public async ValueTask PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken cancellation)
+    {
+        if (CrashHere()) throw new IOException("Simulated crash during a put.");
+        await inner.PutAsync(key, content, cancellation);
+    }
+
     public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration,
         CancellationToken cancellation)
     {
