@@ -31,7 +31,9 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
     readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld =
         new(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
-    StructList<object> _visited;
+    // The serializer numbers every stored object except enums, so every loaded object gets its slot before loading
+    StructList<object?> _visited;
+    int _reservedBackRef = -1;
     readonly Lock _lock = new();
     readonly ISymmetricCipher _symmetricCipher;
     public readonly ITypeConverterFactory ConverterFactory;
@@ -291,6 +293,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
                 finally
                 {
                     _visited.Clear();
+                    _reservedBackRef = -1;
                 }
 
                 return true;
@@ -324,11 +327,39 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
             infoForType.Loader = LoaderFactory(infoForType.Descriptor!);
         }
 
-        return infoForType.Loader(ref reader, this, infoForType.Descriptor!);
+        if (infoForType.Descriptor is EnumTypeDescriptor)
+            return infoForType.Loader(ref reader, this, infoForType.Descriptor!);
+        var previousReservedBackRef = _reservedBackRef;
+        var slot = ReserveBackRef();
+        try
+        {
+            var result = infoForType.Loader(ref reader, this, infoForType.Descriptor!);
+            _visited[slot] ??= result;
+            return result;
+        }
+        finally
+        {
+            _reservedBackRef = previousReservedBackRef;
+        }
+    }
+
+    int ReserveBackRef()
+    {
+        var slot = (int)_visited.Count;
+        _visited.Add(null);
+        _reservedBackRef = slot;
+        return slot;
     }
 
     public void AddBackRef(object obj)
     {
+        if (_reservedBackRef >= 0)
+        {
+            _visited[_reservedBackRef] = obj;
+            _reservedBackRef = -1;
+            return;
+        }
+
         _visited.Add(obj);
     }
 
@@ -343,7 +374,7 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
         if (typeId == 1)
         {
             var backRefId = reader.ReadVUInt32();
-            if (backRefId > _visited.Count) throw new InvalidDataException();
+            if (backRefId >= _visited.Count) throw new InvalidDataException();
             return;
         }
 
@@ -355,7 +386,22 @@ public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, I
             infoForType.Loader = LoaderFactory(infoForType.Descriptor!);
         }
 
-        infoForType.Loader(ref reader, this, infoForType.Descriptor!);
+        if (infoForType.Descriptor is EnumTypeDescriptor)
+        {
+            infoForType.Loader(ref reader, this, infoForType.Descriptor!);
+            return;
+        }
+
+        var previousReservedBackRef = _reservedBackRef;
+        ReserveBackRef();
+        try
+        {
+            infoForType.Loader(ref reader, this, infoForType.Descriptor!);
+        }
+        finally
+        {
+            _reservedBackRef = previousReservedBackRef;
+        }
     }
 
     public unsafe EncryptedString LoadEncryptedString(ref MemReader reader)

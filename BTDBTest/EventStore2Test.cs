@@ -90,6 +90,52 @@ public class EventStore2Test
     }
 
     [Fact]
+    public void SameReferencesAfterSharedNonObjectValuesAreKept()
+    {
+        var serializer = new EventSerializer();
+        var user = new User { Name = "A", Age = 1 };
+        var other = new User { Name = "B", Age = 2 };
+        var text = "shared";
+        var obj = new EventStoreTest.ObjectFieldsEvent { A = text, B = text, User1 = user, User2 = user };
+        var root = new List<User> { user, other, user };
+        var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
+        serializer.ProcessMetadataLog(meta);
+        var meta2 = serializer.Serialize(out _, root).ToAsyncSafe();
+        serializer.ProcessMetadataLog(meta2);
+        var data = serializer.Serialize(out _, obj).ToAsyncSafe();
+        var data2 = serializer.Serialize(out _, root).ToAsyncSafe();
+
+        var deserializer = new EventDeserializer();
+        deserializer.ProcessMetadataLog(meta);
+        deserializer.ProcessMetadataLog(meta2);
+        Assert.True(deserializer.Deserialize(out var obj2, data));
+        var read = (EventStoreTest.ObjectFieldsEvent)obj2!;
+        Assert.Equal("shared", read.A);
+        Assert.Equal("shared", read.B);
+        Assert.Same(read.User1, read.User2);
+        Assert.Equal("A", read.User1!.Name);
+        Assert.True(deserializer.Deserialize(out var root2, data2));
+        var list = ((IEnumerable<object>)root2!).Cast<User>().ToList();
+        Assert.Equal(new[] { "A", "B", "A" }, list.Select(u => u.Name));
+        Assert.Same(list[0], list[2]);
+    }
+
+    [Fact]
+    public void IListBackedByCollectionOverArrayIsSerialized()
+    {
+        var serializer = new EventSerializer();
+        var obj = new EventStoreTest.EventWithIList { Numbers = new System.Collections.ObjectModel.Collection<int>([1, 2, 3]) };
+        var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
+        serializer.ProcessMetadataLog(meta);
+        var data = serializer.Serialize(out _, obj).ToAsyncSafe();
+
+        var deserializer = new EventDeserializer();
+        deserializer.ProcessMetadataLog(meta);
+        Assert.True(deserializer.Deserialize(out var obj2, data));
+        Assert.Equal(new[] { 1, 2, 3 }, ((EventStoreTest.EventWithIList)obj2!).Numbers);
+    }
+
+    [Fact]
     public void DeserializedReadOnlyMemoryDoesNotReferenceInput()
     {
         var serializer = new EventSerializer();

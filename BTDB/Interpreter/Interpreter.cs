@@ -961,6 +961,7 @@ static class Interpreter
 
     static void Run(ref InterpreterCtx ctx, ref uint pc)
     {
+        Exception? escapingException = null;
         var pendingStop = false;
         var pendingStopPc = 0u;
         var pendingFinallyBlockIndex = int.MaxValue;
@@ -976,6 +977,14 @@ static class Interpreter
                 case OpCode.Invalid:
                     throw new InvalidOperationException($"Invalid interpreter opcode at {instructionPc}.");
                 case OpCode.Stop:
+                    // A finally block entered because of an exception ends here, for example the one closing a stack
+                    // allocation. The exception leaves this Run, so a nested Run never continues in outer code.
+                    if (ctx.CurrentException != null && IsInsideFinally(ctx.TryCatchFinallyBlocks, instructionPc))
+                    {
+                        escapingException = ctx.CurrentException;
+                        break;
+                    }
+
                     if (pendingStop) return;
                     if (EnterNextFinallyForStop(ref ctx, ref pc, instructionPc, ref pendingFinallyBlockIndex))
                     {
@@ -1546,6 +1555,8 @@ static class Interpreter
                 default:
                     throw new InvalidOperationException("Unknown interpreter opcode.");
                 }
+
+                if (escapingException != null) break;
             }
             catch (Exception exception)
             {
@@ -1554,6 +1565,20 @@ static class Interpreter
                 ExceptionDispatchInfo.Capture(exception).Throw();
             }
         }
+
+        ExceptionDispatchInfo.Capture(escapingException!).Throw();
+    }
+
+    static bool IsInsideFinally(ReadOnlySpan<uint> blocks, uint instructionPc)
+    {
+        for (var i = blocks.Length - 4; i >= 0; i -= 4)
+        {
+            var finallyPc = blocks[i + 2];
+            var tryEndPc = blocks[i + 3];
+            if (finallyPc != tryEndPc && Contains(instructionPc, finallyPc, tryEndPc)) return true;
+        }
+
+        return false;
     }
 
     static uint ReadJumpTarget(ref InterpreterCtx ctx, ref uint pc)

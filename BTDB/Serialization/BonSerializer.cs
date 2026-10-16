@@ -1424,6 +1424,7 @@ public class BonSerializerFactory : ISerializerFactory
                     fieldDeserializers[i] = (ref DeserializerCtx ctx, ref byte value) =>
                     {
                         FieldDeserializerCtx context;
+                        context.Target = Unsafe.As<byte, object>(ref value);
                         context.CtxPtr = (nint)Unsafe.AsPointer(ref ctx);
                         context.StoragePtr = 0;
                         context.Deserializer = deserializer;
@@ -1439,7 +1440,7 @@ public class BonSerializerFactory : ISerializerFactory
                             if (context.Deserializer(ref Unsafe.AsRef<DeserializerCtx>((void*)context.CtxPtr),
                                     ref Unsafe.AsRef<byte>((void*)context.StoragePtr)))
                             {
-                                context.Setter(Unsafe.As<byte, object>(ref value),
+                                context.Setter(context.Target,
                                     ref Unsafe.AsRef<byte>((void*)context.StoragePtr));
                                 context.Result = true;
                             }
@@ -1597,6 +1598,7 @@ public class BonSerializerFactory : ISerializerFactory
 
     struct FieldDeserializerCtx
     {
+        internal object Target;
         internal nint StoragePtr;
         internal nint CtxPtr;
         internal Deserialize Deserializer;

@@ -384,6 +384,67 @@ public class EventStoreTest
     }
 
     [Generate]
+    public class ObjectFieldsEvent
+    {
+        public object? A { get; set; }
+        public object? B { get; set; }
+        public User? User1 { get; set; }
+        public User? User2 { get; set; }
+    }
+
+    [Fact]
+    public void SameReferenceAfterSharedNonObjectValueTest()
+    {
+        var manager = new EventStoreManager();
+        var file = new MemoryEventFileStorage();
+        var appender = manager.AppendToStore(file);
+        var text = "shared";
+        var list = new List<int> { 1, 2 };
+        var user = new User { Name = "A", Age = 1 };
+        var ev = new ObjectFieldsEvent { A = text, B = text, User1 = user, User2 = user };
+        var ev2 = new ObjectFieldsEvent { A = list, B = list, User1 = user, User2 = user };
+        appender.Store(null, [ev, ev2]);
+
+        manager = new EventStoreManager();
+        var reader = manager.OpenReadOnlyStore(file);
+        var eventObserver = new StoringEventObserver();
+        reader.ReadFromStartToEnd(eventObserver);
+        var read = (ObjectFieldsEvent)eventObserver.Events[0][0];
+        Assert.Equal("shared", read.A);
+        Assert.Equal("shared", read.B);
+        Assert.Same(read.User1, read.User2);
+        Assert.Equal("A", read.User1!.Name);
+        var read2 = (ObjectFieldsEvent)eventObserver.Events[0][1];
+        Assert.Same(read2.A, read2.B);
+        Assert.Equal(new List<object> { 1, 2 }, ((System.Collections.IEnumerable)read2.A!).Cast<object>().ToList());
+        Assert.Same(read2.User1, read2.User2);
+        Assert.Equal("A", read2.User1!.Name);
+    }
+
+    [Generate]
+    public class EventWithIList
+    {
+        public IList<int>? Numbers { get; set; }
+    }
+
+    [Fact]
+    public void IListBackedByCollectionOverArrayIsStored()
+    {
+        var manager = new EventStoreManager();
+        var file = new MemoryEventFileStorage();
+        var appender = manager.AppendToStore(file);
+        appender.Store(null,
+            [new EventWithIList { Numbers = new System.Collections.ObjectModel.Collection<int>([1, 2, 3]) }]);
+
+        manager = new EventStoreManager();
+        var reader = manager.OpenReadOnlyStore(file);
+        var eventObserver = new StoringEventObserver();
+        reader.ReadFromStartToEnd(eventObserver);
+        var read = (EventWithIList)eventObserver.Events[0][0];
+        Assert.Equal(new[] { 1, 2, 3 }, read.Numbers);
+    }
+
+    [Generate]
     public class UserEventMore : IEquatable<UserEventMore>
     {
         public long Id { get; set; }

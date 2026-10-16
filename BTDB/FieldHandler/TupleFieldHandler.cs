@@ -123,7 +123,7 @@ public class TupleFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHand
     public Type HandledType()
     {
         return _type ??=
-            TupleTypes[_fieldHandlers.Count].MakeGenericType(_fieldHandlers.Select(t => t.HandledType()).ToArray());
+            TupleTypes[_fieldHandlers.Count - 1].MakeGenericType(_fieldHandlers.Select(t => t.HandledType()).ToArray());
     }
 
     public bool NeedsCtx()

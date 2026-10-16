@@ -444,7 +444,9 @@ public class TypeSerializers : ITypeSerializers
     class DeserializerCtx : ITypeBinaryDeserializerContext
     {
         readonly ITypeSerializersId2LoaderMapping _mapping;
-        readonly List<object> _backRefs = new();
+        // The writer numbers every stored object except enums, so every loaded object gets its slot before loading
+        readonly List<object?> _backRefs = [null];
+        int _reservedBackRef; // slot of the root object, which is loaded without LoadObject
 
         public DeserializerCtx(ITypeSerializersId2LoaderMapping mapping)
         {
@@ -465,11 +467,40 @@ public class TypeSerializers : ITypeSerializers
                 return _backRefs[(int)backRefId];
             }
 
-            return _mapping.Load(typeId, ref reader, this);
+            if (IsEnum(typeId)) return _mapping.Load(typeId, ref reader, this);
+            var previousReservedBackRef = _reservedBackRef;
+            var slot = ReserveBackRef();
+            try
+            {
+                var result = _mapping.Load(typeId, ref reader, this);
+                _backRefs[slot] ??= result;
+                return result;
+            }
+            finally
+            {
+                _reservedBackRef = previousReservedBackRef;
+            }
+        }
+
+        bool IsEnum(uint typeId) => _mapping is TypeSerializersMapping mapping && mapping.IsEnum(typeId);
+
+        int ReserveBackRef()
+        {
+            var slot = _backRefs.Count;
+            _backRefs.Add(null);
+            _reservedBackRef = slot;
+            return slot;
         }
 
         public void AddBackRef(object obj)
         {
+            if (_reservedBackRef >= 0)
+            {
+                _backRefs[_reservedBackRef] = obj;
+                _reservedBackRef = -1;
+                return;
+            }
+
             _backRefs.Add(obj);
         }
 
@@ -484,11 +515,26 @@ public class TypeSerializers : ITypeSerializers
             if (typeId == 1)
             {
                 var backRefId = reader.ReadVUInt32();
-                if (backRefId > _backRefs.Count) throw new InvalidDataException();
+                if (backRefId >= _backRefs.Count) throw new InvalidDataException();
                 return;
             }
 
-            _mapping.Load(typeId, ref reader, this);
+            if (IsEnum(typeId))
+            {
+                _mapping.Load(typeId, ref reader, this);
+                return;
+            }
+
+            var previousReservedBackRef = _reservedBackRef;
+            ReserveBackRef();
+            try
+            {
+                _mapping.Load(typeId, ref reader, this);
+            }
+            finally
+            {
+                _reservedBackRef = previousReservedBackRef;
+            }
         }
 
         [SkipLocalsInit]

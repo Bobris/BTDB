@@ -80,6 +80,14 @@ public class BTreeKeyValueDBCursor : IKeyValueDBCursorInternal
         RealDispose(transaction);
     }
 
+    // The caller can still hold this cursor, so it must not go back to the pool
+    internal void DisposeLeaked(BTreeKeyValueDBTransaction transaction)
+    {
+        Disposed = true;
+        _forbidPooling = true;
+        RealDispose(transaction);
+    }
+
     internal void RealDispose(BTreeKeyValueDBTransaction transaction)
     {
         var nextCursor = NextCursor;

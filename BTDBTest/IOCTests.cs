@@ -853,6 +853,33 @@ public partial class IocTests
     }
 
     [Fact]
+    public void ResolvingHardCycleRepeatedlyThrowsInsteadOfHanging()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<HardCycle1>().As<ICycle1>().SingleInstance();
+        builder.RegisterType<HardCycle2>().As<ICycle2>().SingleInstance();
+        var container = builder.Build();
+        Assert.Throws<InvalidOperationException>(() => container.Resolve<ICycle1>());
+        var again = Task.Run(() => Assert.Throws<InvalidOperationException>(() => container.Resolve<ICycle1>()));
+        Assert.True(again.Wait(TimeSpan.FromSeconds(10)), "Second resolve did not finish");
+        var other = Task.Run(() => Assert.Throws<InvalidOperationException>(() => container.Resolve<ICycle2>()));
+        Assert.True(other.Wait(TimeSpan.FromSeconds(10)), "Resolve of the other cycle member did not finish");
+    }
+
+    [Fact]
+    public async Task ResolvingScopedHardCycleRepeatedlyThrowsInsteadOfHanging()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterType<HardCycle1>().As<ICycle1>().Scoped();
+        builder.RegisterType<HardCycle2>().As<ICycle2>().Scoped();
+        var container = builder.Build();
+        await using var scope = container.CreateScope();
+        Assert.Throws<InvalidOperationException>(() => scope.Resolve<ICycle1>());
+        await Task.Run(() => Assert.Throws<InvalidOperationException>(() => scope.Resolve<ICycle1>()))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
     public void SingletonByTwoInterfacesIsStillSameInstance()
     {
         var builder = new ContainerBuilder();

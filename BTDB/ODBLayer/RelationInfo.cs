@@ -1117,6 +1117,10 @@ public class RelationInfo
 
     static bool ArePrimaryKeyFieldsCompatible(IFieldHandler newHandler, IFieldHandler previousHandler)
     {
+        // Same handler with same configuration stores keys in the same format, for example Tuple and ValueTuple
+        if (newHandler.Name == previousHandler.Name &&
+            newHandler.Configuration.AsSpan().SequenceEqual(previousHandler.Configuration))
+            return true;
         var newHandledType = newHandler.HandledType();
         var previousHandledType = previousHandler.HandledType();
         if (newHandledType == previousHandledType)

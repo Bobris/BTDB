@@ -295,7 +295,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 var objType = obj.GetType();
                 if (arrayType.IsAssignableFrom(objType))
                 {
-                    var count = (uint)RawData.GetArrayLength(ref value);
+                    var count = (uint)RawData.GetArrayLength(ref Unsafe.As<object, byte>(ref obj));
                     writer.WriteVUInt32(count + 1);
                     ref readonly var mt = ref RawData.MethodTableRef(obj);
                     var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
@@ -407,7 +407,7 @@ class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
                 var objType = obj.GetType();
                 if (arrayType.IsAssignableFrom(objType))
                 {
-                    var count = (uint)RawData.GetArrayLength(ref value);
+                    var count = (uint)RawData.GetArrayLength(ref Unsafe.As<object, byte>(ref obj));
                     ref readonly var mt = ref RawData.MethodTableRef(obj);
                     var offset = mt.BaseSize - (uint)Unsafe.SizeOf<nint>();
                     var offsetDelta = mt.ComponentSize;

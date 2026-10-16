@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -557,6 +558,20 @@ public class ContainerImpl : IRootContainer
             : _serviceProvider.GetRequiredKeyedService(type, key);
     }
 
+    // Next resolve builds the factory again, callers which already got the cached wrapper get the same exception
+    static void FailLifetimeFactory(ref Func<IContainer, IResolvingCtx?, object>? cache,
+        Func<IContainer, IResolvingCtx?, object> cached, ref Func<IContainer, IResolvingCtx?, object>? factory,
+        Exception exception)
+    {
+        var exceptionInfo = ExceptionDispatchInfo.Capture(exception);
+        Volatile.Write(ref factory, (_, _) =>
+        {
+            exceptionInfo.Throw();
+            return null!;
+        });
+        Interlocked.CompareExchange(ref cache, null, cached);
+    }
+
     Func<IContainer, IResolvingCtx?, object?>? CreateFactoryFromRegistration(CreateFactoryCtx ctxImpl, CReg cReg,
         object? key,
         Type type)
@@ -647,14 +662,21 @@ public class ContainerImpl : IRootContainer
 
                     return instance;
                 };
-                if (Interlocked.CompareExchange(ref cReg.LifetimeFactoryCache, ff, null) == null)
+                if (Interlocked.CompareExchange(ref cReg.LifetimeFactoryCache, ff, null) is { } otherFactory)
+                    return otherFactory;
+                try
                 {
                     using var resolvingCtxRestorer = ctxImpl.ResolvingCtxRestorer();
                     using var enumerableRestorer = ctxImpl.EnumerableRestorer();
                     f = cReg.Factory(rootContainer, ctxImpl);
                 }
+                catch (Exception ex)
+                {
+                    FailLifetimeFactory(ref cReg.LifetimeFactoryCache, ff, ref f, ex);
+                    throw;
+                }
 
-                return cReg.LifetimeFactoryCache;
+                return ff;
             }
 
             if (cReg.Lifetime == Lifetime.Scoped && cReg.ScopedId != uint.MaxValue)
@@ -739,12 +761,19 @@ public class ContainerImpl : IRootContainer
 
                     return instance;
                 };
-                if (Interlocked.CompareExchange(ref cReg.LifetimeFactoryCache, ff, null) == null)
+                if (Interlocked.CompareExchange(ref cReg.LifetimeFactoryCache, ff, null) is { } otherFactory)
+                    return otherFactory;
+                try
                 {
                     f = cReg.Factory(this, ctxImpl);
                 }
+                catch (Exception ex)
+                {
+                    FailLifetimeFactory(ref cReg.LifetimeFactoryCache, ff, ref f, ex);
+                    throw;
+                }
 
-                return cReg.LifetimeFactoryCache;
+                return ff;
             }
 
             if (ctxImpl.VerifySingletons)

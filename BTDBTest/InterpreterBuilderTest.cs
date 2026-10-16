@@ -562,6 +562,60 @@ TryEnd
     }
 
     [Fact]
+    public void ExceptionInsideStackAllocationPropagates()
+    {
+        var builder = new InterpreterBuilder();
+        var exceptionIndex = builder.AddObjectConstant(new InvalidOperationException("inside"));
+        builder.AddInstruction(OpCode.StackAllocObject);
+        builder.AddVUInt64(1);
+        builder.AddInstruction(OpCode.SetParam1ObjectConst);
+        builder.AddVUInt64((ulong)exceptionIndex);
+        builder.AddInstruction(OpCode.ThrowException);
+        builder.AddInstruction(OpCode.Stop);
+        builder.AddInstruction(OpCode.SetBoolResultTrue);
+        builder.AddInstruction(OpCode.Stop);
+        var program = builder.Materialize();
+
+        var exception = Assert.Throws<InvalidOperationException>(() => RunWithObjectParams(program, out _));
+        Assert.Equal("inside", exception.Message);
+    }
+
+    [Fact]
+    public void ExceptionInsideStackAllocationIsCaughtByOuterCatch()
+    {
+        var builder = new InterpreterBuilder();
+        var exceptionIndex = builder.AddObjectConstant(new InvalidOperationException("inside"));
+        builder.AddTry();
+        builder.AddInstruction(OpCode.StackAllocObject);
+        builder.AddVUInt64(1);
+        builder.AddInstruction(OpCode.SetParam1ObjectConst);
+        builder.AddVUInt64((ulong)exceptionIndex);
+        builder.AddInstruction(OpCode.ThrowException);
+        builder.AddInstruction(OpCode.Stop);
+        builder.AddInstruction(OpCode.SetBoolResultFalse);
+        builder.AddCatch();
+        builder.AddInstruction(OpCode.SetBoolResultTrue);
+        builder.AddInstruction(OpCode.CatchedException);
+        builder.AddTryEnd();
+        builder.AddInstruction(OpCode.Stop);
+        var program = builder.Materialize();
+
+        RunWithObjectParams(program, out var boolResult);
+        Assert.True(boolResult);
+    }
+
+    static void RunWithObjectParams(InterpreterProgram program, out bool boolResult)
+    {
+        Span<byte> stack = stackalloc byte[1];
+        object? param1 = null;
+        object? param2 = null;
+        var ctx = new InterpreterCtx(ref MemoryMarshal.GetReference(stack),
+            ref Unsafe.As<object?, byte>(ref param1), ref Unsafe.As<object?, byte>(ref param2), stack, program);
+        Interpreter.Run(ref ctx);
+        boolResult = ctx.BoolResult;
+    }
+
+    [Fact]
     public void NestedStackAllocationsUnwindOneScopeAtATime()
     {
         var builder = new InterpreterBuilder();

@@ -32,7 +32,16 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
     ~BTreeKeyValueDBTransaction()
     {
         if (BTreeRoot == null && !_writing && !_preapprovedWriting) return;
-        Dispose();
+        try
+        {
+            Dispose(false);
+        }
+        catch (Exception ex)
+        {
+            // An exception thrown from a finalizer would terminate the process
+            KeyValueDB.Logger?.LogWarning("Disposing leaked transaction failed: " + ex);
+        }
+
         KeyValueDB.Logger?.ReportTransactionLeak(this);
     }
 
@@ -161,7 +170,9 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
         }
     }
 
-    public void Dispose()
+    public void Dispose() => Dispose(true);
+
+    void Dispose(bool throwOnForgottenCursor)
     {
         if (_disposed) return;
         _disposed = true;
@@ -180,9 +191,11 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
             ((BTreeKeyValueDBCursor)reused2).RealDispose(this);
         }
 
-        if (FirstCursor != null)
+        // Leaked cursors are disposed first, so the transaction can still release its root and writing slot
+        var forgotCursor = FirstCursor != null;
+        while (FirstCursor is BTreeKeyValueDBCursor cursor)
         {
-            throw new BTDBException("Forgot to dispose cursor for transaction " + _descriptionForLeaks);
+            cursor.DisposeLeaked(this);
         }
 
         var currentRoot = Interlocked.Exchange(ref BTreeRoot, null);
@@ -196,15 +209,18 @@ public class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
                 KeyValueDB.TransactionDisposed(this);
                 GC.SuppressFinalize(this);
             }
-            return;
         }
-        else if (currentRoot != null)
+        else
         {
-            KeyValueDB.DereferenceRoot(currentRoot);
+            if (currentRoot != null) KeyValueDB.DereferenceRoot(currentRoot);
+            KeyValueDB.TransactionDisposed(this);
+            GC.SuppressFinalize(this);
         }
 
-        KeyValueDB.TransactionDisposed(this);
-        GC.SuppressFinalize(this);
+        if (forgotCursor && throwOnForgottenCursor)
+        {
+            throw new BTDBException("Forgot to dispose cursor for transaction " + _descriptionForLeaks);
+        }
     }
 
     public long GetTransactionNumber()

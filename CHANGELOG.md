@@ -27,6 +27,29 @@
   and dictionaries were also not consumed.
 - Fix reading an event store that contains an empty event batch (`Store(metadata, [])`) throwing
   `IndexOutOfRangeException`, which made the store unreadable and impossible to append to after reopening.
+- Fix `BTreeKeyValueDB` transactions disposed with a forgotten cursor: `Dispose` threw before releasing the
+  transaction, so a writing transaction blocked all later writers forever, and the finalizer of a leaked transaction
+  with an open cursor terminated the process. The transaction is now released first and its cursors are disposed;
+  `Dispose` still reports the forgotten cursor and the finalizer reports the leak through the logger.
+- Fix a failing commit in `BTreeKeyValueDB` leaving the writing transaction registered, which made every later writer
+  wait forever. A commit failing before its commit command is written is rolled back and other writers continue. A
+  commit failing later (for example `HardFlush` throwing an `IOException`) may already be in the transaction log, so
+  writing is disabled with a `BTDBException` until the database is reopened, while reads keep working.
+- Fix `ReadOnly` `BTreeKeyValueDB` accepting writes through `StartTransaction`, and running `Compact` and `CreateKvi`,
+  which could append to or create database files.
+- Fix IOC resolving hanging forever after a singleton or scoped registration failed to build once (for example because
+  of a circular dependency); every resolve now throws again. A concurrent resolve could also cache a `null` factory and
+  make the type unresolvable.
+- Fix the relation query interpreter ignoring exceptions thrown inside its stack allocation blocks, so a failing
+  predicate evaluation kept or dropped rows based on a stale result.
+- Fix event store readers (`EventStoreManager` and `EventDeserializer`) numbering back references differently from
+  writers when a stored value is a string, boxed value, list or dictionary in an `object` field or the event itself;
+  reading such data threw or returned wrong shared instances. Already written data is now read correctly.
+- Fix upgrading a relation whose primary key contains a `Tuple` or `ValueTuple`, which threw `ArgumentException`.
+- Fix `BonSerializer` writing the values of properties with explicit setters into unrelated memory instead of the
+  deserialized object.
+- Fix saving an `IList<T>` backed by `Collection<T>` over an array in ObjectDB and event stores, which read the array
+  length from the wrapper and could crash the process.
 
 ## 35.11.3
 

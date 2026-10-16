@@ -1,11 +1,14 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -515,6 +518,213 @@ public abstract class KeyValueDBFileTestBase : KeyValueDBTestBase
     static void StartLeakingTransaction(IKeyValueDB db)
     {
         db.StartTransaction().DescriptionForLeaks = "Leak";
+    }
+
+    [Fact]
+    public async Task DisposingTransactionWithForgottenCursorReleasesWritingTransaction()
+    {
+        using var db = NewKeyValueDB(new InMemoryFileCollection());
+        var tr = await db.StartWritingTransaction();
+        var cursor = tr.CreateCursor();
+        cursor.CreateOrUpdateKeyValue(Key1, [1]);
+        Assert.Throws<BTDBException>(() => tr.Dispose());
+        Assert.Throws<ObjectDisposedException>(() => cursor.FindFirstKey([]));
+        cursor.Dispose();
+        using var tr2 = await db.StartWritingTransaction().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        using var cursor2 = tr2.CreateCursor();
+        Assert.False(cursor2.FindExactKey(Key1));
+        cursor2.CreateOrUpdateKeyValue(Key2, [2]);
+        tr2.Commit();
+    }
+
+    [Fact]
+    public void FinalizedTransactionWithForgottenCursorIsReportedAndReleased()
+    {
+        using var fileCollection = new InMemoryFileCollection();
+        using var db = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 1024, null);
+        var logger = new LoggerMock();
+        db.Logger = logger;
+        // Disposing the leaked cursor in the finalizer used to throw there and terminate the process
+        StartLeakingTransactionWithCursor(db);
+        GC.Collect(GC.MaxGeneration);
+        GC.WaitForPendingFinalizers();
+        Assert.NotNull(logger.Leaked);
+        Assert.Equal("LeakWithCursor", logger.Leaked.DescriptionForLeaks);
+        Assert.Null(logger.LastWarning);
+        Assert.Empty(db.Transactions());
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static void StartLeakingTransactionWithCursor(IKeyValueDB db)
+    {
+        var tr = db.StartTransaction();
+        tr.DescriptionForLeaks = "LeakWithCursor";
+        tr.CreateCursor().FindFirstKey([]);
+    }
+
+    [Fact]
+    public async Task CommitFailingBeforeCommitCommandRollsBackAndLetsOthersWrite()
+    {
+        // Find a value size whose transaction leaves no space for the commit command, so the commit has to rotate
+        for (var size = 600; size < 2100; size++)
+        {
+            using var fileCollection = new InMemoryFileCollection();
+            var strategy = new ThrowingLogSizeStrategy();
+            using var db = NewKeyValueDB(new KeyValueDBOptions
+            {
+                FileCollection = fileCollection, Compression = new NoCompressionStrategy(), CompactorScheduler = null,
+                TransactionLogSizeStrategy = strategy
+            });
+            var tr1 = await db.StartWritingTransaction();
+            using (var cursor = tr1.CreateCursor())
+                cursor.CreateOrUpdateKeyValue(Key1, new byte[size]);
+            var waitingWriter = db.StartWritingTransaction().AsTask();
+            strategy.Throw = true;
+            try
+            {
+                tr1.Commit();
+                strategy.Throw = false;
+                tr1.Dispose();
+                (await waitingWriter).Dispose();
+                continue;
+            }
+            catch (InvalidOperationException)
+            {
+                strategy.Throw = false;
+                tr1.Dispose();
+            }
+
+            using (var tr2 = await waitingWriter.WaitAsync(TimeSpan.FromSeconds(10)))
+            {
+                using var cursor = tr2.CreateCursor();
+                Assert.False(cursor.FindExactKey(Key1));
+                cursor.CreateOrUpdateKeyValue(Key2, [2]);
+                tr2.Commit();
+            }
+
+            using (var reader = db.StartReadOnlyTransaction())
+            {
+                using var cursor = reader.CreateCursor();
+                Assert.False(cursor.FindExactKey(Key1));
+                Assert.True(cursor.FindExactKey(Key2));
+            }
+
+            return;
+        }
+
+        Assert.Fail("No value size made the commit command rotate the transaction log");
+    }
+
+    sealed class ThrowingLogSizeStrategy : ITransactionLogSizeStrategy
+    {
+        public bool Throw;
+
+        public TransactionLogSizeLimits GetLimits(uint transactionLogFileId)
+        {
+            if (Throw) throw new InvalidOperationException("Simulated size strategy failure");
+            return new(1024, 2048);
+        }
+    }
+
+    [Fact]
+    public async Task CommitFailingAfterCommitCommandDisablesWritingInsteadOfBlockingWriters()
+    {
+        using var fileCollection = new HardFlushFailingFileCollection();
+        using var db = NewKeyValueDB(new KeyValueDBOptions
+        {
+            FileCollection = fileCollection, Compression = new NoCompressionStrategy(), CompactorScheduler = null
+        });
+        ((BTreeKeyValueDB)db).DurableTransactions = true;
+        using (var tr = db.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key1, [1]);
+            tr.Commit();
+        }
+
+        var tr1 = await db.StartWritingTransaction();
+        var waitingWriter = db.StartWritingTransaction().AsTask();
+        using (var cursor = tr1.CreateCursor())
+            cursor.CreateOrUpdateKeyValue(Key2, [2]);
+        fileCollection.Fail = true;
+        Assert.Throws<IOException>(() => tr1.Commit());
+        tr1.Dispose();
+        fileCollection.Fail = false;
+        // The commit could have reached the log, so writing stays disabled until the database is reopened
+        await Assert.ThrowsAsync<BTDBException>(() => waitingWriter.WaitAsync(TimeSpan.FromSeconds(10)));
+        await Assert.ThrowsAsync<BTDBException>(() => db.StartWritingTransaction().AsTask());
+        using (var tr = db.StartTransaction())
+        {
+            using var cursor = tr.CreateCursor();
+            Assert.True(cursor.FindExactKey(Key1));
+            Assert.False(cursor.FindExactKey(Key2));
+            Assert.Throws<BTDBException>(() => cursor.CreateOrUpdateKeyValue(Key3, [3]));
+        }
+    }
+
+    [Fact]
+    public void ReadOnlyDatabaseRejectsWrites()
+    {
+        using var fileCollection = new InMemoryFileCollection();
+        using (var db = NewKeyValueDB(fileCollection))
+        {
+            using var tr = db.StartTransaction();
+            using var cursor = tr.CreateCursor();
+            cursor.CreateOrUpdateKeyValue(Key1, [1]);
+            tr.Commit();
+        }
+
+        var fileCount = fileCollection.GetCount();
+        using (var db = NewKeyValueDB(new KeyValueDBOptions
+               {
+                   FileCollection = fileCollection, Compression = new NoCompressionStrategy(), ReadOnly = true,
+                   CompactorScheduler = null
+               }))
+        {
+            using var tr = db.StartTransaction();
+            using var cursor = tr.CreateCursor();
+            Assert.True(cursor.FindExactKey(Key1));
+            Assert.Throws<BTDBException>(() => cursor.CreateOrUpdateKeyValue(Key2, [2]));
+            Assert.Throws<BTDBException>(() => db.CreateKvi(CancellationToken.None));
+            Assert.Throws<BTDBException>(() => db.Compact(CancellationToken.None));
+        }
+
+        Assert.Equal(fileCount, fileCollection.GetCount());
+    }
+
+    sealed class HardFlushFailingFileCollection : IFileCollection
+    {
+        readonly InMemoryFileCollection _inner = new();
+        public bool Fail;
+
+        public IFileCollectionFile AddFile(string humanHint) => new File(this, _inner.AddFile(humanHint));
+        public uint GetCount() => _inner.GetCount();
+        public IFileCollectionFile GetFile(uint index) => _inner.GetFile(index) is { } f ? new File(this, f) : null!;
+        public IEnumerable<IFileCollectionFile> Enumerate() => _inner.Enumerate().Select(f => new File(this, f));
+        public void ConcurrentTemporaryTruncate(uint index, uint offset) => _inner.ConcurrentTemporaryTruncate(index, offset);
+        public void Dispose() => _inner.Dispose();
+
+        sealed class File(HardFlushFailingFileCollection owner, IFileCollectionFile inner) : IFileCollectionFile
+        {
+            public uint Index => inner.Index;
+            public IMemReader GetExclusiveReader() => inner.GetExclusiveReader();
+            public void AdvisePrefetch() => inner.AdvisePrefetch();
+            public void RandomRead(Span<byte> data, ulong position, bool doNotCache) =>
+                inner.RandomRead(data, position, doNotCache);
+            public IMemWriter GetAppenderWriter() => inner.GetAppenderWriter();
+            public IMemWriter GetExclusiveAppenderWriter() => inner.GetExclusiveAppenderWriter();
+
+            public void HardFlush()
+            {
+                if (owner.Fail) throw new IOException("Simulated HardFlush failure");
+                inner.HardFlush();
+            }
+
+            public void HardFlushTruncateSwitchToReadOnlyMode() => inner.HardFlushTruncateSwitchToReadOnlyMode();
+            public void HardFlushTruncateSwitchToDisposedMode() => inner.HardFlushTruncateSwitchToDisposedMode();
+            public ulong GetSize() => inner.GetSize();
+            public void Remove() => inner.Remove();
+        }
     }
 
     class LoggerMock : IKeyValueDBLogger

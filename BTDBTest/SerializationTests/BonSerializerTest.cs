@@ -182,6 +182,40 @@ public class BonSerializerTest
         Assert.Equal(4, deserialized.D);
     }
 
+    [Generate]
+    public class PropertiesWithSetters
+    {
+        int _number;
+        string? _text;
+
+        public int Number
+        {
+            get => _number;
+            set => _number = value;
+        }
+
+        public string? Text
+        {
+            get => _text;
+            set => _text = value;
+        }
+
+        public int After { get; set; }
+    }
+
+    [Fact]
+    public void PropertiesWithSettersAreDeserializedIntoTheObject()
+    {
+        var obj = new PropertiesWithSetters { Number = 42, Text = "hello", After = 7 };
+        var builder = new BonBuilder();
+        BonSerializerFactory.Serialize(ref builder, obj);
+        var bon = new Bon(builder.FinishAsMemory());
+        var deserialized = Assert.IsType<PropertiesWithSetters>(BonSerializerFactory.Deserialize(ref bon));
+        Assert.Equal(42, deserialized.Number);
+        Assert.Equal("hello", deserialized.Text);
+        Assert.Equal(7, deserialized.After);
+    }
+
     [Fact]
     public async Task TypeCouldBeSerializedAsWell()
     {

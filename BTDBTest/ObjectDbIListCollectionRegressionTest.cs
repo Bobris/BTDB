@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using BTDB;
 using BTDB.ODBLayer;
 using Xunit;
@@ -71,5 +72,29 @@ public class ObjectDbIListCollectionRegressionTest : ObjectDbTestBase
         var loadedParameter = Assert.Single(loadedType.RecordParameters);
         Assert.Equal("ParamA", loadedParameter.Name);
         Assert.Equal("DescriptionA", loadedParameter.Description);
+    }
+
+    [Fact]
+    public void UpsertOfIListPropertyBackedByCollectionOverArrayShouldWork()
+    {
+        using var tr = _db.StartTransaction();
+        var table = tr.GetRelation<ISenStructureLikeTable>();
+        SenRecordParameterLike[] parameters =
+        [
+            new() { Name = "ParamA", Description = "A" }, new() { Name = "ParamB", Description = "B" },
+            new() { Name = "ParamC", Description = "C" }
+        ];
+
+        table.Upsert(new SenStructureLike
+        {
+            CompanyId = 1,
+            Types = new Collection<SenTypeLike>([
+                new SenTypeLike { Name = "TypeA", RecordParameters = new Collection<SenRecordParameterLike>(parameters) }
+            ])
+        });
+
+        var loaded = Assert.Single(table);
+        var loadedType = Assert.Single(loaded.Types);
+        Assert.Equal(new[] { "ParamA", "ParamB", "ParamC" }, loadedType.RecordParameters.Select(p => p.Name));
     }
 }

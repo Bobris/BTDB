@@ -154,6 +154,74 @@ public class ObjectDbTableTupleTest : ObjectDbTestBase
         }
     }
 
+    public class KeyObjV2
+    {
+        [PrimaryKey(1)] public Tuple<int, uint> Id { get; set; }
+
+        public int Val { get; set; }
+        public string? Added { get; set; }
+    }
+
+    [PersistedName("Table")]
+    public interface IKeyObjV2Table : IRelation<KeyObjV2>
+    {
+        IEnumerable<KeyObjV2> ListById(AdvancedEnumeratorParam<Tuple<int, uint>> param);
+    }
+
+    [Fact]
+    public void UpgradeOfRelationWithTupleInKeyWorks()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            tr.GetRelation<IKeyObjTable>().Insert(new() { Id = new(2, 3), Val = 1 });
+            tr.GetRelation<IKeyObjTable>().Insert(new() { Id = new(3, 2), Val = 2 });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using (var tr = _db.StartTransaction())
+        {
+            var items = tr.GetRelation<IKeyObjV2Table>()
+                .ListById(new AdvancedEnumeratorParam<Tuple<int, uint>>(EnumerationOrder.Ascending)).ToList();
+            Assert.Equal(new[] { 1, 2 }, items.Select(i => i.Val));
+            Assert.Equal(new Tuple<int, uint>(3, 2), items[1].Id);
+        }
+    }
+
+    public class KeyObjValV2
+    {
+        [PrimaryKey(1)] public (int, uint) Id { get; set; }
+
+        public int Val { get; set; }
+        public string? Added { get; set; }
+    }
+
+    [PersistedName("Table")]
+    public interface IKeyObjValV2Table : IRelation<KeyObjValV2>
+    {
+        IEnumerable<KeyObjValV2> ListById(AdvancedEnumeratorParam<(int, uint)> param);
+    }
+
+    [Fact]
+    public void UpgradeOfRelationWithValueTupleInKeyWorks()
+    {
+        using (var tr = _db.StartTransaction())
+        {
+            tr.GetRelation<IKeyObjValTable>().Insert(new() { Id = (2, 3), Val = 1 });
+            tr.GetRelation<IKeyObjValTable>().Insert(new() { Id = (3, 2), Val = 2 });
+            tr.Commit();
+        }
+
+        ReopenDb();
+        using (var tr = _db.StartTransaction())
+        {
+            var items = tr.GetRelation<IKeyObjValV2Table>()
+                .ListById(new AdvancedEnumeratorParam<(int, uint)>(EnumerationOrder.Ascending)).ToList();
+            Assert.Equal(new[] { 1, 2 }, items.Select(i => i.Val));
+            Assert.Equal((3, 2u), items[1].Id);
+        }
+    }
+
     public class Obj2
     {
         [PrimaryKey(1)] public ulong Id { get; set; }

@@ -50,6 +50,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
 
     IRootNode? _nextRoot;
     BTreeKeyValueDBTransaction? _writingTransaction;
+    // Set when a commit or rollback failed after it started writing to the transaction log; writing is then disabled
+    Exception? _writeFailure;
 
     readonly Queue<(TaskCompletionSource<IKeyValueDBTransaction> Completion, bool InBatch)> _writeWaitingQueue = new();
 
@@ -1412,7 +1414,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         if (_writerWithTransactionLog.Controller != null)
         {
             // Replication reopens the exact committed end without a local shutdown marker.
-            if (!IsReplication)
+            // After a failed write the log tail is left as it is, recovery on the next open decides about it.
+            if (!IsReplication && _writeFailure == null)
             {
                 if (_transactionLogSizeStrategy != null)
                     EnsureTransactionLogCommandFits(1);
@@ -1792,9 +1795,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         }
     }
 
-    public ValueTask<bool> Compact(CancellationToken cancellation) => IsReplication
-        ? CompactReplicationAsync(cancellation)
-        : new Compactor(this, cancellation).Run();
+    public ValueTask<bool> Compact(CancellationToken cancellation)
+    {
+        if (_readOnly) throw new BTDBException("Database opened in readonly mode");
+        return IsReplication
+            ? CompactReplicationAsync(cancellation)
+            : new Compactor(this, cancellation).Run();
+    }
 
     async ValueTask<bool> CompactReplicationAsync(CancellationToken cancellation)
     {
@@ -1807,6 +1814,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         if (IsReplication)
             throw new NotSupportedException("Replication publishes KVI through snapshot export, not local KVI creation.");
+        if (_readOnly) throw new BTDBException("Database opened in readonly mode");
         CreateIndexFile(cancellation, 0);
     }
 
@@ -1836,6 +1844,8 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         lock (_writeLock)
         {
+            if (_readOnly) throw new BTDBException("Database opened in readonly mode");
+            ThrowIfWritingFailedUnsafe();
             if (_writingTransaction != null)
                 throw new BTDBTransactionRetryException("Another writing transaction already running");
             if (_lastCommitted != btreeRoot)
@@ -1870,43 +1880,59 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
         try
         {
             var batching = ReferenceEquals(root, _batchRoot);
-            if (batching)
-                WriteBatchUlongsDiff(root);
-            else
-                WriteUlongsDiff(root, _lastCommitted);
-            var deltaUlong = unchecked(root.CommitUlong - (batching ? _batchCommitUlong : _lastCommitted.CommitUlong));
-            if (_transactionLogSizeStrategy != null)
-                EnsureTransactionLogCommandFits(1L + (deltaUlong != 0 ? PackUnpack.LengthVUInt(deltaUlong) : 0));
-            if (deltaUlong != 0)
+            ulong deltaUlong;
+            var commitWritten = false;
+            try
             {
-                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.CommitWithDeltaUlong);
-                _writerWithTransactionLog.WriteVUInt64(deltaUlong);
-            }
-            else
-            {
-                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Commit);
-            }
-
-            _writerWithTransactionLog.Flush();
-            if (DurableTransactions)
-            {
-                _fileWithTransactionLog!.HardFlush();
-                // Reinitialize MemWriter because its content could be invalid due to HardFlush
-                _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
-            }
-
-            UpdateTransactionLogInBTreeRoot(root);
-            // Replication reopens a tail ending exactly at its last commit and keeps history in canonical storage;
-            // a temporary close marker would only add bytes to the replicated stream.
-            if (temporaryCloseTransactionLog && !IsReplication)
-            {
+                if (batching)
+                    WriteBatchUlongsDiff(root);
+                else
+                    WriteUlongsDiff(root, _lastCommitted);
+                deltaUlong = unchecked(root.CommitUlong - (batching ? _batchCommitUlong : _lastCommitted.CommitUlong));
                 if (_transactionLogSizeStrategy != null)
-                    EnsureTransactionLogCommandFits(1);
-                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
+                    EnsureTransactionLogCommandFits(1L + (deltaUlong != 0 ? PackUnpack.LengthVUInt(deltaUlong) : 0));
+                commitWritten = true;
+                if (deltaUlong != 0)
+                {
+                    _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.CommitWithDeltaUlong);
+                    _writerWithTransactionLog.WriteVUInt64(deltaUlong);
+                }
+                else
+                {
+                    _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Commit);
+                }
+
                 _writerWithTransactionLog.Flush();
-                _fileWithTransactionLog!.HardFlush();
-                // Reinitialize MemWriter because its content could be invalid due to HardFlush
-                _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
+                if (DurableTransactions)
+                {
+                    _fileWithTransactionLog!.HardFlush();
+                    // Reinitialize MemWriter because its content could be invalid due to HardFlush
+                    _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
+                }
+
+                UpdateTransactionLogInBTreeRoot(root);
+                // Replication reopens a tail ending exactly at its last commit and keeps history in canonical storage;
+                // a temporary close marker would only add bytes to the replicated stream.
+                if (temporaryCloseTransactionLog && !IsReplication)
+                {
+                    if (_transactionLogSizeStrategy != null)
+                        EnsureTransactionLogCommandFits(1);
+                    _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
+                    _writerWithTransactionLog.Flush();
+                    _fileWithTransactionLog!.HardFlush();
+                    // Reinitialize MemWriter because its content could be invalid due to HardFlush
+                    _writerWithTransactionLog = new(_fileWithTransactionLog.GetAppenderWriter());
+                }
+            }
+            catch (Exception ex)
+            {
+                var failedRoot = root;
+                root = null;
+                if (commitWritten)
+                    AbandonFailedCommit(failedRoot, batching, ex);
+                else
+                    RevertFailedCommit(failedRoot);
+                throw;
             }
 
             lock (_writeLock)
@@ -1942,6 +1968,46 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             root?.Dispose();
         }
     }
+
+    // Nothing of the commit itself reached the transaction log, so the transaction can still be rolled back
+    void RevertFailedCommit(IRootNode root)
+    {
+        try
+        {
+            RevertWritingTransaction(root, false);
+        }
+        catch (Exception) when (_writeFailure != null)
+        {
+            // The original commit exception is more useful, the rollback failure is kept in _writeFailure
+        }
+    }
+
+    // The commit command could have reached the transaction log, so its outcome after reopening is unknown
+    void AbandonFailedCommit(IRootNode root, bool batching, Exception exception)
+    {
+        lock (_writeLock)
+        {
+            _writeFailure ??= exception;
+            if (batching)
+            {
+                _batchRoot = null;
+                _batchHasCommits = false;
+            }
+
+            root.Dispose();
+            _writingTransaction = null;
+            TryDequeWaiterForWritingTransaction();
+        }
+    }
+
+    void ThrowIfWritingFailedUnsafe()
+    {
+        if (_writeFailure != null) throw CreateWritingFailedException();
+    }
+
+    BTDBException CreateWritingFailedException() =>
+        new("Writing is disabled because an earlier commit or rollback failed to write the transaction log; " +
+            "reopen the database", _writeFailure);
 
     void WriteUlongsDiff(IRootNode newArray, IRootNode oldArray)
     {
@@ -1990,6 +2056,13 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
             PublishBatchUnsafe();
         }
         FreeWaitingToDisposeUnsafe();
+        if (_writeFailure != null)
+        {
+            while (_writeWaitingQueue.Count != 0)
+                _writeWaitingQueue.Dequeue().Completion.TrySetException(CreateWritingFailedException());
+            return;
+        }
+
         while (_writeWaitingQueue.Count != 0)
         {
             var (completion, inBatch) = _writeWaitingQueue.Dequeue();
@@ -2022,6 +2095,7 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     BTreeKeyValueDBTransaction NewWritingTransactionUnsafe(bool inBatch)
     {
         if (_readOnly) throw new BTDBException("Database opened in readonly mode");
+        ThrowIfWritingFailedUnsafe();
         if (!inBatch) PublishBatchUnsafe();
         FreeWaitingToDisposeUnsafe();
         var newTransactionRoot = _batchRoot ?? _lastCommitted.CreateWritableTransaction();
@@ -2075,32 +2149,51 @@ public class BTreeKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         lock (_writeLock)
         {
-            if (!nothingWrittenToTransactionLog)
+            Exception? failure = null;
+            if (!nothingWrittenToTransactionLog && _writeFailure == null)
             {
-                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Rollback);
-                if (_transactionLogCapture != null)
+                try
                 {
-                    _writerWithTransactionLog.Flush();
-                    _transactionLogCapture.Complete(_fileIdWithTransactionLog,
-                        checked((uint)_writerWithTransactionLog.GetCurrentPosition()));
+                    _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Rollback);
+                    if (_transactionLogCapture != null)
+                    {
+                        _writerWithTransactionLog.Flush();
+                        _transactionLogCapture.Complete(_fileIdWithTransactionLog,
+                            checked((uint)_writerWithTransactionLog.GetCurrentPosition()));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                    _writeFailure = ex;
                 }
             }
+
             if (ReferenceEquals(writtenToTransactionLog, _batchRoot))
             {
                 if (!nothingWrittenToTransactionLog)
                 {
-                    // The mutable root includes the failed transaction. Rebuild only the committed prefix.
-                    if (_batchHasCommits) PublishReplayedBatchUnsafe();
-                    _batchRoot = null;
-                    writtenToTransactionLog.Dispose();
+                    try
+                    {
+                        // The mutable root includes the failed transaction. Rebuild only the committed prefix.
+                        if (_batchHasCommits && _writeFailure == null) PublishReplayedBatchUnsafe();
+                    }
+                    finally
+                    {
+                        _batchRoot = null;
+                        _batchHasCommits = false;
+                        writtenToTransactionLog.Dispose();
+                    }
                 }
             }
             else
                 writtenToTransactionLog.Dispose();
             _writingTransaction = null;
-            if (!nothingWrittenToTransactionLog && _batchRoot == null)
+            if (!nothingWrittenToTransactionLog && _batchRoot == null && _writeFailure == null)
                 UpdateTransactionLogInBTreeRoot(_lastCommitted);
             TryDequeWaiterForWritingTransaction();
+            if (failure != null)
+                throw new BTDBException("Rollback could not be written to the transaction log", failure);
         }
     }
 

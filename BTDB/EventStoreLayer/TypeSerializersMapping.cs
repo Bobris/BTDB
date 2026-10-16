@@ -284,6 +284,8 @@ class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMap
 
     public ISymmetricCipher GetSymmetricCipher() => _symmetricCipher;
 
+    internal bool IsEnum(uint typeId) => _id2DescriptorMap[typeId]?.Descriptor is EnumTypeDescriptor;
+
     public bool SomeTypeStored => false;
 
     public IDescriptorSerializerContext StoreNewDescriptors(object? obj)
