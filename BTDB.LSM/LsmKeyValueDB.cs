@@ -46,7 +46,8 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
         _tableOptions = new()
         {
             BlockSize = options.BlockSize, RestartInterval = options.RestartInterval,
-            BloomBitsPerKey = options.BloomBitsPerKey, Compress = options.CompressBlocks
+            BloomBitsPerKey = options.BloomBitsPerKey, Compress = options.CompressBlocks,
+            IndexPartitionSize = options.IndexPartitionSize
         };
         _compactionOptions = new()
         {

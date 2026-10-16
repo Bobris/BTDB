@@ -24,6 +24,9 @@ public sealed class LsmKeyValueDBOptions
     public int BlockSize { get; init; } = 32 * 1024;
 
     public int RestartInterval { get; init; } = 16;
+
+    /// Target encoded size of one index partition of a table; each has its own bloom filter partition.
+    public int IndexPartitionSize { get; init; } = 16 * 1024;
     public int BloomBitsPerKey { get; init; } = 10;
     public bool CompressBlocks { get; init; } = true;
 

@@ -13,28 +13,43 @@ sealed class TableBuildOptions
     public int RestartInterval { get; init; } = 16;
     public int BloomBitsPerKey { get; init; } = 10;
     public bool Compress { get; init; } = true;
+
+    /// Target encoded size of one index partition; each partition has its own bloom filter partition.
+    public int IndexPartitionSize { get; init; } = 16 * 1024;
 }
 
-/// Writes a table (ImplementationPlan.md, section 9). L1 layout: data blocks, one index section, a bloom filter, the
-/// tombstone fragments, properties and a fixed footer. Index and filter partitioning comes later in phase L2.
+/// Writes a table (ImplementationPlan.md, section 9): data blocks, index partitions, filter partitions, the top-level
+/// index, the tombstone fragments, properties and a fixed footer. Only the top-level index, tombstones and properties
+/// are pinned by readers; partitions are read through the cache.
 sealed class TableBuilder(TableBuildOptions options)
 {
     public const ulong Magic = 0x314D534C42445442; // "BTDBLSM1"
-    public const int FormatVersion = 2;
-    public const int FooterSize = 8 + 4 + 4 + 8 * 8 + 8;
+    public const int FormatVersion = 3;
+    public const int FooterSize = 8 + 4 + 4 + 3 * 16 + 8;
+
+    sealed class Partition(int firstBlock)
+    {
+        public readonly int FirstBlock = firstBlock;
+        public readonly LsmEncoder Index = new();
+        public readonly List<ulong> Hashes = [];
+        public int BlockCount;
+        public byte[]? FirstKey;
+    }
 
     readonly LsmEncoder _output = new(64 * 1024);
-    readonly LsmEncoder _index = new();
-    readonly List<ulong> _hashes = [];
+    readonly List<Partition> _partitions = [];
+    readonly List<ulong> _blockHashes = [];
     DataBlockBuilder _block = new(options.RestartInterval);
     long _deltaSum;
     int _blockCount;
+    long _indexBytes;
     byte[]? _smallest;
     byte[]? _largest;
     readonly SortedDictionary<ulong, long> _valueReferences = [];
 
     public long EntryCount { get; private set; }
-    public long EstimatedSize => _output.Length + _block.EstimatedSize + _index.Length + _hashes.Count * 2L;
+
+    public long EstimatedSize => _output.Length + _block.EstimatedSize + _indexBytes + EntryCount * 2;
 
     public static byte[] Build(IEnumerable<LsmEntry> entries, TombstoneSet tombstones, TableBuildOptions options)
     {
@@ -46,15 +61,25 @@ sealed class TableBuilder(TableBuildOptions options)
     void FlushBlock()
     {
         if (_block.EntryCount == 0) return;
+        if (_partitions.Count == 0 || _partitions[^1].Index.Length >= options.IndexPartitionSize)
+            _partitions.Add(new(_blockCount));
+        var partition = _partitions[^1];
+        partition.FirstKey ??= _block.FirstKey;
         var offset = _output.Length;
-        _index.WriteByteArray(_block.FirstKey!);
-        _index.WriteVUInt64((ulong)offset);
-        _index.WriteVUInt64((ulong)_block.EntryCount);
-        _index.WriteVInt64(_deltaSum);
-        _index.WriteVInt64(_block.MinPrefix);
-        _index.WriteVInt64(_block.MaxPrefix);
+        var index = partition.Index;
+        var indexStart = index.Length;
+        index.WriteByteArray(_block.FirstKey!);
+        index.WriteVUInt64((ulong)offset);
+        index.WriteVUInt64((ulong)_block.EntryCount);
+        index.WriteVInt64(_deltaSum);
+        index.WriteVInt64(_block.MinPrefix);
+        index.WriteVInt64(_block.MaxPrefix);
         _block.Finish(_output, options.Compress);
-        _index.WriteVUInt64((ulong)(_output.Length - offset));
+        index.WriteVUInt64((ulong)(_output.Length - offset));
+        _indexBytes += index.Length - indexStart;
+        partition.Hashes.AddRange(_blockHashes);
+        partition.BlockCount++;
+        _blockHashes.Clear();
         _deltaSum += _block.DeltaSum;
         _blockCount++;
         _block = new(options.RestartInterval);
@@ -74,7 +99,7 @@ sealed class TableBuilder(TableBuildOptions options)
                                                   handle.StoredLength;
         }
 
-        _hashes.Add(BloomFilter.Hash(entry.Key));
+        _blockHashes.Add(BloomFilter.Hash(entry.Key));
         EntryCount++;
         if (_block.EstimatedSize >= options.BlockSize) FlushBlock();
     }
@@ -83,13 +108,33 @@ sealed class TableBuilder(TableBuildOptions options)
     {
         FlushBlock();
         var output = _output;
-        var indexOffset = output.Length;
+        var handles = new List<(long IndexOffset, int IndexLength, long FilterOffset, int FilterLength)>();
+        foreach (var partition in _partitions)
+        {
+            var indexOffset = output.Length;
+            output.WriteVUInt64((ulong)partition.BlockCount);
+            output.WriteBytes(partition.Index.WrittenSpan);
+            output.WriteChecksum(indexOffset);
+            var filterOffset = output.Length;
+            BloomFilter.Build(output, partition.Hashes.ToArray(), options.BloomBitsPerKey);
+            output.WriteChecksum(filterOffset);
+            handles.Add((indexOffset, filterOffset - indexOffset, filterOffset, output.Length - filterOffset));
+        }
+
+        var topOffset = output.Length;
         output.WriteVUInt64((ulong)_blockCount);
-        output.WriteBytes(_index.WrittenSpan);
-        output.WriteChecksum(indexOffset);
-        var bloomOffset = output.Length;
-        BloomFilter.Build(output, _hashes.ToArray(), options.BloomBitsPerKey);
-        output.WriteChecksum(bloomOffset);
+        output.WriteVUInt64((ulong)_partitions.Count);
+        for (var i = 0; i < _partitions.Count; i++)
+        {
+            output.WriteByteArray(_partitions[i].FirstKey!);
+            output.WriteVUInt64((ulong)_partitions[i].FirstBlock);
+            output.WriteVUInt64((ulong)handles[i].IndexOffset);
+            output.WriteVUInt64((ulong)handles[i].IndexLength);
+            output.WriteVUInt64((ulong)handles[i].FilterOffset);
+            output.WriteVUInt64((ulong)handles[i].FilterLength);
+        }
+
+        output.WriteChecksum(topOffset);
         var tombstoneOffset = output.Length;
         output.WriteVUInt64((ulong)tombstones.Count);
         foreach (var tombstone in tombstones.Items)
@@ -119,8 +164,7 @@ sealed class TableBuilder(TableBuildOptions options)
         output.WriteInt32(0);
         foreach (var (start, end) in new[]
                  {
-                     (indexOffset, bloomOffset), (bloomOffset, tombstoneOffset),
-                     (tombstoneOffset, propertiesOffset), (propertiesOffset, footerStart)
+                     (topOffset, tombstoneOffset), (tombstoneOffset, propertiesOffset), (propertiesOffset, footerStart)
                  })
         {
             output.WriteInt64(start);
@@ -132,44 +176,98 @@ sealed class TableBuilder(TableBuildOptions options)
     }
 }
 
-/// Reads a table through ranged storage reads and the block cache. Index, bloom filter, tombstones and properties are
-/// pinned for the reader's lifetime.
+/// One decoded index partition: per data block its first key, handle, entry count, cumulative delta sum before it
+/// and the extremes of the running delta inside it.
+sealed class IndexPartition : ICachedBlock
+{
+    public IndexPartition(ReadOnlySpan<byte> data)
+    {
+        var decoder = new LsmDecoder(data);
+        var count = decoder.ReadVUInt32();
+        FirstKeys = new byte[count][];
+        Offsets = new long[count];
+        Lengths = new int[count];
+        DeltaBefore = new long[count];
+        MinPrefix = new int[count];
+        MaxPrefix = new int[count];
+        long size = 64;
+        for (var i = 0; i < count; i++)
+        {
+            FirstKeys[i] = decoder.ReadByteArray();
+            Offsets[i] = (long)decoder.ReadVUInt64();
+            decoder.ReadVUInt32();
+            DeltaBefore[i] = decoder.ReadVInt64();
+            MinPrefix[i] = decoder.ReadVInt32();
+            MaxPrefix[i] = decoder.ReadVInt32();
+            Lengths[i] = decoder.ReadVUInt32();
+            size += FirstKeys[i].Length + 64;
+        }
+
+        MemorySize = size;
+    }
+
+    public byte[][] FirstKeys { get; }
+    public long[] Offsets { get; }
+    public int[] Lengths { get; }
+    public long[] DeltaBefore { get; }
+    public int[] MinPrefix { get; }
+    public int[] MaxPrefix { get; }
+    public long MemorySize { get; }
+
+    /// Number of blocks of this partition whose first key is lower than (or equal to, when inclusive) key.
+    public int CountBlocksBefore(ReadOnlySpan<byte> key, bool inclusive)
+    {
+        int lo = 0, hi = FirstKeys.Length;
+        while (lo < hi)
+        {
+            var mid = (lo + hi) >>> 1;
+            var cmp = LsmKeys.Compare(FirstKeys[mid], key);
+            if (cmp < 0 || inclusive && cmp == 0) lo = mid + 1;
+            else hi = mid;
+        }
+
+        return lo;
+    }
+}
+
+sealed class CachedFilter(BloomFilter filter) : ICachedBlock
+{
+    public BloomFilter Filter { get; } = filter;
+    public long MemorySize => Filter.SizeInBytes + 64;
+}
+
+/// Reads a table through ranged storage reads and the cache. The top-level index, tombstones and properties are
+/// pinned for the reader's lifetime; index and filter partitions and data blocks are cached.
 sealed class TableReader : ILsmComponent
 {
     readonly ILsmStorage _storage;
     readonly LsmBlockCache _cache;
-    readonly byte[][] _firstKeys;
-    readonly long[] _offsets;
-    readonly int[] _lengths;
-    readonly int[] _entryCounts;
-    readonly long[] _deltaBefore;
-    readonly int[] _minPrefix;
-    readonly int[] _maxPrefix;
-    readonly BloomFilter _bloom;
+    readonly byte[][] _partitionFirstKeys;
+    readonly int[] _partitionFirstBlocks;
+    readonly (long Offset, int Length)[] _indexHandles;
+    readonly (long Offset, int Length)[] _filterHandles;
 
     TableReader(ILsmStorage storage, LsmBlockCache cache, ulong fileNumber, string objectKey, long length,
-        byte[][] firstKeys, long[] offsets, int[] lengths, int[] entryCounts, long[] deltaBefore, int[] minPrefix,
-        int[] maxPrefix, BloomFilter bloom, TombstoneSet tombstones, long entryCount, long deltaSum,
-        byte[] smallest, byte[] largest)
+        int blockCount, byte[][] partitionFirstKeys, int[] partitionFirstBlocks, (long, int)[] indexHandles,
+        (long, int)[] filterHandles, TombstoneSet tombstones, long entryCount, long deltaSum, byte[] smallest,
+        byte[] largest, IReadOnlyDictionary<ulong, long> valueReferences)
     {
         _storage = storage;
         _cache = cache;
         FileNumber = fileNumber;
         ObjectKey = objectKey;
         Length = length;
-        _firstKeys = firstKeys;
-        _offsets = offsets;
-        _lengths = lengths;
-        _entryCounts = entryCounts;
-        _deltaBefore = deltaBefore;
-        _minPrefix = minPrefix;
-        _maxPrefix = maxPrefix;
-        _bloom = bloom;
+        BlockCount = blockCount;
+        _partitionFirstKeys = partitionFirstKeys;
+        _partitionFirstBlocks = partitionFirstBlocks;
+        _indexHandles = indexHandles;
+        _filterHandles = filterHandles;
         Tombstones = tombstones;
         EntryCount = entryCount;
         DeltaSum = deltaSum;
         Smallest = smallest;
         Largest = largest;
+        ValueReferences = valueReferences;
     }
 
     public ulong FileNumber { get; }
@@ -180,10 +278,13 @@ sealed class TableReader : ILsmComponent
     public TombstoneSet Tombstones { get; }
     public byte[] Smallest { get; }
     public byte[] Largest { get; }
+    public int BlockCount { get; }
+    public int PartitionCount => _partitionFirstKeys.Length;
 
     /// Stored bytes this table references in each value file.
-    public IReadOnlyDictionary<ulong, long> ValueReferences { get; private init; } = new Dictionary<ulong, long>();
-    public bool HasPoints => _firstKeys.Length > 0;
+    public IReadOnlyDictionary<ulong, long> ValueReferences { get; }
+
+    public bool HasPoints => BlockCount > 0;
 
     byte[]? _lower;
     byte[]? _upper;
@@ -203,7 +304,6 @@ sealed class TableReader : ILsmComponent
             ? afterLargest
             : Tombstones[^1].End;
     }
-    public int BlockCount => _firstKeys.Length;
 
     public static TableReader Open(ILsmStorage storage, LsmBlockCache cache, ulong fileNumber, string objectKey,
         long length, int tailReadSize = 64 * 1024)
@@ -217,8 +317,8 @@ sealed class TableReader : ILsmComponent
             throw new BTDBException($"Table {objectKey} has an unknown format.");
         if (BinaryPrimitives.ReadInt32LittleEndian(footer[8..]) != TableBuilder.FormatVersion)
             throw new BTDBException($"Table {objectKey} has an unsupported format version.");
-        var sections = new (long Offset, long Length)[4];
-        for (var i = 0; i < 4; i++)
+        var sections = new (long Offset, long Length)[3];
+        for (var i = 0; i < sections.Length; i++)
             sections[i] = (BinaryPrimitives.ReadInt64LittleEndian(footer[(16 + i * 16)..]),
                 BinaryPrimitives.ReadInt64LittleEndian(footer[(24 + i * 16)..]));
         var metaStart = sections[0].Offset;
@@ -238,33 +338,27 @@ sealed class TableReader : ILsmComponent
         ReadOnlySpan<byte> Section(int i) => LsmChecksum.Verify(
             meta.AsSpan((int)(sections[i].Offset - tailStart), (int)sections[i].Length), objectKey);
 
-        var indexDecoder = new LsmDecoder(Section(0));
-        var blockCount = indexDecoder.ReadVUInt32();
-        var firstKeys = new byte[blockCount][];
-        var offsets = new long[blockCount];
-        var lengths = new int[blockCount];
-        var entryCounts = new int[blockCount];
-        var deltaBefore = new long[blockCount];
-        var minPrefix = new int[blockCount];
-        var maxPrefix = new int[blockCount];
-        for (var i = 0; i < blockCount; i++)
+        var top = new LsmDecoder(Section(0));
+        var blockCount = top.ReadVUInt32();
+        var partitionCount = top.ReadVUInt32();
+        var firstKeys = new byte[partitionCount][];
+        var firstBlocks = new int[partitionCount];
+        var indexHandles = new (long, int)[partitionCount];
+        var filterHandles = new (long, int)[partitionCount];
+        for (var i = 0; i < partitionCount; i++)
         {
-            firstKeys[i] = indexDecoder.ReadByteArray();
-            offsets[i] = (long)indexDecoder.ReadVUInt64();
-            entryCounts[i] = indexDecoder.ReadVUInt32();
-            deltaBefore[i] = indexDecoder.ReadVInt64();
-            minPrefix[i] = indexDecoder.ReadVInt32();
-            maxPrefix[i] = indexDecoder.ReadVInt32();
-            lengths[i] = indexDecoder.ReadVUInt32();
+            firstKeys[i] = top.ReadByteArray();
+            firstBlocks[i] = top.ReadVUInt32();
+            indexHandles[i] = ((long)top.ReadVUInt64(), top.ReadVUInt32());
+            filterHandles[i] = ((long)top.ReadVUInt64(), top.ReadVUInt32());
         }
 
-        var bloom = BloomFilter.Read(Section(1));
-        var tombstoneDecoder = new LsmDecoder(Section(2));
+        var tombstoneDecoder = new LsmDecoder(Section(1));
         var tombstones = new LsmTombstone[tombstoneDecoder.ReadVUInt32()];
         for (var i = 0; i < tombstones.Length; i++)
             tombstones[i] = new(tombstoneDecoder.ReadByteArray(), tombstoneDecoder.ReadByteArray(),
                 tombstoneDecoder.ReadVInt64());
-        var properties = new LsmDecoder(Section(3));
+        var properties = new LsmDecoder(Section(2));
         var entryCount = (long)properties.ReadVUInt64();
         var deltaSum = properties.ReadVInt64();
         var smallest = properties.ReadByteArray();
@@ -272,62 +366,110 @@ sealed class TableReader : ILsmComponent
         var valueReferences = new Dictionary<ulong, long>();
         for (var count = properties.ReadVUInt32(); count > 0; count--)
             valueReferences.Add(properties.ReadVUInt64(), (long)properties.ReadVUInt64());
-        return new(storage, cache, fileNumber, objectKey, length, firstKeys, offsets, lengths, entryCounts,
-            deltaBefore, minPrefix, maxPrefix, bloom, new(tombstones), entryCount, deltaSum, smallest, largest)
-        {
-            ValueReferences = valueReferences
-        };
+        return new(storage, cache, fileNumber, objectKey, length, blockCount, firstKeys, firstBlocks, indexHandles,
+            filterHandles, new(tombstones), entryCount, deltaSum, smallest, largest, valueReferences);
     }
 
     public IComponentCursor CreateCursor() => new TableCursor(this);
 
-    internal DataBlock LoadBlock(int block) => _cache.GetOrLoad(FileNumber, _offsets[block], () =>
+    byte[] ReadChecked(long offset, int length)
     {
-        var stored = new byte[_lengths[block]];
-        _storage.ReadRange(ObjectKey, _offsets[block], stored);
-        return DataBlock.Decode(stored, ObjectKey);
-    });
+        var data = new byte[length];
+        _storage.ReadRange(ObjectKey, offset, data);
+        return data;
+    }
 
-    public byte[] BlockFirstKey(int block) => _firstKeys[block];
-
-    public int CountBlocksBefore(ReadOnlySpan<byte> key, bool inclusive)
+    IndexPartition Partition(int partition)
     {
-        int lo = 0, hi = _firstKeys.Length;
+        var (offset, length) = _indexHandles[partition];
+        return _cache.GetOrLoadMetadata(FileNumber, offset,
+            () => new IndexPartition(LsmChecksum.Verify(ReadChecked(offset, length), ObjectKey)));
+    }
+
+    BloomFilter Filter(int partition)
+    {
+        var (offset, length) = _filterHandles[partition];
+        return _cache.GetOrLoadMetadata(FileNumber, offset,
+            () => new CachedFilter(BloomFilter.Read(LsmChecksum.Verify(ReadChecked(offset, length), ObjectKey))))
+            .Filter;
+    }
+
+    /// Index of the last partition whose first key is lower than (or equal to, when inclusive) key, or -1.
+    int PartitionBefore(ReadOnlySpan<byte> key, bool inclusive)
+    {
+        int lo = 0, hi = _partitionFirstKeys.Length;
         while (lo < hi)
         {
             var mid = (lo + hi) >>> 1;
-            var cmp = LsmKeys.Compare(_firstKeys[mid], key);
+            var cmp = LsmKeys.Compare(_partitionFirstKeys[mid], key);
             if (cmp < 0 || inclusive && cmp == 0) lo = mid + 1;
             else hi = mid;
         }
 
-        return lo;
+        return lo - 1;
+    }
+
+    /// Partition holding the global block number and the block's index inside it.
+    (IndexPartition Partition, int Local) Locate(int block)
+    {
+        int lo = 0, hi = _partitionFirstBlocks.Length - 1;
+        while (lo < hi)
+        {
+            var mid = (lo + hi + 1) >>> 1;
+            if (_partitionFirstBlocks[mid] <= block) lo = mid;
+            else hi = mid - 1;
+        }
+
+        return (Partition(lo), block - _partitionFirstBlocks[lo]);
+    }
+
+    internal DataBlock LoadBlock(int block)
+    {
+        var (partition, local) = Locate(block);
+        var offset = partition.Offsets[local];
+        var length = partition.Lengths[local];
+        return _cache.GetOrLoad(FileNumber, offset, () => DataBlock.Decode(ReadChecked(offset, length), ObjectKey));
+    }
+
+    public byte[] BlockFirstKey(int block)
+    {
+        var (partition, local) = Locate(block);
+        return partition.FirstKeys[local];
+    }
+
+    public int CountBlocksBefore(ReadOnlySpan<byte> key, bool inclusive)
+    {
+        var partition = PartitionBefore(key, inclusive);
+        if (partition < 0) return 0;
+        return _partitionFirstBlocks[partition] + Partition(partition).CountBlocksBefore(key, inclusive);
     }
 
     public long PointDeltaBefore(ReadOnlySpan<byte> key)
     {
         var block = CountBlocksBefore(key, false) - 1;
         if (block < 0) return 0;
+        var (partition, local) = Locate(block);
         var data = LoadBlock(block);
-        return _deltaBefore[block] + data.DeltaPrefix(data.LowerBound(key, true));
+        return partition.DeltaBefore[local] + data.DeltaPrefix(data.LowerBound(key, true));
     }
 
     public (long Min, long Max) PointDeltaBounds(ReadOnlySpan<byte> key)
     {
         var block = CountBlocksBefore(key, true) - 1;
         if (block < 0) return (0, 0);
-        var before = _deltaBefore[block];
-        if (LsmKeys.Compare(_firstKeys[block], key) == 0) return (before, before);
-        return (before + _minPrefix[block], before + _maxPrefix[block]);
+        var (partition, local) = Locate(block);
+        var before = partition.DeltaBefore[local];
+        if (LsmKeys.Compare(partition.FirstKeys[local], key) == 0) return (before, before);
+        return (before + partition.MinPrefix[local], before + partition.MaxPrefix[local]);
     }
 
     public bool TryGet(ReadOnlySpan<byte> key, out LsmEntry entry)
     {
         entry = default;
-        if (_firstKeys.Length == 0 || LsmKeys.Compare(key, Smallest) < 0 || LsmKeys.Compare(key, Largest) > 0)
-            return false;
-        if (!_bloom.MayContain(key)) return false;
-        var block = CountBlocksBefore(key, true) - 1;
+        if (!HasPoints || LsmKeys.Compare(key, Smallest) < 0 || LsmKeys.Compare(key, Largest) > 0) return false;
+        var partition = PartitionBefore(key, true);
+        if (partition < 0 || !Filter(partition).MayContain(key)) return false;
+        var block = _partitionFirstBlocks[partition] + Partition(partition).CountBlocksBefore(key, true) - 1;
         if (block < 0) return false;
         var data = LoadBlock(block);
         var index = data.LowerBound(key, true);
@@ -338,8 +480,7 @@ sealed class TableReader : ILsmComponent
 
     public bool SeekGE(ReadOnlySpan<byte> key, bool inclusive, out LsmEntry entry)
     {
-        var block = Math.Max(0, CountBlocksBefore(key, true) - 1);
-        for (; block < _firstKeys.Length; block++)
+        for (var block = Math.Max(0, CountBlocksBefore(key, true) - 1); block < BlockCount; block++)
         {
             var data = LoadBlock(block);
             var index = data.LowerBound(key, inclusive);
@@ -361,8 +502,7 @@ sealed class TableReader : ILsmComponent
         {
             var data = LoadBlock(block);
             // The block's first key qualifies, so the result is inside this block.
-            var index = data.LowerBound(key, !inclusive) - 1;
-            entry = data.Entry(index);
+            entry = data.Entry(data.LowerBound(key, !inclusive) - 1);
             return true;
         }
 
@@ -372,20 +512,20 @@ sealed class TableReader : ILsmComponent
 
     public bool SeekLast(out LsmEntry entry)
     {
-        if (_firstKeys.Length == 0)
+        if (!HasPoints)
         {
             entry = default;
             return false;
         }
 
-        var data = LoadBlock(_firstKeys.Length - 1);
+        var data = LoadBlock(BlockCount - 1);
         entry = data.Entry(data.Count - 1);
         return true;
     }
 
     public IEnumerable<LsmEntry> Enumerate()
     {
-        for (var block = 0; block < _firstKeys.Length; block++)
+        for (var block = 0; block < BlockCount; block++)
         {
             var data = LoadBlock(block);
             for (var i = 0; i < data.Count; i++) yield return data.Entry(i);

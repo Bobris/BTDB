@@ -40,6 +40,10 @@ public sealed class LsmBlockCache
 
     sealed record Item((ulong File, long Offset) Key, ICachedBlock Block);
 
+    /// Index and filter partitions.
+    internal T GetOrLoadMetadata<T>(ulong file, long offset, Func<T> load) where T : class, ICachedBlock =>
+        GetOrLoad(file, offset, load);
+
     internal T GetOrLoad<T>(ulong file, long offset, Func<T> load) where T : class, ICachedBlock
     {
         var key = (file, offset);
