@@ -1,6 +1,6 @@
 # BTDB.LSM — implementation plan
 
-Status: phases L0, L1 and L2 are done; phase L3 is next (2026-10-16). Decisions D1–D7 are confirmed (section 21).
+Status: phases L0–L3 are done; phase L4 is next (2026-10-16). Decisions D1–D7 are confirmed (section 21).
 
 * L0: the counted LSM prototype (`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle, and the live
   Azure storage screening is done (LRS, GZRS and Premium). Evidence is in [Measurements.md](Measurements.md).
@@ -10,6 +10,9 @@ Status: phases L0, L1 and L2 are done; phase L3 is next (2026-10-16). Decisions 
 * L2: leveled compaction, the positioned merging iterator, value separation with garbage collection, the native counted
   memtable, partitioned indexes and filters, the native block cache and background flush and compaction with write
   stalls. Section 20.1 lists the remaining differences from the target design.
+* L3: WAL with group commit and multi-chunk commits, durability waits, recovery, the writer lease with epoch fencing,
+  lease loss, ambiguity reconciliation and orphan adoption. Verified by crash-at-every-write and ambiguous-write
+  simulations. Section 20.2 has the details.
 
 Confirmed requirements:
 
@@ -706,7 +709,7 @@ Each phase ends with green tests and a CHANGELOG entry where it changes public b
 | **L0 Measure and de-risk** | Azure probes (extend `DBBenchmark eventlog-storage`): ranged GET p50/p99 for 4 KiB–4 MiB, 404 probe, Get Properties, List, parallel GET throughput, sync versus async SDK read, conditional Put Blob for WAL-sized chunks. Prototype counted components with rank and select (sections 6.2–6.5) and an oracle test. | Measured numbers recorded in `BTDB.LSM/Measurements.md`; `BlockSize`, `WalChunkTargetSize` and the readahead defaults chosen; rank and select prototype passes 10⁶ random operations. |
 | **L1 Core engine (in-memory storage)** — done, see 20.1 | Projects, `ILsmStorage` and in-memory storage, block and table format, bloom filter, memtable (managed prototype), merging iterator, rank and select, write transactions, writer queue, cursors, flush to L0, manifest, versions, snapshots, block cache. | The `KeyValueDBTestBase` suite passes in all configurations; the oracle test passes. |
 | **L2 Compaction and values** — done, see 20.1 | Leveled compaction, L0 sublevels, range tombstones with counts, value separation, value-file GC, native memtable, `MaxTransactionMemory`, stalls, rate limits. | The tiny-config suites pass with continuous compaction; long oracle runs pass; memory stays within the budget under a stress test. |
-| **L3 Durability and lease** | WAL chunks, multi-chunk commits, group commit, `WaitForDurabilityAsync`, lease wait in `StartWritingTransaction`, reader-to-writer transition, lease loss, epoch fencing, ambiguity reconciliation, deferred deletion; measure whether early upload of large transactions is needed. | The crash-at-every-operation, zombie-writer and lease-loss simulations pass. |
+| **L3 Durability and lease** — done, see 20.2 | WAL chunks, multi-chunk commits, group commit, `WaitForDurabilityAsync`, lease wait in `StartWritingTransaction`, reader-to-writer transition, lease loss, epoch fencing, ambiguity reconciliation, deferred deletion; measure whether early upload of large transactions is needed. | The crash-at-every-operation, zombie-writer and lease-loss simulations pass. |
 | **L4 Azure** | `BTDB.LSM.Azure` adapter (sync and async ranged reads, staged uploads, lease), Azurite and live tests. | The conformance suite passes on Azurite and live Azure; first live latency and throughput numbers recorded. |
 | **L5 Readers in other processes** | `RefreshAsync`, `WaitForCommitUlongAsync`, generation swap, catch-up after deletion, reader registry, freshness measurement. | Reader simulation and process tests pass; refresh latency and freshness p50/p99 measured on Azure. |
 | **L6 Integration and release** | ObjectDB subset on the LSM, benchmarks against `BTreeKeyValueDB` + `AzureBlobFileCollection` (memory, open time, cold and warm point reads, scans, write throughput, cost per operation), parameter tuning, `Doc/LsmKeyValueDB.md`, README pointer, preview packages. | The benchmark report is reviewed; the preview release is published. |
@@ -805,6 +808,52 @@ These rules match the key-based behavior that the shared suite specifies. Cursor
 * After `UpdateKeySuffix` returns `NotFound` or `NotUniquePrefix`, the cursor keeps a stale key index.
 * A cursor disturbed by several writes of other cursors can track a key index that differs from a fresh `Find` of the
   same key.
+
+### 20.2 Phase L3 state
+
+Implemented (`LsmKeyValueDB.Wal.cs`, `LsmKeyValueDB.Lease.cs`, `LsmKeyValueDB.Recovery.cs`, `Engine/Wal.cs`):
+
+* **Commit records** log the memtable operations of a transaction in order (insert with `existsBelow`, update,
+  remove, range remove, tombstone set) plus CommitUlong, the ulongs and the transaction number. Replay applies them to
+  the memtable of the same generation without reading tables.
+* **WAL chunks** `wal/{n}`:
+  * Each chunk carries epoch, memtable generation, an epoch-marker flag, record parts and a checksum.
+  * The uploader takes all pending records after `WalFlushInterval`, encodes them into chunks of about
+    `WalChunkTargetSize` (one generation per chunk) and creates up to `WalUploadParallelism` chunks at once.
+  * A failed batch keeps its chunk numbers and bytes, so a retry recreates exactly the missing chunks.
+  * Durability advances only when a whole batch is created.
+* **Durability API:**
+  * `DurableTransactions` and `NextCommitTemporaryCloseTransactionLog` make `Commit` wait.
+  * `WaitForDurabilityAsync(transactionNumber)` waits for one commit, and `FlushAsync` waits for everything committed
+    so far.
+  * `CreateKvi` seals and flushes the memtable to tables (a checkpoint).
+* **Manifest** records the writer epoch, the newest flushed generation and the first WAL chunk recovery needs. Chunks
+  before it are deleted after the manifest is written.
+* **Recovery** loads the newest manifest, then replays the contiguous WAL prefix. A chunk with a lower epoch than an
+  earlier chunk is skipped, an incomplete record is dropped, and each unflushed generation becomes a memtable. The
+  simulation found that comparing chunk epochs with the manifest's epoch skipped a predecessor's legitimate chunks.
+* **Writer lease:**
+  * Every instance opens as a reader; `AcquireWriterLeaseOnOpen` or the first `StartWritingTransaction` acquires the
+    lease.
+  * Taking over: reload, adopt orphans, take epoch + 1, write a manifest (the manifest fence) and an epoch marker at
+    the first free WAL name (the WAL fence), then start the WAL uploader, compaction worker and lease renewal.
+  * A writer renews its lease before writing when less than two thirds remain, and it never writes after its local
+    deadline (lease duration minus `LeaseSafetyMargin` from the request).
+  * A rejected or foreign object at a writer's name fences it. It fails pending durability waits, reloads from storage
+    and continues as a reader.
+  * An upgradable `StartTransaction` can write only on the writer.
+* **Ambiguous writes:** a lost or ambiguous create is reconciled by reading the object back. The same bytes mean the
+  write landed, a missing object is retried, and other bytes fence the writer.
+* **Orphans:** objects a crashed writer created but never published are found by listing `tables/` and `values/` at
+  takeover. File numbers continue after them (the simulation found reuse), and the orphans are deleted.
+
+Not done yet, admitted only with evidence:
+
+| Item | Reason |
+| --- | --- |
+| Incremental manifest edits | Full checkpoints cost one object of a few hundred bytes per table per flush or compaction; to be measured with real table counts in L4/L6. |
+| Early upload of large transactions and `MaxTransactionMemory` | No workload measurement yet (section 7.5). |
+| Time-based retention of obsolete objects, WAL chunks and orphans | Needed only for readers in other processes (L5). |
 
 ## 21. Decisions
 

@@ -16,6 +16,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     bool _finished;
     bool _disposed;
     IMemtable? _writable;
+    WalRecordBuilder? _record;
     LsmView _view;
     ulong _commitUlong;
     ulong[] _ulongs;
@@ -36,6 +37,9 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     }
 
     internal long StateSequence => _state.Sequence;
+
+    /// Epoch of the writer session this transaction writes under.
+    internal long WriterEpoch { get; set; }
     internal LsmKeyValueDB Db => _db;
     internal LsmView View => _view;
 
@@ -86,6 +90,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
         else _db.MakeWritable(this, _state);
         _writing = true;
         _writable = _state.Memtable.CloneForWriting(LsmKeyValueDB.NewOwner());
+        _record = new();
         _view = _state.CreateView(_writable);
         _transactionNumber++;
     }
@@ -106,11 +111,13 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
         if (memtable.TryGetNode(key, out var isSet, out _))
         {
             memtable.UpdateExisting(key, true, value);
+            _record!.LogUpdate(key, true, value);
             return !isSet;
         }
 
         var existsBelow = !memtable.Tombstones.Covers(key) && _view.ExistsFrom(1, key);
         memtable.Insert(key, true, existsBelow, value);
+        _record!.LogInsert(key, true, existsBelow, value);
         return !existsBelow;
     }
 
@@ -131,13 +138,22 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
         var memtable = _writable!;
         if (memtable.TryGetNode(key, out _, out var existsBelow))
         {
-            if (existsBelow) memtable.UpdateExisting(key, false, []);
-            else memtable.Remove(key);
+            if (existsBelow)
+            {
+                memtable.UpdateExisting(key, false, []);
+                _record!.LogUpdate(key, false, []);
+            }
+            else
+            {
+                memtable.Remove(key);
+                _record!.LogRemove(key);
+            }
             return;
         }
 
         // A live key without a memtable point cannot be covered by a memtable tombstone.
         memtable.Insert(key, false, true, []);
+        _record!.LogInsert(key, false, true, []);
     }
 
     /// Erases all keys in [first, last]; returns the number of erased keys.
@@ -163,6 +179,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
 
         var memtable = _writable!;
         memtable.RemoveRange(first, end);
+        _record!.LogRemoveRange(first, end);
         // Merge with overlapping or touching memtable fragments into one span.
         var spanStart = first;
         var spanEnd = end;
@@ -182,7 +199,9 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
         var coveredBelow = _view.RankFrom(1, spanEnd) - _view.RankFrom(1, spanStart);
         if (coveredBelow > 0) kept.Add(new(spanStart, spanEnd, coveredBelow));
         kept.Sort((a, b) => LsmKeys.Compare(a.Start, b.Start));
-        memtable.SetTombstones(new([.. kept]));
+        var tombstones = new TombstoneSet([.. kept]);
+        memtable.SetTombstones(tombstones);
+        _record!.LogTombstones(tombstones);
         return count;
     }
 
@@ -211,7 +230,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
         _ulongs = ulongs;
     }
 
-    /// Persists the next commit's state before Commit returns. Without a WAL (phase L1) this flushes the memtable.
+    /// Makes the next commit durable before Commit returns, like DurableTransactions for one commit.
     public void NextCommitTemporaryCloseTransactionLog()
     {
         _persistOnCommit = true;
@@ -224,7 +243,8 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
         if (_writing)
         {
             _writing = false;
-            _db.CommitWritingTransaction(_writable!, _commitUlong, _ulongs, _transactionNumber, _persistOnCommit);
+            var metadata = new WalCommitMetadata(_transactionNumber, _commitUlong, _ulongs);
+            _db.CommitWritingTransaction(this, _writable!, _record!.Finish(metadata), metadata, _persistOnCommit);
         }
         else if (_preapprovedWriting)
         {

@@ -10,7 +10,7 @@ namespace BTDB.LSM.Test.Api;
 public class LsmKeyValueDBTest(ITestOutputHelper testOutputHelper) : KeyValueDBTestBase(testOutputHelper)
 {
     protected override IKeyValueDB NewKeyValueDB() =>
-        LsmKeyValueDB.OpenAsync(new() { Storage = new InMemoryLsmStorage() }).AsTask().GetAwaiter().GetResult();
+        LsmKeyValueDB.OpenAsync(new() { Storage = new InMemoryLsmStorage(), AcquireWriterLeaseOnOpen = true }).AsTask().GetAwaiter().GetResult();
 }
 
 /// The shared suite with a tiny memtable and tiny blocks, so tests constantly flush, merge tables, use multi-block
@@ -19,7 +19,7 @@ public class LsmKeyValueDBTinyTest(ITestOutputHelper testOutputHelper) : KeyValu
 {
     protected override IKeyValueDB NewKeyValueDB() => LsmKeyValueDB.OpenAsync(new()
     {
-        Storage = new InMemoryLsmStorage(), MemtableSize = 2048, BlockSize = 256, RestartInterval = 4, IndexPartitionSize = 64,
+        Storage = new InMemoryLsmStorage(), AcquireWriterLeaseOnOpen = true, MemtableSize = 2048, BlockSize = 256, RestartInterval = 4, IndexPartitionSize = 64,
         PointDeleteRangeLimit = 2, Level0CompactionTrigger = 2, LevelBaseBytes = 8192, LevelMultiplier = 4,
         LevelCount = 5, TargetFileSize = 4096, BlockCache = new LsmBlockCache(64 * 1024)
     }).AsTask().GetAwaiter().GetResult();
@@ -31,7 +31,7 @@ public class LsmKeyValueDBSeparatedValuesTest(ITestOutputHelper testOutputHelper
 {
     protected override IKeyValueDB NewKeyValueDB() => LsmKeyValueDB.OpenAsync(new()
     {
-        Storage = new InMemoryLsmStorage(), MemtableSize = 2048, BlockSize = 256, RestartInterval = 4, IndexPartitionSize = 64,
+        Storage = new InMemoryLsmStorage(), AcquireWriterLeaseOnOpen = true, MemtableSize = 2048, BlockSize = 256, RestartInterval = 4, IndexPartitionSize = 64,
         PointDeleteRangeLimit = 2, Level0CompactionTrigger = 2, LevelBaseBytes = 8192, LevelMultiplier = 4,
         LevelCount = 5, TargetFileSize = 4096, ValueSeparationThreshold = 0, ValueGcThreshold = 0.6,
         BlockCache = new LsmBlockCache(64 * 1024)
@@ -43,7 +43,7 @@ public class LsmKeyValueDBSynchronousTest(ITestOutputHelper testOutputHelper) : 
 {
     protected override IKeyValueDB NewKeyValueDB() => LsmKeyValueDB.OpenAsync(new()
     {
-        Storage = new InMemoryLsmStorage(), MemtableSize = 2048, BlockSize = 256, RestartInterval = 4,
+        Storage = new InMemoryLsmStorage(), AcquireWriterLeaseOnOpen = true, MemtableSize = 2048, BlockSize = 256, RestartInterval = 4,
         IndexPartitionSize = 64, PointDeleteRangeLimit = 2, Level0CompactionTrigger = 2, LevelBaseBytes = 8192,
         LevelMultiplier = 4, LevelCount = 5, TargetFileSize = 4096, BackgroundCompaction = false,
         BlockCache = new LsmBlockCache(64 * 1024)

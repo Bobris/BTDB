@@ -9,9 +9,11 @@ using System.Threading.Tasks;
 namespace BTDB.LSM.Storage;
 
 /// Thread-safe in-memory object store for tests and development. Objects are kept as immutable byte arrays.
-public sealed class InMemoryLsmStorage : ILsmStorage
+public sealed class InMemoryLsmStorage(TimeProvider? timeProvider = null) : ILsmStorage
 {
+    readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     readonly SortedDictionary<string, byte[]> _objects = new(StringComparer.Ordinal);
+    readonly Dictionary<string, (string LeaseId, DateTimeOffset Expires)> _leases = new(StringComparer.Ordinal);
     readonly Lock _lock = new();
     long _readRequests;
     long _readBytes;
@@ -98,5 +100,61 @@ public sealed class InMemoryLsmStorage : ILsmStorage
         cancellation.ThrowIfCancellationRequested();
         lock (_lock) _objects.Remove(key);
         return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration,
+        CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        lock (_lock)
+        {
+            var now = _time.GetUtcNow();
+            if (_leases.TryGetValue(key, out var lease) && lease.LeaseId != leaseId && lease.Expires > now)
+                return ValueTask.FromResult(false);
+            _objects.TryAdd(key, []);
+            _leases[key] = (leaseId, now + duration);
+            return ValueTask.FromResult(true);
+        }
+    }
+
+    public ValueTask<bool> RenewLeaseAsync(string key, string leaseId, TimeSpan duration,
+        CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        lock (_lock)
+        {
+            var now = _time.GetUtcNow();
+            if (!_leases.TryGetValue(key, out var lease) || lease.LeaseId != leaseId) return ValueTask.FromResult(false);
+            // Like Azure, an expired lease can be renewed as long as nobody else acquired it.
+            _leases[key] = (leaseId, now + duration);
+            return ValueTask.FromResult(true);
+        }
+    }
+
+    public ValueTask ReleaseLeaseAsync(string key, string leaseId, CancellationToken cancellation)
+    {
+        lock (_lock)
+        {
+            if (_leases.TryGetValue(key, out var lease) && lease.LeaseId == leaseId) _leases.Remove(key);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    /// Ends every lease immediately, as if the holders crashed and their leases expired.
+    public void ExpireAllLeases()
+    {
+        lock (_lock) _leases.Clear();
+    }
+
+    /// Copies the content of an object, for tests that inspect or corrupt storage.
+    public byte[]? Peek(string key)
+    {
+        lock (_lock) return _objects.TryGetValue(key, out var content) ? content.ToArray() : null;
+    }
+
+    public string[] Keys(string prefix)
+    {
+        lock (_lock) return _objects.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
     }
 }

@@ -39,4 +39,13 @@ public interface ILsmStorage
     IAsyncEnumerable<LsmObjectInfo> ListAsync(string prefix, CancellationToken cancellation);
 
     ValueTask DeleteAsync(string key, CancellationToken cancellation);
+
+    /// Acquires the exclusive lease on key (creating the object if needed) for duration; false while another holder
+    /// owns it. Acquiring again with the same leaseId extends it.
+    ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation);
+
+    /// Extends a held lease; false when the lease was lost.
+    ValueTask<bool> RenewLeaseAsync(string key, string leaseId, TimeSpan duration, CancellationToken cancellation);
+
+    ValueTask ReleaseLeaseAsync(string key, string leaseId, CancellationToken cancellation);
 }

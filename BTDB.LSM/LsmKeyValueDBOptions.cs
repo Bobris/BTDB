@@ -7,7 +7,7 @@ using BTDB.LSM.Storage;
 
 namespace BTDB.LSM;
 
-public sealed class LsmKeyValueDBOptions
+public sealed record LsmKeyValueDBOptions
 {
     public required ILsmStorage Storage { get; init; }
 
@@ -65,6 +65,29 @@ public sealed class LsmKeyValueDBOptions
     /// Writers wait while level 0 has this many tables.
     public int Level0StopWritesTrigger { get; init; } = 12;
 
+    /// Become the writer while opening; otherwise the first StartWritingTransaction acquires the lease.
+    public bool AcquireWriterLeaseOnOpen { get; init; }
+
+    public TimeSpan LeaseDuration { get; init; } = TimeSpan.FromSeconds(15);
+
+    /// The writer stops writing this long before its lease could expire.
+    public TimeSpan LeaseSafetyMargin { get; init; } = TimeSpan.FromSeconds(2);
+
+    public TimeSpan LeaseRetryInterval { get; init; } = TimeSpan.FromSeconds(1);
+
+    /// Target size of one WAL chunk; larger commits span several chunks.
+    public int WalChunkTargetSize { get; init; } = 256 * 1024;
+
+    /// Group commit window of the WAL uploader.
+    public TimeSpan WalFlushInterval { get; init; } = TimeSpan.FromMilliseconds(20);
+
+    public int WalUploadParallelism { get; init; } = 4;
+
+    /// Writers wait while more WAL bytes than this are waiting for upload.
+    public long MaxUnflushedWalBytes { get; init; } = 64L * 1024 * 1024;
+
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+
     /// Values longer than this are stored in value files when written to tables; int.MaxValue keeps all inline.
     public int ValueSeparationThreshold { get; init; } = 1024;
 
@@ -76,6 +99,14 @@ public sealed class LsmKeyValueDBOptions
 
 public interface ILsmKeyValueDB : IKeyValueDB
 {
-    /// Writes the memtable to a new table and publishes it in the manifest.
+    /// Makes every commit so far durable in the WAL.
     ValueTask FlushAsync(CancellationToken cancellation = default);
+
+    /// Completes when the commit with the given transaction number is durable in the WAL.
+    ValueTask WaitForDurabilityAsync(long transactionNumber, CancellationToken cancellation = default);
+
+    /// Becomes the writer: waits for the lease, fences the previous writer and catches up.
+    ValueTask AcquireWriterLeaseAsync(CancellationToken cancellation = default);
+
+    bool HoldsWriterLease { get; }
 }

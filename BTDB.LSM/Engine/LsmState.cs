@@ -4,14 +4,17 @@ using BTDB.LSM.Format;
 
 namespace BTDB.LSM.Engine;
 
-/// A memtable sealed by rotation, waiting to be flushed, with the commit metadata as of its last commit.
-sealed record SealedMemtable(IMemtable Memtable, ulong CommitUlong, ulong[] Ulongs, long TransactionNumber);
+/// A memtable sealed by rotation, waiting to be flushed, with its WAL generation and the commit metadata as of its
+/// last commit.
+sealed record SealedMemtable(IMemtable Memtable, long Generation, ulong CommitUlong, ulong[] Ulongs,
+    long TransactionNumber);
 
 /// Immutable published database state: the mutable memtable's committed version, sealed memtables waiting for flush
 /// (newest first), the table set and commit metadata. A snapshot pins one state; nothing later changes it
 /// (ImplementationPlan.md, invariant L4).
 sealed class LsmState(
     IMemtable memtable,
+    long memtableGeneration,
     SealedMemtable[] immutables,
     LsmVersion version,
     ulong commitUlong,
@@ -21,6 +24,10 @@ sealed class LsmState(
     long sequence)
 {
     public IMemtable Memtable { get; } = memtable;
+
+    /// WAL generation of the mutable memtable; sealing starts the next generation.
+    public long MemtableGeneration { get; } = memtableGeneration;
+
     public SealedMemtable[] Immutables { get; } = immutables;
     public LsmVersion Version { get; } = version;
     public ulong CommitUlong { get; } = commitUlong;
@@ -44,12 +51,13 @@ sealed class LsmState(
     }
 }
 
-/// Manifest object content. Until phase L3 every manifest object is a full checkpoint of the table set and metadata;
-/// incremental version edits come with the WAL in phase L3 (ImplementationPlan.md, section 11).
+/// Manifest object content (ImplementationPlan.md, section 11): a full checkpoint of the table set, the value files,
+/// the commit metadata of the newest flushed generation and the WAL position from which recovery replays. Objects are
+/// manifest/{sequence}, created once; the sequence doubles as the writer fence.
 sealed class LsmManifest
 {
     const ulong Magic = 0x4D4D534C42445442; // "BTDBLSMM"
-    const int FormatVersion = 3;
+    const int FormatVersion = 4;
 
     public long Sequence { get; init; }
     public ulong NextFileNumber { get; init; }
@@ -57,6 +65,15 @@ sealed class LsmManifest
     public ulong CommitUlong { get; init; }
     public ulong[] Ulongs { get; init; } = [];
     public int LevelCount { get; init; }
+
+    /// Epoch of the writer session that wrote this manifest; a new writer fences by writing a higher one.
+    public long WriterEpoch { get; init; }
+
+    /// Every WAL generation up to this one is in tables.
+    public long FlushedGeneration { get; init; }
+
+    /// First WAL chunk that may hold a record of a generation not yet in tables.
+    public long WalStartChunk { get; init; }
 
     /// Level 0 tables newest first, then every other level sorted by key.
     public (int Level, ulong FileNumber, long Length)[] Tables { get; init; } = [];
@@ -75,6 +92,9 @@ sealed class LsmManifest
         encoder.WriteVUInt64((ulong)Ulongs.Length);
         foreach (var value in Ulongs) encoder.WriteVUInt64(value);
         encoder.WriteVUInt64((ulong)LevelCount);
+        encoder.WriteVUInt64((ulong)WriterEpoch);
+        encoder.WriteVUInt64((ulong)FlushedGeneration);
+        encoder.WriteVUInt64((ulong)WalStartChunk);
         encoder.WriteVUInt64((ulong)Tables.Length);
         foreach (var (level, fileNumber, length) in Tables)
         {
@@ -107,6 +127,9 @@ sealed class LsmManifest
         var ulongs = new ulong[decoder.ReadVUInt32()];
         for (var i = 0; i < ulongs.Length; i++) ulongs[i] = decoder.ReadVUInt64();
         var levelCount = decoder.ReadVUInt32();
+        var writerEpoch = (long)decoder.ReadVUInt64();
+        var flushedGeneration = (long)decoder.ReadVUInt64();
+        var walStartChunk = (long)decoder.ReadVUInt64();
         var tables = new (int, ulong, long)[decoder.ReadVUInt32()];
         for (var i = 0; i < tables.Length; i++)
             tables[i] = (decoder.ReadVUInt32(), decoder.ReadVUInt64(), (long)decoder.ReadVUInt64());
@@ -116,7 +139,8 @@ sealed class LsmManifest
         {
             Sequence = sequence, NextFileNumber = nextFileNumber, TransactionNumber = transactionNumber,
             CommitUlong = commitUlong, Ulongs = ulongs, LevelCount = levelCount, Tables = tables,
-            ValueFiles = valueFiles
+            ValueFiles = valueFiles, WriterEpoch = writerEpoch, FlushedGeneration = flushedGeneration,
+            WalStartChunk = walStartChunk
         };
     }
 }

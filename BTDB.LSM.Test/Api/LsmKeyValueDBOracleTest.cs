@@ -30,7 +30,7 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
         using var expectedDb = new BTreeKeyValueDB(new InMemoryFileCollection());
         var actualDb = await LsmKeyValueDB.OpenAsync(new()
         {
-            Storage = storage, MemtableSize = memtableSize, BlockSize = blockSize, RestartInterval = 2, IndexPartitionSize = 48,
+            Storage = storage, AcquireWriterLeaseOnOpen = true, MemtableSize = memtableSize, BlockSize = blockSize, RestartInterval = 2, IndexPartitionSize = 48,
             PointDeleteRangeLimit = pointDeleteRangeLimit, Level0CompactionTrigger = 3, LevelBaseBytes = 4096,
             LevelMultiplier = 3, LevelCount = 5, TargetFileSize = 2048,
             ValueSeparationThreshold = valueSeparationThreshold, ValueGcThreshold = 0.6, BlockCache = new LsmBlockCache(32 * 1024)
