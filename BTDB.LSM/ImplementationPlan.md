@@ -1,7 +1,7 @@
 # BTDB.LSM — implementation plan
 
-Status: phases L0, L1, L2, L3 and L5 are done; phase L4 (Azure) is next, then L6 (2026-10-16). Decisions D1–D7 are
-confirmed (section 21).
+Status: phases L0–L5 are done, and L6 is done except the review of the benchmark report and the publication of the
+preview packages (2026-10-16). Decisions D1–D7 are confirmed (section 21).
 
 * L0: the counted LSM prototype (`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle, and the live
   Azure storage screening is done (LRS, GZRS and Premium). Evidence is in [Measurements.md](Measurements.md).
@@ -16,6 +16,11 @@ confirmed (section 21).
   simulations. Section 20.2 has the details.
 * L5 (done before L4, because it needs no Azure resources): `RefreshAsync`, `WaitForCommitUlongAsync`, the reader
   registry and time-based retention. Section 20.3 has the details.
+* L4: `BTDB.LSM.Azure` passes its suite on Azurite and on live Azure, and the end-to-end benchmark ran on Premium and
+  LRS ([Measurements.md](Measurements.md), section 4).
+* L6: ObjectDB suites run on the LSM, the benchmark compares it with `BTreeKeyValueDB` + `AzureBlobFileCollection`,
+  scan readahead and a faster select were added from the findings, and the documentation and preview packaging are
+  prepared. Section 20.4 has the details.
 
 Confirmed requirements:
 
@@ -713,9 +718,9 @@ Each phase ends with green tests and a CHANGELOG entry where it changes public b
 | **L1 Core engine (in-memory storage)** — done, see 20.1 | Projects, `ILsmStorage` and in-memory storage, block and table format, bloom filter, memtable (managed prototype), merging iterator, rank and select, write transactions, writer queue, cursors, flush to L0, manifest, versions, snapshots, block cache. | The `KeyValueDBTestBase` suite passes in all configurations; the oracle test passes. |
 | **L2 Compaction and values** — done, see 20.1 | Leveled compaction, L0 sublevels, range tombstones with counts, value separation, value-file GC, native memtable, `MaxTransactionMemory`, stalls, rate limits. | The tiny-config suites pass with continuous compaction; long oracle runs pass; memory stays within the budget under a stress test. |
 | **L3 Durability and lease** — done, see 20.2 | WAL chunks, multi-chunk commits, group commit, `WaitForDurabilityAsync`, lease wait in `StartWritingTransaction`, reader-to-writer transition, lease loss, epoch fencing, ambiguity reconciliation, deferred deletion; measure whether early upload of large transactions is needed. | The crash-at-every-operation, zombie-writer and lease-loss simulations pass. |
-| **L4 Azure** | `BTDB.LSM.Azure` adapter (sync and async ranged reads, staged uploads, lease), Azurite and live tests. | The conformance suite passes on Azurite and live Azure; first live latency and throughput numbers recorded. |
+| **L4 Azure** — done, see 20.4 | `BTDB.LSM.Azure` adapter (sync and async ranged reads, staged uploads, lease), Azurite and live tests. | The conformance suite passes on Azurite and live Azure; first live latency and throughput numbers recorded. |
 | **L5 Readers in other processes** — done, see 20.3; Azure freshness measured in L4 | `RefreshAsync`, `WaitForCommitUlongAsync`, generation swap, catch-up after deletion, reader registry, freshness measurement. | Reader simulation and process tests pass; refresh latency and freshness p50/p99 measured on Azure. |
-| **L6 Integration and release** | ObjectDB subset on the LSM, benchmarks against `BTreeKeyValueDB` + `AzureBlobFileCollection` (memory, open time, cold and warm point reads, scans, write throughput, cost per operation), parameter tuning, `Doc/LsmKeyValueDB.md`, README pointer, preview packages. | The benchmark report is reviewed; the preview release is published. |
+| **L6 Integration and release** — done except review and publication, see 20.4 | ObjectDB subset on the LSM, benchmarks against `BTreeKeyValueDB` + `AzureBlobFileCollection` (memory, open time, cold and warm point reads, scans, write throughput, cost per operation), parameter tuning, `Doc/LsmKeyValueDB.md`, README pointer, preview packages. | The benchmark report is reviewed; the preview release is published. |
 
 ### 20.1 Phase L1 state and differences from the target design
 
@@ -883,7 +888,46 @@ Implemented (`LsmKeyValueDB.Reader.cs`, `WalReplay` in `LsmKeyValueDB.Recovery.c
 * **Errors:** a deleted table surfaces as `BTDBException` "no longer exists: the snapshot is older than the deletion
   grace period"; `ILsmStorage.ReadRange` throws `FileNotFoundException` for a missing object.
 
-Not measured yet: refresh latency and freshness on Azure (phase L4 qualification).
+Refresh freshness on Azure is measured in [Measurements.md](Measurements.md), section 4.
+
+### 20.4 Phases L4 and L6 state
+
+Implemented:
+
+* **Azure adapter** (`BTDB.LSM.Azure/AzureLsmStorage.cs`):
+  * Creates use `If-None-Match: *`, as one Put Blob up to 4 MiB or as staged blocks committed with the same
+    condition. Transient failures after dispatch are reported as `Ambiguous`.
+  * Ranged reads are synchronous (the SDK's sync pipeline) and asynchronous, with bounded retries.
+  * The writer lease is a blob lease, clamped to Azure's 15–60 s.
+  * The suite passes on Azurite and on live Premium storage.
+* **ObjectDB on the LSM.** `ObjectDbTestBase.CreateKeyValueDB` is a factory hook. Seven `BTDBTest` ObjectDB suites
+  (197 tests: tables, scans, relation queries, in-key values, update by id, secondary key buffers, tuples) run on
+  `LsmKeyValueDB` with tiny settings (`BTDB.LSM.Test/Api/LsmObjectDbTest.cs`). They run serially, because ObjectDB code
+  generation shares static state; `BTDBTest` disables parallelization for the same reason.
+* **Readahead** (`TableCursor`, `TableReader.Readahead`), as section 12.2 specifies:
+  * from the second consecutive block crossing in one direction, a window grows from 64 KiB to 2 MiB;
+  * it is issued as parallel asynchronous requests of at most 256 KiB, and the decoded blocks go to the cache
+    unreferenced;
+  * a cursor that needs a block still in flight waits for it instead of reading it again, and a failed readahead
+    falls back to the cursor's own read.
+* **Select** bisects a second time over restart keys inside the last blocks (`ILsmComponent.AddFinePivots`). The
+  final linear step is at most about one restart interval.
+* **Oracle.** The workarounds for the `BTreeKeyValueDB` defects the oracle found are removed now that they are fixed.
+  Only the documented difference in how a disturbed cursor reports validity remains.
+* **Documentation and packaging:**
+  * `Doc/LsmKeyValueDB.md`, a README pointer, and package READMEs;
+  * both projects pack as `-preview` with symbols;
+  * `Releaser` treats them as preview packages.
+
+Findings that remain open, each to be admitted only with evidence (Measurements.md, section 4):
+
+| Item | Evidence so far |
+| --- | --- |
+| Bulk load is 4–5 times slower than `BTreeKeyValueDB` | Random-key loads rewrite level 1 on every compaction; not profiled. |
+| Updates of uncached existing keys cost one GET each | Inherent to `CreateOrUpdateKeyValue`; a batched existence prefetch API would need an application workload. |
+| Durable commit p95 of 22 ms on Premium | One run; LRS had 11 ms. |
+| Readahead across table boundaries in a level | Tables are 64 MiB by default, so a scan restarts the window rarely. |
+| Bounding concurrent blocking reads (R2) | Not exercised by the single-cursor benchmark. |
 
 ## 21. Decisions
 

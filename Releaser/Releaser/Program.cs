@@ -249,10 +249,14 @@ static class Program
             System.IO.Compression.CompressionLevel.Optimal, false);
     }
 
-    static readonly string[] ReplicationProjects =
-        ["BTDB.Replication", "BTDB.Replication.Azure", "BTDB.Replication.Http", "BTDB.Replication.EventSourcing"];
+    // Projects released with a -preview package version.
+    static readonly string[] PreviewProjects =
+    [
+        "BTDB.Replication", "BTDB.Replication.Azure", "BTDB.Replication.Http", "BTDB.Replication.EventSourcing",
+        "BTDB.LSM", "BTDB.LSM.Azure"
+    ];
 
-    static readonly string[] PackageProjects = ["BTDB", "BTDB.SourceGenerator", "BTDB.AzureStorage", .. ReplicationProjects];
+    static readonly string[] PackageProjects = ["BTDB", "BTDB.SourceGenerator", "BTDB.AzureStorage", .. PreviewProjects];
 
     // Projects whose <Version> the release updates and commits.
     static readonly string[] VersionedProjects = [.. PackageProjects, "ODbDump"];
@@ -283,7 +287,7 @@ static class Program
     {
         foreach (var project in PackageProjects)
         {
-            var packageVersion = newVersion + (ReplicationProjects.Contains(project) ? "-preview" : "");
+            var packageVersion = newVersion + (PreviewProjects.Contains(project) ? "-preview" : "");
             var start = new ProcessStartInfo("dotnet")
             {
                 WorkingDirectory = projDir + "/artifacts/package/release"

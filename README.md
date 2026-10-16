@@ -16,6 +16,8 @@ Currently this project these parts:
   [BTDB.Replication](BTDB.Replication/README.md), [NuGet packages](Doc/ReplicationPackages.md)),
   including an optional ordered EventLog with HTTP and Azure adapters and
   [typed event dispatch and replay](BTDB.Replication.EventSourcing/README.md)
+- LSM key value database stored directly in object storage with bounded memory and readers in other processes
+  (preview, [LsmKeyValueDB](Doc/LsmKeyValueDB.md))
 
 All code written in C# 12 and licensed under very
 permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting .NET 10, main code uses

@@ -2,6 +2,15 @@
 
 ## [unreleased]
 
+### Added
+
+- `BTDB.LSM` and `BTDB.LSM.Azure` preview packages: `LsmKeyValueDB`, an `IKeyValueDB` implementation that stores a
+  log-structured merge tree directly in object storage (Azure Blob Storage through `AzureLsmStorage`). Memory is
+  bounded by the block cache and memtables and does not grow with the database; there is no local disk copy. One
+  writer holds a blob lease with epoch fencing and failover; readers in other processes see consistent snapshots and
+  catch up with `RefreshAsync` or `WaitForCommitUlongAsync`. Commits are non-durable by default and
+  `WaitForDurabilityAsync` waits for the WAL upload. See [Doc/LsmKeyValueDB.md](Doc/LsmKeyValueDB.md).
+
 ### Fixed
 
 - Fix lost `SetValue` in `BTreeKeyValueDB`: when copy-on-write copied tree nodes for one cursor's `SetValue`, other

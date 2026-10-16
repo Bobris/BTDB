@@ -5,15 +5,24 @@
         <Nullable>enable</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <!-- Not packed until the engine exists; see ImplementationPlan.md, section 20. -->
-        <IsPackable>false</IsPackable>
+        <IsPackable>true</IsPackable>
         <PackageId>BTDB.LSM</PackageId>
         <Version>35.11.2</Version>
+        <!-- Preview while the storage format may still change; see Doc/LsmKeyValueDB.md. -->
+        <PackageVersion>$(Version)-preview</PackageVersion>
         <Authors>Boris Letocha</Authors>
         <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
         <Description>Log-structured merge tree implementation of the BTDB key value database stored directly in object storage.</Description>
         <PackageTags>BTDB LSM KeyValue database</PackageTags>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <DebugSymbols>true</DebugSymbols>
+        <DebugType>embedded</DebugType>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
         <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
     </PropertyGroup>
@@ -22,5 +31,8 @@
         <InternalsVisibleTo Include="BTDB.LSM.Test"/>
         <InternalsVisibleTo Include="BTDB.LSM.Azure.Test"/>
         <InternalsVisibleTo Include="DBBenchmark"/>
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="/"/>
     </ItemGroup>
 </Project>

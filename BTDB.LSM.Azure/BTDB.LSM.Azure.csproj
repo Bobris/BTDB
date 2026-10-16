@@ -4,15 +4,24 @@
         <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-        <!-- Not packed until the preview release; see BTDB.LSM/ImplementationPlan.md, section 20. -->
-        <IsPackable>false</IsPackable>
+        <IsPackable>true</IsPackable>
         <PackageId>BTDB.LSM.Azure</PackageId>
         <Version>35.11.2</Version>
+        <!-- Preview while the storage format may still change; see Doc/LsmKeyValueDB.md. -->
+        <PackageVersion>$(Version)-preview</PackageVersion>
         <Authors>Boris Letocha</Authors>
         <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
         <Description>Azure Blob Storage adapter for BTDB.LSM.</Description>
         <PackageTags>BTDB LSM Azure Blob Storage</PackageTags>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <DebugSymbols>true</DebugSymbols>
+        <DebugType>embedded</DebugType>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
         <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
     </PropertyGroup>
@@ -20,5 +29,8 @@
         <ProjectReference Include="../BTDB.LSM/BTDB.LSM.csproj"/>
         <PackageReference Include="Azure.Storage.Blobs" Version="12.29.2"/>
         <InternalsVisibleTo Include="BTDB.LSM.Azure.Test"/>
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="/"/>
     </ItemGroup>
 </Project>

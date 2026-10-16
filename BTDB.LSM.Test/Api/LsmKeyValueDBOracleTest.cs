@@ -83,9 +83,6 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
                     step += $" create {Hex(key)}={Hex(value)}";
                     Same(step, () => cursor.E.CreateOrUpdateKeyValue(key, value),
                         () => cursor.A.CreateOrUpdateKeyValue(key, value));
-                    // BTreeKeyValueDB keeps a stale "removed current" flag after CreateOrUpdateKeyValue, so
-                    // GetKeyIndex would be one lower; finding the key again clears it.
-                    Same(step + " refind", () => cursor.E.Find(key, 0), () => cursor.A.Find(key, 0));
                 }
                 else if (choice < 33)
                 {
@@ -146,11 +143,6 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
                             Assert.Fail($"{step}: LSM lost SetValue{Environment.NewLine}{History}");
                         if (!GetValue(freshE).AsSpan().SequenceEqual(value))
                             Assert.Fail($"{step}: BTreeKeyValueDB lost SetValue{Environment.NewLine}{History}");
-                        // BTreeKeyValueDB loses this SetValue when another cursor positioned before it later erases
-                        // a key in the same leaf; re-finding the other oracle cursors avoids that bug.
-                        foreach (var other in cursors)
-                            if (other != cursor && other.E.IsValid())
-                                other.E.Find(GetKey(other.E), 0);
                     }
                 }
                 else if (choice < 78)
@@ -159,12 +151,6 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
                     var prefixLen = (uint)random.Next(key.Length + 1);
                     step += $" suffix {Hex(key)}/{prefixLen}";
                     Same(step, () => cursor.E.UpdateKeySuffix(key, prefixLen), () => cursor.A.UpdateKeySuffix(key, prefixLen));
-                    // BTreeKeyValueDB leaves a stale key index on the cursor after these results; ignore its position.
-                    if (!cursor.A.IsValid() || cursor.E.GetKeyIndex() != cursor.A.GetKeyIndex())
-                    {
-                        cursor.E.Invalidate();
-                        cursor.A.Invalidate();
-                    }
                 }
                 else if (choice < 80)
                 {
@@ -259,10 +245,10 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
         if (!Equals(e, a)) Assert.Fail($"{step}: expected {e}, actual {a}{Environment.NewLine}{History}");
     }
 
-    // A BTreeKeyValueDB cursor disturbed by another cursor's write reports itself invalid, refuses to read and can
-    // track a wrong key index. So where the oracle cursor is valid both must be on the same key; the LSM cursor's key
-    // index is always checked against the rank computed from scratch in the oracle; and a disturbed oracle cursor is
-    // re-synchronized to the LSM cursor's key when that key still exists.
+    // A BTreeKeyValueDB cursor disturbed by another cursor's write may report itself invalid and refuse to read, which
+    // the cursor contract allows. So where the oracle cursor is valid both must be on the same key; the LSM cursor's
+    // key index is always checked against the rank computed from scratch in the oracle; and a disturbed oracle cursor
+    // is re-synchronized to the LSM cursor's key when that key still exists.
     void CompareCursor(string step, CursorPair cursor)
     {
         var actualKey = ((LsmKeyValueDBCursor)cursor.A).DebugKey;
@@ -283,10 +269,7 @@ public class LsmKeyValueDBOracleTest(ITestOutputHelper output)
         if (!cursor.A.IsValid()) Assert.Fail($"{step}: IsValid expected True{Environment.NewLine}{History}");
         var key = GetKey(cursor.E);
         Same(step + " key", () => Hex(key), () => Hex(GetKey(cursor.A)));
-        // A BTreeKeyValueDB cursor can show a stale value after another cursor's SetValue; read it fresh.
-        using var fresh = cursor.E.Transaction.CreateCursor();
-        fresh.Find(key, 0);
-        Same(step + " value", () => Hex(GetValue(fresh)), () => Hex(GetValue(cursor.A)));
+        Same(step + " value", () => Hex(GetValue(cursor.E)), () => Hex(GetValue(cursor.A)));
     }
 
     /// Index of key, or for an erased key the index of the key before it, computed by a fresh oracle cursor.

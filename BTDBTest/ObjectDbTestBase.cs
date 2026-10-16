@@ -21,14 +21,18 @@ public abstract class ObjectDbTestBase : IDisposable
     protected ObjectDbTestBase(ITestOutputHelper output)
     {
         _output = output;
-        _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions()
-        {
-            CompactorScheduler = null,
-            Compression = new NoCompressionStrategy(),
-            FileCollection = new InMemoryFileCollection(),
-        });
+        _lowDb = CreateKeyValueDB();
         OpenDb();
     }
+
+    /// Creates the key value database the ObjectDB runs on; called from the constructor, so overrides must not use
+    /// instance fields of derived classes.
+    protected virtual IKeyValueDB CreateKeyValueDB() => new BTreeKeyValueDB(new KeyValueDBOptions()
+    {
+        CompactorScheduler = null,
+        Compression = new NoCompressionStrategy(),
+        FileCollection = new InMemoryFileCollection(),
+    });
 
     public void Dispose()
     {
@@ -47,12 +51,7 @@ public abstract class ObjectDbTestBase : IDisposable
     {
         _db.Dispose();
         _lowDb.Dispose();
-        _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions()
-        {
-            CompactorScheduler = null,
-            Compression = new NoCompressionStrategy(),
-            FileCollection = new InMemoryFileCollection()
-        });
+        _lowDb = CreateKeyValueDB();
         OpenDb(options);
     }
 

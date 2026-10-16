@@ -46,8 +46,9 @@ dotnet run --project Releaser/Releaser/Releaser.csproj -c Release -- prepare pat
 ```
 
 `prepare` defaults to `patch`; `prepare minor` and `prepare major` select the corresponding increment from the last
-released changelog version. It packs all seven projects with the selected version passed as an MSBuild property:
-BTDB, SourceGenerator and AzureStorage use the base version; the four replication packages keep `-preview`.
+released changelog version. It packs all nine projects with the selected version passed as an MSBuild property:
+BTDB, SourceGenerator and AzureStorage use the base version; the four replication packages and the two
+[LSM packages](LsmKeyValueDB.md) keep `-preview`.
 Packages and symbol packages (where configured) are written to `artifacts/package/prepare/<base-version>/`.
 For example, after `35.11.0`, `prepare patch` creates `35.11.1` and `35.11.1-preview` artifacts.
 
@@ -64,7 +65,7 @@ Commit the reviewed changes and run the existing release command with the same i
 dotnet run --project Releaser/Releaser/Releaser.csproj -c Release -- patch
 ```
 
-This command rebuilds and publishes all seven packages, updates tracked project versions and the changelog, commits and
+This command rebuilds and publishes all nine packages, updates tracked project versions and the changelog, commits and
 pushes the release and tag, and creates the GitHub release. It reads the NuGet and GitHub tokens from the existing
 user-profile token files. Use it only when ready to publish. NuGet versions cannot be replaced; changes after
 `35.11.0-preview` require a new version.
