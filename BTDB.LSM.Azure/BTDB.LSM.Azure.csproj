@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <!-- Not packed until the preview release; see BTDB.LSM/ImplementationPlan.md, section 20. -->
+        <IsPackable>false</IsPackable>
+        <PackageId>BTDB.LSM.Azure</PackageId>
+        <Version>35.11.2</Version>
+        <Authors>Boris Letocha</Authors>
+        <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <Description>Azure Blob Storage adapter for BTDB.LSM.</Description>
+        <PackageTags>BTDB LSM Azure Blob Storage</PackageTags>
+        <RepositoryUrl>https://github.com/Bobris/BTDB.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../BTDB.LSM/BTDB.LSM.csproj"/>
+        <PackageReference Include="Azure.Storage.Blobs" Version="12.29.2"/>
+        <InternalsVisibleTo Include="BTDB.LSM.Azure.Test"/>
+    </ItemGroup>
+</Project>

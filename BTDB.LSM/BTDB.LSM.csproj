@@ -20,5 +20,7 @@
     <ItemGroup>
         <ProjectReference Include="../BTDB/BTDB.csproj"/>
         <InternalsVisibleTo Include="BTDB.LSM.Test"/>
+        <InternalsVisibleTo Include="BTDB.LSM.Azure.Test"/>
+        <InternalsVisibleTo Include="DBBenchmark"/>
     </ItemGroup>
 </Project>
