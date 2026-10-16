@@ -66,7 +66,7 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
     public static async ValueTask<LsmKeyValueDB> OpenAsync(LsmKeyValueDBOptions options,
         CancellationToken cancellation = default)
     {
-        var cache = options.BlockCache ?? new LsmBlockCache(256L * 1024 * 1024);
+        var cache = options.BlockCache ?? new LsmBlockCache(options.BlockCacheSize);
         string? manifestKey = null;
         await foreach (var info in options.Storage.ListAsync(options.Prefix + "manifest/", cancellation))
             manifestKey = info.Key;
@@ -253,13 +253,17 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
         DeleteObsoleteObjects();
     }
 
-    byte[] ReadValue(ValueHandle handle) => _cache.GetOrLoad(handle.FileNumber, handle.Offset, () =>
+    byte[] ReadValue(ValueHandle handle)
     {
-        var key = ValueKey(handle.FileNumber);
-        var record = new byte[handle.StoredLength];
-        _storage.ReadRange(key, handle.Offset, record);
-        return new CachedValue(ValueFileWriter.VerifyRecord(record, key));
-    }).Data;
+        using var pin = _cache.Pin(handle.FileNumber, handle.Offset, () =>
+        {
+            var key = ValueKey(handle.FileNumber);
+            var record = new byte[handle.StoredLength];
+            _storage.ReadRange(key, handle.Offset, record);
+            return ValueFileWriter.VerifyRecord(record, key);
+        });
+        return pin.Span.ToArray();
+    }
 
     /// The bytes of a stored value, reading a separated value from its value file.
     internal ReadOnlyMemory<byte> Resolve(LsmValue value) =>
@@ -362,8 +366,15 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
         return builder.ToString();
     }
 
-    public (ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) GetNativeMemoryStats() =>
-        (0, 0, 0, 0);
+    /// Native memory currently held: cached blocks and values plus memtable arenas, including retired ones.
+    public (ulong AllocSize, ulong AllocCount, ulong DeallocSize, ulong DeallocCount) GetNativeMemoryStats()
+    {
+        var bytes = _cache.NativeBytes + (_state.Memtable.Arena?.AllocatedBytes ?? 0);
+        lock (_obsoleteObjects)
+            foreach (var (arena, _) in _retiredArenas)
+                bytes += arena.AllocatedBytes;
+        return ((ulong)bytes, 0, 0, 0);
+    }
 
     /// Flushes the memtable and merges every table into the bottom level. Returns false: no work is left after it.
     public async ValueTask<bool> Compact(CancellationToken cancellation)
@@ -426,5 +437,6 @@ public sealed class LsmKeyValueDB : ILsmKeyValueDB
 
         DeleteObsoleteObjects();
         _state.Memtable.Arena?.Dispose();
+        if (_options.BlockCache == null) _cache.Dispose();
     }
 }

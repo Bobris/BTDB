@@ -30,8 +30,11 @@ public sealed class LsmKeyValueDBOptions
     public int BloomBitsPerKey { get; init; } = 10;
     public bool CompressBlocks { get; init; } = true;
 
-    /// Block cache; a new 256 MiB cache is created when null. A cache may be shared by several databases.
+    /// Block cache; when null the database creates and disposes its own cache of BlockCacheSize bytes. A cache passed
+    /// here may be shared by several databases and is not disposed by them.
     public LsmBlockCache? BlockCache { get; init; }
+
+    public long BlockCacheSize { get; init; } = 256L * 1024 * 1024;
 
     /// Ranges with at most this many live keys are erased with point deletes instead of a range tombstone.
     public int PointDeleteRangeLimit { get; init; } = 64;

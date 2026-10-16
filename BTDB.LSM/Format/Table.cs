@@ -24,7 +24,7 @@ sealed class TableBuildOptions
 sealed class TableBuilder(TableBuildOptions options)
 {
     public const ulong Magic = 0x314D534C42445442; // "BTDBLSM1"
-    public const int FormatVersion = 3;
+    public const int FormatVersion = 4;
     public const int FooterSize = 8 + 4 + 4 + 3 * 16 + 8;
 
     sealed class Partition(int firstBlock)
@@ -423,12 +423,13 @@ sealed class TableReader : ILsmComponent
         return (Partition(lo), block - _partitionFirstBlocks[lo]);
     }
 
-    internal DataBlock LoadBlock(int block)
+    /// Pins the raw bytes of a data block in the cache; wrap the handle's span in a RawBlock.
+    internal NativeClockCache.Handle PinBlock(int block)
     {
         var (partition, local) = Locate(block);
         var offset = partition.Offsets[local];
         var length = partition.Lengths[local];
-        return _cache.GetOrLoad(FileNumber, offset, () => DataBlock.Decode(ReadChecked(offset, length), ObjectKey));
+        return _cache.Pin(FileNumber, offset, () => RawBlock.Decode(ReadChecked(offset, length), ObjectKey));
     }
 
     public byte[] BlockFirstKey(int block)
@@ -449,7 +450,8 @@ sealed class TableReader : ILsmComponent
         var block = CountBlocksBefore(key, false) - 1;
         if (block < 0) return 0;
         var (partition, local) = Locate(block);
-        var data = LoadBlock(block);
+        using var pin = PinBlock(block);
+        var data = new RawBlock(pin.Span);
         return partition.DeltaBefore[local] + data.DeltaPrefix(data.LowerBound(key, true));
     }
 
@@ -471,10 +473,13 @@ sealed class TableReader : ILsmComponent
         if (partition < 0 || !Filter(partition).MayContain(key)) return false;
         var block = _partitionFirstBlocks[partition] + Partition(partition).CountBlocksBefore(key, true) - 1;
         if (block < 0) return false;
-        var data = LoadBlock(block);
+        using var pin = PinBlock(block);
+        var data = new RawBlock(pin.Span);
         var index = data.LowerBound(key, true);
-        if (index >= data.Count || LsmKeys.Compare(data.Key(index), key) != 0) return false;
-        entry = data.Entry(index);
+        if (index >= data.Count) return false;
+        var candidate = data.Entry(index);
+        if (LsmKeys.Compare(candidate.Key, key) != 0) return false;
+        entry = candidate;
         return true;
     }
 
@@ -482,7 +487,8 @@ sealed class TableReader : ILsmComponent
     {
         for (var block = Math.Max(0, CountBlocksBefore(key, true) - 1); block < BlockCount; block++)
         {
-            var data = LoadBlock(block);
+            using var pin = PinBlock(block);
+            var data = new RawBlock(pin.Span);
             var index = data.LowerBound(key, inclusive);
             if (index < data.Count)
             {
@@ -500,7 +506,8 @@ sealed class TableReader : ILsmComponent
         var block = CountBlocksBefore(key, inclusive) - 1;
         if (block >= 0)
         {
-            var data = LoadBlock(block);
+            using var pin = PinBlock(block);
+            var data = new RawBlock(pin.Span);
             // The block's first key qualifies, so the result is inside this block.
             entry = data.Entry(data.LowerBound(key, !inclusive) - 1);
             return true;
@@ -518,43 +525,42 @@ sealed class TableReader : ILsmComponent
             return false;
         }
 
-        var data = LoadBlock(BlockCount - 1);
+        using var pin = PinBlock(BlockCount - 1);
+        var data = new RawBlock(pin.Span);
         entry = data.Entry(data.Count - 1);
         return true;
     }
 
     public IEnumerable<LsmEntry> Enumerate()
     {
-        for (var block = 0; block < BlockCount; block++)
-        {
-            var data = LoadBlock(block);
-            for (var i = 0; i < data.Count; i++) yield return data.Entry(i);
-        }
+        var cursor = new TableCursor(this);
+        for (var valid = cursor.SeekGE([], true); valid; valid = cursor.Next()) yield return cursor.Current;
     }
 
     public void EvictFromCache() => _cache.Evict(FileNumber);
 }
 
-/// Positioned cursor over one table: a block index and an entry index inside the decoded block.
+/// Positioned cursor over one table: a block index, an entry index and the offset of the next entry, so stepping
+/// forward decodes one entry. The block is pinned only during each call; a reloaded block has identical content, so
+/// the remembered offset stays valid after eviction.
 sealed class TableCursor(TableReader table) : IComponentCursor
 {
     int _block;
     int _index;
-    DataBlock? _data;
+    int _count;
+    int _nextOffset;
 
     public bool Valid { get; private set; }
     public LsmEntry Current { get; private set; }
 
     bool At(int block, int index)
     {
-        if (block != _block || _data == null)
-        {
-            _data = table.LoadBlock(block);
-            _block = block;
-        }
-
+        using var pin = table.PinBlock(block);
+        var data = new RawBlock(pin.Span);
+        Current = data.Entry(index, out _nextOffset);
+        _count = data.Count;
+        _block = block;
         _index = index;
-        Current = _data.Entry(index);
         return Valid = true;
     }
 
@@ -568,9 +574,15 @@ sealed class TableCursor(TableReader table) : IComponentCursor
     {
         for (var block = Math.Max(0, table.CountBlocksBefore(key, true) - 1); block < table.BlockCount; block++)
         {
-            var data = table.LoadBlock(block);
-            var index = data.LowerBound(key, inclusive);
-            if (index < data.Count) return At(block, index);
+            int index;
+            using (var pin = table.PinBlock(block))
+            {
+                var data = new RawBlock(pin.Span);
+                index = data.LowerBound(key, inclusive);
+                if (index >= data.Count) continue;
+            }
+
+            return At(block, index);
         }
 
         return Invalid();
@@ -580,28 +592,42 @@ sealed class TableCursor(TableReader table) : IComponentCursor
     {
         var block = table.CountBlocksBefore(key, inclusive) - 1;
         if (block < 0) return Invalid();
-        // The block's first key qualifies, so the result is inside this block.
-        return At(block, table.LoadBlock(block).LowerBound(key, !inclusive) - 1);
+        int index;
+        using (var pin = table.PinBlock(block))
+        {
+            // The block's first key qualifies, so the result is inside this block.
+            index = new RawBlock(pin.Span).LowerBound(key, !inclusive) - 1;
+        }
+
+        return At(block, index);
     }
 
     public bool SeekLast()
     {
         if (table.BlockCount == 0) return Invalid();
         var block = table.BlockCount - 1;
-        return At(block, table.LoadBlock(block).Count - 1);
+        int count;
+        using (var pin = table.PinBlock(block)) count = new RawBlock(pin.Span).Count;
+        return At(block, count - 1);
     }
 
     public bool Next()
     {
         if (!Valid) return false;
-        if (_index + 1 < _data!.Count) return At(_block, _index + 1);
-        return _block + 1 < table.BlockCount ? At(_block + 1, 0) : Invalid();
+        if (_index + 1 >= _count) return _block + 1 < table.BlockCount ? At(_block + 1, 0) : Invalid();
+        using var pin = table.PinBlock(_block);
+        Current = new RawBlock(pin.Span).EntryAt(_nextOffset, Current.Key, out _nextOffset);
+        _index++;
+        return true;
     }
 
     public bool Prev()
     {
         if (!Valid) return false;
         if (_index > 0) return At(_block, _index - 1);
-        return _block > 0 ? At(_block - 1, table.LoadBlock(_block - 1).Count - 1) : Invalid();
+        if (_block == 0) return Invalid();
+        int count;
+        using (var pin = table.PinBlock(_block - 1)) count = new RawBlock(pin.Span).Count;
+        return At(_block - 1, count - 1);
     }
 }

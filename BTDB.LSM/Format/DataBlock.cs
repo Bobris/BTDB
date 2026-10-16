@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using BTDB.LSM.Engine;
 using BTDB.SnappyCompression;
@@ -9,6 +10,8 @@ namespace BTDB.LSM.Format;
 /// restartInterval entries with the cumulative delta at that point, and a trailer with restart and entry counts.
 sealed class DataBlockBuilder(int restartInterval)
 {
+    public const int TrailerSize = 12;
+
     readonly LsmEncoder _encoder = new(64 * 1024);
     readonly List<(int Offset, int DeltaBefore)> _restarts = [];
     byte[] _lastKey = [];
@@ -17,7 +20,7 @@ sealed class DataBlockBuilder(int restartInterval)
     int _maxPrefix;
 
     public int EntryCount { get; private set; }
-    public int EstimatedSize => _encoder.Length + _restarts.Count * 8 + 8;
+    public int EstimatedSize => _encoder.Length + _restarts.Count * 8 + TrailerSize;
     public byte[]? FirstKey { get; private set; }
     public int MinPrefix => _minPrefix;
     public int MaxPrefix => _maxPrefix;
@@ -60,6 +63,7 @@ sealed class DataBlockBuilder(int restartInterval)
             _encoder.WriteInt32(deltaBefore);
         }
 
+        _encoder.WriteInt32(restartInterval);
         _encoder.WriteInt32(_restarts.Count);
         _encoder.WriteInt32(EntryCount);
         var start = output.Length;
@@ -87,100 +91,163 @@ sealed class DataBlockBuilder(int restartInterval)
     }
 }
 
-/// A decoded data block kept in the block cache. It is fully decoded for simplicity; decoding only the needed restart
-/// interval is a later optimization.
-sealed class DataBlock : ICachedBlock
+/// Read access to one decompressed data block as stored in the cache (ImplementationPlan.md, section 9). Keys are
+/// prefix-compressed with a restart point every RestartInterval entries; a lookup binary-searches the restart keys,
+/// which are stored whole, then decodes at most one restart interval. Keys are rebuilt in a reusable thread-local
+/// buffer, so only returned entries allocate.
+readonly ref struct RawBlock
 {
-    readonly byte[] _data;
-    readonly byte[][] _keys;
-    readonly byte[] _flags;
-    readonly int[] _valueStart;
-    readonly int[] _valueLength;
-    readonly int[] _deltaPrefix;
+    readonly ReadOnlySpan<byte> _data;
+    readonly int _restartsStart;
 
-    DataBlock(byte[] data, byte[][] keys, byte[] flags, int[] valueStart, int[] valueLength, int[] deltaPrefix,
-        long memorySize)
+    [ThreadStatic] static byte[]? _keyBuffer;
+
+    public RawBlock(ReadOnlySpan<byte> data)
     {
         _data = data;
-        _keys = keys;
-        _flags = flags;
-        _valueStart = valueStart;
-        _valueLength = valueLength;
-        _deltaPrefix = deltaPrefix;
-        MemorySize = memorySize;
+        var trailer = new LsmDecoder(data, data.Length - DataBlockBuilder.TrailerSize);
+        RestartInterval = trailer.ReadInt32();
+        RestartCount = trailer.ReadInt32();
+        Count = trailer.ReadInt32();
+        _restartsStart = data.Length - DataBlockBuilder.TrailerSize - RestartCount * 8;
+        if (_restartsStart < 0 || RestartInterval <= 0) throw LsmDecoder.Corrupted();
     }
 
-    public int Count => _keys.Length;
-    public long MemorySize { get; }
+    public int Count { get; }
+    public int RestartInterval { get; }
+    public int RestartCount { get; }
 
-    public static DataBlock Decode(ReadOnlySpan<byte> stored, string objectName)
+    int RestartOffset(int restart) => BinaryPrimitives.ReadInt32LittleEndian(_data[(_restartsStart + restart * 8)..]);
+
+    int RestartDelta(int restart) => BinaryPrimitives.ReadInt32LittleEndian(_data[(_restartsStart + restart * 8 + 4)..]);
+
+    /// Whole key stored at a restart point.
+    ReadOnlySpan<byte> RestartKey(int restart)
+    {
+        var decoder = new LsmDecoder(_data, RestartOffset(restart));
+        decoder.ReadVUInt32();
+        var unshared = decoder.ReadVUInt32();
+        var flags = decoder.ReadByte();
+        if ((flags & 1) != 0) decoder.ReadVUInt32();
+        return decoder.Take(unshared);
+    }
+
+    /// Decodes the entry at offset, rebuilding its key from the previous key held in buffer[..keyLength].
+    int DecodeAt(int offset, ref byte[] buffer, ref int keyLength, out byte flags, out int valueStart,
+        out int valueLength)
+    {
+        var decoder = new LsmDecoder(_data, offset);
+        var shared = decoder.ReadVUInt32();
+        var unshared = decoder.ReadVUInt32();
+        flags = decoder.ReadByte();
+        valueLength = (flags & 1) != 0 ? decoder.ReadVUInt32() : 0;
+        if (shared > keyLength) throw LsmDecoder.Corrupted();
+        if (buffer.Length < shared + unshared) Array.Resize(ref buffer, Math.Max(shared + unshared, buffer.Length * 2));
+        decoder.Take(unshared).CopyTo(buffer.AsSpan(shared));
+        keyLength = shared + unshared;
+        valueStart = decoder.Position;
+        decoder.Take(valueLength);
+        return decoder.Position;
+    }
+
+    static int Delta(byte flags) => (flags & 1) - ((flags >> 1) & 1);
+
+    LsmEntry Materialize(ReadOnlySpan<byte> key, byte flags, int valueStart, int valueLength) =>
+        new(key.ToArray(), (flags & 1) != 0, (flags & 2) != 0, _data.Slice(valueStart, valueLength).ToArray(),
+            (flags & 4) != 0);
+
+    /// Index of the first entry with key greater than (or equal to, when inclusive) key.
+    public int LowerBound(ReadOnlySpan<byte> key, bool inclusive)
+    {
+        // Last restart whose key still precedes the answer; the answer lies in its interval or right after it.
+        int lo = 0, hi = RestartCount;
+        while (lo < hi)
+        {
+            var mid = (lo + hi) >>> 1;
+            var cmp = RestartKey(mid).SequenceCompareTo(key);
+            if (cmp < 0 || !inclusive && cmp == 0) lo = mid + 1;
+            else hi = mid;
+        }
+
+        if (lo == 0) return 0;
+        var restart = lo - 1;
+        var index = restart * RestartInterval;
+        var end = Math.Min(Count, index + RestartInterval);
+        var buffer = _keyBuffer ??= new byte[256];
+        var keyLength = 0;
+        var offset = RestartOffset(restart);
+        for (; index < end; index++)
+        {
+            offset = DecodeAt(offset, ref buffer, ref keyLength, out _, out _, out _);
+            var cmp = buffer.AsSpan(0, keyLength).SequenceCompareTo(key);
+            if (cmp > 0 || inclusive && cmp == 0) break;
+        }
+
+        _keyBuffer = buffer;
+        return index;
+    }
+
+    /// Sum of deltas of the first count entries.
+    public int DeltaPrefix(int count)
+    {
+        if (count == 0) return 0;
+        var restart = Math.Min((count - 1) / RestartInterval, RestartCount - 1);
+        var sum = RestartDelta(restart);
+        var decoder = new LsmDecoder(_data, RestartOffset(restart));
+        for (var index = restart * RestartInterval; index < count; index++)
+        {
+            decoder.ReadVUInt32();
+            var unshared = decoder.ReadVUInt32();
+            var flags = decoder.ReadByte();
+            var valueLength = (flags & 1) != 0 ? decoder.ReadVUInt32() : 0;
+            decoder.Take(unshared + valueLength);
+            sum += Delta(flags);
+        }
+
+        return sum;
+    }
+
+    /// The entry at index and the offset of the entry after it.
+    public LsmEntry Entry(int index, out int nextOffset)
+    {
+        var restart = index / RestartInterval;
+        var buffer = _keyBuffer ??= new byte[256];
+        var keyLength = 0;
+        var offset = RestartOffset(restart);
+        byte flags = 0;
+        int valueStart = 0, valueLength = 0;
+        for (var i = restart * RestartInterval; i <= index; i++)
+            offset = DecodeAt(offset, ref buffer, ref keyLength, out flags, out valueStart, out valueLength);
+        _keyBuffer = buffer;
+        nextOffset = offset;
+        return Materialize(buffer.AsSpan(0, keyLength), flags, valueStart, valueLength);
+    }
+
+    public LsmEntry Entry(int index) => Entry(index, out _);
+
+    /// The entry stored at offset whose predecessor has previousKey, and the offset after it.
+    public LsmEntry EntryAt(int offset, byte[] previousKey, out int nextOffset)
+    {
+        var buffer = _keyBuffer ??= new byte[256];
+        if (buffer.Length < previousKey.Length) buffer = new byte[previousKey.Length * 2];
+        previousKey.CopyTo(buffer, 0);
+        var keyLength = previousKey.Length;
+        nextOffset = DecodeAt(offset, ref buffer, ref keyLength, out var flags, out var valueStart, out var valueLength);
+        _keyBuffer = buffer;
+        return Materialize(buffer.AsSpan(0, keyLength), flags, valueStart, valueLength);
+    }
+
+    /// Decompresses and verifies a stored block, returning the raw block bytes kept in the cache.
+    public static byte[] Decode(ReadOnlySpan<byte> stored, string objectName)
     {
         var payloadWithType = LsmChecksum.Verify(stored, objectName);
         var type = payloadWithType[^1];
         var payload = payloadWithType[..^1];
-        var data = type switch
+        return type switch
         {
             0 => payload.ToArray(),
             1 => SnappyDecompress.Decompress(payload),
             _ => throw LsmDecoder.Corrupted()
         };
-        var trailer = new LsmDecoder(data, data.Length - 8);
-        var restartCount = trailer.ReadInt32();
-        var entryCount = trailer.ReadInt32();
-        var entriesEnd = data.Length - 8 - restartCount * 8;
-        if (entriesEnd < 0) throw LsmDecoder.Corrupted();
-        var keys = new byte[entryCount][];
-        var flags = new byte[entryCount];
-        var valueStart = new int[entryCount];
-        var valueLength = new int[entryCount];
-        var deltaPrefix = new int[entryCount + 1];
-        var decoder = new LsmDecoder(data.AsSpan(0, entriesEnd));
-        byte[] previous = [];
-        long keyBytes = 0;
-        for (var i = 0; i < entryCount; i++)
-        {
-            var shared = decoder.ReadVUInt32();
-            var unshared = decoder.ReadVUInt32();
-            var flag = decoder.ReadByte();
-            var length = (flag & 1) != 0 ? decoder.ReadVUInt32() : 0;
-            if (shared > previous.Length) throw LsmDecoder.Corrupted();
-            var key = new byte[shared + unshared];
-            previous.AsSpan(0, shared).CopyTo(key);
-            decoder.Take(unshared).CopyTo(key.AsSpan(shared));
-            valueStart[i] = decoder.Position;
-            valueLength[i] = length;
-            decoder.Take(length);
-            keys[i] = key;
-            flags[i] = flag;
-            keyBytes += key.Length + 32;
-            deltaPrefix[i + 1] = deltaPrefix[i] + ((flag & 1) != 0 ? 1 : 0) - ((flag & 2) != 0 ? 1 : 0);
-            previous = key;
-        }
-
-        return new(data, keys, flags, valueStart, valueLength, deltaPrefix,
-            data.Length + keyBytes + entryCount * 13L + 128);
-    }
-
-    public byte[] Key(int index) => _keys[index];
-
-    public LsmEntry Entry(int index) => new(_keys[index], (_flags[index] & 1) != 0, (_flags[index] & 2) != 0,
-        _data.AsMemory(_valueStart[index], _valueLength[index]), (_flags[index] & 4) != 0);
-
-    /// Sum of deltas of the first count entries.
-    public int DeltaPrefix(int count) => _deltaPrefix[count];
-
-    /// Index of the first entry with key greater than (or equal to, when inclusive) key.
-    public int LowerBound(ReadOnlySpan<byte> key, bool inclusive)
-    {
-        int lo = 0, hi = _keys.Length;
-        while (lo < hi)
-        {
-            var mid = (lo + hi) >>> 1;
-            var cmp = LsmKeys.Compare(_keys[mid], key);
-            if (cmp < 0 || !inclusive && cmp == 0) lo = mid + 1;
-            else hi = mid;
-        }
-
-        return lo;
     }
 }
