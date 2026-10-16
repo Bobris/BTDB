@@ -122,7 +122,9 @@ Measured on Azure with 2 million keys ([Measurements](../BTDB.LSM/Measurements.m
 * `CreateOrUpdateKeyValue` must report whether the key existed. New keys are mostly answered by bloom filters, but
   updating an existing key whose block is not cached costs one ranged GET. Size `BlockCacheSize` for the working set
   you update, and prefer larger transactions.
-* Bulk loading random keys is currently 4–5 times slower than `BTreeKeyValueDB`.
+* Inserting new keys still checks whether each key exists. Bloom filters (16 bits per key by default) answer almost
+  all of these checks without a read, so a random-key bulk load runs at about the speed of `BTreeKeyValueDB`.
+  Insert-heavy databases whose filters fit in an eighth of the cache can use `BloomBitsPerKey = 20`.
 * Many cursors that miss the cache at once block thread-pool threads in synchronous reads. Hosts with many concurrent
   cursors should raise `ThreadPool.SetMinThreads`.
 
@@ -133,6 +135,7 @@ Measured on Azure with 2 million keys ([Measurements](../BTDB.LSM/Measurements.m
 | `MemtableSize` | 64 MiB | Memtable size that triggers a flush to a level 0 table. |
 | `BlockSize` | 32 KiB | Target uncompressed data block size; one cache miss reads one block. |
 | `BlockCacheSize` / `BlockCache` | 256 MiB | Size of the block cache the database creates, or a shared cache. |
+| `BloomBitsPerKey` | 16 | Bloom filter size; a false positive costs one ranged GET when a key is written or looked up. |
 | `ValueSeparationThreshold` | 1 KiB | Longer values are stored in value files, so compaction does not rewrite them. |
 | `LevelBaseBytes`, `LevelMultiplier`, `TargetFileSize` | 256 MiB, 10, 64 MiB | Leveled compaction shape. |
 | `LeaseDuration` | 15 s | Writer lease duration; also the longest failover wait. |

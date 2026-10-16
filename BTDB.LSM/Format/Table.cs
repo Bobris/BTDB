@@ -14,7 +14,7 @@ sealed class TableBuildOptions
 {
     public int BlockSize { get; init; } = 32 * 1024;
     public int RestartInterval { get; init; } = 16;
-    public int BloomBitsPerKey { get; init; } = 10;
+    public int BloomBitsPerKey { get; init; } = 16;
     public bool Compress { get; init; } = true;
 
     /// Target encoded size of one index partition; each partition has its own bloom filter partition.

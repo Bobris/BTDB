@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -137,21 +138,39 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         return await waiting;
     }
 
-    bool IsStalled()
+    enum StallReason
     {
-        if (_worker == null || !_isWriter) return false;
-        var state = _state;
-        return state.Immutables.Length >= _options.MaxImmutableMemtables ||
-               state.Version.Level0.Length >= _options.Level0StopWritesTrigger || WalBacklogStalls();
+        None,
+        SealedMemtables,
+        Level0,
+        WalBacklog
     }
+
+    // Stopwatch ticks writers waited, by StallReason.
+    readonly long[] _stallTicks = new long[4];
+
+    StallReason Stall()
+    {
+        if (_worker == null || !_isWriter) return StallReason.None;
+        var state = _state;
+        if (state.Immutables.Length >= _options.MaxImmutableMemtables) return StallReason.SealedMemtables;
+        if (state.Version.Level0.Length >= _options.Level0StopWritesTrigger) return StallReason.Level0;
+        return WalBacklogStalls() ? StallReason.WalBacklog : StallReason.None;
+    }
+
+    bool IsStalled() => Stall() != StallReason.None;
+
+    void CountStall(StallReason reason, long start) =>
+        Interlocked.Add(ref _stallTicks[(int)reason], Stopwatch.GetTimestamp() - start);
 
     async ValueTask WaitWhileStalledAsync()
     {
-        while (IsStalled() && !_disposed)
+        while (Stall() is var reason && reason != StallReason.None && !_disposed)
         {
+            var start = Stopwatch.GetTimestamp();
             var progress = _progress.Task;
-            if (!IsStalled()) break;
-            await Task.WhenAny(progress, Task.Delay(100));
+            if (IsStalled()) await Task.WhenAny(progress, Task.Delay(100));
+            CountStall(reason, start);
         }
     }
 
@@ -177,11 +196,12 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     internal void MakeWritable(LsmKeyValueDBTransaction transaction, LsmState state)
     {
         // A synchronous upgrade cannot await; it blocks while background work is too far behind.
-        while (IsStalled() && !_disposed)
+        while (Stall() is var reason && reason != StallReason.None && !_disposed)
         {
+            var start = Stopwatch.GetTimestamp();
             var progress = _progress.Task;
-            if (!IsStalled()) break;
-            progress.Wait(TimeSpan.FromMilliseconds(100));
+            if (IsStalled()) progress.Wait(TimeSpan.FromMilliseconds(100));
+            CountStall(reason, start);
         }
 
         lock (_writeLock)
@@ -275,6 +295,17 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
                 .Append(state.Version.LevelBytes(level)).Append(" bytes").AppendLine();
         }
 
+        builder.Append("Flushes:").Append(_flushCount).Append(", ").Append(_flushBytes).Append(" bytes, ")
+            .Append(Stopwatch.GetElapsedTime(0, _flushTicks).TotalMilliseconds.ToString("F0")).Append(" ms").AppendLine();
+        builder.Append("Compactions:").Append(_compactionCount).Append(", ").Append(_compactionBytes)
+            .Append(" bytes written, ").Append(Stopwatch.GetElapsedTime(0, _compactionTicks).TotalMilliseconds.ToString("F0"))
+            .Append(" ms").AppendLine();
+        builder.Append("WriteStallMs:");
+        for (var reason = StallReason.SealedMemtables; reason <= StallReason.WalBacklog; reason++)
+            builder.Append(' ').Append(reason).Append(' ')
+                .Append(Stopwatch.GetElapsedTime(0, Interlocked.Read(ref _stallTicks[(int)reason])).TotalMilliseconds
+                    .ToString("F0"));
+        builder.AppendLine();
         builder.Append("BlockCacheBytes:").Append(_cache.SizeBytes).AppendLine();
         builder.Append("BlockCacheHits:").Append(_cache.Hits).AppendLine();
         builder.Append("BlockCacheMisses:").Append(_cache.Misses).AppendLine();

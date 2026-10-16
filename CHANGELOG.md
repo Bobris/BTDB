@@ -9,7 +9,9 @@
   bounded by the block cache and memtables and does not grow with the database; there is no local disk copy. One
   writer holds a blob lease with epoch fencing and failover; readers in other processes see consistent snapshots and
   catch up with `RefreshAsync` or `WaitForCommitUlongAsync`. Commits are non-durable by default and
-  `WaitForDurabilityAsync` waits for the WAL upload. See [Doc/LsmKeyValueDB.md](Doc/LsmKeyValueDB.md).
+  `WaitForDurabilityAsync` waits for the WAL upload. Bloom filters default to 16 bits per key, because on object
+  storage a false positive costs a ranged GET; this makes random-key bulk loads about 5 times faster than with 10.
+  See [Doc/LsmKeyValueDB.md](Doc/LsmKeyValueDB.md).
 
 ### Fixed
 

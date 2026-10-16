@@ -27,7 +27,12 @@ public sealed record LsmKeyValueDBOptions
 
     /// Target encoded size of one index partition of a table; each has its own bloom filter partition.
     public int IndexPartitionSize { get; init; } = 16 * 1024;
-    public int BloomBitsPerKey { get; init; } = 10;
+
+    /// Bloom filter bits per key (false positive rate about 0.05% at 16, 0.007% at 20). Every write of a key must know
+    /// whether the key exists, and a false positive costs one uncached ranged read, so object storage favors more bits
+    /// than local-disk LSMs. Filters share the metadata part of the block cache (one eighth of it): more bits keep
+    /// fewer filters resident in a database much larger than the cache.
+    public int BloomBitsPerKey { get; init; } = 16;
     public bool CompressBlocks { get; init; } = true;
 
     /// Block cache; when null the database creates and disposes its own cache of BlockCacheSize bytes. A cache passed

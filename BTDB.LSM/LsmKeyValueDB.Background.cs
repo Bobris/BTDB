@@ -19,6 +19,15 @@ public sealed partial class LsmKeyValueDB
     Task? _worker;
     Exception? _workerError;
     long _throttleBytes;
+
+    // Background work counters reported by CalcStats; written only by the unit runner.
+    long _flushCount;
+    long _flushTicks;
+    long _flushBytes;
+    long _compactionCount;
+    long _compactionTicks;
+    long _compactionBytes;
+    long _tableBytesWritten;
     long _throttleStart = Stopwatch.GetTimestamp();
 
     static TaskCompletionSource NewProgress() => new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -139,7 +148,12 @@ public sealed partial class LsmKeyValueDB
         var state = _state;
         if (state.Immutables.Length > 0)
         {
+            var flushStart = Stopwatch.GetTimestamp();
+            var flushBytesBefore = _tableBytesWritten;
             FlushSealed(state.Immutables[^1]);
+            _flushCount++;
+            _flushTicks += Stopwatch.GetTimestamp() - flushStart;
+            _flushBytes += _tableBytesWritten - flushBytesBefore;
             return true;
         }
 
@@ -168,10 +182,15 @@ public sealed partial class LsmKeyValueDB
 
         if (LsmCompaction.Pick(state.Version, _compactionOptions, _compactionPointers) is not { } plan) return false;
         Logger?.CompactionStart(0);
+        var start = Stopwatch.GetTimestamp();
+        var bytesBefore = _tableBytesWritten;
         var created = new List<(ulong FileNumber, long Bytes)>();
         var (version, obsolete) = LsmCompaction.Execute(state.Version, plan, _compactionOptions, _tableOptions,
             WriteTable, NewValueSeparation(state.Version, created));
         PublishVersion(version, obsolete, created, null);
+        _compactionCount++;
+        _compactionTicks += Stopwatch.GetTimestamp() - start;
+        _compactionBytes += _tableBytesWritten - bytesBefore;
         return true;
     }
 
@@ -290,6 +309,7 @@ public sealed partial class LsmKeyValueDB
         var fileNumber = _nextFileNumber++;
         var key = TableKey(_options.Prefix, fileNumber);
         CreateObject(key, content);
+        _tableBytesWritten += content.Length;
         return TableReader.Open(_storage, _cache, fileNumber, key, content.Length, _options.TableTailReadSize);
     }
 

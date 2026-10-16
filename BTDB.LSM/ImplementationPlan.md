@@ -912,6 +912,9 @@ Implemented:
     falls back to the cursor's own read.
 * **Select** bisects a second time over restart keys inside the last blocks (`ILsmComponent.AddFinePivots`). The
   final linear step is at most about one restart interval.
+* **Bloom filters** default to 16 bits per key. Profiling the random-key bulk load (Measurements.md, section 5)
+  showed that bloom false positives, not compaction, made it 4–5 times slower than `BTreeKeyValueDB`; at 16 bits it
+  reaches parity in simulation. `CalcStats` reports flush, compaction and write stall times.
 * **Oracle.** The workarounds for the `BTreeKeyValueDB` defects the oracle found are removed now that they are fixed.
   Only the documented difference in how a disturbed cursor reports validity remains.
 * **Documentation and packaging:**
@@ -923,7 +926,6 @@ Findings that remain open, each to be admitted only with evidence (Measurements.
 
 | Item | Evidence so far |
 | --- | --- |
-| Bulk load is 4–5 times slower than `BTreeKeyValueDB` | Random-key loads rewrite level 1 on every compaction; not profiled. |
 | Updates of uncached existing keys cost one GET each | Inherent to `CreateOrUpdateKeyValue`; a batched existence prefetch API would need an application workload. |
 | Durable commit p95 of 22 ms on Premium | One run; LRS had 11 ms. |
 | Readahead across table boundaries in a level | Tables are 64 MiB by default, so a scan restarts the window rarely. |

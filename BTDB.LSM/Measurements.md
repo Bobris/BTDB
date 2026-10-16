@@ -327,10 +327,8 @@ Findings:
   300–800 updates/s, depending on the cache hit rate. This cost is inherent to the `IKeyValueDB` contract.
   Applications that update a cold working set should size `BlockCacheSize` for it. A batched existence prefetch for
   known key sets is a candidate optimization, to be admitted only with an application workload.
-* **Bulk load is 4–5 times slower than `BTreeKeyValueDB`** (26–32k against 116–144k inserts/s). With random keys,
-  every memtable flush overlaps the whole level 1, so each compaction rewrites level 1. The run made 22 flushes into a
-  level that grew to 49 MB, and write stalls probably hold the writer back while that happens. This is not profiled
-  yet. Candidates are a larger memtable
+* **Bulk load was 4–5 times slower than `BTreeKeyValueDB`** (26–32k against 116–144k inserts/s). Section 5 profiles
+  it: bloom filter false positives, not compaction, caused it. The default is now 16 bits per key. Candidates are a larger memtable
   for loads, sublevel-based delaying of level-0 compaction, and the arena rebuild from section 3.
 * **Durable commits take 8–10 ms at p50**, about 2.5 ms over the single-PUT floor in section 2. Premium had a p95 of
   22 ms, against 11 ms on LRS. That fits the recommendation to wait for durability only where needed and to group work
@@ -339,3 +337,44 @@ Findings:
   of 34–57 ms comes from the doubling retry interval of `WaitForCommitUlongAsync`. The one LRS p50 of 29.5 ms in run 1
   was a different alignment of the same retry steps. An application that needs a tighter tail can lower
   `RefreshRetryInterval`.
+
+## 5. Random-key bulk load profile (2026-10-16)
+
+Test: `BTDB.LSM.Test/Perf/BulkLoadSmokeTest.cs`, Release build, Apple M2 Max. The workload repeats the section 4 bulk
+load: 2,000,000 pseudo-random 16-byte keys, 100-byte values, transactions of 10,000 keys, a 32 MiB memtable and a 64
+MiB cache. The run used `BTDB_LSM_BULK_KEYS=2000000` and `BTDB_LSM_BULK_MEMTABLE_MIB=32`.
+
+`LatencyLsmStorage` wraps the in-memory storage with the section 2 Standard LRS p50 costs:
+
+* a create costs 8 ms plus about 80 MB/s;
+* a read costs 4 ms plus about 150 MB/s.
+
+`CalcStats` now reports flush and compaction counts, bytes and time, and write stall time by cause.
+
+| Storage | Bloom bits per key | Inserts/s | Synchronous table reads while inserting | Write stall |
+| --- | --- | --- | --- | --- |
+| In memory | 10 | 435,000–541,000 | 0 | 0.8–1.1 s, sealed memtables |
+| Simulated latency | 10 | 25,900–26,000 | 15,357 (188 MiB, 69 s) | none |
+| Simulated latency | 16 | 131,900 | 2,619 (115 MiB, 12 s) | none |
+| Simulated latency | 20 | 247,000 | 706 (34 MiB, 3 s) | 1.7 s, sealed memtables |
+
+In every run, flushes and compactions were the same: 19 flushes (46 MB) and 4 compactions (98 MB written). With
+latency they took 7 s and 4 s on the background worker. WAL uploads (229 MiB in about 1,000 chunks, 11 s summed) ran
+in parallel and never stalled the writer.
+
+Findings:
+
+* **The simulation reproduces Azure.** At 10 bits per key it reaches about 26,000 inserts/s, matching the measured
+  25,650–32,340 (section 4). The time does not go to compaction or the WAL. The writer spends 69 of its 77 s in
+  synchronous table reads: `CreateOrUpdateKeyValue` must know whether a new key exists, and every bloom filter false
+  positive in a level-0 or level-1 table costs an uncached block read.
+* **Default `BloomBitsPerKey` is now 16** (it was 10, the usual local-disk value). On object storage a false positive
+  costs a GET of about 4 ms instead of a local read of about 0.1 ms. At 16 bits the bulk load reaches parity with
+  `BTreeKeyValueDB` (132,000 inserts/s against 116,000–144,000), and point lookups of absent keys benefit equally.
+  Filters grow from 1.25 to 2 bytes per key.
+* **20 bits per key** nearly doubles that again. It is the better choice for insert-heavy databases whose filters
+  fit the metadata part of the cache: one eighth of `BlockCacheSize`, so about 2.5 bytes per key times the key count.
+  Above that, filter partitions are evicted and re-read, and more bits make it worse. That is why 16 stays the
+  default.
+* The section 4 hypothesis about level-1 rewrites was wrong for this size: compaction kept up and never stalled the
+  writer.
