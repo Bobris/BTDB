@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace BTDB.LSM.Counting;
+namespace BTDB.LSM.Test.Counting;
 
 sealed class CountedStackOptions
 {

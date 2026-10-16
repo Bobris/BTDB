@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -140,6 +141,7 @@ public sealed partial class LsmKeyValueDB
         /// One past the highest existing WAL chunk name.
         public required long NextChunk { get; init; }
 
+        /// The replay's current memtable; the replay creates it once, on first access, when the WAL had none.
         public IMemtable Memtable => Replay.Current().Memtable;
         public long MemtableGeneration => Replay.Current().Generation;
         public SealedMemtable[] Immutables => [.. Replay.Sealed];
@@ -166,6 +168,28 @@ public sealed partial class LsmKeyValueDB
         var content = await options.Storage.TryReadAsync(manifestKey, cancellation) ??
                       throw new BTDBException($"Manifest {manifestKey} disappeared while loading.");
         return (LsmManifest.Decode(content, manifestKey), manifestKey);
+    }
+
+    const int WalReadParallelism = 16;
+
+    /// Reads WAL chunks in order with up to WalReadParallelism reads in flight; a missing chunk yields null content.
+    static async IAsyncEnumerable<(long Number, byte[]? Content)> ReadChunksAsync(LsmKeyValueDBOptions options,
+        IReadOnlyList<long> numbers, [EnumeratorCancellation] CancellationToken cancellation)
+    {
+        var reads = new Queue<(long, Task<byte[]?>)>();
+        var next = 0;
+        while (next < numbers.Count || reads.Count > 0)
+        {
+            while (next < numbers.Count && reads.Count < WalReadParallelism)
+            {
+                var number = numbers[next++];
+                reads.Enqueue((number,
+                    options.Storage.TryReadAsync(WalKey(options.Prefix, number), cancellation).AsTask()));
+            }
+
+            var (read, content) = reads.Dequeue();
+            yield return (read, await content);
+        }
     }
 
     static LsmVersion BuildVersion(LsmKeyValueDBOptions options, LsmBlockCache cache, LsmManifest manifest,
@@ -200,14 +224,18 @@ public sealed partial class LsmKeyValueDB
         chunkNumbers.Sort();
         var replay = new WalReplay(options, manifest.FlushedGeneration, manifest.WalStartChunk,
             new(manifest.TransactionNumber, manifest.CommitUlong, manifest.Ulongs));
+        // Only a contiguous prefix is durable history; chunks after a gap belong to commits never acknowledged.
+        var contiguous = new List<long>();
         foreach (var number in chunkNumbers)
         {
-            // Only a contiguous prefix is durable history; chunks after a gap belong to commits never acknowledged.
-            if (number != replay.NextChunk) break;
-            var key = WalKey(options.Prefix, number);
-            var content = await storage.TryReadAsync(key, cancellation);
+            if (number != replay.NextChunk + contiguous.Count) break;
+            contiguous.Add(number);
+        }
+
+        await foreach (var (number, content) in ReadChunksAsync(options, contiguous, cancellation))
+        {
             if (content == null) break;
-            replay.Apply(number, WalFormat.Decode(content, key));
+            replay.Apply(number, WalFormat.Decode(content, WalKey(options.Prefix, number)));
         }
 
         var highest = chunkNumbers.Count == 0 ? manifest.WalStartChunk - 1 : chunkNumbers[^1];

@@ -21,7 +21,8 @@ public sealed partial class LsmKeyValueDB
     DateTimeOffset _workerFailingSince;
     long _throttleBytes;
 
-    // Background work counters reported by CalcStats; written only by the unit runner.
+    // Background work counters reported by CalcStats; written by whichever thread runs the units (the worker, or the
+    // committing or disposing thread without one), never by two at once.
     long _flushCount;
     long _flushTicks;
     long _flushBytes;
@@ -337,7 +338,7 @@ public sealed partial class LsmKeyValueDB
         CreateObject(key, content);
         _tableBytesWritten += content.Length;
         return TableReader.Open(_storage, _cache, _cacheScope, fileNumber, key, content.Length,
-            _options.TableTailReadSize);
+            _options.TableTailReadSize, content);
     }
 
     void WriteManifest(LsmVersion version, ulong commitUlong, ulong[] ulongs, long transactionNumber,

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace BTDB.LSM.Counting;
+namespace BTDB.LSM.Test.Counting;
 
 /// One point entry. ExistsBelow says whether the key exists in the state below this entry's component with the
 /// component's own range tombstones applied, so the rank delta is derived and never stored (ImplementationPlan.md, 6.1).

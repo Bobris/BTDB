@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -23,7 +24,7 @@ interface ICachedBlock
 public sealed class LsmBlockCache : IDisposable
 {
     readonly NativeClockCache _data;
-    readonly ManagedLruCache _metadata;
+    readonly ManagedClockCache _metadata;
 
     public LsmBlockCache(long capacityBytes, int shardCount = 16)
     {
@@ -96,6 +97,10 @@ sealed unsafe class NativeClockCache : IDisposable
         public readonly List<Slot> Ring = [];
         public int Hand;
         public long Size;
+
+        // Counted under the shard's lock: shared counters would be written by every reader thread.
+        public long Hits;
+        public long Misses;
     }
 
     /// A pinned cache entry; Span stays valid until Dispose.
@@ -108,8 +113,6 @@ sealed unsafe class NativeClockCache : IDisposable
 
     readonly Shard[] _shards;
     readonly long _shardCapacity;
-    long _hits;
-    long _misses;
     int _disposed;
 
     public NativeClockCache(long capacityBytes, int shardCount)
@@ -119,8 +122,17 @@ sealed unsafe class NativeClockCache : IDisposable
         _shardCapacity = Math.Max(1, capacityBytes / shardCount);
     }
 
-    public long Hits => Interlocked.Read(ref _hits);
-    public long Misses => Interlocked.Read(ref _misses);
+    public long Hits => Sum(static shard => shard.Hits);
+    public long Misses => Sum(static shard => shard.Misses);
+
+    long Sum(Func<Shard, long> counter)
+    {
+        long sum = 0;
+        foreach (var shard in _shards)
+            lock (shard.Lock)
+                sum += counter(shard);
+        return sum;
+    }
 
     public long SizeBytes
     {
@@ -145,12 +157,13 @@ sealed unsafe class NativeClockCache : IDisposable
             {
                 slot.Pins++;
                 slot.Referenced = true;
-                Interlocked.Increment(ref _hits);
+                shard.Hits++;
                 return new(slot);
             }
+
+            shard.Misses++;
         }
 
-        Interlocked.Increment(ref _misses);
         var data = load();
         lock (shard.Lock)
         {
@@ -296,74 +309,123 @@ sealed unsafe class NativeClockCache : IDisposable
     }
 }
 
-/// Byte-budgeted LRU of decoded managed objects keyed by (file, offset).
-sealed class ManagedLruCache(long capacityBytes)
+/// Byte-budgeted CLOCK cache of decoded managed objects keyed by (file, offset). Index and filter partitions are read
+/// on every lookup, so a hit takes no lock: it finds the entry in a concurrent dictionary and sets its reference bit.
+/// Inserts and eviction share one lock and one budget, so a few large filter partitions cannot overflow a shard.
+/// Concurrent misses of one key load it once.
+sealed class ManagedClockCache(long capacityBytes)
 {
-    readonly Dictionary<(CacheFile File, long Offset), LinkedListNode<Item>> _items = new();
-    readonly LinkedList<Item> _lru = new();
-    readonly Lock _lock = new();
-    long _sizeBytes;
-    long _hits;
+    sealed class Entry((CacheFile File, long Offset) key, Lazy<ICachedBlock> value)
+    {
+        public readonly (CacheFile File, long Offset) Key = key;
+        public readonly Lazy<ICachedBlock> Value = value;
+        public volatile bool Referenced = true;
+        public long Size;
+    }
+
+    readonly ConcurrentDictionary<(CacheFile File, long Offset), Entry> _entries = new();
+    readonly Lock _ringLock = new();
+    readonly List<Entry> _ring = [];
+    int _hand;
+    long _size;
     long _misses;
 
-    public long SizeBytes => Interlocked.Read(ref _sizeBytes);
-    public long Hits => Interlocked.Read(ref _hits);
-    public long Misses => Interlocked.Read(ref _misses);
+    public long SizeBytes
+    {
+        get
+        {
+            lock (_ringLock) return _size;
+        }
+    }
 
-    sealed record Item((CacheFile File, long Offset) Key, ICachedBlock Block);
+    /// Hits are not counted, which would make every lookup write a shared counter; misses are rare.
+    public long Hits => 0;
+
+    public long Misses => Interlocked.Read(ref _misses);
 
     public T GetOrLoad<T>(CacheFile file, long offset, Func<T> load) where T : class, ICachedBlock
     {
         var key = (file, offset);
-        lock (_lock)
+        if (!_entries.TryGetValue(key, out var entry))
         {
-            if (_items.TryGetValue(key, out var node))
-            {
-                _lru.Remove(node);
-                _lru.AddFirst(node);
-                _hits++;
-                return (T)node.Value.Block;
-            }
-
-            _misses++;
+            var created = new Entry(key, new(() => load(), LazyThreadSafetyMode.ExecutionAndPublication));
+            entry = _entries.GetOrAdd(key, created);
+            if (entry == created) return (T)Load(entry);
         }
 
-        var block = load();
-        lock (_lock)
+        entry.Referenced = true;
+        return (T)Wait(entry);
+    }
+
+    ICachedBlock Wait(Entry entry)
+    {
+        try
         {
-            if (_items.TryGetValue(key, out var existing)) return (T)existing.Value.Block;
-            var node = _lru.AddFirst(new Item(key, block));
-            _items.Add(key, node);
-            _sizeBytes += block.MemorySize;
-            while (_sizeBytes > capacityBytes && _lru.Count > 1)
+            return entry.Value.Value;
+        }
+        catch
+        {
+            // A failed load is not cached; the next caller loads again.
+            _entries.TryRemove(new KeyValuePair<(CacheFile, long), Entry>(entry.Key, entry));
+            throw;
+        }
+    }
+
+    ICachedBlock Load(Entry entry)
+    {
+        Interlocked.Increment(ref _misses);
+        var value = Wait(entry);
+        lock (_ringLock)
+        {
+            if (_entries.TryGetValue(entry.Key, out var current) && current == entry)
             {
-                var last = _lru.Last!;
-                _lru.RemoveLast();
-                _items.Remove(last.Value.Key);
-                _sizeBytes -= last.Value.Block.MemorySize;
+                entry.Size = value.MemorySize;
+                _ring.Add(entry);
+                _size += entry.Size;
+                EvictIfNeeded(entry);
             }
         }
 
-        return block;
+        return value;
+    }
+
+    void EvictIfNeeded(Entry keep)
+    {
+        var steps = 2 * _ring.Count;
+        while (_size > capacityBytes && _ring.Count > 1 && steps-- > 0)
+        {
+            if (_hand >= _ring.Count) _hand = 0;
+            var entry = _ring[_hand];
+            if (entry.Referenced || entry == keep)
+            {
+                entry.Referenced = false;
+                _hand++;
+                continue;
+            }
+
+            RemoveAt(_hand);
+        }
+    }
+
+    void RemoveAt(int ringIndex)
+    {
+        var entry = _ring[ringIndex];
+        _ring[ringIndex] = _ring[^1];
+        _ring.RemoveAt(_ring.Count - 1);
+        _entries.TryRemove(new KeyValuePair<(CacheFile, long), Entry>(entry.Key, entry));
+        _size -= entry.Size;
     }
 
     public void Evict(CacheFile file)
     {
-        lock (_lock)
+        lock (_ringLock)
         {
-            var node = _lru.First;
-            while (node != null)
-            {
-                var next = node.Next;
-                if (node.Value.Key.File == file)
-                {
-                    _lru.Remove(node);
-                    _items.Remove(node.Value.Key);
-                    _sizeBytes -= node.Value.Block.MemorySize;
-                }
-
-                node = next;
-            }
+            for (var i = _ring.Count - 1; i >= 0; i--)
+                if (_ring[i].Key.File == file)
+                    RemoveAt(i);
+            foreach (var (key, entry) in _entries)
+                if (key.File == file)
+                    _entries.TryRemove(new KeyValuePair<(CacheFile, long), Entry>(key, entry));
         }
     }
 }

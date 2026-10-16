@@ -41,12 +41,6 @@ sealed class LsmMerger
     /// Merged fragments; fragments masking nothing below the run are dropped.
     public TombstoneSet Tombstones { get; }
 
-    public static (List<LsmEntry> Entries, TombstoneSet Tombstones) Merge(ILsmComponent[] run, LsmView below)
-    {
-        var merger = new LsmMerger(run, below);
-        return ([.. merger.Entries()], merger.Tombstones);
-    }
-
     public IEnumerable<LsmEntry> Entries()
     {
         var run = _run;

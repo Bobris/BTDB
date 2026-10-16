@@ -3,7 +3,7 @@
 Status: phases L0–L5 are done, and L6 is done except the review of the benchmark report and the publication of the
 preview packages (2026-10-16). Decisions D1–D7 are confirmed (section 21).
 
-* L0: the counted LSM prototype (`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle, and the live
+* L0: the counted LSM prototype (now `BTDB.LSM.Test/Counting/Prototype`) passes 10⁶ random operations against an oracle, and the live
   Azure storage screening is done (LRS, GZRS and Premium). Evidence is in [Measurements.md](Measurements.md).
 * L1: `LsmKeyValueDB` passes the shared `KeyValueDBTestBase` suite with default and tiny settings. It also passes a
   randomized oracle test against `BTreeKeyValueDB` (180,000 operations over several cursors, commits, rollbacks and
@@ -395,11 +395,13 @@ Each WAL chunk is one immutable object `wal/{chunk}`:
 
 ### 8.2 Group commit and durability modes
 
-* A single background uploader takes the WAL buffer contents. It creates the next chunk with create-if-absent when the
-  buffer reaches `WalChunkTargetSize` (default 256 KiB, confirmed by L0 measurements) or after `WalFlushInterval` has
-  elapsed (default 20 ms). Chunks of different commits are uploaded in order. Only the parts of one large commit can be
-  in flight in parallel (section 7.5). A commit is durable once every chunk up to and including its final part is
-  durable.
+* A single background uploader takes the pending commit records as soon as a commit arrives (at the latest after
+  `WalFlushInterval`, default 20 ms). A batch holds about `WalUploadParallelism × WalChunkTargetSize` bytes (at least
+  one record). It is split into chunks of about `WalChunkTargetSize` (default 256 KiB, confirmed by L0 measurements),
+  numbered in order and created with create-if-absent, up to `WalUploadParallelism` at once. That covers the parts of
+  one large commit and chunks of different commits alike. Durability advances when the whole batch is created, so a
+  commit is durable once every chunk up to and including its final part is durable. Commits arriving during an upload
+  form the next batch.
 * `DurableTransactions = false` is the default (decision D2, as in `BTreeKeyValueDB`). `Commit()` returns once the
   memtable is updated. The durability window is about one flush interval plus upload latency.
 * `ILsmKeyValueDB.WaitForDurabilityAsync(transactionNumber, ct)` completes when that commit is durable, and throws if
@@ -407,7 +409,8 @@ Each WAL chunk is one immutable object `wal/{chunk}`:
   `FlushAsync(ct)` uploads the buffer immediately and waits for the last commit. The application event-ID pattern
   (CommitUlong = event ID) also works: after a crash the application replays from the durable CommitUlong.
 * `DurableTransactions = true` remains supported for compatibility. `Commit()` then blocks until the chunk carrying the
-  record is durable. That is at least one Put Blob round trip, about 9 ms at p50 and 20–30 ms at p99.
+  record is durable. That is at least one Put Blob round trip, about 9 ms at p50 and 20–30 ms at p99. The writer slot
+  is released before the wait, so concurrent durable writers share uploads (Measurements.md, section 7).
 * Backpressure: if the WAL buffer exceeds `MaxUnflushedWalBytes`, `StartWritingTransaction` waits asynchronously.
 
 ### 8.3 Memtable rotation and flush
@@ -952,6 +955,42 @@ Findings that remain open, each to be admitted only with evidence (Measurements.
 | Bounding concurrent blocking reads (R2) | Not exercised by the single-cursor benchmark. |
 | Prefetching index and filter partitions with the data blocks | They load synchronously before the parallel data reads; this matters only when the cache cannot hold them. |
 | Hedged reads on Standard storage | Section 2 risk R1; needs an end-to-end measurement on Standard storage. |
+
+### 20.5 Code review fixes
+
+An independent review (2026-10-16) found these bugs. `LsmRegressionTest` reproduced the first three and the readahead
+hang before the fixes:
+
+* **Lost durable commits.** A checkpoint during a running flush sealed an empty memtable; the flush then set the WAL
+  start past later commits and deleted their chunks.
+  * Empty memtables are no longer sealed.
+  * The WAL start is the first chunk of any later generation.
+  * Chunk numbers change only under the WAL lock.
+* **Double counting.** Sealing a memtable kept the commit sequence, so a transaction opened before a checkpoint
+  upgraded to writing on the sealed memtable.
+* **Mixed databases.** A shared block cache keyed entries by file number only. Entries are now keyed by database scope
+  (storage object and prefix) too.
+* **Refresh during a mode change.** A refresh could run while the instance became or stopped being the writer. It
+  could overwrite the writer's state or publish a released arena.
+* **Deleted live table.** Orphans found by a failed takeover attempt could later delete a live table. Deletion now
+  also skips any file the current version references.
+* **Readahead hang.** A failed index load during readahead left reads waiting forever.
+* **Unfenced writes.** Lease checks were skipped during takeover and after the lease was lost. Every object write now
+  requires the lease, from acquisition on.
+* **Smaller fixes:**
+  * Azure lease durations it cannot honor are rejected.
+  * Compactions pending when the lease is lost fail instead of waiting forever.
+  * `WorkerFailureTimeout` bounds `CreateKvi` and `Compact` waits.
+  * Creates retry with backoff.
+  * Deletion moved off `Transaction.Dispose`, and failed deletes retry.
+  * File storage reads allow concurrent deletes.
+
+Performance fixes are in Measurements.md, section 7. Simplifications:
+
+* the counted prototype moved to the test project;
+* unused merge and tombstone helpers were removed;
+* one stall loop now serves both the async and the sync caller;
+* section 8.2 now describes the WAL uploader as built.
 
 ## 21. Decisions
 

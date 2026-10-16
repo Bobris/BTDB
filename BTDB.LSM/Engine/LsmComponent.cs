@@ -77,20 +77,6 @@ sealed class TombstoneSet
     }
 
     public bool Covers(ReadOnlySpan<byte> key) => Find(key, out _) >= 0;
-
-    /// Index of the first fragment whose End is greater than key, i.e. the first fragment not entirely before key.
-    public int FirstEndingAfter(ReadOnlySpan<byte> key)
-    {
-        int lo = 0, hi = _items.Length;
-        while (lo < hi)
-        {
-            var mid = (lo + hi) >>> 1;
-            if (LsmKeys.Compare(_items[mid].End, key) <= 0) lo = mid + 1;
-            else hi = mid;
-        }
-
-        return lo;
-    }
 }
 
 /// A sorted run in the LSM stack: a memtable or a table. Components are ordered newest first; a newer component's

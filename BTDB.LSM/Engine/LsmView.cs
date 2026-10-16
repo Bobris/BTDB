@@ -124,10 +124,11 @@ sealed class LsmView
         return found;
     }
 
-    /// Live key with the given rank; index must be in [0, Count).
-    public byte[] Select(long index, int selectFinalBlocks = 2)
+    /// Positions iterator (over this view) on the live key with the given rank; index must be in [0, Count).
+    public void Select(long index, MergingIterator iterator, int selectFinalBlocks = 2)
     {
         byte[]? low = null;
+        long? lowRank = 0; // exact rank of low when known
         byte[]? high = null;
         while (true)
         {
@@ -148,8 +149,13 @@ sealed class LsmView
             if (best == null) break;
             var pivot = best.BlockFirstKey((bestFrom + bestTo) >>> 1);
             var (minRank, maxRank) = RankBounds(pivot);
-            var below = maxRank <= index || minRank <= index && Rank(pivot) <= index;
-            if (below) low = pivot;
+            long? rank = minRank == maxRank ? minRank : null;
+            if (maxRank > index && minRank <= index) rank = Rank(pivot);
+            if (maxRank <= index || rank <= index)
+            {
+                low = pivot;
+                lowRank = rank;
+            }
             else high = pivot;
         }
 
@@ -169,19 +175,19 @@ sealed class LsmView
         while (pivotLo < pivotHi)
         {
             var mid = (pivotLo + pivotHi) >>> 1;
-            if (Rank(pivots[mid]) <= index)
+            var rank = Rank(pivots[mid]);
+            if (rank <= index)
             {
                 low = pivots[mid];
+                lowRank = rank;
                 pivotLo = mid + 1;
             }
             else pivotHi = mid;
         }
 
-        var skip = index - (low == null ? 0 : Rank(low));
-        var iterator = new MergingIterator(this);
+        var skip = index - (lowRank ?? Rank(low!));
         var found = iterator.SeekGE(low ?? [], true);
         for (; found && skip > 0; skip--) found = iterator.Next();
         if (!found) throw new InvalidOperationException("Select did not find a live key; counts are inconsistent.");
-        return iterator.Key;
     }
 }

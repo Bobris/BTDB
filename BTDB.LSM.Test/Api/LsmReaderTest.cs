@@ -175,7 +175,7 @@ public class LsmReaderTest
         var storage = new InMemoryLsmStorage();
         using var writer = await LsmKeyValueDB.OpenAsync(Options(storage, true) with
         {
-            MemtableSize = 1 << 20, ReaderHeartbeatInterval = TimeSpan.FromMilliseconds(250),
+            MemtableSize = 1 << 20, ReaderHeartbeatInterval = TimeSpan.FromSeconds(1),
             DeletionGracePeriod = TimeSpan.Zero
         });
         var random = new Random(5);
@@ -184,10 +184,11 @@ public class LsmReaderTest
         writer.CreateKvi(default);
         using var reader = await LsmKeyValueDB.OpenAsync(Options(storage, false) with
         {
-            RegisterReader = true, ReaderHeartbeatInterval = TimeSpan.FromMilliseconds(250),
+            RegisterReader = true, ReaderHeartbeatInterval = TimeSpan.FromSeconds(1),
             BlockCache = new LsmBlockCache(64 * 1024)
         });
-        // The registry entry expires after three heartbeats; 250 ms keeps it alive on a loaded test machine.
+        // The registry entry expires after three heartbeats, which must outlast a delayed heartbeat timer on a loaded
+        // test machine for the whole test; an expired entry rightly lets the writer delete the old tables.
         var expected = new SortedDictionary<string, string>(model, StringComparer.Ordinal);
         var old = reader.StartReadOnlyTransaction();
         var tablesBefore = storage.Keys("tables/").Length;

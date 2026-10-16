@@ -195,6 +195,7 @@ public class LsmReadaheadRegressionTest
             using var pin = table.PinBlock(1);
             return pin.Span.Length;
         });
-        Assert.True(read.Wait(TimeSpan.FromSeconds(10)), "Reading a block after a failed readahead hung.");
+        Assert.True(await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(10))) == read,
+            "Reading a block after a failed readahead hung.");
     }
 }

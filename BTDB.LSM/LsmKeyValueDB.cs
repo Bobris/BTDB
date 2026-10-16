@@ -165,13 +165,20 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     void CountStall(StallReason reason, long start) =>
         Interlocked.Add(ref _stallTicks[(int)reason], Stopwatch.GetTimestamp() - start);
 
-    async ValueTask WaitWhileStalledAsync()
+    /// Waits while flushes, level 0 compaction or WAL uploads are too far behind; synchronously for an upgrade from
+    /// a read transaction, which cannot await (the returned ValueTask is then already complete).
+    async ValueTask WaitWhileStalledAsync(bool synchronous = false)
     {
         while (Stall() is var reason && reason != StallReason.None && !_disposed)
         {
             var start = Stopwatch.GetTimestamp();
             var progress = _progress.Task;
-            if (IsStalled()) await Task.WhenAny(progress, Task.Delay(100));
+            if (IsStalled())
+            {
+                if (synchronous) progress.Wait(TimeSpan.FromMilliseconds(100));
+                else await Task.WhenAny(progress, Task.Delay(100));
+            }
+
             CountStall(reason, start);
         }
     }
@@ -197,14 +204,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
 
     internal void MakeWritable(LsmKeyValueDBTransaction transaction, LsmState state)
     {
-        // A synchronous upgrade cannot await; it blocks while background work is too far behind.
-        while (Stall() is var reason && reason != StallReason.None && !_disposed)
-        {
-            var start = Stopwatch.GetTimestamp();
-            var progress = _progress.Task;
-            if (IsStalled()) progress.Wait(TimeSpan.FromMilliseconds(100));
-            CountStall(reason, start);
-        }
+        WaitWhileStalledAsync(synchronous: true).GetAwaiter().GetResult();
 
         lock (_writeLock)
         {

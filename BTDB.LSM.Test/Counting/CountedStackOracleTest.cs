@@ -1,7 +1,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using BTDB.LSM.Counting;
 using Xunit;
 using Xunit.Abstractions;
 

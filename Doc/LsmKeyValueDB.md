@@ -68,7 +68,7 @@ Every instance opens as a reader. An instance becomes the writer by taking the w
 * in the first `StartWritingTransaction`, which waits until the lease is free.
 
 The writer takes the lease over from a crashed writer once the lease expires, after `LeaseDuration` at most (15 s by
-default; Azure allows 15 to 60 s). Taking over fences the previous writer: it can no longer create objects, and if it
+default; Azure accepts whole seconds from 15 to 60 and rejects other values). Taking over fences the previous writer: it can no longer create objects, and if it
 is still alive it fails its pending durability waits and continues as a reader.
 
 A reader in another process sees a consistent snapshot. It does not refresh automatically:
@@ -139,6 +139,7 @@ Measured on Azure with 2 million keys ([Measurements](../BTDB.LSM/Measurements.m
 | `ValueSeparationThreshold` | 1 KiB | Longer values are stored in value files, so compaction does not rewrite them. |
 | `LevelBaseBytes`, `LevelMultiplier`, `TargetFileSize` | 256 MiB, 10, 64 MiB | Leveled compaction shape. |
 | `LeaseDuration` | 15 s | Writer lease duration; also the longest failover wait. |
+| `WorkerFailureTimeout` | 1 min | `CreateKvi` and `Compact` fail when flushes and compactions keep failing this long. |
 | `WalChunkTargetSize` | 256 KiB | Size of one WAL object; larger commits span several. |
 | `DeletionGracePeriod` | 10 min | Obsolete objects are kept this long for readers in other processes. |
 | `RegisterReader` | false | A reader registers the oldest manifest it uses, so the writer keeps its objects past the grace period. |

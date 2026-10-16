@@ -5,7 +5,7 @@ and which design decision it supports.
 
 ## 1. Counted LSM prototype (2026-10-15)
 
-Code: `BTDB.LSM/Counting` (`CountedComponent`, `CountedStack`). Tests: `BTDB.LSM.Test/Counting/CountedStackOracleTest.cs`.
+Code: `BTDB.LSM.Test/Counting/Prototype` (`CountedComponent`, `CountedStack`; moved out of the library once the engine replaced it). Tests: `BTDB.LSM.Test/Counting/CountedStackOracleTest.cs`.
 
 The prototype implements the model of sections 6.1–6.5:
 
@@ -416,3 +416,48 @@ once, then reads them in order, so it waits for the slowest read instead of thei
 * Metadata partitions are still loaded synchronously before the prefetch. With a cache too small for the index and
   filter partitions (a 1 MiB cache in the same test), every operation reloaded them and the prefetch had no effect.
   Size `BlockCacheSize` so that an eighth of it holds the partitions.
+
+## 7. Performance findings of the code review (2026-10-16)
+
+An independent code review found the problems below; each change was measured before and after. Setup: Release build,
+Apple M2 Max, in-memory storage, or `LatencyLsmStorage` (section 5) where the case says "simulated latency".
+
+| Case (test) | Before | After |
+| --- | --- | --- |
+| Open across 400 WAL chunks, simulated latency (`WalReplaySmokeTest`) | 1,836 ms | 125 ms |
+| Refresh across 400 WAL chunks, simulated latency | 1,821 ms | 148 ms |
+| Cached exact lookups, 1 thread (`WarmLookupSmokeTest`, 200,000 keys, five components) | 0.81–0.87 M/s | 0.91–0.94 M/s |
+| Cached exact lookups, 8 threads | 0.54–0.58 M/s | 2.51–2.63 M/s |
+| Durable single-key commits, 1 writer, simulated latency (`DurableCommitSmokeTest`) | 113/s | 113/s |
+| Durable single-key commits, 8 concurrent writers | 114/s | 461/s |
+| Cached inexact `Find` + `FindNextKey` | 9.9 µs | 7.8–9.0 µs |
+| Cached `FindKeyIndex` + `FindNextKey` | 65 µs | 55–57 µs |
+| Random-key bulk load, 16 bloom bits, simulated latency (`BulkLoadSmokeTest`, 2,000,000 keys) | 123,000/s | 126,000–132,000/s |
+| Table reads on writer threads during that load | 116 MiB | 27 MiB |
+
+What changed:
+
+* **WAL replay.** Opening and refreshing read WAL chunks one GET at a time. Opening now reads the known chunk list
+  with 16 reads in flight. A refresh does not know how many chunks follow, so it probes one chunk and doubles the
+  window up to 16 while chunks keep coming; an idle refresh still costs one probe.
+* **Metadata cache.** The index and filter partition cache took one global lock and moved a list node on every
+  access, so eight threads were slower than one. A hit is now a lock-free dictionary lookup that sets a reference bit,
+  and concurrent misses of one key load it once.
+  * A first variant split the cache into shards with separate budgets. Large filter partitions then overflowed some
+    shards and were reloaded on every insert: a 2,000,000-key bulk load fell to 2,600 inserts/s.
+  * Which shards overflowed depended on per-process hash seeds, so a single good run had hidden it.
+  * The cache keeps one budget now. Hit counters are no longer shared, because every reader thread wrote them.
+* **Durable commits.** A commit with `DurableTransactions` held the writer slot while its WAL upload ran, so concurrent
+  writers could not share uploads. The slot is released before the wait; the commit is already published and its record
+  queued in order.
+* **Cursor.**
+  * `Find` and `FindKeyIndex` position the cursor's own iterator, so the next step needs no seek.
+  * `Select` returns the value it found and remembers the rank of its lower bound.
+  * A rank at a block's first key, which is how select picks pivots, reads no block.
+* **Compaction I/O.**
+  * A table just written is opened from its bytes in memory instead of reading its tail back.
+  * Compaction input is read through the read threads with four 4 MiB reads ahead of the one decoded. Compactions in
+    the bulk load took 3.8 s instead of 4.1 s; most of their time is CPU.
+* **Readahead without the thread pool.** Readahead and prefetch now run on 16 dedicated threads using synchronous
+  reads. A cursor waiting for a block in flight therefore never waits for a thread-pool thread (risk R2).
+  `LsmReadaheadTest` checks that scans are still served by readahead. Scan throughput on Azure was not measured again.

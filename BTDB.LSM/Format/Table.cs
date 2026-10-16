@@ -331,13 +331,16 @@ sealed class TableReader : ILsmComponent
             : Tombstones[^1].End;
     }
 
+    /// Opens a table by reading its tail, or from content when the caller has just written the table.
     public static TableReader Open(ILsmStorage storage, LsmBlockCache cache, ulong cacheScope, ulong fileNumber,
-        string objectKey, long length, int tailReadSize = 64 * 1024)
+        string objectKey, long length, int tailReadSize = 64 * 1024, byte[]? content = null)
     {
         if (length < TableBuilder.FooterSize) throw new BTDBException($"Table {objectKey} is truncated.");
-        var tailLength = (int)Math.Min(length, Math.Max(tailReadSize, TableBuilder.FooterSize));
-        var tail = new byte[tailLength];
-        LsmObjects.ReadRange(storage, objectKey, length - tailLength, tail, "Table");
+        var tailLength = content != null
+            ? (int)length
+            : (int)Math.Min(length, Math.Max(tailReadSize, TableBuilder.FooterSize));
+        var tail = content ?? new byte[tailLength];
+        if (content == null) LsmObjects.ReadRange(storage, objectKey, length - tailLength, tail, "Table");
         var footer = LsmChecksum.Verify(tail.AsSpan(tailLength - TableBuilder.FooterSize), objectKey);
         if (BinaryPrimitives.ReadUInt64LittleEndian(footer) != TableBuilder.Magic)
             throw new BTDBException($"Table {objectKey} has an unknown format.");
@@ -677,27 +680,61 @@ sealed class TableReader : ILsmComponent
 
     /// All points in order, read with large sequential ranged reads that bypass the data block cache, so compaction
     /// input does not evict the working set (ImplementationPlan.md, section 12.2).
+    /// Chunks read ahead of the one being decoded when a compaction reads a table sequentially.
+    const int SequentialReadAhead = 4;
+
     public IEnumerable<LsmEntry> Enumerate()
     {
+        // Ranges of up to SequentialReadSize covering whole blocks, read through the read threads with up to
+        // SequentialReadAhead reads ahead of the one decoded (ImplementationPlan.md, section 12.2).
+        var chunks = new List<(IndexPartition Partition, int First, int Last)>();
         for (var partitionIndex = 0; partitionIndex < PartitionCount; partitionIndex++)
         {
             var partition = Partition(partitionIndex);
-            var first = 0;
-            while (first < partition.Offsets.Length)
+            for (var first = 0; first < partition.Offsets.Length;)
             {
                 var last = first;
                 var start = partition.Offsets[first];
                 while (last + 1 < partition.Offsets.Length &&
                        partition.Offsets[last + 1] + partition.Lengths[last + 1] - start <= SequentialReadSize)
                     last++;
-                var chunk = ReadChecked(start, (int)(partition.Offsets[last] + partition.Lengths[last] - start));
-                for (var block = first; block <= last; block++)
-                {
-                    var stored = chunk.AsSpan((int)(partition.Offsets[block] - start), partition.Lengths[block]);
-                    foreach (var entry in DecodeAll(RawBlock.Decode(stored, ObjectKey))) yield return entry;
-                }
-
+                chunks.Add((partition, first, last));
                 first = last + 1;
+            }
+        }
+
+        var reads = new Queue<Task<byte[]>>();
+        var next = 0;
+        while (next < chunks.Count || reads.Count > 0)
+        {
+            while (next < chunks.Count && reads.Count <= SequentialReadAhead)
+            {
+                var (partition, first, last) = chunks[next++];
+                var read = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var start = partition.Offsets[first];
+                var length = (int)(partition.Offsets[last] + partition.Lengths[last] - start);
+                LsmReadThreads.Run(() =>
+                {
+                    try
+                    {
+                        read.TrySetResult(ReadChecked(start, length));
+                    }
+                    catch (Exception ex)
+                    {
+                        read.TrySetException(ex);
+                    }
+                });
+                reads.Enqueue(read.Task);
+            }
+
+            var chunk = reads.Dequeue().GetAwaiter().GetResult();
+            var (chunkPartition, chunkFirst, chunkLast) = chunks[next - reads.Count - 1];
+            var chunkStart = chunkPartition.Offsets[chunkFirst];
+            for (var block = chunkFirst; block <= chunkLast; block++)
+            {
+                var stored = chunk.AsSpan((int)(chunkPartition.Offsets[block] - chunkStart),
+                    chunkPartition.Lengths[block]);
+                foreach (var entry in DecodeAll(RawBlock.Decode(stored, ObjectKey))) yield return entry;
             }
         }
     }

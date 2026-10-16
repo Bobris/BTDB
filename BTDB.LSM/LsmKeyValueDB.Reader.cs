@@ -51,12 +51,24 @@ public sealed partial class LsmKeyValueDB
                 manifestSequence = manifest.Sequence;
             }
 
-            while (true)
+            // Probe one chunk first, so an idle refresh costs one read; while chunks keep coming, read ahead up to
+            // WalReadParallelism names at once.
+            for (var window = 1;; window = Math.Min(window * 2, WalReadParallelism))
             {
-                var key = WalKey(_options.Prefix, replay.NextChunk);
-                var content = await _storage.TryReadAsync(key, cancellation);
-                if (content == null) break;
-                replay.Apply(replay.NextChunk, WalFormat.Decode(content, key));
+                var numbers = Enumerable.Range(0, window).Select(i => replay.NextChunk + i).ToArray();
+                var complete = true;
+                await foreach (var (number, content) in ReadChunksAsync(_options, numbers, cancellation))
+                {
+                    if (content == null)
+                    {
+                        complete = false;
+                        break;
+                    }
+
+                    replay.Apply(number, WalFormat.Decode(content, WalKey(_options.Prefix, number)));
+                }
+
+                if (!complete) break;
             }
 
             var (memtable, generation) = replay.Current();

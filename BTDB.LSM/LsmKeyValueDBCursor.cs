@@ -184,16 +184,20 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
             return FindResult.Exact;
         }
 
+        // The cursor's iterator ends positioned on the found key, so stepping from it needs no seek.
         var prefix = key[..(int)prefixLen];
-        if (view.SeekLE(key, false, false, out var previous, out value) && previous.AsSpan().StartsWith(prefix))
+        var iterator = FreshIterator();
+        if (iterator.SeekLE(key, false, false) && iterator.Key.AsSpan().StartsWith(prefix))
         {
-            Set(previous, value, -1);
+            Set(iterator.Key, iterator.Value, -1);
             return FindResult.Previous;
         }
 
-        if (view.SeekGE(key, false, out var next, out value) && next.AsSpan().StartsWith(prefix))
+        // The key is absent, so the key after the previous one is the first key after key.
+        if ((iterator.Valid ? iterator.Next() : iterator.SeekGE(key, false)) &&
+            iterator.Key.AsSpan().StartsWith(prefix))
         {
-            Set(next, value, -1);
+            Set(iterator.Key, iterator.Value, -1);
             return FindResult.Next;
         }
 
@@ -220,9 +224,10 @@ sealed class LsmKeyValueDBCursor : IKeyValueDBCursorInternal
     {
         var view = Tr.View;
         if (index < 0 || index >= view.Count) return Fail();
-        var key = view.Select(index);
-        view.TryGet(key, out var value);
-        Set(key, value, index);
+        // The cursor's iterator stays positioned on the selected key, so stepping from it needs no seek.
+        var iterator = FreshIterator();
+        view.Select(index, iterator);
+        Set(iterator.Key, iterator.Value, index);
         return true;
     }
 
