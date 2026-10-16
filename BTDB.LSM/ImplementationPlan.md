@@ -1,15 +1,15 @@
 # BTDB.LSM — implementation plan
 
-Status: phases L0 and L1 are done; phase L2 is in progress (2026-10-16). Decisions D1–D7 are confirmed (section 21).
+Status: phases L0, L1 and L2 are done; phase L3 is next (2026-10-16). Decisions D1–D7 are confirmed (section 21).
 
 * L0: the counted LSM prototype (`BTDB.LSM/Counting`) passes 10⁶ random operations against an oracle, and the live
   Azure storage screening is done (LRS, GZRS and Premium). Evidence is in [Measurements.md](Measurements.md).
 * L1: `LsmKeyValueDB` passes the shared `KeyValueDBTestBase` suite with default and tiny settings. It also passes a
   randomized oracle test against `BTreeKeyValueDB` (180,000 operations over several cursors, commits, rollbacks and
   snapshots) and persistence tests.
-* L2 so far: leveled compaction with level components, a positioned merging iterator, value separation with value-file
-  garbage collection, and the native counted memtable. Section 20.1 lists what remains and where the implementation
-  still differs from the target design.
+* L2: leveled compaction, the positioned merging iterator, value separation with garbage collection, the native counted
+  memtable, partitioned indexes and filters, the native block cache and background flush and compaction with write
+  stalls. Section 20.1 lists the remaining differences from the target design.
 
 Confirmed requirements:
 
@@ -705,7 +705,7 @@ Each phase ends with green tests and a CHANGELOG entry where it changes public b
 | --- | --- | --- |
 | **L0 Measure and de-risk** | Azure probes (extend `DBBenchmark eventlog-storage`): ranged GET p50/p99 for 4 KiB–4 MiB, 404 probe, Get Properties, List, parallel GET throughput, sync versus async SDK read, conditional Put Blob for WAL-sized chunks. Prototype counted components with rank and select (sections 6.2–6.5) and an oracle test. | Measured numbers recorded in `BTDB.LSM/Measurements.md`; `BlockSize`, `WalChunkTargetSize` and the readahead defaults chosen; rank and select prototype passes 10⁶ random operations. |
 | **L1 Core engine (in-memory storage)** — done, see 20.1 | Projects, `ILsmStorage` and in-memory storage, block and table format, bloom filter, memtable (managed prototype), merging iterator, rank and select, write transactions, writer queue, cursors, flush to L0, manifest, versions, snapshots, block cache. | The `KeyValueDBTestBase` suite passes in all configurations; the oracle test passes. |
-| **L2 Compaction and values** | Leveled compaction, L0 sublevels, range tombstones with counts, value separation, value-file GC, native memtable, `MaxTransactionMemory`, stalls, rate limits. | The tiny-config suites pass with continuous compaction; long oracle runs pass; memory stays within the budget under a stress test. |
+| **L2 Compaction and values** — done, see 20.1 | Leveled compaction, L0 sublevels, range tombstones with counts, value separation, value-file GC, native memtable, `MaxTransactionMemory`, stalls, rate limits. | The tiny-config suites pass with continuous compaction; long oracle runs pass; memory stays within the budget under a stress test. |
 | **L3 Durability and lease** | WAL chunks, multi-chunk commits, group commit, `WaitForDurabilityAsync`, lease wait in `StartWritingTransaction`, reader-to-writer transition, lease loss, epoch fencing, ambiguity reconciliation, deferred deletion; measure whether early upload of large transactions is needed. | The crash-at-every-operation, zombie-writer and lease-loss simulations pass. |
 | **L4 Azure** | `BTDB.LSM.Azure` adapter (sync and async ranged reads, staged uploads, lease), Azurite and live tests. | The conformance suite passes on Azurite and live Azure; first live latency and throughput numbers recorded. |
 | **L5 Readers in other processes** | `RefreshAsync`, `WaitForCommitUlongAsync`, generation swap, catch-up after deletion, reader registry, freshness measurement. | Reader simulation and process tests pass; refresh latency and freshness p50/p99 measured on Azure. |
@@ -754,14 +754,32 @@ Done in L2:
   * The managed treap remains as a reference implementation (`NativeMemtable = false`) and as the oracle in
     `NativeMemtableTest`.
   * Measurements: [Measurements.md](Measurements.md), section 3.
+* **Partitioned index and filters:** tables pin only a top-level index with one entry per partition (first key, first
+  block, index and filter handles). Index partitions (`IndexPartitionSize`, default 16 KiB) and their bloom filter
+  partitions are read through a managed LRU that gets one eighth of the cache budget.
+* **Native block cache** (`LsmBlockCache`, `NativeClockCache`, `RawBlock`):
+  * Data blocks and separated values are kept raw (decompressed) in native memory in a sharded CLOCK cache. An entry
+    is pinned only during one call.
+  * Lookups binary-search the restart keys stored whole in the block and decode one restart interval. Table cursors
+    step forward by remembered offsets.
+  * Compaction and flush inputs are read sequentially in ranges of up to 4 MiB, bypassing the data cache.
+* **Background work:**
+  * A commit that fills the memtable seals it (`SealedMemtable`, with its commit metadata). A single worker flushes
+    sealed memtables oldest first, runs full compactions requested by `Compact`, and otherwise runs picked compactions.
+  * Writers stall in `StartWritingTransaction` while `MaxImmutableMemtables` sealed memtables are pending or level 0
+    has `Level0StopWritesTrigger` tables.
+  * The worker retries failed units with backoff and reports them through `ReportCompactorException`.
+  * `CompactorWriteBytesPerSecondLimit` paces object creation.
+  * `BackgroundCompaction = false` runs the same units synchronously in the sealing commit.
+  * An upgradable transaction is invalidated only by commits (`CommitSequence`), not by background layout changes.
+  * A snapshot's state is captured and registered atomically with the deletion decision. The concurrency test
+    found the race when this was not so.
 
 Remaining differences from the target design:
 
 | Current state | Target |
 | --- | --- |
-| Data blocks are fully decoded into a managed LRU cache. | Decode one restart interval; sharded native cache (L2). |
-| Single-level index and bloom filter, pinned per table. | Partitioned index and filters (L2). |
-| Flush and compaction run synchronously while the writer slot is held; compaction inputs are read through the block cache. | Background flush and compaction with stalls and rate limits, inputs read with large sequential GETs (L2, L3). |
+| `CompactorReadBytesPerSecondLimit` is stored but not enforced; compactions run one at a time. | Read pacing and `MaxConcurrentCompactions`, if measurements on Azure show the need (L4). |
 | The native arena counts copy-on-write garbage, so with small random transactions it fills about 3 times faster than its entry bytes. | Optional rebuild of the live tree into a fresh arena, if a real workload shows the flush pressure matters. |
 | Each manifest object is a full checkpoint, and only flushed data survives reopening. | WAL, version edits and checkpoints (L3). |
 | There is no lease; every instance can write. | Lease on the first writing transaction (L3). The shared test suite starts writers with `StartTransaction()`, so L3 adds an option to acquire the lease at open. |

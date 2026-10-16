@@ -531,10 +531,50 @@ sealed class TableReader : ILsmComponent
         return true;
     }
 
+    /// Size of one ranged read when a table is read sequentially for flush or compaction input.
+    public const int SequentialReadSize = 4 * 1024 * 1024;
+
+    /// All points in order, read with large sequential ranged reads that bypass the data block cache, so compaction
+    /// input does not evict the working set (ImplementationPlan.md, section 12.2).
     public IEnumerable<LsmEntry> Enumerate()
     {
-        var cursor = new TableCursor(this);
-        for (var valid = cursor.SeekGE([], true); valid; valid = cursor.Next()) yield return cursor.Current;
+        for (var partitionIndex = 0; partitionIndex < PartitionCount; partitionIndex++)
+        {
+            var partition = Partition(partitionIndex);
+            var first = 0;
+            while (first < partition.Offsets.Length)
+            {
+                var last = first;
+                var start = partition.Offsets[first];
+                while (last + 1 < partition.Offsets.Length &&
+                       partition.Offsets[last + 1] + partition.Lengths[last + 1] - start <= SequentialReadSize)
+                    last++;
+                var chunk = ReadChecked(start, (int)(partition.Offsets[last] + partition.Lengths[last] - start));
+                for (var block = first; block <= last; block++)
+                {
+                    var stored = chunk.AsSpan((int)(partition.Offsets[block] - start), partition.Lengths[block]);
+                    foreach (var entry in DecodeAll(RawBlock.Decode(stored, ObjectKey))) yield return entry;
+                }
+
+                first = last + 1;
+            }
+        }
+    }
+
+    static List<LsmEntry> DecodeAll(byte[] raw)
+    {
+        var block = new RawBlock(raw);
+        var entries = new List<LsmEntry>(block.Count);
+        if (block.Count == 0) return entries;
+        var entry = block.Entry(0, out var next);
+        entries.Add(entry);
+        for (var i = 1; i < block.Count; i++)
+        {
+            entry = block.EntryAt(next, entry.Key, out next);
+            entries.Add(entry);
+        }
+
+        return entries;
     }
 
     public void EvictFromCache() => _cache.Evict(FileNumber);

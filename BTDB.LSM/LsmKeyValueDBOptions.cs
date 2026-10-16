@@ -55,6 +55,16 @@ public sealed class LsmKeyValueDBOptions
 
     public int TableTailReadSize { get; init; } = 64 * 1024;
 
+    /// Flush and compaction run on a background worker (default). When false they run synchronously in the commit
+    /// that seals the memtable, which is deterministic for tests.
+    public bool BackgroundCompaction { get; init; } = true;
+
+    /// Writers wait while this many sealed memtables are waiting for flush.
+    public int MaxImmutableMemtables { get; init; } = 2;
+
+    /// Writers wait while level 0 has this many tables.
+    public int Level0StopWritesTrigger { get; init; } = 12;
+
     /// Values longer than this are stored in value files when written to tables; int.MaxValue keeps all inline.
     public int ValueSeparationThreshold { get; init; } = 1024;
 

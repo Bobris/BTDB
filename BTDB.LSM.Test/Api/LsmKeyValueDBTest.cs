@@ -37,3 +37,15 @@ public class LsmKeyValueDBSeparatedValuesTest(ITestOutputHelper testOutputHelper
         BlockCache = new LsmBlockCache(64 * 1024)
     }).AsTask().GetAwaiter().GetResult();
 }
+
+/// The shared suite with tiny settings and synchronous flush and compaction in the committing writer.
+public class LsmKeyValueDBSynchronousTest(ITestOutputHelper testOutputHelper) : KeyValueDBTestBase(testOutputHelper)
+{
+    protected override IKeyValueDB NewKeyValueDB() => LsmKeyValueDB.OpenAsync(new()
+    {
+        Storage = new InMemoryLsmStorage(), MemtableSize = 2048, BlockSize = 256, RestartInterval = 4,
+        IndexPartitionSize = 64, PointDeleteRangeLimit = 2, Level0CompactionTrigger = 2, LevelBaseBytes = 8192,
+        LevelMultiplier = 4, LevelCount = 5, TargetFileSize = 4096, BackgroundCompaction = false,
+        BlockCache = new LsmBlockCache(64 * 1024)
+    }).AsTask().GetAwaiter().GetResult();
+}

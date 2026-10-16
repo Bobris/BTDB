@@ -4,30 +4,42 @@ using BTDB.LSM.Format;
 
 namespace BTDB.LSM.Engine;
 
-/// Immutable published database state: the committed memtable, the tables (newest first) and commit metadata. A
-/// snapshot pins one state; nothing later changes it (ImplementationPlan.md, invariant L4).
+/// A memtable sealed by rotation, waiting to be flushed, with the commit metadata as of its last commit.
+sealed record SealedMemtable(IMemtable Memtable, ulong CommitUlong, ulong[] Ulongs, long TransactionNumber);
+
+/// Immutable published database state: the mutable memtable's committed version, sealed memtables waiting for flush
+/// (newest first), the table set and commit metadata. A snapshot pins one state; nothing later changes it
+/// (ImplementationPlan.md, invariant L4).
 sealed class LsmState(
     IMemtable memtable,
+    SealedMemtable[] immutables,
     LsmVersion version,
     ulong commitUlong,
     ulong[] ulongs,
     long transactionNumber,
+    long commitSequence,
     long sequence)
 {
     public IMemtable Memtable { get; } = memtable;
+    public SealedMemtable[] Immutables { get; } = immutables;
     public LsmVersion Version { get; } = version;
     public ulong CommitUlong { get; } = commitUlong;
     public ulong[] Ulongs { get; } = ulongs;
     public long TransactionNumber { get; } = transactionNumber;
 
-    /// Increases with every published state; used to decide when obsolete tables can be deleted.
+    /// Increases with every commit; an upgradable transaction may start writing only if no commit happened since its
+    /// snapshot.
+    public long CommitSequence { get; } = commitSequence;
+
+    /// Increases with every published state; used to decide when obsolete objects can be deleted.
     public long Sequence { get; } = sequence;
 
     public LsmView CreateView(IMemtable memtable)
     {
-        var components = new ILsmComponent[Version.Components.Length + 1];
+        var components = new ILsmComponent[1 + Immutables.Length + Version.Components.Length];
         components[0] = memtable;
-        Version.Components.CopyTo(components, 1);
+        for (var i = 0; i < Immutables.Length; i++) components[1 + i] = Immutables[i].Memtable;
+        Version.Components.CopyTo(components, 1 + Immutables.Length);
         return new(components);
     }
 }
