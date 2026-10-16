@@ -72,6 +72,13 @@ public class LsmKeyValueDBPersistenceTest
         oldSnapshot.Dispose();
         var tablesAfter = await CountTables(storage);
         Assert.True(tablesAfter < tablesWhileSnapshotLives, $"{tablesAfter} >= {tablesWhileSnapshotLives}");
+        // Background compaction may still be catching up on a loaded machine; the worker deletes what it obsoletes.
+        for (var wait = 0; wait < 100 && tablesAfter > 4; wait++)
+        {
+            await Task.Delay(100);
+            tablesAfter = await CountTables(storage);
+        }
+
         Assert.True(tablesAfter <= 4, $"{tablesAfter} tables remain");
     }
 

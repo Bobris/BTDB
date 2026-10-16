@@ -125,6 +125,10 @@ interface ILsmComponent
     /// Number of blocks whose first key is lower than key (or lower or equal when inclusive).
     int CountBlocksBefore(ReadOnlySpan<byte> key, bool inclusive);
 
+    /// Adds keys inside blocks [fromBlock, toBlock) at most one restart interval apart, used as select pivots
+    /// finer than blocks.
+    void AddFinePivots(int fromBlock, int toBlock, List<byte[]> pivots);
+
     /// All points in ascending key order.
     IEnumerable<LsmEntry> Enumerate();
 

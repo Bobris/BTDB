@@ -14,6 +14,7 @@ sealed unsafe class NativeMemtable : IMemtable
 {
     const int Capacity = 32;
     const int VirtualBlockSize = 64;
+    const int FinePivotStride = 8;
 
     [StructLayout(LayoutKind.Sequential)]
     struct Node
@@ -457,6 +458,15 @@ sealed unsafe class NativeMemtable : IMemtable
 
     public int CountBlocksBefore(ReadOnlySpan<byte> key, bool inclusive) =>
         (int)((CountBefore(key, inclusive) + VirtualBlockSize - 1) / VirtualBlockSize);
+
+    /// Every FinePivotStride-th key of the virtual blocks; ranks in the memtable are exact, so this only bounds the
+    /// final linear step of select.
+    public void AddFinePivots(int fromBlock, int toBlock, List<byte[]> pivots)
+    {
+        var end = Math.Min((long)toBlock * VirtualBlockSize, EntryCount);
+        for (var index = (long)Math.Max(0, fromBlock) * VirtualBlockSize; index < end; index += FinePivotStride)
+            pivots.Add(EntryAt(index)->KeySpan.ToArray());
+    }
 
     static LsmEntry ToEntry(LeafEntry* entry) => new(entry->KeySpan.ToArray(), (entry->Flags & 1) != 0,
         (entry->Flags & 2) != 0, new ReadOnlySpan<byte>(entry->Value, entry->ValueLength).ToArray());

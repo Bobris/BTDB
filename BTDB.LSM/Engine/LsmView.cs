@@ -137,6 +137,30 @@ sealed class LsmView
             else high = pivot;
         }
 
+        // Bisect again over keys inside the remaining blocks, so the final linear step covers at most about one
+        // restart interval per component instead of whole blocks.
+        var pivots = new List<byte[]>();
+        foreach (var component in _components)
+        {
+            var from = low == null ? 0 : component.CountBlocksBefore(low, true) - 1;
+            var to = high == null ? component.BlockCount : component.CountBlocksBefore(high, false);
+            component.AddFinePivots(from, to, pivots);
+        }
+
+        pivots.RemoveAll(p => low != null && LsmKeys.Compare(p, low) <= 0 || high != null && LsmKeys.Compare(p, high) >= 0);
+        pivots.Sort((a, b) => LsmKeys.Compare(a, b));
+        int pivotLo = 0, pivotHi = pivots.Count;
+        while (pivotLo < pivotHi)
+        {
+            var mid = (pivotLo + pivotHi) >>> 1;
+            if (Rank(pivots[mid]) <= index)
+            {
+                low = pivots[mid];
+                pivotLo = mid + 1;
+            }
+            else pivotHi = mid;
+        }
+
         var skip = index - (low == null ? 0 : Rank(low));
         var iterator = new MergingIterator(this);
         var found = iterator.SeekGE(low ?? [], true);

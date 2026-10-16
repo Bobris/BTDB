@@ -122,7 +122,7 @@ readonly ref struct RawBlock
     int RestartDelta(int restart) => BinaryPrimitives.ReadInt32LittleEndian(_data[(_restartsStart + restart * 8 + 4)..]);
 
     /// Whole key stored at a restart point.
-    ReadOnlySpan<byte> RestartKey(int restart)
+    public ReadOnlySpan<byte> RestartKey(int restart)
     {
         var decoder = new LsmDecoder(_data, RestartOffset(restart));
         decoder.ReadVUInt32();

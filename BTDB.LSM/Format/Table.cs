@@ -1,6 +1,9 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using BTDB.KVDBLayer;
 using BTDB.LSM.Engine;
 using BTDB.LSM.Storage;
@@ -439,19 +442,119 @@ sealed class TableReader : ILsmComponent
         return (Partition(lo), block - _partitionFirstBlocks[lo]);
     }
 
-    /// Pins the raw bytes of a data block in the cache; wrap the handle's span in a RawBlock.
+    /// Pins the raw bytes of a data block in the cache; wrap the handle's span in a RawBlock. A block being read
+    /// ahead is awaited instead of read again.
     internal NativeClockCache.Handle PinBlock(int block)
     {
         var (partition, local) = Locate(block);
         var offset = partition.Offsets[local];
         var length = partition.Lengths[local];
-        return _cache.Pin(FileNumber, offset, () => RawBlock.Decode(ReadChecked(offset, length), ObjectKey));
+        return _cache.Pin(FileNumber, offset, () =>
+            _readahead.TryGetValue(offset, out var pending) && pending.GetAwaiter().GetResult() is { } prefetched
+                ? prefetched
+                : RawBlock.Decode(ReadChecked(offset, length), ObjectKey));
+    }
+
+    /// Largest single readahead request; L0 measured a 1 MiB GET at 2–3 times the latency of a 256 KiB one, while
+    /// parallel requests keep their latency (ImplementationPlan.md, section 12.2).
+    internal const int ReadaheadRequestSize = 256 * 1024;
+
+    readonly ConcurrentDictionary<long, Task<byte[]?>> _readahead = new();
+    volatile bool _evicted;
+
+    /// Starts asynchronous reads of the blocks from first in direction (+1 or -1) up to about bytes of stored data,
+    /// skipping blocks that are cached or already being read. Contiguous blocks are read together in requests of at
+    /// most ReadaheadRequestSize, all in parallel; the decoded blocks go to the cache. Returns the last block covered.
+    internal int Readahead(int first, int direction, long bytes)
+    {
+        var group = new List<(long Offset, int Length, TaskCompletionSource<byte[]?> Result)>();
+        long groupBytes = 0;
+
+        void Issue()
+        {
+            if (group.Count == 0) return;
+            _ = ReadGroupAsync(group.ToArray());
+            group.Clear();
+            groupBytes = 0;
+        }
+
+        var block = first;
+        for (long covered = 0; block >= 0 && block < BlockCount && covered < bytes; block += direction)
+        {
+            var (partition, local) = Locate(block);
+            var offset = partition.Offsets[local];
+            var length = partition.Lengths[local];
+            covered += length;
+            if (_cache.Contains(FileNumber, offset))
+            {
+                Issue();
+                continue;
+            }
+
+            var result = new TaskCompletionSource<byte[]?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_readahead.TryAdd(offset, result.Task))
+            {
+                Issue();
+                continue;
+            }
+
+            // Groups are kept in ascending offset order; a backward scan adds blocks in front.
+            if (group.Count > 0 && (groupBytes + length > ReadaheadRequestSize ||
+                                    (direction > 0
+                                        ? group[^1].Offset + group[^1].Length != offset
+                                        : offset + length != group[0].Offset)))
+                Issue();
+            if (direction > 0) group.Add((offset, length, result));
+            else group.Insert(0, (offset, length, result));
+            groupBytes += length;
+        }
+
+        Issue();
+        return Math.Clamp(block - direction, 0, Math.Max(0, BlockCount - 1));
+    }
+
+    async Task ReadGroupAsync((long Offset, int Length, TaskCompletionSource<byte[]?> Result)[] blocks)
+    {
+        var start = blocks[0].Offset;
+        try
+        {
+            var buffer = new byte[blocks[^1].Offset + blocks[^1].Length - start];
+            await _storage.ReadRangeAsync(ObjectKey, start, buffer, CancellationToken.None).ConfigureAwait(false);
+            foreach (var (offset, length, result) in blocks)
+            {
+                var data = RawBlock.Decode(buffer.AsSpan((int)(offset - start), length), ObjectKey);
+                if (!_evicted) _cache.Insert(FileNumber, offset, data);
+                result.TrySetResult(data);
+            }
+        }
+        catch
+        {
+            // A cursor that needs a failed block reads it itself and reports the error.
+        }
+        finally
+        {
+            foreach (var (offset, _, result) in blocks)
+            {
+                result.TrySetResult(null);
+                _readahead.TryRemove(offset, out _);
+            }
+        }
     }
 
     public byte[] BlockFirstKey(int block)
     {
         var (partition, local) = Locate(block);
         return partition.FirstKeys[local];
+    }
+
+    public void AddFinePivots(int fromBlock, int toBlock, List<byte[]> pivots)
+    {
+        for (var block = Math.Max(0, fromBlock); block < Math.Min(toBlock, BlockCount); block++)
+        {
+            using var pin = PinBlock(block);
+            var data = new RawBlock(pin.Span);
+            for (var restart = 0; restart < data.RestartCount; restart++) pivots.Add(data.RestartKey(restart).ToArray());
+        }
     }
 
     public int CountBlocksBefore(ReadOnlySpan<byte> key, bool inclusive)
@@ -593,7 +696,11 @@ sealed class TableReader : ILsmComponent
         return entries;
     }
 
-    public void EvictFromCache() => _cache.Evict(FileNumber);
+    public void EvictFromCache()
+    {
+        _evicted = true;
+        _cache.Evict(FileNumber);
+    }
 }
 
 /// Positioned cursor over one table: a block index, an entry index and the offset of the next entry, so stepping
@@ -605,6 +712,15 @@ sealed class TableCursor(TableReader table) : IComponentCursor
     int _index;
     int _count;
     int _nextOffset;
+
+    // Readahead state: consecutive block crossings in one direction, the last block requested and the window.
+    const long InitialReadahead = 64 * 1024;
+    const long MaxReadahead = 2 * 1024 * 1024;
+    int _direction;
+    int _crossings;
+    int _aheadUntil;
+    int _aheadBlocks;
+    long _window = InitialReadahead;
 
     public bool Valid { get; private set; }
     public LsmEntry Current { get; private set; }
@@ -626,8 +742,34 @@ sealed class TableCursor(TableReader table) : IComponentCursor
         return false;
     }
 
+    void ResetReadahead()
+    {
+        _crossings = 0;
+        _window = InitialReadahead;
+    }
+
+    /// Called when the cursor steps onto the next block in direction. From the second consecutive crossing it keeps
+    /// reads running ahead, requesting more when half of the previous request is consumed and doubling the window.
+    void CrossedBlock(int direction)
+    {
+        if (direction != _direction)
+        {
+            _direction = direction;
+            ResetReadahead();
+        }
+
+        if (++_crossings < 2) return;
+        if (_crossings > 2 && (_aheadUntil - _block) * direction > _aheadBlocks / 2) return;
+        var from = _crossings == 2 ? _block + direction : _aheadUntil + direction;
+        if (from < 0 || from >= table.BlockCount) return;
+        _aheadUntil = table.Readahead(from, direction, _window);
+        _aheadBlocks = Math.Abs(_aheadUntil - from) + 1;
+        _window = Math.Min(_window * 2, MaxReadahead);
+    }
+
     public bool SeekGE(ReadOnlySpan<byte> key, bool inclusive)
     {
+        ResetReadahead();
         for (var block = Math.Max(0, table.CountBlocksBefore(key, true) - 1); block < table.BlockCount; block++)
         {
             int index;
@@ -646,6 +788,7 @@ sealed class TableCursor(TableReader table) : IComponentCursor
 
     public bool SeekLE(ReadOnlySpan<byte> key, bool inclusive)
     {
+        ResetReadahead();
         var block = table.CountBlocksBefore(key, inclusive) - 1;
         if (block < 0) return Invalid();
         int index;
@@ -660,6 +803,7 @@ sealed class TableCursor(TableReader table) : IComponentCursor
 
     public bool SeekLast()
     {
+        ResetReadahead();
         if (table.BlockCount == 0) return Invalid();
         var block = table.BlockCount - 1;
         int count;
@@ -670,7 +814,14 @@ sealed class TableCursor(TableReader table) : IComponentCursor
     public bool Next()
     {
         if (!Valid) return false;
-        if (_index + 1 >= _count) return _block + 1 < table.BlockCount ? At(_block + 1, 0) : Invalid();
+        if (_index + 1 >= _count)
+        {
+            if (_block + 1 >= table.BlockCount) return Invalid();
+            At(_block + 1, 0);
+            CrossedBlock(1);
+            return true;
+        }
+
         using var pin = table.PinBlock(_block);
         Current = new RawBlock(pin.Span).EntryAt(_nextOffset, Current.Key, out _nextOffset);
         _index++;
@@ -684,6 +835,8 @@ sealed class TableCursor(TableReader table) : IComponentCursor
         if (_block == 0) return Invalid();
         int count;
         using (var pin = table.PinBlock(_block - 1)) count = new RawBlock(pin.Span).Count;
-        return At(_block - 1, count - 1);
+        At(_block - 1, count - 1);
+        CrossedBlock(-1);
+        return true;
     }
 }

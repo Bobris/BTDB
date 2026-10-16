@@ -144,9 +144,11 @@ static class LsmAzureBenchmark
             db.DurableTransactions = false;
             Report("lsm-durable-commit-1-key", Latencies(latencies));
 
-            // Non-durable commits of 100 keys, made durable together every 100 commits.
+            // Non-durable commits of 100 existing keys, made durable together every 100 commits. Each update of a key
+            // that is not cached reads its block, because CreateOrUpdateKeyValue reports whether the key existed.
             stopwatch.Restart();
-            for (var s = 0; s < Samples; s++)
+            var groupSamples = Math.Min(Samples, 200);
+            for (var s = 0; s < groupSamples; s++)
             {
                 using var tr = await db.StartWritingTransaction();
                 using var cursor = tr.CreateCursor();
@@ -155,7 +157,7 @@ static class LsmAzureBenchmark
                 if (s % 100 == 99) await db.FlushAsync();
             }
 
-            Report("lsm-group-commit-100-keys", new { commitsPerSecond = Samples / stopwatch.Elapsed.TotalSeconds });
+            Report("lsm-group-commit-100-keys", new { commitsPerSecond = groupSamples / stopwatch.Elapsed.TotalSeconds });
 
             // Reader in another instance: delay from the writer's durable commit until the reader sees it.
             using var follower = await LsmKeyValueDB.OpenAsync(Options(false) with

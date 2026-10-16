@@ -33,6 +33,11 @@ public sealed class LsmBlockCache : IDisposable
     /// Pins the raw bytes cached for (file, offset), loading them on a miss; dispose the handle to unpin.
     internal NativeClockCache.Handle Pin(ulong file, long offset, Func<byte[]> load) => _data.Pin(file, offset, load);
 
+    internal bool Contains(ulong file, long offset) => _data.Contains(file, offset);
+
+    /// Adds prefetched raw bytes unpinned and not yet referenced, so unused readahead is evicted first.
+    internal void Insert(ulong file, long offset, byte[] data) => _data.Insert(file, offset, data);
+
     /// Index and filter partitions.
     internal T GetOrLoadMetadata<T>(ulong file, long offset, Func<T> load) where T : class, ICachedBlock =>
         _metadata.GetOrLoad(file, offset, load);
@@ -145,6 +150,32 @@ sealed unsafe class NativeClockCache : IDisposable
             shard.Size += data.Length;
             EvictIfNeeded(shard);
             return new(slot);
+        }
+    }
+
+    public bool Contains(ulong file, long offset)
+    {
+        var shard = ShardFor(file, offset);
+        lock (shard.Lock) return shard.Slots.ContainsKey((file, offset));
+    }
+
+    public void Insert(ulong file, long offset, byte[] data)
+    {
+        var shard = ShardFor(file, offset);
+        lock (shard.Lock)
+        {
+            // Checked under the lock: Dispose sets the flag before it frees each shard under the same lock.
+            if (_disposed != 0 || shard.Slots.ContainsKey((file, offset))) return;
+            var slot = new Slot
+            {
+                File = file, Offset = offset, Length = data.Length, Shard = shard,
+                Pointer = (byte*)NativeMemory.Alloc((nuint)Math.Max(1, data.Length))
+            };
+            data.CopyTo(new Span<byte>(slot.Pointer, data.Length));
+            shard.Slots.Add((file, offset), slot);
+            shard.Ring.Add(slot);
+            shard.Size += data.Length;
+            EvictIfNeeded(shard);
         }
     }
 

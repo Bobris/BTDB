@@ -243,3 +243,99 @@ Findings:
   admit only after measuring flush pressure on a real workload, is rebuilding the live tree into a fresh arena when
   garbage dominates; the old arena would be retired through the same snapshot-safe release.
 * Larger transactions amortize the copies best. They match the expected use (plan, decision D4).
+
+## 4. End-to-end qualification on Azure (2026-10-16)
+
+Harness: `DBBenchmark lsm-azure` (`DBBenchmark/LSM/LsmAzureBenchmark.cs`) and the `BTDB.LSM.Azure.Test` suite with
+`BTDB_AZURE_BLOB_ENDPOINT`. The setup matched section 2: a Standard_D8ads_v5 VM in Sweden Central (Release build,
+.NET 10) with a managed identity, and two new accounts in the same region, Standard_LRS (StorageV2) and Premium_LRS
+(BlockBlobStorage), with shared keys disabled. The resources were deleted after the run.
+
+**Adapter qualification.** The live adapter suite passed against the Premium account: 79 of 79 tests (conformance,
+the shared `KeyValueDBTestBase` suite, and crash recovery with a reader in a second instance), in 71 s.
+
+**Workload.** 2,000,000 keys of 16 bytes, in pseudo-random order, with 100-byte values. Values are mostly zero, so
+they compress. Bulk load uses transactions of 10,000 keys, then waits for WAL durability. Other settings: a 32 MiB
+memtable, 1,000 samples per latency case, and the database under a prefix.
+
+Two runs were made on each account:
+
+* Run 1 used a 64 MiB block cache and had no readahead.
+* Run 2 used the default 256 MiB cache, after readahead was added. The 100-key commit case was shortened to 200
+  commits, and the BTree comparison was skipped.
+
+The reader-freshness case measures the delay from a writer's commit until a reader instance's
+`WaitForCommitUlongAsync` (10 ms first retry, doubling) returns. After every bulk load and full compaction, the
+database was one 49 MB level-1 table plus one small level-0 table.
+
+Values are p50 / p95 / p99 in ms unless noted.
+
+| Case | Premium, run 1 | LRS, run 1 | Premium, run 2 | LRS, run 2 |
+| --- | --- | --- | --- | --- |
+| Bulk load, inserts/s (WAL durable at the end) | 25,650 | 30,500 | 27,790 | 32,340 |
+| Bulk load plus full compaction, s | 80.2 | 68.2 | 74.2 | 64.4 |
+| Durable single-key commit | 9.6 / 22.1 / 28.0 | 8.2 / 11.3 / 21.8 | 10.1 / 22.0 / 29.7 | 8.4 / 10.8 / 19.6 |
+| Commits of 100 existing random keys, commits/s | 2.9 | 3.5 | 7.1 | 8.4 |
+| Reader freshness | 15.8 / 48.6 / 56.6 | 29.5 / 34.3 / 38.7 | 15.5 / 50.3 / 57.1 | 13.3 / 34.0 / 40.3 |
+| Open of a reader instance, s | 0.025 | 0.031 | 0.029 | 0.024 |
+| Cold point read (`FindExactKey` + value) | 4.4 / 6.1 / 10.3 | 3.3 / 4.5 / 9.0 | 4.5 / 6.2 / 10.5 | 3.8 / 5.7 / 8.7 |
+| Cold `FindKeyIndex` | 9.4 / 17.5 / 23.4 | 7.2 / 13.8 / 17.5 | 9.3 / 18.2 / 23.1 | 8.0 / 15.4 / 21.4 |
+| Warm point read, µs | (cache too small) | (cache too small) | 2.4 / 3.1 / 4.0 | 2.5 / 3.2 / 3.7 |
+| Warm `FindKeyIndex`, µs | (cache too small) | (cache too small) | 107 / 209 / 243 | 104 / 200 / 226 |
+| Full key scan, keys/s | 68,900 | 85,300 | 745,600 | 983,300 |
+
+Memory of the LSM writer after bulk load and compaction:
+
+* run 1: 26 MiB managed and 56 MiB native (cache and memtable); working set 424 MiB;
+* run 2: 27 MiB managed and 224 MiB native; working set 646–672 MiB.
+
+The working set includes the runtime, the Azure SDK and freed native memory not yet returned to the OS. A freshly
+opened reader held 2–10 MiB managed and no native memory before its first read.
+
+Comparison in run 1: `BTreeKeyValueDB` on `AzureBlobFileCollection` with the same keys and values. Its bulk load
+includes `CreateKvi` and the upload of the TRL and KVI.
+
+| | Premium | LRS |
+| --- | --- | --- |
+| Bulk load, inserts/s | 115,900 | 143,900 |
+| Native memory allocated during load, MiB | 1,572 | 1,572 |
+| Open from blob storage into an empty local cache, s | 1.69 | 1.16 |
+| Local file cache, MiB | 273 | 273 |
+| Native memory after open, MiB | 58 | 58 |
+| Point read, µs (first / second pass) | 3.4 / 0.9 | 3.3 / 1.0 |
+| `FindKeyIndex`, µs (first / second pass) | 1.3 / 0.9 | 1.2 / 0.9 |
+
+Findings:
+
+* **Memory and open time meet the goal.** An LSM reader opens in 25–30 ms with a few MiB, independent of database
+  size. `BTreeKeyValueDB` needs a full local copy (273 MiB here) and memory proportional to the key count, and its
+  open time grows with the database.
+* **Cold reads cost one ranged GET.** A cold point read takes 3.3–4.5 ms at p50 and 9–10.5 ms at p99. In this run LRS
+  was not slower than Premium, unlike the section 2 screening. With one run per account, that does not support a
+  general tier recommendation for reads. A warm point read takes 2.5 µs, about 2.5 times `BTreeKeyValueDB`.
+* **Readahead was missing; it is now implemented.** In run 1, a scan paid one synchronous GET per 32 KiB block, about
+  70–85k keys/s. Readahead (plan section 12.2) grows a window from 64 KiB to 2 MiB, issued as parallel requests of at
+  most 256 KiB. It raised scans to 0.75–0.98 M keys/s with a cold cache. `LsmReadaheadTest` guards it.
+* **The final select step was CPU-heavy; it is now fixed.** A warm `FindKeyIndex` took about 105 µs. Select bisected
+  only down to two blocks per component and then stepped through up to about 600 entries, pinning the block for each
+  step: about 850 cache pins per call. Select now bisects a second time over restart keys inside the remaining blocks,
+  so the linear step covers at most about one restart interval. In-memory measurement on 400,000 keys in one table
+  (Release build, Apple M2 Max): from 850 to 100 pins and from 122 to 19 µs per call.
+* **Updates of uncached existing keys cost a read each.** `CreateOrUpdateKeyValue` must report whether the key
+  existed, so the engine has to know it. New keys are mostly rejected by bloom filters, but an existing key whose
+  block is not cached costs one synchronous GET. 100-key commits of random existing keys reach 3–8 commits/s, about
+  300–800 updates/s, depending on the cache hit rate. This cost is inherent to the `IKeyValueDB` contract.
+  Applications that update a cold working set should size `BlockCacheSize` for it. A batched existence prefetch for
+  known key sets is a candidate optimization, to be admitted only with an application workload.
+* **Bulk load is 4–5 times slower than `BTreeKeyValueDB`** (26–32k against 116–144k inserts/s). With random keys,
+  every memtable flush overlaps the whole level 1, so each compaction rewrites level 1. The run made 22 flushes into a
+  level that grew to 49 MB, and write stalls probably hold the writer back while that happens. This is not profiled
+  yet. Candidates are a larger memtable
+  for loads, sublevel-based delaying of level-0 compaction, and the arena rebuild from section 3.
+* **Durable commits take 8–10 ms at p50**, about 2.5 ms over the single-PUT floor in section 2. Premium had a p95 of
+  22 ms, against 11 ms on LRS. That fits the recommendation to wait for durability only where needed and to group work
+  into larger transactions.
+* **Reader freshness is dominated by polling.** The p50 of 13–16 ms is a WAL upload plus one or two probes. The tail
+  of 34–57 ms comes from the doubling retry interval of `WaitForCommitUlongAsync`. The one LRS p50 of 29.5 ms in run 1
+  was a different alignment of the same retry steps. An application that needs a tighter tail can lower
+  `RefreshRetryInterval`.

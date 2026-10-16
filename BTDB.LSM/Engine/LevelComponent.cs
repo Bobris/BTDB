@@ -143,6 +143,17 @@ sealed class LevelComponent : ILsmComponent
         return _tables[lo].BlockFirstKey(block - _blocksBefore[lo]);
     }
 
+    public void AddFinePivots(int fromBlock, int toBlock, List<byte[]> pivots)
+    {
+        for (var table = 0; table < _tables.Length; table++)
+        {
+            var first = Math.Max(fromBlock, _blocksBefore[table]);
+            var end = Math.Min(toBlock, _blocksBefore[table + 1]);
+            if (first < end)
+                _tables[table].AddFinePivots(first - _blocksBefore[table], end - _blocksBefore[table], pivots);
+        }
+    }
+
     public int CountBlocksBefore(ReadOnlySpan<byte> key, bool inclusive)
     {
         var table = FirstEndingAfter(key);

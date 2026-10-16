@@ -174,7 +174,7 @@ public class LsmReaderTest
         var storage = new InMemoryLsmStorage();
         using var writer = await LsmKeyValueDB.OpenAsync(Options(storage, true) with
         {
-            MemtableSize = 1 << 20, ReaderHeartbeatInterval = TimeSpan.FromMilliseconds(50),
+            MemtableSize = 1 << 20, ReaderHeartbeatInterval = TimeSpan.FromMilliseconds(250),
             DeletionGracePeriod = TimeSpan.Zero
         });
         var random = new Random(5);
@@ -183,9 +183,10 @@ public class LsmReaderTest
         writer.CreateKvi(default);
         using var reader = await LsmKeyValueDB.OpenAsync(Options(storage, false) with
         {
-            RegisterReader = true, ReaderHeartbeatInterval = TimeSpan.FromMilliseconds(50),
+            RegisterReader = true, ReaderHeartbeatInterval = TimeSpan.FromMilliseconds(250),
             BlockCache = new Format.LsmBlockCache(64 * 1024)
         });
+        // The registry entry expires after three heartbeats; 250 ms keeps it alive on a loaded test machine.
         var expected = new SortedDictionary<string, string>(model, StringComparer.Ordinal);
         var old = reader.StartReadOnlyTransaction();
         var tablesBefore = storage.Keys("tables/").Length;
@@ -205,9 +206,15 @@ public class LsmReaderTest
 
         await reader.RefreshAsync();
         await Task.Delay(200);
-        // Once the reader moved on, the writer deletes what only the old snapshot used.
+        // Once the reader moved on, the writer deletes what only the old snapshot used; deletion runs in the
+        // background, so wait for it with a generous limit for loaded test machines.
         await writer.Compact(default);
-        await Task.Delay(200);
+        for (var wait = 0; wait < 100 && storage.Keys("tables/").Length >= tablesBefore + 2; wait++)
+        {
+            await Task.Delay(100);
+            await writer.Compact(default);
+        }
+
         Assert.True(storage.Keys("tables/").Length < tablesBefore + 2, string.Join(",", storage.Keys("tables/")));
         using var tr = reader.StartReadOnlyTransaction();
         Assert.Equal(model, Content(tr));

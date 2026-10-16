@@ -63,6 +63,7 @@ interface IMemtable : ILsmComponent
 sealed class Memtable : IMemtable
 {
     public const int VirtualBlockSize = 64;
+    public const int FinePivotStride = 8;
 
     MemNode? _root;
     TombstoneSet _tombstones;
@@ -297,6 +298,15 @@ sealed class Memtable : IMemtable
 
     public int CountBlocksBefore(ReadOnlySpan<byte> key, bool inclusive) =>
         (int)((CountBefore(key, inclusive) + VirtualBlockSize - 1) / VirtualBlockSize);
+
+    /// Every FinePivotStride-th key of the virtual blocks; ranks in the memtable are exact, so this only bounds the
+    /// final linear step of select.
+    public void AddFinePivots(int fromBlock, int toBlock, List<byte[]> pivots)
+    {
+        var end = Math.Min((long)toBlock * VirtualBlockSize, EntryCount);
+        for (var index = (long)Math.Max(0, fromBlock) * VirtualBlockSize; index < end; index += FinePivotStride)
+            pivots.Add(NodeAt(index).Key);
+    }
 
     static LsmEntry ToEntry(MemNode node) => new(node.Key, node.IsSet, node.ExistsBelow, node.Value);
 
