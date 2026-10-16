@@ -7,7 +7,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <IsPackable>true</IsPackable>
         <PackageId>BTDB.LSM</PackageId>
-        <Version>35.11.2</Version>
+        <Version>35.11.3</Version>
         <!-- Preview while the storage format may still change; see Doc/LsmKeyValueDB.md. -->
         <PackageVersion>$(Version)-preview</PackageVersion>
         <Authors>Boris Letocha</Authors>

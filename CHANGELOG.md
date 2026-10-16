@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.11.3
+
 ### Added
 
 - `BTDB.LSM` and `BTDB.LSM.Azure` preview packages: `LsmKeyValueDB`, an `IKeyValueDB` implementation that stores a
