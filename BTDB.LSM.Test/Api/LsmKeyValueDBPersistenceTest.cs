@@ -70,15 +70,16 @@ public class LsmKeyValueDBPersistenceTest
         var tablesWhileSnapshotLives = await CountTables(storage);
         Assert.Equal(0, oldSnapshot.GetKeyValueCount());
         oldSnapshot.Dispose();
+        // The background worker deletes what no snapshot uses within about a second, and compaction may still be
+        // catching up on a loaded machine.
         var tablesAfter = await CountTables(storage);
-        Assert.True(tablesAfter < tablesWhileSnapshotLives, $"{tablesAfter} >= {tablesWhileSnapshotLives}");
-        // Background compaction may still be catching up on a loaded machine; the worker deletes what it obsoletes.
         for (var wait = 0; wait < 100 && tablesAfter > 4; wait++)
         {
             await Task.Delay(100);
             tablesAfter = await CountTables(storage);
         }
 
+        Assert.True(tablesAfter < tablesWhileSnapshotLives, $"{tablesAfter} >= {tablesWhileSnapshotLives}");
         Assert.True(tablesAfter <= 4, $"{tablesAfter} tables remain");
     }
 

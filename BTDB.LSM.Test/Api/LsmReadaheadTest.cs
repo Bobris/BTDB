@@ -10,14 +10,22 @@ using Xunit;
 
 namespace BTDB.LSM.Test.Api;
 
-/// Counts ranged reads of tables, split into synchronous cursor misses and asynchronous reads.
+/// Counts ranged reads of tables, split into reads on the cursor's thread and readahead reads on the dedicated read
+/// threads.
 sealed class CountingLsmStorage(ILsmStorage inner) : ILsmStorage
 {
-    int _syncTableReads;
-    int _asyncTableReads;
+    int _cursorTableReads;
+    int _readaheadTableReads;
 
-    public int SyncTableReads => Volatile.Read(ref _syncTableReads);
-    public int AsyncTableReads => Volatile.Read(ref _asyncTableReads);
+    public int CursorTableReads => Volatile.Read(ref _cursorTableReads);
+    public int ReadaheadTableReads => Volatile.Read(ref _readaheadTableReads);
+
+    void Count(string key)
+    {
+        if (!key.StartsWith("tables/")) return;
+        if (Thread.CurrentThread.Name?.StartsWith("BTDB.LSM read") == true) Interlocked.Increment(ref _readaheadTableReads);
+        else Interlocked.Increment(ref _cursorTableReads);
+    }
 
     public ValueTask<LsmWriteOutcome> CreateAsync(string key, ReadOnlyMemory<byte> content,
         CancellationToken cancellation) => inner.CreateAsync(key, content, cancellation);
@@ -27,13 +35,13 @@ sealed class CountingLsmStorage(ILsmStorage inner) : ILsmStorage
 
     public ValueTask ReadRangeAsync(string key, long offset, Memory<byte> destination, CancellationToken cancellation)
     {
-        if (key.StartsWith("tables/")) Interlocked.Increment(ref _asyncTableReads);
+        Count(key);
         return inner.ReadRangeAsync(key, offset, destination, cancellation);
     }
 
     public void ReadRange(string key, long offset, Span<byte> destination)
     {
-        if (key.StartsWith("tables/")) Interlocked.Increment(ref _syncTableReads);
+        Count(key);
         inner.ReadRange(key, offset, destination);
     }
 
@@ -110,8 +118,8 @@ public class LsmReadaheadTest
             do Assert.Equal(Key(expected++), cursor.SlowGetKey());
             while (cursor.FindNextKey([]));
         Assert.Equal(KeyCount, expected);
-        Assert.True(storage.AsyncTableReads > 0);
-        Assert.True(storage.SyncTableReads < 20, $"{storage.SyncTableReads} synchronous table reads");
+        Assert.True(storage.ReadaheadTableReads > 0);
+        Assert.True(storage.CursorTableReads < 20, $"{storage.CursorTableReads} table reads on the cursor's thread");
     }
 
     [Fact]
@@ -126,8 +134,8 @@ public class LsmReadaheadTest
             do Assert.Equal(Key(--expected), cursor.SlowGetKey());
             while (cursor.FindPreviousKey([]));
         Assert.Equal(0, expected);
-        Assert.True(storage.AsyncTableReads > 0);
-        Assert.True(storage.SyncTableReads < 20, $"{storage.SyncTableReads} synchronous table reads");
+        Assert.True(storage.ReadaheadTableReads > 0);
+        Assert.True(storage.CursorTableReads < 20, $"{storage.CursorTableReads} table reads on the cursor's thread");
     }
 
     [Fact]

@@ -81,7 +81,8 @@ sealed class LatencyLsmStorage(ILsmStorage inner) : ILsmStorage
         var start = Stopwatch.GetTimestamp();
         Thread.Sleep(Cost(4, destination.Length, ReadBytesPerMs));
         inner.ReadRange(key, offset, destination);
-        Count("sync range " + Kind(key), destination.Length, start);
+        var thread = Thread.CurrentThread.Name?.StartsWith("BTDB.LSM read") == true ? "readahead" : "cursor";
+        Count(thread + " range " + Kind(key), destination.Length, start);
     }
 
     public IAsyncEnumerable<LsmObjectInfo> ListAsync(string prefix, CancellationToken cancellation) =>

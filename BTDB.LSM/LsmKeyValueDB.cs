@@ -25,6 +25,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
     readonly LsmKeyValueDBOptions _options;
     readonly ILsmStorage _storage;
     readonly LsmBlockCache _cache;
+    readonly ulong _cacheScope;
     readonly TableBuildOptions _tableOptions;
     readonly LsmCompactionOptions _compactionOptions;
     readonly byte[]?[] _compactionPointers;
@@ -50,6 +51,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         _options = options;
         _storage = options.Storage;
         _cache = cache;
+        _cacheScope = cache.Scope(options.Storage, options.Prefix);
         _tableOptions = new()
         {
             BlockSize = options.BlockSize, RestartInterval = options.RestartInterval,
@@ -247,13 +249,16 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
 
             AppendWal(generation, metadata.TransactionNumber, record);
             if (rotate) RequestWork();
-            if (persist || DurableTransactions)
-                WaitForDurabilityAsync(metadata.TransactionNumber).AsTask().GetAwaiter().GetResult();
         }
         finally
         {
             ReleaseWriter();
         }
+
+        // The commit is published and its record queued in order, so the next writer can start while this one waits;
+        // durable commits of several writers then share WAL uploads.
+        if (persist || DurableTransactions)
+            WaitForDurabilityAsync(metadata.TransactionNumber).AsTask().GetAwaiter().GetResult();
     }
 
     internal void RevertWritingTransaction() => ReleaseWriter();
@@ -269,10 +274,13 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         }
     }
 
+    /// Releases arenas the snapshot held at once. Storage deletion is left to the background worker, which runs it at
+    /// least every second, so disposing a transaction does no storage I/O; without a worker it runs here.
     internal void TransactionDisposed(LsmKeyValueDBTransaction transaction)
     {
         _transactions.TryRemove(transaction, out _);
-        DeleteObsoleteObjects();
+        if (_worker == null) DeleteObsoleteObjects();
+        else ReleaseRetiredArenas();
     }
 
     public string CalcStats()
@@ -332,7 +340,7 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         var request = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_fullCompactionRequests) _fullCompactionRequests.Add(request);
         RequestWork();
-        await request.Task;
+        await request.Task.WaitAsync(cancellation);
         return false;
     }
 

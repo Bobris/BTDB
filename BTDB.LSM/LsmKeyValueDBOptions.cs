@@ -94,6 +94,9 @@ public sealed record LsmKeyValueDBOptions
 
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
+    /// CreateKvi and Compact fail when flushes and compactions have kept failing this long; the worker keeps retrying.
+    public TimeSpan WorkerFailureTimeout { get; init; } = TimeSpan.FromMinutes(1);
+
     /// The writer deletes objects no current state references only after this long, so readers in other processes can
     /// finish reading them.
     public TimeSpan DeletionGracePeriod { get; init; } = TimeSpan.FromMinutes(10);

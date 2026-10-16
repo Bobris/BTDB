@@ -18,6 +18,7 @@ public sealed partial class LsmKeyValueDB
     volatile TaskCompletionSource _progress = NewProgress();
     Task? _worker;
     Exception? _workerError;
+    DateTimeOffset _workerFailingSince;
     long _throttleBytes;
 
     // Background work counters reported by CalcStats; written only by the unit runner.
@@ -68,6 +69,7 @@ public sealed partial class LsmKeyValueDB
                 {
                     worked = RunOneUnit();
                     _workerError = null;
+                    _workerFailingSince = DateTimeOffset.MaxValue;
                     backoff = TimeSpan.FromMilliseconds(50);
                 }
                 catch (LsmWriterFencedException ex)
@@ -77,6 +79,7 @@ public sealed partial class LsmKeyValueDB
                 }
                 catch (Exception ex)
                 {
+                    if (_workerError == null) _workerFailingSince = _options.TimeProvider.GetUtcNow();
                     _workerError = ex;
                     Logger?.ReportCompactorException(ex);
                     NotifyProgress();
@@ -114,10 +117,15 @@ public sealed partial class LsmKeyValueDB
         lock (_stateLock)
         {
             var current = _state;
-            var metadataPersisted = current.Immutables.Length == 0 &&
-                                    current.CommitUlong == _lastManifest.CommitUlong &&
-                                    current.Ulongs.AsSpan().SequenceEqual(_lastManifest.Ulongs) &&
-                                    current.TransactionNumber == _lastManifest.TransactionNumber;
+            // An empty memtable whose metadata the newest sealed memtable or the manifest already carries holds
+            // nothing to persist. Sealing it would create a generation without WAL chunks.
+            var persisted = current.Immutables.Length > 0
+                ? (current.Immutables[0].CommitUlong, current.Immutables[0].Ulongs,
+                    current.Immutables[0].TransactionNumber)
+                : (_lastManifest.CommitUlong, _lastManifest.Ulongs, _lastManifest.TransactionNumber);
+            var metadataPersisted = current.CommitUlong == persisted.Item1 &&
+                                    current.Ulongs.AsSpan().SequenceEqual(persisted.Item2) &&
+                                    current.TransactionNumber == persisted.Item3;
             if (current.Memtable.IsEmpty && metadataPersisted) return false;
             _state = new(NewMemtable(_options), current.MemtableGeneration + 1,
                 [
@@ -125,7 +133,8 @@ public sealed partial class LsmKeyValueDB
                         current.TransactionNumber),
                     .. current.Immutables
                 ], current.Version, current.CommitUlong, current.Ulongs, current.TransactionNumber,
-                current.CommitSequence, current.Sequence + 1, current.ManifestSequence);
+                // A new commit sequence makes a transaction that read the sealed memtable fail to upgrade to writing.
+                current.CommitSequence + 1, current.Sequence + 1, current.ManifestSequence);
             return true;
         }
     }
@@ -137,8 +146,18 @@ public sealed partial class LsmKeyValueDB
             var progress = _progress.Task;
             if (_state.Immutables.Length == 0) break;
             if (!_isWriter) throw new LsmWriterFencedException("The writer lease was lost before the flush finished.");
+            ThrowIfWorkerKeepsFailing();
             await Task.WhenAny(progress, Task.Delay(100));
         }
+    }
+
+    /// Waiting callers give up when background work has failed for longer than WorkerFailureTimeout; transient
+    /// storage errors are retried meanwhile.
+    void ThrowIfWorkerKeepsFailing()
+    {
+        if (_workerError is { } error &&
+            _options.TimeProvider.GetUtcNow() - _workerFailingSince > _options.WorkerFailureTimeout)
+            throw new BTDBException("BTDB.LSM background work keeps failing: " + error.Message, error);
     }
 
     /// One unit of background work: flush the oldest sealed memtable, run a requested full compaction, or run one
@@ -242,11 +261,18 @@ public sealed partial class LsmKeyValueDB
         var previousWalStart = _lastManifest.WalStartChunk;
         if (flushed != null)
         {
+            // Recovery must start at the first chunk of any later generation; only when no later generation has a
+            // chunk yet is the next chunk number the start. Generations up to the flushed one are no longer needed.
             long walStart;
             lock (_walLock)
-                walStart = _generationFirstChunk.TryGetValue(flushed.Generation + 1, out var first)
-                    ? first
-                    : _walNextChunk;
+            {
+                walStart = _walNextChunk;
+                foreach (var (generation, first) in _generationFirstChunk)
+                    if (generation > flushed.Generation)
+                        walStart = Math.Min(walStart, first);
+                foreach (var generation in _generationFirstChunk.Keys.Where(g => g <= flushed.Generation).ToArray())
+                    _generationFirstChunk.Remove(generation);
+            }
             WriteManifest(version, flushed.CommitUlong, flushed.Ulongs, flushed.TransactionNumber,
                 Math.Max(_lastManifest.FlushedGeneration, flushed.Generation),
                 Math.Max(previousWalStart, walStart));
@@ -290,7 +316,7 @@ public sealed partial class LsmKeyValueDB
 
     byte[] ReadValue(ValueHandle handle)
     {
-        using var pin = _cache.Pin(handle.FileNumber, handle.Offset, () =>
+        using var pin = _cache.Pin(new(_cacheScope, handle.FileNumber), handle.Offset, () =>
         {
             var key = ValueKey(handle.FileNumber);
             var record = new byte[handle.StoredLength];
@@ -310,7 +336,8 @@ public sealed partial class LsmKeyValueDB
         var key = TableKey(_options.Prefix, fileNumber);
         CreateObject(key, content);
         _tableBytesWritten += content.Length;
-        return TableReader.Open(_storage, _cache, fileNumber, key, content.Length, _options.TableTailReadSize);
+        return TableReader.Open(_storage, _cache, _cacheScope, fileNumber, key, content.Length,
+            _options.TableTailReadSize);
     }
 
     void WriteManifest(LsmVersion version, ulong commitUlong, ulong[] ulongs, long transactionNumber,
@@ -339,10 +366,19 @@ public sealed partial class LsmKeyValueDB
     /// writer took over; a lost response is reconciled by reading the object back.
     void CreateObject(string key, byte[] content, bool fence = false)
     {
-        CheckLeaseDeadline();
         Throttle(content.Length);
-        while (true)
+        var backoff = TimeSpan.FromMilliseconds(20);
+        for (var attempt = 0;; attempt++)
         {
+            // Every attempt is a write, so every attempt needs the lease; a missing object after an ambiguous create
+            // is retried with a growing pause.
+            CheckLeaseDeadline();
+            if (attempt > 0)
+            {
+                Thread.Sleep(backoff);
+                backoff = TimeSpan.FromTicks(Math.Min(backoff.Ticks * 2, TimeSpan.FromSeconds(2).Ticks));
+            }
+
             var outcome = _storage.CreateAsync(key, content, CancellationToken.None).AsTask().GetAwaiter().GetResult();
             if (outcome == LsmWriteOutcome.Applied) return;
             var existing = _storage.TryReadAsync(key, CancellationToken.None).AsTask().GetAwaiter().GetResult();
@@ -371,45 +407,86 @@ public sealed partial class LsmKeyValueDB
         else if (due > elapsed) Thread.Sleep(due - elapsed);
     }
 
+    /// Oldest state sequence any live snapshot of this instance uses. Enumerating the dictionary takes no locks.
+    long OldestLiveSequence()
+    {
+        var oldest = long.MaxValue;
+        foreach (var (transaction, _) in _transactions) oldest = Math.Min(oldest, transaction.StateSequence);
+        return oldest;
+    }
+
+    /// Releases the native memory of memtables no snapshot can reach any more; no storage access.
+    void ReleaseRetiredArenas()
+    {
+        lock (_obsoleteObjects)
+        {
+            if (_retiredArenas.Count == 0) return;
+            var oldestLive = OldestLiveSequence();
+            for (var i = _retiredArenas.Count - 1; i >= 0; i--)
+            {
+                if (_retiredArenas[i].ObsoleteAt > oldestLive) continue;
+                _retiredArenas[i].Arena.Dispose();
+                _retiredArenas.RemoveAt(i);
+            }
+        }
+    }
+
+    /// Deletes obsolete objects no snapshot, reader in another process or current version can still need
+    /// (ImplementationPlan.md, section 16). Only the writer deletes; a failed delete is retried on a later pass.
     void DeleteObsoleteObjects()
     {
-        List<(string Key, ulong FileNumber, long ObsoleteAt, DateTimeOffset Since, long Manifest)> deletable;
+        ReleaseRetiredArenas();
+        if (!_isWriter) return;
         var now = _options.TimeProvider.GetUtcNow();
         var grace = _options.DeletionGracePeriod;
-        bool HasLapsed((string, ulong, long, DateTimeOffset Since, long) o) => now - o.Since >= grace;
         DateTimeOffset? newestLapsed = null;
         lock (_obsoleteObjects)
         {
-            if (_obsoleteObjects.Count == 0 && _retiredArenas.Count == 0) return;
-            if (!_isWriter && _retiredArenas.Count == 0) return;
-            if (_isWriter)
-                foreach (var o in _obsoleteObjects)
-                    if (HasLapsed(o) && (newestLapsed == null || o.Since > newestLapsed))
-                        newestLapsed = o.Since;
+            foreach (var o in _obsoleteObjects)
+                if (now - o.Since >= grace && (newestLapsed == null || o.Since > newestLapsed))
+                    newestLapsed = o.Since;
         }
 
+        if (newestLapsed is not { } since) return;
         // Readers in other processes are protected by the grace period and, when registered, by their entries,
         // read after the objects became obsolete.
-        var oldestRegistered = newestLapsed is { } since ? OldestRegisteredManifest(since) : long.MaxValue;
+        var oldestRegistered = OldestRegisteredManifest(since);
+        // Never delete what the current version references, whatever led to the entry.
+        var version = _state.Version;
+        var referenced = version.AllTables().Select(t => t.Table.FileNumber).Concat(version.ValueFiles.Keys)
+            .ToHashSet();
+        var deletable = new List<(string Key, ulong FileNumber, long ObsoleteAt, DateTimeOffset Since, long Manifest)>();
         lock (_obsoleteObjects)
         {
-            var oldestLive = long.MaxValue;
-            foreach (var transaction in _transactions.Keys)
-                oldestLive = Math.Min(oldestLive, transaction.StateSequence);
-            bool Deletable((string, ulong, long ObsoleteAt, DateTimeOffset Since, long Manifest) o) =>
-                _isWriter && o.ObsoleteAt <= oldestLive && HasLapsed(o) && o.Manifest <= oldestRegistered;
-            deletable = _obsoleteObjects.Where(Deletable).ToList();
-            _obsoleteObjects.RemoveAll(Deletable);
-            // A memtable's native memory is released once no snapshot can reach any version of it.
-            foreach (var (arena, _) in _retiredArenas.Where(a => a.ObsoleteAt <= oldestLive)) arena.Dispose();
-            _retiredArenas.RemoveAll(a => a.ObsoleteAt <= oldestLive);
+            var oldestLive = OldestLiveSequence();
+            for (var i = _obsoleteObjects.Count - 1; i >= 0; i--)
+            {
+                var o = _obsoleteObjects[i];
+                if (o.ObsoleteAt > oldestLive || now - o.Since < grace || o.Manifest > oldestRegistered) continue;
+                _obsoleteObjects.RemoveAt(i);
+                if (o.FileNumber != 0 && referenced.Contains(o.FileNumber))
+                {
+                    Logger?.LogWarning("BTDB.LSM kept " + o.Key + ": the current version references it.");
+                    continue;
+                }
+
+                deletable.Add(o);
+            }
         }
 
-        foreach (var (key, fileNumber, _, _, _) in deletable)
+        foreach (var o in deletable)
         {
-            if (fileNumber != 0) _cache.Evict(fileNumber);
-            _storage.DeleteAsync(key, CancellationToken.None).AsTask().GetAwaiter().GetResult();
-            if (fileNumber != 0) Logger?.FileMarkedForDelete((uint)fileNumber);
+            try
+            {
+                if (o.FileNumber != 0) _cache.Evict(new(_cacheScope, o.FileNumber));
+                _storage.DeleteAsync(o.Key, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+                if (o.FileNumber != 0) Logger?.FileMarkedForDelete((uint)o.FileNumber);
+            }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning("BTDB.LSM could not delete " + o.Key + ", will retry: " + ex.Message);
+                lock (_obsoleteObjects) _obsoleteObjects.Add(o);
+            }
         }
     }
 }

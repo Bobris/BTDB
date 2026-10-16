@@ -176,8 +176,8 @@ public sealed partial class LsmKeyValueDB
         {
             levels[level].Add(openTables != null && openTables.TryGetValue(fileNumber, out var table)
                 ? table
-                : TableReader.Open(options.Storage, cache, fileNumber, TableKey(options.Prefix, fileNumber), length,
-                    options.TableTailReadSize));
+                : TableReader.Open(options.Storage, cache, cache.Scope(options.Storage, options.Prefix), fileNumber,
+                    TableKey(options.Prefix, fileNumber), length, options.TableTailReadSize));
         }
 
         return new([.. levels[0]], levels.Select(l => l.ToArray()).ToArray(),

@@ -13,7 +13,7 @@ public sealed partial class LsmKeyValueDB
 {
     sealed record PendingRecord(long Generation, long TransactionNumber, byte[] Payload);
 
-    sealed record EncodedChunk(long Number, byte[] Content, bool LastRecordComplete);
+    sealed record EncodedChunk(long Number, byte[] Content);
 
     readonly Lock _walLock = new();
     readonly List<PendingRecord> _walPending = [];
@@ -22,6 +22,7 @@ public sealed partial class LsmKeyValueDB
     SemaphoreSlim _walSignal = new(0);
     List<EncodedChunk>? _walInFlight;
     int _walInFlightRecords;
+    long _walInFlightBytes;
     long _walInFlightTransaction;
     long _walPendingBytes;
     long _walNextChunk;
@@ -87,16 +88,41 @@ public sealed partial class LsmKeyValueDB
         }
     }
 
-    /// Uploads one batch of pending records; returns false when nothing was pending. A failed batch keeps its chunk
-    /// numbers and contents, so a retry recreates exactly the missing chunks and history stays contiguous.
+    /// Uploads one batch of pending records; returns false when nothing was pending. A batch holds about one round of
+    /// parallel chunk uploads (at least one record), so durability advances round by round. A failed batch keeps its
+    /// chunk numbers and contents, so a retry recreates exactly the missing chunks and history stays contiguous.
     async ValueTask<bool> UploadWalAsync()
     {
         if (_walInFlight == null)
         {
             PendingRecord[] records;
-            lock (_walLock) records = [.. _walPending];
-            if (records.Length == 0) return false;
-            _walInFlight = EncodeChunks(records);
+            lock (_walLock)
+            {
+                var limit = (long)_options.WalChunkTargetSize * _options.WalUploadParallelism;
+                var count = 0;
+                long bytes = 0;
+                while (count < _walPending.Count && (count == 0 || bytes + _walPending[count].Payload.Length <= limit))
+                    bytes += _walPending[count++].Payload.Length;
+                if (count == 0) return false;
+                records = _walPending.GetRange(0, count).ToArray();
+                _walInFlightBytes = bytes;
+            }
+
+            var planned = PlanChunks(records);
+            var numbers = new long[planned.Count];
+            lock (_walLock)
+            {
+                // Chunk numbers and the first chunk of each generation change only under the lock, because a flush
+                // reads them to decide where recovery starts.
+                for (var i = 0; i < planned.Count; i++)
+                {
+                    numbers[i] = _walNextChunk++;
+                    _generationFirstChunk.TryAdd(planned[i].Generation, numbers[i]);
+                }
+            }
+
+            _walInFlight = planned.Select((chunk, i) => new EncodedChunk(numbers[i],
+                WalFormat.Encode(_epoch, chunk.Generation, false, chunk.Parts))).ToList();
             _walInFlightRecords = records.Length;
             _walInFlightTransaction = records[^1].TransactionNumber;
         }
@@ -112,7 +138,7 @@ public sealed partial class LsmKeyValueDB
         lock (_walLock)
         {
             _walPending.RemoveRange(0, _walInFlightRecords);
-            _walPendingBytes = _walPending.Sum(r => (long)r.Payload.Length);
+            _walPendingBytes -= _walInFlightBytes;
             _walInFlight = null;
             durable = _durableTransaction = _walInFlightTransaction;
         }
@@ -122,20 +148,20 @@ public sealed partial class LsmKeyValueDB
         return true;
     }
 
+    sealed record PlannedChunk(long Generation, List<WalPart> Parts);
+
     /// Splits records into chunks of about WalChunkTargetSize; a chunk holds records of one generation only.
-    List<EncodedChunk> EncodeChunks(IReadOnlyList<PendingRecord> records)
+    List<PlannedChunk> PlanChunks(IReadOnlyList<PendingRecord> records)
     {
-        var chunks = new List<EncodedChunk>();
+        var chunks = new List<PlannedChunk>();
         var parts = new List<WalPart>();
         var size = 0;
         var generation = records[0].Generation;
 
-        void Close(bool lastComplete)
+        void Close()
         {
             if (parts.Count == 0) return;
-            var number = _walNextChunk++;
-            _generationFirstChunk.TryAdd(generation, number);
-            chunks.Add(new(number, WalFormat.Encode(_epoch, generation, false, parts), lastComplete));
+            chunks.Add(new(generation, parts));
             parts = [];
             size = 0;
         }
@@ -144,7 +170,7 @@ public sealed partial class LsmKeyValueDB
         {
             if (record.Generation != generation)
             {
-                Close(true);
+                Close();
                 generation = record.Generation;
             }
 
@@ -159,11 +185,11 @@ public sealed partial class LsmKeyValueDB
                 parts.Add(new(first, last, record.TransactionNumber, payload.AsSpan(offset, length).ToArray()));
                 size += length + 16;
                 offset += length;
-                if (size >= _options.WalChunkTargetSize) Close(last);
+                if (size >= _options.WalChunkTargetSize) Close();
             } while (offset < payload.Length);
         }
 
-        Close(true);
+        Close();
         return chunks;
     }
 

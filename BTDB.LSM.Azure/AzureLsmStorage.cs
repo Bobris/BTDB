@@ -189,9 +189,15 @@ public sealed class AzureLsmStorage(BlobContainerClient container, AzureLsmStora
         await container.GetBlobClient(key).UploadAsync(new BinaryData(content), overwrite: true, cancellation);
     }
 
-    /// Azure leases last 15 to 60 seconds; other durations are clamped.
-    static TimeSpan LeaseDuration(TimeSpan duration) =>
-        TimeSpan.FromSeconds(Math.Clamp(Math.Floor(duration.TotalSeconds), 15, 60));
+    /// Azure leases last a whole number of seconds from 15 to 60. Other durations are rejected instead of adjusted,
+    /// because the writer computes its deadline from the duration it asked for.
+    static TimeSpan LeaseDuration(TimeSpan duration)
+    {
+        if (duration.TotalSeconds is < 15 or > 60 || duration.Ticks % TimeSpan.TicksPerSecond != 0)
+            throw new ArgumentOutOfRangeException(nameof(duration), duration,
+                "Azure blob leases last a whole number of seconds from 15 to 60; set LsmKeyValueDBOptions.LeaseDuration accordingly.");
+        return duration;
+    }
 
     public async ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration,
         CancellationToken cancellation)

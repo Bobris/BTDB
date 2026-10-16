@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +16,10 @@ public sealed partial class LsmKeyValueDB
     CancellationTokenSource? _writerStop;
     Task? _leaseRenewer;
     volatile bool _isWriter;
+
+    // Set from acquiring the lease, through the takeover, until the writer stops; every object this instance creates
+    // requires it, so writes racing a takeover or a lease loss are fenced locally.
+    volatile bool _holdsLease;
     long _epoch;
     DateTimeOffset _leaseDeadline;
 
@@ -31,31 +37,50 @@ public sealed partial class LsmKeyValueDB
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_isWriter) return;
-            while (true)
+            // A refresh must not publish reader state while the instance turns into the writer.
+            await _refreshLock.WaitAsync(cancellation);
+            try
             {
-                var requested = _options.TimeProvider.GetUtcNow();
-                if (await _storage.TryAcquireLeaseAsync(LockKey, _leaseId, _options.LeaseDuration, cancellation))
+                while (true)
                 {
-                    _leaseDeadline = requested + _options.LeaseDuration - _options.LeaseSafetyMargin;
-                    break;
+                    // Acquiring again with the same lease id also extends a lease this instance still holds.
+                    while (true)
+                    {
+                        var requested = _options.TimeProvider.GetUtcNow();
+                        if (await _storage.TryAcquireLeaseAsync(LockKey, _leaseId, _options.LeaseDuration,
+                                cancellation))
+                        {
+                            _leaseDeadline = requested + _options.LeaseDuration - _options.LeaseSafetyMargin;
+                            _holdsLease = true;
+                            break;
+                        }
+
+                        await Task.Delay(_options.LeaseRetryInterval, _options.TimeProvider, cancellation);
+                    }
+
+                    try
+                    {
+                        await BecomeWriterAsync(cancellation);
+                        return;
+                    }
+                    catch (LsmWriterFencedException ex)
+                    {
+                        // A predecessor wrote at the same name concurrently, or the lease ran out during the
+                        // takeover; reload its legitimate history under a fresh lease.
+                        _holdsLease = false;
+                        Logger?.LogWarning("BTDB.LSM writer takeover did not complete, retrying: " + ex.Message);
+                    }
                 }
-
-                await Task.Delay(_options.LeaseRetryInterval, _options.TimeProvider, cancellation);
             }
-
-            while (true)
+            finally
             {
-                try
-                {
-                    await BecomeWriterAsync(cancellation);
-                    return;
-                }
-                catch (LsmWriterFencedException ex)
-                {
-                    // A predecessor wrote at the same name concurrently; its history is legitimate, reload it.
-                    Logger?.LogWarning("BTDB.LSM writer takeover raced with a predecessor, retrying: " + ex.Message);
-                }
+                _refreshLock.Release();
             }
+        }
+        catch
+        {
+            _holdsLease = false;
+            throw;
         }
         finally
         {
@@ -67,7 +92,7 @@ public sealed partial class LsmKeyValueDB
     {
         var loaded = await LoadAsync(_options, _cache, OpenTables(), cancellation);
         InstallLoaded(loaded);
-        await AdoptOrphansAsync(loaded, cancellation);
+        var orphans = await FindOrphansAsync(loaded, cancellation);
         _epoch = loaded.MaxEpoch + 1;
         _manifestSequence = loaded.Manifest.Sequence;
         // Fence the manifest: the next manifest name now carries this writer's epoch.
@@ -76,6 +101,11 @@ public sealed partial class LsmKeyValueDB
         // Fence the WAL: an epoch marker at the first free name; later stale chunks have a lower epoch.
         await CreateChunkAsync(loaded.FirstFreeChunk,
             WalFormat.Encode(_epoch, loaded.MemtableGeneration, true, []));
+        // Only now is the loaded manifest final: a failed attempt may have seen objects a predecessor then published.
+        var now = _options.TimeProvider.GetUtcNow();
+        lock (_obsoleteObjects)
+            foreach (var (key, fileNumber) in orphans)
+                _obsoleteObjects.Add((key, fileNumber, 0, now, loaded.Manifest.Sequence + 1));
         lock (_walLock)
         {
             _walPending.Clear();
@@ -93,9 +123,11 @@ public sealed partial class LsmKeyValueDB
     }
 
     /// A predecessor may have created tables and value files it never published. New file numbers start after every
-    /// existing object, and unreferenced objects are deleted like obsolete ones.
-    async ValueTask AdoptOrphansAsync(LoadedDatabase loaded, CancellationToken cancellation)
+    /// existing object; the unreferenced objects are returned, to be deleted like obsolete ones once fenced.
+    async ValueTask<List<(string Key, ulong FileNumber)>> FindOrphansAsync(LoadedDatabase loaded,
+        CancellationToken cancellation)
     {
+        var orphans = new List<(string, ulong)>();
         var referenced = loaded.Version.AllTables().Select(t => t.Table.FileNumber)
             .Concat(loaded.Version.ValueFiles.Keys).ToHashSet();
         var highest = 0UL;
@@ -104,16 +136,16 @@ public sealed partial class LsmKeyValueDB
             await foreach (var info in _storage.ListAsync(_options.Prefix + prefix, cancellation))
             {
                 var name = info.Key[(info.Key.LastIndexOf('/') + 1)..];
-                if (!ulong.TryParse(name.AsSpan(0, name.IndexOf('.')), out var fileNumber)) continue;
+                var dot = name.IndexOf('.');
+                if (dot < 0 || !ulong.TryParse(name.AsSpan(0, dot), NumberStyles.None, CultureInfo.InvariantCulture,
+                        out var fileNumber)) continue;
                 highest = Math.Max(highest, fileNumber);
-                if (referenced.Contains(fileNumber)) continue;
-                lock (_obsoleteObjects)
-                    _obsoleteObjects.Add((info.Key, fileNumber, 0, _options.TimeProvider.GetUtcNow(),
-                        loaded.Manifest.Sequence + 1));
+                if (!referenced.Contains(fileNumber)) orphans.Add((info.Key, fileNumber));
             }
         }
 
         _nextFileNumber = Math.Max(_nextFileNumber, highest + 1);
+        return orphans;
     }
 
     /// Replaces the in-memory state by state loaded from storage. Existing snapshots keep what they read; objects
@@ -228,14 +260,14 @@ public sealed partial class LsmKeyValueDB
         }
     }
 
-    /// Self-fence: a writer whose lease may have expired must not write any more objects. When less than two thirds
-    /// of the lease remain, the lease is renewed here first, so writing does not depend on the renewal loop being
-    /// scheduled on time.
+    /// Self-fence: an instance that does not hold the lease, or whose lease may have expired, must not write any more
+    /// objects. The renewal loop renews every third of the lease; when it is late and less than a third remains, the
+    /// lease is renewed here first, so writing does not depend on the loop being scheduled on time.
     void CheckLeaseDeadline()
     {
-        if (!_isWriter) return;
+        if (!_holdsLease) throw new LsmWriterFencedException("This instance does not hold the writer lease.");
         var now = _options.TimeProvider.GetUtcNow();
-        if (now > _leaseDeadline - _options.LeaseDuration * 2 / 3)
+        if (now > _leaseDeadline - _options.LeaseDuration / 3)
         {
             bool renewed;
             try
@@ -266,25 +298,45 @@ public sealed partial class LsmKeyValueDB
         try
         {
             if (!_isWriter) return;
+            _holdsLease = false;
             _isWriter = false;
             Logger?.LogWarning("BTDB.LSM stopped being the writer: " + reason.Message);
-            await StopWriterServicesAsync();
-            CompleteDurabilityWaiters(long.MaxValue, reason);
-            lock (_walLock)
-            {
-                _walPending.Clear();
-                _walPendingBytes = 0;
-                _walInFlight = null;
-            }
-
-            if (_disposed) return;
+            // A refresh must not run until the reader state is reloaded: its replay still holds the writer's arenas.
+            await _refreshLock.WaitAsync();
             try
             {
-                InstallLoaded(await LoadAsync(_options, _cache, OpenTables(), CancellationToken.None));
+                await StopWriterServicesAsync();
+                CompleteDurabilityWaiters(long.MaxValue, reason);
+                TaskCompletionSource[] compactions;
+                lock (_fullCompactionRequests)
+                {
+                    compactions = [.. _fullCompactionRequests];
+                    _fullCompactionRequests.Clear();
+                }
+
+                foreach (var compaction in compactions)
+                    compaction.TrySetException(
+                        new LsmWriterFencedException("The writer lease was lost before the compaction ran."));
+                lock (_walLock)
+                {
+                    _walPending.Clear();
+                    _walPendingBytes = 0;
+                    _walInFlight = null;
+                }
+
+                if (_disposed) return;
+                try
+                {
+                    InstallLoaded(await LoadAsync(_options, _cache, OpenTables(), CancellationToken.None));
+                }
+                catch (Exception ex)
+                {
+                    Logger?.LogWarning("BTDB.LSM could not reload after losing the writer lease: " + ex.Message);
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                Logger?.LogWarning("BTDB.LSM could not reload after losing the writer lease: " + ex.Message);
+                _refreshLock.Release();
             }
         }
         finally

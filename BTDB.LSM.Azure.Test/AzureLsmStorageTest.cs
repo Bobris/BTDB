@@ -95,6 +95,18 @@ public class AzureLsmStorageTest(BlobStorageFixture fixture) : IClassFixture<Blo
         await storage.ReleaseLeaseAsync("LOCK", "11111111-1111-1111-1111-111111111111", default);
         Assert.True(await storage.TryAcquireLeaseAsync("LOCK", "22222222-2222-2222-2222-222222222222", duration, default));
     }
+
+    [Theory]
+    [InlineData(10_000)]
+    [InlineData(61_000)]
+    [InlineData(15_500)]
+    public async Task LeaseDurationsAzureCannotHonorAreRejected(int milliseconds)
+    {
+        var storage = await Storage();
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+            await storage.TryAcquireLeaseAsync("LOCK", "11111111-1111-1111-1111-111111111111",
+                TimeSpan.FromMilliseconds(milliseconds), default));
+    }
 }
 
 /// The shared IKeyValueDB suite on Azure storage.

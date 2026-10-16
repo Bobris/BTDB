@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -96,11 +97,18 @@ public sealed partial class FileSystemLsmStorage : ILsmStorage
         throw new IOException($"Creating {path} failed with errno {error}.");
     }
 
+    /// Opens for reading while allowing other processes to replace or delete the file (on Windows too).
+    static FileStream OpenShared(string path) => new(path, FileMode.Open, FileAccess.Read,
+        FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous);
+
     public async ValueTask<byte[]?> TryReadAsync(string key, CancellationToken cancellation)
     {
         try
         {
-            return await File.ReadAllBytesAsync(PathOf(key), cancellation);
+            await using var stream = OpenShared(PathOf(key));
+            var content = new byte[stream.Length];
+            await stream.ReadExactlyAsync(content, cancellation);
+            return content;
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -148,7 +156,7 @@ public sealed partial class FileSystemLsmStorage : ILsmStorage
         {
             if (Path.GetFileName(file).StartsWith(TemporaryPrefix, StringComparison.Ordinal)) continue;
             var key = Path.GetRelativePath(_root, file).Replace(Path.DirectorySeparatorChar, '/');
-            if (!key.StartsWith(prefix, StringComparison.Ordinal) || key.EndsWith(LeaseLockSuffix)) continue;
+            if (!key.StartsWith(prefix, StringComparison.Ordinal) || key.EndsWith(LeaseLockSuffix, StringComparison.Ordinal)) continue;
             long length;
             try
             {
@@ -171,6 +179,8 @@ public sealed partial class FileSystemLsmStorage : ILsmStorage
         await Task.CompletedTask;
     }
 
+    /// Deletes the object; a file still open elsewhere without FileShare.Delete (Windows only) throws, and the
+    /// database retries the deletion later.
     public ValueTask DeleteAsync(string key, CancellationToken cancellation)
     {
         try
@@ -220,9 +230,17 @@ public sealed partial class FileSystemLsmStorage : ILsmStorage
                 (string, DateTimeOffset)? current = null;
                 if (File.Exists(path))
                 {
-                    var parts = Encoding.UTF8.GetString(await File.ReadAllBytesAsync(path, cancellation)).Split(' ');
-                    if (parts.Length == 2)
-                        current = (parts[0], new DateTimeOffset(long.Parse(parts[1]), TimeSpan.Zero));
+                    byte[] record;
+                    await using (var stream = OpenShared(path))
+                    {
+                        record = new byte[stream.Length];
+                        await stream.ReadExactlyAsync(record, cancellation);
+                    }
+
+                    var parts = Encoding.UTF8.GetString(record).Split(' ');
+                    if (parts.Length == 2 && long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture,
+                            out var ticks))
+                        current = (parts[0], new DateTimeOffset(ticks, TimeSpan.Zero));
                 }
 
                 return action(current, holder =>
@@ -235,7 +253,7 @@ public sealed partial class FileSystemLsmStorage : ILsmStorage
     }
 
     string Record(string leaseId, TimeSpan duration) =>
-        leaseId + " " + (_timeProvider.GetUtcNow() + duration).UtcTicks;
+        leaseId + " " + (_timeProvider.GetUtcNow() + duration).UtcTicks.ToString(CultureInfo.InvariantCulture);
 
     public ValueTask<bool> TryAcquireLeaseAsync(string key, string leaseId, TimeSpan duration,
         CancellationToken cancellation) =>

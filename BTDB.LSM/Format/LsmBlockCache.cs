@@ -1,9 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using BTDB.LSM.Storage;
 
 namespace BTDB.LSM.Format;
+
+/// A file of one database in a cache: file numbers restart in every database, so a cache shared by several databases
+/// keys entries by the database's scope too.
+readonly record struct CacheFile(ulong Scope, ulong FileNumber);
 
 interface ICachedBlock
 {
@@ -25,24 +31,40 @@ public sealed class LsmBlockCache : IDisposable
         _data = new(Math.Max(64 * 1024, capacityBytes - capacityBytes / 8), shardCount);
     }
 
+    readonly ConditionalWeakTable<ILsmStorage, Dictionary<string, ulong>> _scopes = new();
+    long _lastScope;
+
+    /// The scope of the database stored under prefix in storage. Instances on the same storage object and prefix see
+    /// the same immutable objects, so they share a scope and its cached blocks.
+    internal ulong Scope(ILsmStorage storage, string prefix)
+    {
+        var byPrefix = _scopes.GetValue(storage, _ => new());
+        lock (byPrefix)
+        {
+            if (!byPrefix.TryGetValue(prefix, out var scope))
+                byPrefix.Add(prefix, scope = (ulong)Interlocked.Increment(ref _lastScope));
+            return scope;
+        }
+    }
+
     public long SizeBytes => _data.SizeBytes + _metadata.SizeBytes;
     public long NativeBytes => _data.SizeBytes;
     public long Hits => _data.Hits + _metadata.Hits;
     public long Misses => _data.Misses + _metadata.Misses;
 
     /// Pins the raw bytes cached for (file, offset), loading them on a miss; dispose the handle to unpin.
-    internal NativeClockCache.Handle Pin(ulong file, long offset, Func<byte[]> load) => _data.Pin(file, offset, load);
+    internal NativeClockCache.Handle Pin(CacheFile file, long offset, Func<byte[]> load) => _data.Pin(file, offset, load);
 
-    internal bool Contains(ulong file, long offset) => _data.Contains(file, offset);
+    internal bool Contains(CacheFile file, long offset) => _data.Contains(file, offset);
 
     /// Adds prefetched raw bytes unpinned and not yet referenced, so unused readahead is evicted first.
-    internal void Insert(ulong file, long offset, byte[] data) => _data.Insert(file, offset, data);
+    internal void Insert(CacheFile file, long offset, byte[] data) => _data.Insert(file, offset, data);
 
     /// Index and filter partitions.
-    internal T GetOrLoadMetadata<T>(ulong file, long offset, Func<T> load) where T : class, ICachedBlock =>
+    internal T GetOrLoadMetadata<T>(CacheFile file, long offset, Func<T> load) where T : class, ICachedBlock =>
         _metadata.GetOrLoad(file, offset, load);
 
-    internal void Evict(ulong file)
+    internal void Evict(CacheFile file)
     {
         _data.Evict(file);
         _metadata.Evict(file);
@@ -57,7 +79,7 @@ sealed unsafe class NativeClockCache : IDisposable
 {
     internal sealed class Slot
     {
-        public ulong File;
+        public CacheFile File;
         public long Offset;
         public byte* Pointer;
         public int Length;
@@ -70,7 +92,7 @@ sealed unsafe class NativeClockCache : IDisposable
     internal sealed class Shard
     {
         public readonly Lock Lock = new();
-        public readonly Dictionary<(ulong File, long Offset), Slot> Slots = new();
+        public readonly Dictionary<(CacheFile File, long Offset), Slot> Slots = new();
         public readonly List<Slot> Ring = [];
         public int Hand;
         public long Size;
@@ -110,10 +132,10 @@ sealed unsafe class NativeClockCache : IDisposable
         }
     }
 
-    Shard ShardFor(ulong file, long offset) =>
+    Shard ShardFor(CacheFile file, long offset) =>
         _shards[(int)((uint)HashCode.Combine(file, offset) % (uint)_shards.Length)];
 
-    public Handle Pin(ulong file, long offset, Func<byte[]> load)
+    public Handle Pin(CacheFile file, long offset, Func<byte[]> load)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         var shard = ShardFor(file, offset);
@@ -153,13 +175,13 @@ sealed unsafe class NativeClockCache : IDisposable
         }
     }
 
-    public bool Contains(ulong file, long offset)
+    public bool Contains(CacheFile file, long offset)
     {
         var shard = ShardFor(file, offset);
         lock (shard.Lock) return shard.Slots.ContainsKey((file, offset));
     }
 
-    public void Insert(ulong file, long offset, byte[] data)
+    public void Insert(CacheFile file, long offset, byte[] data)
     {
         var shard = ShardFor(file, offset);
         lock (shard.Lock)
@@ -228,7 +250,7 @@ sealed unsafe class NativeClockCache : IDisposable
         shard.Size -= slot.Length;
     }
 
-    public void Evict(ulong file)
+    public void Evict(CacheFile file)
     {
         foreach (var shard in _shards)
         {
@@ -274,10 +296,10 @@ sealed unsafe class NativeClockCache : IDisposable
     }
 }
 
-/// Byte-budgeted LRU of decoded managed objects keyed by (file number, offset).
+/// Byte-budgeted LRU of decoded managed objects keyed by (file, offset).
 sealed class ManagedLruCache(long capacityBytes)
 {
-    readonly Dictionary<(ulong File, long Offset), LinkedListNode<Item>> _items = new();
+    readonly Dictionary<(CacheFile File, long Offset), LinkedListNode<Item>> _items = new();
     readonly LinkedList<Item> _lru = new();
     readonly Lock _lock = new();
     long _sizeBytes;
@@ -288,9 +310,9 @@ sealed class ManagedLruCache(long capacityBytes)
     public long Hits => Interlocked.Read(ref _hits);
     public long Misses => Interlocked.Read(ref _misses);
 
-    sealed record Item((ulong File, long Offset) Key, ICachedBlock Block);
+    sealed record Item((CacheFile File, long Offset) Key, ICachedBlock Block);
 
-    public T GetOrLoad<T>(ulong file, long offset, Func<T> load) where T : class, ICachedBlock
+    public T GetOrLoad<T>(CacheFile file, long offset, Func<T> load) where T : class, ICachedBlock
     {
         var key = (file, offset);
         lock (_lock)
@@ -325,7 +347,7 @@ sealed class ManagedLruCache(long capacityBytes)
         return block;
     }
 
-    public void Evict(ulong file)
+    public void Evict(CacheFile file)
     {
         lock (_lock)
         {

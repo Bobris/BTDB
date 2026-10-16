@@ -266,19 +266,21 @@ sealed class TableReader : ILsmComponent
 {
     readonly ILsmStorage _storage;
     readonly LsmBlockCache _cache;
+    readonly CacheFile _cacheFile;
     readonly byte[][] _partitionFirstKeys;
     readonly int[] _partitionFirstBlocks;
     readonly (long Offset, int Length)[] _indexHandles;
     readonly (long Offset, int Length)[] _filterHandles;
 
-    TableReader(ILsmStorage storage, LsmBlockCache cache, ulong fileNumber, string objectKey, long length,
+    TableReader(ILsmStorage storage, LsmBlockCache cache, CacheFile cacheFile, string objectKey, long length,
         int blockCount, byte[][] partitionFirstKeys, int[] partitionFirstBlocks, (long, int)[] indexHandles,
         (long, int)[] filterHandles, TombstoneSet tombstones, long entryCount, long deltaSum, byte[] smallest,
         byte[] largest, IReadOnlyDictionary<ulong, long> valueReferences)
     {
         _storage = storage;
         _cache = cache;
-        FileNumber = fileNumber;
+        _cacheFile = cacheFile;
+        FileNumber = cacheFile.FileNumber;
         ObjectKey = objectKey;
         Length = length;
         BlockCount = blockCount;
@@ -329,8 +331,8 @@ sealed class TableReader : ILsmComponent
             : Tombstones[^1].End;
     }
 
-    public static TableReader Open(ILsmStorage storage, LsmBlockCache cache, ulong fileNumber, string objectKey,
-        long length, int tailReadSize = 64 * 1024)
+    public static TableReader Open(ILsmStorage storage, LsmBlockCache cache, ulong cacheScope, ulong fileNumber,
+        string objectKey, long length, int tailReadSize = 64 * 1024)
     {
         if (length < TableBuilder.FooterSize) throw new BTDBException($"Table {objectKey} is truncated.");
         var tailLength = (int)Math.Min(length, Math.Max(tailReadSize, TableBuilder.FooterSize));
@@ -390,7 +392,7 @@ sealed class TableReader : ILsmComponent
         var valueReferences = new Dictionary<ulong, long>();
         for (var count = properties.ReadVUInt32(); count > 0; count--)
             valueReferences.Add(properties.ReadVUInt64(), (long)properties.ReadVUInt64());
-        return new(storage, cache, fileNumber, objectKey, length, blockCount, firstKeys, firstBlocks, indexHandles,
+        return new(storage, cache, new(cacheScope, fileNumber), objectKey, length, blockCount, firstKeys, firstBlocks, indexHandles,
             filterHandles, new(tombstones), entryCount, deltaSum, smallest, largest, valueReferences);
     }
 
@@ -406,14 +408,14 @@ sealed class TableReader : ILsmComponent
     IndexPartition Partition(int partition)
     {
         var (offset, length) = _indexHandles[partition];
-        return _cache.GetOrLoadMetadata(FileNumber, offset,
+        return _cache.GetOrLoadMetadata(_cacheFile, offset,
             () => new IndexPartition(LsmChecksum.Verify(ReadChecked(offset, length), ObjectKey)));
     }
 
     BloomFilter Filter(int partition)
     {
         var (offset, length) = _filterHandles[partition];
-        return _cache.GetOrLoadMetadata(FileNumber, offset,
+        return _cache.GetOrLoadMetadata(_cacheFile, offset,
             () => new CachedFilter(BloomFilter.Read(LsmChecksum.Verify(ReadChecked(offset, length), ObjectKey))))
             .Filter;
     }
@@ -448,13 +450,14 @@ sealed class TableReader : ILsmComponent
     }
 
     /// Pins the raw bytes of a data block in the cache; wrap the handle's span in a RawBlock. A block being read
-    /// ahead is awaited instead of read again.
+    /// ahead is awaited instead of read again; readahead runs on dedicated threads, so this wait never depends on the
+    /// thread pool.
     internal NativeClockCache.Handle PinBlock(int block)
     {
         var (partition, local) = Locate(block);
         var offset = partition.Offsets[local];
         var length = partition.Lengths[local];
-        return _cache.Pin(FileNumber, offset, () =>
+        return _cache.Pin(_cacheFile, offset, () =>
             _readahead.TryGetValue(offset, out var pending) && pending.GetAwaiter().GetResult() is { } prefetched
                 ? prefetched
                 : RawBlock.Decode(ReadChecked(offset, length), ObjectKey));
@@ -465,70 +468,70 @@ sealed class TableReader : ILsmComponent
     internal const int ReadaheadRequestSize = 256 * 1024;
 
     readonly ConcurrentDictionary<long, Task<byte[]?>> _readahead = new();
-    volatile bool _evicted;
 
-    /// Starts asynchronous reads of the blocks from first in direction (+1 or -1) up to about bytes of stored data,
-    /// skipping blocks that are cached or already being read. Contiguous blocks are read together in requests of at
-    /// most ReadaheadRequestSize, all in parallel; the decoded blocks go to the cache. Returns the last block covered.
+    /// Starts reads of the blocks from first in direction (+1 or -1) up to about bytes of stored data, skipping blocks
+    /// that are cached or already being read. Contiguous blocks are read together in requests of at most
+    /// ReadaheadRequestSize, in parallel; the decoded blocks go to the cache. Returns the last block covered.
     internal int Readahead(int first, int direction, long bytes)
     {
-        var group = new List<(long Offset, int Length, TaskCompletionSource<byte[]?> Result)>();
-        long groupBytes = 0;
-
-        void Issue()
-        {
-            if (group.Count == 0) return;
-            _ = ReadGroupAsync(group.ToArray());
-            group.Clear();
-            groupBytes = 0;
-        }
-
+        // Resolve every location first: loading an index partition may throw, and nothing may be registered then.
+        var wanted = new List<(long Offset, int Length)>();
         var block = first;
         for (long covered = 0; block >= 0 && block < BlockCount && covered < bytes; block += direction)
         {
             var (partition, local) = Locate(block);
-            var offset = partition.Offsets[local];
-            var length = partition.Lengths[local];
-            covered += length;
-            if (_cache.Contains(FileNumber, offset))
+            covered += partition.Lengths[local];
+            wanted.Add((partition.Offsets[local], partition.Lengths[local]));
+        }
+
+        if (direction < 0) wanted.Reverse();
+        var group = new List<(long Offset, int Length, TaskCompletionSource<byte[]?> Result)>();
+        long groupBytes = 0;
+        foreach (var (offset, length) in wanted)
+        {
+            TaskCompletionSource<byte[]?>? result = null;
+            if (!_cache.Contains(_cacheFile, offset))
             {
-                Issue();
-                continue;
+                result = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                if (!_readahead.TryAdd(offset, result.Task)) result = null;
             }
 
-            var result = new TaskCompletionSource<byte[]?>(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (!_readahead.TryAdd(offset, result.Task))
+            if (result == null || group.Count > 0 && (groupBytes + length > ReadaheadRequestSize ||
+                                                      group[^1].Offset + group[^1].Length != offset))
             {
-                Issue();
-                continue;
+                IssueReadahead(group);
+                groupBytes = 0;
             }
 
-            // Groups are kept in ascending offset order; a backward scan adds blocks in front.
-            if (group.Count > 0 && (groupBytes + length > ReadaheadRequestSize ||
-                                    (direction > 0
-                                        ? group[^1].Offset + group[^1].Length != offset
-                                        : offset + length != group[0].Offset)))
-                Issue();
-            if (direction > 0) group.Add((offset, length, result));
-            else group.Insert(0, (offset, length, result));
+            if (result == null) continue;
+            group.Add((offset, length, result));
             groupBytes += length;
         }
 
-        Issue();
+        IssueReadahead(group);
         return Math.Clamp(block - direction, 0, Math.Max(0, BlockCount - 1));
     }
 
-    async Task ReadGroupAsync((long Offset, int Length, TaskCompletionSource<byte[]?> Result)[] blocks)
+    void IssueReadahead(List<(long Offset, int Length, TaskCompletionSource<byte[]?> Result)> group)
+    {
+        if (group.Count == 0) return;
+        var blocks = group.ToArray();
+        group.Clear();
+        LsmReadThreads.Run(() => ReadGroup(blocks));
+    }
+
+    void ReadGroup((long Offset, int Length, TaskCompletionSource<byte[]?> Result)[] blocks)
     {
         var start = blocks[0].Offset;
         try
         {
             var buffer = new byte[blocks[^1].Offset + blocks[^1].Length - start];
-            await _storage.ReadRangeAsync(ObjectKey, start, buffer, CancellationToken.None).ConfigureAwait(false);
+            _storage.ReadRange(ObjectKey, start, buffer);
             foreach (var (offset, length, result) in blocks)
             {
                 var data = RawBlock.Decode(buffer.AsSpan((int)(offset - start), length), ObjectKey);
-                if (!_evicted) _cache.Insert(FileNumber, offset, data);
+                // A block of a table deleted meanwhile is inserted unreferenced, so the cache evicts it first.
+                _cache.Insert(_cacheFile, offset, data);
                 result.TrySetResult(data);
             }
         }
@@ -541,7 +544,7 @@ sealed class TableReader : ILsmComponent
             foreach (var (offset, _, result) in blocks)
             {
                 result.TrySetResult(null);
-                _readahead.TryRemove(offset, out _);
+                _readahead.TryRemove(new KeyValuePair<long, Task<byte[]?>>(offset, result.Task));
             }
         }
     }
@@ -558,6 +561,9 @@ sealed class TableReader : ILsmComponent
     {
         if (!HasPoints) return;
         var block = Math.Max(0, CountBlocksBefore(key, true) - 1);
+        var (partition, local) = Locate(block);
+        var offset = partition.Offsets[local];
+        if (_cache.Contains(_cacheFile, offset) || _readahead.ContainsKey(offset)) return;
         Readahead(block, 1, 1);
     }
 
@@ -580,9 +586,11 @@ sealed class TableReader : ILsmComponent
 
     public long PointDeltaBefore(ReadOnlySpan<byte> key)
     {
-        var block = CountBlocksBefore(key, false) - 1;
+        var block = CountBlocksBefore(key, true) - 1;
         if (block < 0) return 0;
         var (partition, local) = Locate(block);
+        // The delta before a block's first key is in the index, so a rank at a select pivot reads no block.
+        if (LsmKeys.Compare(partition.FirstKeys[local], key) == 0) return partition.DeltaBefore[local];
         using var pin = PinBlock(block);
         var data = new RawBlock(pin.Span);
         return partition.DeltaBefore[local] + data.DeltaPrefix(data.LowerBound(key, true));
@@ -710,11 +718,6 @@ sealed class TableReader : ILsmComponent
         return entries;
     }
 
-    public void EvictFromCache()
-    {
-        _evicted = true;
-        _cache.Evict(FileNumber);
-    }
 }
 
 /// Positioned cursor over one table: a block index, an entry index and the offset of the next entry, so stepping
