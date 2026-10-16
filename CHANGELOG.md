@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 35.12.0
+
 ### Added
 
 - `ReadOnlyKeyValueDB` is finished: an immutable `IKeyValueDB` in one block of memory, opened from a memory mapped file
@@ -15,7 +17,6 @@
 
 - Fix `UnmanagedMemoryManager.Pin` failing a debug assertion for every valid element index, which terminated Debug
   builds that pinned memory created from it.
-
 - Fix `AesGcmSymmetricCipher.OrderedDecrypt` returning a garbled first 16 bytes for every value after the first one,
   because the CBC chain was not reset between values. Reading `OrderedEncryptedString` values now returns the stored
   text; the stored data was always written correctly. Ordered encryption and decryption also no longer allocate.
