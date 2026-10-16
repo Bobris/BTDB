@@ -387,7 +387,7 @@ sealed class Memtable : IMemtable
         }
     }
 
-    public IEnumerable<LsmEntry> Enumerate()
+    public IEnumerable<LsmEntry> Enumerate(Action<int>? onRead = null)
     {
         foreach (var node in InOrder(_root)) yield return ToEntry(node);
     }

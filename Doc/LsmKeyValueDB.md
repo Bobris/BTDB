@@ -107,11 +107,14 @@ Resident memory is roughly:
 * `BlockCacheSize` (256 MiB by default; a native, sharded CLOCK cache that can be shared by several databases),
 * the mutable memtable and up to `MaxImmutableMemtables` sealed ones (`MemtableSize`, 64 MiB by default, in native
   memory),
+* a running writing transaction, which adds to the memtable at most `MaxTransactionMemory` (256 MiB by default) and
+  keeps its WAL record until commit,
 * small per-table metadata: the top-level index and table properties,
 * WAL bytes waiting for upload, bounded by `MaxUnflushedWalBytes`.
 
 Writers wait (stall) when sealed memtables, level 0 tables or WAL bytes exceed their limits, until background flush,
-compaction or upload catches up.
+compaction or upload catches up. A writing transaction that adds more than `MaxTransactionMemory` bytes to the memtable
+throws `BTDBException` on its next modification or commit and can only be rolled back.
 
 ## Performance notes
 
@@ -133,6 +136,7 @@ Measured on Azure with 2 million keys ([Measurements](../BTDB.LSM/Measurements.m
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `MemtableSize` | 64 MiB | Memtable size that triggers a flush to a level 0 table. |
+| `MaxTransactionMemory` | 256 MiB | Most memtable bytes one writing transaction may add. |
 | `BlockSize` | 32 KiB | Target uncompressed data block size; one cache miss reads one block. |
 | `BlockCacheSize` / `BlockCache` | 256 MiB | Size of the block cache the database creates, or a shared cache. |
 | `BloomBitsPerKey` | 16 | Bloom filter size; a false positive costs one ranged GET when a key is written or looked up. |
@@ -143,6 +147,9 @@ Measured on Azure with 2 million keys ([Measurements](../BTDB.LSM/Measurements.m
 | `WalChunkTargetSize` | 256 KiB | Size of one WAL object; larger commits span several. |
 | `DeletionGracePeriod` | 10 min | Obsolete objects are kept this long for readers in other processes. |
 | `RegisterReader` | false | A reader registers the oldest manifest it uses, so the writer keeps its objects past the grace period. |
+
+`CompactorReadBytesPerSecondLimit` and `CompactorWriteBytesPerSecondLimit` on the database (0, no limit, by default)
+pace the reads of compaction inputs and the creation of tables, value files and manifests.
 
 A reader whose snapshot is older than the grace period, and which did not register, fails with `BTDBException`
 ("no longer exists"). It never reads a partial state.

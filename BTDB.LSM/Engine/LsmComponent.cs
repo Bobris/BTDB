@@ -123,8 +123,8 @@ interface ILsmComponent
     /// finer than blocks.
     void AddFinePivots(int fromBlock, int toBlock, List<byte[]> pivots);
 
-    /// All points in ascending key order.
-    IEnumerable<LsmEntry> Enumerate();
+    /// All points in ascending key order; onRead receives the size of every read from storage.
+    IEnumerable<LsmEntry> Enumerate(Action<int>? onRead = null);
 
     IComponentCursor CreateCursor();
 }

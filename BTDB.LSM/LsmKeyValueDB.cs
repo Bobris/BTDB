@@ -62,7 +62,8 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
         {
             Level0Trigger = options.Level0CompactionTrigger, LevelBaseBytes = options.LevelBaseBytes,
             LevelMultiplier = options.LevelMultiplier, TargetFileSize = options.TargetFileSize,
-            ValueGcThreshold = options.ValueGcThreshold
+            ValueGcThreshold = options.ValueGcThreshold,
+            OnInputRead = bytes => _readPacer.Pace(bytes, CompactorReadBytesPerSecondLimit)
         };
         _compactionPointers = new byte[]?[loaded.Version.LevelCount];
         _state = new(loaded.Memtable, loaded.MemtableGeneration, loaded.Immutables, loaded.Version,
@@ -380,7 +381,10 @@ public sealed partial class LsmKeyValueDB : ILsmKeyValueDB
 
     public IEnumerable<IKeyValueDBTransaction> Transactions() => _transactions.Keys;
 
+    /// Paces the sequential reads of compaction inputs; 0 means no limit.
     public ulong CompactorReadBytesPerSecondLimit { get; set; }
+
+    /// Paces the creation of tables, value files and manifests; 0 means no limit.
     public ulong CompactorWriteBytesPerSecondLimit { get; set; }
 
     /// As the writer, uploads pending WAL records, flushes sealed memtables and releases the lease; as a reader, only

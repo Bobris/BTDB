@@ -549,7 +549,7 @@ sealed unsafe class NativeMemtable : IMemtable
         return true;
     }
 
-    public IEnumerable<LsmEntry> Enumerate()
+    public IEnumerable<LsmEntry> Enumerate(Action<int>? onRead = null)
     {
         var root = RootAddress;
         if (root == 0) yield break;

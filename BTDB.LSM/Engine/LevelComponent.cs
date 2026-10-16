@@ -169,10 +169,10 @@ sealed class LevelComponent : ILsmComponent
         return _blocksBefore[table] + _tables[table].CountBlocksBefore(key, inclusive);
     }
 
-    public IEnumerable<LsmEntry> Enumerate()
+    public IEnumerable<LsmEntry> Enumerate(Action<int>? onRead = null)
     {
         foreach (var table in _tables)
-        foreach (var entry in table.Enumerate())
+        foreach (var entry in table.Enumerate(onRead))
             yield return entry;
     }
 

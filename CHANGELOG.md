@@ -2,6 +2,16 @@
 
 ## [unreleased]
 
+### Added
+
+- `LsmKeyValueDBOptions.MaxTransactionMemory` (256 MiB by default) bounds the memtable bytes one `LsmKeyValueDB`
+  writing transaction adds. A transaction above it throws `BTDBException` on its next modification or commit and can
+  only be rolled back, so memtable memory stays bounded.
+
+### Fixed
+
+- Fix `LsmKeyValueDB.CompactorReadBytesPerSecondLimit` being ignored; it now paces the reads of compaction inputs.
+
 ## 35.12.0
 
 ### Added

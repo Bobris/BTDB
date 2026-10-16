@@ -10,11 +10,13 @@ namespace BTDB.LSM.Engine;
 sealed class LsmMerger
 {
     readonly ILsmComponent[] _run;
+    readonly Action<int>? _onRead;
     readonly List<(byte[] Start, byte[] End)> _spans = [];
 
-    public LsmMerger(ILsmComponent[] run, LsmView below)
+    public LsmMerger(ILsmComponent[] run, LsmView below, Action<int>? onRead = null)
     {
         _run = run;
+        _onRead = onRead;
         // Union of all fragments of the run masks the state below the run.
         var fragments = new List<LsmTombstone>();
         foreach (var component in run) fragments.AddRange(component.Tombstones.Items);
@@ -49,7 +51,7 @@ sealed class LsmMerger
         var has = new bool[run.Length];
         for (var i = 0; i < run.Length; i++)
         {
-            enumerators[i] = run[i].Enumerate().GetEnumerator();
+            enumerators[i] = run[i].Enumerate(_onRead).GetEnumerator();
             has[i] = enumerators[i].MoveNext();
         }
 

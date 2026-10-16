@@ -1,8 +1,9 @@
 # BTDB.LSM — implementation plan
 
 Status: phases L0–L6 are done (2026-10-16). The benchmark report (Measurements.md, sections 4–7) is reviewed and
-the preview publication is approved; the packages go out with the next BTDB release. Decisions D1–D7 are confirmed
-(section 21).
+the preview packages are published with BTDB 35.11.3. Decisions D1–D7 are confirmed (section 21). The v1 items left
+after the preview (`MaxTransactionMemory` and compaction read pacing) are done (section 20.6); every item still open
+is admitted only with evidence (sections 20.1, 20.2 and 20.4).
 
 * L0: the counted LSM prototype (now `BTDB.LSM.Test/Counting/Prototype`) passes 10⁶ random operations against an oracle, and the live
   Azure storage screening is done (LRS, GZRS and Premium). Evidence is in [Measurements.md](Measurements.md).
@@ -375,7 +376,8 @@ its size up to 256 KiB, so the per-commit cost must be amortized over many opera
   Readers and recovery buffer parts by transaction number and drop aborted or unfinished ones. The operation buffer is
   freed as parts become durable, so its memory stays bounded.
 * **Spill (deferred, risk R5):** a transaction above `MaxTransactionMemory` throws `BTDBException` in v1, rather than
-  growing without bound. If a workload needs larger transactions, the overlay can be written out as private sorted
+  growing without bound. The limit counts the memtable bytes the transaction adds and is checked before every
+  modification and at commit. If a workload needs larger transactions, the overlay can be written out as private sorted
   tables and committed by one manifest edit referenced from the commit record (comparable to Pebble's flushable
   ingest). This is not part of the v1 plan.
 
@@ -724,7 +726,7 @@ Each phase ends with green tests and a CHANGELOG entry where it changes public b
 | **L3 Durability and lease** — done, see 20.2 | WAL chunks, multi-chunk commits, group commit, `WaitForDurabilityAsync`, lease wait in `StartWritingTransaction`, reader-to-writer transition, lease loss, epoch fencing, ambiguity reconciliation, deferred deletion; measure whether early upload of large transactions is needed. | The crash-at-every-operation, zombie-writer and lease-loss simulations pass. |
 | **L4 Azure** — done, see 20.4 | `BTDB.LSM.Azure` adapter (sync and async ranged reads, staged uploads, lease), Azurite and live tests. | The conformance suite passes on Azurite and live Azure; first live latency and throughput numbers recorded. |
 | **L5 Readers in other processes** — done, see 20.3; Azure freshness measured in L4 | `RefreshAsync`, `WaitForCommitUlongAsync`, generation swap, catch-up after deletion, reader registry, freshness measurement. | Reader simulation and process tests pass; refresh latency and freshness p50/p99 measured on Azure. |
-| **L6 Integration and release** — done, see 20.4 and 20.5; report reviewed, publication approved | ObjectDB subset on the LSM, benchmarks against `BTreeKeyValueDB` + `AzureBlobFileCollection` (memory, open time, cold and warm point reads, scans, write throughput, cost per operation), parameter tuning, `Doc/LsmKeyValueDB.md`, README pointer, preview packages. | The benchmark report is reviewed; the preview release is published. |
+| **L6 Integration and release** — done, see 20.4 and 20.5; report reviewed, preview published with 35.11.3 | ObjectDB subset on the LSM, benchmarks against `BTreeKeyValueDB` + `AzureBlobFileCollection` (memory, open time, cold and warm point reads, scans, write throughput, cost per operation), parameter tuning, `Doc/LsmKeyValueDB.md`, README pointer, preview packages. | The benchmark report is reviewed; the preview release is published. |
 
 ### 20.1 Phase L1 state and differences from the target design
 
@@ -794,10 +796,11 @@ Remaining differences from the target design:
 
 | Current state | Target |
 | --- | --- |
-| `CompactorReadBytesPerSecondLimit` is stored but not enforced; compactions run one at a time. | Read pacing and `MaxConcurrentCompactions`, if measurements on Azure show the need (L4). |
+| Compactions run one at a time. Read and write pacing are enforced (section 20.6). | `MaxConcurrentCompactions`, if measurements on Azure show the need. |
 | The native arena counts copy-on-write garbage, so with small random transactions it fills about 3 times faster than its entry bytes. | Optional rebuild of the live tree into a fresh arena, if a real workload shows the flush pressure matters. |
-| Each manifest object is a full checkpoint, and only flushed data survives reopening. | WAL, version edits and checkpoints (L3). |
-| There is no lease; every instance can write. | Lease on the first writing transaction (L3). The shared test suite starts writers with `StartTransaction()`, so L3 adds an option to acquire the lease at open. |
+
+The other L1 differences, full manifest checkpoints without a WAL and the missing lease, are closed by L3
+(section 20.2). Manifests stay full checkpoints by decision (section 20.2).
 
 Cursor semantics. `LsmKeyValueDB` cursors are positioned by key. Where `BTreeKeyValueDB` reports a cursor disturbed by
 another cursor's write as invalid and refuses to read it, the LSM cursor re-seeks by its key and stays readable.
@@ -864,7 +867,7 @@ Not done yet, admitted only with evidence:
 | Item | Reason |
 | --- | --- |
 | Incremental manifest edits | Not admitted: a full manifest costs about 8 bytes per table, 81 KB at 625 GiB, which is small next to the table upload of each publication (Measurements.md, section 6). |
-| Early upload of large transactions and `MaxTransactionMemory` | No workload measurement yet (section 7.5). |
+| Early upload of large transactions | No workload measurement yet (section 7.5). `MaxTransactionMemory` is done (section 20.6). |
 
 ### 20.3 Phase L5 state
 
@@ -992,6 +995,17 @@ Performance fixes are in Measurements.md, section 7. Simplifications:
 * unused merge and tombstone helpers were removed;
 * one stall loop now serves both the async and the sync caller;
 * section 8.2 now describes the WAL uploader as built.
+
+### 20.6 After the preview release
+
+The two v1 items the phases left open are done:
+
+* **`MaxTransactionMemory`** (section 7.5, default 256 MiB) bounds the memtable bytes one writing transaction adds.
+  It is checked before every modification and at commit, so one modification may exceed it but no commit does. The
+  transaction then can only be rolled back. `LsmLimitsTest` covers both memtables.
+* **`CompactorReadBytesPerSecondLimit`** paces the sequential reads of compaction inputs, as
+  `CompactorWriteBytesPerSecondLimit` paces object creation. Index and filter reads and separated values read for
+  value-file GC go through the cache and are not paced.
 
 ## 21. Decisions
 

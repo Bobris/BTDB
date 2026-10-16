@@ -19,7 +19,8 @@ public sealed partial class LsmKeyValueDB
     Task? _worker;
     Exception? _workerError;
     DateTimeOffset _workerFailingSince;
-    long _throttleBytes;
+    readonly BytePacer _writePacer = new();
+    readonly BytePacer _readPacer = new();
 
     // Background work counters reported by CalcStats; written by whichever thread runs the units (the worker, or the
     // committing or disposing thread without one), never by two at once.
@@ -30,7 +31,6 @@ public sealed partial class LsmKeyValueDB
     long _compactionTicks;
     long _compactionBytes;
     long _tableBytesWritten;
-    long _throttleStart = Stopwatch.GetTimestamp();
 
     static TaskCompletionSource NewProgress() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -367,7 +367,7 @@ public sealed partial class LsmKeyValueDB
     /// writer took over; a lost response is reconciled by reading the object back.
     void CreateObject(string key, byte[] content, bool fence = false)
     {
-        Throttle(content.Length);
+        _writePacer.Pace(content.Length, CompactorWriteBytesPerSecondLimit);
         var backoff = TimeSpan.FromMilliseconds(20);
         for (var attempt = 0;; attempt++)
         {
@@ -392,20 +392,26 @@ public sealed partial class LsmKeyValueDB
         }
     }
 
-    /// Paces object creation to CompactorWriteBytesPerSecondLimit.
-    void Throttle(long bytes)
+    /// Sleeps so that the reported bytes do not exceed limit bytes per second; 0 means no limit. Used by one thread at
+    /// a time: whichever runs the background units.
+    sealed class BytePacer
     {
-        var limit = CompactorWriteBytesPerSecondLimit;
-        if (limit == 0) return;
-        _throttleBytes += bytes;
-        var due = TimeSpan.FromSeconds((double)_throttleBytes / limit);
-        var elapsed = Stopwatch.GetElapsedTime(_throttleStart);
-        if (elapsed > TimeSpan.FromSeconds(10))
+        long _bytes;
+        long _start = Stopwatch.GetTimestamp();
+
+        public void Pace(long bytes, ulong limit)
         {
-            _throttleStart = Stopwatch.GetTimestamp();
-            _throttleBytes = 0;
+            if (limit == 0) return;
+            _bytes += bytes;
+            var due = TimeSpan.FromSeconds((double)_bytes / limit);
+            var elapsed = Stopwatch.GetElapsedTime(_start);
+            if (elapsed > TimeSpan.FromSeconds(10))
+            {
+                _start = Stopwatch.GetTimestamp();
+                _bytes = 0;
+            }
+            else if (due > elapsed) Thread.Sleep(due - elapsed);
         }
-        else if (due > elapsed) Thread.Sleep(due - elapsed);
     }
 
     /// Oldest state sequence any live snapshot of this instance uses. Enumerating the dictionary takes no locks.

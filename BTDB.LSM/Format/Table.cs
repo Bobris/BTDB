@@ -683,7 +683,7 @@ sealed class TableReader : ILsmComponent
     /// Chunks read ahead of the one being decoded when a compaction reads a table sequentially.
     const int SequentialReadAhead = 4;
 
-    public IEnumerable<LsmEntry> Enumerate()
+    public IEnumerable<LsmEntry> Enumerate(Action<int>? onRead = null)
     {
         // Ranges of up to SequentialReadSize covering whole blocks, read through the read threads with up to
         // SequentialReadAhead reads ahead of the one decoded (ImplementationPlan.md, section 12.2).
@@ -728,6 +728,7 @@ sealed class TableReader : ILsmComponent
             }
 
             var chunk = reads.Dequeue().GetAwaiter().GetResult();
+            onRead?.Invoke(chunk.Length);
             var (chunkPartition, chunkFirst, chunkLast) = chunks[next - reads.Count - 1];
             var chunkStart = chunkPartition.Offsets[chunkFirst];
             for (var block = chunkFirst; block <= chunkLast; block++)

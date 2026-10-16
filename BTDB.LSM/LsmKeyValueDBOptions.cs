@@ -20,6 +20,11 @@ public sealed record LsmKeyValueDBOptions
     /// Keep the memtable in native memory (default); false uses the managed reference implementation.
     public bool NativeMemtable { get; init; } = true;
 
+    /// Most memtable bytes one writing transaction may add. A modification or commit of a transaction above it throws
+    /// BTDBException and the transaction can only be rolled back, so memtable memory stays below about
+    /// MemtableSize + MaxTransactionMemory.
+    public long MaxTransactionMemory { get; init; } = 256L * 1024 * 1024;
+
     /// Target uncompressed data block size.
     public int BlockSize { get; init; } = 32 * 1024;
 

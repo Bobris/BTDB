@@ -14,6 +14,9 @@ sealed class LsmCompactionOptions
 
     /// Value files whose live ratio drops below this are rewritten by compactions touching their values.
     public double ValueGcThreshold { get; init; } = 0.5;
+
+    /// Receives the bytes each sequential read of a compaction input returns; paces compaction reads.
+    public Action<int>? OnInputRead { get; init; }
 }
 
 /// Moves values out of tables (ImplementationPlan.md, section 10): inline values above the threshold go to a value
@@ -129,7 +132,7 @@ static class LsmCompaction
         else run.Add(new LevelComponent(plan.Inputs));
         if (plan.Overlaps.Length > 0) run.Add(new LevelComponent(plan.Overlaps));
         var below = new LsmView(version.ComponentsBelow(plan.OutputLevel));
-        var outputs = WriteOutputs(new LsmMerger([.. run], below), below, options, tableOptions, writeTable, values);
+        var outputs = WriteOutputs(new LsmMerger([.. run], below, options.OnInputRead), below, options, tableOptions, writeTable, values);
         var next = plan.Level == 0
             ? version.WithLevel0([])
             : version.Replace(plan.Level, plan.Inputs, []);
@@ -145,7 +148,7 @@ static class LsmCompaction
         var obsolete = version.AllTables().Select(t => t.Table).ToArray();
         var empty = LsmVersion.Empty(version.LevelCount);
         if (obsolete.Length == 0) return (version, []);
-        var outputs = WriteOutputs(new LsmMerger(version.Components, new LsmView([])), new LsmView([]), options,
+        var outputs = WriteOutputs(new LsmMerger(version.Components, new LsmView([]), options.OnInputRead), new LsmView([]), options,
             tableOptions, writeTable, values);
         return (new LsmVersion(empty.Level0, empty.Levels, version.ValueFiles)
             .Replace(version.LevelCount - 1, [], outputs), obsolete);

@@ -16,6 +16,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     bool _finished;
     bool _disposed;
     IMemtable? _writable;
+    long _writableBaseBytes;
     WalRecordBuilder? _record;
     LsmView _view;
     ulong _commitUlong;
@@ -91,6 +92,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
         else _db.MakeWritable(this, _state);
         _writing = true;
         _writable = _state.Memtable.CloneForWriting(LsmKeyValueDB.NewOwner());
+        _writableBaseBytes = _writable.ApproximateBytes;
         _record = new();
         _view = _state.CreateView(_writable);
         _transactionNumber++;
@@ -101,7 +103,18 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
         ThrowIfFinished();
         if (ModificationForbidden) throw new BTDBException("DB cannot be modified during fast iteration");
         MakeWritable();
+        ThrowIfTooLarge();
         ModificationStamp++;
+    }
+
+    /// Checked before every modification and at commit, so one modification can exceed the limit but never a commit.
+    void ThrowIfTooLarge()
+    {
+        var added = _writable!.ApproximateBytes - _writableBaseBytes;
+        var limit = _db.Options.MaxTransactionMemory;
+        if (added > limit)
+            throw new BTDBException(
+                $"Transaction added {added} memtable bytes, more than MaxTransactionMemory {limit}; roll it back.");
     }
 
     /// Creates or updates key; returns true when the key was created.
@@ -240,6 +253,7 @@ sealed class LsmKeyValueDBTransaction : IKeyValueDBTransaction
     public void Commit()
     {
         if (_finished) throw new BTDBException("Transaction already committed or disposed");
+        if (_writing) ThrowIfTooLarge();
         _finished = true;
         if (_writing)
         {
