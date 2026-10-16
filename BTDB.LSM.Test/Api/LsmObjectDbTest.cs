@@ -1,3 +1,4 @@
+using BTDB.Allocators;
 using BTDB.KVDBLayer;
 using BTDB.LSM.Format;
 using BTDB.LSM.Storage;
@@ -64,4 +65,10 @@ public class LsmObjectDbSecondaryKeyBufferTest(ITestOutputHelper output) : Objec
 public class LsmObjectDbTableTupleTest(ITestOutputHelper output) : ObjectDbTableTupleTest(output)
 {
     protected override IKeyValueDB CreateKeyValueDB() => LsmObjectDb.Create();
+}
+
+[Collection(LsmObjectDb.Name)]
+public class LsmObjectDbTest : ObjectDbTest
+{
+    protected override IKeyValueDB CreateKeyValueDB(IOffHeapAllocator allocator) => LsmObjectDb.Create();
 }

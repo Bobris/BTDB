@@ -91,15 +91,20 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
     public ObjectDbTest()
     {
         _allocator = new(new MallocAllocator());
-        _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions
+        _lowDb = CreateKeyValueDB(_allocator);
+        OpenDb();
+    }
+
+    /// Creates the key value database the tests run on; called from the constructor, so overrides must not use
+    /// instance fields of derived classes.
+    protected virtual IKeyValueDB CreateKeyValueDB(IOffHeapAllocator allocator) => new BTreeKeyValueDB(
+        new KeyValueDBOptions
         {
-            Allocator = _allocator,
+            Allocator = allocator,
             CompactorScheduler = null,
             Compression = new NoCompressionStrategy(),
             FileCollection = new InMemoryFileCollection()
         });
-        OpenDb();
-    }
 
     public void Dispose()
     {
@@ -2767,7 +2772,7 @@ public class ObjectDbTest : IDisposable, IFieldHandlerLogger
             var iterator = new ODBIterator(tr, visitor);
             iterator.Iterate();
             var text = visitor.ToString();
-            await this.VerifyApproval(text);
+            await this.VerifyApproval(text, typeName: nameof(ObjectDbTest));
         }
     }
 
