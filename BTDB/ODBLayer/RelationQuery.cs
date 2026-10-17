@@ -288,9 +288,13 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             .GetEnumerator();
     }
 
-    RelationQueryWindow<T> CreateWindow(RelationQuerySource source, QueryNode? selector, bool keepFrames = false)
+    RelationQueryWindow<T> CreateWindow(RelationQuerySource source, QueryNode? selector, bool keepFrames = false,
+        RelationQueryProjection<T>? projection = null)
     {
-        var plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source.Filter, selector);
+        // A projection which cannot throw is computed while scanning when every matching row is returned; Count
+        // windows and sorted windows return fewer rows than they test.
+        var plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source.Filter, selector,
+            true, null, projection?.Selectors, projection is { CanThrow: false } && source.Skip == 0);
         var order = RelationQueryOrder.Forward;
         var descending = Array.Empty<bool>();
         if (source.HasOrdering)
@@ -306,12 +310,13 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
                 var keys = new List<QueryNode>();
                 foreach (var (key, _) in source.Ordering) keys.Add(key);
                 plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction, source.Filter,
-                    selector, true, keys);
+                    selector, true, keys, projection?.Selectors);
                 order = RelationQueryOrder.Sorted;
                 descending = source.Ordering.ConvertAll(o => o.Descending).ToArray();
             }
         }
 
+        projection?.Bind(plan);
         return new(_transaction, _loaderInfo, plan, order, descending, source.Skip, source.Take, keepFrames);
     }
 
@@ -356,15 +361,24 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
 
     public IQueryable<TElement> CreateQuery<TElement>(Expression expression)
     {
-        if (typeof(TElement) != typeof(T))
-            throw new NotSupportedException("Relation query does not support changing element type.");
         ValidateQueryExpression(expression);
-        return (IQueryable<TElement>)(object)new RelationQuery<T>(this, expression);
+        if (typeof(TElement) == typeof(T)) return (IQueryable<TElement>)(object)new RelationQuery<T>(this, expression);
+        return new RelationQueryProjected<T, TElement>(this, expression);
+    }
+
+    internal IEnumerator<TElement> EnumerateProjected<TElement>(Expression expression)
+    {
+        var source = RelationQueryAstBuilder.BuildSource(expression, _queryNode);
+        if (source.Projection == null) return (IEnumerator<TElement>)(object)GetEnumerator();
+        var projection = new RelationQueryProjection<T>(source.Projection, _queryNode, _transaction, _loaderInfo);
+        return new RelationQueryProjectedEnumerator<T, TElement>(CreateWindow(source, null, false, projection),
+            projection);
     }
 
     public TResult Execute<TResult>(Expression expression)
     {
-        return (TResult)Execute(expression)!;
+        var result = Execute(expression);
+        return result is null ? default! : (TResult)result;
     }
 
     /// Executes Queryable terminal operators on the stored rows; only returned elements are materialized.
@@ -376,6 +390,7 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
         var querySource = RelationQueryAstBuilder.BuildSource(arguments[0], _queryNode);
         var lambda = arguments.Count > 1 ? RelationQueryAstBuilder.TryGetLambda(arguments[1]) : null;
         var name = call.Method.Name;
+        if (querySource.Projection != null) return ExecuteProjected(name, call, querySource, lambda);
         if (querySource.HasOrdering || querySource.HasPaging) return ExecuteWindowed(name, call, querySource, lambda);
         var source = querySource.Filter;
         switch (name)
@@ -414,17 +429,9 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             case nameof(Queryable.Max):
             case nameof(Queryable.Sum):
             case nameof(Queryable.Average):
-            {
                 if (lambda == null)
                     throw new NotSupportedException($"Relation query supports Queryable.{name} only with a selector.");
-                var selector = RelationQueryAstBuilder.BuildSelector(lambda, _queryNode);
-                // Sums and averages of floats or with overflow checks depend on the order of rows.
-                using var scanner = CreateScanner(source, selector,
-                    name is nameof(Queryable.Sum) or nameof(Queryable.Average));
-                var aggregator = RelationQueryAggregator.Create(name, scanner.Plan.Result!);
-                scanner.Aggregate(aggregator);
-                return aggregator.Result();
-            }
+                return Aggregate(name, querySource, RelationQueryAstBuilder.BuildSelector(lambda, _queryNode));
             default:
                 throw new NotSupportedException($"Relation query does not support Queryable.{name}.");
         }
@@ -500,24 +507,125 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             {
                 if (lambda == null)
                     throw new NotSupportedException($"Relation query supports Queryable.{name} only with a selector.");
-                var selector = RelationQueryAstBuilder.BuildSelector(lambda, _queryNode);
-                if (source.HasOrdering && !source.HasPaging && name is nameof(Queryable.Min) or nameof(Queryable.Max))
-                {
-                    // Min and Max of all rows do not depend on their order.
-                    using var scanner = CreateScanner(source.Filter, selector, false);
-                    var aggregator = RelationQueryAggregator.Create(name, scanner.Plan.Result!);
-                    scanner.Aggregate(aggregator);
-                    return aggregator.Result();
-                }
-
-                // Sums and averages follow the window order like LINQ, which matters for floats and overflow checks.
-                using var window = CreateWindow(source, selector, true);
-                var windowAggregator = RelationQueryAggregator.Create(name, window.Scanner.Plan.Result!);
-                while (window.MoveNext()) windowAggregator.Add(window.CurrentFrame);
-                return windowAggregator.Result();
+                return Aggregate(name, source, RelationQueryAstBuilder.BuildSelector(lambda, _queryNode));
             }
             default:
                 throw new NotSupportedException($"Relation query does not support Queryable.{name}.");
+        }
+    }
+
+    object? Aggregate(string name, RelationQuerySource source, QueryNode selector)
+    {
+        if (!source.HasPaging && (!source.HasOrdering || name is nameof(Queryable.Min) or nameof(Queryable.Max)))
+        {
+            // Without paging, Min and Max do not depend on row order; sums and averages of floats or with overflow
+            // checks follow primary key order like LINQ.
+            using var scanner = CreateScanner(source.Filter, selector,
+                name is nameof(Queryable.Sum) or nameof(Queryable.Average));
+            var aggregator = RelationQueryAggregator.Create(name, scanner.Plan.Result!);
+            scanner.Aggregate(aggregator);
+            return aggregator.Result();
+        }
+
+        // Sums and averages follow the window order like LINQ.
+        using var window = CreateWindow(source, selector, true);
+        var windowAggregator = RelationQueryAggregator.Create(name, window.Scanner.Plan.Result!);
+        while (window.MoveNext()) windowAggregator.Add(window.CurrentFrame);
+        return windowAggregator.Result();
+    }
+
+    // Terminal operators after Select. Select values cannot throw, so counting ignores them.
+    object? ExecuteProjected(string name, MethodCallExpression call, RelationQuerySource source,
+        LambdaExpression? lambda)
+    {
+        if (lambda != null)
+            throw new NotSupportedException($"Relation query does not support Queryable.{name} with a lambda after Select.");
+        var projection = new RelationQueryProjection<T>(source.Projection!, _queryNode, _transaction, _loaderInfo);
+        source.Projection = null;
+        switch (name)
+        {
+            case nameof(Queryable.Count):
+            case nameof(Queryable.LongCount):
+            case nameof(Queryable.Any):
+            {
+                long count;
+                if (name != nameof(Queryable.Any) && projection.CanThrow)
+                {
+                    // Like LINQ's Select(...).Count(), every counted row runs the selector.
+                    count = 0;
+                    using var window = CreateWindow(source, null, false, projection);
+                    while (window.MoveNext())
+                    {
+                        window.Scanner.ComputeProjection();
+                        count++;
+                    }
+                }
+                else if (source.HasOrdering || source.HasPaging)
+                {
+                    count = CountWindow(source, name == nameof(Queryable.Any));
+                }
+                else
+                {
+                    using var scanner = CreateScanner(source.Filter, null, false);
+                    count = name == nameof(Queryable.Any) ? scanner.MoveNext() ? 1 : 0 : scanner.Count();
+                }
+
+                if (name == nameof(Queryable.Count)) return checked((int)count);
+                if (name == nameof(Queryable.LongCount)) return count;
+                return count > 0;
+            }
+            case nameof(Queryable.First):
+            case nameof(Queryable.FirstOrDefault):
+            case nameof(Queryable.Single):
+            case nameof(Queryable.SingleOrDefault):
+            case nameof(Queryable.Last):
+            case nameof(Queryable.LastOrDefault):
+            {
+                var orDefault = name.EndsWith("OrDefault", StringComparison.Ordinal);
+                // A null default of a value type becomes default(TResult) in Execute<TResult>.
+                var defaultValue = orDefault && call.Arguments.Count > 1
+                    ? RelationQueryAstBuilder.EvaluateConstant(call.Arguments[^1])
+                    : null;
+                if (name.StartsWith("Last", StringComparison.Ordinal) && !source.HasOrdering && !source.HasPaging)
+                {
+                    // LINQ's Where and Select over a list search for the last element backwards, like Last.
+                    var plan = new RelationQueryCompiler(_relationInfo, typeof(T)).Compile(_transaction,
+                        source.Filter, null, true, null, projection.Selectors);
+                    projection.Bind(plan);
+                    using var scanner = new RelationQueryScanner(_transaction, plan);
+                    if (!scanner.MoveLast()) return orDefault ? defaultValue : throw NoElements(false);
+                    return projection.BuildBoxed(scanner);
+                }
+
+                using var window = CreateWindow(source, null, false, projection);
+                if (!window.MoveNext()) return orDefault ? defaultValue : throw NoElements(false);
+                if (name.StartsWith("Last", StringComparison.Ordinal))
+                {
+                    // Like LINQ, only the last row runs the selector.
+                    var lastKey = window.Scanner.Cursor.GetKeySpan(Span<byte>.Empty, true).ToArray();
+                    while (window.MoveNext()) lastKey = window.Scanner.Cursor.GetKeySpan(Span<byte>.Empty, true).ToArray();
+                    window.Scanner.Cursor.FindExactKey(lastKey);
+                    return projection.BuildBoxed(window.Scanner);
+                }
+
+                var element = projection.BuildBoxed(window.Scanner);
+                if (name.StartsWith("Single", StringComparison.Ordinal) && window.MoveNext())
+                {
+                    // LINQ moves to the second element, running its selector, before failing.
+                    projection.BuildBoxed(window.Scanner);
+                    throw new InvalidOperationException("Sequence contains more than one element");
+                }
+
+                return element;
+            }
+            case nameof(Queryable.Min):
+            case nameof(Queryable.Max):
+            case nameof(Queryable.Sum):
+            case nameof(Queryable.Average):
+                return Aggregate(name, source, projection.SingleSelector ??
+                    throw new NotSupportedException($"Relation query supports Queryable.{name} after Select only of a single value."));
+            default:
+                throw new NotSupportedException($"Relation query does not support Queryable.{name} after Select.");
         }
     }
 
@@ -607,12 +715,13 @@ class RelationQuery<T> : IOrderedQueryable<T>, IQueryProvider where T : class
             methodCall.Method.DeclaringType == typeof(Queryable) &&
             methodCall.Method.Name is nameof(Queryable.Where) or nameof(Queryable.OrderBy)
                 or nameof(Queryable.OrderByDescending) or nameof(Queryable.ThenBy)
-                or nameof(Queryable.ThenByDescending) or nameof(Queryable.Skip) or nameof(Queryable.Take))
+                or nameof(Queryable.ThenByDescending) or nameof(Queryable.Skip) or nameof(Queryable.Take)
+                or nameof(Queryable.Select))
             return;
         if (expression is ConstantExpression)
             return;
         throw new NotSupportedException(
-            "Relation query supports only Queryable.Where, OrderBy, ThenBy, Skip and Take.");
+            "Relation query supports only Queryable.Where, OrderBy, ThenBy, Select, Skip and Take.");
     }
 }
 
@@ -636,6 +745,10 @@ sealed class RelationQuerySource
 
     public long Skip { get; set; }
     public long? Take { get; set; }
+
+    /// Select lambda over the row; null when rows themselves are returned.
+    public LambdaExpression? Projection { get; set; }
+
     public bool HasOrdering => Ordering.Count > 0;
     public bool HasPaging => Skip > 0 || Take != null;
 }
@@ -661,9 +774,17 @@ static class RelationQueryAstBuilder
         var name = call.Method.Name;
         switch (name)
         {
+            case nameof(Queryable.Select):
+            {
+                if (source.Projection != null || StripQuote(call.Arguments[1]) is not LambdaExpression { Parameters.Count: 1 } lambda)
+                    throw new NotSupportedException("Relation query supports only one Select with a single parameter.");
+                // Select(p => p) returns rows unchanged.
+                if (lambda.Body != lambda.Parameters[0]) source.Projection = lambda;
+                return source;
+            }
             case nameof(Queryable.Where):
-                if (source.HasOrdering || source.HasPaging)
-                    throw new NotSupportedException("Relation query supports Where only before OrderBy, Skip and Take.");
+                if (source.HasOrdering || source.HasPaging || source.Projection != null)
+                    throw new NotSupportedException("Relation query supports Where only before OrderBy, Select, Skip and Take.");
                 source.Filter = new WhereQueryNode(source.Filter,
                     BuildPredicate((LambdaExpression)StripQuote(call.Arguments[1]), query));
                 return source;
@@ -672,7 +793,7 @@ static class RelationQueryAstBuilder
             case nameof(Queryable.ThenBy):
             case nameof(Queryable.ThenByDescending):
             {
-                if (source.HasPaging || call.Arguments.Count != 2)
+                if (source.HasPaging || source.Projection != null || call.Arguments.Count != 2)
                     throw new NotSupportedException($"Relation query does not support {name} here.");
                 var key = BuildSelector((LambdaExpression)StripQuote(call.Arguments[1]), query);
                 if (key.Type == typeof(string) ? key is not PropQueryNode : !RelationQueryTypes.TryGetStorage(key.Type, out _, out _, out _))
@@ -719,6 +840,11 @@ static class RelationQueryAstBuilder
     public static QueryNode BuildSelector(LambdaExpression lambda, QueryByIdQueryNode query)
     {
         return new ExpressionConverter(lambda.Parameters[0], query).ConvertValue(lambda.Body);
+    }
+
+    public static QueryNode BuildValue(Expression expression, ParameterExpression parameter, QueryByIdQueryNode query)
+    {
+        return new ExpressionConverter(parameter, query).ConvertValue(expression);
     }
 
     static Expression StripQuote(Expression expression)
@@ -1304,9 +1430,9 @@ sealed class RelationQueryPlan
     public RelationQueryProgram?[]? ValuePrograms { get; }
 
     /// Size in bytes of the frame shared by all programs; a multiple of 8.
-    public int FrameSize { get; }
+    public int FrameSize { get; internal set; }
 
-    public int ObjectCount { get; }
+    public int ObjectCount { get; internal set; }
 
     /// Where the last program of a matching row stores the selector value; null without a selector.
     public RelationQueryResult? Result { get; }
@@ -1318,6 +1444,20 @@ sealed class RelationQueryPlan
 
     /// Sort key values of a matching row, computed by its last program.
     public RelationQueryResult[] SortKeys { get; internal set; }
+
+    /// Values of Select arguments of a row, computed by the projection programs.
+    public RelationQueryResult[] Projection { get; internal set; } = [];
+
+    /// Computes Projection from the primary key alone. Null when value programs are needed.
+    public RelationQueryProgram? ProjectionKeyProgram { get; internal set; }
+
+    /// Computes Projection, indexed by value version.
+    public RelationQueryProgram?[]? ProjectionValuePrograms { get; internal set; }
+
+    public bool ProjectionCanThrow { get; internal set; }
+
+    /// Projection is computed by the scanning programs of each matching row.
+    public bool ProjectionIsEager { get; internal set; }
 
     /// Primary key fields every matching row has the same value of.
     public HashSet<string> FixedPrimaryKeyFields { get; internal set; }
@@ -1362,14 +1502,13 @@ sealed class RelationQueryResult
         HasValueSlot = hasValueSlot;
     }
 
-    /// A string property, read from the chars its program decoded.
-    public RelationQueryResult(ushort charsObject, ushort lengthSlot)
+    /// A string property, which its program stores into an object slot.
+    public RelationQueryResult(ushort objectSlot)
     {
         Type = typeof(string);
         StorageType = typeof(string);
         IsString = true;
-        Slot = lengthSlot;
-        HasValueSlot = charsObject;
+        Slot = objectSlot;
     }
 
     public bool IsString { get; }
@@ -1377,11 +1516,7 @@ sealed class RelationQueryResult
     /// Reads the value of the current row; enums are returned as their underlying type.
     public object? Read(ReadOnlySpan<byte> frame, object?[] objects)
     {
-        if (IsString)
-        {
-            var length = MemoryMarshal.Read<int>(frame[Slot..]);
-            return length < 0 ? null : new string((char[])objects[HasValueSlot]!, 0, length);
-        }
+        if (IsString) return objects[Slot];
 
         if (frame[HasValueSlot] == 0) return null;
         var value = frame[Slot..];
@@ -1530,7 +1665,8 @@ sealed class RelationQueryCompiler
     /// not depend on row order (Count, Any, All, Min, Max), a secondary index may be scanned in its own order.
     /// Sort keys are computed for every matching row into RelationQueryPlan.SortKeys.
     public RelationQueryPlan Compile(IInternalObjectDBTransaction transaction, QueryNode ast,
-        QueryNode? selector = null, bool orderSensitive = true, IReadOnlyList<QueryNode>? sortKeys = null)
+        QueryNode? selector = null, bool orderSensitive = true, IReadOnlyList<QueryNode>? sortKeys = null,
+        IReadOnlyList<QueryNode>? projection = null, bool eagerProjection = false)
     {
         var predicate = ExtractPredicate(ast);
         if (predicate != null) CollectFields(predicate);
@@ -1548,19 +1684,63 @@ sealed class RelationQueryCompiler
             sortKeyResults[i] = AddSelector(sortKeys[i]);
         }
 
+        // An eager projection is computed by the scanning programs of every matching row, which saves reading returned
+        // rows again; it is only used when it cannot throw and every matching row is returned.
+        RelationQueryResult[]? eagerResults = null;
+        if (eagerProjection && projection is { Count: > 0 })
+        {
+            eagerResults = new RelationQueryResult[projection.Count];
+            for (var i = 0; i < eagerResults.Length; i++) eagerResults[i] = AddSelector(projection[i]);
+        }
+
         var plan = CompilePlan(transaction, predicate, result, orderSensitive);
         plan.SortKeys = sortKeyResults;
+        if (eagerResults != null)
+        {
+            plan.Projection = eagerResults;
+            plan.ProjectionIsEager = true;
+        }
+        else if (projection is { Count: > 0 })
+        {
+            CompileProjection(plan, projection);
+        }
+        plan.FrameSize = _frameSize;
+        plan.ObjectCount = _objectCount;
         return plan;
+    }
+
+    // Select values get their own programs, run only for rows actually returned, like LINQ calls a selector.
+    void CompileProjection(RelationQueryPlan plan, IReadOnlyList<QueryNode> projection)
+    {
+        _selectors.Clear();
+        var results = new RelationQueryResult[projection.Count];
+        for (var i = 0; i < results.Length; i++) results[i] = AddSelector(projection[i]);
+        var primaryKeyFields = _primaryKeyFields.ToArray();
+        plan.Projection = results;
+        plan.ProjectionCanThrow = _selectors.Exists(s => CanThrow(s.Node));
+        if (_selectors.TrueForAll(s => UsesOnlyFields(s.Node, primaryKeyFields)))
+        {
+            plan.ProjectionKeyProgram = BuildProgram([], null, _relationInfo.Prefix.Length, 0, _selectors,
+                primaryKeyFields, _relationInfo.Prefix.Length);
+            return;
+        }
+
+        var maxVersion = 0u;
+        foreach (var (version, _) in _relationInfo.RelationVersions) maxVersion = Math.Max(maxVersion, version);
+        var programs = new RelationQueryProgram?[maxVersion + 1];
+        foreach (var (version, info) in _relationInfo.RelationVersions)
+            programs[version] = BuildProgram([], info.Fields, _relationInfo.Prefix.Length, 0, _selectors,
+                primaryKeyFields, _relationInfo.Prefix.Length);
+        plan.ProjectionValuePrograms = programs;
     }
 
     RelationQueryResult AddSelector(QueryNode selector)
     {
         CollectFields(selector);
         RelationQueryResult result;
-        if (selector is PropQueryNode { Type: var type } stringProp && type == typeof(string))
+        if (selector is PropQueryNode { Type: var type } && type == typeof(string))
         {
-            var field = _fields[stringProp.Name];
-            result = new(field.CharsObject, field.LengthSlot);
+            result = new(AllocObjectSlot());
         }
         else
         {
@@ -2046,10 +2226,7 @@ sealed class RelationQueryCompiler
         var needsChars = new HashSet<string>();
         foreach (var conjunct in specialized) CollectNeedsChars(conjunct.Node, needsChars);
         foreach (var (node, result) in selectors)
-        {
-            if (result.IsString && node is PropQueryNode stringProp) needsChars.Add(stringProp.Name);
-            else CollectNeedsChars(node, needsChars);
-        }
+            if (!result.IsString) CollectNeedsChars(node, needsChars);
 
         var order = OrderConjuncts(specialized, valueFields == null ? keyFields : fields);
 
@@ -2100,9 +2277,25 @@ sealed class RelationQueryCompiler
             throw new InvalidOperationException("Relation query compiler did not emit every conjunct.");
         foreach (var (node, result) in selectors)
         {
-            // A string selector reads the chars its field decoded; a missing field leaves a constant null.
-            if (!result.IsString) EmitSelector(node, result);
-            else if (node is not PropQueryNode) EmitNullString(result);
+            if (!result.IsString)
+            {
+                EmitSelector(node, result);
+                continue;
+            }
+
+            // A string selector creates the string from the captured field; a missing field is a constant null.
+            if (node is PropQueryNode stringProp)
+            {
+                _builder.AddInstruction(OpCode.StringFromCaptured);
+                _builder.AddUInt8((byte)_encodings[stringProp.Name]);
+                _builder.AddUInt16(_fields[stringProp.Name].Slot);
+            }
+            else
+            {
+                _builder.AddInstruction(OpCode.SetObjectNull);
+            }
+
+            _builder.AddUInt16(result.Slot);
         }
         _builder.AddInstruction(OpCode.SetBoolResultTrue);
         _builder.AddInstruction(OpCode.Stop);
@@ -2112,17 +2305,6 @@ sealed class RelationQueryCompiler
         var program = _builder.Materialize();
         _builder = null!;
         return new(program, keyStart, false);
-    }
-
-    void EmitNullString(RelationQueryResult result)
-    {
-        var offset = _builder.AllocAlignedConst(sizeof(int));
-        _builder.ConstSpan<int>(offset) = -1;
-        _builder.AddInstruction(OpCode.CopyToFrame);
-        _builder.AddUInt8(sizeof(int));
-        _builder.AddUInt16(result.Slot);
-        _builder.AddUInt8((byte)QueryOperandKind.Constant);
-        _builder.AddUInt32(offset);
     }
 
     // Stores the selector value and its HasValue into the result slot.
@@ -3460,7 +3642,13 @@ sealed class RelationQueryScanner : IDisposable
     bool _afterEnd;
     bool _matched;
     bool _skipCurrentRow;
+    bool _stepping;
+    int _examined;
     List<byte[]>? _candidates;
+
+    // A match within this many tested rows switches to stepping; this many rejected rows in a row switch back.
+    const int StepAfterExamined = 2;
+    const int StepRejectLimit = 8;
     int _candidateIndex;
 
     public RelationQueryScanner(IInternalObjectDBTransaction transaction, RelationQueryPlan plan)
@@ -3474,8 +3662,49 @@ sealed class RelationQueryScanner : IDisposable
         _aggregateIndex = AggregateIndex;
         _frame = new long[plan.FrameSize / sizeof(long)];
         _objects = new object?[plan.ObjectCount];
-        if (plan.ValuePrograms != null) _valueBuffer = new byte[ValueBufferSize];
+        if (plan.ValuePrograms != null || plan.ProjectionValuePrograms != null) _valueBuffer = new byte[ValueBufferSize];
         _cursor = transaction.KeyValueDBTransaction.CreateCursor();
+    }
+
+    /// Runs the projection programs on the row the cursor is positioned on.
+    [SkipLocalsInit]
+    public unsafe void ComputeProjection()
+    {
+        Span<byte> keyBuffer = stackalloc byte[512];
+        var key = _cursor!.GetKeySpan(ref keyBuffer);
+        ref var frame = ref Unsafe.As<long, byte>(ref MemoryMarshal.GetArrayDataReference(_frame));
+        ref var objects = ref MemoryMarshal.GetArrayDataReference(_objects);
+        var program = Plan.ProjectionKeyProgram;
+        var valueReader = new MemReader();
+        fixed (byte* keyPointer = key)
+        {
+            if (program == null)
+            {
+                Span<byte> valueBuffer = _valueBuffer;
+                var value = _cursor.GetValueSpan(ref valueBuffer);
+                fixed (byte* valuePointer = value)
+                {
+                    valueReader = new(valuePointer, value.Length);
+                    var version = valueReader.ReadVUInt32();
+                    program = version < Plan.ProjectionValuePrograms!.Length ? Plan.ProjectionValuePrograms[version] : null;
+                    if (program == null) throw new BTDBException($"Unknown relation value version {version}.");
+                    Run(program, keyPointer, key.Length, ref valueReader, ref frame, ref objects);
+                }
+
+                return;
+            }
+
+            Run(program, keyPointer, key.Length, ref valueReader, ref frame, ref objects);
+        }
+
+        static void Run(RelationQueryProgram program, byte* keyPointer, int keyLength, ref MemReader valueReader,
+            ref byte frame, ref object? objects)
+        {
+            if (program.Program == null) return;
+            var keyReader = new MemReader(keyPointer + program.KeyStart, keyLength - program.KeyStart);
+            var ctx = new InterpreterCtx(program.Program, ref frame, ref objects, ref keyReader, ref valueReader);
+            BTDB.Interpreter.Interpreter.Run(ref ctx);
+        }
     }
 
     public RelationQueryPlan Plan { get; }
@@ -3544,7 +3773,7 @@ sealed class RelationQueryScanner : IDisposable
                 _inRange = true;
                 _skipCurrentRow = false;
             }
-            else if (Plan.HasPrograms && cursor.IsValid())
+            else if (Plan.HasPrograms && !_stepping && cursor.IsValid())
             {
                 // FastIterate continues from the previously matched row, which is cheaper than moving the cursor;
                 // that row itself is skipped.
@@ -3552,7 +3781,8 @@ sealed class RelationQueryScanner : IDisposable
             }
             else
             {
-                // Without programs, or when the previously matched row was removed, FindNextKey moves on.
+                // Without programs, when stepping, or when the previously matched row was removed, FindNextKey moves
+                // on.
                 if (!cursor.FindNextKey(range.Prefix))
                 {
                     NextRange();
@@ -3569,15 +3799,53 @@ sealed class RelationQueryScanner : IDisposable
                 continue;
             }
 
+            if (_stepping)
+            {
+                // When most rows match, restarting FastIterate for every match costs more than stepping the cursor;
+                // a run of rejected rows switches back.
+                var rejected = 0;
+                var leftRange = false;
+                while (true)
+                {
+                    var key = cursor.GetKeySpan(ref keyBuffer);
+                    if (!range.Contains(key))
+                    {
+                        leftRange = true;
+                        break;
+                    }
+
+                    if (Evaluate(key)) return true;
+                    if (++rejected == StepRejectLimit) break;
+                    if (cursor.FindNextKey(range.Prefix)) continue;
+                    leftRange = true;
+                    break;
+                }
+
+                if (leftRange)
+                {
+                    NextRange();
+                    continue;
+                }
+
+                _stepping = false;
+                _skipCurrentRow = true;
+            }
+
             // Tests rows starting at the cursor position without moving the cursor per row; iteration stops on the
             // first matching row or the first key outside the range.
             _matched = false;
+            _examined = 0;
             _range = range;
             if (Plan.ValuePrograms == null)
                 cursor.FastIterateNoCursor(ref keyBuffer, _stopAtMatch);
             else
                 cursor.FastIterate(ref keyBuffer, _stopAtMatch);
-            if (_matched) return true;
+            if (_matched)
+            {
+                _stepping = _examined <= StepAfterExamined;
+                return true;
+            }
+
             NextRange();
         }
 
@@ -3638,6 +3906,7 @@ sealed class RelationQueryScanner : IDisposable
         }
 
         if (!_range!.Contains(key)) return true;
+        _examined++;
         if (!Evaluate(key)) return false;
         _matched = true;
         return true;
@@ -4220,6 +4489,291 @@ sealed class RelationQueryWindow<T> : IEnumerator<T>, IEnumerable<T> where T : c
 
     public IEnumerator<T> GetEnumerator() => this;
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+/// Queryable after Select: element type differs from the row type, the root query provides everything.
+sealed class RelationQueryProjected<TRow, TElement> : IQueryable<TElement> where TRow : class
+{
+    readonly RelationQuery<TRow> _root;
+
+    public RelationQueryProjected(RelationQuery<TRow> root, Expression expression)
+    {
+        _root = root;
+        Expression = expression;
+    }
+
+    public Type ElementType => typeof(TElement);
+    public Expression Expression { get; }
+    public IQueryProvider Provider => _root;
+    public IEnumerator<TElement> GetEnumerator() => _root.EnumerateProjected<TElement>(Expression);
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+sealed class RelationQueryProjectedEnumerator<TRow, TElement> : IEnumerator<TElement> where TRow : class
+{
+    readonly RelationQueryWindow<TRow> _window;
+    readonly RelationQueryProjection<TRow> _projection;
+    bool _hasCurrent;
+    TElement _current = default!;
+
+    public RelationQueryProjectedEnumerator(RelationQueryWindow<TRow> window, RelationQueryProjection<TRow> projection)
+    {
+        _window = window;
+        _projection = projection;
+    }
+
+    public bool MoveNext()
+    {
+        _hasCurrent = _window.MoveNext();
+        if (_hasCurrent) _current = _projection.Build<TElement>(_window.Scanner);
+        return _hasCurrent;
+    }
+
+    public TElement Current =>
+        _hasCurrent ? _current : throw new InvalidOperationException("Enumerator is not positioned on a row.");
+
+    object? IEnumerator.Current => Current;
+
+    public void Reset() => throw new NotSupportedException();
+    public void Dispose() => _window.Dispose();
+}
+
+/// Builds Select results of matching rows: values and strings computed by their programs, the row itself, or objects
+/// constructed from those through a constructor, or through generated metadata or reflection for member bindings.
+sealed class RelationQueryProjection<TRow> where TRow : class
+{
+    readonly IInternalObjectDBTransaction _transaction;
+    readonly RelationInfo.ItemLoaderInfo _loaderInfo;
+    readonly List<(bool IsRow, int Selector, Type Type)> _arguments = [];
+    readonly List<QueryNode> _selectors = [];
+    readonly NewExpression? _new;
+    readonly List<(MemberInfo Member, int Argument, FieldMetadata? Field)>? _bindings;
+    readonly ClassMetadata? _metadata;
+    RelationQueryResult[] _results = [];
+
+    public RelationQueryProjection(LambdaExpression lambda, QueryByIdQueryNode query,
+        IInternalObjectDBTransaction transaction, RelationInfo.ItemLoaderInfo loaderInfo)
+    {
+        _transaction = transaction;
+        _loaderInfo = loaderInfo;
+        var parameter = lambda.Parameters[0];
+        switch (lambda.Body)
+        {
+            case NewExpression { Constructor: not null } newExpression:
+                _new = newExpression;
+                foreach (var argument in newExpression.Arguments) AddArgument(argument, parameter, query);
+                break;
+            case MemberInitExpression { NewExpression.Constructor: not null } memberInit:
+                _new = memberInit.NewExpression;
+                foreach (var argument in _new.Arguments) AddArgument(argument, parameter, query);
+                _bindings = [];
+                _metadata = ReflectionMetadata.FindByType(memberInit.Type);
+                foreach (var binding in memberInit.Bindings)
+                {
+                    if (binding is not MemberAssignment assignment)
+                        throw new NotSupportedException("Relation query supports only member assignments in Select.");
+                    FieldMetadata? field = null;
+                    if (_metadata != null && !memberInit.Type.IsValueType)
+                    {
+                        foreach (var candidate in _metadata.Fields)
+                            if (candidate.Name == assignment.Member.Name) field = candidate;
+                        unsafe
+                        {
+                            if (field?.PropRefSetter == null) field = null;
+                        }
+                    }
+
+                    _bindings.Add((assignment.Member, AddArgument(assignment.Expression, parameter, query), field));
+                }
+
+                break;
+            case MethodCallExpression { Object: null, Method.Name: "Create" } create
+                when create.Method.DeclaringType == typeof(ValueTuple) || create.Method.DeclaringType == typeof(Tuple):
+                _factory = create.Method;
+                foreach (var argument in create.Arguments) AddArgument(argument, parameter, query);
+                break;
+            default:
+                AddArgument(lambda.Body, parameter, query);
+                break;
+        }
+    }
+
+    /// ValueTuple.Create or Tuple.Create.
+    readonly MethodInfo? _factory;
+
+    /// Values the programs compute for each row, in RelationQueryPlan.Projection order.
+    public IReadOnlyList<QueryNode> Selectors => _selectors;
+
+    /// A single value or string, which aggregates can use as their selector.
+    public QueryNode? SingleSelector =>
+        _new == null && _factory == null && !_arguments[0].IsRow ? _selectors[0] : null;
+
+    public void Bind(RelationQueryPlan plan)
+    {
+        _results = plan.Projection;
+        _eager = plan.ProjectionIsEager;
+    }
+
+    bool _eager;
+
+    public bool CanThrow => _selectors.Exists(RelationQueryCompiler.CanThrowNode);
+
+    int AddArgument(Expression expression, ParameterExpression parameter, QueryByIdQueryNode query)
+    {
+        if (expression == parameter)
+        {
+            _arguments.Add((true, -1, expression.Type));
+            return _arguments.Count - 1;
+        }
+
+        var node = RelationQueryAstBuilder.BuildValue(expression, parameter, query);
+        if (node.Type == typeof(string)
+                ? node is not PropQueryNode
+                : !RelationQueryTypes.TryGetStorage(node.Type, out _, out _, out _))
+            throw new NotSupportedException(
+                $"Relation query does not support selecting '{expression}' of type {expression.Type.ToSimpleName()}.");
+        _selectors.Add(node);
+        _arguments.Add((false, _selectors.Count - 1, expression.Type));
+        return _arguments.Count - 1;
+    }
+
+    /// Builds the result without boxing for single values whose type is their storage.
+    public TElement Build<TElement>(RelationQueryScanner scanner)
+    {
+        if (_selectors.Count > 0 && !_eager) scanner.ComputeProjection();
+        if (_new == null && _factory == null && !_arguments[0].IsRow && typeof(TElement).IsValueType &&
+            Nullable.GetUnderlyingType(typeof(TElement)) == null)
+        {
+            var result = _results[0];
+            if (!result.IsString && Unsafe.SizeOf<TElement>() == RelationQueryTypes.ValueSize(result.StorageType))
+                return Unsafe.ReadUnaligned<TElement>(ref scanner.FrameBytes[result.Slot]);
+        }
+
+        return (TElement)Construct(scanner)!;
+    }
+
+    public object? BuildBoxed(RelationQueryScanner scanner)
+    {
+        if (_selectors.Count > 0 && !_eager) scanner.ComputeProjection();
+        return Construct(scanner);
+    }
+
+    object? Construct(RelationQueryScanner scanner)
+    {
+        if (_new == null && _factory == null) return ReadArgument(0, scanner);
+        var count = _new?.Arguments.Count ?? _arguments.Count;
+        object target;
+        unsafe
+        {
+            if (_bindings != null && count == 0 && _metadata?.Creator != null && !_new!.Type.IsValueType)
+            {
+                target = _metadata.Creator();
+            }
+            else
+            {
+                // Invokers avoid most of the reflection overhead; up to four arguments need no array.
+                _constructorInvoker ??= _new != null ? ConstructorInvoker.Create(_new.Constructor!) : null;
+                _factoryInvoker ??= _factory != null ? MethodInvoker.Create(_factory) : null;
+                target = count switch
+                {
+                    0 => Invoke(),
+                    1 => Invoke(ReadArgument(0, scanner)),
+                    2 => Invoke(ReadArgument(0, scanner), ReadArgument(1, scanner)),
+                    3 => Invoke(ReadArgument(0, scanner), ReadArgument(1, scanner), ReadArgument(2, scanner)),
+                    4 => Invoke(ReadArgument(0, scanner), ReadArgument(1, scanner), ReadArgument(2, scanner),
+                        ReadArgument(3, scanner)),
+                    _ => InvokeMany(scanner, count)
+                };
+            }
+        }
+
+        if (_bindings == null) return target;
+        foreach (var (member, argument, field) in _bindings)
+        {
+            var value = ReadArgument(argument, scanner);
+            if (field != null) SetField(field, target, value, member is PropertyInfo p ? p.PropertyType : ((FieldInfo)member).FieldType);
+            else if (member is PropertyInfo property) property.SetValue(target, value);
+            else ((FieldInfo)member).SetValue(target, value);
+        }
+
+        return target;
+    }
+
+    ConstructorInvoker? _constructorInvoker;
+    MethodInvoker? _factoryInvoker;
+
+    object Invoke() => _constructorInvoker?.Invoke() ?? _factoryInvoker!.Invoke(null)!;
+    object Invoke(object? a) => _constructorInvoker?.Invoke(a) ?? _factoryInvoker!.Invoke(null, a)!;
+    object Invoke(object? a, object? b) => _constructorInvoker?.Invoke(a, b) ?? _factoryInvoker!.Invoke(null, a, b)!;
+
+    object Invoke(object? a, object? b, object? c) =>
+        _constructorInvoker?.Invoke(a, b, c) ?? _factoryInvoker!.Invoke(null, a, b, c)!;
+
+    object Invoke(object? a, object? b, object? c, object? d) =>
+        _constructorInvoker?.Invoke(a, b, c, d) ?? _factoryInvoker!.Invoke(null, a, b, c, d)!;
+
+    object InvokeMany(RelationQueryScanner scanner, int count)
+    {
+        var values = new object?[count];
+        for (var i = 0; i < count; i++) values[i] = ReadArgument(i, scanner);
+        return _constructorInvoker?.Invoke(values) ?? _factoryInvoker!.Invoke(null, values)!;
+    }
+
+    object? ReadArgument(int index, RelationQueryScanner scanner)
+    {
+        var (isRow, selector, type) = _arguments[index];
+        if (isRow) return RelationQueryRows.Load<TRow>(_transaction, _loaderInfo, scanner.Cursor);
+        var value = scanner.ReadResult(_results[selector]);
+        var target = Nullable.GetUnderlyingType(type) ?? type;
+        return value != null && target.IsEnum ? Enum.ToObject(target, value) : value;
+    }
+
+    // Generated setters take a reference to the value, so the boxed value is unboxed into its storage type; enums
+    // unbox to their underlying type.
+    static unsafe void SetField(FieldMetadata field, object target, object? value, Type memberType)
+    {
+        var setter = field.PropRefSetter;
+        if (!memberType.IsValueType)
+        {
+            var reference = value;
+            setter(target, ref Unsafe.As<object?, byte>(ref reference));
+            return;
+        }
+
+        RelationQueryTypes.TryGetStorage(memberType, out var storage, out _, out var nullable);
+        if (storage == typeof(bool)) Set<bool>(setter, target, value, nullable);
+        else if (storage == typeof(byte)) Set<byte>(setter, target, value, nullable);
+        else if (storage == typeof(sbyte)) Set<sbyte>(setter, target, value, nullable);
+        else if (storage == typeof(ushort)) Set<ushort>(setter, target, value, nullable);
+        else if (storage == typeof(short)) Set<short>(setter, target, value, nullable);
+        else if (storage == typeof(uint)) Set<uint>(setter, target, value, nullable);
+        else if (storage == typeof(int)) Set<int>(setter, target, value, nullable);
+        else if (storage == typeof(ulong)) Set<ulong>(setter, target, value, nullable);
+        else if (storage == typeof(long)) Set<long>(setter, target, value, nullable);
+        else if (storage == typeof(Half)) Set<Half>(setter, target, value, nullable);
+        else if (storage == typeof(float)) Set<float>(setter, target, value, nullable);
+        else if (storage == typeof(double)) Set<double>(setter, target, value, nullable);
+        else if (storage == typeof(DateTime)) Set<DateTime>(setter, target, value, nullable);
+        else if (storage == typeof(Guid)) Set<Guid>(setter, target, value, nullable);
+        else if (storage == typeof(decimal)) Set<decimal>(setter, target, value, nullable);
+        else if (storage == typeof(TimeSpan)) Set<TimeSpan>(setter, target, value, nullable);
+        else if (storage == typeof(DateTimeOffset)) Set<DateTimeOffset>(setter, target, value, nullable);
+        else throw new NotSupportedException($"Relation query cannot set {memberType.ToSimpleName()} members.");
+    }
+
+    static unsafe void Set<T>(delegate*<object, ref byte, void> setter, object target, object? value, bool nullable)
+        where T : struct
+    {
+        if (nullable)
+        {
+            T? nullableValue = value == null ? null : (T)value;
+            setter(target, ref Unsafe.As<T?, byte>(ref nullableValue));
+            return;
+        }
+
+        var plainValue = (T)value!;
+        setter(target, ref Unsafe.As<T, byte>(ref plainValue));
+    }
 }
 
 static class RelationQueryRows

@@ -284,7 +284,14 @@ public enum OpCode : byte
     SkipValueByHandler = 182,
 
     /// Operands: size u8, destination frame offset u16, source QueryOperandKind u8, source offset u32.
-    CopyToFrame = 183
+    CopyToFrame = 183,
+
+    /// Operands: QueryStringEncoding u8, captured frame offset u16, object slot index u16. Stores the captured string
+    /// as a new string, or null.
+    StringFromCaptured = 184,
+
+    /// Operands: object slot index u16. Stores null.
+    SetObjectNull = 185
 }
 
 public enum QueryValueType : byte
@@ -1052,6 +1059,16 @@ class InterpreterBuilder
                 case OpCode.ThrowQueryException:
                     sb.Append(' ').Append((QueryException)program[offset]);
                     offset += 1;
+                    break;
+                case OpCode.StringFromCaptured:
+                    sb.Append(' ').Append((QueryStringEncoding)program[offset]).Append(" frame[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 1)..])).Append("] -> objects[")
+                        .Append(MemoryMarshal.Read<ushort>(program[(offset + 3)..])).Append(']');
+                    offset += 5;
+                    break;
+                case OpCode.SetObjectNull:
+                    sb.Append(" objects[").Append(MemoryMarshal.Read<ushort>(program[offset..])).Append(']');
+                    offset += 2;
                     break;
                 case OpCode.CopyToFrame:
                     sb.Append(' ').Append(program[offset]).Append(" bytes frame[")
@@ -2260,6 +2277,14 @@ static class Interpreter
                 ((IFieldHandler)ctx.ObjectConstants[(int)ReadUInt32(ref ctx, pc)]!).Skip(ref ctx.ValueReader, null);
                 pc += 4;
                 break;
+            case OpCode.StringFromCaptured:
+                StringFromCaptured(ref ctx, pc);
+                pc += 5;
+                break;
+            case OpCode.SetObjectNull:
+                Unsafe.As<byte, object?>(ref ObjectSlot(ref ctx, ReadUInt16(ref ctx, pc))) = null;
+                pc += 2;
+                break;
             case OpCode.CopyToFrame:
                 Unsafe.CopyBlockUnaligned(ref Unsafe.AddByteOffset(ref ctx.Frame, (nint)ReadUInt16(ref ctx, pc + 1)),
                     ref Operand(ref ctx, (QueryOperandKind)Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc + 3),
@@ -2657,6 +2682,20 @@ static class Interpreter
             {
                 buffer[length++] = (char)c;
             }
+        }
+    }
+
+    static unsafe void StringFromCaptured(ref InterpreterCtx ctx, uint pc)
+    {
+        ref var operands = ref Unsafe.AddByteOffset(ref ctx.BeginProgram, (nint)pc);
+        var captured = Captured(ref ctx, Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 1)));
+        fixed (byte* pointer = captured)
+        {
+            var reader = new MemReader(pointer, captured.Length);
+            Unsafe.As<byte, object?>(ref ObjectSlot(ref ctx, Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref operands, 3)))) =
+                (QueryStringEncoding)operands == QueryStringEncoding.String
+                    ? reader.ReadString()
+                    : reader.ReadStringOrdered();
         }
     }
 

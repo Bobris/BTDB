@@ -311,6 +311,111 @@ public class ObjectDbRelationQueryDifferentialTest : ObjectDbTestBase
         ("Average(Ratio)", q => q.Average(r => r.Ratio)),
     ];
 
+    [Generate]
+    public class DiffDto
+    {
+        public string? Code { get; set; }
+        public int Age { get; set; }
+        public DiffKind Kind { get; set; }
+        public int? Bonus { get; set; }
+        public override string ToString() => $"DiffDto {Code} {Age} {Kind} {Bonus}";
+    }
+
+    public record DiffRecord(string Code, long Score);
+
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void ProjectionsMatchLinqToObjects(int seed)
+    {
+        var random = new Random(seed);
+        FillRows(random);
+
+        using var tr = _db.StartReadOnlyTransaction();
+        var table = tr.GetRelation<IDiffRowTable>();
+        var rows = table.ToList();
+        var generator = new RelationQueryPredicateGenerator(random);
+        var firstKeys = FirstOrderingKeys();
+        var projections = Projections();
+        for (var i = 0; i < PredicatesPerSeed; i++)
+        {
+            var source = random.Next(3) == 0 ? null : generator.Generate();
+            var (orderName, order) = random.Next(2) == 0 ? ("", null) : firstKeys[random.Next(firstKeys.Count)];
+            var skip = random.Next(4) == 0 ? random.Next(20) : -1;
+            var take = random.Next(4) == 0 ? random.Next(20) : -1;
+            var pageAfterSelect = random.Next(2) == 0;
+            var (projectionName, projection) = projections[random.Next(projections.Count)];
+            var terminal = random.Next(9);
+            var description = $"{source} / {orderName} / skip {skip} take {take} after {pageAfterSelect} / {projectionName} / {terminal}";
+
+            IQueryable<DiffRow> Prepare(IQueryable<DiffRow> q)
+            {
+                if (order != null) q = order(q);
+                if (!pageAfterSelect && skip >= 0) q = q.Skip(skip);
+                if (!pageAfterSelect && take >= 0) q = q.Take(take);
+                return q;
+            }
+
+            var expected = RunTerminal(() => projection(Prepare(source == null ? rows.AsQueryable() : rows.AsQueryable().Where(source)),
+                new ProjectionTerminal(terminal, pageAfterSelect, skip, take)));
+            var actual = RunTerminal(() => projection(Prepare(source == null
+                ? table.Query<DiffRow>()
+                : generator.ApplyAsWhereChain(table.Query<DiffRow>(), source)), new ProjectionTerminal(terminal, pageAfterSelect, skip, take)));
+            if (actual.Exception is NotSupportedException notSupported)
+                throw new InvalidOperationException($"Seed {seed}, #{i} is not supported: {description}", notSupported);
+            if (expected.Value == actual.Value && expected.Exception?.GetType() == actual.Exception?.GetType() &&
+                expected.Exception?.Message == actual.Exception?.Message)
+                continue;
+            Assert.Fail($"Seed {seed}, #{i}: {description}\n" +
+                        $"expected {expected.Value} {expected.Exception?.GetType().Name}: {expected.Exception?.Message}\n" +
+                        $"actual {actual.Value} {actual.Exception?.GetType().Name}: {actual.Exception?.Message}\n" +
+                        $"{actual.Exception}");
+        }
+    }
+
+    sealed record ProjectionTerminal(int Kind, bool PageAfterSelect, int Skip, int Take)
+    {
+        public object? Run<T>(IQueryable<T> q)
+        {
+            if (PageAfterSelect && Skip >= 0) q = q.Skip(Skip);
+            if (PageAfterSelect && Take >= 0) q = q.Take(Take);
+            return Kind switch
+            {
+                0 or 1 => string.Join("|", q.AsEnumerable().Select(v => Format(v))),
+                2 => q.Count(),
+                3 => Format(q.First()),
+                4 => Format(q.FirstOrDefault()),
+                5 => Format(q.Last()),
+                6 => q.Any(),
+                7 => Format(q.SingleOrDefault()),
+                _ => string.Join("|", q.Skip(1).Take(3).AsEnumerable().Select(v => Format(v)))
+            };
+        }
+
+        static string Format(object? value) => value is DiffRow row ? Describe(row) : value?.ToString() ?? "null";
+    }
+
+    static List<(string, Func<IQueryable<DiffRow>, ProjectionTerminal, object?>)> Projections() =>
+    [
+        ("Age", (q, t) => t.Run(q.Select(r => r.Age))),
+        ("Name", (q, t) => t.Run(q.Select(r => r.Name))),
+        ("Bonus", (q, t) => t.Run(q.Select(r => r.Bonus))),
+        ("Kind", (q, t) => t.Run(q.Select(r => r.Kind))),
+        ("Kind?", (q, t) => t.Run(q.Select(r => (DiffKind?)r.Kind))),
+        ("anonymous enum", (q, t) => t.Run(q.Select(r => new { r.Kind, r.Level, r.Delta }))),
+        ("Price * 2", (q, t) => t.Run(q.Select(r => r.Price * 2))),
+        ("Code", (q, t) => t.Run(q.Select(r => r.Code))),
+        ("anonymous", (q, t) => t.Run(q.Select(r => new { r.Tenant, r.Code, r.Note, r.Seen }))),
+        ("tuple", (q, t) => t.Run(q.Select(r => ValueTuple.Create(r.Age, r.Created, r.Flag)))),
+        ("tuple literal", (q, t) => t.Run(q.Select(r => new ValueTuple<string?, Guid>(r.Name, r.Token)))),
+        ("dto", (q, t) => t.Run(q.Select(r => new DiffDto { Code = r.Code, Age = r.Age, Kind = r.Kind, Bonus = r.Bonus }))),
+        ("record", (q, t) => t.Run(q.Select(r => new DiffRecord(r.Code, r.Score)))),
+        ("Sum(Select(Age))", (q, _) => q.Select(r => r.Age).Sum()),
+        ("Average(Select(Ratio))", (q, _) => q.Select(r => r.Ratio).Average()),
+        ("Max(Select(Created))", (q, _) => q.Select(r => r.Created).Max()),
+        ("Min(Select(Bonus))", (q, _) => q.Select(r => r.Bonus).Min()),
+        ("Max(Select(Kind))", (q, _) => q.Select(r => r.Kind).Max()),
+    ];
+
     static readonly DiffRow DefaultRow = new() { Code = "default" };
 
     // Each terminal gets the source and a predicate it may use as its argument.

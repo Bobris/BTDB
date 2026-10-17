@@ -517,6 +517,46 @@ top 10: correct, but a worst case.
   constructor projections fall back to `ConstructorInfo.Invoke`.
 - `Select` composes with Phase 3 aggregates and Phase 5 ordering.
 
+#### Phase 6 status: done
+
+What was built, and where it differs from the plan above:
+
+- **Element type.** `CreateQuery<TElement>` returns `RelationQueryProjected<TRow, TElement>`, whose provider stays the
+  root `RelationQuery<T>`. The source is built only at enumeration or execution, so captured variables are read late
+  like LINQ. `Select(p => p)` is no projection. `Where` and ordering after `Select` are rejected; `Skip`/`Take` fold
+  into the window.
+- **Lazy projection programs.** LINQ runs the selector only for produced elements, so projections compile into
+  separate per-value-version programs (or one key-only program) that run on the cursor row after the window accepts
+  it. When the projection cannot throw and there is no `Skip`, its selectors join the scan programs instead (eager
+  mode), avoiding a second pass over the row.
+- **Strings.** `StringFromCaptured` (184) decodes captured field bytes straight into an object slot, and
+  `SetObjectNull` (185) stands for fields missing in older versions; `RelationQueryResult` gains an object-slot
+  variant.
+- **Element construction without emit.** `RelationQueryProjection<TRow>` builds single values through a typed
+  `Unsafe.ReadUnaligned` fast path, constructors and factories (`ValueTuple.Create`, `Tuple.Create`) through
+  `ConstructorInvoker` / `MethodInvoker`, and member initializers through generated `ClassMetadata` creators and
+  setters, with reflection as fallback. `[Generate]` DTOs therefore never need `AllocObjectTo*` / `CallSetter`
+  opcodes.
+- **LINQ details matched:** `Count` of a projection that can throw runs it on every row; `Any` ignores it; `Last`
+  scans backwards and builds once; `Single` builds the second element before throwing; `FirstOrDefault` of an empty
+  value-type projection returns `default(TElement)` without reflection.
+- **Scan stepping.** Restarting `FastIterate` after each match was costly when most rows match. The scanner now steps
+  with `FindNextKey` after quick matches and goes back to `FastIterate` after 8 rejected rows.
+- **Tests.** The differential test projects 13 shapes (values, strings, enums, nullable, decimal arithmetic,
+  anonymous, tuples, a `[Generate]` DTO, a record) under random filters, orderings and pages, plus aggregates of
+  projected values. The AOT smoke app covers values, strings, anonymous types, tuples, a DTO and paged sums with no
+  query-path warnings.
+
+Results (same machine and settings as before):
+
+| Scenario                                                       | Query   | LINQ over the relation |
+|----------------------------------------------------------------|--------:|-----------------------:|
+| `Where(Age == a).Select(Score)`, per scanned row               | 93 ns   | 134 ns                 |
+| `Select(new { Id, City })` of all rows, per row                | 152 ns  | 137 ns                 |
+| `OrderByDescending(Score).Select(Id).Take(10)` of 100 000 rows | 16 ms   | 26 ms                  |
+
+An unfiltered full projection is near parity because every row is decoded either way.
+
 ## Out of scope for now
 
 `GroupBy`, `Join`, `Distinct` (except possibly `Distinct` over a single projected field), async enumeration, and

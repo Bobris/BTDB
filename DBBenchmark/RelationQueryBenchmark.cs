@@ -144,6 +144,50 @@ public class RelationQueryBenchmark
     public int PkPrefixAndValueFindById() =>
         _table.FindById(QueryBenchData.SelectedTenant).Count(p => p.Age == QueryBenchData.SelectiveAge);
 
+    /// Projections read only the selected fields of returned rows, per scanned row.
+    [BenchmarkCategory("SelectValue"), Benchmark(Baseline = true, OperationsPerInvoke = QueryBenchData.RowCount)]
+    public long SelectValueQuery()
+    {
+        var sum = 0L;
+        foreach (var score in _table.Query<QueryBenchRow>().Where(p => p.Age == QueryBenchData.SelectiveAge).Select(p => p.Score))
+            sum += score;
+        return sum;
+    }
+
+    [BenchmarkCategory("SelectValue"), Benchmark(OperationsPerInvoke = QueryBenchData.RowCount)]
+    public long SelectValueLinq()
+    {
+        var sum = 0L;
+        foreach (var score in _table.Where(p => p.Age == QueryBenchData.SelectiveAge).Select(p => p.Score)) sum += score;
+        return sum;
+    }
+
+    [BenchmarkCategory("SelectAnonymous"), Benchmark(Baseline = true, OperationsPerInvoke = QueryBenchData.RowCount)]
+    public int SelectAnonymousQuery()
+    {
+        var count = 0;
+        foreach (var item in _table.Query<QueryBenchRow>().Select(p => new { p.Id, p.City }))
+            count += item.City!.Length;
+        return count;
+    }
+
+    [BenchmarkCategory("SelectAnonymous"), Benchmark(OperationsPerInvoke = QueryBenchData.RowCount)]
+    public int SelectAnonymousLinq()
+    {
+        var count = 0;
+        foreach (var item in _table.Select(p => new { p.Id, p.City })) count += item.City!.Length;
+        return count;
+    }
+
+    [BenchmarkCategory("TopSelect"), Benchmark(Baseline = true)]
+    public ulong TopSelectQuery() =>
+        _table.Query<QueryBenchRow>().OrderByDescending(p => p.Score).Select(p => p.Id).Take(10).AsEnumerable()
+            .Aggregate(0ul, (a, id) => a + id);
+
+    [BenchmarkCategory("TopSelect"), Benchmark]
+    public ulong TopSelectLinq() =>
+        _table.OrderByDescending(p => p.Score).Select(p => p.Id).Take(10).Aggregate(0ul, (a, id) => a + id);
+
     /// Paging, measured per call: a deep page without a filter skips by key indexes, a top 10 by a value keeps only
     /// ten rows while testing all, and a tenant page in key order stops after its rows.
     [BenchmarkCategory("DeepPage"), Benchmark(Baseline = true)]

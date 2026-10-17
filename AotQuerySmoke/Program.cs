@@ -21,6 +21,15 @@ public class SmokePerson
     public decimal Price { get; set; }
 }
 
+[Generate]
+public class SmokeDto
+{
+    public string? Email { get; set; }
+    public int Age { get; set; }
+    public SmokeLevel Level { get; set; }
+    public int? Bonus { get; set; }
+}
+
 public enum SmokeLevel
 {
     Low,
@@ -136,6 +145,20 @@ static class Program
             Check("key order page", string.Join(",", all.Where(p => p.TenantId == 2).OrderBy(p => p.Email).Skip(5).Take(3).Select(p => p.Email)),
                 string.Join(",", query.Where(p => p.TenantId == 2).OrderBy(p => p.Email).Skip(5).Take(3).AsEnumerable().Select(p => p.Email)));
             Check("deep skip", all.Skip(90).First().Email, query.Skip(90).First().Email);
+            Check("select value", string.Join(",", all.Where(p => p.Age > 45).Select(p => p.Age)),
+                string.Join(",", query.Where(p => p.Age > 45).Select(p => p.Age)));
+            Check("select string", string.Join(",", all.Where(p => p.Age == 22).Select(p => p.Name)),
+                string.Join(",", query.Where(p => p.Age == 22).Select(p => p.Name)));
+            Check("select anonymous", string.Join(",", all.Where(p => p.Age == 30).Select(p => new { p.Email, p.Level })),
+                string.Join(",", query.Where(p => p.Age == 30).Select(p => new { p.Email, p.Level })));
+            Check("select tuple", string.Join(",", all.Where(p => p.Age == 31).Select(p => (p.TenantId, p.Bonus))),
+                string.Join(",", query.Where(p => p.Age == 31).Select(p => ValueTuple.Create(p.TenantId, p.Bonus))));
+            var dto = query.Where(p => p.Age == 33).Select(p => new SmokeDto { Email = p.Email, Age = p.Age, Level = p.Level, Bonus = p.Bonus }).First();
+            var dtoExpected = all.First(p => p.Age == 33);
+            Check("select dto", $"{dtoExpected.Email}/{dtoExpected.Age}/{dtoExpected.Level}/{dtoExpected.Bonus}",
+                $"{dto.Email}/{dto.Age}/{dto.Level}/{dto.Bonus}");
+            Check("select sum and page", $"{all.Select(p => p.Age).Sum()}/{string.Join(",", all.OrderByDescending(p => p.Price).Select(p => p.Email).Take(2))}",
+                $"{query.Select(p => p.Age).Sum()}/{string.Join(",", query.OrderByDescending(p => p.Price).Select(p => p.Email).Take(2))}");
             Check("materialized row", "user025@example.com",
                 table.Query<SmokePerson>().Where(p => p.TenantId == 1 && p.Email == "user025@example.com")
                     .AsEnumerable().Single().Email);

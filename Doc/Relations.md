@@ -475,6 +475,17 @@ condition that can throw only runs after every condition written before it, so g
   when no condition can throw. `Take(0)` tests no row.
 - **Terminal operators,** including aggregates, work on ordered and paged sources. Sums and averages follow the page
   order like LINQ.
+`Select` follows `Where` and ordering, for example
+`table.Query<Person>().Where(p => p.Age > 18).Select(p => new { p.Name, p.Age })`:
+- It supports single values (properties or expressions over them), anonymous types, constructors, `ValueTuple` and
+  `Tuple`, records, and member initializers. `[Generate]` classes are filled through their generated setters.
+- Only the fields the projection needs are read from the stored bytes, and only for returned rows. Like LINQ, the
+  selector runs only when an element is produced: `Count` runs it on every row, `Last` only on the last one.
+- `Skip`, `Take` and terminal operators follow it. `Min`, `Max`, `Sum` and `Average` without a selector aggregate the
+  projected value.
+- `Where`, ordering and a terminal predicate after `Select` are not supported, nor is the indexed
+  `Select((p, i) => ...)`.
+
 - **Not supported:**
   - `Where` after `OrderBy`, `Skip` or `Take`;
   - ordering keys that can throw;
@@ -498,7 +509,7 @@ Results, exceptions and which rows get tested are the same as LINQ-to-Objects ov
 - `Last` searching backwards from the end, except `Last(predicate)` after `Where`, which tests every row.
 
 Anything else throws `NotSupportedException` when the query is enumerated or executed. Examples:
-- other LINQ operators, such as `Select`, `Distinct` or `TakeLast`;
+- other LINQ operators, such as `SelectMany`, `Distinct` or `TakeLast`;
 - `Min`, `Max`, `Sum` and `Average` without a selector or over strings;
 - comparing two string properties;
 - string concatenation;

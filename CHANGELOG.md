@@ -45,13 +45,23 @@
   - other orderings sort keys read from stored bytes, keeping only `Skip + Take` rows;
   - unfiltered `Skip` uses key indexes;
   - only returned rows are materialized.
-- The low-level interpreter has expression opcodes (`OpCode` 163–183):
+- `IRelation.Query<T>()` supports `Select` after `Where` and ordering, followed by `Skip`, `Take`, enumeration or
+  terminal operators:
+  - single values, anonymous types, constructors, `ValueTuple` / `Tuple`, records and member initializers;
+    `[Generate]` classes use generated setters;
+  - only the selected fields are read, and only for returned rows;
+  - `Min`, `Max`, `Sum` and `Average` without a selector aggregate projected values.
+
+  `Query<T>()` now returns `IOrderedQueryable<T>`. Selector calls and exceptions match LINQ-to-Objects.
+- The low-level interpreter has expression opcodes (`OpCode` 163–185):
   - frame-to-frame compare, arithmetic (`QueryArithmetic`, `QueryOperandKind`) and numeric conversion;
   - capturing raw field bytes, with encoded equality and `StartsWith`;
   - string decoding into reused buffers and string operations (`QueryStringEncoding`, `QueryStringOp`,
     `QueryStringSet`);
   - set membership, query exceptions (`QueryException`) and skipping fields by field handler;
-  - copying selector results (`CopyToFrame`, 183).
+  - copying selector results (`CopyToFrame`, 183);
+  - decoding captured strings into object slots (`StringFromCaptured`, 184) and clearing object slots
+    (`SetObjectNull`, 185).
 
   `QueryValueType` gains `Guid`, `Decimal`, `TimeSpan` and `DateTimeOffset`.
 

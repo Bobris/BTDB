@@ -589,6 +589,51 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
         Assert.Throws<NotSupportedException>(() => query.OrderBy(p => p.Age).First(p => p.Name!.Length > 2));
     }
 
+    public class PlainNameAge
+    {
+        public string? Name;
+        public int Age { get; set; }
+    }
+
+    [Fact]
+    public void QueryProjectsWithSelect()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var query = tr.GetRelation<IPersonTable>().Query<Person>();
+
+        Assert.Equal([41, 35, 28, 41], query.Select(p => p.Age).ToArray());
+        Assert.Equal(["Ada", "Bob", null, "Dana"], query.Select(p => p.Name).ToArray());
+        Assert.Equal([(1ul, "Bob"), (2ul, (string?)null)], query.Where(p => p.Age < 40).Select(p => ValueTuple.Create(p.TenantId, p.Name)).ToArray());
+        var withRow = query.Where(p => p.Age == 35).Select(p => new { Row = p, Double = p.Age * 2 }).Single();
+        Assert.Equal("bob@example.com", withRow.Row.Email);
+        Assert.Equal(70, withRow.Double);
+        // A type without generated metadata is filled through reflection.
+        var plain = query.OrderBy(p => p.Name).Select(p => new PlainNameAge { Name = p.Name, Age = p.Age }).Skip(1).First();
+        Assert.Equal(("Ada", 41), (plain.Name, plain.Age));
+        Assert.Equal(76, query.Where(p => p.TenantId == 1).Select(p => p.Age).Sum());
+        Assert.Equal(2, query.Select(p => p.Email).Skip(1).Take(2).Count());
+    }
+
+    [Fact]
+    public void QuerySelectRunsOnlyForReturnedRowsLikeLinq()
+    {
+        FillPersonData();
+
+        using var tr = _db.StartTransaction();
+        var query = tr.GetRelation<IPersonTable>().Query<Person>();
+
+        // The third row has no name, but only returned rows run the selector.
+        Assert.Equal(3, query.Select(p => p.Name!.Length).First());
+        Assert.Equal(4, query.Select(p => p.Name!.Length).Last());
+        Assert.Equal([3, 3], query.Select(p => p.Name!.Length).Take(2).ToArray());
+        Assert.Equal(4, query.OrderBy(p => p.Name).Select(p => p.Name!.Length).Last());
+        // Count runs the selector of every row, like LINQ.
+        Assert.Throws<NullReferenceException>(() => query.Select(p => p.Name!.Length).Count());
+        Assert.Throws<NullReferenceException>(() => query.Select(p => p.Name!.Length).ToArray());
+    }
+
     static string?[] Names(IQueryable<Person> query) => query.AsEnumerable().Select(p => p.Name).ToArray();
     static ulong[] Ids(IQueryable<QueryTypesRow> query) => query.AsEnumerable().Select(p => p.Id).ToArray();
 
@@ -631,7 +676,7 @@ public class ObjectDbRelationQueryTest : ObjectDbTestBase
             table.Query<Person>().Where(p => string.CompareOrdinal(p.Name, "B") == 1).ToArray());
         Assert.Throws<NotSupportedException>(() => table.Query<Person>().Where(p => (object)p.Age == (object)35).ToArray());
         Assert.Throws<NotSupportedException>(() => table.Query<Person>().ElementAt(1));
-        Assert.Throws<NotSupportedException>(() => table.Query<Person>().Select(p => p.Name));
+        Assert.Throws<NotSupportedException>(() => table.Query<Person>().Select((p, i) => p.Name).ToArray());
     }
 
     [Fact]
